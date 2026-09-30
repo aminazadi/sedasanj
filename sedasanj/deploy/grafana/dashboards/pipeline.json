@@ -1,0 +1,84 @@
+{
+  "title": "CBI Voice Analytics — pipeline",
+  "uid": "cbi-pipeline",
+  "timezone": "Asia/Tehran",
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Ingest per minute",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(cbi_ingest_total[5m])) * 60", "legendFormat": "accepted"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "cbi_queue_depth", "legendFormat": "{{queue}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Job wait p95 (s)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(cbi_job_wait_seconds_bucket[10m])) by (le, kind))", "legendFormat": "{{kind}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "ASR seconds processed",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "rate(cbi_asr_seconds_processed[10m])"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM tokens/s p50",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [{"expr": "histogram_quantile(0.5, sum(rate(cbi_llm_tokens_per_second_bucket[10m])) by (le))"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Webhook responses",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [{"expr": "sum by (status) (rate(cbi_webhook_responses_total[10m]))", "legendFormat": "{{status}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Credit rejects",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "targets": [{"expr": "sum(rate(cbi_credit_rejects_total[15m]))"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM JSON failures",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "targets": [{"expr": "rate(cbi_llm_json_failures_total[15m])"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM internal submission latency p95",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(cbi_llm_submit_seconds_bucket[10m])) by (le))", "legendFormat": "submit p95"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM provider wait p95",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(cbi_llm_provider_wait_seconds_bucket[10m])) by (le))", "legendFormat": "provider p95"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Durable outbox and oldest queued job",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+      "targets": [
+        {"expr": "cbi_outbox_pending", "legendFormat": "outbox pending"},
+        {"expr": "cbi_outbox_oldest_seconds", "legendFormat": "oldest outbox"},
+        {"expr": "cbi_oldest_job_seconds", "legendFormat": "oldest {{kind}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider analysis steps",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+      "targets": [{"expr": "cbi_provider_tasks", "legendFormat": "{{status}}"}]
+    }
+  ]
+}

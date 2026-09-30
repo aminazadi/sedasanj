@@ -1,0 +1,18 @@
+[Unit]
+Description=CBI Voice Analytics Asterisk agent
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/cbi-agent/venv/bin/cbi-agent --config /etc/cbi-agent/cbi-agent.toml
+Restart=always
+RestartSec=5
+User=asterisk
+Group=asterisk
+StateDirectory=cbi-agent
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

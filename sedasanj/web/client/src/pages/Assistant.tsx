@@ -1,0 +1,189 @@
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { fmt, refreshSession, request, tokens } from "../api";
+import { ErrorBox, Loading } from "../components/Widgets";
+import type { ChatConversation, ChatMessage } from "../types";
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="h-4 w-4">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v5M14 11v5" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="h-4 w-4">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="h-5 w-5">
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </svg>
+  );
+}
+
+export default function Assistant() {
+  const [search] = useSearchParams();
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  function resizeInput() {
+    const input = inputRef.current;
+    if (!input) return;
+    const maxHeight = 96;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
+    input.style.overflowY = input.scrollHeight > maxHeight ? "auto" : "hidden";
+  }
+
+  async function loadMessages(item: ChatConversation) {
+    try {
+      setError(null);
+      const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${item.id}/messages`);
+      setConversation(item);
+      setMessages(rows);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  async function create(callId: string | null = null) {
+    const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: callId } });
+    setConversations((current) => [item, ...current]);
+    setConversation(item);
+    setMessages([]);
+    return item;
+  }
+  async function remove(item: ChatConversation) {
+    try {
+      setError(null);
+      await request(`/v1/assistant/conversations/${item.id}`, { method: "DELETE" });
+      const remaining = conversations.filter((current) => current.id !== item.id);
+      setConversations(remaining);
+      if (conversation?.id === item.id) {
+        if (remaining[0]) await loadMessages(remaining[0]);
+        else await create();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  async function rename(item: ChatConversation) {
+    const nextTitle = title.trim();
+    if (!nextTitle) return;
+    try {
+      setError(null);
+      const updated = await request<ChatConversation>(`/v1/assistant/conversations/${item.id}`, { method: "PATCH", body: { title: nextTitle } });
+      setConversations((current) => current.map((currentItem) => currentItem.id === updated.id ? updated : currentItem));
+      setConversation((current) => current?.id === updated.id ? updated : current);
+      setEditingId(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await request<ChatConversation[]>("/v1/assistant/conversations");
+        setConversations(rows);
+        const callId = search.get("call_id");
+        if (callId) await create(callId);
+        else if (rows[0]) await loadMessages(rows[0]);
+        else await create();
+      } catch (err) { setError((err as Error).message); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending]);
+
+  async function streamReply(conversationId: string, content: string, draftId: string): Promise<ChatMessage> {
+    const makeRequest = () => fetch(`/v1/assistant/conversations/${conversationId}/messages/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(tokens.access() ? { Authorization: `Bearer ${tokens.access()}` } : {}) },
+      body: JSON.stringify({ content }),
+    });
+    let response = await makeRequest();
+    if (response.status === 401 && await refreshSession()) response = await makeRequest();
+    if (!response.ok || !response.body) {
+      let message = response.statusText;
+      try { message = (await response.json())?.error?.message ?? message; } catch { /* non-JSON error body */ }
+      throw new Error(message);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let completed: ChatMessage | null = null;
+    const handleEvent = (frame: string) => {
+      const event = /^event: (.+)$/m.exec(frame)?.[1];
+      const data = /^data: (.+)$/m.exec(frame)?.[1];
+      if (!event || !data) return;
+      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage };
+      const content = payload.content;
+      if (event === "delta" && content) {
+        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: item.content + content } : item));
+      }
+      if (event === "replace" && content) {
+        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content } : item));
+      }
+      if (event === "done" && payload.message) completed = payload.message;
+    };
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      frames.forEach(handleEvent);
+      if (done) break;
+    }
+    if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
+    setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
+    return completed as ChatMessage;
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!text.trim() || sending) return;
+    try {
+      setSending(true); setError(null);
+      const active = conversation ?? await create();
+      const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content: text.trim(), status: "succeeded", model: null, sources: null, created_at: new Date().toISOString() };
+      const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, created_at: new Date().toISOString() };
+      setMessages((current) => [...current, optimistic, draftReply]); setText("");
+      requestAnimationFrame(resizeInput);
+      const reply = await streamReply(active.id, optimistic.content, draftReply.id);
+      setMessages((current) => current.map((item) => item.id === optimistic.id ? optimistic : item));
+      setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: item.title || optimistic.content, updated_at: reply.created_at } : item));
+    } catch (err) { setError((err as Error).message); }
+    finally { setSending(false); }
+  }
+  if (loading) return <Loading />;
+  return <div className="grid min-h-[calc(100vh-10rem)] gap-4 lg:grid-cols-[250px_1fr]" dir="rtl">
+    <aside className="card h-fit space-y-2"><button className="btn w-full" onClick={() => void create()}>گفتگوی جدید</button>{conversations.map((item) => <div key={item.id} className="group relative w-full">{editingId === item.id ? <form className="flex w-full items-center gap-1" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="input min-w-0 flex-1 px-2 py-1 text-sm" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="btn-ghost px-2 text-xs text-brand-700">ذخیره</button></form> : <button className={`w-full rounded-lg p-3 pl-16 text-right text-sm ${conversation?.id === item.id ? "bg-brand-50 text-brand-700" : "hover:bg-slate-50"}`} onClick={() => void loadMessages(item)}>{item.title || "گفتگوی جدید"}</button>}<div className="absolute inset-y-0 left-2 flex items-center opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"><button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => void remove(item)}><TrashIcon /></button></div></div>)}</aside>
+    <section className="relative min-h-[70vh] rounded-2xl border border-slate-200 bg-slate-50 pb-28">
+      <div className="space-y-5 p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-slate-500"><h1 className="mb-3 text-xl font-bold text-slate-800">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto bg-brand-600 text-white" : "mr-auto bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-500">{message.sources.map((source) => <Link className="ml-3 text-brand-700" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>
+      <form className="absolute inset-x-3 bottom-3 mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg" onSubmit={submit}><textarea ref={inputRef} rows={1} className="input h-12 min-h-12 flex-1 resize-none overflow-y-hidden border-0 py-3" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} placeholder="سؤال خود را بنویسید…" /><button type="submit" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
+    </section>
+    <ErrorBox message={error} />
+  </div>;
+}

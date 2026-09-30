@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+
+# Local config and data
+.env
+deploy/.env
+deploy/data/
+*.wav
+!tests/fixtures/*.wav
+asterisk-module-*.zip

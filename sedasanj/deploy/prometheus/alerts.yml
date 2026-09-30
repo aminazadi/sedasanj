@@ -1,0 +1,90 @@
+groups:
+  - name: cbi-platform
+    rules:
+      - alert: LlamaServerDown
+        expr: up{job="llama"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "llama-server {{ $labels.instance }} is down"
+
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "api instance {{ $labels.instance }} is down"
+
+      - alert: DispatcherDown
+        expr: up{job="dispatcher"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "durable outbox dispatcher is down"
+
+      - alert: PostgresUnreachable
+        expr: increase(cbi_http_requests_total{status="503"}[5m]) > 10
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "readiness failing; check postgres/redis/minio"
+
+      - alert: RetryableBacklog
+        expr: sum(cbi_queue_depth) > 50
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "queue backlog above 50 for 10 minutes"
+
+      - alert: FailedRetryableBacklog
+        expr: sum(cbi_jobs_failed_retryable) > 20
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "more than 20 jobs waiting for a retry"
+
+      - alert: DiskSpaceLow
+        expr: |
+          min by (instance) (
+            node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+          ) < 0.15
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "less than 15% disk free on {{ $labels.instance }}"
+
+      - alert: LlmJsonFailures
+        expr: increase(cbi_llm_json_failures_total[15m]) > 20
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "LLM JSON parse failures rising"
+
+      - alert: LlmSubmissionDelayed
+        expr: histogram_quantile(0.95, sum(rate(cbi_llm_submit_seconds_bucket[10m])) by (le)) > 30
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 ASR-to-provider submission latency is above 30 seconds"
+
+      - alert: OldestLlmJobDelayed
+        expr: cbi_oldest_job_seconds{kind="llm"} > 60
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "oldest queued LLM job is above 60 seconds"
+
+      - alert: DurableOutboxDelayed
+        expr: cbi_outbox_pending > 0 and cbi_outbox_oldest_seconds > 30
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "durable job dispatch is delayed"
+
+      - alert: LlmProviderFailures
+        expr: cbi_provider_tasks{status="failed"} > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "multiple provider analysis steps have failed"

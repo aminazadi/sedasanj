@@ -1,0 +1,528 @@
+name: cbi
+
+x-python-env: &python-env
+  DATABASE_URL: postgresql+asyncpg://cbi_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}@postgres:5432/cbi
+  TENANT_DATABASE_MASTER_KEY: ${TENANT_DATABASE_MASTER_KEY:?Set TENANT_DATABASE_MASTER_KEY}
+  TENANT_DATABASES_ENABLED: ${TENANT_DATABASES_ENABLED:-true}
+  TENANT_DATABASE_AUTO_MIGRATE: ${TENANT_DATABASE_AUTO_MIGRATE:-true}
+  TENANT_DATABASE_POOL_SIZE: ${TENANT_DATABASE_POOL_SIZE:-3}
+  TENANT_DATABASE_MAX_POOLS: ${TENANT_DATABASE_MAX_POOLS:-20}
+  TENANT_MIGRATION_BATCH_SIZE: ${TENANT_MIGRATION_BATCH_SIZE:-500}
+  TENANT_MIGRATION_MAX_ATTEMPTS: ${TENANT_MIGRATION_MAX_ATTEMPTS:-5}
+  TENANT_MIGRATION_DRAIN_SECONDS: ${TENANT_MIGRATION_DRAIN_SECONDS:-1800}
+  TENANT_MIGRATION_ROLLBACK_DAYS: ${TENANT_MIGRATION_ROLLBACK_DAYS:-7}
+  TENANT_BACKUP_ENABLED: ${TENANT_BACKUP_ENABLED:-true}
+  TENANT_BACKUP_INTERVAL_HOURS: ${TENANT_BACKUP_INTERVAL_HOURS:-24}
+  TENANT_BACKUP_RETENTION_DAYS: ${TENANT_BACKUP_RETENTION_DAYS:-30}
+  REDIS_URL: redis://redis:6379/0
+  MINIO_ENDPOINT: http://minio:9000
+  MINIO_PUBLIC_ENDPOINT: https://${AUDIO_DOMAIN:?Set AUDIO_DOMAIN}
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+  MINIO_BUCKET_AUDIO: audio
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+  API_KEY_PEPPER: ${API_KEY_PEPPER:?Set API_KEY_PEPPER}
+  LLAMA_SERVER_URLS: http://llm1:8081,http://llm2:8081
+  LLM_MODEL: ${LLM_MODEL:-dorna-llama3-8b-instruct-q4_k_m}
+  ASR_ENGINE: ${ASR_ENGINE:-shenava}
+  LLM_CLIENT: ${LLM_CLIENT:-llama}
+  VOICESANJ_BASE_URL: ${VOICESANJ_BASE_URL:-http://aiservice.voicesanj.ir}
+  VOICESANJ_ASR_MODEL: ${VOICESANJ_ASR_MODEL:-buzzasr-persian}
+  VOICESANJ_LLM_MODEL: ${VOICESANJ_LLM_MODEL:-dorna-8b-q4_k_m}
+  AUDIO_PREPROCESSING_ENABLED: ${AUDIO_PREPROCESSING_ENABLED:-false}
+  AUDIO_DENOISER_MODEL: ${AUDIO_DENOISER_MODEL:-speech-afftdn-balanced}
+  AUDIO_ENHANCEMENT_MODEL: ${AUDIO_ENHANCEMENT_MODEL:-speech-clarity-balanced}
+  VOICE_SENTIMENT_ENABLED: ${VOICE_SENTIMENT_ENABLED:-true}
+  VOICE_SENTIMENT_MODEL: ${VOICE_SENTIMENT_MODEL:-iic/emotion2vec_plus_base}
+  VOICE_SENTIMENT_MODEL_REVISION: ${VOICE_SENTIMENT_MODEL_REVISION:-b318240bfe67db81a8c572ecb37ce9c3759b81c9}
+  VOICE_SENTIMENT_HUB: ${VOICE_SENTIMENT_HUB:-hf}
+  VOICE_SENTIMENT_DEVICE: cpu
+  VOICE_SENTIMENT_CPU_THREADS: ${VOICE_SENTIMENT_CPU_THREADS:-2}
+  VOICE_SENTIMENT_WINDOW_SECONDS: ${VOICE_SENTIMENT_WINDOW_SECONDS:-8}
+  VOICE_SENTIMENT_MIN_SECONDS: ${VOICE_SENTIMENT_MIN_SECONDS:-1}
+  VOICE_SENTIMENT_MAX_WINDOWS: ${VOICE_SENTIMENT_MAX_WINDOWS:-720}
+  VOICE_SENTIMENT_TIMEOUT_SECONDS: ${VOICE_SENTIMENT_TIMEOUT_SECONDS:-900}
+  MAX_CONCURRENT_EMOTION_JOBS: ${MAX_CONCURRENT_EMOTION_JOBS:-1}
+  VOICESANJ_CORRECTION_TIMEOUT_SECONDS: ${VOICESANJ_CORRECTION_TIMEOUT_SECONDS:-120}
+  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1200}
+  ANALYSIS_TIMEOUT_SECONDS: ${ANALYSIS_TIMEOUT_SECONDS:-1500}
+  MAX_CONCURRENT_ASR_JOBS: ${MAX_CONCURRENT_ASR_JOBS:-10}
+  MAX_CONCURRENT_LLM_SUBMISSIONS: ${MAX_CONCURRENT_LLM_SUBMISSIONS:-16}
+  LLM_POLL_INTERVAL_SECONDS: ${LLM_POLL_INTERVAL_SECONDS:-2}
+  OUTBOX_DISPATCH_INTERVAL_SECONDS: ${OUTBOX_DISPATCH_INTERVAL_SECONDS:-1}
+  SHENAVA_MODEL_PATH: /models/shenava-koochik-int8.bin
+  PUBLIC_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN}
+  ENVIRONMENT: ${ENVIRONMENT:-production}
+  CORS_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN},https://${ADMIN_DOMAIN:?Set ADMIN_DOMAIN}
+  METRICS_TOKEN: ${METRICS_TOKEN:?Set METRICS_TOKEN}
+  MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-536870912}
+  MAX_EXTRACTED_AUDIO_BYTES: ${MAX_EXTRACTED_AUDIO_BYTES:-536870912}
+  MAX_ARCHIVE_COMPRESSION_RATIO: ${MAX_ARCHIVE_COMPRESSION_RATIO:-100}
+  WORKER_METRICS_PORT: 9100
+  SMTP_URL: ${SMTP_URL:-}
+  NOTIFY_FROM_EMAIL: ${NOTIFY_FROM_EMAIL:-noreply@example.com}
+  SMSIR_API_KEY: ${SMSIR_API_KEY:-}
+  SMSIR_VERIFY_TEMPLATE_ID: ${SMSIR_VERIFY_TEMPLATE_ID:-}
+  SMSIR_BASE_URL: ${SMSIR_BASE_URL:-https://api.sms.ir/v1}
+  ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+  ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-false}
+  PUBLIC_APP_URL: https://${APP_DOMAIN:?Set APP_DOMAIN}
+  SALES_NOTIFICATION_EMAIL: ${SALES_NOTIFICATION_EMAIL:-}
+  SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-api-build: &api-build
+  context: ..
+  dockerfile: deploy/Dockerfile.api
+  target: base
+  network: ${BUILD_NETWORK:-host}
+  args:
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+
+services:
+  client:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      target: client
+    restart: unless-stopped
+    ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${APP_PORT:-3000}:80"]
+    networks: [proxy]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      target: admin
+    restart: unless-stopped
+    ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${ADMIN_PORT:-3001}:80"]
+    networks: [proxy]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  api:
+    build: *api-build
+    restart: unless-stopped
+    ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${API_PORT:-8000}:8000"]
+    environment:
+      <<: *python-env
+      FORWARDED_ALLOW_IPS: ${APP_PROXY_SUBNET:-172.30.0.0/28},${NPM_PROXY_IP:?Set NPM_PROXY_IP}
+    networks: [default, proxy]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      seed: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 4G }
+
+  migrate:
+    build: *api-build
+    environment:
+      <<: *python-env
+      DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/cbi
+    working_dir: /srv/app/apps/api
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+          echo "migrate: POSTGRES_PASSWORD is empty" >&2
+          exit 1
+        fi
+        echo "migrate: running alembic upgrade head"
+        alembic upgrade head
+
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    logging: *logging
+
+  seed:
+    build: *api-build
+    environment:
+      <<: *python-env
+      DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD}@postgres:5432/cbi
+      SEED_ON_DEPLOY: ${SEED_ON_DEPLOY:-true}
+      SEED_TENANT_ID: ${SEED_TENANT_ID:-}
+      SEED_TENANT_NAME: ${SEED_TENANT_NAME:-}
+      SEED_STAFF_EMAIL: ${SEED_STAFF_EMAIL:-staff@example.com}
+      SEED_STAFF_PASSWORD: ${SEED_STAFF_PASSWORD:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_API_KEY: ${SEED_API_KEY:-}
+      SEED_MINUTES: ${SEED_MINUTES:-600}
+      SEED_RESET_PASSWORDS: ${SEED_RESET_PASSWORDS:-false}
+    working_dir: /srv/app
+    command: ["python", "/srv/app/scripts/seed.py", "--from-env"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+    logging: *logging
+
+  worker-asr:
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_asr.main.WorkerSettings"]
+    environment: *python-env
+    volumes:
+      - ${MODELS_DIR:-./models}:/models:ro
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      replicas: 4
+      resources:
+        limits: { cpus: "2", memory: 512M }
+
+  worker-emotion:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+      target: emotion
+      network: ${BUILD_NETWORK:-host}
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    restart: unless-stopped
+    command: ["arq", "worker_emotion.main.WorkerSettings"]
+    environment:
+      <<: *python-env
+      HF_HOME: /model-cache/huggingface
+      MODELSCOPE_CACHE: /model-cache/modelscope
+    volumes:
+      - emotion-model-cache:/model-cache
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 5m
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 4G }
+
+  worker-llm:
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_llm.main.WorkerSettings"]
+    environment: *python-env
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      replicas: 2
+      resources:
+        limits: { cpus: "1", memory: 512M }
+
+  worker-notify:
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_notify.main.WorkerSettings"]
+    environment: *python-env
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+
+  worker-dispatch:
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_dispatch.main.WorkerSettings"]
+    environment: *python-env
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 256M }
+
+  worker-provision:
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_provision.main.WorkerSettings"]
+    environment:
+      <<: *python-env
+      SERVICE_NAME: worker-provision
+      PROVISIONER_DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/cbi
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1G }
+
+  llm1: &llm
+    image: ${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}
+    # Local GGUF inference only. Skip on small hosts / VoiceSanj:
+    #   docker compose up -d
+    # Self-hosted Dorna:
+    #   COMPOSE_PROFILES=local-llm docker compose up -d
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    command: >
+      --model /models/${LLM_GGUF:-dorna-llama3-8b-instruct-q4_k_m.gguf}
+      --ctx-size ${LLM_CTX_SIZE:-8192}
+      --parallel ${LLM_PARALLEL:-1}
+      --threads ${LLM_THREADS:-2}
+      --host 0.0.0.0 --port 8081
+    volumes:
+      - ${MODELS_DIR:-./models}:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "${LLM_CPUS:-2}", memory: "${LLM_MEMORY:-8G}" }
+
+  llm2: *llm
+
+  postgres:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.postgres
+      args:
+        AGE_COMMIT: ${AGE_COMMIT:-2db2f060c4c9265a14d40f007eb8c56febf31e4c}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cbi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: cbi
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-256MB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-1GB}
+      - -c
+      - max_connections=${PG_MAX_CONNECTIONS:-100}
+      - -c
+      - work_mem=${PG_WORK_MEM:-8MB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backup:/backup
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbi -d cbi && psql -U cbi -d cbi -tAc \"SELECT 1 FROM pg_available_extensions WHERE name IN ('vector','age') GROUP BY 1 HAVING count(*) = 2\" | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "${PG_CPUS:-2}", memory: "${PG_MEMORY:-2G}" }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "3gb"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 4G }
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    # Browsers need the S3 API for short-lived presigned audio URLs.
+    # The administrative console on 9001 intentionally stays internal.
+    ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${MINIO_API_PORT:-9000}:9000"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 2G }
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    restart: unless-stopped
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:?Set METRICS_TOKEN}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        printf '%s' "$$METRICS_TOKEN" > /prometheus/metrics_token &&
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml
+        --storage.tsdb.path=/prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - promdata:/prometheus
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.7", memory: 1G }
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.1", memory: 256M }
+
+  grafana:
+    image: grafana/grafana:11.6.1
+    restart: unless-stopped
+    ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${GRAFANA_PORT:-3002}:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:?Set GRAFANA_DOMAIN}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN:?Set GRAFANA_DOMAIN}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    depends_on: [prometheus, loki]
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.45", memory: 1G }
+
+  loki:
+    image: grafana/loki:3.5.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - lokidata:/loki
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 1G }
+
+  promtail:
+    image: grafana/promtail:3.5.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./loki/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "0.2", memory: 256M }
+
+volumes:
+  emotion-model-cache:
+  pgdata:
+  redisdata:
+  miniodata:
+  promdata:
+  grafanadata:
+  lokidata:
+
+networks:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${APP_PROXY_SUBNET:-172.30.0.0/28}

@@ -1,0 +1,32 @@
+# /etc/cbi-agent/cbi-agent.toml
+[server]
+base_url = "https://api.example.com"
+timeout_seconds = 60
+
+[auth]
+api_key = "sk_live_..."
+
+[archive]
+format = "gzip"
+# password = "paste-the-one-time-zip-password-here"
+
+[asterisk]
+ami_host = "127.0.0.1"
+ami_port = 5038
+ami_user = "cbi"
+ami_secret = "..."
+monitor_dir = "/var/spool/asterisk/monitor"
+
+[audio]
+sample_rate = 8000        # Asterisk native; server resamples for ASR
+channels = 2
+delete_after_upload = true
+
+[retry]
+max_attempts = 100
+backoff_seconds = 30
+retry_max_seconds = 3600
+credit_retry_seconds = 3600
+
+[spool]
+dir = "/var/lib/cbi-agent/spool"

@@ -1,0 +1,31 @@
+FROM node:24-slim AS client-build
+WORKDIR /build
+
+COPY web/shared ./shared
+COPY web/client/package.json web/client/package-lock.json* ./client/
+RUN cd client && npm ci
+COPY web/client ./client
+RUN cd client && npm run build
+
+FROM node:24-slim AS admin-build
+WORKDIR /build
+
+COPY web/shared ./shared
+COPY web/admin/package.json web/admin/package-lock.json* ./admin/
+RUN cd admin && npm ci
+COPY web/admin ./admin
+RUN cd admin && npm run build
+
+FROM node:24-alpine AS client
+WORKDIR /app
+COPY deploy/web-server.mjs ./server.mjs
+COPY --from=client-build /build/client/dist ./dist
+EXPOSE 80
+CMD ["node", "server.mjs"]
+
+FROM node:24-alpine AS admin
+WORKDIR /app
+COPY deploy/web-server.mjs ./server.mjs
+COPY --from=admin-build /build/admin/dist ./dist
+EXPOSE 80
+CMD ["node", "server.mjs"]

@@ -1,0 +1,140 @@
+services:
+  persian-asr:
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-600}
+    image: persian-asr:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ASR_CPU_THREADS: ${ASR_CPU_THREADS:-0}
+      ASR_CPU_BUDGET_PERCENT: ${ASR_CPU_BUDGET_PERCENT:-90}
+      ASR_MAX_CONCURRENT: ${ASR_MAX_CONCURRENT:-0}
+      ASR_TASK_WORKERS: ${ASR_TASK_WORKERS:-0}
+      ASR_INITIAL_CONCURRENT: ${ASR_INITIAL_CONCURRENT:-1}
+      ASR_LLM_MAX_CONCURRENT: ${ASR_LLM_MAX_CONCURRENT:-2}
+      ASR_DECISION_MAX_CONCURRENT: ${ASR_DECISION_MAX_CONCURRENT:-2}
+      ASR_DECISION_CPU_THREADS: ${ASR_DECISION_CPU_THREADS:-7}
+      ASR_DECISION_QUEUE_LIMIT: ${ASR_DECISION_QUEUE_LIMIT:-256}
+      ASR_DECISION_TIMEOUT_SECONDS: ${ASR_DECISION_TIMEOUT_SECONDS:-20}
+      ASR_DECISION_CONFIDENCE_THRESHOLD: ${ASR_DECISION_CONFIDENCE_THRESHOLD:-0.72}
+      ASR_DECISION_SYNC_WAIT_SECONDS: ${ASR_DECISION_SYNC_WAIT_SECONDS:-0.25}
+      ASR_ADMISSION_CPU_PERCENT: ${ASR_ADMISSION_CPU_PERCENT:-80}
+      ASR_ADMISSION_MEMORY_PERCENT: ${ASR_ADMISSION_MEMORY_PERCENT:-80}
+      ASR_MIN_THREADS_PER_JOB: ${ASR_MIN_THREADS_PER_JOB:-4}
+      ASR_AUTO_MAX_CONCURRENT: ${ASR_AUTO_MAX_CONCURRENT:-8}
+      ASR_HTTP_MAX_IN_FLIGHT: ${ASR_HTTP_MAX_IN_FLIGHT:-128}
+      ASR_SYNC_CHAT_MAX_IN_FLIGHT: ${ASR_SYNC_CHAT_MAX_IN_FLIGHT:-16}
+      ASR_HTTP_ADMISSION_WAIT_SECONDS: ${ASR_HTTP_ADMISSION_WAIT_SECONDS:-0.25}
+      ASR_HTTP_MAX_BODY_MB: ${ASR_HTTP_MAX_BODY_MB:-520}
+      ASR_HTTP_MAX_JSON_BODY_MB: ${ASR_HTTP_MAX_JSON_BODY_MB:-2}
+      ASR_MAX_CONCURRENT_UPLOADS: ${ASR_MAX_CONCURRENT_UPLOADS:-4}
+      ASR_UPLOAD_ADMISSION_WAIT_SECONDS: ${ASR_UPLOAD_ADMISSION_WAIT_SECONDS:-0.25}
+      ASR_SPOOL_MAX_MB: ${ASR_SPOOL_MAX_MB:-8192}
+      ASR_SPOOL_MIN_FREE_MB: ${ASR_SPOOL_MIN_FREE_MB:-2048}
+      ASR_SPOOL_MIN_FREE_PERCENT: ${ASR_SPOOL_MIN_FREE_PERCENT:-10}
+      ASR_SYNC_CHAT_WAIT_SECONDS: ${ASR_SYNC_CHAT_WAIT_SECONDS:-120}
+      ASR_QUEUE_LIMIT: ${ASR_QUEUE_LIMIT:-100}
+      ASR_QUEUE_MAX_AUDIO_MB: ${ASR_QUEUE_MAX_AUDIO_MB:-8192}
+      ASR_QUEUE_MAX_MODEL_RUNS: ${ASR_QUEUE_MAX_MODEL_RUNS:-200}
+      ASR_TASK_MAX_ATTEMPTS: ${ASR_TASK_MAX_ATTEMPTS:-2}
+      ASR_CHAT_TASK_TIMEOUT_SECONDS: ${ASR_CHAT_TASK_TIMEOUT_SECONDS:-900}
+      ASR_MAX_MODELS_PER_TASK: ${ASR_MAX_MODELS_PER_TASK:-5}
+      ASR_TASK_STALE_SECONDS: ${ASR_TASK_STALE_SECONDS:-120}
+      ASR_TASK_RESULT_TTL_HOURS: ${ASR_TASK_RESULT_TTL_HOURS:-168}
+      ASR_MAX_UPLOAD_MB: ${ASR_MAX_UPLOAD_MB:-500}
+      ASR_API_KEY: ${ASR_API_KEY:-}
+      ASR_API_KEY_PEPPER: ${ASR_API_KEY_PEPPER:-}
+      ASR_9ROUTER_SECRETS_KEY: ${ASR_9ROUTER_SECRETS_KEY:-}
+      ASR_DATA_DIR: /data
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_WHISPER_BEAM_SIZE: ${ASR_WHISPER_BEAM_SIZE:-2}
+      ASR_WHISPER_TEMPERATURE: ${ASR_WHISPER_TEMPERATURE:-0}
+      ASR_ENABLE_DENOISER: ${ASR_ENABLE_DENOISER:-0}
+      # Direct browser uploads use MinIO. Keep the internal and public
+      # endpoints distinct: presigned URLs must be reachable by clients.
+      ASR_S3_ENDPOINT: ${ASR_S3_ENDPOINT:-http://minio:9000}
+      ASR_S3_PUBLIC_ENDPOINT: ${ASR_S3_PUBLIC_ENDPOINT:-}
+      ASR_S3_BUCKET: ${ASR_S3_BUCKET:-}
+      ASR_S3_REGION: ${ASR_S3_REGION:-us-east-1}
+      ASR_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-}
+      ASR_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-}
+      ASR_S3_ADDRESSING_STYLE: path
+      ASR_UPLOAD_PART_SIZE_MB: ${ASR_UPLOAD_PART_SIZE_MB:-16}
+      ASR_UPLOAD_URL_TTL_SECONDS: ${ASR_UPLOAD_URL_TTL_SECONDS:-900}
+      ASR_UPLOAD_TTL_HOURS: ${ASR_UPLOAD_TTL_HOURS:-24}
+      # The dashboard reads these read-only mounts to report the same host-wide
+      # CPU, RAM, network and process figures that btop reports.
+      ASR_HOST_PROC: /host/proc
+      ASR_HOST_SYS: /host/sys
+      ASR_HOST_STORAGE_PATH: /host/rootfs-probe
+    volumes:
+      - asr-data:/data
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      # A single read-only file lets statvfs() measure the host root disk.
+      # Mounting the whole host filesystem would expose unnecessary data.
+      - /etc/hostname:/host/rootfs-probe:ro
+    init: true
+    mem_limit: ${ASR_MEMORY_LIMIT:-32g}
+    pids_limit: ${ASR_PIDS_LIMIT:-512}
+    stop_grace_period: 30s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/live"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-18T21-56-31Z
+    restart: unless-stopped
+    profiles: ["object-storage"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-this-before-production}
+      # Browser clients upload through the dedicated NPM hostname.
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_CONSOLE_PUBLIC_URL:-}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-}
+    volumes:
+      - minio-data:/data
+    expose:
+      - "9000"
+      - "9001"
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-07-16T15-35-03Z
+    restart: "no"
+    profiles: ["object-storage"]
+    depends_on:
+      - minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-this-before-production}
+      ASR_S3_BUCKET: ${ASR_S3_BUCKET:-asr-uploads}
+    volumes:
+      - ./docker/minio/cors.json:/config/cors.json:ro
+    entrypoint: >-
+      /bin/sh -c 'until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do sleep 2; done;
+      mc mb --ignore-existing local/"$$ASR_S3_BUCKET";
+      mc anonymous set none local/"$$ASR_S3_BUCKET";
+      mc cors set local/"$$ASR_S3_BUCKET" /config/cors.json'
+
+volumes:
+  asr-data:
+  minio-data:
