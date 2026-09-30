@@ -2,6 +2,7 @@
 
 ## 2026-09-30 — AMINAZADI
 
+- Enabled the `/v1/ninerouter/chat/completions` proxy capability used by the customer assistant, preventing valid chat requests from being rejected as an unsupported 9Router path.
 - Allowed installed local ASR and LLM models to remain independently selectable while 9Router providers are enabled, preventing native AISERVICE requests from being rejected by an unrelated remote-model configuration.
 
 ## 2026-09-29 — AMINAZADI

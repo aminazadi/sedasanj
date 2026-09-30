@@ -77,7 +77,20 @@ def sync_models():
 
 
 proxy_router = APIRouter(prefix="/v1/ninerouter", tags=["9Router proxy"])
-ALLOWED_PATHS = {"embeddings", "audio/speech", "images/generations", "images/edits", "videos/generations", "videos/edits", "search", "fetch", "responses", "messages", "completions"}
+ALLOWED_PATHS = {
+    "embeddings",
+    "audio/speech",
+    "images/generations",
+    "images/edits",
+    "videos/generations",
+    "videos/edits",
+    "search",
+    "fetch",
+    "responses",
+    "messages",
+    "completions",
+    "chat/completions",
+}
 
 
 @proxy_router.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])

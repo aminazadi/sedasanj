@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
+from asr_service.api.routers import ninerouter as ninerouter_router
 from asr_service.api.routers import tasks
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure import storage
@@ -75,6 +76,9 @@ class NineRouterTests(unittest.TestCase):
         with patch("asr_service.infrastructure.ninerouter.requests.request", return_value=response):
             result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
         self.assertEqual(result["segments"], [{"id": 0, "start": 0, "end": 3.5, "text": "سلام"}])
+
+    def test_openai_chat_completions_proxy_path_is_allowed(self):
+        self.assertIn("chat/completions", ninerouter_router.ALLOWED_PATHS)
 
     def test_local_and_remote_models_remain_independently_routable(self):
         model_dir = Path(self.tmp.name) / "models"
