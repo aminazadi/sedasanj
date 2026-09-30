@@ -3,6 +3,7 @@
 ## 2026-09-30 — AMINAZADI
 
 - Added a complete local environment template and corrected development commands to run Alembic, seeding, and Uvicorn through the project-managed Python environment with the local Docker ports.
+- Switched the local PostgreSQL image to PostgreSQL 17 with pgvector so the full local migration chain can run without rebuilding or deleting existing local data.
 - Restricted every AI workload to the single admin-managed AISERVICE connection, added explicit per-model endpoint routing for ASR, durable analysis, assistant chat, typed decisions, and embeddings, and made AISERVICE ASR uploads always use documented gzip multipart transport.
 - Unified every admin and customer date input on the shared Jalali date-time picker, including KPI goal windows and customer/admin installation scheduling.
 - Added an admin-managed LLM provider switch shared by call analysis and the intelligent assistant, ensuring AISERVICE routing no longer depends on the deployment environment default.

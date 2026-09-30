@@ -5,7 +5,7 @@ name: cbi-local
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:0.8.0-pg17-bookworm
     restart: unless-stopped
     ports: ["5433:5432"]
     environment:
