@@ -623,7 +623,10 @@ async def correct_call_transcript(
             )
         ).scalar_one_or_none()
         if transcript is None:
-            raise ApiError("not_found", "call has no transcript yet")
+            raise ApiError(
+                "not_found",
+                "متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.",
+            )
         source_text = transcript.full_text
 
     try:
@@ -648,7 +651,10 @@ async def correct_call_transcript(
             )
         ).scalar_one_or_none()
         if transcript is None:
-            raise ApiError("not_found", "call has no transcript yet")
+            raise ApiError(
+                "not_found",
+                "متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.",
+            )
         transcript.corrected_text = corrected
         transcript.corrected_at = datetime.now(UTC)
         await audit.record(
@@ -681,7 +687,10 @@ async def reanalyze_call(call_id: UUID, request: Request, principal: OperatorDep
             )
         ).scalar_one_or_none()
         if transcript is None:
-            raise ApiError("not_found", "call has no transcript yet")
+            raise ApiError(
+                "not_found",
+                "متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.",
+            )
 
         active = (
             (

@@ -508,6 +508,11 @@ export default function CallDetailPage() {
   }
 
   async function reanalyze() {
+    if (!call?.transcript) {
+      setError("متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.");
+      return;
+    }
+    setError(null);
     try {
       await request<void>(`/v1/calls/${callId}/reanalyze`, { method: "POST" });
       setNotice("درخواست تحلیل مجدد ثبت شد (بدون هزینه اضافه).");
@@ -633,7 +638,14 @@ export default function CallDetailPage() {
                 <div className="absolute left-0 z-[60] mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
                   {session && CAN_HEAR_AUDIO.includes(session.role) && call.audio_available ? <button className="block w-full rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50" onClick={() => void playAudio()} disabled={audioLoading}>{audioLoading ? "در حال دریافت صوت…" : "پخش فایل صوتی"}</button> : null}
                   {session?.role === "org_admin" || session?.role === "operator" ? <Link className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50" to={`/assistant?call_id=${call.id}`}>پرسش درباره این تماس</Link> : null}
-                  <button className="block w-full rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50" onClick={() => void reanalyze()}>تحلیل مجدد</button>
+                  <button
+                    className="block w-full rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void reanalyze()}
+                    disabled={!call.transcript}
+                    title={!call.transcript ? "پس از آماده‌شدن متن تماس، تحلیل مجدد فعال می‌شود." : undefined}
+                  >
+                    تحلیل مجدد{!call.transcript ? " (در انتظار متن)" : ""}
+                  </button>
                   {isOrgAdmin(session?.role) ? <button className="block w-full rounded-lg px-3 py-2 text-right text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50" disabled={deleting} onClick={() => void deleteCall()}>{deleting ? "در حال حذف…" : "حذف تماس"}</button> : null}
                 </div>
               </details>

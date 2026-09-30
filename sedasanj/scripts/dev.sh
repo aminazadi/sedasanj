@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start everything needed for a local laptop test:
-#   Postgres + Redis + MinIO (Docker), API, ASR/LLM/notify workers, both Vite panels.
+#   Postgres + Redis + MinIO (Docker), API, durable-dispatch/ASR/LLM/notify
+#   workers, and both Vite panels.
 #
 # Usage (from anywhere):
 #   ./scripts/dev.sh
@@ -146,6 +147,7 @@ run api uv run uvicorn app.main:app --app-dir apps/api --reload --host 127.0.0.1
 run asr env WORKER_METRICS_PORT=9101 uv run arq worker_asr.main.WorkerSettings
 run llm env WORKER_METRICS_PORT=9102 uv run arq worker_llm.main.WorkerSettings
 run notify env WORKER_METRICS_PORT=9103 uv run arq worker_notify.main.WorkerSettings
+run dispatch env WORKER_METRICS_PORT=9104 uv run arq worker_dispatch.main.WorkerSettings
 run client npm --prefix web/client run dev
 run admin npm --prefix web/admin run dev
 

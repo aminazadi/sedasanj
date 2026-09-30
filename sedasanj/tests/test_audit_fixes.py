@@ -109,6 +109,49 @@ async def test_reanalysis_rejects_a_retryable_llm_job(
 
 
 @pytest.mark.asyncio
+async def test_reanalysis_explains_when_transcript_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from contextlib import asynccontextmanager
+
+    call_id = uuid4()
+    tenant_id = uuid4()
+    call = Call(id=call_id, tenant_id=tenant_id)
+
+    async def load_call(
+        session: AsyncSession,
+        requested_call_id: object,
+        requested_tenant_id: object,
+        principal: object | None = None,
+    ) -> Call:
+        assert requested_call_id == call_id
+        assert requested_tenant_id == tenant_id
+        return call
+
+    session = AsyncSession()
+    execute = AsyncMock(return_value=_Result(scalar=None))
+    monkeypatch.setattr(session, "execute", execute)
+    monkeypatch.setattr(calls, "_load_call", load_call)
+
+    @asynccontextmanager
+    async def fake_scope(*args: object, **kwargs: object):
+        yield session
+
+    monkeypatch.setattr(calls, "session_scope", fake_scope)
+    principal = Principal(kind="user", id=uuid4(), tenant_id=tenant_id, role="operator")
+
+    try:
+        with pytest.raises(ApiError, match="متن تماس هنوز آماده نشده"):
+            await calls.reanalyze_call(
+                call_id,
+                None,  # type: ignore[arg-type]
+                principal,
+            )
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
 async def test_requeue_enqueues_only_after_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
