@@ -106,7 +106,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-[[ -f "${ROOT}/.env" ]] || die "missing .env in the repo root"
+[[ -f "${ROOT}/.env" ]] || die "missing .env; run: cp .env.example .env"
 command -v uv >/dev/null 2>&1 || die "uv is not on PATH"
 command -v ffmpeg >/dev/null 2>&1 || log "warning: ffmpeg not found (ASR channel split needs it)"
 

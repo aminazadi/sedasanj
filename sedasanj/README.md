@@ -47,11 +47,21 @@ ASR ۵ تلاش/۵ ثانیه، تحلیل لحن ۳ تلاش/۱۰ ثانیه، 
 ## توسعه محلی
 
 ```bash
-uv venv --python 3.12 && uv pip install -e ".[dev]"
+cp .env.example .env
+./scripts/dev.sh
+```
+
+اسکریپت توسعه محیط Python 3.12، سرویس‌های Docker، migrationها، API، workerها و هر دو
+پنل را با dependencyهای همان پروژه اجرا می‌کند. برای اجرای دستی فرمان‌های Python نیز همیشه
+از محیط پروژه استفاده کنید:
+
+```bash
+uv sync --extra dev
+set -a && source .env && set +a
 docker compose -f deploy/compose.local.yml up -d
-alembic -c apps/api/alembic.ini upgrade head
+uv run alembic -c apps/api/alembic.ini upgrade head
 uv run python scripts/seed.py --minutes 600
-uvicorn app.main:app --app-dir apps/api --reload
+uv run uvicorn app.main:app --app-dir apps/api --reload
 ```
 
 پنل‌ها:
