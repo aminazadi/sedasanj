@@ -2,6 +2,7 @@
 
 ## 2026-09-30 — AMINAZADI
 
+- Ensured idempotent seed runs provision the legacy active subscription required by assistant entitlements, including repair of tenants created after commerce migrations.
 - Added configurable external DNS resolvers to AI-facing application containers and classified provider DNS/network failures as retryable instead of terminal generic ASR failures.
 - Fixed native AISERVICE ASR requests being rejected when the upstream service also has an independently configured 9Router speech model.
 - Added a complete local environment template and corrected development commands to run Alembic, seeding, and Uvicorn through the project-managed Python environment with the local Docker ports.

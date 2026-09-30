@@ -14,6 +14,7 @@ import asyncio
 import os
 import secrets
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -22,7 +23,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps" / "api"))
 from sqlalchemy import select  # noqa: E402
 
 from app.db import dispose_engine, session_scope  # noqa: E402
-from app.models import ApiKey, Package, StaffUser, Tenant, TenantBalanceCache, User  # noqa: E402
+from app.models import (  # noqa: E402
+    ApiKey,
+    Package,
+    Plan,
+    PlanVersion,
+    StaffUser,
+    Subscription,
+    Tenant,
+    TenantBalanceCache,
+    User,
+)
 from app.security import generate_api_key, hash_password, materialize_api_key  # noqa: E402
 from app.services import billing  # noqa: E402
 
@@ -31,6 +42,47 @@ DEFAULT_PACKAGES = [
     ("حرفه‌ای — ۲۰۰۰ دقیقه", 2000, 18_000_000),
     ("سازمانی — ۱۰۰۰۰ دقیقه", 10000, 80_000_000),
 ]
+
+
+async def _ensure_legacy_subscription(session: object, tenant: Tenant) -> bool:
+    existing = (
+        await session.execute(
+            select(Subscription.id)
+            .where(Subscription.tenant_id == tenant.id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return False
+    version = (
+        await session.execute(
+            select(PlanVersion)
+            .join(Plan, Plan.id == PlanVersion.plan_id)
+            .where(Plan.code == "legacy_custom", PlanVersion.status == "published")
+            .order_by(PlanVersion.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if version is None:
+        raise RuntimeError("published legacy_custom plan version is missing")
+    session.add(
+        Subscription(
+            tenant_id=tenant.id,
+            plan_version_id=version.id,
+            status="active",
+            billing_period="legacy",
+            period_start=tenant.created_at or datetime.now(UTC),
+            period_end=datetime(9999, 12, 31, tzinfo=UTC),
+            base_operators=tenant.max_operators,
+            extra_operators=0,
+            price_per_minute_toman=tenant.price_per_minute_toman,
+            assistant_tier=version.assistant_tier,
+            assistant_monthly_messages=version.assistant_monthly_messages,
+            assistant_source_limit=version.assistant_source_limit,
+            assistant_model=version.assistant_model,
+        )
+    )
+    return True
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -109,6 +161,12 @@ async def seed(
             tenant_action = "created"
         else:
             tenant_action = "exists"
+
+        subscription_action = (
+            "created"
+            if await _ensure_legacy_subscription(session, tenant)
+            else "exists"
+        )
 
         user = (
             await session.execute(
@@ -193,6 +251,7 @@ async def seed(
         tenant_id_out = tenant.id
 
     print("tenant_id:", tenant_id_out, f"({tenant_action})")
+    print("subscription:", subscription_action)
     print("staff:", staff_email, staff_password_out, f"({staff_action})")
     print("org_admin:", admin_email, admin_password_out, f"({admin_action})")
     print("api_key:", api_key_out, f"({api_key_action})")
