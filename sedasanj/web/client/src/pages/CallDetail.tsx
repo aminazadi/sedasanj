@@ -371,7 +371,7 @@ function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
       </summary>
       <div className="mt-4 max-h-[32rem] overflow-y-auto overscroll-contain sm:max-h-[42rem]">
         <ol className="divide-y divide-slate-100" dir="rtl">
-          {[...events].reverse().map((event) => {
+          {events.map((event) => {
             const state = eventState(event);
             return (
               <li key={event.id} className="py-2.5 first:pt-0 last:pb-0">

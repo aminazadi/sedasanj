@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -150,6 +151,7 @@ async def _transcribe_tracks(
     scratch: Path,
     channels: int,
     preprocessing: AudioPreprocessingConfig | None = None,
+    on_preprocessed: Callable[[], Awaitable[None]] | None = None,
 ) -> list[tuple[int, AsrSegment]]:
     preprocessing = preprocessing or AudioPreprocessingConfig()
     rows: list[tuple[int, AsrSegment]] = []
@@ -163,6 +165,8 @@ async def _transcribe_tracks(
                 preprocess_mono_audio(left, left_ready, preprocessing),
                 preprocess_mono_audio(right, right_ready, preprocessing),
             )
+            if on_preprocessed is not None:
+                await on_preprocessed()
         else:
             left_ready, right_ready = left, right
         left_segments, right_segments = await asyncio.gather(
@@ -175,6 +179,8 @@ async def _transcribe_tracks(
         mono = scratch / "mono16k.wav"
         if preprocessing.enabled:
             await preprocess_mono_audio(original, mono, preprocessing)
+            if on_preprocessed is not None:
+                await on_preprocessed()
         else:
             await resample_to_16k(original, mono)
         rows.extend((0, segment) for segment in await engine.transcribe(mono))
@@ -222,6 +228,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
     log_context(tenant_id=str(tenant_id), call_id=str(call_id))
 
     deferred_outbox_id: UUID | None = None
+    asr_running_step_key: str | None = None
     async with session_scope(tenant_id) as session:
         if not await pipeline.concurrency_slot_free(
             session, tenant_id, concurrency_limit, kind="asr"
@@ -280,9 +287,10 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 raise RuntimeError("call has no audio object")
             object_key = audio.object_key
             audio_channels = audio.channels
-            await pipeline.mark_job(
+            asr_job = await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="asr", status="running"
             )
+            asr_running_step_key = f"{asr_job.id}:running:{asr_job.attempt}"
 
     if deferred_outbox_id is not None:
         await outbox.dispatch_one(deferred_outbox_id)
@@ -293,19 +301,56 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             engine, preprocessing = await _engine_for_job(ctx, session)
         if preprocessing.enabled:
             async with session_scope(tenant_id) as session:
-                await progress.report(
+                # This is deliberately a separate, settled event.  Otherwise the
+                # generic ASR "running" row makes the UI look as if denoising
+                # started after transcription.
+                await processing_events.record(
                     session,
                     call_id=call_id,
                     tenant_id=tenant_id,
-                    pct=20,
-                    detail="در حال حذف نویز و بهبود کیفیت صوت",
                     kind="asr",
+                    status="running",
+                    progress_pct=20,
+                    message="حذف نویز و بهبود کیفیت صوت، پیش از تبدیل گفتار، شروع شد",
+                    step_key=asr_running_step_key,
                 )
         with tempfile.TemporaryDirectory(prefix="cbi-asr-") as tmp:
             scratch = Path(tmp)
             original = scratch / "original.wav"
             original.write_bytes(await get_storage().get(object_key))
             probe = await probe_wav_file(original)
+            async def mark_audio_ready() -> None:
+                async with session_scope(tenant_id) as session:
+                    await processing_events.record(
+                        session,
+                        call_id=call_id,
+                        tenant_id=tenant_id,
+                        kind="asr",
+                        level="success",
+                        status="succeeded",
+                        progress_pct=20,
+                        message="حذف نویز و بهبود کیفیت صوت، پیش از تبدیل گفتار، انجام شد",
+                        step_key=asr_running_step_key,
+                    )
+                    await progress.report(
+                        session,
+                        call_id=call_id,
+                        tenant_id=tenant_id,
+                        pct=25,
+                        detail="صوت آماده است؛ در حال تبدیل گفتار به متن",
+                        kind="asr",
+                    )
+
+            if not preprocessing.enabled:
+                async with session_scope(tenant_id) as session:
+                    await progress.report(
+                        session,
+                        call_id=call_id,
+                        tenant_id=tenant_id,
+                        pct=25,
+                        detail="صوت آماده است؛ در حال تبدیل گفتار به متن",
+                        kind="asr",
+                    )
             rows = consolidate_segments(
                 await _transcribe_tracks(
                     engine,
@@ -313,6 +358,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                     scratch,
                     audio_channels,
                     preprocessing,
+                    on_preprocessed=mark_audio_ready if preprocessing.enabled else None,
                 )
             )
 

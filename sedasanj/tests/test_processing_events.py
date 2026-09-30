@@ -1,6 +1,22 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.services.processing_events import sanitize_detail
+
+
+def test_call_details_returns_processing_events_in_chronological_order() -> None:
+    """The API orders the events oldest-to-newest, which is the timeline contract."""
+    project_root = Path(__file__).parents[1]
+    calls_source = (project_root / "apps/api/app/routers/calls.py").read_text(encoding="utf-8")
+    timeline_source = (project_root / "web/client/src/pages/CallDetail.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert ".order_by(ProcessingEvent.created_at.desc(), ProcessingEvent.id.desc())" in calls_source
+    assert "event_rows.reverse()" in calls_source
+    assert "{events.map((event) => {" in timeline_source
+    assert "{[...events].reverse().map((event) => {" not in timeline_source
 
 
 def test_sanitize_detail_redacts_common_secret_formats() -> None:
