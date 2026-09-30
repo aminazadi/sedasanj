@@ -206,13 +206,15 @@ def ordered_models(single, multiple, kind):
         remote = configured_model(kind)
     except NineRouterError as error:
         raise HTTPException(503, str(error))
-    if remote is not None:
-        if values != [remote]:
-            raise HTTPException(400, f"9Router is configured for {kind.upper()} model {remote}")
+    if remote is not None and values == [remote]:
         return values
     for model_id in values:
         if model_id not in CATALOG or CATALOG[model_id].kind != kind:
-            raise HTTPException(400, f"Specify valid {kind.upper()} model ids")
+            remote_hint = f" or the configured 9Router model {remote}" if remote else ""
+            raise HTTPException(
+                400,
+                f"Specify valid installed {kind.upper()} model ids{remote_hint}",
+            )
         if not (MODEL_DIR / model_id / ".complete").exists():
             raise HTTPException(503, f"Model {model_id} is not installed")
         if (

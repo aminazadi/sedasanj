@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 
+import httpx
+
 CREDIT_MARKERS = (
     "insufficient",
     "quota",
@@ -173,6 +175,13 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
         return (
             f"{kind}_timeout",
             "زمان پردازش سرویس هوش مصنوعی بیش از حد مجاز شد. "
+            "کار به‌صورت کنترل‌شده دوباره تلاش می‌شود.",
+            True,
+        )
+    if isinstance(exc, httpx.NetworkError):
+        return (
+            f"{kind}_provider_network",
+            "ارتباط شبکه یا DNS با سرویس هوش مصنوعی برقرار نشد. "
             "کار به‌صورت کنترل‌شده دوباره تلاش می‌شود.",
             True,
         )

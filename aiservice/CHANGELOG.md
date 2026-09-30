@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-30 — AMINAZADI
+
+- Allowed installed local ASR and LLM models to remain independently selectable while 9Router providers are enabled, preventing native AISERVICE requests from being rejected by an unrelated remote-model configuration.
+
 ## 2026-09-29 — AMINAZADI
 
 - Renamed decision engines to GLiNER2.5 Multi Decide and Laya Multilingual and added typed criteria validation plus a versioned normalized decision result.

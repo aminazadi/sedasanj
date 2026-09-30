@@ -1,5 +1,9 @@
 name: cbi
 
+x-external-dns: &external-dns
+  - ${PRIMARY_DNS:-1.1.1.1}
+  - ${SECONDARY_DNS:-8.8.8.8}
+
 x-python-env: &python-env
   DATABASE_URL: postgresql+asyncpg://cbi_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}@postgres:5432/cbi
   TENANT_DATABASE_MASTER_KEY: ${TENANT_DATABASE_MASTER_KEY:?Set TENANT_DATABASE_MASTER_KEY}
@@ -133,6 +137,7 @@ services:
     environment:
       <<: *python-env
       FORWARDED_ALLOW_IPS: ${APP_PROXY_SUBNET:-172.30.0.0/28},${NPM_PROXY_IP:?Set NPM_PROXY_IP}
+    dns: *external-dns
     networks: [default, proxy]
     depends_on:
       postgres: { condition: service_healthy }
@@ -200,6 +205,7 @@ services:
     restart: unless-stopped
     command: ["arq", "worker_asr.main.WorkerSettings"]
     environment: *python-env
+    dns: *external-dns
     volumes:
       - ${MODELS_DIR:-./models}:/models:ro
     depends_on:
@@ -232,6 +238,7 @@ services:
       <<: *python-env
       HF_HOME: /model-cache/huggingface
       MODELSCOPE_CACHE: /model-cache/modelscope
+    dns: *external-dns
     volumes:
       - emotion-model-cache:/model-cache
     depends_on:
@@ -255,6 +262,7 @@ services:
     restart: unless-stopped
     command: ["arq", "worker_llm.main.WorkerSettings"]
     environment: *python-env
+    dns: *external-dns
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }
@@ -275,6 +283,7 @@ services:
     restart: unless-stopped
     command: ["arq", "worker_notify.main.WorkerSettings"]
     environment: *python-env
+    dns: *external-dns
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }
@@ -294,6 +303,7 @@ services:
     restart: unless-stopped
     command: ["arq", "worker_dispatch.main.WorkerSettings"]
     environment: *python-env
+    dns: *external-dns
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }
@@ -316,6 +326,7 @@ services:
       <<: *python-env
       SERVICE_NAME: worker-provision
       PROVISIONER_DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/cbi
+    dns: *external-dns
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }

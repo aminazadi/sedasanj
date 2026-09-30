@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from app.services.provider_errors import (
@@ -49,6 +50,22 @@ def test_timeout_classification_is_retryable_and_specific() -> None:
 
     assert code == "llm_timeout"
     assert "زمان پردازش" in detail
+    assert retryable is True
+
+
+def test_dns_failure_is_retryable_and_specific() -> None:
+    error = httpx.ConnectError(
+        "[Errno 8] nodename nor servname provided, or not known",
+        request=httpx.Request(
+            "POST",
+            "https://aiservice.voicesanj.ir/v1/audio/transcriptions",
+        ),
+    )
+
+    code, detail, retryable = classify_failure(error, kind="asr")
+
+    assert code == "asr_provider_network"
+    assert "DNS" in detail
     assert retryable is True
 
 

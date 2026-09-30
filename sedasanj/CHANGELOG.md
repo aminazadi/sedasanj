@@ -2,6 +2,8 @@
 
 ## 2026-09-30 — AMINAZADI
 
+- Added configurable external DNS resolvers to AI-facing application containers and classified provider DNS/network failures as retryable instead of terminal generic ASR failures.
+- Fixed native AISERVICE ASR requests being rejected when the upstream service also has an independently configured 9Router speech model.
 - Added a complete local environment template and corrected development commands to run Alembic, seeding, and Uvicorn through the project-managed Python environment with the local Docker ports.
 - Switched the local PostgreSQL image to PostgreSQL 17 with pgvector so the full local migration chain can run without rebuilding or deleting existing local data.
 - Restricted every AI workload to the single admin-managed AISERVICE connection, added explicit per-model endpoint routing for ASR, durable analysis, assistant chat, typed decisions, and embeddings, and made AISERVICE ASR uploads always use documented gzip multipart transport.

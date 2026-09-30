@@ -5,7 +5,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from cryptography.fernet import Fernet
+from fastapi import HTTPException
 
+from asr_service.api.routers import tasks
+from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure import storage
 from asr_service.infrastructure import ninerouter
 
@@ -13,7 +16,11 @@ from asr_service.infrastructure import ninerouter
 class NineRouterTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.previous_data_dir = storage.DATA_DIR
+        self.previous_model_dir = storage.MODEL_DIR
         self.previous_path = storage.DB_PATH
+        storage.DATA_DIR = Path(self.tmp.name)
+        storage.MODEL_DIR = Path(self.tmp.name) / "models"
         storage.DB_PATH = Path(self.tmp.name) / "test.sqlite3"
         storage.init_db()
         self.environment = patch.dict(os.environ, {"ASR_9ROUTER_SECRETS_KEY": Fernet.generate_key().decode()})
@@ -21,6 +28,8 @@ class NineRouterTests(unittest.TestCase):
 
     def tearDown(self):
         self.environment.stop()
+        storage.DATA_DIR = self.previous_data_dir
+        storage.MODEL_DIR = self.previous_model_dir
         storage.DB_PATH = self.previous_path
         self.tmp.cleanup()
 
@@ -66,3 +75,37 @@ class NineRouterTests(unittest.TestCase):
         with patch("asr_service.infrastructure.ninerouter.requests.request", return_value=response):
             result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
         self.assertEqual(result["segments"], [{"id": 0, "start": 0, "end": 3.5, "text": "سلام"}])
+
+    def test_local_and_remote_models_remain_independently_routable(self):
+        model_dir = Path(self.tmp.name) / "models"
+        for model_id in ("whisper-large-v3", "dorna-8b-q4_k_m"):
+            (model_dir / model_id).mkdir(parents=True)
+            (model_dir / model_id / ".complete").touch()
+
+        configured = {"asr": "openai/gpt-4o-transcribe", "llm": "codex-three-accounts"}
+        with (
+            patch.object(tasks, "MODEL_DIR", model_dir),
+            patch.object(tasks, "configured_model", side_effect=configured.get),
+        ):
+            self.assertEqual(
+                tasks.ordered_models("whisper-large-v3", None, "asr"),
+                ["whisper-large-v3"],
+            )
+            self.assertEqual(
+                tasks.ordered_models("openai/gpt-4o-transcribe", None, "asr"),
+                ["openai/gpt-4o-transcribe"],
+            )
+            self.assertEqual(
+                tasks.ordered_models("dorna-8b-q4_k_m", None, "llm"),
+                ["dorna-8b-q4_k_m"],
+            )
+            self.assertEqual(
+                tasks.ordered_models("codex-three-accounts", None, "llm"),
+                ["codex-three-accounts"],
+            )
+            with self.assertRaises(HTTPException) as caught:
+                tasks.ordered_models("unknown-model", None, "asr")
+
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("openai/gpt-4o-transcribe", caught.exception.detail)
+        self.assertIn("whisper-large-v3", CATALOG)
