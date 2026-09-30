@@ -122,7 +122,11 @@ async def accept_upload(
             tenant = await session.get(Tenant, tenant_id)
             if tenant is None:
                 raise ApiError("unauthorized", "tenant not found")
-            entitlement = await entitlements.require_consumption(session, tenant_id)
+            entitlement = await entitlements.require_upload_consumption(
+                session,
+                tenant_id,
+                price_per_minute_toman=tenant.price_per_minute_toman,
+            )
             tenant.price_per_minute_toman = entitlement.price_per_minute_toman
             await _assert_quota(session, tenant, probe.duration_ms)
 

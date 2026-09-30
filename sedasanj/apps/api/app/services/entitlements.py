@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
 from app.models import Subscription
+from app.services import billing
 
 
 @dataclass(frozen=True)
@@ -70,3 +71,25 @@ async def require_consumption(session: AsyncSession, tenant_id: UUID) -> Entitle
     if not value.consumption_allowed:
         raise ApiError("quota_exceeded", "subscription is not active")
     return value
+
+
+async def require_upload_consumption(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    price_per_minute_toman: int,
+) -> Entitlements:
+    """Allow audio processing when the tenant has an active plan or prepaid credit.
+
+    A prepaid credit purchase is independently billable by ``billing.reserve``;
+    it must not be rejected merely because the tenant has not bought a plan.
+    Plan-only limits (for example, operator seats) continue to use
+    ``require_consumption``.
+    """
+    value = await effective(session, tenant_id)
+    if value.consumption_allowed:
+        return value
+    balance = await billing.get_balance(session, tenant_id)
+    if balance.seconds <= 0:
+        raise ApiError("quota_exceeded", "subscription is not active and no prepaid credit remains")
+    return replace(value, price_per_minute_toman=price_per_minute_toman)
