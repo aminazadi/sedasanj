@@ -36,12 +36,12 @@ function ArchiveIcon({ restore = false }: { restore?: boolean }) {
   );
 }
 
-function PrivateChatIcon() {
+function TemporaryChatIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5">
-      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-      <path d="M5 11h14v10H5Z" />
-      <path d="M12 15v2" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <path d="M20 15a3 3 0 0 1-3 3H9l-5 3v-6a3 3 0 0 1-1-2.24V7a3 3 0 0 1 3-3h7" />
+      <circle cx="17" cy="7" r="4" />
+      <path d="M17 5v2.25l1.5 1" />
     </svg>
   );
 }
@@ -169,6 +169,7 @@ export default function Assistant() {
     return item;
   }
   function createEphemeral() {
+    if (ephemeral) return;
     setConversation(null);
     setEphemeral(true);
     setMessages([]);
@@ -381,14 +382,15 @@ export default function Assistant() {
         </div>
         {conversations.some((item) => item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">آرشیو‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.archived_at).map(renderConversation)}</div></div> : null}
       </nav>
-      <div className="absolute bottom-5 left-5 z-10 flex gap-2"><button type="button" className="inline-flex h-14 w-14 items-center justify-center border border-[#4B6E48] bg-[#F2F0EF] text-[#4B6E48] shadow-[0_10px_30px_rgba(75,110,72,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={createEphemeral} aria-label="چت موقت بدون ذخیره‌سازی" title="چت موقت بدون ذخیره‌سازی"><PrivateChatIcon /></button><button type="button" className="inline-flex h-14 w-14 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] shadow-[0_10px_30px_rgba(75,110,72,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
+      <button type="button" className="absolute bottom-5 left-5 z-10 inline-flex h-14 w-14 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] shadow-[0_10px_30px_rgba(75,110,72,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
         <PlusIcon />
-      </button></div>
+      </button>
     </aside>
     <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0">
+      <button type="button" className={`absolute left-3 top-3 z-20 inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] md:left-4 md:top-4 ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" title="چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
       <div className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7">
-        {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><PrivateChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
-        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <PrivateChatIcon /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
+        {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
+        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
           return <ConversationBubble key={message.id} side={user ? "user" : "assistant"}>
