@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Stretched the assistant send button to the full composer height, including the keyboard-shortcut hint row.
 - Corrected the follow-up tasks palette with a high-contrast green active filter, beige inactive filters, distinct open and completed status treatments, and palette-aligned task cards.
 - Added a fast queued typewriter effect for streamed assistant responses and prevented the completed message from skipping unfinished animation frames.
 - Added `Ctrl + Enter` message submission to the assistant composer with an inline shortcut hint while preserving plain Enter for new lines.
