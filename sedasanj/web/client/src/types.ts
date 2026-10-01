@@ -162,6 +162,7 @@ export interface ChatConversation {
   id: string;
   call_id: string | null;
   title: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }

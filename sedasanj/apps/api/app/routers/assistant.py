@@ -31,6 +31,7 @@ from app.schemas import (
     ChatConversationUpdate,
     ChatMessageCreate,
     ChatMessageOut,
+    EphemeralChatMessageCreate,
     OperatorCallScoreOut,
     OperatorScoreReport,
     OperatorScoreSummary,
@@ -229,11 +230,14 @@ async def delete_conversation(conversation_id: UUID, principal: OperatorDep, ses
 async def update_conversation(conversation_id: UUID, payload: ChatConversationUpdate, request: Request, principal: OperatorDep, session: TenantSession) -> ChatConversationOut:
     assert principal.tenant_id is not None
     row = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
-    row.title = payload.title.strip()
-    if not row.title:
-        raise ApiError("invalid_request", "conversation title is required")
+    if payload.title is not None:
+        row.title = payload.title.strip()
+        if not row.title:
+            raise ApiError("invalid_request", "conversation title is required")
+    if payload.archived is not None:
+        row.archived_at = datetime.now(UTC) if payload.archived else None
     row.updated_at = datetime.now(UTC)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.conversation_update", payload={"conversation_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.conversation_update", payload={"conversation_id": str(row.id), "archived": row.archived_at is not None}, ip=client_ip(request))
     await session.flush()
     return ChatConversationOut.model_validate(row)
 
@@ -310,7 +314,11 @@ async def _chat_history(
     conversations = (
         await session.execute(
             select(ChatConversation)
-            .where(ChatConversation.tenant_id == tenant_id, ChatConversation.owner_id == owner_id)
+            .where(
+                ChatConversation.tenant_id == tenant_id,
+                ChatConversation.owner_id == owner_id,
+                ChatConversation.archived_at.is_(None),
+            )
             .order_by(ChatConversation.updated_at.desc())
             .limit(OTHER_CONVERSATIONS + 1)
         )
@@ -324,6 +332,7 @@ async def _chat_history(
                 .where(
                     ChatMessage.tenant_id == tenant_id,
                     ChatConversation.owner_id == owner_id,
+                    ChatConversation.archived_at.is_(None),
                     func.to_tsvector("simple", ChatMessage.content).op("@@")(
                         func.websearch_to_tsquery("simple", " ".join(terms))
                     ),
@@ -401,6 +410,14 @@ async def _assistant_system_prompt(session: Any) -> str:
 
 def _assistant_input(question: str, sources: str, history: str) -> str:
     return f"پرسش فعلی: {question}\n\n[سابقهٔ گفتگوها]\n{history or 'سابقه‌ای وجود ندارد.'}\n\n[دادهٔ مجاز سازمان]\n{sources}"
+
+
+def _ephemeral_history(payload: EphemeralChatMessageCreate) -> str:
+    history: list[str] = ["[گفتگوی موقت فعال]"]
+    for item in payload.history:
+        role = "کاربر" if item.role == "user" else "دستیار"
+        history.append(f"{role}: {item.content.strip()}")
+    return "\n".join(history)
 
 
 async def _reserve_assistant_usage(
@@ -500,6 +517,108 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
 
 def _sse(event: str, payload: dict[str, Any]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n".encode()
+
+
+@router.post("/assistant/ephemeral/messages/stream")
+async def stream_ephemeral_message(
+    payload: EphemeralChatMessageCreate,
+    request: Request,
+    principal: OperatorDep,
+    session: TenantSession,
+) -> StreamingResponse:
+    assert principal.tenant_id is not None
+    await ratelimit.enforce(f"assistant:{principal.id}", 20)
+    entitlement, usage = await _reserve_assistant_usage(
+        session, principal.tenant_id, principal.id
+    )
+    if payload.call_id is not None:
+        call = await session.get(Call, payload.call_id)
+        if call is None or call.tenant_id != principal.tenant_id:
+            raise ApiError("not_found", "call not found")
+        await operator_scope.assert_call_visible_canonical(session, call, principal)
+    refused = assistant_policy.must_refuse(payload.content, principal.role)
+    if refused:
+        sources: list[dict[str, Any]] = []
+        context = ""
+    else:
+        sources, context = await _sources(
+            session,
+            principal.tenant_id,
+            payload.call_id,
+            payload.content,
+            entitlement.assistant_source_limit,
+            principal,
+        )
+    system_prompt = await _assistant_system_prompt(session)
+    history = _ephemeral_history(payload)
+
+    async def events() -> AsyncIterator[bytes]:
+        answer = ""
+        status_value = "succeeded"
+        model: str | None = None
+        try:
+            if refused:
+                answer = assistant_policy.PRIVACY_REFUSAL
+                status_value = "insufficient_evidence"
+                yield _sse("delta", {"content": answer})
+            elif not context:
+                answer = "دادهٔ کافی و قابل‌دسترسی برای پاسخ به این پرسش پیدا نشد."
+                status_value = "insufficient_evidence"
+                yield _sse("delta", {"content": answer})
+            else:
+                models = await effective_models(session)
+                runtime = await resolve_provider_settings(session)
+                model = entitlement.assistant_model or models["chat_model"]
+                client = build_client(
+                    runtime,
+                    request_namespace=f"ephemeral:{usage.id}",
+                    purpose="chat",
+                )
+                try:
+                    async for chunk in client.stream(
+                        system_prompt,
+                        _assistant_input(payload.content, context, history),
+                        json_object=False,
+                        model=model,
+                    ):
+                        answer += chunk
+                        yield _sse("delta", {"content": chunk})
+                        await asyncio.sleep(0)
+                finally:
+                    await client.close()
+            if not answer.strip():
+                raise RuntimeError("empty assistant response")
+        except Exception:
+            answer = "پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید."
+            status_value = "failed"
+            yield _sse("replace", {"content": answer})
+        usage.status = "failed" if status_value == "failed" else "succeeded"
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=principal.tenant_id,
+            action="assistant.ephemeral_message",
+            payload={"sources": len(sources), "status": status_value},
+            ip=client_ip(request),
+        )
+        await session.flush()
+        message = ChatMessageOut(
+            id=usage.id,
+            role="assistant",
+            content=answer.strip(),
+            status=status_value,
+            model=model,
+            sources=sources,
+            created_at=datetime.now(UTC),
+        )
+        yield _sse("done", {"message": message.model_dump(mode="json")})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/assistant/conversations/{conversation_id}/messages/stream")

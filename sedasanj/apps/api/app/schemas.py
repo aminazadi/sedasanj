@@ -466,7 +466,14 @@ class ChatConversationCreate(BaseModel):
 
 
 class ChatConversationUpdate(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    archived: bool | None = None
+
+    @model_validator(mode="after")
+    def _require_change(self) -> ChatConversationUpdate:
+        if self.title is None and self.archived is None:
+            raise ValueError("at least one conversation change is required")
+        return self
 
 
 class ChatConversationOut(BaseModel):
@@ -474,12 +481,23 @@ class ChatConversationOut(BaseModel):
     id: UUID
     call_id: UUID | None
     title: str | None
+    archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
 
 class ChatMessageCreate(BaseModel):
     content: str = Field(min_length=2, max_length=4000)
+
+
+class EphemeralChatHistoryItem(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1500)
+
+
+class EphemeralChatMessageCreate(ChatMessageCreate):
+    call_id: UUID | None = None
+    history: list[EphemeralChatHistoryItem] = Field(default_factory=list, max_length=24)
 
 
 class ChatMessageOut(BaseModel):

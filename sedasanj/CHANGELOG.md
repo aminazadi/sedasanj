@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-02 — AMINAZADI
+
+- Added privacy-first temporary assistant chats whose messages and conversation history remain only in the current browser page and are never persisted as chat records.
+- Added tenant-safe assistant conversation archiving, restore controls, a dedicated archived section, audit metadata, and exclusion of archived conversations from active cross-chat context.
+
 ## 2026-10-01 — AMINAZADI
 
 - Matched the transcript correction control height and vertical alignment to its adjacent model-information icon button.

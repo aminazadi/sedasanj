@@ -25,6 +25,27 @@ function EditIcon() {
   );
 }
 
+function ArchiveIcon({ restore = false }: { restore?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+      <path d="M4 7h16v13H4Z" />
+      <path d="M3 3h18v4H3Z" />
+      <path d="M9 11h6" />
+      {restore ? <path d="m9 16-3-3 3-3M6 13h6" /> : null}
+    </svg>
+  );
+}
+
+function PrivateChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5">
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      <path d="M5 11h14v10H5Z" />
+      <path d="M12 15v2" />
+    </svg>
+  );
+}
+
 function SendIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="h-5 w-5">
@@ -71,6 +92,7 @@ export default function Assistant() {
   const [search] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  const [ephemeral, setEphemeral] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -96,6 +118,7 @@ export default function Assistant() {
       setError(null);
       const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${item.id}/messages`);
       setConversation(item);
+      setEphemeral(false);
       setMessages(rows);
       setConversationsOpen(false);
     } catch (err) {
@@ -106,9 +129,18 @@ export default function Assistant() {
     const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: callId } });
     setConversations((current) => [item, ...current]);
     setConversation(item);
+    setEphemeral(false);
     setMessages([]);
     setConversationsOpen(false);
     return item;
+  }
+  function createEphemeral() {
+    setConversation(null);
+    setEphemeral(true);
+    setMessages([]);
+    setEditingId(null);
+    setConversationsOpen(false);
+    setError(null);
   }
   async function remove(item: ChatConversation) {
     try {
@@ -117,8 +149,23 @@ export default function Assistant() {
       const remaining = conversations.filter((current) => current.id !== item.id);
       setConversations(remaining);
       if (conversation?.id === item.id) {
-        if (remaining[0]) await loadMessages(remaining[0]);
-        else await create();
+        const next = remaining.find((current) => !current.archived_at);
+        if (next) await loadMessages(next);
+        else createEphemeral();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  async function setArchived(item: ChatConversation, archived: boolean) {
+    try {
+      setError(null);
+      const updated = await request<ChatConversation>(`/v1/assistant/conversations/${item.id}`, { method: "PATCH", body: { archived } });
+      setConversations((current) => current.map((currentItem) => currentItem.id === updated.id ? updated : currentItem));
+      if (conversation?.id === item.id && archived) {
+        const next = conversations.find((current) => current.id !== item.id && !current.archived_at);
+        if (next) await loadMessages(next);
+        else createEphemeral();
       }
     } catch (err) {
       setError((err as Error).message);
@@ -144,8 +191,11 @@ export default function Assistant() {
         setConversations(rows);
         const callId = search.get("call_id");
         if (callId) await create(callId);
-        else if (rows[0]) await loadMessages(rows[0]);
-        else await create();
+        else {
+          const active = rows.find((item) => !item.archived_at);
+          if (active) await loadMessages(active);
+          else await create();
+        }
       } catch (err) { setError((err as Error).message); }
       finally { setLoading(false); }
     })();
@@ -167,11 +217,15 @@ export default function Assistant() {
     };
   }, [conversationsOpen]);
 
-  async function streamReply(conversationId: string, content: string, draftId: string): Promise<ChatMessage> {
-    const makeRequest = () => fetch(`/v1/assistant/conversations/${conversationId}/messages/stream`, {
+  async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[]): Promise<ChatMessage> {
+    const url = conversationId ? `/v1/assistant/conversations/${conversationId}/messages/stream` : "/v1/assistant/ephemeral/messages/stream";
+    const body = conversationId
+      ? { content }
+      : { content, history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })) };
+    const makeRequest = () => fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(tokens.access() ? { Authorization: `Bearer ${tokens.access()}` } : {}) },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(body),
     });
     let response = await makeRequest();
     if (response.status === 401 && await refreshSession()) response = await makeRequest();
@@ -252,21 +306,30 @@ export default function Assistant() {
     if (!text.trim() || sending) return;
     try {
       setSending(true); setError(null);
-      const active = conversation ?? await create();
+      const active = ephemeral ? null : conversation ?? await create();
+      const history = messages.filter((item) => item.status !== "running");
       const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content: text.trim(), status: "succeeded", model: null, sources: null, created_at: new Date().toISOString() };
       const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, created_at: new Date().toISOString() };
       setMessages((current) => [...current, optimistic, draftReply]); setText("");
       requestAnimationFrame(resizeInput);
-      const reply = await streamReply(active.id, optimistic.content, draftReply.id);
+      const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history);
       setMessages((current) => current.map((item) => item.id === optimistic.id ? optimistic : item));
-      setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: item.title || optimistic.content, updated_at: reply.created_at } : item));
+      if (active) setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: item.title || optimistic.content, updated_at: reply.created_at } : item));
     } catch (err) { setError((err as Error).message); }
     finally { setSending(false); }
+  }
+  function renderConversation(item: ChatConversation) {
+    const isActive = conversation?.id === item.id;
+    const archived = Boolean(item.archived_at);
+    return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#4B6E48]"}`}>
+      {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 pl-28 text-right text-sm" onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
+      {editingId !== item.id && <div className={`absolute inset-y-0 left-1 flex items-center transition ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} title={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} onClick={() => void setArchived(item, !archived)}><ArchiveIcon restore={archived} /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => void remove(item)}><TrashIcon /></button></div>}
+    </div>;
   }
   if (loading) return <Loading />;
   return <div className="grid min-h-[calc(100vh-10rem)] items-start lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[18rem_1fr] lg:border lg:border-[#B2AC88]" dir="rtl">
     <button type="button" className="flex w-full items-center justify-between border border-[#B2AC88] bg-[#F2F0EF] px-4 py-3 text-[#4B6E48] lg:hidden" onClick={() => setConversationsOpen(true)} aria-expanded={conversationsOpen} aria-controls="assistant-conversations-menu">
-      <span className="min-w-0 truncate text-sm font-bold">{conversation?.title || "گفتگوی جدید"}</span>
+      <span className="min-w-0 truncate text-sm font-bold">{ephemeral ? "چت موقت" : conversation?.title || "گفتگوی جدید"}</span>
       <span className="flex shrink-0 items-center gap-2 text-xs"><MenuIcon /> گفتگوها</span>
     </button>
     <button type="button" className={`fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm transition-opacity lg:hidden ${conversationsOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`} onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها" tabIndex={conversationsOpen ? 0 : -1} />
@@ -279,23 +342,19 @@ export default function Assistant() {
         <div className="mb-5">
           <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوها</p>
           <div className="space-y-1">
-          {conversations.map((item) => {
-            const isActive = conversation?.id === item.id;
-            return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#4B6E48]"}`}>
-              {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 pl-20 text-right text-sm" onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
-              {editingId !== item.id && <div className={`absolute inset-y-0 left-1 flex items-center transition ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => void remove(item)}><TrashIcon /></button></div>}
-            </div>;
-          })}
+          {conversations.filter((item) => !item.archived_at).map(renderConversation)}
           </div>
         </div>
+        {conversations.some((item) => item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">آرشیو‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.archived_at).map(renderConversation)}</div></div> : null}
       </nav>
-      <button type="button" className="absolute bottom-5 left-5 z-10 inline-flex h-14 w-14 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] shadow-[0_10px_30px_rgba(75,110,72,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
+      <div className="absolute bottom-5 left-5 z-10 flex gap-2"><button type="button" className="inline-flex h-14 w-14 items-center justify-center border border-[#4B6E48] bg-[#F2F0EF] text-[#4B6E48] shadow-[0_10px_30px_rgba(75,110,72,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={createEphemeral} aria-label="چت موقت بدون ذخیره‌سازی" title="چت موقت بدون ذخیره‌سازی"><PrivateChatIcon /></button><button type="button" className="inline-flex h-14 w-14 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] shadow-[0_10px_30px_rgba(75,110,72,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
         <PlusIcon />
-      </button>
+      </button></div>
     </aside>
     <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0">
       <div className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7">
-        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]"><ChatIcon active className="h-9 w-9" /></div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
+        {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><PrivateChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
+        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <PrivateChatIcon /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
           return <ConversationBubble key={message.id} side={user ? "user" : "assistant"}>
