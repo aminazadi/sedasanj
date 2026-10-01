@@ -70,10 +70,10 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
 
   return (
     <div className="panel-sidebar flex h-full flex-col overflow-hidden text-white">
-      <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-white/10 px-5">
+      <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-[#B2AC88] px-5">
         <img className="w-36 invert mix-blend-screen" src={logo} alt="صدا سنج" />
         {closeMenu && (
-          <button type="button" className="absolute left-4 rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" onClick={closeMenu} aria-label="بستن منو">
+          <button type="button" className="absolute left-4 p-2 text-[#F2F0EF] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={closeMenu} aria-label="بستن منو">
             <MenuIcon close />
           </button>
         )}
@@ -82,20 +82,20 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-5" aria-label="منوی اصلی">
         {NAVIGATION.map((group) => (
           <div className="mb-5" key={group.label}>
-            <p className="mb-2 px-3 text-[11px] font-medium text-slate-500">{group.label}</p>
+            <p className="mb-2 px-3 text-[11px] font-medium text-[#B2AC88]">{group.label}</p>
             <div className="space-y-1">
               {group.items.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   end={item.to === "/"}
-                  className={({ isActive }) => `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ${isActive ? "bg-brand-500 text-white shadow-lg shadow-brand-950/30" : "text-slate-300 hover:bg-white/[0.07] hover:text-white"}`}
+                  className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "bg-[#B2AC88] font-bold text-[#4B6E48]" : "text-[#F2F0EF] hover:bg-[#898989]"}`}
                 >
                   {({ isActive }) => (
                     <>
-                      <svg className={`h-5 w-5 shrink-0 ${isActive ? "text-white" : "text-slate-400 transition group-hover:text-brand-300"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item.icon}</svg>
+                      <svg className={`h-5 w-5 shrink-0 ${isActive ? "text-[#4B6E48]" : "text-[#B2AC88] transition group-hover:text-[#F2F0EF]"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item.icon}</svg>
                       <span className="truncate">{item.label}</span>
-                      {isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 rounded-full bg-white" />}
+                      {isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}
                     </>
                   )}
                 </NavLink>
@@ -105,16 +105,16 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
         ))}
       </nav>
 
-      <div className="shrink-0 border-t border-white/10 p-3">
-        <div className="flex items-center gap-3 rounded-2xl bg-white/[0.06] p-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/20 text-sm font-bold text-brand-300">{session?.role?.slice(0, 2).toUpperCase() || "AD"}</div>
+      <div className="shrink-0 border-t border-[#B2AC88] p-3">
+        <div className="flex items-center gap-3 bg-[#898989] p-3 text-[#F2F0EF]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#B2AC88] text-sm font-bold text-[#4B6E48]">{session?.role?.slice(0, 2).toUpperCase() || "AD"}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">مدیر سامانه</p>
-            <p className="truncate text-xs text-slate-400">{session?.role}</p>
+            <p className="truncate text-xs text-[#F2F0EF]">{session?.role}</p>
           </div>
           <button
             type="button"
-            className="rounded-xl p-2 text-slate-400 transition hover:bg-rose-500/15 hover:text-rose-300"
+            className="p-2 text-[#B2AC88] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]"
             aria-label="خروج از حساب کاربری"
             title="خروج"
             onClick={async () => {
