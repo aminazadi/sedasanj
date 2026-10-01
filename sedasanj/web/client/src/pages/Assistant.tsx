@@ -88,6 +88,40 @@ function TypingIndicator() {
   );
 }
 
+const promptGuides = [
+  "برای ارسال، Ctrl + Enter را بزنید",
+  "هوش مصنوعی می‌تواند خطا کند",
+  "برای منشن کردن اپراتور خاص یا زمان خاص و ... از @ استفاده کنید",
+];
+
+function TypingPromptGuide() {
+  const [guideIndex, setGuideIndex] = useState(0);
+  const [characterCount, setCharacterCount] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const guide = promptGuides[guideIndex];
+    const finishedTyping = characterCount === Array.from(guide).length;
+    const finishedDeleting = characterCount === 0;
+    const delay = finishedTyping ? 2200 : deleting ? 24 : 48;
+    const timer = window.setTimeout(() => {
+      if (finishedTyping && !deleting) {
+        setDeleting(true);
+        return;
+      }
+      if (deleting && finishedDeleting) {
+        setDeleting(false);
+        setGuideIndex((current) => (current + 1) % promptGuides.length);
+        return;
+      }
+      setCharacterCount((current) => current + (deleting ? -1 : 1));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [characterCount, deleting, guideIndex]);
+
+  return <span aria-hidden="true">{Array.from(promptGuides[guideIndex]).slice(0, characterCount).join("")}<span className="animate-pulse">|</span></span>;
+}
+
 export default function Assistant() {
   const [search] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -364,7 +398,7 @@ export default function Assistant() {
         })}
         <div ref={endRef} />
       </div>
-      <form className="flex shrink-0 items-start gap-2 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}><div className="min-w-0 flex-1"><textarea ref={inputRef} rows={1} className="input h-12 min-h-12 resize-none overflow-y-hidden border-0 bg-[#F2F0EF] py-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" /><p className="mt-1 text-[11px] text-[#898989]">برای ارسال، <kbd className="font-sans text-[#4B6E48]" dir="ltr">Ctrl + Enter</kbd> را بزنید</p></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
+      <form className="flex shrink-0 items-start gap-2 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-7 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" />{!text && <p className="pointer-events-none absolute inset-x-3 bottom-2 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p>}</div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
     </section>
     <ErrorBox message={error} />
   </div>;

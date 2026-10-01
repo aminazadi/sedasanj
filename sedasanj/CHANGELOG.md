@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Moved the assistant composer guidance inside the prompt field and added a rotating typewriter sequence for the send shortcut, AI fallibility notice, and future `@` mention guidance without changing the composer footprint.
 - Added privacy-first temporary assistant chats whose messages and conversation history remain only in the current browser page and are never persisted as chat records.
 - Added tenant-safe assistant conversation archiving, restore controls, a dedicated archived section, audit metadata, and exclusion of archived conversations from active cross-chat context.
 
