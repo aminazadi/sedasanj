@@ -525,12 +525,19 @@ services:
 
 volumes:
   emotion-model-cache:
+    name: ${EMOTION_MODEL_CACHE_VOLUME_NAME:-cbi_emotion-model-cache}
   pgdata:
+    name: ${POSTGRES_VOLUME_NAME:-cbi_pgdata}
   redisdata:
+    name: ${REDIS_VOLUME_NAME:-cbi_redisdata}
   miniodata:
+    name: ${MINIO_VOLUME_NAME:-cbi_miniodata}
   promdata:
+    name: ${PROMETHEUS_VOLUME_NAME:-cbi_promdata}
   grafanadata:
+    name: ${GRAFANA_VOLUME_NAME:-cbi_grafanadata}
   lokidata:
+    name: ${LOKI_VOLUME_NAME:-cbi_lokidata}
 
 networks:
   proxy:

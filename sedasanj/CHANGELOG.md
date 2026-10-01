@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-01 — AMINAZADI
+
+- Pinned all production database, cache, object-storage, model-cache, and observability volumes to stable, configurable Docker volume names so repository directory changes cannot create empty replacement data stores.
+
 ## 2026-09-30 — AMINAZADI
 
 - Ensured idempotent seed runs provision the legacy active subscription required by assistant entitlements, including repair of tenants created after commerce migrations.

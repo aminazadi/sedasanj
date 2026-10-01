@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-01 — AMINAZADI
+
+- Pinned AISERVICE data and object-storage volumes to stable, configurable Docker volume names so moving the repository does not create an empty replacement data store or invalidate persisted API-key access.
+
 ## 2026-09-30 — AMINAZADI
 
 - Enabled the `/v1/ninerouter/chat/completions` proxy capability used by the customer assistant, preventing valid chat requests from being rejected as an unsupported 9Router path.

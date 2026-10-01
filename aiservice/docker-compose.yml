@@ -137,4 +137,6 @@ services:
 
 volumes:
   asr-data:
+    name: ${ASR_DATA_VOLUME_NAME:-persian-asr-service_asr-data}
   minio-data:
+    name: ${ASR_MINIO_VOLUME_NAME:-persian-asr-service_minio-data}
