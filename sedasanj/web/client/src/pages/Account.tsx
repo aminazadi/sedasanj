@@ -5,6 +5,7 @@ import { fmt, request } from "../api";
 import { ROLE_LABELS, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import ApiKeyManager from "../components/ApiKeyManager";
+import ConfirmDialog from "../components/ConfirmDialog";
 import type {
   AccountInfo,
   ApiKey,
@@ -59,6 +60,8 @@ export default function Account() {
   const [hooks, setHooks] = useState<Webhook[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hookSecret, setHookSecret] = useState<string | null>(null);
+  const [dataDeletionOpen, setDataDeletionOpen] = useState(false);
+  const [dataDeleting, setDataDeleting] = useState(false);
   const [subscription, setSubscription] = useState<{ status: string; max_operators: number; assistant_monthly_messages: number; period_end: string | null } | null>(null);
   const [orders, setOrders] = useState<Array<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>([]);
   const [ledgerOffset, setLedgerOffset] = useState(0);
@@ -74,6 +77,20 @@ export default function Account() {
 
   const [userForm, setUserForm] = useState(EMPTY_USER);
   const [hookForm, setHookForm] = useState({ url: "", events: ["call.complete"] as string[] });
+
+  async function deleteAccountData() {
+    setDataDeleting(true);
+    setError(null);
+    try {
+      await request<void>("/v1/account/data", { method: "DELETE" });
+      setDataDeletionOpen(false);
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDataDeleting(false);
+    }
+  }
 
   async function reload() {
     try {
@@ -471,12 +488,7 @@ export default function Account() {
               </button>
               <button
                 className="btn-ghost border-rose-300 text-rose-700"
-                onClick={async () => {
-                  if (!window.confirm("همه تماس‌ها، متن‌ها و فایل‌های صوتی حذف می‌شوند. مطمئن هستید؟"))
-                    return;
-                  await request<void>("/v1/account/data", { method: "DELETE" });
-                  await reload();
-                }}
+                onClick={() => setDataDeletionOpen(true)}
               >
                 حذف کامل داده‌ها
               </button>
@@ -484,6 +496,16 @@ export default function Account() {
           </div>
         </>
       ) : null}
+      <ConfirmDialog
+        open={dataDeletionOpen}
+        title="حذف کامل داده‌ها"
+        description="همه تماس‌ها، متن‌ها، تحلیل‌ها، کارهای مرتبط و فایل‌های صوتی برای همیشه حذف می‌شوند. این عملیات قابل بازگشت نیست."
+        confirmLabel="حذف کامل داده‌ها"
+        destructive
+        busy={dataDeleting}
+        onCancel={() => setDataDeletionOpen(false)}
+        onConfirm={() => void deleteAccountData()}
+      />
     </div>
   );
 }

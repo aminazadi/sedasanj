@@ -7,6 +7,7 @@ import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import TableFilters from "@cbi/web-shared/components/TableFilters";
 import type { CallPage, CallSummary } from "../types";
 import CallUploadForm from "./CallUploadForm";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 interface Filters {
   from: string;
@@ -46,6 +47,7 @@ export default function Calls() {
   const [error, setError] = useState<string | null>(null);
   const [paginated, setPaginated] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<CallSummary | null>(null);
   const hasAppliedFilters = Object.values(applied).some(Boolean);
   const appliedFiltersUnchanged =
     hasAppliedFilters &&
@@ -87,12 +89,12 @@ export default function Calls() {
   }, [applied, items, load, paginated]);
 
   async function deleteCall(call: CallSummary) {
-    if (!window.confirm("این تماس، فایل صوتی، متن، تحلیل‌ها و کارهای مرتبط برای همیشه حذف می‌شوند. ادامه می‌دهید؟")) return;
     setDeletingId(call.id);
     setError(null);
     try {
       await request<void>(`/v1/calls/${call.id}`, { method: "DELETE" });
       setItems((current) => current.filter((item) => item.id !== call.id));
+      setDeleteCandidate(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -276,7 +278,7 @@ export default function Calls() {
                         disabled={deletingId === call.id}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void deleteCall(call);
+                          setDeleteCandidate(call);
                         }}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -291,6 +293,16 @@ export default function Calls() {
         )}
         <Pagination page={pageIndex + 1} hasPrevious={pageIndex > 0} hasNext={Boolean(cursor)} total={total} loading={loading} onPrevious={previousPage} onNext={nextPage} />
       </div>
+      <ConfirmDialog
+        open={Boolean(deleteCandidate)}
+        title="حذف تماس"
+        description="این تماس، فایل صوتی، متن، تحلیل‌ها و کارهای مرتبط برای همیشه حذف می‌شوند. این عملیات قابل بازگشت نیست."
+        confirmLabel="حذف تماس"
+        destructive
+        busy={Boolean(deletingId)}
+        onCancel={() => setDeleteCandidate(null)}
+        onConfirm={() => { if (deleteCandidate) void deleteCall(deleteCandidate); }}
+      />
     </div>
   );
 }

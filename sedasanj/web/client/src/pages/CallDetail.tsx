@@ -21,6 +21,7 @@ import { CAN_EDIT_TASKS, CAN_HEAR_AUDIO, isOrgAdmin, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
 import ConversationBubble from "../components/ConversationBubble";
+import ConfirmDialog from "../components/ConfirmDialog";
 import {
   ErrorBox,
   ProcessingCard,
@@ -508,6 +509,7 @@ export default function CallDetailPage() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => () => {
@@ -606,11 +608,11 @@ export default function CallDetailPage() {
   }
 
   async function deleteCall() {
-    if (!window.confirm("این تماس، فایل صوتی، متن، تحلیل‌ها و کارهای مرتبط برای همیشه حذف می‌شوند. ادامه می‌دهید؟")) return;
     setDeleting(true);
     setError(null);
     try {
       await request<void>(`/v1/calls/${callId}`, { method: "DELETE" });
+      setDeleteConfirmationOpen(false);
       navigate("/calls", { replace: true });
     } catch (err) {
       setError((err as Error).message);
@@ -761,7 +763,7 @@ export default function CallDetailPage() {
               </ActionTooltip>
               {isOrgAdmin(session?.role) ? (
                 <ActionTooltip label={deleting ? "در حال حذف…" : "حذف تماس"}>
-                  <button type="button" className={CALL_ACTION_CLASS} disabled={deleting} onClick={() => void deleteCall()} aria-label="حذف تماس">
+                  <button type="button" className={CALL_ACTION_CLASS} disabled={deleting} onClick={() => setDeleteConfirmationOpen(true)} aria-label="حذف تماس">
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
                       <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
                     </svg>
@@ -1187,6 +1189,16 @@ export default function CallDetailPage() {
           ) : null}
         </aside>
       </section>
+      <ConfirmDialog
+        open={deleteConfirmationOpen}
+        title="حذف تماس"
+        description="این تماس، فایل صوتی، متن، تحلیل‌ها و کارهای مرتبط برای همیشه حذف می‌شوند. این عملیات قابل بازگشت نیست."
+        confirmLabel="حذف تماس"
+        destructive
+        busy={deleting}
+        onCancel={() => setDeleteConfirmationOpen(false)}
+        onConfirm={() => void deleteCall()}
+      />
     </div>
   );
 }

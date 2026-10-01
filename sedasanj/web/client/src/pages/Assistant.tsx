@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, refreshSession, request, tokens } from "../api";
 import ConversationBubble from "../components/ConversationBubble";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { ChatConversation, ChatMessage } from "../types";
 
@@ -441,6 +442,14 @@ export default function Assistant() {
       <form className="flex shrink-0 items-start gap-2 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-7 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" />{!text && <p className="pointer-events-none absolute inset-x-3 bottom-2 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p>}</div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
     </section>
     <ErrorBox message={error} />
-    {confirmation ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmation(null); }}><div className="w-full max-w-sm border border-[#B2AC88] bg-white p-5 shadow-2xl" role="alertdialog" aria-modal="true" aria-labelledby="assistant-confirmation-title" aria-describedby="assistant-confirmation-description"><h2 id="assistant-confirmation-title" className="text-base font-bold text-[#4B6E48]">{confirmation.action === "delete" ? "حذف گفتگو" : "آرشیو گفتگو"}</h2><p id="assistant-confirmation-description" className="mt-3 text-sm leading-7 text-[#898989]">{confirmation.action === "delete" ? "آیا از حذف این گفتگو مطمئن هستید؟ این عملیات قابل بازگشت نیست." : "آیا از آرشیو کردن این گفتگو مطمئن هستید؟"}</p><div className="mt-5 flex justify-end gap-2"><button type="button" className="min-h-10 border border-[#B2AC88] px-4 text-sm font-bold text-[#4B6E48] transition hover:bg-[#F2F0EF]" onClick={() => setConfirmation(null)}>انصراف</button><button type="button" autoFocus className={`min-h-10 px-4 text-sm font-bold text-white transition ${confirmation.action === "delete" ? "bg-rose-600 hover:bg-rose-700" : "bg-[#4B6E48] hover:bg-[#3F5D3D]"}`} onClick={() => void confirmConversationAction()}>{confirmation.action === "delete" ? "حذف" : "آرشیو"}</button></div></div></div> : null}
+    <ConfirmDialog
+      open={Boolean(confirmation)}
+      title={confirmation?.action === "delete" ? "حذف گفتگو" : "آرشیو گفتگو"}
+      description={confirmation?.action === "delete" ? "آیا از حذف این گفتگو مطمئن هستید؟ این عملیات قابل بازگشت نیست." : "آیا از آرشیو کردن این گفتگو مطمئن هستید؟"}
+      confirmLabel={confirmation?.action === "delete" ? "حذف" : "آرشیو"}
+      destructive={confirmation?.action === "delete"}
+      onCancel={() => setConfirmation(null)}
+      onConfirm={() => void confirmConversationAction()}
+    />
   </div>;
 }
