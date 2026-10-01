@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Fixed the sidebar logo filter so the source image background blends into the dark sidebar instead of rendering as a white rectangle.
 - Simplified the admin sidebar header to the standalone white Sedasanj logo on its dark background.
 - Redesigned the admin navigation as a grouped desktop sidebar and an accessible right-side drawer with a hamburger trigger on tablet and mobile layouts.
 - Pinned all production database, cache, object-storage, model-cache, and observability volumes to stable, configurable Docker volume names so repository directory changes cannot create empty replacement data stores.

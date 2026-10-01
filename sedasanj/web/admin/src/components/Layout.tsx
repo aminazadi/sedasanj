@@ -71,7 +71,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
       <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-white/10 px-5">
-        <img className="w-36 brightness-0 invert mix-blend-screen" src={logo} alt="صدا سنج" />
+        <img className="w-36 invert mix-blend-screen" src={logo} alt="صدا سنج" />
         {closeMenu && (
           <button type="button" className="absolute left-4 rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" onClick={closeMenu} aria-label="بستن منو">
             <MenuIcon close />
