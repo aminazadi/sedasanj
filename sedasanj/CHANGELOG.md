@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added explicit confirmation dialogs before assistant conversation deletion and archiving, and moved archived conversations into their own dedicated sidebar view.
 - Replaced the temporary-chat lock symbol with a conversation-and-clock icon and pinned its launcher to the top-left corner of the chat workspace.
 - Moved the assistant composer guidance inside the prompt field and added a rotating typewriter sequence for the send shortcut, AI fallibility notice, and future `@` mention guidance without changing the composer footprint.
 - Added privacy-first temporary assistant chats whose messages and conversation history remain only in the current browser page and are never persisted as chat records.
