@@ -29,17 +29,33 @@ export default function ToggleSwitch({
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer appearance-none items-center overflow-hidden border border-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="shrink-0 cursor-pointer appearance-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
         style={{
+          position: "relative",
+          display: "inline-block",
+          width: "44px",
+          height: "24px",
+          boxSizing: "border-box",
+          flex: "0 0 44px",
+          overflow: "hidden",
+          verticalAlign: "middle",
+          border: "1px solid transparent",
           backgroundColor: checked ? "var(--color-primary)" : "#B2AC88",
-          padding: "1px",
+          padding: 0,
           transition: "background-color 200ms ease",
         }}
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-0.5 top-1/2 block h-5 w-5 shrink-0 bg-white shadow-sm"
+          className="pointer-events-none bg-white shadow-sm"
           style={{
+            position: "absolute",
+            display: "block",
+            left: "1px",
+            top: "50%",
+            width: "20px",
+            height: "20px",
+            boxSizing: "border-box",
             transform: `translate(${thumbOffset}px, -50%)`,
             transition: "transform 200ms ease",
           }}
