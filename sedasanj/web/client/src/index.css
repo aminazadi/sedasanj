@@ -88,20 +88,20 @@ body {
 }
 
 .assistant-message-bubble-user::before {
-  right: -0.7rem;
+  right: -0.52rem;
   border-block: 0.55rem solid transparent;
   border-left: 0.75rem solid #4b6e48;
 }
 
 .assistant-message-bubble-ai::before {
-  left: -0.72rem;
+  left: -0.54rem;
   border-block: 0.55rem solid transparent;
   border-right: 0.75rem solid #b2ac88;
 }
 
 .assistant-message-bubble-ai::after {
   bottom: 0.52rem;
-  left: -0.57rem;
+  left: -0.43rem;
   border-block: 0.46rem solid transparent;
   border-right: 0.64rem solid #fff;
 }
