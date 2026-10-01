@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Applied the grouped desktop sidebar, responsive right-side drawer, standalone white logo, and role-aware navigation to the customer panel.
 - Fixed the sidebar logo filter so the source image background blends into the dark sidebar instead of rendering as a white rectangle.
 - Simplified the admin sidebar header to the standalone white Sedasanj logo on its dark background.
 - Redesigned the admin navigation as a grouped desktop sidebar and an accessible right-side drawer with a hamburger trigger on tablet and mobile layouts.
