@@ -32,6 +32,25 @@
 
 body {
   font-family: Vazirmatn, IRANSans, system-ui, sans-serif;
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+.sidebar-scroll {
+  scrollbar-color: rgb(71 85 105 / 0.7) transparent;
+  scrollbar-width: thin;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(71 85 105 / 0.7);
 }
 
 @layer components {
