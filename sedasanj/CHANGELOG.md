@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Increased the processing-card dot contrast and applied the pattern through an override-safe background declaration.
 - Added a subtle fine-dot background pattern to the call analysis pipeline card.
 - Persisted the selected call-audio playback speed in browser storage and automatically restored it for subsequent recordings.
 - Refined the call waveform with left-to-right seeking, a clearer progress indicator, uniform controls, playback-speed cycling, and authenticated audio download.
