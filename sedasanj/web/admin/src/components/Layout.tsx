@@ -89,7 +89,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
                   key={item.to}
                   to={item.to}
                   end={item.to === "/"}
-                  className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "bg-[#B2AC88] font-bold text-[#4B6E48]" : "text-[#F2F0EF] hover:bg-[#898989]"}`}
+                  className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#F2F0EF] hover:bg-[#B2AC88] hover:text-[#4B6E48]"}`}
                 >
                   {({ isActive }) => (
                     <>
@@ -106,15 +106,15 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
       </nav>
 
       <div className="shrink-0 border-t border-[#B2AC88] p-3">
-        <div className="flex items-center gap-3 bg-[#898989] p-3 text-[#F2F0EF]">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#B2AC88] text-sm font-bold text-[#4B6E48]">{session?.role?.slice(0, 2).toUpperCase() || "AD"}</div>
+        <div className="flex items-center gap-3 bg-[#B2AC88] p-3 text-[#4B6E48]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#F2F0EF] text-sm font-bold text-[#4B6E48]">{session?.role?.slice(0, 2).toUpperCase() || "AD"}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">مدیر سامانه</p>
-            <p className="truncate text-xs text-[#F2F0EF]">{session?.role}</p>
+            <p className="truncate text-xs text-[#4B6E48]">{session?.role}</p>
           </div>
           <button
             type="button"
-            className="p-2 text-[#B2AC88] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]"
+            className="p-2 text-[#4B6E48] transition hover:bg-[#F2F0EF]"
             aria-label="خروج از حساب کاربری"
             title="خروج"
             onClick={async () => {
