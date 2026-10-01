@@ -81,7 +81,7 @@ body {
 .assistant-message-bubble::before,
 .assistant-message-bubble::after {
   position: absolute;
-  top: 0.8rem;
+  bottom: 0.45rem;
   width: 0;
   height: 0;
   content: "";
@@ -100,9 +100,10 @@ body {
 }
 
 .assistant-message-bubble-ai::after {
-  left: -0.62rem;
-  border-block: 0.48rem solid transparent;
-  border-right: 0.68rem solid #fff;
+  bottom: 0.52rem;
+  left: -0.57rem;
+  border-block: 0.46rem solid transparent;
+  border-right: 0.64rem solid #fff;
 }
 
 @keyframes assistant-thinking-shimmer {
