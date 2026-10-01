@@ -272,7 +272,7 @@ export default function Assistant() {
         {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]"><ChatIcon active className="h-9 w-9" /></div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
-          return <div key={message.id} className={`flex w-full items-end gap-2 ${user ? "justify-end" : "justify-start"}`} dir="ltr">
+          return <div key={message.id} className={`flex w-full items-end gap-4 ${user ? "justify-end" : "justify-start"}`} dir="ltr">
             {!user ? <MessageAvatar role={message.role} /> : null}
             <div dir="rtl" className={`assistant-message-bubble relative w-fit max-w-[calc(85%_-_2.75rem)] break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-slate-800"}`}>
               {message.status === "running" && !message.content ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
