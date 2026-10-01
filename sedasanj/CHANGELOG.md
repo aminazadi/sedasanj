@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced muted chart colors with a vivid accessible categorical palette across sentiment, trajectory, speaker, trend, and sales-funnel visualizations.
 - Added a distinct neutral-gray hover state with warm-white text and icons to every customer and admin sidebar item, including the active route.
 - Further softened the processing-card dot texture for a more understated appearance.
 - Reduced the processing-card dot opacity for a softer background texture.

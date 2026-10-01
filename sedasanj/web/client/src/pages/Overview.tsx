@@ -8,17 +8,17 @@ import { Empty, ErrorBox, Loading, SentimentBadge, Stat, StatusBadge, SummaryCel
 import type { AnalyticsSummary, Balance, CallPage, TaskBoard } from "../types";
 
 const COLORS: Record<string, string> = {
-  angry: chart.dark,
-  sad: chart.neutral,
-  neutral: chart.light,
-  satisfied: chart.secondary,
-  happy: chart.primary,
+  angry: chart.danger,
+  sad: chart.secondary,
+  neutral: chart.warning,
+  satisfied: chart.cyan,
+  happy: chart.success,
 };
 
 const TRAJECTORY_COLORS: Record<string, string> = {
-  improved: chart.primary,
-  worsened: chart.dark,
-  stable: chart.neutral,
+  improved: chart.success,
+  worsened: chart.danger,
+  stable: chart.violet,
 };
 
 export default function Overview() {
@@ -114,7 +114,7 @@ export default function Overview() {
             <div className="h-64">
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={pie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
+                  <Pie data={pie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={3} stroke="#F2F0EF" strokeWidth={2}>
                     {pie.map((slice) => (
                       <Cell key={slice.key} fill={COLORS[slice.key] ?? chart.primary} />
                     ))}
@@ -135,7 +135,7 @@ export default function Overview() {
             <div className="h-64">
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={trajectoryPie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
+                  <Pie data={trajectoryPie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={3} stroke="#F2F0EF" strokeWidth={2}>
                     {trajectoryPie.map((slice) => (
                       <Cell key={slice.key} fill={TRAJECTORY_COLORS[slice.key] ?? chart.primary} />
                     ))}

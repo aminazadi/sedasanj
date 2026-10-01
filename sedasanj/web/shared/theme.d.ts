@@ -12,8 +12,14 @@ export const accent: ColorScale;
 export const chart: {
   primary: string;
   secondary: string;
+  success: string;
+  danger: string;
+  warning: string;
+  violet: string;
+  cyan: string;
   neutral: string;
   light: string;
   dark: string;
+  categorical: string[];
 };
 export const tailwindColors: Record<string, ColorScale | string>;

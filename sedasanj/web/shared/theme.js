@@ -48,11 +48,17 @@ export const accent = {
 };
 
 export const chart = {
-  primary: palette.primary,
-  secondary: palette.accent,
-  neutral: palette.neutral,
-  light: palette.canvas,
-  dark: palette.primary,
+  primary: "#2563EB",
+  secondary: "#F97316",
+  success: "#10B981",
+  danger: "#F43F5E",
+  warning: "#FACC15",
+  violet: "#8B5CF6",
+  cyan: "#06B6D4",
+  neutral: "#64748B",
+  light: "#CBD5E1",
+  dark: "#0F172A",
+  categorical: ["#2563EB", "#F97316", "#10B981", "#F43F5E", "#8B5CF6", "#06B6D4", "#FACC15"],
 };
 
 export const tailwindColors = {
