@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Added a responsive assistant conversation drawer on mobile with a compact trigger, backdrop, Escape handling, and automatic close after selection.
 - Switched the assistant conversation sidebar to a light surface while preserving the main sidebar's navigation structure, spacing, active states, and interactions.
 - Replaced the assistant sidebar's gray surface with a dark forest treatment and converted the new-conversation action into an accessible floating button.
 - Fixed the assistant conversation sidebar to the desktop viewport with full-page height and independent internal scrolling.

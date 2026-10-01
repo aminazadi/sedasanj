@@ -50,6 +50,14 @@ function PlusIcon() {
   );
 }
 
+function MenuIcon({ close = false }: { close?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="h-5 w-5">
+      {close ? <><path d="m18 6-12 12" /><path d="m6 6 12 12" /></> : <><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></>}
+    </svg>
+  );
+}
+
 export default function Assistant() {
   const [search] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -61,6 +69,7 @@ export default function Assistant() {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [conversationsOpen, setConversationsOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -79,6 +88,7 @@ export default function Assistant() {
       const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${item.id}/messages`);
       setConversation(item);
       setMessages(rows);
+      setConversationsOpen(false);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -88,6 +98,7 @@ export default function Assistant() {
     setConversations((current) => [item, ...current]);
     setConversation(item);
     setMessages([]);
+    setConversationsOpen(false);
     return item;
   }
   async function remove(item: ChatConversation) {
@@ -133,6 +144,19 @@ export default function Assistant() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+  useEffect(() => {
+    if (!conversationsOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setConversationsOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [conversationsOpen]);
 
   async function streamReply(conversationId: string, content: string, draftId: string): Promise<ChatMessage> {
     const makeRequest = () => fetch(`/v1/assistant/conversations/${conversationId}/messages/stream`, {
@@ -196,7 +220,16 @@ export default function Assistant() {
   }
   if (loading) return <Loading />;
   return <div className="grid min-h-[calc(100vh-10rem)] items-start gap-4 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[18rem_1fr]" dir="rtl">
-    <aside className="assistant-sidebar relative flex min-h-72 flex-col overflow-hidden text-white lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)]">
+    <button type="button" className="flex w-full items-center justify-between border border-[#B2AC88] bg-[#F2F0EF] px-4 py-3 text-[#4B6E48] lg:hidden" onClick={() => setConversationsOpen(true)} aria-expanded={conversationsOpen} aria-controls="assistant-conversations-menu">
+      <span className="min-w-0 truncate text-sm font-bold">{conversation?.title || "گفتگوی جدید"}</span>
+      <span className="flex shrink-0 items-center gap-2 text-xs"><MenuIcon /> گفتگوها</span>
+    </button>
+    <button type="button" className={`fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm transition-opacity lg:hidden ${conversationsOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`} onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها" tabIndex={conversationsOpen ? 0 : -1} />
+    <aside id="assistant-conversations-menu" className={`assistant-sidebar fixed inset-y-0 right-0 z-50 flex w-[min(88vw,19rem)] flex-col overflow-hidden text-white shadow-2xl transition-transform duration-300 ease-out lg:sticky lg:top-8 lg:z-auto lg:h-[calc(100vh-4rem)] lg:w-auto lg:translate-x-0 lg:shadow-none ${conversationsOpen ? "translate-x-0" : "translate-x-full"}`} role="dialog" aria-modal={conversationsOpen ? "true" : undefined} aria-label="فهرست گفتگوها">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#B2AC88] px-4 lg:hidden">
+        <span className="text-sm font-bold text-[#4B6E48]">گفتگوها</span>
+        <button type="button" className="inline-flex h-10 w-10 items-center justify-center text-[#4B6E48] transition hover:bg-[#F2F0EF]" onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها"><MenuIcon close /></button>
+      </div>
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-5" aria-label="فهرست گفتگوها">
         <div className="mb-5">
           <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوها</p>
