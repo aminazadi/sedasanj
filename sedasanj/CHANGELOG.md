@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Further softened the processing-card dot texture for a more understated appearance.
 - Reduced the processing-card dot opacity for a softer background texture.
 - Increased the processing-card dot contrast and applied the pattern through an override-safe background declaration.
 - Added a subtle fine-dot background pattern to the call analysis pipeline card.
