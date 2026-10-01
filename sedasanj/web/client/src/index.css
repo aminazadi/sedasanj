@@ -81,29 +81,34 @@ body {
 .assistant-message-bubble::before,
 .assistant-message-bubble::after {
   position: absolute;
-  bottom: 0.45rem;
-  width: 0;
-  height: 0;
   content: "";
 }
 
 .assistant-message-bubble-user::before {
-  right: -0.52rem;
-  border-block: 0.55rem solid transparent;
-  border-left: 0.75rem solid #4b6e48;
+  right: -0.55rem;
+  bottom: 0.5rem;
+  width: 0.65rem;
+  height: 1rem;
+  background: #4b6e48;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 .assistant-message-bubble-ai::before {
-  left: -0.54rem;
-  border-block: 0.55rem solid transparent;
-  border-right: 0.75rem solid #b2ac88;
+  left: -0.55rem;
+  bottom: 0.5rem;
+  width: 0.65rem;
+  height: 1rem;
+  background: #b2ac88;
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
 }
 
 .assistant-message-bubble-ai::after {
-  bottom: 0.52rem;
-  left: -0.43rem;
-  border-block: 0.46rem solid transparent;
-  border-right: 0.64rem solid #fff;
+  left: -0.4rem;
+  bottom: 0.63rem;
+  width: 0.5rem;
+  height: 0.75rem;
+  background: #fff;
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
 }
 
 @keyframes assistant-thinking-shimmer {
