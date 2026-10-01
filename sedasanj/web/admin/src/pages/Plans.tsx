@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { Page, PlanVersion } from "../types";
@@ -93,7 +94,7 @@ export default function Plans() {
       <input className="input" dir="ltr" placeholder="کد پلن" pattern="[a-z0-9_]{2,32}" value={planForm.code} onChange={(event) => setPlanForm({...planForm, code: event.target.value})} required />
       <input className="input" placeholder="نام پلن" value={planForm.name} onChange={(event) => setPlanForm({...planForm, name: event.target.value})} required />
       <input className="input" inputMode="numeric" placeholder="ترتیب نمایش" value={fmt.digits(planForm.sort_order)} onChange={(event) => setPlanForm({...planForm, sort_order: Number(fmt.latinDigits(event.target.value))})} />
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={planForm.public} onChange={(event) => setPlanForm({...planForm, public: event.target.checked})} />نمایش عمومی</label>
+      <ToggleSwitch checked={planForm.public} onChange={(checked) => setPlanForm({...planForm, public: checked})} label="نمایش عمومی" labelClassName="text-sm" />
       <button className="btn">ایجاد پلن</button>
     </form>
     <form className="card space-y-4" onSubmit={createVersion}>
@@ -102,7 +103,7 @@ export default function Plans() {
         {([['monthly_price_toman','قیمت ماهانه'],['annual_price_toman','قیمت سالانه'],['base_operators','اپراتور پایه'],['intro_minutes','دقیقه هدیه'],['overage_price_per_minute_toman','نرخ دقیقه اضافه'],['assistant_monthly_messages','پیام دستیار'],['assistant_source_limit','حد منابع'],['trial_days','روز آزمایشی']] as const).map(([key, label]) => <div key={key}><label className="label">{label}</label><input className="input" inputMode="numeric" value={fmt.digits(form[key])} onChange={(event) => setForm({...form, [key]: Number(fmt.latinDigits(event.target.value))})}/></div>)}
         <div><label className="label">سطح دستیار</label><input className="input" dir="ltr" value={form.assistant_tier} onChange={(event) => setForm({...form, assistant_tier: event.target.value})}/></div>
         <div><label className="label">مدل اختصاصی دستیار</label><input className="input" dir="ltr" value={form.assistant_model} onChange={(event) => setForm({...form, assistant_model: event.target.value})}/></div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.allows_extra_operators} onChange={(event) => setForm({...form, allows_extra_operators: event.target.checked})}/>اپراتور اضافه مجاز است</label>
+        <ToggleSwitch checked={form.allows_extra_operators} onChange={(checked) => setForm({...form, allows_extra_operators: checked})} label="اپراتور اضافه مجاز است" labelClassName="text-sm" />
         {form.allows_extra_operators ? <><div><label className="label">اپراتور اضافه ماهانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_monthly_toman)} onChange={(event) => setForm({...form, extra_operator_monthly_toman: Number(fmt.latinDigits(event.target.value))})}/></div><div><label className="label">اپراتور اضافه سالانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_annual_toman)} onChange={(event) => setForm({...form, extra_operator_annual_toman: Number(fmt.latinDigits(event.target.value))})}/></div></> : null}
       </div>
     </form>

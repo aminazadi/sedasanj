@@ -1,4 +1,5 @@
 import TwoFactorSettings from "../components/TwoFactorSettings";
+import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
 import { ROLE_LABELS, useAuth } from "../auth";
@@ -434,21 +435,20 @@ export default function Account() {
               <button className="btn">افزودن</button>
               <div className="md:col-span-3 flex flex-wrap gap-3 text-sm">
                 {EVENTS.map((event) => (
-                  <label key={event} className="flex items-center gap-1" dir="ltr">
-                    <input
-                      type="checkbox"
+                  <ToggleSwitch
+                      key={event}
+                      dir="ltr"
                       checked={hookForm.events.includes(event)}
-                      onChange={(changed) =>
+                      onChange={(checked) =>
                         setHookForm({
                           ...hookForm,
-                          events: changed.target.checked
+                          events: checked
                             ? [...hookForm.events, event]
                             : hookForm.events.filter((item) => item !== event),
                         })
                       }
+                      label={event}
                     />
-                    {event}
-                  </label>
                 ))}
               </div>
             </form>

@@ -1,4 +1,5 @@
 import TwoFactorSettings from "../components/TwoFactorSettings";
+import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useMemo, useState } from "react";
 import { fmt, request } from "../api";
 import { ErrorBox, Loading } from "../components/Widgets";
@@ -264,16 +265,15 @@ export default function Settings() {
               رسمی سرویس برای مدل ASR ارسال می‌گردد.
             </p>
           </div>
-          <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              checked={settings.audio_preprocessing_enabled}
-              onChange={(event) =>
-                setSettings({ ...settings, audio_preprocessing_enabled: event.target.checked })
-              }
-            />
-            فعال
-          </label>
+          <ToggleSwitch
+            className="shrink-0"
+            checked={settings.audio_preprocessing_enabled}
+            onChange={(checked) =>
+              setSettings({ ...settings, audio_preprocessing_enabled: checked })
+            }
+            label="فعال"
+            labelClassName="text-sm font-medium"
+          />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

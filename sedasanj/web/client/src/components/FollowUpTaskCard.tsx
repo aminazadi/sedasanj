@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS } from "../api";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
+import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import type { FollowUpTask, TaskPriority, TaskStatus } from "../types";
 
 const PRIORITY_TONE: Record<string, string> = {
@@ -130,13 +131,13 @@ export default function FollowUpTaskCard({
       }`}
     >
       <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4 rounded border-slate-300 accent-brand-500 disabled:opacity-50"
+        <ToggleSwitch
+          className="mt-0.5"
           checked={done}
           disabled={!canEdit || saving}
           onChange={() => void toggleDone()}
-          aria-label={done ? "بازگرداندن به انجام‌نشده" : "علامت انجام‌شده"}
+          label={done ? "بازگرداندن به انجام‌نشده" : "علامت انجام‌شده"}
+          labelClassName="sr-only"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-2">

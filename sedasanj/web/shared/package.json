@@ -6,6 +6,7 @@
   "exports": {
     "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx",
     "./components/TableFilters": "./components/TableFilters.tsx",
+    "./components/ToggleSwitch": "./components/ToggleSwitch.tsx",
     "./theme": "./theme.js"
   },
   "peerDependencies": {

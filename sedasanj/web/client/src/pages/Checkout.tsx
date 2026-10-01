@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
 import type { PublicPlan } from "../types";
@@ -11,6 +12,7 @@ export default function Checkout() {
   const [form, setForm] = useState({ name: "", email: "", mobile: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const code = params.get("plan") ?? "bronze";
   const plan = plans.find((item) => item.code === code);
 
@@ -28,6 +30,10 @@ export default function Checkout() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!plan) return;
+    if (!termsAccepted) {
+      setError("برای ادامه، قوانین، حریم خصوصی و سیاست لغو را بپذیرید.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -42,7 +48,7 @@ export default function Checkout() {
           customer_email: form.email,
           customer_mobile: form.mobile,
           invoice_profile: {},
-          terms_accepted: true,
+          terms_accepted: termsAccepted,
         },
       });
       const payment = await request<{ redirect_url: string }>(`/v1/orders/${order.id}/pay`, { method: "POST" });
@@ -62,7 +68,7 @@ export default function Checkout() {
       <label>نام خریدار<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
       <label>ایمیل<input type="email" dir="ltr" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
       <label>موبایل<input type="tel" dir="ltr" required value={form.mobile} onChange={(event) => setForm({ ...form, mobile: fmt.latinDigits(event.target.value) })} /></label>
-      <label className="terms-check"><input type="checkbox" required /> قوانین، حریم خصوصی و سیاست لغو را می‌پذیرم.</label>
+      <ToggleSwitch className="terms-check" checked={termsAccepted} onChange={setTermsAccepted} label="قوانین، حریم خصوصی و سیاست لغو را می‌پذیرم." />
       <button className="btn" disabled={busy}>{busy ? "در حال انتقال…" : "پرداخت امن"}</button>
     </form><aside className="card order-summary"><h2>خلاصه سفارش</h2><div><span>اشتراک {period === "annual" ? "سالانه" : "ماهانه"}</span><strong>{fmt.toman(period === "annual" ? plan.annual_price_toman ?? 0 : plan.monthly_price_toman)}</strong></div>{extra ? <div><span>{fmt.int(extra)} اپراتور اضافه</span><strong>{fmt.toman(total - (period === "annual" ? plan.annual_price_toman ?? 0 : plan.monthly_price_toman))}</strong></div> : null}<hr/><div className="summary-total"><span>مبلغ نهایی</span><strong>{fmt.toman(total)}</strong></div></aside></div>
   </div>;
