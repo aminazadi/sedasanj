@@ -66,6 +66,31 @@ body {
   clip-path: circle(50%);
 }
 
+.assistant-thinking-text {
+  background: linear-gradient(100deg, #898989 20%, #4b6e48 42%, #b2ac88 52%, #4b6e48 62%, #898989 80%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  color: transparent;
+  font-size: 0.875rem;
+  font-weight: 600;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: assistant-thinking-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes assistant-thinking-shimmer {
+  0% { background-position: 100% 0; opacity: 0.65; }
+  50% { opacity: 1; }
+  100% { background-position: -100% 0; opacity: 0.65; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-thinking-text {
+    animation: none;
+    background-position: 50% 0;
+  }
+}
+
 .sidebar-nav-item:hover {
   background: #f2f0ef !important;
   color: #4b6e48 !important;

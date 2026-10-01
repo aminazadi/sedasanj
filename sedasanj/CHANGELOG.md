@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced the assistant's three-dot typing indicator with an animated shimmer treatment for the Persian thinking-and-result status text.
 - Added an accessible animated three-dot typing indicator while the assistant is waiting to stream its first response content.
 - Unified the desktop assistant conversation list and chat area into one bordered panel separated by a single divider.
 - Replaced blue assistant chat accents with the shared green, beige, and warm-white palette, fixed the prompt composer at the bottom of the visible chat panel, and removed its floating shadowed container so the full footer is the prompt area.

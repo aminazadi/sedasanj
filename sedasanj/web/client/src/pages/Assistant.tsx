@@ -60,11 +60,8 @@ function MenuIcon({ close = false }: { close?: boolean }) {
 
 function TypingIndicator() {
   return (
-    <div className="flex h-8 items-center gap-1.5 px-1" role="status" aria-label="دستیار در حال نوشتن است">
-      <span className="h-2 w-2 animate-bounce bg-[#4B6E48] [animation-delay:-0.3s]" aria-hidden="true" />
-      <span className="h-2 w-2 animate-bounce bg-[#4B6E48] [animation-delay:-0.15s]" aria-hidden="true" />
-      <span className="h-2 w-2 animate-bounce bg-[#4B6E48]" aria-hidden="true" />
-      <span className="sr-only">دستیار در حال نوشتن است</span>
+    <div className="flex h-8 items-center px-1" role="status" aria-live="polite">
+      <span className="assistant-thinking-text">در حال فکر کردن و دریافت نتیجه ...</span>
     </div>
   );
 }
