@@ -49,12 +49,12 @@ body {
 }
 
 .sidebar-nav-item:hover {
-  background: #898989 !important;
-  color: #f2f0ef !important;
+  background: #f2f0ef !important;
+  color: #4b6e48 !important;
 }
 
 .sidebar-nav-item:hover svg {
-  color: #f2f0ef !important;
+  color: #4b6e48 !important;
 }
 
 .panel-shell .card,
