@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Reduced the processing-card dot opacity for a softer background texture.
 - Increased the processing-card dot contrast and applied the pattern through an override-safe background declaration.
 - Added a subtle fine-dot background pattern to the call analysis pipeline card.
 - Persisted the selected call-audio playback speed in browser storage and automatically restored it for subsequent recordings.
