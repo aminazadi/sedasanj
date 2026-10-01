@@ -196,14 +196,8 @@ export default function Assistant() {
   }
   if (loading) return <Loading />;
   return <div className="grid min-h-[calc(100vh-10rem)] items-start gap-4 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[18rem_1fr]" dir="rtl">
-    <aside className="assistant-sidebar flex min-h-72 flex-col overflow-hidden text-white lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)]">
-      <div className="flex h-[96px] shrink-0 items-center border-b border-[#B2AC88] px-3">
-        <button type="button" className="flex w-full items-center justify-center gap-2 bg-[#F2F0EF] px-3 py-2.5 text-sm font-bold text-[#4B6E48] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={() => void create()}>
-          <PlusIcon />
-          <span>گفتگوی جدید</span>
-        </button>
-      </div>
-      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-5" aria-label="فهرست گفتگوها">
+    <aside className="assistant-sidebar relative flex min-h-72 flex-col overflow-hidden text-white lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)]">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-5" aria-label="فهرست گفتگوها">
         <div className="mb-5">
           <p className="mb-2 px-3 text-[11px] font-medium text-[#F2F0EF]">گفتگوها</p>
           <div className="space-y-1">
@@ -217,6 +211,9 @@ export default function Assistant() {
           </div>
         </div>
       </nav>
+      <button type="button" className="assistant-new-chat-button absolute bottom-5 left-5 z-10 inline-flex h-14 w-14 items-center justify-center bg-[#F2F0EF] text-[#4B6E48] shadow-[0_10px_30px_rgba(16,31,18,0.35)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F2F0EF]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
+        <PlusIcon />
+      </button>
     </aside>
     <section className="relative min-h-[70vh] rounded-2xl border border-slate-200 bg-slate-50 pb-28 lg:min-h-[calc(100vh-4rem)]">
       <div className="space-y-5 p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-slate-500"><h1 className="mb-3 text-xl font-bold text-slate-800">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto bg-brand-600 text-white" : "mr-auto bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-500">{message.sources.map((source) => <Link className="ml-3 text-brand-700" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>

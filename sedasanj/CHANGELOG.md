@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced the assistant sidebar's gray surface with a dark forest treatment and converted the new-conversation action into an accessible floating button.
 - Fixed the assistant conversation sidebar to the desktop viewport with full-page height and independent internal scrolling.
 - Matched the assistant conversation panel exactly to the main sidebar structure and navigation states while retaining a distinct neutral background.
 - Removed the filled background from both sidebar account cards and adjusted the logout control for the green sidebar surface.
