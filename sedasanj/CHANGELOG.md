@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Removed green typography and icons from the call-detail header, retaining green only as the top accent rule.
 - Replaced green in the call-header badges with light warm-white and beige surfaces plus neutral gray text.
 - Reworked the call-detail header with the exact shared palette, replacing the blue gradient, blue icon treatment, red status, and mismatched action-menu colors.
 - Standardized RTL select controls in both panels with a palette-matched chevron and consistent spacing from the left edge.

@@ -88,6 +88,10 @@ body {
   color: #898989 !important;
 }
 
+.call-detail-hero .btn-ghost {
+  color: #898989;
+}
+
 .panel-shell,
 .panel-shell * {
   border-radius: 0 !important;

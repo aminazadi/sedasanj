@@ -599,9 +599,9 @@ export default function CallDetailPage() {
         <div className="relative p-5 sm:p-6">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div className="flex items-center gap-2 text-xs text-[#898989]">
-              <Link className="transition hover:text-[#4B6E48]" to="/calls">تماس‌ها</Link>
+              <Link className="transition hover:text-[#898989]" to="/calls">تماس‌ها</Link>
               <span>/</span>
-              <span className="font-medium text-[#4B6E48]">جزئیات و تحلیل تماس</span>
+              <span className="font-medium text-[#898989]">جزئیات و تحلیل تماس</span>
             </div>
             <div className="call-header-status flex flex-wrap items-center gap-2">
               <StatusBadge status={call.status} />
@@ -614,10 +614,10 @@ export default function CallDetailPage() {
           <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
             <div>
               <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-12 w-12 items-center justify-center bg-[#B2AC88] text-2xl text-[#4B6E48]">☎</span>
+                <span className="flex h-12 w-12 items-center justify-center bg-[#B2AC88] text-2xl text-[#898989]">☎</span>
                 <div>
                   <p className="text-xs text-[#898989]">مکالمه تلفنی</p>
-                  <h1 className="mt-1 text-xl font-extrabold text-[#4B6E48] sm:text-2xl" dir="rtl">
+                  <h1 className="mt-1 text-xl font-extrabold text-[#898989] sm:text-2xl" dir="rtl">
                     {call.dialed_number ? fmt.digits(call.dialed_number) : "—"}{" "}
                     <span className="px-1 text-[#B2AC88]">←</span>{" "}
                     {call.caller_number ? fmt.digits(call.caller_number) : "—"}
@@ -635,7 +635,7 @@ export default function CallDetailPage() {
               <Link className="btn-ghost bg-white" to="/calls">بازگشت</Link>
               <details className="relative z-50">
                 <summary className="btn-ghost flex h-10 w-10 cursor-pointer list-none items-center justify-center bg-white text-xl" aria-label="اقدامات تماس" title="اقدامات تماس">⋮</summary>
-                <div className="absolute left-0 z-[60] mt-2 w-52 border border-[#B2AC88] bg-[#F2F0EF] p-1 text-[#4B6E48] shadow-lg">
+                <div className="absolute left-0 z-[60] mt-2 w-52 border border-[#B2AC88] bg-[#F2F0EF] p-1 text-[#898989] shadow-lg">
                   {session && CAN_HEAR_AUDIO.includes(session.role) && call.audio_available ? <button className="block w-full px-3 py-2 text-right text-sm hover:bg-[#B2AC88]" onClick={() => void playAudio()} disabled={audioLoading}>{audioLoading ? "در حال دریافت صوت…" : "پخش فایل صوتی"}</button> : null}
                   {session?.role === "org_admin" || session?.role === "operator" ? <Link className="block px-3 py-2 text-sm hover:bg-[#B2AC88]" to={`/assistant?call_id=${call.id}`}>پرسش درباره این تماس</Link> : null}
                   <button
@@ -646,7 +646,7 @@ export default function CallDetailPage() {
                   >
                     تحلیل مجدد{!call.transcript ? " (در انتظار متن)" : ""}
                   </button>
-                  {isOrgAdmin(session?.role) ? <button className="block w-full px-3 py-2 text-right text-sm text-[#4B6E48] hover:bg-[#B2AC88] disabled:opacity-50" disabled={deleting} onClick={() => void deleteCall()}>{deleting ? "در حال حذف…" : "حذف تماس"}</button> : null}
+                  {isOrgAdmin(session?.role) ? <button className="block w-full px-3 py-2 text-right text-sm text-[#898989] hover:bg-[#B2AC88] disabled:opacity-50" disabled={deleting} onClick={() => void deleteCall()}>{deleting ? "در حال حذف…" : "حذف تماس"}</button> : null}
                 </div>
               </details>
               <audio ref={audioRef} controls className={audioUrl ? "h-9 max-w-full" : "hidden"} aria-label="فایل صوتی تماس" onError={() => setError("مرورگر قادر به پخش این فایل صوتی نیست.")} />
