@@ -746,7 +746,7 @@ export default function CallDetailPage() {
                     />
                     <Tooltip
                       formatter={(value) => fmt.percent(Number(value))}
-                      contentStyle={{ borderRadius: 12, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
+                      contentStyle={{ borderRadius: 0, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                     />
                     <Legend wrapperStyle={{ direction: "rtl", fontSize: 12 }} />
                     <Line type="monotone" dataKey="مشتری" stroke="url(#callerLine)" strokeWidth={3} dot={{ r: 5, fill: chart.primary, strokeWidth: 3, stroke: palette.canvas }} activeDot={{ r: 7 }} connectNulls />
@@ -790,7 +790,7 @@ export default function CallDetailPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value) => fmt.duration(Number(value))}
-                      contentStyle={{ borderRadius: 12, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
+                      contentStyle={{ borderRadius: 0, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -855,7 +855,7 @@ export default function CallDetailPage() {
                 <Tooltip
                   formatter={(value) => `${fmt.decimal(Number(value))} ثانیه`}
                   labelFormatter={(label) => `نوبت ${label}`}
-                  contentStyle={{ borderRadius: 12, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
+                  contentStyle={{ borderRadius: 0, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                 />
                 <Legend wrapperStyle={{ direction: "rtl", fontSize: 12 }} />
                 <Area type="monotone" dataKey="مشتری" stroke={chart.primary} strokeWidth={2} fill="url(#callerArea)" />

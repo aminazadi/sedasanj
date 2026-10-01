@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Applied the exact four supplied palette values to explicit UI roles: green navigation/actions, beige panel canvas, gray text/borders, and warm-white cards/inputs; removed all corner radii from authenticated customer and admin surfaces, including charts and tooltips.
 - Unified the customer and admin panel color systems around the shared `#4B6E48`, `#B2AC88`, `#898989`, and `#F2F0EF` palette, including navigation, controls, states, and data visualizations.
 - Applied the grouped desktop sidebar, responsive right-side drawer, standalone white logo, and role-aware navigation to the customer panel.
 - Fixed the sidebar logo filter so the source image background blends into the dark sidebar instead of rendering as a white rectangle.

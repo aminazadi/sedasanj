@@ -39,6 +39,11 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
+.panel-shell,
+.panel-shell * {
+  border-radius: 0 !important;
+}
+
 .sidebar-scroll {
   scrollbar-color: rgb(137 137 137 / 0.7) transparent;
   scrollbar-width: thin;

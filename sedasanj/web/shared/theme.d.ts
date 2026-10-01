@@ -16,4 +16,4 @@ export const chart: {
   light: string;
   dark: string;
 };
-export const tailwindColors: Record<string, ColorScale>;
+export const tailwindColors: Record<string, ColorScale | string>;

@@ -7,52 +7,52 @@ export const palette = {
 
 export const brand = {
   50: "#F2F0EF",
-  100: "#E7E4DD",
-  200: "#D1CBB8",
+  100: "#F2F0EF",
+  200: "#B2AC88",
   300: "#B2AC88",
-  400: "#7E916A",
+  400: "#898989",
   500: "#4B6E48",
-  600: "#3F5E3D",
-  700: "#344D32",
-  800: "#293D28",
-  900: "#1F2E1E",
-  950: "#162015",
+  600: "#4B6E48",
+  700: "#4B6E48",
+  800: "#4B6E48",
+  900: "#4B6E48",
+  950: "#4B6E48",
 };
 
 export const neutral = {
   50: "#F2F0EF",
-  100: "#E8E6E3",
-  200: "#D4D1CC",
-  300: "#BBB7B0",
-  400: "#A09D98",
+  100: "#F2F0EF",
+  200: "#B2AC88",
+  300: "#B2AC88",
+  400: "#898989",
   500: "#898989",
-  600: "#6F716E",
-  700: "#565B55",
-  800: "#3D453D",
-  900: "#293229",
-  950: "#182018",
+  600: "#898989",
+  700: "#4B6E48",
+  800: "#4B6E48",
+  900: "#4B6E48",
+  950: "#4B6E48",
 };
 
 export const accent = {
-  50: "#F7F5EF",
-  100: "#EFEBDF",
-  200: "#DED8C2",
-  300: "#C9C19F",
+  50: "#F2F0EF",
+  100: "#F2F0EF",
+  200: "#B2AC88",
+  300: "#B2AC88",
   400: "#B2AC88",
-  500: "#99936F",
-  600: "#7D785A",
-  700: "#625F48",
-  800: "#494838",
-  900: "#343429",
-  950: "#202019",
+  500: "#B2AC88",
+  600: "#898989",
+  700: "#898989",
+  800: "#4B6E48",
+  900: "#4B6E48",
+  950: "#4B6E48",
 };
 
 export const chart = {
   primary: palette.primary,
   secondary: palette.accent,
   neutral: palette.neutral,
-  light: "#D4D1CC",
-  dark: "#293229",
+  light: palette.canvas,
+  dark: palette.primary,
 };
 
 export const tailwindColors = {
@@ -78,4 +78,6 @@ export const tailwindColors = {
   red: neutral,
   rose: neutral,
   pink: neutral,
+  white: palette.canvas,
+  black: palette.primary,
 };
