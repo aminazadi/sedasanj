@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced blue assistant chat accents with the shared green, beige, and warm-white palette, fixed the prompt composer at the bottom of the visible chat panel, and removed its floating shadowed container so the full footer is the prompt area.
 - Added a palette-matched chat icon to the assistant empty state when no messages exist.
 - Made customer and admin dialogs vertically scrollable on mobile viewports so all fields and actions remain reachable.
 - Converted table filter panels in the customer, organization, operator, and admin interfaces into collapsed mobile accordions while preserving their expanded desktop layout.
