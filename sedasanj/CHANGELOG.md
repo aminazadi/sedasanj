@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Reworked the call-detail header with the exact shared palette, replacing the blue gradient, blue icon treatment, red status, and mismatched action-menu colors.
 - Standardized RTL select controls in both panels with a palette-matched chevron and consistent spacing from the left edge.
 - Removed gray from both sidebars and established explicit states: green base, warm-white active navigation, beige hover/account surfaces, and green active indicators.
 - Applied the exact four supplied palette values directly in both panel stylesheets: green navigation/actions, warm-white canvas/cards/inputs, beige borders, and gray secondary content; removed all corner radii from authenticated customer and admin surfaces, including charts and tooltips.

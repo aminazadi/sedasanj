@@ -76,6 +76,12 @@ body {
   background-size: 1.25rem;
 }
 
+.call-header-status > * {
+  border-color: #4b6e48 !important;
+  background: #b2ac88 !important;
+  color: #4b6e48 !important;
+}
+
 .panel-shell,
 .panel-shell * {
   border-radius: 0 !important;
