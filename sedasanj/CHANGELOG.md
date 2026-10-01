@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Removed the outer border from the assistant conversation drawer on mobile while retaining the desktop panel border.
 - Added route-aware page titles beside the mobile hamburger menu across dashboard, call, assistant, reporting, account, setup, payment, and informational pages.
 - Removed the Sedasanj logo beside the customer panel title in the mobile header while preserving the logo inside the navigation drawer.
 - Added a responsive assistant conversation drawer on mobile with a compact trigger, backdrop, Escape handling, and automatic close after selection.
