@@ -78,37 +78,27 @@ body {
   animation: assistant-thinking-shimmer 1.8s ease-in-out infinite;
 }
 
-.assistant-message-bubble::before,
-.assistant-message-bubble::after {
+.assistant-message-bubble::before {
   position: absolute;
+  bottom: 0.65rem;
+  width: 0.75rem;
+  height: 0.75rem;
   content: "";
+  transform: rotate(45deg);
 }
 
 .assistant-message-bubble-user::before {
-  right: -0.55rem;
-  bottom: 0.5rem;
-  width: 0.65rem;
-  height: 1rem;
+  right: -0.4rem;
+  border-top: 1px solid #4b6e48;
+  border-right: 1px solid #4b6e48;
   background: #4b6e48;
-  clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 .assistant-message-bubble-ai::before {
-  left: -0.55rem;
-  bottom: 0.5rem;
-  width: 0.65rem;
-  height: 1rem;
-  background: #b2ac88;
-  clip-path: polygon(100% 0, 0 50%, 100% 100%);
-}
-
-.assistant-message-bubble-ai::after {
   left: -0.4rem;
-  bottom: 0.63rem;
-  width: 0.5rem;
-  height: 0.75rem;
+  border-bottom: 1px solid #b2ac88;
+  border-left: 1px solid #b2ac88;
   background: #fff;
-  clip-path: polygon(100% 0, 0 50%, 100% 100%);
 }
 
 @keyframes assistant-thinking-shimmer {

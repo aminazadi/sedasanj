@@ -2,7 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
-- Added compact bottom-aligned directional tails to user and assistant message bubbles with integrated layered fills that preserve each bubble border without hollow or detached outlines.
+- Added compact bottom-aligned directional tails to user and assistant message bubbles with seamless rotated fills that preserve each bubble border without hollow or detached outlines.
 - Replaced the assistant's three-dot typing indicator with an animated shimmer treatment for the Persian thinking-and-result status text.
 - Added an accessible animated three-dot typing indicator while the assistant is waiting to stream its first response content.
 - Unified the desktop assistant conversation list and chat area into one bordered panel separated by a single divider.
