@@ -378,8 +378,8 @@ function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
             const state = eventState(event);
             return (
               <li key={event.id} className="py-2.5 first:pt-0 last:pb-0">
-                <div className="flex items-start gap-2.5">
-                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${state.tone}`} aria-hidden="true">
+                <div className="flex items-start gap-3">
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center text-base font-bold leading-none ${state.tone}`} aria-hidden="true">
                     {state.icon}
                   </span>
                   <div className="min-w-0 flex-1">
