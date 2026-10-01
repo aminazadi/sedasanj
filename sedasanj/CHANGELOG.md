@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Added a subtle fine-dot background pattern to the call analysis pipeline card.
 - Persisted the selected call-audio playback speed in browser storage and automatically restored it for subsequent recordings.
 - Refined the call waveform with left-to-right seeking, a clearer progress indicator, uniform controls, playback-speed cycling, and authenticated audio download.
 - Replaced the compact native call audio control with a responsive waveform player featuring playback, seeking, elapsed time, duration, and mute controls in the call header.

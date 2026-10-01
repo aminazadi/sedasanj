@@ -74,7 +74,7 @@ export function ProcessingCard({
   const activeIndex =
     current >= 0 ? current : failed ? Math.min(3, Math.max(0, Math.floor(safeProgress / 25))) : 0;
   return (
-    <section className="card overflow-hidden !p-0">
+    <section className="processing-card-dots card overflow-hidden !p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div>
           <div className="mb-1 flex items-center gap-2">

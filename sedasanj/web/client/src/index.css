@@ -92,6 +92,12 @@ body {
   color: #000;
 }
 
+.processing-card-dots {
+  background-image: radial-gradient(circle, rgb(137 137 137 / 0.32) 0.7px, transparent 0.8px) !important;
+  background-position: 0 0;
+  background-size: 7px 7px;
+}
+
 .panel-shell,
 .panel-shell * {
   border-radius: 0 !important;
