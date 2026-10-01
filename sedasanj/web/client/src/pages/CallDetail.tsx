@@ -20,6 +20,7 @@ import { fmt, INTENT_LABELS, refreshSession, request, tokens } from "../api";
 import { CAN_EDIT_TASKS, CAN_HEAR_AUDIO, isOrgAdmin, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
+import ConversationBubble from "../components/ConversationBubble";
 import {
   ErrorBox,
   ProcessingCard,
@@ -908,19 +909,23 @@ export default function CallDetailPage() {
               {call.processing ? "در حال پیاده‌سازی مکالمه…" : "هنوز پیاده‌سازی نشده است."}
             </div>
           ) : (
-            <div className="max-h-[680px] space-y-3 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4">
+            <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4">
               {conversationTurns.map((utterance, index) => {
                 const caller = utterance.channel === 0;
                 return (
-                  <div key={`${utterance.channel}-${utterance.t_start_ms}-${index}`} className={`flex ${caller ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[94%] rounded-2xl px-4 py-3 text-sm shadow-sm sm:max-w-[80%] ${caller ? "rounded-tr-sm border border-blue-100 bg-blue-50 text-slate-800" : "rounded-tl-sm border border-violet-100 bg-white text-slate-700"}`}>
-                      <div className="mb-1.5 flex items-center justify-between gap-6 text-[11px] text-slate-400">
-                        <span className={`font-bold ${caller ? "text-brand-700" : "text-violet-700"}`}>{caller ? "مشتری" : "اپراتور"}</span>
+                  <ConversationBubble
+                    key={`${utterance.channel}-${utterance.t_start_ms}-${index}`}
+                    side={caller ? "user" : "assistant"}
+                    ariaLabel={caller ? "مشتری" : "اپراتور"}
+                    header={
+                      <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-[#F2F0EF]/75" : "text-[#898989]"}`}>
+                        <span className={`font-bold ${caller ? "text-[#F2F0EF]" : "text-[#4B6E48]"}`}>{caller ? "مشتری" : "اپراتور"}</span>
                         <span className="tabular-nums" dir="ltr">{fmt.duration(utterance.t_start_ms)} — {fmt.duration(utterance.t_end_ms)}</span>
                       </div>
-                      <p className="whitespace-pre-wrap leading-7" dir="auto">{utterance.text}</p>
-                    </div>
-                  </div>
+                    }
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-7" dir="auto">{utterance.text}</p>
+                  </ConversationBubble>
                 );
               })}
             </div>

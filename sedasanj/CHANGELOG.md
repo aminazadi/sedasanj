@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Unified transcript turns with the assistant chat's shared directional bubbles, avatars, tails, spacing, colors, and responsive sizing.
 - Added a deliberate task-list exception that uses a polished square primary checkbox for completion while retaining switches everywhere else.
 - Removed the divider from the call-detail hero and tightened its vertical padding, header spacing, content gap, title spacing, and metadata wrapping.
 - Added the call-analysis fine-dot texture to the full navigation sidebar in both the customer and admin panels.

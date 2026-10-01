@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, refreshSession, request, tokens } from "../api";
+import ConversationBubble from "../components/ConversationBubble";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { ChatConversation, ChatMessage } from "../types";
 
@@ -63,17 +64,6 @@ function TypingIndicator() {
     <div className="flex h-8 items-center px-1" role="status" aria-live="polite">
       <span className="assistant-thinking-text">در حال فکر کردن و دریافت نتیجه ...</span>
     </div>
-  );
-}
-
-function MessageAvatar({ role }: { role: ChatMessage["role"] }) {
-  const user = role === "user";
-  return (
-    <span className={`assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center border ${user ? "border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48]" : "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"}`} aria-label={user ? "کاربر" : "دستیار"} title={user ? "کاربر" : "دستیار"}>
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {user ? <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></> : <><path d="M12 3v3" /><rect x="4" y="6" width="16" height="13" rx="3" /><path d="M8 11h.01M16 11h.01M9 15h6" /></>}
-      </svg>
-    </span>
   );
 }
 
@@ -308,14 +298,10 @@ export default function Assistant() {
         {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]"><ChatIcon active className="h-9 w-9" /></div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
-          return <div key={message.id} className={`flex w-full items-end gap-4 ${user ? "justify-end" : "justify-start"}`} dir="ltr">
-            {!user ? <MessageAvatar role={message.role} /> : null}
-            <div dir="rtl" className={`assistant-message-bubble relative w-fit max-w-[calc(85%_-_2.75rem)] break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-slate-800"}`}>
+          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"}>
               {message.status === "running" && !message.content ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
               {message.sources?.length ? <div className="mt-3 border-t border-[#B2AC88] pt-2 text-xs text-[#898989]">{message.sources.map((source) => <Link className="ml-3 text-[#4B6E48]" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}
-            </div>
-            {user ? <MessageAvatar role={message.role} /> : null}
-          </div>;
+          </ConversationBubble>;
         })}
         <div ref={endRef} />
       </div>
