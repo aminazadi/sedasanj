@@ -118,8 +118,8 @@ export default function Installations() {
       </div>
 
       {edit ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label="ویرایش وضعیت نصب">
-          <div className="card w-full max-w-lg space-y-4 overflow-visible">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="ویرایش وضعیت نصب">
+          <div className="card max-h-[calc(100dvh-2rem)] w-full max-w-lg space-y-4 overflow-y-auto sm:max-h-none sm:overflow-visible">
             <div><h2 className="font-bold">ویرایش وضعیت نصب</h2><p className="mt-1 text-sm text-slate-500">{edit.item.tenant_name}</p></div>
             {edit.status === "scheduled" ? <div><label className="label">تاریخ و ساعت اجرا</label><JalaliDatePicker includeTime value={edit.scheduledAt} onChange={(scheduledAt) => setEdit({ ...edit, scheduledAt })} placeholder="انتخاب زمان اجرا" /></div> : null}
             <div><label className="label">یادداشت داخلی</label><textarea className="input min-h-24" value={edit.notes} onChange={(event) => setEdit({ ...edit, notes: event.target.value })} /></div>

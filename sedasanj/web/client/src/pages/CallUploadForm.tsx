@@ -115,7 +115,7 @@ export default function CallUploadForm({ onUploaded }: { onUploaded: () => void 
             role="dialog"
             aria-modal="true"
             aria-labelledby="upload-modal-title"
-            className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl sm:max-h-none sm:overflow-visible"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
