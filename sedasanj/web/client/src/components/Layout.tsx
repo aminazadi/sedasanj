@@ -81,7 +81,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
-                    className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#F2F0EF] hover:bg-[#B2AC88] hover:text-[#4B6E48]"}`}
+                    className={({ isActive }) => `sidebar-nav-item group flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#F2F0EF]"}`}
                   >
                     {({ isActive }) => (
                       <>

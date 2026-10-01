@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Added a distinct neutral-gray hover state with warm-white text and icons to every customer and admin sidebar item, including the active route.
 - Further softened the processing-card dot texture for a more understated appearance.
 - Reduced the processing-card dot opacity for a softer background texture.
 - Increased the processing-card dot contrast and applied the pattern through an override-safe background declaration.
