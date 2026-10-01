@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Removed the circular clipping from the assistant new-conversation action so it follows the panel's square, radius-free design language.
 - Localized customer webhook event switch labels into Persian while preserving their existing API event identifiers.
 - Stabilized animated toggle alignment with explicit track and thumb geometry so utility generation and RTL inheritance cannot shift the control during transitions.
 - Added direction-aware animated thumb movement and track-color transitions to every shared admin and customer toggle.

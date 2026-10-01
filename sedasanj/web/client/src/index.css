@@ -62,10 +62,6 @@ body {
   color: #4b6e48 !important;
 }
 
-.assistant-new-chat-button {
-  clip-path: circle(50%);
-}
-
 .assistant-thinking-text {
   background: linear-gradient(100deg, #898989 20%, #4b6e48 42%, #b2ac88 52%, #4b6e48 62%, #898989 80%);
   background-size: 250% 100%;
