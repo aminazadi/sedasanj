@@ -195,8 +195,8 @@ export default function Assistant() {
     finally { setSending(false); }
   }
   if (loading) return <Loading />;
-  return <div className="grid min-h-[calc(100vh-10rem)] gap-4 lg:grid-cols-[18rem_1fr]" dir="rtl">
-    <aside className="assistant-sidebar flex max-h-[calc(100vh-10rem)] min-h-72 flex-col overflow-hidden text-white">
+  return <div className="grid min-h-[calc(100vh-10rem)] items-start gap-4 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[18rem_1fr]" dir="rtl">
+    <aside className="assistant-sidebar flex min-h-72 flex-col overflow-hidden text-white lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)]">
       <div className="flex h-[96px] shrink-0 items-center border-b border-[#B2AC88] px-3">
         <button type="button" className="flex w-full items-center justify-center gap-2 bg-[#F2F0EF] px-3 py-2.5 text-sm font-bold text-[#4B6E48] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={() => void create()}>
           <PlusIcon />
@@ -218,7 +218,7 @@ export default function Assistant() {
         </div>
       </nav>
     </aside>
-    <section className="relative min-h-[70vh] rounded-2xl border border-slate-200 bg-slate-50 pb-28">
+    <section className="relative min-h-[70vh] rounded-2xl border border-slate-200 bg-slate-50 pb-28 lg:min-h-[calc(100vh-4rem)]">
       <div className="space-y-5 p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-slate-500"><h1 className="mb-3 text-xl font-bold text-slate-800">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto bg-brand-600 text-white" : "mr-auto bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-500">{message.sources.map((source) => <Link className="ml-3 text-brand-700" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>
       <form className="absolute inset-x-3 bottom-3 mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg" onSubmit={submit}><textarea ref={inputRef} rows={1} className="input h-12 min-h-12 flex-1 resize-none overflow-y-hidden border-0 py-3" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} placeholder="سؤال خود را بنویسید…" /><button type="submit" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
     </section>
