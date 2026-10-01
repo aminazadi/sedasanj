@@ -136,7 +136,7 @@ export default function Install() {
           </div>
           <Link className="btn" to="/api-docs">مشاهده مستندات کامل API</Link>
         </div>
-        <ol className="mt-5 list-decimal space-y-2 pe-5 text-sm leading-7 text-slate-700">
+        <ol className="mt-5 list-decimal space-y-3 ps-6 text-right text-sm leading-7 text-slate-700">
           <li>ffmpeg و پایتون ۳٫۱۲ را روی سرور تلفنی نصب کنید.</li>
           <li>یک API key با فرمت GZIP یا ZIP بسازید و خروجی مخصوص روش اتصال خود را دانلود کنید.</li>
           <li>برای FreePBX، ماژول Seda Sanj را نصب و JSON را در تب Import Configuration بارگذاری و تأیید کنید.</li>

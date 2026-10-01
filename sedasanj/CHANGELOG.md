@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Corrected the secure Asterisk setup list's RTL indentation and spacing so its text and numbering keep a consistent distance from the right edge.
 - Reduced and balanced the top spacing above the assistant conversation and archive tabs.
 - Added an explicit cancel action to assistant conversation title editing and reset the temporary title on button or Escape cancellation.
 - Replaced the malformed conversation-pin glyph with a standard upright pushpin, hid row actions until hover or keyboard focus, and let chat titles use the full available width before truncating around visible actions.
