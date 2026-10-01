@@ -79,5 +79,5 @@ export const tailwindColors = {
   rose: neutral,
   pink: neutral,
   white: palette.canvas,
-  black: palette.primary,
+  black: "#000000",
 };

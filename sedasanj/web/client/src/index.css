@@ -79,17 +79,17 @@ body {
 .call-header-status > :first-child {
   border-color: #b2ac88 !important;
   background: #f2f0ef !important;
-  color: #898989 !important;
+  color: #000 !important;
 }
 
 .call-header-status > :last-child {
   border-color: #b2ac88 !important;
   background: #b2ac88 !important;
-  color: #898989 !important;
+  color: #000 !important;
 }
 
 .call-detail-hero .btn-ghost {
-  color: #898989;
+  color: #000;
 }
 
 .panel-shell,
