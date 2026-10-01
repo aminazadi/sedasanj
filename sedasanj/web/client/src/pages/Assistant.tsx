@@ -412,7 +412,7 @@ export default function Assistant() {
         <span className="text-sm font-bold text-[#4B6E48]">گفتگوها</span>
         <button type="button" className="inline-flex h-10 w-10 items-center justify-center text-[#4B6E48] transition hover:bg-[#F2F0EF]" onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها"><MenuIcon close /></button>
       </div>
-      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-5" aria-label="فهرست گفتگوها">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-3" aria-label="فهرست گفتگوها">
         <div className="mb-5 flex border border-[#B2AC88] bg-white p-1" role="tablist" aria-label="نوع گفتگوها">
           <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("active")}>گفتگوها</button>
           <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("archived")}>آرشیوها</button>

@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Reduced and balanced the top spacing above the assistant conversation and archive tabs.
 - Added an explicit cancel action to assistant conversation title editing and reset the temporary title on button or Escape cancellation.
 - Replaced the malformed conversation-pin glyph with a standard upright pushpin, hid row actions until hover or keyboard focus, and let chat titles use the full available width before truncating around visible actions.
 - Replaced native browser confirmations with one accessible, responsive project confirmation dialog across call deletion, assistant conversation actions, and complete account-data deletion.
