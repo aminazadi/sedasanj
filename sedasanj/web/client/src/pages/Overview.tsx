@@ -1,23 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { chart } from "@cbi/web-shared/theme";
 import { fmt, request, SENTIMENT_LABELS, TRAJECTORY_LABELS } from "../api";
 import { isOperator, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, SentimentBadge, Stat, StatusBadge, SummaryCell, TrajectoryBadge } from "../components/Widgets";
 import type { AnalyticsSummary, Balance, CallPage, TaskBoard } from "../types";
 
 const COLORS: Record<string, string> = {
-  angry: "#dc2626",
-  sad: "#ea580c",
-  neutral: "#94a3b8",
-  satisfied: "#0ea5e9",
-  happy: "#10b981",
+  angry: chart.dark,
+  sad: chart.neutral,
+  neutral: chart.light,
+  satisfied: chart.secondary,
+  happy: chart.primary,
 };
 
 const TRAJECTORY_COLORS: Record<string, string> = {
-  improved: "#10b981",
-  worsened: "#ef4444",
-  stable: "#94a3b8",
+  improved: chart.primary,
+  worsened: chart.dark,
+  stable: chart.neutral,
 };
 
 export default function Overview() {
@@ -115,7 +116,7 @@ export default function Overview() {
                 <PieChart>
                   <Pie data={pie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
                     {pie.map((slice) => (
-                      <Cell key={slice.key} fill={COLORS[slice.key] ?? "#2f6feb"} />
+                      <Cell key={slice.key} fill={COLORS[slice.key] ?? chart.primary} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => fmt.int(Number(value))} />
@@ -136,7 +137,7 @@ export default function Overview() {
                 <PieChart>
                   <Pie data={trajectoryPie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
                     {trajectoryPie.map((slice) => (
-                      <Cell key={slice.key} fill={TRAJECTORY_COLORS[slice.key] ?? "#2f6feb"} />
+                      <Cell key={slice.key} fill={TRAJECTORY_COLORS[slice.key] ?? chart.primary} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => fmt.int(Number(value))} />

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { chart, palette } from "@cbi/web-shared/theme";
 import {
   Area,
   AreaChart,
@@ -36,7 +37,7 @@ const NER_LABELS: Record<string, string> = {
 };
 
 const TURN_MERGE_GAP_MS = 1200;
-const SPEAKER_COLORS = ["#2f6feb", "#8b5cf6"];
+const SPEAKER_COLORS = [chart.primary, chart.secondary];
 
 function cleanTranscriptText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -730,26 +731,26 @@ export default function CallDetailPage() {
                   <LineChart data={sentimentData} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
                     <defs>
                       <linearGradient id="callerLine" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#2f6feb" />
-                        <stop offset="100%" stopColor="#06b6d4" />
+                        <stop offset="0%" stopColor={chart.primary} />
+                        <stop offset="100%" stopColor={chart.secondary} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} />
-                    <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
+                    <CartesianGrid stroke={chart.light} strokeDasharray="4 6" vertical={false} />
+                    <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fill: chart.neutral, fontSize: 12 }} />
                     <YAxis
                       domain={[0, 100]}
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      tick={{ fill: chart.neutral, fontSize: 11 }}
                       tickFormatter={fmt.int}
                     />
                     <Tooltip
                       formatter={(value) => fmt.percent(Number(value))}
-                      contentStyle={{ borderRadius: 12, borderColor: "#e2e8f0", direction: "rtl", fontFamily: "Vazirmatn" }}
+                      contentStyle={{ borderRadius: 12, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                     />
                     <Legend wrapperStyle={{ direction: "rtl", fontSize: 12 }} />
-                    <Line type="monotone" dataKey="مشتری" stroke="url(#callerLine)" strokeWidth={3} dot={{ r: 5, fill: "#2f6feb", strokeWidth: 3, stroke: "#fff" }} activeDot={{ r: 7 }} connectNulls />
-                    <Line type="monotone" dataKey="اپراتور" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 5, fill: "#8b5cf6", strokeWidth: 3, stroke: "#fff" }} activeDot={{ r: 7 }} connectNulls />
+                    <Line type="monotone" dataKey="مشتری" stroke="url(#callerLine)" strokeWidth={3} dot={{ r: 5, fill: chart.primary, strokeWidth: 3, stroke: palette.canvas }} activeDot={{ r: 7 }} connectNulls />
+                    <Line type="monotone" dataKey="اپراتور" stroke={chart.secondary} strokeWidth={3} dot={{ r: 5, fill: chart.secondary, strokeWidth: 3, stroke: palette.canvas }} activeDot={{ r: 7 }} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -789,7 +790,7 @@ export default function CallDetailPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value) => fmt.duration(Number(value))}
-                      contentStyle={{ borderRadius: 12, borderColor: "#e2e8f0", direction: "rtl", fontFamily: "Vazirmatn" }}
+                      contentStyle={{ borderRadius: 12, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -834,31 +835,31 @@ export default function CallDetailPage() {
               >
                 <defs>
                   <linearGradient id="callerArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#2f6feb" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#2f6feb" stopOpacity={0.03} />
+                    <stop offset="0%" stopColor={chart.primary} stopOpacity={0.45} />
+                    <stop offset="100%" stopColor={chart.primary} stopOpacity={0.03} />
                   </linearGradient>
                   <linearGradient id="agentArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.03} />
+                    <stop offset="0%" stopColor={chart.secondary} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={chart.secondary} stopOpacity={0.03} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} />
-                <XAxis dataKey="turn" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                <CartesianGrid stroke={chart.light} strokeDasharray="4 6" vertical={false} />
+                <XAxis dataKey="turn" axisLine={false} tickLine={false} tick={{ fill: chart.neutral, fontSize: 10 }} />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  tick={{ fill: chart.neutral, fontSize: 10 }}
                   tickFormatter={(value) => fmt.decimal(Number(value))}
                   unit=" ث"
                 />
                 <Tooltip
                   formatter={(value) => `${fmt.decimal(Number(value))} ثانیه`}
                   labelFormatter={(label) => `نوبت ${label}`}
-                  contentStyle={{ borderRadius: 12, borderColor: "#e2e8f0", direction: "rtl", fontFamily: "Vazirmatn" }}
+                  contentStyle={{ borderRadius: 12, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                 />
                 <Legend wrapperStyle={{ direction: "rtl", fontSize: 12 }} />
-                <Area type="monotone" dataKey="مشتری" stroke="#2f6feb" strokeWidth={2} fill="url(#callerArea)" />
-                <Area type="monotone" dataKey="اپراتور" stroke="#8b5cf6" strokeWidth={2} fill="url(#agentArea)" />
+                <Area type="monotone" dataKey="مشتری" stroke={chart.primary} strokeWidth={2} fill="url(#callerArea)" />
+                <Area type="monotone" dataKey="اپراتور" stroke={chart.secondary} strokeWidth={2} fill="url(#agentArea)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>

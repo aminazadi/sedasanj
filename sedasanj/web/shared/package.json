@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx"
+    "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx",
+    "./theme": "./theme.js"
   },
   "peerDependencies": {
     "react": "18.3.1"

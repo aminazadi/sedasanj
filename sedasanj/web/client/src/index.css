@@ -28,6 +28,10 @@
 
 :root {
   color-scheme: light;
+  --color-canvas: #f2f0ef;
+  --color-accent: #b2ac88;
+  --color-neutral: #898989;
+  --color-primary: #4b6e48;
 }
 
 body {
@@ -36,7 +40,7 @@ body {
 }
 
 .sidebar-scroll {
-  scrollbar-color: rgb(71 85 105 / 0.7) transparent;
+  scrollbar-color: rgb(137 137 137 / 0.7) transparent;
   scrollbar-width: thin;
 }
 
@@ -50,7 +54,7 @@ body {
 
 .sidebar-scroll::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: rgb(71 85 105 / 0.7);
+  background: rgb(137 137 137 / 0.7);
 }
 
 @layer components {

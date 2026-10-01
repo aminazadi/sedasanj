@@ -142,7 +142,7 @@ export function ProcessingCard({
                     : active
                       ? failed
                         ? "border-rose-500 bg-rose-50 text-rose-600"
-                        : "border-brand-500 bg-brand-500 text-white shadow-[0_0_0_5px_rgba(47,111,235,0.10)]"
+                        : "border-brand-500 bg-brand-500 text-white shadow-[0_0_0_5px_rgb(75_110_72_/_0.10)]"
                       : "border-slate-200 bg-white text-slate-400"
                 }`}
               >
