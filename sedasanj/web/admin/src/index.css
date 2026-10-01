@@ -67,6 +67,15 @@ body {
   color: #4b6e48;
 }
 
+.panel-shell select {
+  appearance: none;
+  padding-left: 2.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%23898989' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.875rem center;
+  background-size: 1.25rem;
+}
+
 .panel-shell,
 .panel-shell * {
   border-radius: 0 !important;
