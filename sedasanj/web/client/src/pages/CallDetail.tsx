@@ -366,8 +366,10 @@ function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
     <details className="card group" dir="rtl">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-bold text-slate-800">گزارش اجرای پردازش</span>
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true">
-          ▾
+        <span className="flex h-9 w-9 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#000000] transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
         </span>
       </summary>
       <div className="mt-4 max-h-[32rem] overflow-y-auto overscroll-contain sm:max-h-[42rem]">

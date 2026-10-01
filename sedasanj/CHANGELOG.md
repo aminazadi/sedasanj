@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced the processing-report text arrow with a larger outlined SVG chevron and retained the open-state rotation.
 - Replaced the call-detail telephone emoji and heavy filled tile with a crisp outlined phone icon on a light, palette-matched surface.
 - Changed all call-detail header typography, numbers, controls, and icons to black for maximum clarity.
 - Removed green typography and icons from the call-detail header, retaining green only as the top accent rule.
