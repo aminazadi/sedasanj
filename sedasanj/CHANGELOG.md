@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Removed the filled background from both sidebar account cards and adjusted the logout control for the green sidebar surface.
 - Restyled the assistant conversation list to match the main panel sidebar, including grouped navigation, full-width chat items, active-state treatment, action controls, and bounded scrolling.
 - Changed role and identifier text in both sidebar account cards to warm white for consistent contrast.
 - Replaced blue across the in-progress call pipeline and primary chart palette with vivid system-aligned greens.

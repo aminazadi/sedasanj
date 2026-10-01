@@ -106,7 +106,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
       </nav>
 
       <div className="shrink-0 border-t border-[#B2AC88] p-3">
-        <div className="flex items-center gap-3 bg-[#B2AC88] p-3 text-[#F2F0EF]">
+        <div className="flex items-center gap-3 p-3 text-[#F2F0EF]">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#F2F0EF] text-sm font-bold text-[#4B6E48]">{session?.role?.slice(0, 2).toUpperCase() || "AD"}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">مدیر سامانه</p>
@@ -114,7 +114,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
           </div>
           <button
             type="button"
-            className="p-2 text-[#4B6E48] transition hover:bg-[#F2F0EF]"
+            className="p-2 text-[#F2F0EF] transition hover:bg-[#F2F0EF] hover:text-[#4B6E48]"
             aria-label="خروج از حساب کاربری"
             title="خروج"
             onClick={async () => {
