@@ -662,6 +662,7 @@ export default function CallDetailPage() {
             <div className="mt-5 border-t border-[#B2AC88] pt-4">
               <AudioWaveformPlayer
                 audioRef={audioRef}
+                downloadName={`call-${call.id}-audio`}
                 src={audioUrl}
                 onError={() => setError("مرورگر قادر به پخش این فایل صوتی نیست.")}
               />
