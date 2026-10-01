@@ -19,6 +19,7 @@ import {
 import { fmt, INTENT_LABELS, refreshSession, request, tokens } from "../api";
 import { CAN_EDIT_TASKS, CAN_HEAR_AUDIO, isOrgAdmin, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
+import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
 import {
   ErrorBox,
   ProcessingCard,
@@ -655,9 +656,17 @@ export default function CallDetailPage() {
                   {isOrgAdmin(session?.role) ? <button className="block w-full px-3 py-2 text-right text-sm text-[#000000] hover:bg-[#B2AC88] disabled:opacity-50" disabled={deleting} onClick={() => void deleteCall()}>{deleting ? "در حال حذف…" : "حذف تماس"}</button> : null}
                 </div>
               </details>
-              <audio ref={audioRef} controls className={audioUrl ? "h-9 max-w-full" : "hidden"} aria-label="فایل صوتی تماس" onError={() => setError("مرورگر قادر به پخش این فایل صوتی نیست.")} />
             </div>
           </div>
+          {audioUrl ? (
+            <div className="mt-5 border-t border-[#B2AC88] pt-4">
+              <AudioWaveformPlayer
+                audioRef={audioRef}
+                src={audioUrl}
+                onError={() => setError("مرورگر قادر به پخش این فایل صوتی نیست.")}
+              />
+            </div>
+          ) : null}
         </div>
       </section>
 
