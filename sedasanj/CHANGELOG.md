@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Changed role and identifier text in both sidebar account cards to warm white for consistent contrast.
 - Replaced blue across the in-progress call pipeline and primary chart palette with vivid system-aligned greens.
 - Unified customer and admin sidebar hover styling with the active-item green and warm-white color treatment, removing the third gray navigation state.
 - Replaced muted chart colors with a vivid accessible categorical palette across sentiment, trajectory, speaker, trend, and sales-funnel visualizations.

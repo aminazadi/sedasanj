@@ -99,11 +99,11 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
       </nav>
 
       <div className="shrink-0 border-t border-[#B2AC88] p-3">
-        <div className="flex items-center gap-3 bg-[#B2AC88] p-3 text-[#4B6E48]">
+        <div className="flex items-center gap-3 bg-[#B2AC88] p-3 text-[#F2F0EF]">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#F2F0EF] text-sm font-bold text-[#4B6E48]">{roleLabel?.slice(0, 2) || "کا"}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{roleLabel}</p>
-            <p className="truncate text-xs text-[#4B6E48]">شناسه: {session?.userId.slice(0, 8)}</p>
+            <p className="truncate text-xs text-[#F2F0EF]">شناسه: {session?.userId.slice(0, 8)}</p>
           </div>
           <button
             type="button"
