@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type RefObject } from "r
 
 const BAR_COUNT = 84;
 const PLAYBACK_RATES = [1, 1.25, 1.5, 2] as const;
+const PLAYBACK_RATE_STORAGE_KEY = "sedasanj.callAudio.playbackRate";
 const EMPTY_WAVEFORM = Array.from({ length: BAR_COUNT }, (_, index) =>
   0.18 + ((index * 17) % 11) / 18,
 );
@@ -11,6 +12,15 @@ function formatTime(value: number): string {
   const minutes = Math.floor(safeValue / 60);
   const seconds = safeValue % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function readPlaybackRate(): (typeof PLAYBACK_RATES)[number] {
+  try {
+    const storedRate = Number(window.localStorage.getItem(PLAYBACK_RATE_STORAGE_KEY));
+    return PLAYBACK_RATES.find((rate) => rate === storedRate) ?? 1;
+  } catch {
+    return 1;
+  }
 }
 
 function buildPeaks(buffer: AudioBuffer): number[] {
@@ -43,7 +53,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(1);
+  const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(readPlaybackRate);
   const [peaks, setPeaks] = useState<number[]>(EMPTY_WAVEFORM);
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const activeBars = Math.round(progress * BAR_COUNT);
@@ -68,6 +78,19 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
       if (context.state !== "closed") void context.close();
     };
   }, [src]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.playbackRate = playbackRate;
+      audio.preservesPitch = true;
+    }
+    try {
+      window.localStorage.setItem(PLAYBACK_RATE_STORAGE_KEY, String(playbackRate));
+    } catch {
+      return;
+    }
+  }, [audioRef, playbackRate, src]);
 
   useEffect(() => {
     void audioRef.current?.play().catch(() => undefined);
