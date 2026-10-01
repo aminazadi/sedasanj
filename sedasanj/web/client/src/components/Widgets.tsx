@@ -84,7 +84,7 @@ export function ProcessingCard({
                   ? "bg-rose-500"
                   : complete
                     ? "bg-emerald-500"
-                    : "animate-pulse bg-brand-500"
+                    : "animate-pulse bg-[#4B6E48]"
               }`}
             />
             <h2 className="font-bold text-slate-800">مسیر تحلیل تماس</h2>
@@ -100,7 +100,7 @@ export function ProcessingCard({
                 ? "bg-rose-50 text-rose-700"
                 : complete
                   ? "bg-emerald-50 text-emerald-700"
-                  : "bg-brand-50 text-brand-700"
+                  : "bg-[#F2F0EF] text-[#4B6E48]"
             }`}
           >
             {failed ? "نیازمند بررسی" : complete ? "تحلیل کامل شد" : "در حال پردازش"}
@@ -113,7 +113,7 @@ export function ProcessingCard({
       <div className="h-1 bg-slate-100" aria-hidden="true">
         <div
           className={`h-full transition-[width] duration-700 ${
-            failed ? "bg-rose-500" : complete ? "bg-emerald-500" : "bg-brand-500"
+            failed ? "bg-rose-500" : complete ? "bg-emerald-500" : "bg-[#4B6E48]"
           }`}
           style={{ width: `${safeProgress}%` }}
         />
@@ -142,7 +142,7 @@ export function ProcessingCard({
                     : active
                       ? failed
                         ? "border-rose-500 bg-rose-50 text-rose-600"
-                        : "border-brand-500 bg-brand-500 text-white shadow-[0_0_0_5px_rgb(75_110_72_/_0.10)]"
+                        : "border-[#4B6E48] bg-[#4B6E48] text-white shadow-[0_0_0_5px_rgb(75_110_72_/_0.10)]"
                       : "border-slate-200 bg-white text-slate-400"
                 }`}
               >
@@ -156,7 +156,7 @@ export function ProcessingCard({
                       : active
                         ? failed
                           ? "text-rose-700"
-                          : "text-brand-700"
+                          : "text-[#4B6E48]"
                         : "text-slate-400"
                   }`}
                 >
