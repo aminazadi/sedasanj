@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Reworked toggle thumb placement with direction-aware flex alignment so RTL states use the correct logical side and the thumb remains evenly inset inside the track.
 - Vertically centered the shared toggle thumb and enforced the primary green track color independently of RTL direction and generated utility availability.
 - Fixed shared toggle thumb positioning in RTL layouts by isolating its movement from inherited text direction and containing it within the track.
 - Replaced every checkbox in the admin and customer panels with one shared accessible toggle-switch component, including settings, plans, checkout consent, webhook events, protected exports, and follow-up completion.
