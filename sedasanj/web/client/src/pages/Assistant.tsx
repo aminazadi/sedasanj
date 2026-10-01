@@ -33,9 +33,9 @@ function SendIcon() {
   );
 }
 
-function ChatIcon() {
+function ChatIcon({ active }: { active: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 shrink-0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`h-5 w-5 shrink-0 ${active ? "text-[#4B6E48]" : "text-[#B2AC88] transition group-hover:text-[#4B6E48]"}`}>
       <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
       <path d="M8 9h8M8 13h5" />
     </svg>
@@ -195,26 +195,28 @@ export default function Assistant() {
     finally { setSending(false); }
   }
   if (loading) return <Loading />;
-  return <div className="grid min-h-[calc(100vh-10rem)] gap-4 lg:grid-cols-[280px_1fr]" dir="rtl">
-    <aside className="panel-sidebar flex max-h-[calc(100vh-10rem)] min-h-72 flex-col overflow-hidden text-white">
-      <div className="shrink-0 border-b border-[#B2AC88] p-3">
-        <button type="button" className="flex w-full items-center justify-center gap-2 bg-[#F2F0EF] px-3 py-2.5 text-sm font-bold text-[#4B6E48] transition hover:bg-[#B2AC88] hover:text-white" onClick={() => void create()}>
+  return <div className="grid min-h-[calc(100vh-10rem)] gap-4 lg:grid-cols-[18rem_1fr]" dir="rtl">
+    <aside className="assistant-sidebar flex max-h-[calc(100vh-10rem)] min-h-72 flex-col overflow-hidden text-white">
+      <div className="flex h-[96px] shrink-0 items-center border-b border-[#B2AC88] px-3">
+        <button type="button" className="flex w-full items-center justify-center gap-2 bg-[#F2F0EF] px-3 py-2.5 text-sm font-bold text-[#4B6E48] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={() => void create()}>
           <PlusIcon />
           <span>گفتگوی جدید</span>
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col px-3 py-5">
-        <p className="mb-2 shrink-0 px-3 text-[11px] font-medium text-[#B2AC88]">گفتگوها</p>
-        <div className="sidebar-scroll min-h-0 flex-1 space-y-1 overflow-y-auto">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-5" aria-label="فهرست گفتگوها">
+        <div className="mb-5">
+          <p className="mb-2 px-3 text-[11px] font-medium text-[#F2F0EF]">گفتگوها</p>
+          <div className="space-y-1">
           {conversations.map((item) => {
             const isActive = conversation?.id === item.id;
-            return <div key={item.id} className={`group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] text-[#4B6E48]" : "text-[#F2F0EF] hover:bg-[#F2F0EF] hover:text-[#4B6E48]"}`}>
-              {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 pl-20 text-right text-sm" onClick={() => void loadMessages(item)}><ChatIcon /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
+            return <div key={item.id} className={`sidebar-nav-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#F2F0EF]"}`}>
+              {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 pl-20 text-right text-sm" onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
               {editingId !== item.id && <div className={`absolute inset-y-0 left-1 flex items-center transition ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => void remove(item)}><TrashIcon /></button></div>}
             </div>;
           })}
+          </div>
         </div>
-      </div>
+      </nav>
     </aside>
     <section className="relative min-h-[70vh] rounded-2xl border border-slate-200 bg-slate-50 pb-28">
       <div className="space-y-5 p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-slate-500"><h1 className="mb-3 text-xl font-bold text-slate-800">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto bg-brand-600 text-white" : "mr-auto bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-500">{message.sources.map((source) => <Link className="ml-3 text-brand-700" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>

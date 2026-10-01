@@ -48,6 +48,10 @@ body {
   background: #4b6e48;
 }
 
+.assistant-sidebar {
+  background: #898989;
+}
+
 .sidebar-nav-item:hover {
   background: #f2f0ef !important;
   color: #4b6e48 !important;
