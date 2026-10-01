@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS } from "../api";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
-import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import type { FollowUpTask, TaskPriority, TaskStatus } from "../types";
 
 const PRIORITY_TONE: Record<string, string> = {
@@ -131,14 +130,23 @@ export default function FollowUpTaskCard({
       }`}
     >
       <div className="flex items-start gap-3">
-        <ToggleSwitch
-          className="mt-0.5"
-          checked={done}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={done}
+          aria-label={done ? "بازگرداندن به انجام‌نشده" : "علامت انجام‌شده"}
+          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${
+            done
+              ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
+              : "border-[#B2AC88] bg-[#F2F0EF] text-transparent"
+          }`}
           disabled={!canEdit || saving}
-          onChange={() => void toggleDone()}
-          label={done ? "بازگرداندن به انجام‌نشده" : "علامت انجام‌شده"}
-          labelClassName="sr-only"
-        />
+          onClick={() => void toggleDone()}
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+            <path d="m4 10 4 4 8-9" />
+          </svg>
+        </button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <p className={`text-sm leading-6 ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>
