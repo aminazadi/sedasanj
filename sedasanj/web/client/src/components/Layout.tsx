@@ -58,7 +58,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
   const roleLabel = operator ? "پنل اپراتور" : ROLE_LABELS[session?.role ?? ""] ?? session?.role;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-brand-700 text-white">
+    <div className="panel-sidebar flex h-full flex-col overflow-hidden text-white">
       <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-white/10 px-5">
         <img className="w-36 invert mix-blend-screen" src={logo} alt="صدا سنج" />
         {closeMenu && (
@@ -144,7 +144,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   }, [menuOpen]);
 
   return (
-    <div className="panel-shell min-h-screen bg-brand-300 lg:pr-72">
+    <div className="panel-shell min-h-screen lg:pr-72">
       <aside className="fixed inset-y-0 right-0 z-40 hidden w-72 lg:block"><Sidebar /></aside>
 
       <div className={`fixed inset-0 z-50 lg:hidden ${menuOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!menuOpen}>

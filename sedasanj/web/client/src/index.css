@@ -39,6 +39,34 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
+.panel-shell {
+  background: #f2f0ef;
+  color: #898989;
+}
+
+.panel-sidebar {
+  background: #4b6e48;
+}
+
+.panel-shell .card,
+.panel-shell .input,
+.panel-shell input,
+.panel-shell select,
+.panel-shell textarea {
+  border-color: #b2ac88;
+  background: #f2f0ef;
+}
+
+.panel-shell .btn {
+  background: #4b6e48;
+  color: #f2f0ef;
+}
+
+.panel-shell .btn-ghost {
+  border-color: #898989;
+  color: #4b6e48;
+}
+
 .panel-shell,
 .panel-shell * {
   border-radius: 0 !important;
