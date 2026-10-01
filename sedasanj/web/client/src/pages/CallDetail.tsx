@@ -943,7 +943,7 @@ export default function CallDetailPage() {
             action={
               <div className="flex items-center gap-2">
                 <button
-                  className="btn-ghost bg-white text-xs"
+                  className="btn-ghost inline-flex h-9 items-center justify-center bg-white px-3 py-0 text-xs"
                   onClick={() => void correctTranscript()}
                   disabled={!call.transcript || correctionLoading}
                 >
