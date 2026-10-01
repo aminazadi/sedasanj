@@ -136,6 +136,22 @@ function SectionTitle({
   );
 }
 
+function ActionTooltip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className="group relative inline-flex">
+      {children}
+      <span
+        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-max max-w-52 -translate-x-1/2 border border-[#B2AC88] bg-[#F2F0EF] px-2.5 py-1.5 text-[11px] font-normal leading-5 text-[#000000] shadow-lg group-hover:block group-focus-within:block"
+        role="tooltip"
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
+const CALL_ACTION_CLASS = "flex h-10 w-10 items-center justify-center border border-[#898989] bg-white text-[#000000] transition hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-40";
+
 function SkeletonLine({ className = "" }: { className?: string }) {
   return <span className={`block rounded-full bg-slate-200 ${className}`} aria-hidden="true" />;
 }
@@ -640,23 +656,56 @@ export default function CallDetailPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link className="btn-ghost bg-white" to="/calls">بازگشت</Link>
-              <details className="relative z-50">
-                <summary className="btn-ghost flex h-10 w-10 cursor-pointer list-none items-center justify-center bg-white text-xl" aria-label="اقدامات تماس" title="اقدامات تماس">⋮</summary>
-                <div className="absolute left-0 z-[60] mt-2 w-52 border border-[#B2AC88] bg-[#F2F0EF] p-1 text-[#000000] shadow-lg">
-                  {session && CAN_HEAR_AUDIO.includes(session.role) && call.audio_available ? <button className="block w-full px-3 py-2 text-right text-sm hover:bg-[#B2AC88]" onClick={() => void playAudio()} disabled={audioLoading}>{audioLoading ? "در حال دریافت صوت…" : "پخش فایل صوتی"}</button> : null}
-                  {session?.role === "org_admin" || session?.role === "operator" ? <Link className="block px-3 py-2 text-sm hover:bg-[#B2AC88]" to={`/assistant?call_id=${call.id}`}>پرسش درباره این تماس</Link> : null}
+              <ActionTooltip label="بازگشت به تماس‌ها">
+                <Link className={CALL_ACTION_CLASS} to="/calls" aria-label="بازگشت به تماس‌ها">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </Link>
+              </ActionTooltip>
+              {session && CAN_HEAR_AUDIO.includes(session.role) && call.audio_available ? (
+                <ActionTooltip label={audioLoading ? "در حال دریافت صوت…" : "پخش فایل صوتی"}>
                   <button
-                    className="block w-full px-3 py-2 text-right text-sm hover:bg-[#B2AC88] disabled:cursor-not-allowed disabled:opacity-50"
-                    onClick={() => void reanalyze()}
-                    disabled={!call.transcript}
-                    title={!call.transcript ? "پس از آماده‌شدن متن تماس، تحلیل مجدد فعال می‌شود." : undefined}
+                    type="button"
+                    className={CALL_ACTION_CLASS}
+                    onClick={() => void playAudio()}
+                    disabled={audioLoading}
+                    aria-label={audioLoading ? "در حال دریافت صوت" : "پخش فایل صوتی"}
                   >
-                    تحلیل مجدد{!call.transcript ? " (در انتظار متن)" : ""}
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                      <path d="M5 9v6h4l5 4V5L9 9H5Z" />
+                      <path d="M18 9a4 4 0 0 1 0 6M20.5 6.5a8 8 0 0 1 0 11" />
+                    </svg>
                   </button>
-                  {isOrgAdmin(session?.role) ? <button className="block w-full px-3 py-2 text-right text-sm text-[#000000] hover:bg-[#B2AC88] disabled:opacity-50" disabled={deleting} onClick={() => void deleteCall()}>{deleting ? "در حال حذف…" : "حذف تماس"}</button> : null}
-                </div>
-              </details>
+                </ActionTooltip>
+              ) : null}
+              {session?.role === "org_admin" || session?.role === "operator" ? (
+                <ActionTooltip label="پرسش درباره این تماس">
+                  <Link className={CALL_ACTION_CLASS} to={`/assistant?call_id=${call.id}`} aria-label="پرسش درباره این تماس">
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" />
+                      <path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7M12 16h.01" />
+                    </svg>
+                  </Link>
+                </ActionTooltip>
+              ) : null}
+              <ActionTooltip label={call.transcript ? "تحلیل مجدد" : "پس از آماده‌شدن متن تماس، تحلیل مجدد فعال می‌شود"}>
+                <button type="button" className={CALL_ACTION_CLASS} onClick={() => void reanalyze()} disabled={!call.transcript} aria-label="تحلیل مجدد">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                    <path d="M20 7v5h-5M4 17v-5h5" />
+                    <path d="M6.1 9A7 7 0 0 1 18.7 6.7L20 12M4 12l1.3 5.3A7 7 0 0 0 17.9 15" />
+                  </svg>
+                </button>
+              </ActionTooltip>
+              {isOrgAdmin(session?.role) ? (
+                <ActionTooltip label={deleting ? "در حال حذف…" : "حذف تماس"}>
+                  <button type="button" className={CALL_ACTION_CLASS} disabled={deleting} onClick={() => void deleteCall()} aria-label="حذف تماس">
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
+                    </svg>
+                  </button>
+                </ActionTooltip>
+              ) : null}
             </div>
           </div>
           {audioUrl ? (

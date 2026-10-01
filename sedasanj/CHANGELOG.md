@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced the call action menu and labeled back control with standalone icon buttons and accessible tooltips for navigation, audio, assistant, reanalysis, and deletion.
 - Aligned transcript correction opposite the conversation heading and moved the ASR model name into an accessible information-button tooltip.
 - Added consistent spacing between legend icons and labels across every customer-panel chart.
 - Unified transcript turns with the assistant chat's shared directional bubbles, avatars, tails, spacing, colors, and responsive sizing.
