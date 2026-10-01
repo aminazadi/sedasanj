@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Contained every customer and admin table's horizontal overflow within its own card or scroll wrapper on mobile, preventing tables and grid children from widening the page.
 - Removed the outer border from the assistant conversation drawer on mobile while retaining the desktop panel border.
 - Added route-aware page titles beside the mobile hamburger menu across dashboard, call, assistant, reporting, account, setup, payment, and informational pages.
 - Removed the Sedasanj logo beside the customer panel title in the mobile header while preserving the logo inside the navigation drawer.

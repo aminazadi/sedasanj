@@ -103,6 +103,22 @@ body {
   background-size: 1.25rem;
 }
 
+.panel-shell main,
+.panel-shell .card,
+.panel-shell .grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.panel-shell .overflow-x-auto,
+.panel-shell .card:has(> table.table) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .call-header-status > :first-child {
   border-color: #b2ac88 !important;
   background: #f2f0ef !important;
@@ -163,7 +179,7 @@ body {
     @apply mb-1 block text-sm text-slate-600;
   }
   .table {
-    @apply w-full text-right text-sm;
+    @apply w-full min-w-max text-right text-sm;
   }
   .table th {
     @apply border-b border-slate-200 px-3 py-2 font-medium text-slate-500;
