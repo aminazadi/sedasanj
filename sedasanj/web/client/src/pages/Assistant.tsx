@@ -58,6 +58,17 @@ function MenuIcon({ close = false }: { close?: boolean }) {
   );
 }
 
+function TypingIndicator() {
+  return (
+    <div className="flex h-8 items-center gap-1.5 px-1" role="status" aria-label="دستیار در حال نوشتن است">
+      <span className="h-2 w-2 animate-bounce bg-[#4B6E48] [animation-delay:-0.3s]" aria-hidden="true" />
+      <span className="h-2 w-2 animate-bounce bg-[#4B6E48] [animation-delay:-0.15s]" aria-hidden="true" />
+      <span className="h-2 w-2 animate-bounce bg-[#4B6E48]" aria-hidden="true" />
+      <span className="sr-only">دستیار در حال نوشتن است</span>
+    </div>
+  );
+}
+
 export default function Assistant() {
   const [search] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -249,7 +260,7 @@ export default function Assistant() {
       </button>
     </aside>
     <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0">
-      <div className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]"><ChatIcon active className="h-9 w-9" /></div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "mr-auto border-[#B2AC88] bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-[#B2AC88] pt-2 text-xs text-[#898989]">{message.sources.map((source) => <Link className="ml-3 text-[#4B6E48]" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>
+      <div className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]"><ChatIcon active className="h-9 w-9" /></div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "mr-auto border-[#B2AC88] bg-white text-slate-800"}`}>{message.status === "running" && !message.content ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}{message.sources?.length ? <div className="mt-3 border-t border-[#B2AC88] pt-2 text-xs text-[#898989]">{message.sources.map((source) => <Link className="ml-3 text-[#4B6E48]" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>
       <form className="flex shrink-0 items-end gap-2 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}><textarea ref={inputRef} rows={1} className="input h-12 min-h-12 flex-1 resize-none overflow-y-hidden border-0 bg-[#F2F0EF] py-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} placeholder="سؤال خود را بنویسید…" /><button type="submit" className="inline-flex h-12 w-12 shrink-0 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
     </section>
     <ErrorBox message={error} />
