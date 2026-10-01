@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Replaced the malformed conversation-pin glyph with a standard upright pushpin, hid row actions until hover or keyboard focus, and let chat titles use the full available width before truncating around visible actions.
 - Replaced native browser confirmations with one accessible, responsive project confirmation dialog across call deletion, assistant conversation actions, and complete account-data deletion.
 - Added centered, section-specific illustrated empty states to call sentiment, speaker share, transcript, follow-up tasks, smart summary, and extracted entities panels.
 - Added persistent assistant conversation pinning with unpin controls, tenant-safe API state, audit metadata, and a dedicated pinned section above regular chats.
