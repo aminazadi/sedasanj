@@ -70,16 +70,10 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
-      <div className="flex h-[76px] shrink-0 items-center gap-3 border-b border-white/10 px-5">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white p-1.5 shadow-lg shadow-black/20">
-          <img className="max-h-full w-auto" src={logo} alt="صدا سنج" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-base font-bold">پنل مدیریت صدا سنج</p>
-          <p className="mt-0.5 text-xs text-slate-400">مدیریت یکپارچه سامانه</p>
-        </div>
+      <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-white/10 px-5">
+        <img className="w-36 brightness-0 invert mix-blend-screen" src={logo} alt="صدا سنج" />
         {closeMenu && (
-          <button type="button" className="mr-auto rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" onClick={closeMenu} aria-label="بستن منو">
+          <button type="button" className="absolute left-4 rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" onClick={closeMenu} aria-label="بستن منو">
             <MenuIcon close />
           </button>
         )}
