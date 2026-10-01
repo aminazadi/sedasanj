@@ -42,6 +42,22 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
   },
 ];
 
+const PAGE_TITLES: Record<string, string> = {
+  "/checkout": "پرداخت و تمدید",
+  "/payment-result": "نتیجه پرداخت",
+  "/about": "درباره ما",
+  "/contact": "تماس با ما",
+  "/terms": "قوانین استفاده",
+  "/privacy": "حریم خصوصی",
+  "/cancellation": "سیاست لغو اشتراک",
+};
+
+function getPageTitle(pathname: string) {
+  if (pathname.startsWith("/calls/")) return "جزئیات تماس";
+  const navigationItem = NAVIGATION.flatMap((group) => group.items).find((item) => item.to === pathname);
+  return navigationItem?.label ?? PAGE_TITLES[pathname] ?? "پنل کاربری";
+}
+
 function MenuIcon({ close = false }: { close?: boolean }) {
   return (
     <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -126,6 +142,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
 export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const pageTitle = getPageTitle(location.pathname);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -159,10 +176,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <button type="button" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-600" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-controls="client-mobile-menu" aria-label="نمایش منو">
             <MenuIcon />
           </button>
-          <div>
-            <p className="text-sm font-bold text-slate-900">پنل کاربری</p>
-            <p className="text-[11px] text-slate-500">صدا سنج</p>
-          </div>
+          <h1 className="truncate text-base font-bold text-slate-900">{pageTitle}</h1>
         </div>
       </header>
 
