@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Aligned transcript correction opposite the conversation heading and moved the ASR model name into an accessible information-button tooltip.
 - Added consistent spacing between legend icons and labels across every customer-panel chart.
 - Unified transcript turns with the assistant chat's shared directional bubbles, avatars, tails, spacing, colors, and responsive sizing.
 - Added a deliberate task-list exception that uses a polished square primary checkbox for completion while retaining switches everywhere else.

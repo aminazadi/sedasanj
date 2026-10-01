@@ -892,8 +892,7 @@ export default function CallDetailPage() {
             title="متن مکالمه"
             description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
             action={
-              <div className="flex flex-wrap items-center gap-2">
-                {call.asr_model ? <span className="badge bg-slate-100 text-slate-500">{call.asr_model}</span> : null}
+              <div className="flex items-center gap-2">
                 <button
                   className="btn-ghost bg-white text-xs"
                   onClick={() => void correctTranscript()}
@@ -901,6 +900,21 @@ export default function CallDetailPage() {
                 >
                   {correctionLoading ? "در حال تصحیح…" : call.corrected_transcript ? "تصحیح دوباره متن" : "تصحیح متن"}
                 </button>
+                {call.asr_model ? (
+                  <button
+                    type="button"
+                    className="group relative flex h-9 w-9 shrink-0 items-center justify-center border border-[#898989] bg-white text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]"
+                    aria-label={`مدل تبدیل گفتار: ${call.asr_model}`}
+                  >
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 11v6M12 7.5v.5" />
+                    </svg>
+                    <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-max max-w-[min(28rem,calc(100vw-3rem))] break-all border border-[#B2AC88] bg-[#F2F0EF] px-3 py-2 text-left text-[11px] font-normal leading-5 text-[#000000] shadow-lg group-hover:block group-focus:block" dir="ltr" role="tooltip">
+                      {call.asr_model}
+                    </span>
+                  </button>
+                ) : null}
               </div>
             }
           />
