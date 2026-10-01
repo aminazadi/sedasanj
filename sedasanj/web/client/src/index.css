@@ -45,7 +45,7 @@ body {
 }
 
 .panel-sidebar {
-  background: #4b6e48;
+  background: #4b6e48 radial-gradient(circle, rgb(242 240 239 / 0.1) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
 }
 
 .assistant-sidebar {
