@@ -35,7 +35,7 @@ function SendIcon() {
 
 function ChatIcon({ active }: { active: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`h-5 w-5 shrink-0 ${active ? "text-[#4B6E48]" : "text-[#B2AC88] transition group-hover:text-[#4B6E48]"}`}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`h-5 w-5 shrink-0 ${active ? "text-[#4B6E48]" : "text-[#898989] transition group-hover:text-[#4B6E48]"}`}>
       <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
       <path d="M8 9h8M8 13h5" />
     </svg>
@@ -199,11 +199,11 @@ export default function Assistant() {
     <aside className="assistant-sidebar relative flex min-h-72 flex-col overflow-hidden text-white lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)]">
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-5" aria-label="فهرست گفتگوها">
         <div className="mb-5">
-          <p className="mb-2 px-3 text-[11px] font-medium text-[#F2F0EF]">گفتگوها</p>
+          <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوها</p>
           <div className="space-y-1">
           {conversations.map((item) => {
             const isActive = conversation?.id === item.id;
-            return <div key={item.id} className={`sidebar-nav-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#F2F0EF]"}`}>
+            return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#4B6E48]"}`}>
               {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 pl-20 text-right text-sm" onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
               {editingId !== item.id && <div className={`absolute inset-y-0 left-1 flex items-center transition ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => void remove(item)}><TrashIcon /></button></div>}
             </div>;
@@ -211,7 +211,7 @@ export default function Assistant() {
           </div>
         </div>
       </nav>
-      <button type="button" className="assistant-new-chat-button absolute bottom-5 left-5 z-10 inline-flex h-14 w-14 items-center justify-center bg-[#F2F0EF] text-[#4B6E48] shadow-[0_10px_30px_rgba(16,31,18,0.35)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F2F0EF]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
+      <button type="button" className="assistant-new-chat-button absolute bottom-5 left-5 z-10 inline-flex h-14 w-14 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] shadow-[0_10px_30px_rgba(75,110,72,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
         <PlusIcon />
       </button>
     </aside>
