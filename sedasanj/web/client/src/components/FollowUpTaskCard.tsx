@@ -124,7 +124,11 @@ export default function FollowUpTaskCard({
   }
 
   return (
-    <li className={`rounded-xl border p-3 ${done ? "border-slate-100 bg-slate-50/70" : "border-slate-200 bg-white"}`}>
+    <li
+      className={`rounded-xl border p-3 ${
+        done ? "border-[#B2AC88] bg-[#B2AC88]/20" : "border-[#B2AC88] bg-[#F2F0EF]"
+      }`}
+    >
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
@@ -140,7 +144,11 @@ export default function FollowUpTaskCard({
               {task.title}
             </p>
             <div className="flex flex-wrap items-center gap-1">
-              <span className={`badge ${done ? "bg-emerald-50 text-emerald-700" : "bg-brand-50 text-brand-700"}`}>
+              <span
+                className={`badge ${
+                  done ? "bg-[#4B6E48] text-[#F2F0EF]" : "bg-[#B2AC88] text-black"
+                }`}
+              >
                 {TASK_STATUS_LABELS[task.status]}
               </span>
               {task.priority ? (

@@ -72,7 +72,7 @@ export default function Tasks() {
       (view === "all" && counts.all === 0));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-[#000000]">
       <div>
         <h1 className="text-lg font-bold">کارهای قابل پیگیری</h1>
         <p className="mt-1 text-xs text-slate-400">
@@ -88,13 +88,17 @@ export default function Tasks() {
           <button
             key={item.id}
             type="button"
-            className={`rounded-full px-3 py-1.5 text-sm ${
-              view === item.id ? "bg-brand-50 text-brand-700" : "bg-white text-slate-600 ring-1 ring-slate-200"
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === item.id
+                ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
+                : "border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48] hover:bg-[#B2AC88] hover:text-black"
             }`}
             onClick={() => setView(item.id)}
           >
             {item.label}
-            <span className="mr-1 text-xs text-slate-400">({fmtCount(counts[item.id])})</span>
+            <span className={`mr-1 text-xs ${view === item.id ? "text-[#F2F0EF]" : "text-[#898989]"}`}>
+              ({fmtCount(counts[item.id])})
+            </span>
           </button>
         ))}
       </div>
