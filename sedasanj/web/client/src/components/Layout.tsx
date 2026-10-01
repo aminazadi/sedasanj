@@ -159,7 +159,6 @@ export default function Layout({ children }: { children: ReactNode }) {
           <button type="button" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-600" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-controls="client-mobile-menu" aria-label="نمایش منو">
             <MenuIcon />
           </button>
-          <div className="h-9 w-9 rounded-xl border border-slate-100 bg-white p-1 shadow-sm"><img className="h-full w-full object-contain" src={logo} alt="" /></div>
           <div>
             <p className="text-sm font-bold text-slate-900">پنل کاربری</p>
             <p className="text-[11px] text-slate-500">صدا سنج</p>

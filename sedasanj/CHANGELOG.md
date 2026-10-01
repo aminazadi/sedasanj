@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Removed the Sedasanj logo beside the customer panel title in the mobile header while preserving the logo inside the navigation drawer.
 - Added a responsive assistant conversation drawer on mobile with a compact trigger, backdrop, Escape handling, and automatic close after selection.
 - Switched the assistant conversation sidebar to a light surface while preserving the main sidebar's navigation structure, spacing, active states, and interactions.
 - Replaced the assistant sidebar's gray surface with a dark forest treatment and converted the new-conversation action into an accessible floating button.
