@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Vertically centered the shared toggle thumb and enforced the primary green track color independently of RTL direction and generated utility availability.
 - Fixed shared toggle thumb positioning in RTL layouts by isolating its movement from inherited text direction and containing it within the track.
 - Replaced every checkbox in the admin and customer panels with one shared accessible toggle-switch component, including settings, plans, checkout consent, webhook events, protected exports, and follow-up completion.
 - Stretched the assistant send button to the full composer height, including the keyboard-shortcut hint row.
