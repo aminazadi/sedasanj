@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Localized customer webhook event switch labels into Persian while preserving their existing API event identifiers.
 - Stabilized animated toggle alignment with explicit track and thumb geometry so utility generation and RTL inheritance cannot shift the control during transitions.
 - Added direction-aware animated thumb movement and track-color transitions to every shared admin and customer toggle.
 - Reworked toggle thumb placement with direction-aware flex alignment so RTL states use the correct logical side and the thumb remains evenly inset inside the track.

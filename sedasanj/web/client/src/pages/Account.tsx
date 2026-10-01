@@ -18,6 +18,12 @@ import type {
 } from "../types";
 
 const EVENTS = ["call.complete", "call.failed", "balance.low", "sales.insight"];
+const EVENT_LABELS: Record<string, string> = {
+  "call.complete": "تماس تکمیل‌شده",
+  "call.failed": "تماس ناموفق",
+  "balance.low": "اعتبار رو به پایان",
+  "sales.insight": "بینش فروش",
+};
 
 const LEDGER_LABELS: Record<string, string> = {
   reservation: "رزرو",
@@ -447,7 +453,7 @@ export default function Account() {
                             : hookForm.events.filter((item) => item !== event),
                         })
                       }
-                      label={event}
+                      label={EVENT_LABELS[event] ?? event}
                     />
                 ))}
               </div>
