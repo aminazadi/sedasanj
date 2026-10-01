@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Added a fast queued typewriter effect for streamed assistant responses and prevented the completed message from skipping unfinished animation frames.
 - Added `Ctrl + Enter` message submission to the assistant composer with an inline shortcut hint while preserving plain Enter for new lines.
 - Added distinct square user and assistant avatars beside every chat message with clear spacing from the directional bubble tails.
 - Added compact bottom-aligned directional tails to user and assistant message bubbles with seamless rotated fills that preserve each bubble border without hollow or detached outlines.

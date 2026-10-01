@@ -194,6 +194,35 @@ export default function Assistant() {
     const decoder = new TextDecoder();
     let buffer = "";
     let completed: ChatMessage | null = null;
+    let pendingText = "";
+    let renderedText = "";
+    let typingTimer: number | null = null;
+    let resolveTyping: (() => void) | null = null;
+    const finishTyping = () => {
+      if (!resolveTyping) return;
+      const resolve = resolveTyping;
+      resolveTyping = null;
+      resolve();
+    };
+    const renderTypingBatch = () => {
+      typingTimer = null;
+      const characters = Array.from(pendingText);
+      const batch = characters.splice(0, 3).join("");
+      pendingText = characters.join("");
+      if (batch) {
+        renderedText += batch;
+        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: renderedText } : item));
+      }
+      if (pendingText) typingTimer = window.setTimeout(renderTypingBatch, 14);
+      else finishTyping();
+    };
+    const scheduleTyping = () => {
+      if (typingTimer === null && pendingText) typingTimer = window.setTimeout(renderTypingBatch, 14);
+    };
+    const waitForTyping = () => {
+      if (!pendingText && typingTimer === null) return Promise.resolve();
+      return new Promise<void>((resolve) => { resolveTyping = resolve; });
+    };
     const handleEvent = (frame: string) => {
       const event = /^event: (.+)$/m.exec(frame)?.[1];
       const data = /^data: (.+)$/m.exec(frame)?.[1];
@@ -201,10 +230,16 @@ export default function Assistant() {
       const payload = JSON.parse(data) as { content?: string; message?: ChatMessage };
       const content = payload.content;
       if (event === "delta" && content) {
-        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: item.content + content } : item));
+        pendingText += content;
+        scheduleTyping();
       }
       if (event === "replace" && content) {
+        if (typingTimer !== null) window.clearTimeout(typingTimer);
+        typingTimer = null;
+        pendingText = "";
+        renderedText = content;
         setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content } : item));
+        finishTyping();
       }
       if (event === "done" && payload.message) completed = payload.message;
     };
@@ -217,6 +252,7 @@ export default function Assistant() {
       if (done) break;
     }
     if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
+    await waitForTyping();
     setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
     return completed as ChatMessage;
   }
