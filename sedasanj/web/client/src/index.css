@@ -76,10 +76,16 @@ body {
   background-size: 1.25rem;
 }
 
-.call-header-status > * {
-  border-color: #4b6e48 !important;
+.call-header-status > :first-child {
+  border-color: #898989 !important;
+  background: #898989 !important;
+  color: #f2f0ef !important;
+}
+
+.call-header-status > :last-child {
+  border-color: #b2ac88 !important;
   background: #b2ac88 !important;
-  color: #4b6e48 !important;
+  color: #898989 !important;
 }
 
 .panel-shell,

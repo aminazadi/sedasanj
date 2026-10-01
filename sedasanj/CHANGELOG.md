@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Replaced green in the call-header badges with a neutral gray status treatment and a beige identifier treatment.
 - Reworked the call-detail header with the exact shared palette, replacing the blue gradient, blue icon treatment, red status, and mismatched action-menu colors.
 - Standardized RTL select controls in both panels with a palette-matched chevron and consistent spacing from the left edge.
 - Removed gray from both sidebars and established explicit states: green base, warm-white active navigation, beige hover/account surfaces, and green active indicators.

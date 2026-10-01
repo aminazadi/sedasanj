@@ -605,7 +605,7 @@ export default function CallDetailPage() {
             </div>
             <div className="call-header-status flex flex-wrap items-center gap-2">
               <StatusBadge status={call.status} />
-              <span className="bg-[#B2AC88] px-2.5 py-1 text-[11px] text-[#4B6E48]">
+              <span className="bg-[#B2AC88] px-2.5 py-1 text-[11px] text-[#898989]">
                 شناسه {fmt.digits(call.id.slice(0, 8))}
               </span>
             </div>
