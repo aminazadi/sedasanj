@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added centered, section-specific illustrated empty states to call sentiment, speaker share, transcript, follow-up tasks, smart summary, and extracted entities panels.
 - Added persistent assistant conversation pinning with unpin controls, tenant-safe API state, audit metadata, and a dedicated pinned section above regular chats.
 - Added explicit confirmation dialogs before assistant conversation deletion and archiving, and moved archived conversations into their own dedicated sidebar view.
 - Replaced the temporary-chat lock symbol with a conversation-and-clock icon and pinned its launcher to the top-left corner of the chat workspace.

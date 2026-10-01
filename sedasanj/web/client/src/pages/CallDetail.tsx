@@ -136,6 +136,68 @@ function SectionTitle({
   );
 }
 
+type EmptyStateIcon = "sentiment" | "conversation" | "transcript" | "tasks" | "summary" | "entities";
+
+function EmptyState({
+  icon,
+  message,
+  className = "",
+}: {
+  icon: EmptyStateIcon;
+  message: string;
+  className?: string;
+}) {
+  const paths: Record<EmptyStateIcon, ReactNode> = {
+    sentiment: (
+      <>
+        <path d="M4 18 9 13l4 3 7-9" />
+        <path d="M15 7h5v5" />
+      </>
+    ),
+    conversation: (
+      <>
+        <path d="M5 6.5h9a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3H9l-4 3v-11Z" />
+        <path d="M9 10.5h4M19 10v6l-3 2.5" />
+      </>
+    ),
+    transcript: (
+      <>
+        <path d="M7 3.5h7l4 4V20H7z" />
+        <path d="M14 3.5V8h4M10 12h5M10 15.5h5" />
+      </>
+    ),
+    tasks: (
+      <>
+        <rect x="5" y="4" width="14" height="16" rx="1" />
+        <path d="m8.5 10 1.5 1.5 3-3M14.5 10H16M8.5 16h7" />
+      </>
+    ),
+    summary: (
+      <>
+        <path d="M12 3 13.4 8.6 19 10l-5.6 1.4L12 17l-1.4-5.6L5 10l5.6-1.4z" />
+        <path d="m18.5 16 .6 2.4 2.4.6-2.4.6-.6 2.4-.6-2.4-2.4-.6 2.4-.6z" />
+      </>
+    ),
+    entities: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 19a5.5 5.5 0 0 1 11 0M17 8h4M17 12h4M17 16h3" />
+      </>
+    ),
+  };
+
+  return (
+    <div className={`flex flex-col items-center justify-center gap-3 bg-slate-50 px-5 py-8 text-center ${className}`}>
+      <span className="flex h-14 w-14 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48]" aria-hidden="true">
+        <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          {paths[icon]}
+        </svg>
+      </span>
+      <p className="max-w-md text-sm leading-6 text-slate-400">{message}</p>
+    </div>
+  );
+}
+
 function ActionTooltip({ label, children }: { label: string; children: ReactNode }) {
   return (
     <span className="group relative inline-flex">
@@ -837,7 +899,7 @@ export default function CallDetailPage() {
               </div>
             </>
           ) : (
-            <div className="flex h-64 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">هنوز داده کافی برای ترسیم روند احساس وجود ندارد.</div>
+            <EmptyState icon="sentiment" message="هنوز داده کافی برای ترسیم روند احساس وجود ندارد." className="h-64" />
           )}
         </div>
 
@@ -880,7 +942,7 @@ export default function CallDetailPage() {
               </div>
             </>
           ) : (
-            <div className="flex h-64 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">داده گفتاری برای این تماس ثبت نشده است.</div>
+            <EmptyState icon="conversation" message="داده گفتاری برای این تماس ثبت نشده است." className="h-64" />
           )}
         </div>
       </section>
@@ -968,9 +1030,11 @@ export default function CallDetailPage() {
             }
           />
           {conversationTurns.length === 0 ? (
-            <div className="rounded-xl bg-slate-50 py-12 text-center text-sm text-slate-400">
-              {call.processing ? "در حال پیاده‌سازی مکالمه…" : "هنوز پیاده‌سازی نشده است."}
-            </div>
+            <EmptyState
+              icon="transcript"
+              message={call.processing ? "در حال پیاده‌سازی مکالمه…" : "هنوز پیاده‌سازی نشده است."}
+              className="min-h-40"
+            />
           ) : (
             <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4">
               {conversationTurns.map((utterance, index) => {
@@ -1015,7 +1079,7 @@ export default function CallDetailPage() {
               }
             />
             {tasks.length === 0 ? (
-              <p className="text-sm text-slate-400">موردی ثبت نشده است.</p>
+              <EmptyState icon="tasks" message="موردی ثبت نشده است." className="min-h-36" />
             ) : (
               <ul className="space-y-2">
                 {tasks.map((task) => (
@@ -1044,7 +1108,15 @@ export default function CallDetailPage() {
         <aside className="space-y-4">
           <div className="card">
             <SectionTitle title="خلاصه هوشمند" description="چکیده محتوای تماس" />
-            <p className="text-sm leading-7 text-slate-700">{insights?.summary ?? (call.processing ? "خلاصه در حال آماده‌سازی است…" : "—")}</p>
+            {insights?.summary ? (
+              <p className="text-sm leading-7 text-slate-700">{insights.summary}</p>
+            ) : (
+              <EmptyState
+                icon="summary"
+                message={call.processing ? "خلاصه در حال آماده‌سازی است…" : "خلاصه‌ای برای این تماس ثبت نشده است."}
+                className="min-h-32"
+              />
+            )}
             {insights?.keywords?.length ? (
               <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-4">
                 {insights.keywords.map((keyword) => (
@@ -1084,7 +1156,7 @@ export default function CallDetailPage() {
 
           <div className="card">
             <SectionTitle title="موجودیت‌های استخراج‌شده" />
-            {insights?.ner ? (
+            {insights?.ner && Object.values(insights.ner).some((values) => values?.length) ? (
               <dl className="space-y-3 text-sm">
                 {Object.entries(insights.ner).map(([key, values]) => (
                   <div key={key} className="rounded-xl bg-slate-50 p-3">
@@ -1094,7 +1166,7 @@ export default function CallDetailPage() {
                 ))}
               </dl>
             ) : (
-              <p className="text-sm text-slate-400">موردی استخراج نشده است.</p>
+              <EmptyState icon="entities" message="موردی استخراج نشده است." className="min-h-32" />
             )}
           </div>
 
