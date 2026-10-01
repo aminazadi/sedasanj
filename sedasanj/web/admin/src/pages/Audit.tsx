@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { AuditEvent, Page } from "../types";
+import TableFilters from "@cbi/web-shared/components/TableFilters";
 
 export default function Audit() {
   const limit = 25;
@@ -23,7 +24,7 @@ export default function Audit() {
   return (
     <div className="space-y-4">
       <ErrorBox message={error} />
-      <div className="card flex gap-3">
+      <TableFilters><div className="flex gap-3">
         <div className="flex-1">
           <label className="label">فیلتر عملیات</label>
           <input
@@ -34,7 +35,7 @@ export default function Audit() {
             onChange={(event) => { setAction(event.target.value); setOffset(0); }}
           />
         </div>
-      </div>
+      </div></TableFilters>
 
       <div className="card">
         {!events ? (

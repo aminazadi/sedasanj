@@ -4,6 +4,7 @@ import { fmt, INTENT_LABELS, query, request, SENTIMENT_LABELS } from "../api";
 import { isOperator, isOrgAdmin, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination, SentimentBadge, StatusBadge, SummaryCell, TrajectoryBadge } from "../components/Widgets";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
+import TableFilters from "@cbi/web-shared/components/TableFilters";
 import type { CallPage, CallSummary } from "../types";
 import CallUploadForm from "./CallUploadForm";
 
@@ -127,8 +128,9 @@ export default function Calls() {
         </div>
         <CallUploadForm onUploaded={() => void load(applied, null)} />
       </div>
+      <TableFilters>
       <form
-        className="card grid gap-3 md:grid-cols-7"
+        className="grid gap-3 md:grid-cols-7"
         onSubmit={(event) => {
           event.preventDefault();
           if (appliedFiltersUnchanged) {
@@ -210,6 +212,7 @@ export default function Calls() {
           </button>
         </div>
       </form>
+      </TableFilters>
 
       <ErrorBox message={error} />
 

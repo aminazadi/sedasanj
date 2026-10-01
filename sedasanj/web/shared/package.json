@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx",
+    "./components/TableFilters": "./components/TableFilters.tsx",
     "./theme": "./theme.js"
   },
   "peerDependencies": {

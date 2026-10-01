@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fmt, formatJobError, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { Job, Page } from "../types";
+import TableFilters from "@cbi/web-shared/components/TableFilters";
 
 const KINDS = ["", "asr", "emotion", "llm", "notify"];
 
@@ -43,7 +44,7 @@ export default function Jobs() {
   return (
     <div className="space-y-4">
       <ErrorBox message={error} />
-      <div className="card flex flex-wrap gap-3">
+      <TableFilters><div className="flex flex-wrap gap-3">
         <div>
           <label className="label">نوع کار</label>
           <select className="input" value={kind} onChange={(event) => { setKind(event.target.value); setOffset(0); }}>
@@ -73,7 +74,7 @@ export default function Jobs() {
             بازخوانی
           </button>
         </div>
-      </div>
+      </div></TableFilters>
 
       <div className="card">
         {!jobs ? (

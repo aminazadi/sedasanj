@@ -153,3 +153,6 @@ body {
     @apply rounded-full px-2 py-0.5 text-xs;
   }
 }
+@media (min-width: 768px) {
+  .table-filters:not([open]) > .table-filters-content { display: block; }
+}
