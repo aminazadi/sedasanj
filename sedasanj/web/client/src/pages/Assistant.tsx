@@ -36,6 +36,14 @@ function ArchiveIcon({ restore = false }: { restore?: boolean }) {
   );
 }
 
+function PinIcon({ pinned = false }: { pinned?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+      <path d="m14 4 6 6-3 1-4 4-1 5-2-2-4 4-1-1 4-4-2-2 5-1 4-4Z" />
+    </svg>
+  );
+}
+
 function TemporaryChatIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
@@ -209,6 +217,16 @@ export default function Assistant() {
       setError((err as Error).message);
     }
   }
+  async function setPinned(item: ChatConversation, pinned: boolean) {
+    try {
+      setError(null);
+      const updated = await request<ChatConversation>(`/v1/assistant/conversations/${item.id}`, { method: "PATCH", body: { pinned } });
+      setConversations((current) => current.map((currentItem) => currentItem.id === updated.id ? updated : currentItem));
+      setConversation((current) => current?.id === updated.id ? updated : current);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
   async function confirmConversationAction() {
     if (!confirmation) return;
     const { action, item } = confirmation;
@@ -374,9 +392,10 @@ export default function Assistant() {
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
     const archived = Boolean(item.archived_at);
+    const pinned = Boolean(item.pinned_at);
     return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#4B6E48]"}`}>
-      {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 pl-28 text-right text-sm" onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
-      {editingId !== item.id && <div className={`absolute inset-y-0 left-1 flex items-center transition ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} title={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} onClick={() => archived ? void setArchived(item, false) : setConfirmation({ action: "archive", item })}><ArchiveIcon restore={archived} /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => setConfirmation({ action: "delete", item })}><TrashIcon /></button></div>}
+      {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }} aria-label="نام گفتگو" /><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className={`flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-right text-sm ${archived ? "pl-28" : "pl-36"}`} onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="truncate">{item.title || "گفتگوی جدید"}</span>{isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}</button>}
+      {editingId !== item.id && <div className={`absolute inset-y-0 left-1 flex items-center transition ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button>{!archived ? <button type="button" className={`inline-flex h-8 w-8 items-center justify-center transition hover:bg-[#B2AC88] hover:text-[#4B6E48] ${pinned ? "text-[#4B6E48]" : "text-[#898989]"}`} aria-label={pinned ? "برداشتن پین گفتگو" : "پین کردن گفتگو"} title={pinned ? "برداشتن پین گفتگو" : "پین کردن گفتگو"} onClick={() => void setPinned(item, !pinned)}><PinIcon pinned={pinned} /></button> : null}<button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} title={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} onClick={() => archived ? void setArchived(item, false) : setConfirmation({ action: "archive", item })}><ArchiveIcon restore={archived} /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => setConfirmation({ action: "delete", item })}><TrashIcon /></button></div>}
     </div>;
   }
   if (loading) return <Loading />;
@@ -396,12 +415,10 @@ export default function Assistant() {
           <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("active")}>گفتگوها</button>
           <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("archived")}>آرشیوها</button>
         </div>
-        {conversationView === "active" ? <div className="mb-5">
+        {conversationView === "active" ? <>{conversations.some((item) => item.pinned_at && !item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">پین‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.pinned_at && !item.archived_at).sort((first, second) => Date.parse(second.pinned_at || "") - Date.parse(first.pinned_at || "")).map(renderConversation)}</div></div> : null}<div className="mb-5">
           <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوهای فعال</p>
-          <div className="space-y-1">
-          {conversations.filter((item) => !item.archived_at).map(renderConversation)}
-          </div>
-        </div> : <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوهای آرشیوشده</p>{conversations.some((item) => item.archived_at) ? <div className="space-y-1">{conversations.filter((item) => item.archived_at).map(renderConversation)}</div> : <p className="px-3 py-8 text-center text-xs text-[#898989]">گفتگوی آرشیوشده‌ای وجود ندارد.</p>}</div>}
+          {conversations.some((item) => !item.archived_at && !item.pinned_at) ? <div className="space-y-1">{conversations.filter((item) => !item.archived_at && !item.pinned_at).map(renderConversation)}</div> : <p className="px-3 py-8 text-center text-xs text-[#898989]">گفتگوی فعال دیگری وجود ندارد.</p>}
+        </div></> : <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوهای آرشیوشده</p>{conversations.some((item) => item.archived_at) ? <div className="space-y-1">{conversations.filter((item) => item.archived_at).map(renderConversation)}</div> : <p className="px-3 py-8 text-center text-xs text-[#898989]">گفتگوی آرشیوشده‌ای وجود ندارد.</p>}</div>}
       </nav>
       <button type="button" className="absolute bottom-5 left-5 z-10 inline-flex h-14 w-14 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] shadow-[0_10px_30px_rgba(75,110,72,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => void create()} aria-label="گفتگوی جدید" title="گفتگوی جدید">
         <PlusIcon />

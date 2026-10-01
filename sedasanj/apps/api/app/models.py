@@ -713,6 +713,7 @@ class ChatConversation(Base):
     )
     title: Mapped[str | None] = mapped_column(Text)
     archived_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    pinned_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 

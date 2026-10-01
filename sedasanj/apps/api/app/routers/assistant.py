@@ -201,7 +201,7 @@ async def _conversation(
 @router.get("/assistant/conversations", response_model=list[ChatConversationOut])
 async def list_conversations(principal: OperatorDep, session: TenantSession) -> list[ChatConversationOut]:
     assert principal.tenant_id is not None
-    rows = (await session.execute(select(ChatConversation).where(ChatConversation.tenant_id == principal.tenant_id, ChatConversation.owner_id == principal.id).order_by(ChatConversation.updated_at.desc()))).scalars().all()
+    rows = (await session.execute(select(ChatConversation).where(ChatConversation.tenant_id == principal.tenant_id, ChatConversation.owner_id == principal.id).order_by(ChatConversation.pinned_at.desc().nulls_last(), ChatConversation.updated_at.desc()))).scalars().all()
     return [ChatConversationOut.model_validate(row) for row in rows]
 
 
@@ -236,8 +236,14 @@ async def update_conversation(conversation_id: UUID, payload: ChatConversationUp
             raise ApiError("invalid_request", "conversation title is required")
     if payload.archived is not None:
         row.archived_at = datetime.now(UTC) if payload.archived else None
+        if payload.archived:
+            row.pinned_at = None
+    if payload.pinned is not None:
+        if payload.pinned and row.archived_at is not None:
+            raise ApiError("invalid_request", "an archived conversation cannot be pinned")
+        row.pinned_at = datetime.now(UTC) if payload.pinned else None
     row.updated_at = datetime.now(UTC)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.conversation_update", payload={"conversation_id": str(row.id), "archived": row.archived_at is not None}, ip=client_ip(request))
+    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.conversation_update", payload={"conversation_id": str(row.id), "archived": row.archived_at is not None, "pinned": row.pinned_at is not None}, ip=client_ip(request))
     await session.flush()
     return ChatConversationOut.model_validate(row)
 

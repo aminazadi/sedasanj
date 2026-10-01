@@ -468,11 +468,14 @@ class ChatConversationCreate(BaseModel):
 class ChatConversationUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     archived: bool | None = None
+    pinned: bool | None = None
 
     @model_validator(mode="after")
     def _require_change(self) -> ChatConversationUpdate:
-        if self.title is None and self.archived is None:
+        if self.title is None and self.archived is None and self.pinned is None:
             raise ValueError("at least one conversation change is required")
+        if self.archived is True and self.pinned is True:
+            raise ValueError("an archived conversation cannot be pinned")
         return self
 
 
@@ -482,6 +485,7 @@ class ChatConversationOut(BaseModel):
     call_id: UUID | None
     title: str | None
     archived_at: datetime | None
+    pinned_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

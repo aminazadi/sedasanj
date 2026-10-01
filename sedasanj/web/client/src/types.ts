@@ -163,6 +163,7 @@ export interface ChatConversation {
   call_id: string | null;
   title: string | null;
   archived_at: string | null;
+  pinned_at: string | null;
   created_at: string;
   updated_at: string;
 }
