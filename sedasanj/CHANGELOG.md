@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Added directional, palette-matched tails to user and assistant message bubbles.
 - Replaced the assistant's three-dot typing indicator with an animated shimmer treatment for the Persian thinking-and-result status text.
 - Added an accessible animated three-dot typing indicator while the assistant is waiting to stream its first response content.
 - Unified the desktop assistant conversation list and chat area into one bordered panel separated by a single divider.
