@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Removed the divider from the call-detail hero and tightened its vertical padding, header spacing, content gap, title spacing, and metadata wrapping.
 - Added the call-analysis fine-dot texture to the full navigation sidebar in both the customer and admin panels.
 - Removed the circular clipping from the assistant new-conversation action so it follows the panel's square, radius-free design language.
 - Localized customer webhook event switch labels into Persian while preserving their existing API event identifiers.
