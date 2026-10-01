@@ -33,9 +33,9 @@ function SendIcon() {
   );
 }
 
-function ChatIcon({ active }: { active: boolean }) {
+function ChatIcon({ active, className = "h-5 w-5" }: { active: boolean; className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`h-5 w-5 shrink-0 ${active ? "text-[#4B6E48]" : "text-[#898989] transition group-hover:text-[#4B6E48]"}`}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${className} shrink-0 ${active ? "text-[#4B6E48]" : "text-[#898989] transition group-hover:text-[#4B6E48]"}`}>
       <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
       <path d="M8 9h8M8 13h5" />
     </svg>
@@ -249,7 +249,7 @@ export default function Assistant() {
       </button>
     </aside>
     <section className="relative min-h-[70vh] rounded-2xl border border-slate-200 bg-slate-50 pb-28 lg:min-h-[calc(100vh-4rem)]">
-      <div className="space-y-5 p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-slate-500"><h1 className="mb-3 text-xl font-bold text-slate-800">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto bg-brand-600 text-white" : "mr-auto bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-500">{message.sources.map((source) => <Link className="ml-3 text-brand-700" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>
+      <div className="space-y-5 p-4 md:p-7">{messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-slate-500"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]"><ChatIcon active className="h-9 w-9" /></div><h1 className="mb-3 text-xl font-bold text-slate-800">دستیار تماس‌ها</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}{messages.map((message) => <div key={message.id} className={`w-fit max-w-[85%] break-words rounded-2xl px-4 py-3 leading-8 shadow-sm ${message.role === "user" ? "ml-auto bg-brand-600 text-white" : "mr-auto bg-white text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content || (message.status === "running" ? "در حال نوشتن…" : "")}</p>{message.sources?.length ? <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-500">{message.sources.map((source) => <Link className="ml-3 text-brand-700" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}</div>)}<div ref={endRef} /></div>
       <form className="absolute inset-x-3 bottom-3 mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg" onSubmit={submit}><textarea ref={inputRef} rows={1} className="input h-12 min-h-12 flex-1 resize-none overflow-y-hidden border-0 py-3" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} placeholder="سؤال خود را بنویسید…" /><button type="submit" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
     </section>
     <ErrorBox message={error} />

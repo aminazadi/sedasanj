@@ -2,6 +2,7 @@
 
 ## 2026-10-01 — AMINAZADI
 
+- Added a palette-matched chat icon to the assistant empty state when no messages exist.
 - Made customer and admin dialogs vertically scrollable on mobile viewports so all fields and actions remain reachable.
 - Converted table filter panels in the customer, organization, operator, and admin interfaces into collapsed mobile accordions while preserving their expanded desktop layout.
 - Contained every customer and admin table's horizontal overflow within its own card or scroll wrapper on mobile, preventing tables and grid children from widening the page.
