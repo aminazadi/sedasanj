@@ -24,6 +24,14 @@ RETRY_INTERVAL_SECONDS = 60
 RECORDING_SETTLE_SECONDS = 2.0
 
 
+def _agent_extension(event: dict[str, str]) -> str | None:
+    for key in ("AgentExtension", "CBIAgentExtension"):
+        value = (event.get(key) or "").strip()
+        if value.isdigit():
+            return value
+    return None
+
+
 def _pending_from_event(config: AgentConfig, event: dict[str, str], wav: Path) -> PendingCall:
     duration = int(event.get("Duration") or event.get("BillableSeconds") or 0)
     ended = datetime.now(UTC)
@@ -37,7 +45,7 @@ def _pending_from_event(config: AgentConfig, event: dict[str, str], wav: Path) -
         started_at=rfc3339(started),
         ended_at=rfc3339(ended),
         direction="inbound" if channel.startswith("PJSIP/trunk") else None,
-        agent_extension=event.get("Exten") or None,
+        agent_extension=_agent_extension(event),
     )
 
 

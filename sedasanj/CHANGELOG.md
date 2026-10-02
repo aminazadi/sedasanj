@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-03 — AMINAZADI
+
+- Unified operator scoring with canonical call assignments, allowed previously ineligible calls to recover after an operator mapping is added, prevented AMI destination extensions from being misidentified as answering operators, and added database support for scores requiring manual review.
+
 ## 2026-10-02 — AMINAZADI
 
 - Synchronized tenant schema verification with the live Alembic migration head and executed tenant upgrades through the worker's active Python environment to prevent false runtime revision mismatches.

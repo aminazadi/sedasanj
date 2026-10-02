@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cbi_agent.config import ArchiveConfig
+from cbi_agent.main import _agent_extension
 from cbi_agent.uploader import (
     PendingCall,
     Spool,
@@ -18,6 +19,13 @@ from cbi_agent.uploader import (
     prepare_archive,
     rfc3339,
 )
+
+
+def test_hangup_extension_is_not_assumed_to_be_the_answering_operator() -> None:
+    assert _agent_extension({"Exten": "201"}) is None
+    assert _agent_extension({"AgentExtension": "202", "Exten": "s"}) == "202"
+    assert _agent_extension({"CBIAgentExtension": " 203 "}) == "203"
+    assert _agent_extension({"AgentExtension": "PJSIP/204-0001"}) is None
 
 
 def _pending(tmp_path: Path, uniqueid: str = "1750000000.42") -> PendingCall:
