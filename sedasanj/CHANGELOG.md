@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Improved edit-mode action contrast with an outlined light cancel button and a warm-white primary submit button on user-message bubbles.
+
+## 2026-10-02 — AMINAZADI
+
 - Added compact edit and copy actions below user messages, copy and retry actions below assistant messages, and branch-safe regeneration for failed or edited assistant conversations.
 - Added explicit confirmation before editing an earlier user message, with tenant-scoped deletion of every later stored message before generating the replacement response.
 
