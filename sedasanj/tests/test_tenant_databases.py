@@ -22,7 +22,7 @@ def test_database_identifiers_are_deterministic_and_safe() -> None:
 
 
 def test_tenant_schema_head_matches_latest_migration() -> None:
-    assert SCHEMA_HEAD == "0032_repair_apache_age_graph"
+    assert SCHEMA_HEAD == "0033_repair_assistant_indexes"
 
 
 def test_new_provisioning_job_attempt_can_be_incremented_before_flush() -> None:
