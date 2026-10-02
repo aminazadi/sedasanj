@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { fmt, refreshSession, request, tokens } from "../api";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
+import MarkdownMessage from "../components/MarkdownMessage";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { AssistantToolRun, ChatConversation, ChatMessage } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
@@ -444,7 +445,7 @@ export default function Assistant() {
     const heading = ephemeral ? "چت موقت" : conversation?.title?.trim() || "گفتگوی جدید";
     const transcript = completedMessages.map((message) => {
       const role = message.role === "user" ? "کاربر" : "دستیار";
-      const timestamp = new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(message.created_at));
+      const timestamp = fmt.dateTime(message.created_at);
       return `${role} - ${timestamp}\n${message.content.trim()}`;
     }).join("\n\n--------------------\n\n");
     downloadTextFile(`${safeDownloadName(heading, "conversation")}.txt`, `${heading}\n\n${transcript}\n`);
@@ -500,7 +501,7 @@ export default function Assistant() {
           const user = message.role === "user";
           return <ConversationBubble key={message.id} side={user ? "user" : "assistant"}>
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
-              {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <p className="whitespace-pre-wrap">{message.content}</p>}
+              {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
               {message.sources?.length ? <div className="mt-3 border-t border-[#B2AC88] pt-2 text-xs text-[#898989]">{message.sources.map((source) => <Link className="ml-3 text-[#4B6E48]" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}
           </ConversationBubble>;
         })}

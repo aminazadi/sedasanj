@@ -106,6 +106,121 @@ body {
   border-left: 1px solid #b2ac88;
 }
 
+.markdown-message > :first-child {
+  margin-top: 0;
+}
+
+.markdown-message > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-message p,
+.markdown-message ul,
+.markdown-message ol,
+.markdown-message blockquote,
+.markdown-message pre,
+.markdown-message table {
+  margin-block: 0.5rem;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  padding-inline-start: 1.5rem;
+}
+
+.markdown-message ul {
+  list-style: disc;
+}
+
+.markdown-message ol {
+  list-style: decimal;
+}
+
+.markdown-message li + li {
+  margin-top: 0.25rem;
+}
+
+.markdown-message h1,
+.markdown-message h2,
+.markdown-message h3,
+.markdown-message h4 {
+  margin-block: 0.75rem 0.35rem;
+  font-weight: 700;
+  line-height: 1.8;
+}
+
+.markdown-message h1 {
+  font-size: 1.25rem;
+}
+
+.markdown-message h2 {
+  font-size: 1.125rem;
+}
+
+.markdown-message h3,
+.markdown-message h4 {
+  font-size: 1rem;
+}
+
+.markdown-message blockquote {
+  border-inline-start: 3px solid currentColor;
+  padding-inline-start: 0.75rem;
+  opacity: 0.82;
+}
+
+.markdown-message a {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.markdown-message code {
+  direction: ltr;
+  display: inline-block;
+  border: 1px solid rgb(178 172 136 / 0.75);
+  background: rgb(242 240 239 / 0.75);
+  padding: 0 0.3rem;
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.markdown-message pre {
+  direction: ltr;
+  overflow-x: auto;
+  border: 1px solid #B2AC88;
+  background: #1e293b;
+  padding: 0.75rem;
+  color: #F2F0EF;
+  text-align: left;
+}
+
+.markdown-message pre code {
+  display: inline;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.markdown-message table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.markdown-message th,
+.markdown-message td {
+  border: 1px solid #B2AC88;
+  padding: 0.35rem 0.55rem;
+  text-align: start;
+}
+
+.markdown-message th {
+  background: rgb(178 172 136 / 0.28);
+  font-weight: 700;
+}
+
 @keyframes assistant-thinking-shimmer {
   0% { background-position: 100% 0; opacity: 0.65; }
   50% { opacity: 1; }
