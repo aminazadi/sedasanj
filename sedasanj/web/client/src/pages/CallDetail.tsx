@@ -1068,7 +1068,7 @@ export default function CallDetailPage() {
               className="min-h-40"
             />
           ) : (
-            <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4">
+            <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4 lg:min-h-[680px] lg:max-h-[820px]">
               {conversationTurns.map((utterance, index) => {
                 const caller = utterance.channel === 0;
                 return (

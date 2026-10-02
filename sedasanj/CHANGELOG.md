@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Increased the desktop conversation viewport to a 680–820 pixel height so more transcript messages remain visible before internal scrolling.
 - Matched the conversation transcript panel height to its adjacent insight sidebar on desktop, including the loading-state layout, while preserving the stacked mobile flow and transcript scrolling.
 - Replaced the money-bag glyph on credit statistic cards with a Fluent Emoji 3D purse in both customer and admin panels while retaining the money bag for sales value and revenue.
 - Replaced the shared chart palette across overview, call-detail, and analytics visualizations with project-aligned green, olive, and neutral tones, removing purple, yellow, orange, blue, and saturated default colors.
