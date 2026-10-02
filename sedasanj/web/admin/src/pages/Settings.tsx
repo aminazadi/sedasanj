@@ -272,6 +272,10 @@ export default function Settings() {
           chat_route: settings.chat_route,
           decision_route: settings.decision_route,
           embedding_route: settings.embedding_route,
+          ninerouter_asr_prompt: settings.ninerouter_asr_prompt,
+          ninerouter_analysis_prompt: settings.ninerouter_analysis_prompt,
+          ninerouter_chat_prompt: settings.ninerouter_chat_prompt,
+          ninerouter_decision_prompt: settings.ninerouter_decision_prompt,
         });
         if (settings.embedding_model.trim()) {
           body.embedding_model = settings.embedding_model;
@@ -489,6 +493,12 @@ export default function Settings() {
             <option value="ninerouter">/v1/ninerouter/audio/transcriptions — 9Router</option>
           </select>
           <p className="mt-1 text-xs text-slate-500">فایل صوتی در هر دو مسیر به‌صورت gzip به AISERVICE ارسال می‌شود.</p>
+          {settings.asr_route === "ninerouter" ? (
+            <div className="mt-3">
+              <label className="label" htmlFor="ninerouter-asr-prompt">پرامپت Speech-to-Text در 9Router</label>
+              <textarea id="ninerouter-asr-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_asr_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_asr_prompt: event.target.value })} />
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -721,6 +731,12 @@ export default function Settings() {
           <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
         </select>
+        {settings.analysis_route === "ninerouter" ? (
+          <div className="mt-3">
+            <label className="label" htmlFor="ninerouter-analysis-prompt">دستور تکمیلی تحلیل در 9Router</label>
+            <textarea id="ninerouter-analysis-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_analysis_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_analysis_prompt: event.target.value })} />
+          </div>
+        ) : null}
       </div>
 
       <div className={activeTab === "models" ? "" : "hidden"}>
@@ -736,6 +752,12 @@ export default function Settings() {
           <option value="synchronous">/v1/chat/completions — پاسخ مستقیم AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
         </select>
+        {settings.chat_route === "ninerouter" ? (
+          <div className="mt-3">
+            <label className="label" htmlFor="ninerouter-chat-prompt">دستور تکمیلی دستیار در 9Router</label>
+            <textarea id="ninerouter-chat-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_chat_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_chat_prompt: event.target.value })} />
+          </div>
+        ) : null}
       </div>
 
       <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
@@ -755,6 +777,12 @@ export default function Settings() {
           <option value="native">/v1/decisions — موتور تصمیم‌گیری محلی AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/decisions — تصمیم‌گیری 9Router</option>
         </select>
+        {settings.decision_route === "ninerouter" ? (
+          <div>
+            <label className="label" htmlFor="ninerouter-decision-prompt">دستور تکمیلی تصمیم‌گیری در 9Router</label>
+            <textarea id="ninerouter-decision-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_decision_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_decision_prompt: event.target.value })} />
+          </div>
+        ) : null}
       </section>
 
       <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>

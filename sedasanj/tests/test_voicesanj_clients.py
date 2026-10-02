@@ -248,6 +248,27 @@ async def test_voicesanj_chat_uses_configured_aiservice_ninerouter_path() -> Non
     assert content == "پاسخ"
 
 
+async def test_voicesanj_chat_appends_ninerouter_prompt() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["messages"][0]["content"] == "system\n\nراهنمای تکمیلی"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "پاسخ"}}]})
+
+    client = VoiceSanjChatClient(
+        _voicesanj_settings(
+            aiservice_chat_path="/v1/ninerouter/chat/completions",
+            ninerouter_chat_prompt="راهنمای تکمیلی",
+        ),
+        purpose="chat",
+    )
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        assert await client.complete("system", "user", json_object=False) == "پاسخ"
+    finally:
+        await client.close()
+
+
 async def test_voicesanj_analysis_uses_configured_aiservice_ninerouter_path() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/ninerouter/chat/completions"
@@ -275,6 +296,27 @@ async def test_voicesanj_analysis_uses_configured_aiservice_ninerouter_path() ->
         await client.close()
 
     assert content == '{"sentiment":"neutral"}'
+
+
+async def test_voicesanj_analysis_appends_ninerouter_prompt() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["messages"][0]["content"] == "system\n\nدستور تحلیل"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    client = VoiceSanjChatClient(
+        _voicesanj_settings(
+            aiservice_analysis_path="/v1/ninerouter/chat/completions",
+            ninerouter_analysis_prompt="دستور تحلیل",
+        ),
+        purpose="analysis",
+    )
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        assert await client.complete("system", "user") == "{}"
+    finally:
+        await client.close()
 
 
 async def test_voicesanj_chat_rejects_failed_task_without_fetching_result() -> None:

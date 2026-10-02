@@ -1189,6 +1189,15 @@ async def update_platform_settings(
     for key in ("asr_model", "llm_model", "chat_model"):
         if key in changes:
             changes[key] = str(changes[key]).strip()
+    ninerouter_prompt_keys = {
+        "ninerouter_asr_prompt",
+        "ninerouter_analysis_prompt",
+        "ninerouter_chat_prompt",
+        "ninerouter_decision_prompt",
+    }
+    for key in ninerouter_prompt_keys:
+        if key in changes:
+            changes[key] = str(changes[key]).strip()
     for key in ("correction_audio_models", "correction_text_models"):
         if key not in changes:
             continue
@@ -1242,6 +1251,8 @@ async def update_platform_settings(
         key: (
             mask_api_key(str(value))
             if key in {"api_key", "asr_api_key", "decision_api_key", "embedding_api_key"}
+            else "updated"
+            if key in ninerouter_prompt_keys
             else value
         )
         for key, value in changes.items()

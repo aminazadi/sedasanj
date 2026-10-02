@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Synchronized tenant schema verification with the live Alembic migration head and executed tenant upgrades through the worker's active Python environment to prevent false runtime revision mismatches.
 - Ensured manual transcript-correction requests always run the configured text model instead of silently copying the existing transcript when automatic correction is set to audio-only mode.
 
 - Added each transcript message's call-relative date and time beneath its bubble with an accessible copy action.

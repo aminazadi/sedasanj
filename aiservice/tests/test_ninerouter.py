@@ -77,6 +77,26 @@ class NineRouterTests(unittest.TestCase):
             result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
         self.assertEqual(result["segments"], [{"id": 0, "start": 0, "end": 3.5, "text": "سلام"}])
 
+    def test_transcription_prompt_is_forwarded(self):
+        settings = ninerouter.ProviderSettings(
+            "https://router.example", "key", False, "", False, "", (1, 1)
+        )
+        response = Mock(status_code=200)
+        response.json.return_value = {"text": "سلام", "duration": 1.0}
+        audio = Path(self.tmp.name) / "audio.wav"
+        audio.write_bytes(b"audio")
+        with patch(
+            "asr_service.infrastructure.ninerouter.requests.request",
+            return_value=response,
+        ) as request:
+            ninerouter.NineRouterClient(settings).transcribe(
+                "stt/model", audio, "واژگان تخصصی را حفظ کن"
+            )
+        self.assertEqual(
+            request.call_args.kwargs["data"]["prompt"],
+            "واژگان تخصصی را حفظ کن",
+        )
+
     def test_openai_chat_completions_proxy_path_is_allowed(self):
         self.assertIn("chat/completions", ninerouter_router.ALLOWED_PATHS)
 

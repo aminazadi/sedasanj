@@ -22,6 +22,7 @@ class AiServiceDecisionClient:
         if not self._base or not key:
             raise ProviderError("decision_provider_config", "تنظیمات سرویس تصمیم‌گیری کامل نیست.")
         self._threshold = settings.decision_confidence_threshold
+        self._ninerouter_prompt = settings.ninerouter_decision_prompt
         self._namespace = request_namespace
         self._timeout = min(max(settings.llm_timeout_seconds, 30.0), 300.0)
         self._client = httpx.AsyncClient(
@@ -30,6 +31,17 @@ class AiServiceDecisionClient:
         )
 
     async def decide(self, *, model: str, state: str | dict[str, Any], questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        if self._ninerouter_prompt:
+            questions = {
+                key: {
+                    **question,
+                    "instructions": (
+                        f"{str(question.get('instructions') or '').rstrip()}\n\n"
+                        f"{self._ninerouter_prompt}"
+                    ),
+                }
+                for key, question in questions.items()
+            }
         body = {"model": model, "state": state, "questions": questions, "confidence_threshold": self._threshold}
         fingerprint = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         idempotency_key = "cbi-decision-" + hashlib.sha256(f"{self._namespace}:{fingerprint}".encode()).hexdigest()

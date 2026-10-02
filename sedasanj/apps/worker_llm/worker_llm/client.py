@@ -382,6 +382,11 @@ class VoiceSanjChatClient(LlmClient):
         self._path = (
             settings.aiservice_chat_path if purpose == "chat" else settings.aiservice_analysis_path
         )
+        self._ninerouter_prompt = (
+            settings.ninerouter_chat_prompt
+            if purpose == "chat"
+            else settings.ninerouter_analysis_prompt
+        )
         self._max_tokens = settings.llm_max_tokens
         self._poll_interval = max(settings.voicesanj_poll_interval_seconds, 0.1)
         self._poll_timeout = min(
@@ -520,6 +525,8 @@ class VoiceSanjChatClient(LlmClient):
     def _request_body(
         self, system: str, user: str, *, model: str | None = None
     ) -> dict[str, Any]:
+        if self._ninerouter_prompt:
+            system = f"{system.rstrip()}\n\n{self._ninerouter_prompt}"
         return {
             "model": model or self._model,
             "temperature": 0.2,

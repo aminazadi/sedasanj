@@ -107,6 +107,40 @@ async def test_whisper_engine_prefers_admin_asr_endpoint_and_key(wav_file) -> No
     assert rows[0].text == "سلام"
 
 
+async def test_whisper_engine_sends_ninerouter_asr_prompt(wav_file) -> None:
+    path = wav_file(seconds=1.0)
+    engine = WhisperEngine(
+        _openai_settings(ninerouter_asr_prompt="واژگان تخصصی را حفظ کن")
+    )
+
+    class Response:
+        status_code = 200
+        text = '{"text": "سلام"}'
+
+        def json(self) -> dict[str, str]:
+            return {"text": "سلام"}
+
+    class FakeClient:
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def post(
+            self,
+            url: str,
+            headers: object,
+            files: object,
+            data: dict[str, str],
+        ) -> Response:
+            assert data["prompt"] == "واژگان تخصصی را حفظ کن"
+            return Response()
+
+    with patch("worker_asr.engine.httpx.AsyncClient", return_value=FakeClient()):
+        await engine.transcribe(path)
+
+
 async def test_llama_client_sends_bearer_and_hits_chat_completions() -> None:
     client = LlamaClient(_openai_settings())
     captured: dict[str, object] = {}

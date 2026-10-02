@@ -947,6 +947,10 @@ class SettingsUpdate(BaseModel):
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     decision_route: Literal["native", "ninerouter", "typed"] | None = None
     embedding_route: Literal["native", "ninerouter"] | None = None
+    ninerouter_asr_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_analysis_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_chat_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_decision_prompt: str | None = Field(default=None, max_length=20_000)
     assistant_tool_mode: Literal["auto", "native", "structured"] | None = None
     assistant_max_tool_calls: int | None = Field(default=None, ge=1, le=4)
     assistant_parallel_tools: int | None = Field(default=None, ge=1, le=2)

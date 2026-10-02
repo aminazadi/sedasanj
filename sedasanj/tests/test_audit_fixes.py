@@ -311,6 +311,54 @@ async def test_settings_update_persists_global_analysis_concurrency(
 
 
 @pytest.mark.asyncio
+async def test_settings_update_persists_and_redacts_ninerouter_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved: dict[str, PlatformSetting] = {}
+    seen: dict[str, object] = {}
+
+    class FakeSession:
+        async def get(self, model: object, key: str) -> PlatformSetting | None:
+            return saved.get(key)
+
+        def add(self, row: PlatformSetting) -> None:
+            saved[row.key] = row
+
+        async def flush(self) -> None:
+            pass
+
+    async def fake_audit(*args: object, **kwargs: object) -> None:
+        seen["audit"] = kwargs.get("payload")
+
+    async def fake_view(session: object) -> dict[str, object]:
+        return {key: row.value for key, row in saved.items()}
+
+    monkeypatch.setattr(admin.audit, "record", fake_audit)
+    monkeypatch.setattr(admin, "settings_public_view", fake_view)
+    monkeypatch.setattr(admin, "client_ip", lambda request: "127.0.0.1")
+
+    result = await admin.update_platform_settings(
+        SettingsUpdate(
+            ninerouter_asr_prompt="  واژگان تخصصی را حفظ کن  ",
+            ninerouter_analysis_prompt="تحلیل تکمیلی",
+            ninerouter_chat_prompt="راهنمای دستیار",
+            ninerouter_decision_prompt="قاعده تصمیم",
+        ),
+        None,  # type: ignore[arg-type]
+        type("S", (), {"id": uuid4()})(),  # type: ignore[arg-type]
+        FakeSession(),  # type: ignore[arg-type]
+    )
+
+    assert result == {
+        "ninerouter_asr_prompt": "واژگان تخصصی را حفظ کن",
+        "ninerouter_analysis_prompt": "تحلیل تکمیلی",
+        "ninerouter_chat_prompt": "راهنمای دستیار",
+        "ninerouter_decision_prompt": "قاعده تصمیم",
+    }
+    assert seen["audit"] == dict.fromkeys(result, "updated")
+
+
+@pytest.mark.asyncio
 async def test_settings_update_ignores_blank_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 

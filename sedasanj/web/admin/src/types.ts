@@ -128,6 +128,10 @@ export interface PlatformSettings {
   chat_route: "durable" | "synchronous" | "ninerouter";
   decision_route: "native" | "ninerouter" | "typed";
   embedding_route: "native" | "ninerouter";
+  ninerouter_asr_prompt: string;
+  ninerouter_analysis_prompt: string;
+  ninerouter_chat_prompt: string;
+  ninerouter_decision_prompt: string;
   assistant_tool_mode: "auto" | "native" | "structured";
   assistant_max_tool_calls: number;
   assistant_parallel_tools: number;

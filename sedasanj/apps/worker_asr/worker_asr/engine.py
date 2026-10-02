@@ -144,6 +144,8 @@ class WhisperEngine(AsrEngine):
             "language": self._settings.asr_language,
             "response_format": "json",
         }
+        if self._settings.ninerouter_asr_prompt:
+            form["prompt"] = self._settings.ninerouter_asr_prompt
         timeout = httpx.Timeout(connect=30.0, read=600.0, write=120.0, pool=30.0)
         last_error: Exception | None = None
         async with httpx.AsyncClient(timeout=timeout, http2=False) as client:
@@ -261,6 +263,7 @@ class VoiceSanjEngine(AsrEngine):
             else [settings.voicesanj_asr_model]
         )
         self.model_version = "voicesanj"
+        self._prompt = settings.ninerouter_asr_prompt or None
         self._client = VoiceSanjClient(
             settings.model_copy(
                 update={
@@ -285,6 +288,7 @@ class VoiceSanjEngine(AsrEngine):
             response_format="verbose_json",
             beam_size=5,
             vad_filter=True,
+            prompt=self._prompt,
         )
         if payload.get("model"):
             self.model_name = str(payload["model"])

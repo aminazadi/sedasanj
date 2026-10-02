@@ -43,6 +43,10 @@ OVERRIDE_KEYS = (
     "chat_route",
     "decision_route",
     "embedding_route",
+    "ninerouter_asr_prompt",
+    "ninerouter_analysis_prompt",
+    "ninerouter_chat_prompt",
+    "ninerouter_decision_prompt",
     "assistant_tool_mode",
     "assistant_max_tool_calls",
     "assistant_parallel_tools",
@@ -238,6 +242,10 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "chat_route": "durable",
         "decision_route": "native",
         "embedding_route": "native",
+        "ninerouter_asr_prompt": "",
+        "ninerouter_analysis_prompt": "",
+        "ninerouter_chat_prompt": "",
+        "ninerouter_decision_prompt": "",
         "assistant_tool_mode": "auto",
         "assistant_max_tool_calls": "4",
         "assistant_parallel_tools": "2",
@@ -338,6 +346,10 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "chat_route": values["chat_route"],
         "decision_route": values["decision_route"],
         "embedding_route": values["embedding_route"],
+        "ninerouter_asr_prompt": values["ninerouter_asr_prompt"],
+        "ninerouter_analysis_prompt": values["ninerouter_analysis_prompt"],
+        "ninerouter_chat_prompt": values["ninerouter_chat_prompt"],
+        "ninerouter_decision_prompt": values["ninerouter_decision_prompt"],
         "assistant_tool_mode": values["assistant_tool_mode"],
         "assistant_max_tool_calls": int(values["assistant_max_tool_calls"]),
         "assistant_parallel_tools": int(values["assistant_parallel_tools"]),
@@ -420,6 +432,26 @@ async def resolve_provider_settings(session: AsyncSession) -> Settings:
             "aiservice_chat_path": AISERVICE_ROUTES["chat_route"][overrides["chat_route"]],
             "aiservice_decision_path": AISERVICE_ROUTES["decision_route"][overrides["decision_route"]],
             "aiservice_embedding_path": AISERVICE_ROUTES["embedding_route"][overrides["embedding_route"]],
+            "ninerouter_asr_prompt": (
+                overrides["ninerouter_asr_prompt"]
+                if overrides["asr_route"] == "ninerouter"
+                else ""
+            ),
+            "ninerouter_analysis_prompt": (
+                overrides["ninerouter_analysis_prompt"]
+                if overrides["analysis_route"] == "ninerouter"
+                else ""
+            ),
+            "ninerouter_chat_prompt": (
+                overrides["ninerouter_chat_prompt"]
+                if overrides["chat_route"] == "ninerouter"
+                else ""
+            ),
+            "ninerouter_decision_prompt": (
+                overrides["ninerouter_decision_prompt"]
+                if overrides["decision_route"] == "ninerouter"
+                else ""
+            ),
         }
     )
 
