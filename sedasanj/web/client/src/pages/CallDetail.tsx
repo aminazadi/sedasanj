@@ -1029,7 +1029,8 @@ export default function CallDetailPage() {
       ) : null}
 
       <section className="grid items-stretch gap-4 lg:grid-cols-3">
-        <div className="card min-h-0 lg:col-span-2 lg:flex lg:flex-col">
+        <div className="relative min-h-0 lg:col-span-2">
+          <div className="card flex min-h-0 flex-col lg:absolute lg:inset-0">
           <SectionTitle
             title="متن مکالمه"
             description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
@@ -1097,6 +1098,7 @@ export default function CallDetailPage() {
               <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700" dir="auto">{call.corrected_transcript}</p>
             </div>
           ) : null}
+          </div>
         </div>
 
         <aside className="space-y-4">
