@@ -2,6 +2,8 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Aligned conversation avatars with their corresponding message bubble arrows.
+
 - Removed the border, rounding, and padding around each operator score criterion row for a cleaner compact layout.
 
 ## 2026-10-02 — AMINAZADI
