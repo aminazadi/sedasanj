@@ -241,7 +241,7 @@ export interface AssistantChart {
 
 export interface ProcessingEvent {
   id: string;
-  kind: "pipeline" | "asr" | "emotion" | "llm" | "notify";
+  kind: "pipeline" | "asr" | "emotion" | "correction" | "llm" | "notify";
   level: "info" | "success" | "warning" | "error";
   status: string | null;
   progress_pct: number | null;

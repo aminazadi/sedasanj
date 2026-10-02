@@ -447,6 +447,7 @@ const EVENT_KIND_LABELS: Record<ProcessingEvent["kind"], string> = {
   pipeline: "آماده‌سازی",
   asr: "تبدیل گفتار",
   emotion: "تحلیل لحن صدا",
+  correction: "تصحیح هوشمند متن",
   llm: "تحلیل هوشمند",
   notify: "اطلاع‌رسانی",
 };

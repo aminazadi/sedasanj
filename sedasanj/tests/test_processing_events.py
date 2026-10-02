@@ -19,6 +19,22 @@ def test_call_details_returns_processing_events_in_chronological_order() -> None
     assert "{[...events].reverse().map((event) => {" not in timeline_source
 
 
+def test_processing_event_kinds_cover_every_pipeline_job() -> None:
+    project_root = Path(__file__).parents[1]
+    model_source = (project_root / "apps/api/app/models.py").read_text(encoding="utf-8")
+    migration_source = (
+        project_root
+        / "apps/api/alembic/versions/0034_repair_processing_event_kinds.py"
+    ).read_text(encoding="utf-8")
+    client_types = (project_root / "web/client/src/types.ts").read_text(encoding="utf-8")
+
+    expected = ("pipeline", "asr", "emotion", "correction", "llm", "notify")
+    for kind in expected:
+        assert f"'{kind}'" in model_source
+        assert f"'{kind}'" in migration_source
+        assert f'"{kind}"' in client_types
+
+
 def test_sanitize_detail_redacts_common_secret_formats() -> None:
     detail = (
         "Authorization: Bearer bearer-value "

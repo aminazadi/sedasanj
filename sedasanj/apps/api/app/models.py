@@ -1062,7 +1062,7 @@ class ProcessingEvent(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('pipeline','asr','emotion','llm','notify')",
+            "kind IN ('pipeline','asr','emotion','correction','llm','notify')",
             name="processing_events_kind_check",
         ),
         CheckConstraint(

@@ -46,7 +46,7 @@ _CONTROL_ONLY = {
     "contact_leads",
 }
 _GLOBAL_REFERENCE = {"plans", "plan_versions"}
-SCHEMA_HEAD = "0033_repair_assistant_indexes"
+SCHEMA_HEAD = "0034_repair_processing_event_kinds"
 
 
 def database_identifiers(tenant_id: UUID) -> tuple[str, str]:
