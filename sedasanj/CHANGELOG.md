@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Bound every Jalali date-picker surface, border, neutral, primary, hover, selected, and focus state to the project's exact palette tokens and removed the browser's blue focus outline.
 - Aligned the Jalali date picker with the project's standard surface and neutral border tokens while reserving the primary color for navigation, hover, focus, today, and selected states.
 - Smoothed the single-call metric-card dot fade with a longer multi-step opacity transition around each icon.
 - Removed all Jalali date-picker shadows and enforced a bordered primary-color treatment for its container, navigation, focus, today, and selected-date states.
