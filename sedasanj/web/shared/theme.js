@@ -48,17 +48,17 @@ export const accent = {
 };
 
 export const chart = {
-  primary: "#16A34A",
-  secondary: "#F97316",
-  success: "#10B981",
-  danger: "#F43F5E",
-  warning: "#FACC15",
-  violet: "#8B5CF6",
-  cyan: "#14B8A6",
-  neutral: "#64748B",
-  light: "#CBD5E1",
-  dark: "#0F172A",
-  categorical: ["#16A34A", "#F97316", "#10B981", "#F43F5E", "#8B5CF6", "#14B8A6", "#FACC15"],
+  primary: palette.primary,
+  secondary: palette.accent,
+  success: "#5F805B",
+  danger: "#7A625C",
+  warning: "#9C9678",
+  violet: "#6C8068",
+  cyan: "#789074",
+  neutral: palette.neutral,
+  light: "#D8D4C2",
+  dark: palette.primary,
+  categorical: ["#4B6E48", "#B2AC88", "#898989", "#657B61", "#C7C1A5", "#73816F", "#9C9678"],
 };
 
 export const tailwindColors = {
