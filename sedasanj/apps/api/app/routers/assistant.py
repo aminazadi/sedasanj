@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
@@ -277,6 +277,63 @@ async def list_messages(conversation_id: UUID, principal: OperatorDep, session: 
         )
         for row in rows
     ]
+
+
+@router.delete(
+    "/assistant/conversations/{conversation_id}/messages/{message_id}/tail",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_message_tail(
+    conversation_id: UUID,
+    message_id: UUID,
+    request: Request,
+    principal: OperatorDep,
+    session: TenantSession,
+) -> None:
+    assert principal.tenant_id is not None
+    conversation = await _conversation(
+        session, conversation_id, principal.tenant_id, principal.id
+    )
+    message = await session.get(ChatMessage, message_id)
+    if (
+        message is None
+        or message.conversation_id != conversation.id
+        or message.tenant_id != principal.tenant_id
+        or message.role != "user"
+    ):
+        raise ApiError("not_found", "user message not found")
+    earlier_user_messages = await session.scalar(
+        select(func.count())
+        .select_from(ChatMessage)
+        .where(
+            ChatMessage.conversation_id == conversation.id,
+            ChatMessage.tenant_id == principal.tenant_id,
+            ChatMessage.role == "user",
+            ChatMessage.created_at < message.created_at,
+        )
+    )
+    await session.execute(
+        delete(ChatMessage).where(
+            ChatMessage.conversation_id == conversation.id,
+            ChatMessage.tenant_id == principal.tenant_id,
+            ChatMessage.created_at >= message.created_at,
+        )
+    )
+    if not earlier_user_messages:
+        conversation.title = None
+    conversation.updated_at = datetime.now(UTC)
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.message_tail_delete",
+        payload={
+            "conversation_id": str(conversation.id),
+            "message_id": str(message.id),
+        },
+        ip=client_ip(request),
+    )
 
 
 async def _sources(

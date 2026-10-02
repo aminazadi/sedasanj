@@ -2,6 +2,11 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added compact edit and copy actions below user messages, copy and retry actions below assistant messages, and branch-safe regeneration for failed or edited assistant conversations.
+- Added explicit confirmation before editing an earlier user message, with tenant-scoped deletion of every later stored message before generating the replacement response.
+
+## 2026-10-02 — AMINAZADI
+
 - Repaired the processing-event database constraint so voice-emotion and transcript-correction jobs can persist lifecycle and retry events without failing the worker transaction.
 
 ## 2026-10-02 — AMINAZADI

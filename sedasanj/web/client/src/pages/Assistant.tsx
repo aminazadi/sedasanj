@@ -78,6 +78,23 @@ function SendIcon() {
   );
 }
 
+function RetryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+      <path d="M20 7v5h-5" />
+      <path d="M19 12a7 7 0 1 0-2 5" />
+    </svg>
+  );
+}
+
+function CopyIcon({ checked = false }: { checked?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+      {checked ? <path d="m5 12 4 4L19 6" /> : <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></>}
+    </svg>
+  );
+}
+
 function ChatIcon({ active, className = "h-5 w-5" }: { active: boolean; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${className} shrink-0 ${active ? "text-[#4B6E48]" : "text-[#898989] transition group-hover:text-[#4B6E48]"}`}>
@@ -288,6 +305,10 @@ export default function Assistant() {
   const [conversationsOpen, setConversationsOpen] = useState(false);
   const [conversationView, setConversationView] = useState<"active" | "archived">("active");
   const [confirmation, setConfirmation] = useState<{ action: "archive" | "delete"; item: ChatConversation } | null>(null);
+  const [messageEdit, setMessageEdit] = useState<{ message: ChatMessage; value: string } | null>(null);
+  const [pendingMessageEdit, setPendingMessageEdit] = useState<{ message: ChatMessage; value: string } | null>(null);
+  const [messageEditConfirmationOpen, setMessageEditConfirmationOpen] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [phases, setPhases] = useState<Record<string, string>>({});
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -530,22 +551,88 @@ export default function Assistant() {
     return completed as ChatMessage;
   }
 
+  async function sendBranch(content: string, history: ChatMessage[]) {
+    setSending(true);
+    setError(null);
+    const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+    const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+    try {
+      const active = ephemeral ? null : conversation ?? await create();
+      setMessages([...history, optimistic, draftReply]);
+      const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history);
+      if (active) {
+        const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
+        setMessages(rows);
+        setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: item.title || optimistic.content, updated_at: reply.created_at } : item));
+      }
+    } catch (err) {
+      const message = (err as Error).message;
+      setMessages((current) => current.map((item) => item.id === draftReply.id ? { ...item, content: message || "پاسخ دستیار آماده نشد.", status: "failed" } : item));
+      setError(message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function replaceMessageBranch(target: ChatMessage, content: string) {
+    const index = messages.findIndex((item) => item.id === target.id);
+    if (index < 0) return;
+    const history = messages.slice(0, index).filter((item) => item.status !== "running");
+    if (!ephemeral && conversation && !target.id.startsWith("draft-")) {
+      await request(`/v1/assistant/conversations/${conversation.id}/messages/${target.id}/tail`, { method: "DELETE" });
+    }
+    setMessageEdit(null);
+    setPendingMessageEdit(null);
+    setMessageEditConfirmationOpen(false);
+    await sendBranch(content.trim(), history);
+  }
+
+  async function retryMessage(message: ChatMessage) {
+    if (sending) return;
+    const assistantIndex = messages.findIndex((item) => item.id === message.id);
+    const userMessage = [...messages.slice(0, assistantIndex)].reverse().find((item) => item.role === "user");
+    if (!userMessage) return;
+    try {
+      await replaceMessageBranch(userMessage, userMessage.content);
+    } catch (err) {
+      setError((err as Error).message);
+      setSending(false);
+    }
+  }
+
+  async function copyMessage(message: ChatMessage) {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => setCopiedMessageId((current) => current === message.id ? null : current), 1600);
+    } catch {
+      setError("کپی پیام انجام نشد.");
+    }
+  }
+
+  function requestMessageEdit() {
+    if (!messageEdit?.value.trim() || sending) return;
+    const index = messages.findIndex((item) => item.id === messageEdit.message.id);
+    const hasLaterMessages = index >= 0 && index < messages.length - 1;
+    if (hasLaterMessages) {
+      setPendingMessageEdit(messageEdit);
+      setMessageEditConfirmationOpen(true);
+      return;
+    }
+    void replaceMessageBranch(messageEdit.message, messageEdit.value).catch((err) => {
+      setError((err as Error).message);
+      setSending(false);
+    });
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!text.trim() || sending) return;
-    try {
-      setSending(true); setError(null);
-      const active = ephemeral ? null : conversation ?? await create();
-      const history = messages.filter((item) => item.status !== "running");
-      const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content: text.trim(), status: "succeeded", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
-      const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
-      setMessages((current) => [...current, optimistic, draftReply]); setText("");
-      requestAnimationFrame(resizeInput);
-      const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history);
-      setMessages((current) => current.map((item) => item.id === optimistic.id ? optimistic : item));
-      if (active) setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: item.title || optimistic.content, updated_at: reply.created_at } : item));
-    } catch (err) { setError((err as Error).message); }
-    finally { setSending(false); }
+    const content = text.trim();
+    const history = messages.filter((item) => item.status !== "running");
+    setText("");
+    requestAnimationFrame(resizeInput);
+    await sendBranch(content, history);
   }
   function exportMessages() {
     const completedMessages = messages.filter((message) => message.status !== "running" && message.content.trim());
@@ -608,11 +695,22 @@ export default function Assistant() {
         {messages.map((message) => {
           const user = message.role === "user";
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);
-          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length || charts.length)}>
+          const actionClass = "inline-flex h-7 w-7 items-center justify-center text-[#898989] transition hover:bg-white hover:text-[#4B6E48] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48] disabled:opacity-50";
+          const actions = <>
+            {user && message.status !== "running" ? <button type="button" className={actionClass} disabled={sending} onClick={() => setMessageEdit({ message, value: message.content })} aria-label="ویرایش پیام" title="ویرایش پیام"><EditIcon /></button> : null}
+            {message.status !== "running" && message.content ? <button type="button" className={actionClass} onClick={() => void copyMessage(message)} aria-label={copiedMessageId === message.id ? "پیام کپی شد" : "کپی پیام"} title={copiedMessageId === message.id ? "کپی شد" : "کپی پیام"}><CopyIcon checked={copiedMessageId === message.id} /></button> : null}
+            {!user && message.status === "failed" ? <button type="button" className={`${actionClass} hover:text-rose-700`} disabled={sending} onClick={() => void retryMessage(message)} aria-label="تلاش مجدد" title="تلاش مجدد"><RetryIcon /></button> : null}
+          </>;
+          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length || charts.length)} actions={messageEdit?.message.id === message.id ? null : actions}>
+              {user && messageEdit?.message.id === message.id ? <div className="space-y-2">
+                <textarea autoFocus rows={3} className="input min-h-24 resize-y bg-white text-slate-900" value={messageEdit.value} onChange={(event) => setMessageEdit({ message, value: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") setMessageEdit(null); }} aria-label="ویرایش پیام" />
+                <div className="flex justify-end gap-2"><button type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setMessageEdit(null)}>انصراف</button><button type="button" className="btn px-3 py-1.5 text-xs" disabled={!messageEdit.value.trim() || sending} onClick={requestMessageEdit}>ثبت و دریافت پاسخ جدید</button></div>
+              </div> : <>
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
               {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
               {!user ? <AssistantCharts charts={charts} /> : null}
               {message.sources?.length ? <CallSources sources={message.sources} expandedCallId={expandedCallId} onToggle={toggleCallSource} /> : null}
+              </>}
           </ConversationBubble>;
         })}
         <div ref={endRef} />
@@ -628,6 +726,21 @@ export default function Assistant() {
       destructive={confirmation?.action === "delete"}
       onCancel={() => setConfirmation(null)}
       onConfirm={() => void confirmConversationAction()}
+    />
+    <ConfirmDialog
+      open={messageEditConfirmationOpen}
+      title="ویرایش پیام قبلی"
+      description="با ویرایش این پیام، تمام پیام‌های بعد از آن برای همیشه حذف می‌شوند و دستیار بر اساس متن جدید دوباره پاسخ می‌دهد. ادامه می‌دهید؟"
+      confirmLabel="ویرایش و حذف ادامه گفتگو"
+      destructive
+      onCancel={() => { setMessageEditConfirmationOpen(false); setPendingMessageEdit(null); }}
+      onConfirm={() => {
+        if (!pendingMessageEdit) return;
+        void replaceMessageBranch(pendingMessageEdit.message, pendingMessageEdit.value).catch((err) => {
+          setError((err as Error).message);
+          setSending(false);
+        });
+      }}
     />
   </div>;
 }
