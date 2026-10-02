@@ -50,6 +50,14 @@ const NER_LABELS: Record<string, string> = {
 const TURN_MERGE_GAP_MS = 1200;
 const SPEAKER_COLORS = [chart.primary, chart.secondary];
 
+function CopyIcon({ checked = false }: { checked?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+      {checked ? <path d="m5 12 4 4L19 6" /> : <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></>}
+    </svg>
+  );
+}
+
 function cleanTranscriptText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -544,6 +552,7 @@ export default function CallDetailPage() {
   const [audioStage, setAudioStage] = useState<"downloading" | "extracting">("downloading");
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [correctionFeedback, setCorrectionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [copiedTurnId, setCopiedTurnId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -725,6 +734,16 @@ export default function CallDetailPage() {
       setCorrectionFeedback({ tone: "error", message: (err as Error).message });
     } finally {
       setCorrectionLoading(false);
+    }
+  }
+
+  async function copyTranscriptTurn(turnId: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTurnId(turnId);
+      window.setTimeout(() => setCopiedTurnId((current) => current === turnId ? null : current), 1600);
+    } catch {
+      setError("کپی پیام انجام نشد.");
     }
   }
 
@@ -1231,11 +1250,27 @@ export default function CallDetailPage() {
               {conversationTurns.map((utterance, index) => {
                 const caller = call.speaker_labels[utterance.channel] === "مشتری";
                 const speaker = call.speaker_labels[utterance.channel] ?? `کانال ${fmt.int(utterance.channel + 1)}`;
+                const turnId = `${utterance.channel}-${utterance.t_start_ms}-${index}`;
+                const messageDate = new Date(Date.parse(call.started_at) + utterance.t_start_ms).toISOString();
                 return (
                   <ConversationBubble
-                    key={`${utterance.channel}-${utterance.t_start_ms}-${index}`}
+                    key={turnId}
                     side={caller ? "user" : "assistant"}
                     ariaLabel={speaker}
+                    actions={<>
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center text-[#898989] transition hover:bg-white hover:text-[#4B6E48] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48]"
+                        onClick={() => void copyTranscriptTurn(turnId, utterance.text)}
+                        aria-label={copiedTurnId === turnId ? "پیام کپی شد" : "کپی پیام"}
+                        title={copiedTurnId === turnId ? "کپی شد" : "کپی پیام"}
+                      >
+                        <CopyIcon checked={copiedTurnId === turnId} />
+                      </button>
+                      <time className="px-1 text-[10px] leading-none text-[#898989]" dateTime={messageDate} title={fmt.dateTime(messageDate)}>
+                        {fmt.dateTime(messageDate)}
+                      </time>
+                    </>}
                     header={
                       <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-[#F2F0EF]/75" : "text-[#898989]"}`}>
                         <span className={`font-bold ${caller ? "text-[#F2F0EF]" : "text-[#4B6E48]"}`}>{speaker}{utterance.uncertain ? " — نیازمند بررسی" : ""}</span>

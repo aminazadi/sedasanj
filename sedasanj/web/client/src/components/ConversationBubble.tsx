@@ -28,10 +28,11 @@ function ConversationAvatar({ side, ariaLabel }: Pick<ConversationBubbleProps, "
 
 export default function ConversationBubble({ side, children, header, ariaLabel, wide = false, actions }: ConversationBubbleProps) {
   const user = side === "user";
+  const avatar = <ConversationAvatar side={side} ariaLabel={ariaLabel} />;
 
   return (
     <div className={`flex w-full items-end gap-4 ${user ? "justify-end" : "justify-start"}`} dir="ltr">
-      {!user ? <ConversationAvatar side={side} ariaLabel={ariaLabel} /> : null}
+      {!user ? actions ? <span className="mb-8">{avatar}</span> : avatar : null}
       <div className={`flex max-w-[calc(85%_-_2.75rem)] flex-col ${wide ? "w-full" : "w-fit"} ${user ? "items-end" : "items-start"}`}>
         <div
           dir="rtl"
@@ -42,7 +43,7 @@ export default function ConversationBubble({ side, children, header, ariaLabel, 
         </div>
         {actions ? <div className="mt-1 flex min-h-7 w-full items-center justify-between gap-3" dir="ltr">{actions}</div> : null}
       </div>
-      {user ? <ConversationAvatar side={side} ariaLabel={ariaLabel} /> : null}
+      {user ? actions ? <span className="mb-8">{avatar}</span> : avatar : null}
     </div>
   );
 }
