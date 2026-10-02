@@ -801,6 +801,42 @@ export default function CallDetailPage() {
 
       <ProcessingTimeline events={call.processing_events ?? []} />
 
+      <section className="card overflow-visible">
+        <SectionTitle
+          title="کارهای قابل پیگیری"
+          description="موارد عملیاتی استخراج‌شده از تماس؛ می‌توانید آن‌ها را ویرایش یا انجام‌شده کنید"
+          action={
+            <Link className="text-xs text-brand-700 hover:underline" to="/tasks">
+              همه کارها
+            </Link>
+          }
+        />
+        {tasks.length === 0 ? (
+          <EmptyState icon="tasks" message="موردی ثبت نشده است." className="min-h-36" />
+        ) : (
+          <ul className="space-y-2">
+            {tasks.map((task) => (
+              <FollowUpTaskCard
+                key={task.id}
+                task={task}
+                canEdit={canEditTasks}
+                showCallLink={false}
+                onUpdated={(next) =>
+                  setCall((current) =>
+                    current
+                      ? {
+                          ...current,
+                          tasks: current.tasks.map((item) => (item.id === next.id ? next : item)),
+                        }
+                      : current,
+                  )
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon="◷" />
         <MetricCard
@@ -1070,41 +1106,6 @@ export default function CallDetailPage() {
           ) : null}
           </div>
 
-          <div className="card overflow-visible">
-            <SectionTitle
-              title="کارهای قابل پیگیری"
-              description="موارد عملیاتی استخراج‌شده از تماس؛ می‌توانید آن‌ها را ویرایش یا انجام‌شده کنید"
-              action={
-                <Link className="text-xs text-brand-700 hover:underline" to="/tasks">
-                  همه کارها
-                </Link>
-              }
-            />
-            {tasks.length === 0 ? (
-              <EmptyState icon="tasks" message="موردی ثبت نشده است." className="min-h-36" />
-            ) : (
-              <ul className="space-y-2">
-                {tasks.map((task) => (
-                  <FollowUpTaskCard
-                    key={task.id}
-                    task={task}
-                    canEdit={canEditTasks}
-                    showCallLink={false}
-                    onUpdated={(next) =>
-                      setCall((current) =>
-                        current
-                          ? {
-                              ...current,
-                              tasks: current.tasks.map((item) => (item.id === next.id ? next : item)),
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
         </div>
 
         <aside className="space-y-4">
