@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Removed all Jalali date-picker shadows and enforced a bordered primary-color treatment for its container, navigation, focus, today, and selected-date states.
 - Extended the dotted texture farther across single-call metric cards while preserving a clear area around each icon.
 - Restyled the shared Jalali date picker across the customer and admin panels with the project green, beige, and warm-white palette, responsive sizing, polished navigation, and distinct selected, today, hover, and keyboard-focus states.
 
