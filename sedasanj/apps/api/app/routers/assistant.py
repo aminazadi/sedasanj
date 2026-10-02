@@ -19,6 +19,7 @@ from app.models import (
     AssistantToolRun,
     AssistantUsage,
     Call,
+    CallInsight,
     ChatConversation,
     ChatMessage,
     OperatorCallScore,
@@ -560,7 +561,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                         run.status = "failed"
                         run.error_code = "tool_failed"
                     run.completed_at = datetime.now(UTC)
-                sources = _tool_sources(results)
+                sources = await _tool_sources(session, principal, results)
                 answer = await client.complete(
                     system_prompt,
                     assistant_agent.final_input(payload.content, history, results),
@@ -607,7 +608,11 @@ def _tool_run_payload(run: AssistantToolRun) -> dict[str, Any]:
     }
 
 
-def _tool_sources(results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]]) -> list[dict[str, Any]]:
+async def _tool_sources(
+    session: AsyncSession,
+    principal: Any,
+    results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]],
+) -> list[dict[str, Any]]:
     sources: dict[str, dict[str, Any]] = {}
     for _call, result in results:
         for item in result.get("items", []):
@@ -619,7 +624,40 @@ def _tool_sources(results: list[tuple[assistant_agent.PlannedToolCall, dict[str,
                 "started_at": item.get("started_at"),
                 "summary": item.get("summary") or item.get("snippet"),
             }
-    return list(sources.values())
+    if not sources:
+        return []
+    call_ids: list[UUID] = []
+    for value in sources:
+        try:
+            call_ids.append(UUID(value))
+        except ValueError:
+            continue
+    assert principal.tenant_id is not None
+    stmt = (
+        select(Call, CallInsight)
+        .outerjoin(CallInsight, CallInsight.call_id == Call.id)
+        .where(Call.tenant_id == principal.tenant_id, Call.id.in_(call_ids))
+    )
+    rows = (await session.execute(operator_scope.apply_operator_scope(stmt, principal))).all()
+    for call, insight in rows:
+        source = sources[str(call.id)]
+        source.update(
+            {
+                "started_at": call.started_at.isoformat(),
+                "ended_at": call.ended_at.isoformat(),
+                "caller_number": call.caller_number,
+                "dialed_number": call.dialed_number,
+                "direction": call.direction,
+                "agent_extension": call.agent_extension,
+                "duration_ms": call.duration_ms,
+                "status": call.status,
+                "summary": insight.summary if insight and insight.summary else source["summary"],
+                "intent": insight.intent if insight else None,
+                "sentiment": insight.sentiment if insight else None,
+            }
+        )
+    visible_ids = {str(call.id) for call, _insight in rows}
+    return [source for call_id, source in sources.items() if call_id in visible_ids]
 
 
 async def _execute_planned_tool(
@@ -728,7 +766,7 @@ async def stream_ephemeral_message(
                                 public_runs[-1] = failed
                                 yield _sse("tool_failed", failed)
                         yield _sse("tool_batch_completed", {"count": len(public_runs)})
-                        sources = _tool_sources(results)
+                        sources = await _tool_sources(session, principal, results)
                         yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
                         async for chunk in client.stream(
                             system_prompt,
@@ -870,7 +908,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                                 _tool_run_payload(run),
                             )
                         yield _sse("tool_batch_completed", {"count": len(stored_runs)})
-                        sources = _tool_sources(results)
+                        sources = await _tool_sources(session, principal, results)
                         yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
                         async for chunk in client.stream(
                             system_prompt,

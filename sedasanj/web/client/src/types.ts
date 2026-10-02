@@ -199,9 +199,24 @@ export interface ChatMessage {
   content: string;
   status: string;
   model: string | null;
-  sources: Array<{ call_id: string; started_at: string; summary: string | null }> | null;
+  sources: AssistantCallSource[] | null;
   tool_runs: AssistantToolRun[];
   created_at: string;
+}
+
+export interface AssistantCallSource {
+  call_id: string;
+  started_at: string | null;
+  ended_at?: string | null;
+  caller_number?: string | null;
+  dialed_number?: string | null;
+  direction?: string | null;
+  agent_extension?: string | null;
+  duration_ms?: number | null;
+  status?: string | null;
+  summary: string | null;
+  intent?: string | null;
+  sentiment?: Sentiment | null;
 }
 
 export interface AssistantToolRun {

@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fmt, refreshSession, request, tokens } from "../api";
+import { fmt, INTENT_LABELS, refreshSession, request, tokens } from "../api";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
-import { ErrorBox, Loading } from "../components/Widgets";
-import type { AssistantToolRun, ChatConversation, ChatMessage } from "../types";
+import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Widgets";
+import type { AssistantCallSource, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 
 function TrashIcon() {
@@ -138,6 +138,52 @@ function ToolTimeline({ runs, active }: { runs: AssistantToolRun[]; active: bool
       </li>)}
     </ol> : null}
   </div>;
+}
+
+function PhoneIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z" /></svg>;
+}
+
+function ArrowIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4"><path d="M5 12h14M13 6l6 6-6 6" /></svg>;
+}
+
+function CallSources({ sources }: { sources: AssistantCallSource[] }) {
+  return <section className="mt-4 border-t border-[#B2AC88] pt-3" aria-label="تماس‌های استفاده‌شده در پاسخ">
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-[#4B6E48]"><PhoneIcon /><h3 className="text-sm font-bold">تماس‌های بررسی‌شده</h3></div>
+      <span className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-[11px] font-bold text-[#4B6E48]">{fmt.int(sources.length)} تماس</span>
+    </div>
+    <div className="grid max-h-[30rem] gap-3 overflow-y-auto pl-1 sm:grid-cols-2">
+      {sources.map((source) => {
+        const primaryNumber = source.direction === "outbound" ? source.dialed_number : source.caller_number;
+        const secondaryNumber = source.direction === "outbound" ? source.caller_number : source.dialed_number;
+        return <article key={source.call_id} className="group/source flex min-w-0 flex-col border border-[#B2AC88] bg-white p-3 transition hover:border-[#4B6E48] hover:shadow-[0_8px_24px_rgba(75,110,72,0.10)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] text-[#898989]">{source.started_at ? fmt.dateTime(source.started_at) : "زمان نامشخص"}</p>
+              <p className="mt-1 truncate text-base font-extrabold text-[#4B6E48]" dir="ltr">{primaryNumber ? fmt.digits(primaryNumber) : "شماره نامشخص"}</p>
+            </div>
+            {source.status ? <StatusBadge status={source.status} /> : null}
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-y border-[#E3E0D4] py-3 text-[11px]">
+            <div><dt className="text-[#898989]">جهت تماس</dt><dd className="mt-0.5 font-bold text-[#000000]">{source.direction === "inbound" ? "ورودی" : source.direction === "outbound" ? "خروجی" : source.direction || "—"}</dd></div>
+            <div><dt className="text-[#898989]">مدت مکالمه</dt><dd className="mt-0.5 font-bold text-[#000000]">{source.duration_ms == null ? "—" : fmt.duration(source.duration_ms)}</dd></div>
+            <div><dt className="text-[#898989]">شماره مقابل</dt><dd className="mt-0.5 truncate font-bold text-[#000000]" dir="ltr">{secondaryNumber ? fmt.digits(secondaryNumber) : "—"}</dd></div>
+            <div><dt className="text-[#898989]">داخلی اپراتور</dt><dd className="mt-0.5 font-bold text-[#000000]" dir="ltr">{source.agent_extension ? fmt.digits(source.agent_extension) : "—"}</dd></div>
+          </dl>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {source.intent ? <span className="border border-[#D8D3B9] bg-[#F2F0EF] px-2 py-1 text-[11px] text-[#4B6E48]">{INTENT_LABELS[source.intent] ?? source.intent}</span> : null}
+            {source.sentiment ? <SentimentBadge sentiment={source.sentiment} /> : null}
+          </div>
+          {source.summary ? <p className="mt-3 line-clamp-3 text-xs leading-6 text-[#555555]">{source.summary}</p> : <p className="mt-3 text-xs text-[#898989]">خلاصه‌ای برای این تماس ثبت نشده است.</p>}
+          <Link className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs font-bold text-[#4B6E48]" to={`/calls/${source.call_id}`}>
+            <span>مشاهده جزئیات کامل تماس</span><ArrowIcon />
+          </Link>
+        </article>;
+      })}
+    </div>
+  </section>;
 }
 
 const promptGuides = [
@@ -502,7 +548,7 @@ export default function Assistant() {
           return <ConversationBubble key={message.id} side={user ? "user" : "assistant"}>
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
               {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
-              {message.sources?.length ? <div className="mt-3 border-t border-[#B2AC88] pt-2 text-xs text-[#898989]">{message.sources.map((source) => <Link className="ml-3 text-[#4B6E48]" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}
+              {message.sources?.length ? <CallSources sources={message.sources} /> : null}
           </ConversationBubble>;
         })}
         <div ref={endRef} />
