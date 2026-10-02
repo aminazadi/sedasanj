@@ -697,7 +697,7 @@ export default function CallDetailPage() {
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
             <div>
               <div className="mb-2 flex items-center gap-3">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#000000]" aria-hidden="true">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-[#F2F0EF] text-[#000000]" aria-hidden="true">
                   <Icon icon={telephoneReceiverIcon} className="h-9 w-9" />
                 </span>
                 <div>
