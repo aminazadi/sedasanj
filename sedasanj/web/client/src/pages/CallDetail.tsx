@@ -36,7 +36,7 @@ import {
   StatusBadge,
   TrajectoryBadge,
 } from "../components/Widgets";
-import type { CallDetail, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
+import type { CallDetail, CorrectionStatus, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
 import { downloadTextFile } from "../utils/download";
 
 const NER_LABELS: Record<string, string> = {
@@ -510,6 +510,7 @@ export default function CallDetailPage() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
   const [correctionLoading, setCorrectionLoading] = useState(false);
+  const [correctionFeedback, setCorrectionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -625,12 +626,35 @@ export default function CallDetailPage() {
   async function correctTranscript() {
     setCorrectionLoading(true);
     setError(null);
+    setCorrectionFeedback(null);
     try {
-      await request<{ correction_run_id: string; status: string }>(`/v1/calls/${callId}/correct-transcript`, { method: "POST" });
-      setNotice("درخواست تصحیح ثبت شد و پس از اعتبارسنجی، نسخهٔ نهایی مبنای تحلیل مجدد قرار می‌گیرد.");
+      const result = await request<{ correction_run_id: string; status: CorrectionStatus["status"] }>(`/v1/calls/${callId}/correct-transcript`, { method: "POST" });
+      const message = ["queued", "running", "validating"].includes(result.status)
+        ? "درخواست تصحیح ثبت شد و در حال پردازش است."
+        : "تصحیح متن با موفقیت انجام شد.";
+      setCorrectionFeedback({ tone: "success", message });
+      setCall((current) => current ? {
+        ...current,
+        correction: {
+          id: result.correction_run_id,
+          status: result.status,
+          trigger: "manual",
+          mode: current.correction?.mode ?? "text_only",
+          audio_models: current.correction?.audio_models ?? [],
+          text_models: current.correction?.text_models ?? [],
+          provider_model: null,
+          error_code: null,
+          error_detail: null,
+          uncertain_items: [],
+          queued_at: new Date().toISOString(),
+          started_at: null,
+          provider_submitted_at: null,
+          completed_at: null,
+        },
+      } : current);
       setReload((value) => value + 1);
     } catch (err) {
-      setError((err as Error).message);
+      setCorrectionFeedback({ tone: "error", message: (err as Error).message });
     } finally {
       setCorrectionLoading(false);
     }
@@ -645,6 +669,16 @@ export default function CallDetailPage() {
     return left.status === "open" ? -1 : 1;
   });
   const canEditTasks = Boolean(session && CAN_EDIT_TASKS.includes(session.role));
+  const correctionActive = ["queued", "running", "validating"].includes(call.correction?.status ?? "");
+  const correctionButtonLabel = correctionLoading || correctionActive
+    ? call.correction?.status === "validating"
+      ? "در حال اعتبارسنجی…"
+      : call.correction?.status === "queued"
+        ? "تصحیح در صف…"
+        : "در حال تصحیح…"
+    : call.corrected_transcript
+      ? "تصحیح دوباره متن"
+      : "تصحیح متن";
   const visibleUtterances = transcriptView === "raw" ? call.raw_utterances : call.utterances;
   const conversationTurns = buildConversationTurns(visibleUtterances);
   const callerDuration = conversationTurns
@@ -1081,9 +1115,10 @@ export default function CallDetailPage() {
                   type="button"
                   className="btn-ghost inline-flex h-9 items-center justify-center bg-white px-3 py-0 text-xs"
                   onClick={() => void correctTranscript()}
-                  disabled={!call.transcript || correctionLoading || ["queued", "running", "validating"].includes(call.correction?.status ?? "")}
+                  disabled={!call.transcript || correctionLoading || correctionActive}
+                  aria-describedby="correction-action-status"
                 >
-                  {correctionLoading ? "در حال تصحیح…" : call.corrected_transcript ? "تصحیح دوباره متن" : "تصحیح متن"}
+                  {correctionButtonLabel}
                 </button>
                 {call.asr_model ? (
                   <button
@@ -1103,6 +1138,15 @@ export default function CallDetailPage() {
               </div>
             }
           />
+          <div id="correction-action-status" className="mb-3 min-h-5 text-xs" role="status" aria-live="polite">
+            {correctionFeedback ? (
+              <span className={correctionFeedback.tone === "error" ? "text-rose-700" : "text-[#4B6E48]"}>
+                {correctionFeedback.message}
+              </span>
+            ) : correctionActive ? (
+              <span className="text-[#4B6E48]">درخواست تصحیح فعال است؛ وضعیت به‌صورت خودکار به‌روز می‌شود.</span>
+            ) : null}
+          </div>
           {conversationTurns.length === 0 ? (
             <EmptyState
               icon="transcript"
