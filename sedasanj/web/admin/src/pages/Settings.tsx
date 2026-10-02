@@ -12,6 +12,14 @@ const KIND_LABELS: Record<string, string> = {
   decision: "تصمیم‌گیری",
   embedding: "Embedding",
 };
+type SettingsTab = "connection" | "models" | "audio" | "prompts" | "security";
+const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: "connection", label: "اتصال AISERVICE" },
+  { id: "models", label: "مدل‌ها و مسیرها" },
+  { id: "audio", label: "پردازش صوت" },
+  { id: "prompts", label: "پرامپت‌ها" },
+  { id: "security", label: "امنیت" },
+];
 function normalizeApiKey(value: string): string {
   let secret = value.trim();
   if (/^bearer\s+/i.test(secret)) {
@@ -83,6 +91,7 @@ function ModelSelect({
 }
 
 export default function Settings() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("connection");
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -143,11 +152,15 @@ export default function Settings() {
     if (!settings) return;
     setError(null);
     setNotice(null);
-    if (!settings.api_key_configured && !apiKeyDraft.trim()) {
-      setError("کلید API سرویس تحلیل متن را وارد کنید.");
+    if (
+      (activeTab === "connection" || activeTab === "models") &&
+      !settings.api_key_configured &&
+      !apiKeyDraft.trim()
+    ) {
+      setError("ابتدا کلید API سرویس را در تب اتصال AISERVICE ذخیره کنید.");
       return;
     }
-    if (models.length) {
+    if (activeTab === "models" && models.length) {
       const selections = [
         ["مدل ASR", settings.asr_model, asrModels],
         ["مدل تحلیل", settings.llm_model, llmModels],
@@ -167,36 +180,41 @@ export default function Settings() {
       }
     }
     try {
-      const body: Record<string, string | boolean | number> = {
-        voicesanj_base_url: settings.voicesanj_base_url,
-        llm_provider: settings.llm_provider,
-        asr_provider: settings.asr_provider,
-        asr_base_url: settings.asr_base_url,
-        asr_model: settings.asr_model,
-        llm_model: settings.llm_model,
-        chat_model: settings.chat_model,
-        extract_prompt: settings.extract_prompt,
-        assistant_instructions: settings.assistant_instructions,
-        audio_preprocessing_enabled: settings.audio_preprocessing_enabled,
-        audio_denoiser_model: settings.audio_denoiser_model,
-        audio_enhancement_model: settings.audio_enhancement_model,
-        analysis_concurrency: settings.analysis_concurrency,
-        decision_model: settings.decision_model,
-        decision_fallback_model: settings.decision_fallback_model,
-        decision_confidence_threshold: settings.decision_confidence_threshold,
-        embedding_base_url: settings.embedding_base_url,
-        embedding_model: settings.embedding_model,
-        asr_route: settings.asr_route,
-        analysis_route: settings.analysis_route,
-        chat_route: settings.chat_route,
-        decision_route: settings.decision_route,
-        embedding_route: settings.embedding_route,
-      };
-      if (!settings.embedding_model.trim()) {
-        delete body.embedding_model;
-      }
-      if (apiKeyDraft.trim()) {
-        body.api_key = normalizeApiKey(apiKeyDraft);
+      const body: Record<string, string | boolean | number> = {};
+      if (activeTab === "connection") {
+        body.voicesanj_base_url = settings.voicesanj_base_url;
+        body.llm_provider = settings.llm_provider;
+        body.asr_provider = settings.asr_provider;
+        if (apiKeyDraft.trim()) {
+          body.api_key = normalizeApiKey(apiKeyDraft);
+        }
+      } else if (activeTab === "models") {
+        Object.assign(body, {
+          asr_model: settings.asr_model,
+          llm_model: settings.llm_model,
+          chat_model: settings.chat_model,
+          decision_model: settings.decision_model,
+          decision_fallback_model: settings.decision_fallback_model,
+          decision_confidence_threshold: settings.decision_confidence_threshold,
+          asr_route: settings.asr_route,
+          analysis_route: settings.analysis_route,
+          chat_route: settings.chat_route,
+          decision_route: settings.decision_route,
+          embedding_route: settings.embedding_route,
+        });
+        if (settings.embedding_model.trim()) {
+          body.embedding_model = settings.embedding_model;
+        }
+      } else if (activeTab === "audio") {
+        Object.assign(body, {
+          audio_preprocessing_enabled: settings.audio_preprocessing_enabled,
+          audio_denoiser_model: settings.audio_denoiser_model,
+          audio_enhancement_model: settings.audio_enhancement_model,
+          analysis_concurrency: settings.analysis_concurrency,
+        });
+      } else if (activeTab === "prompts") {
+        body.extract_prompt = settings.extract_prompt;
+        body.assistant_instructions = settings.assistant_instructions;
       }
       const saved = await request<PlatformSettings>("/v1/admin/settings", {
         method: "PATCH",
@@ -205,7 +223,10 @@ export default function Settings() {
       setSettings(saved);
       setApiKeyDraft("");
       setNotice("ذخیره شد.");
-      if (saved.api_key_configured) {
+      if (
+        saved.api_key_configured &&
+        (activeTab === "connection" || activeTab === "models")
+      ) {
         await loadModels();
       }
     } catch (err) {
@@ -217,13 +238,53 @@ export default function Settings() {
 
   return (
     <div className="max-w-6xl space-y-5">
-      <TwoFactorSettings />
-    <form className="card space-y-5" onSubmit={save}>
-      <h1 className="font-bold">تنظیمات مدل‌ها</h1>
+      <div className="card space-y-4">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900">تنظیمات سامانه</h1>
+          <p className="mt-1 text-sm text-slate-500">اتصال، مدل‌ها، پردازش و امنیت را از بخش مربوط مدیریت کنید.</p>
+        </div>
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="بخش‌های تنظیمات">
+          {SETTINGS_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              id={`settings-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`settings-panel-${tab.id}`}
+              className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? "border-[var(--primary)] text-[var(--primary)]"
+                  : "border-transparent text-slate-500 hover:text-slate-900"
+              }`}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setError(null);
+                setNotice(null);
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "security" ? (
+        <div id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security">
+          <TwoFactorSettings />
+        </div>
+      ) : null}
+    <form
+      id={activeTab === "security" ? undefined : `settings-panel-${activeTab}`}
+      role="tabpanel"
+      aria-labelledby={`settings-tab-${activeTab}`}
+      className={`card space-y-5 ${activeTab === "security" ? "hidden" : ""}`}
+      onSubmit={save}
+    >
       <ErrorBox message={error} />
       {notice ? <div className="text-sm text-emerald-700">{notice}</div> : null}
 
-      <div>
+      <div className={activeTab === "connection" ? "" : "hidden"}>
         <label className="label" htmlFor="llm-provider">درگاه مرکزی همه قابلیت‌های هوش مصنوعی</label>
         <select
           id="llm-provider"
@@ -242,7 +303,7 @@ export default function Settings() {
         </p>
       </div>
 
-      <div>
+      <div className={activeTab === "connection" ? "" : "hidden"}>
         <label className="label">کلید API مشترک AISERVICE</label>
         <input
           className="input"
@@ -265,7 +326,7 @@ export default function Settings() {
         </p>
       </div>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <section className={`${activeTab === "models" ? "" : "hidden"} space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">سرویس پیاده‌سازی صوت</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">
@@ -309,7 +370,7 @@ export default function Settings() {
         </div>
       </section>
 
-      <div>
+      <div className={activeTab === "connection" ? "" : "hidden"}>
         <label className="label" htmlFor="voicesanj-base-url">آدرس پایه سرویس هوش مصنوعی</label>
         <input
           id="voicesanj-base-url"
@@ -327,7 +388,7 @@ export default function Settings() {
         </p>
       </div>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className={`${activeTab === "connection" || activeTab === "models" ? "flex" : "hidden"} items-center justify-between gap-2`}>
         <div className="text-sm text-slate-600">
           {loadingModels
             ? "در حال دریافت فهرست مدل‌ها…"
@@ -344,8 +405,8 @@ export default function Settings() {
           به‌روزرسانی مدل‌ها
         </button>
       </div>
-      {modelsError ? <ErrorBox message={modelsError} /> : null}
-      {models.length ? (
+      {(activeTab === "connection" || activeTab === "models") && modelsError ? <ErrorBox message={modelsError} /> : null}
+      {(activeTab === "connection" || activeTab === "models") && models.length ? (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {Object.entries(KIND_LABELS).map(([kind, label]) => (
             <div key={kind} className="border border-slate-200 bg-white p-3">
@@ -356,7 +417,7 @@ export default function Settings() {
         </div>
       ) : null}
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <section className={`${activeTab === "audio" ? "" : "hidden"} space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-bold text-slate-900">آماده‌سازی صوت پیش از تحلیل</h2>
@@ -427,7 +488,7 @@ export default function Settings() {
         </div>
       </section>
 
-      <div>
+      <div className={activeTab === "audio" ? "" : "hidden"}>
         <label className="label">تعداد تحلیل هم‌زمان</label>
         <input
           className="input"
@@ -448,15 +509,17 @@ export default function Settings() {
         </p>
       </div>
 
-      <ModelSelect
-        id="asr-model"
-        label="مدل پیاده‌سازی صوت (ASR)"
-        value={settings.asr_model}
-        models={asrModels}
-        onChange={(asr_model) => setSettings({ ...settings, asr_model })}
-      />
+      <div className={activeTab === "models" ? "" : "hidden"}>
+        <ModelSelect
+          id="asr-model"
+          label="مدل پیاده‌سازی صوت (ASR)"
+          value={settings.asr_model}
+          models={asrModels}
+          onChange={(asr_model) => setSettings({ ...settings, asr_model })}
+        />
+      </div>
 
-      <div>
+      <div className={activeTab === "models" ? "" : "hidden"}>
         <ModelSelect
           id="analysis-model"
           label="مدل تحلیل مکالمات"
@@ -469,7 +532,7 @@ export default function Settings() {
         </select>
       </div>
 
-      <div>
+      <div className={activeTab === "models" ? "" : "hidden"}>
         <ModelSelect
           id="assistant-model"
           label="مدل دستیار سازمانی"
@@ -484,7 +547,7 @@ export default function Settings() {
         </select>
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">تصمیم‌گیری محلی AISERVICE</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">مدل اصلی و fallback را از مدل‌های واقعاً قابل دسترس AISERVICE انتخاب کنید.</p>
@@ -502,7 +565,7 @@ export default function Settings() {
         </select>
       </section>
 
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">Embedding و بازیابی برداری</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">فقط مدل‌های embedding اعلام‌شده توسط AISERVICE نمایش داده می‌شوند؛ شناسه فرضی یا نصب‌نشده ذخیره نمی‌شود.</p>
@@ -514,7 +577,7 @@ export default function Settings() {
       </section>
 
 
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">پرامپت اصلی تحلیل</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">
@@ -530,7 +593,7 @@ export default function Settings() {
           required
         />
       </section>
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">دستورها و اطلاعات دستیار</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">
@@ -546,7 +609,7 @@ export default function Settings() {
         />
       </section>
       <button className="btn">
-        ذخیره
+        ذخیره {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label}
       </button>
     </form>
     </div>
