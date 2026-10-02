@@ -2,6 +2,8 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Rebuilt the admin AI settings surface around explicit ASR, analysis, assistant, decision, fallback, and embedding workloads, with route controls, live capability counts, availability warnings, and model selection sourced from AISERVICE.
+- Replaced the fabricated embedding default and hard-coded model suggestions with the authenticated AISERVICE `kind=all` catalog so unavailable model identifiers can no longer be newly selected from the admin UI.
 - Removed transcript content from desktop grid-row sizing so the insight sidebar alone defines the matched panel height and long conversations scroll internally instead of expanding the page.
 - Removed the transcript panel's intermediate grid wrapper so the card directly inherits the insight sidebar row height and its internal chat scroller fills that matched height.
 - Made the desktop transcript scroller flex to the full remaining height of the sidebar-aligned conversation panel, eliminating the unused blank area below short conversations.

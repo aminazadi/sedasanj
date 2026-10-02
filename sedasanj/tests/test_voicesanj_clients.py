@@ -487,8 +487,11 @@ async def test_voicesanj_list_models() -> None:
         def json(self) -> dict[str, object]:
             return {
                 "data": [
-                    {"id": "dorna-8b-q4_k_m"},
-                    {"id": "custom-llm"},
+                    {"id": "dorna-8b-q4_k_m", "kind": "llm"},
+                    {"id": "custom-llm", "kind": "llm", "owned_by": "9router"},
+                    {"id": "shenava-koochik-v1-5-rnnt", "kind": "asr"},
+                    {"id": "embed-live", "kind": "embedding", "owned_by": "9router"},
+                    {"id": "decision-live", "kind": "decision"},
                 ]
             }
 
@@ -499,9 +502,9 @@ async def test_voicesanj_list_models() -> None:
         def json(self) -> dict[str, object]:
             return {
                 "installed_models": [
-                    "buzzasr-persian",
                     "dorna-8b-q4_k_m",
                     "shenava-koochik-v1-5-rnnt",
+                    "decision-live",
                 ]
             }
 
@@ -518,6 +521,7 @@ async def test_voicesanj_list_models() -> None:
         async def get(self, url: str, **kwargs: object) -> object:
             seen.append(url)
             if url.endswith("/v1/models"):
+                assert kwargs["params"] == {"kind": "all"}
                 return ModelsResponse()
             if url.endswith("/health"):
                 return HealthResponse()
@@ -529,11 +533,15 @@ async def test_voicesanj_list_models() -> None:
     assert any(url.endswith("/health") for url in seen)
     assert not any("/api/models" in url for url in seen)
     by_id = {row["id"]: row for row in rows}
-    assert by_id["buzzasr-persian"]["kind"] == "asr"
-    assert by_id["buzzasr-persian"]["available"] is True
+    assert by_id["shenava-koochik-v1-5-rnnt"]["kind"] == "asr"
+    assert by_id["shenava-koochik-v1-5-rnnt"]["available"] is True
     assert by_id["dorna-8b-q4_k_m"]["kind"] == "llm"
     assert by_id["custom-llm"]["kind"] == "llm"
     assert by_id["custom-llm"]["available"] is True
+    assert by_id["embed-live"]["kind"] == "embedding"
+    assert by_id["embed-live"]["available"] is True
+    assert by_id["decision-live"]["kind"] == "decision"
+    assert "buzzasr-persian" not in by_id
 
 
 async def test_voicesanj_validate_api_key_uses_user_endpoint() -> None:

@@ -1195,7 +1195,15 @@ async def list_provider_models(staff: StaffDep, session: StaffSession) -> list[P
                 license=str(item["license"]) if item.get("license") is not None else None,
             )
         )
-    return out
+    return sorted(
+        out,
+        key=lambda item: (
+            item.kind,
+            item.available is False,
+            not item.recommended,
+            item.display_name.casefold(),
+        ),
+    )
 
 
 @router.get("/packages")

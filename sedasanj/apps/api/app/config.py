@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     decision_confidence_threshold: float = 0.72
     embedding_base_url: str | None = None
     embedding_api_key: str | None = None
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_model: str = ""
 
     llama_server_urls: str = "http://llm1:8081,http://llm2:8081"
     llm_model: str = "dorna-llama3-8b-instruct-q4_k_m"

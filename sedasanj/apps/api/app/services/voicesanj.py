@@ -21,26 +21,6 @@ TERMINAL_STATUSES = frozenset(
 TEXT_PROCESS_MAX_CHARS = 12_000
 SPEAKER_MARKER = re.compile(r"\[(caller|agent)\s+(\d+:\d{2})\]")
 
-# Catalog keys from aiservice User API v2 (redoc/user). Admin /api/models needs an
-# admin key; regular ASR keys only authenticate against /v1/* endpoints.
-KNOWN_ASR_MODELS: tuple[str, ...] = (
-    "shenava-koochik",
-    "shenava-koochik-v1-5-rnnt",
-    "shenava-rizeh",
-    "shenava-rizeh-pizeh",
-    "whisper-large-v3",
-    "whisper-persian-v4",
-    "buzzasr-persian",
-)
-KNOWN_LLM_MODELS: tuple[str, ...] = (
-    "dorna-8b-q4_k_m",
-    "dorna-8b-q3_k_m",
-    "dorna-8b-q2_k",
-    "gemma-3-4b-it-q4_k_m",
-    "qwen3-4b-q4_k_m",
-    "qwen2_5-3b-instruct-q4_k_m",
-    "aya-expanse-8b-q4_k_m",
-)
 VOICESANJ_USER_AGENT = "cbi-voice-analytics/httpx"
 
 
@@ -85,10 +65,12 @@ class VoiceSanjClient:
                 )
 
     async def list_models(self) -> list[dict[str, Any]]:
-        """Build ASR/LLM picker rows from user API + public health (not admin /api/models)."""
+        """Build workload-specific picker rows from the user API and public health."""
         async with httpx.AsyncClient(timeout=self._http_timeout, http2=False) as client:
             models_response = await client.get(
-                f"{self._base}/v1/models", headers=self._headers
+                f"{self._base}/v1/models",
+                headers=self._headers,
+                params={"kind": "all"},
             )
             classified = classify_http(
                 models_response.status_code, models_response.text, kind="asr"
@@ -119,32 +101,25 @@ class VoiceSanjClient:
             for item in (health_payload.get("installed_models") or [])
             if str(item).strip()
         }
-        live_llm_ids = _openai_model_ids(models_payload)
-        llm_ids = list(dict.fromkeys([*KNOWN_LLM_MODELS, *live_llm_ids]))
-
-        rows: list[dict[str, Any]] = []
-        for model_id in KNOWN_ASR_MODELS:
-            available = model_id in installed
+        rows = _openai_models(models_payload)
+        known_ids = {row["id"] for row in rows}
+        for row in rows:
+            available = row.get("available")
+            if not isinstance(available, bool):
+                available = row["id"] in installed or row.get("owned_by") == "9router"
+            row["available"] = available
+            row["status"] = row.get("status") or ("ready" if available else "not_installed")
+            row["display_name"] = row.get("display_name") or row["id"]
+            row["recommended"] = bool(row.get("recommended"))
+        for model_id in sorted(installed - known_ids):
             rows.append(
                 {
                     "id": model_id,
-                    "kind": "asr",
+                    "kind": "unknown",
                     "display_name": model_id,
-                    "available": available,
-                    "status": "ready" if available else "not_installed",
-                    "recommended": model_id == "buzzasr-persian",
-                }
-            )
-        for model_id in llm_ids:
-            available = model_id in installed or model_id in live_llm_ids
-            rows.append(
-                {
-                    "id": model_id,
-                    "kind": "llm",
-                    "display_name": model_id,
-                    "available": available,
-                    "status": "ready" if available else "not_installed",
-                    "recommended": model_id == "dorna-8b-q4_k_m",
+                    "available": True,
+                    "status": "ready",
+                    "recommended": False,
                 }
             )
         return rows
@@ -331,8 +306,7 @@ async def correct_transcript(settings: Settings, text: str) -> str:
     return corrected
 
 
-def _openai_model_ids(payload: Any) -> list[str]:
-    """Extract model ids from an OpenAI-compatible `/v1/models` body."""
+def _openai_models(payload: Any) -> list[dict[str, Any]]:
     items: list[Any]
     if isinstance(payload, dict):
         nested = payload.get("data") or payload.get("models") or payload.get("items")
@@ -341,15 +315,34 @@ def _openai_model_ids(payload: Any) -> list[str]:
         items = payload
     else:
         return []
-    ids: list[str] = []
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
     for item in items:
-        if isinstance(item, dict):
-            model_id = str(item.get("id") or item.get("model") or "").strip()
-        else:
-            model_id = str(item).strip()
-        if model_id and model_id not in ids:
-            ids.append(model_id)
-    return ids
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or item.get("model") or "").strip()
+        kind = str(item.get("kind") or "llm").strip().lower()
+        key = (kind, model_id)
+        if not model_id or key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "id": model_id,
+                "kind": kind,
+                "display_name": str(item.get("display_name") or model_id),
+                "description": str(item.get("description") or ""),
+                "owned_by": str(item.get("owned_by") or ""),
+                "available": item.get("available"),
+                "status": item.get("status"),
+                "recommended": bool(item.get("recommended")),
+                "language": item.get("language"),
+                "model_id": item.get("model_id"),
+                "architecture": item.get("architecture"),
+                "license": item.get("license"),
+            }
+        )
+    return rows
 
 
 def _absolute(base: str, url: str) -> str:

@@ -6,6 +6,12 @@ import { ErrorBox, Loading } from "../components/Widgets";
 import type { PlatformSettings, ProviderModel } from "../types";
 
 const LLM_KINDS = new Set(["llm", "language", "chat", "text"]);
+const KIND_LABELS: Record<string, string> = {
+  asr: "پیاده‌سازی صوت",
+  llm: "مدل زبانی",
+  decision: "تصمیم‌گیری",
+  embedding: "Embedding",
+};
 function normalizeApiKey(value: string): string {
   let secret = value.trim();
   if (/^bearer\s+/i.test(secret)) {
@@ -27,6 +33,53 @@ function modelOptionLabel(model: ProviderModel): string {
   if (model.available === false) bits.push("نصب‌نشده");
   else if (model.status && model.status !== "ready") bits.push(model.status);
   return bits.join(" — ");
+}
+
+function ModelSelect({
+  id,
+  label,
+  value,
+  models,
+  onChange,
+  required = true,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  models: ProviderModel[];
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  const selected = models.find((model) => model.id === value);
+  const missing = Boolean(value) && !selected;
+  return (
+    <div>
+      <label className="label" htmlFor={id}>{label}</label>
+      <select
+        id={id}
+        className="input"
+        dir="ltr"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+      >
+        <option value="">انتخاب مدل از AISERVICE</option>
+        {missing ? <option value={value}>{value} — در فهرست AISERVICE نیست</option> : null}
+        {models.map((model) => (
+          <option key={`${model.kind}:${model.id}`} value={model.id} disabled={model.available === false}>
+            {modelOptionLabel(model)}
+          </option>
+        ))}
+      </select>
+      {missing ? (
+        <p className="mt-1 text-xs font-medium text-rose-700">
+          مدل ذخیره‌شده در فهرست فعلی AISERVICE وجود ندارد؛ یک مدل معتبر انتخاب کنید.
+        </p>
+      ) : selected?.description ? (
+        <p className="mt-1 text-xs leading-5 text-slate-500">{selected.description}</p>
+      ) : null}
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -70,6 +123,21 @@ export default function Settings() {
     () => models.filter((model) => LLM_KINDS.has(model.kind)),
     [models],
   );
+  const decisionModels = useMemo(
+    () => models.filter((model) => model.kind === "decision"),
+    [models],
+  );
+  const embeddingModels = useMemo(
+    () => models.filter((model) => model.kind === "embedding"),
+    [models],
+  );
+  const modelCounts = useMemo(
+    () => models.reduce<Record<string, number>>((result, model) => {
+      result[model.kind] = (result[model.kind] || 0) + 1;
+      return result;
+    }, {}),
+    [models],
+  );
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!settings) return;
@@ -78,6 +146,25 @@ export default function Settings() {
     if (!settings.api_key_configured && !apiKeyDraft.trim()) {
       setError("کلید API سرویس تحلیل متن را وارد کنید.");
       return;
+    }
+    if (models.length) {
+      const selections = [
+        ["مدل ASR", settings.asr_model, asrModels],
+        ["مدل تحلیل", settings.llm_model, llmModels],
+        ["مدل دستیار", settings.chat_model, llmModels],
+        ["مدل تصمیم‌گیری", settings.decision_model, decisionModels],
+        ["مدل fallback تصمیم‌گیری", settings.decision_fallback_model, decisionModels],
+        ["مدل embedding", settings.embedding_model, embeddingModels],
+      ] as const;
+      const invalid = selections.find(([, value, options]) => {
+        if (!options.length) return false;
+        const selected = options.find((model) => model.id === value);
+        return !selected || selected.available === false;
+      });
+      if (invalid) {
+        setError(`${invalid[0]} باید از فهرست مدل‌های آماده AISERVICE انتخاب شود.`);
+        return;
+      }
     }
     try {
       const body: Record<string, string | boolean | number> = {
@@ -105,6 +192,9 @@ export default function Settings() {
         decision_route: settings.decision_route,
         embedding_route: settings.embedding_route,
       };
+      if (!settings.embedding_model.trim()) {
+        delete body.embedding_model;
+      }
       if (apiKeyDraft.trim()) {
         body.api_key = normalizeApiKey(apiKeyDraft);
       }
@@ -126,7 +216,7 @@ export default function Settings() {
   if (!settings) return error ? <ErrorBox message={error} /> : <Loading />;
 
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="max-w-6xl space-y-5">
       <TwoFactorSettings />
     <form className="card space-y-5" onSubmit={save}>
       <h1 className="font-bold">تنظیمات مدل‌ها</h1>
@@ -134,7 +224,7 @@ export default function Settings() {
       {notice ? <div className="text-sm text-emerald-700">{notice}</div> : null}
 
       <div>
-        <label className="label" htmlFor="llm-provider">ارائه‌دهنده تحلیل متن و دستیار</label>
+        <label className="label" htmlFor="llm-provider">درگاه مرکزی همه قابلیت‌های هوش مصنوعی</label>
         <select
           id="llm-provider"
           className="input"
@@ -153,7 +243,7 @@ export default function Settings() {
       </div>
 
       <div>
-        <label className="label">کلید API سرویس تحلیل متن</label>
+        <label className="label">کلید API مشترک AISERVICE</label>
         <input
           className="input"
           dir="ltr"
@@ -162,7 +252,7 @@ export default function Settings() {
           placeholder={
             settings.api_key_configured
               ? `کلید فعلی: ${settings.api_key_hint || "••••"} (برای تغییر بنویسید)`
-              : "کلید API سرویس تحلیل متن VoiceSanj"
+              : "کلید API AISERVICE"
           }
           value={apiKeyDraft}
           onChange={(event) => setApiKeyDraft(event.target.value)}
@@ -255,6 +345,16 @@ export default function Settings() {
         </button>
       </div>
       {modelsError ? <ErrorBox message={modelsError} /> : null}
+      {models.length ? (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(KIND_LABELS).map(([kind, label]) => (
+            <div key={kind} className="border border-slate-200 bg-white p-3">
+              <div className="text-xs text-slate-500">{label}</div>
+              <div className="mt-1 text-lg font-bold text-slate-900">{fmt.int(modelCounts[kind] || 0)}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <div className="flex items-start justify-between gap-4">
@@ -348,52 +448,35 @@ export default function Settings() {
         </p>
       </div>
 
-      <div>
-        <label className="label">مدل پیاده‌سازی صوت (ASR)</label>
-        <input
-          className="input"
-          dir="ltr"
-          list="asr-model-options"
-          value={settings.asr_model}
-          onChange={(event) => setSettings({ ...settings, asr_model: event.target.value })}
-          required
-        />
-        <datalist id="asr-model-options">
-          {asrModels.map((model) => <option key={model.id} value={model.id}>{modelOptionLabel(model)}</option>)}
-        </datalist>
-        <p className="mt-1 text-xs text-slate-500">از فهرست انتخاب کنید یا شناسه مدل دلخواه را وارد کنید.</p>
-      </div>
+      <ModelSelect
+        id="asr-model"
+        label="مدل پیاده‌سازی صوت (ASR)"
+        value={settings.asr_model}
+        models={asrModels}
+        onChange={(asr_model) => setSettings({ ...settings, asr_model })}
+      />
 
       <div>
-        <label className="label">مدل زبانی (LLM)</label>
-        <input
-          className="input"
-          dir="ltr"
-          list="llm-model-options"
+        <ModelSelect
+          id="analysis-model"
+          label="مدل تحلیل مکالمات"
           value={settings.llm_model}
-          onChange={(event) => setSettings({ ...settings, llm_model: event.target.value })}
-          required
+          models={llmModels}
+          onChange={(llm_model) => setSettings({ ...settings, llm_model })}
         />
-        <datalist id="llm-model-options">
-          {llmModels.map((model) => <option key={model.id} value={model.id}>{modelOptionLabel(model)}</option>)}
-        </datalist>
-        <p className="mt-1 text-xs text-slate-500">از فهرست انتخاب کنید یا شناسه مدل دلخواه را وارد کنید.</p>
         <select className="input mt-2" value={settings.analysis_route} disabled>
           <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
         </select>
       </div>
 
       <div>
-        <label className="label">مدل چت سازمانی</label>
-        <input
-          className="input"
-          dir="ltr"
-          list="llm-model-options"
+        <ModelSelect
+          id="assistant-model"
+          label="مدل دستیار سازمانی"
           value={settings.chat_model}
-          onChange={(event) => setSettings({ ...settings, chat_model: event.target.value })}
-          required
+          models={llmModels}
+          onChange={(chat_model) => setSettings({ ...settings, chat_model })}
         />
-        <p className="mt-1 text-xs text-slate-500">از فهرست انتخاب کنید یا شناسه مدل دلخواه را وارد کنید.</p>
         <select className="input mt-2" value={settings.chat_route} onChange={(event) => setSettings({ ...settings, chat_route: event.target.value as PlatformSettings["chat_route"] })}>
           <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
           <option value="synchronous">/v1/chat/completions — پاسخ مستقیم AISERVICE</option>
@@ -404,12 +487,15 @@ export default function Settings() {
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <div>
           <h2 className="font-bold text-slate-900">تصمیم‌گیری محلی AISERVICE</h2>
-          <p className="mt-1 text-xs leading-6 text-slate-500">GLiNER2.5 مدل اصلی و Laya Multilingual مسیر confidence پایین است.</p>
+          <p className="mt-1 text-xs leading-6 text-slate-500">مدل اصلی و fallback را از مدل‌های واقعاً قابل دسترس AISERVICE انتخاب کنید.</p>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <input className="input" dir="ltr" value={settings.decision_model} onChange={(event) => setSettings({ ...settings, decision_model: event.target.value })} />
-          <input className="input" dir="ltr" value={settings.decision_fallback_model} onChange={(event) => setSettings({ ...settings, decision_fallback_model: event.target.value })} />
-          <input className="input" type="number" min="0" max="1" step="0.01" value={settings.decision_confidence_threshold} onChange={(event) => setSettings({ ...settings, decision_confidence_threshold: Number(event.target.value) })} />
+        <div className="grid gap-3 md:grid-cols-2">
+          <ModelSelect id="decision-model" label="مدل اصلی" value={settings.decision_model} models={decisionModels} onChange={(decision_model) => setSettings({ ...settings, decision_model })} />
+          <ModelSelect id="decision-fallback-model" label="مدل fallback" value={settings.decision_fallback_model} models={decisionModels} onChange={(decision_fallback_model) => setSettings({ ...settings, decision_fallback_model })} />
+        </div>
+        <div>
+          <label className="label" htmlFor="decision-threshold">حداقل اطمینان برای استفاده از مدل اصلی</label>
+          <input id="decision-threshold" className="input" type="number" min="0" max="1" step="0.01" value={settings.decision_confidence_threshold} onChange={(event) => setSettings({ ...settings, decision_confidence_threshold: Number(event.target.value) })} />
         </div>
         <select className="input" value={settings.decision_route} disabled>
           <option value="typed">/v1/decisions — تصمیم‌گیری typed AISERVICE</option>
@@ -419,9 +505,9 @@ export default function Settings() {
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <div>
           <h2 className="font-bold text-slate-900">Embedding و بازیابی برداری</h2>
-          <p className="mt-1 text-xs leading-6 text-slate-500">سرویس OpenAI-compatible برای وکتور کردن خلاصه تماس‌ها و پرسش‌های دستیار.</p>
+          <p className="mt-1 text-xs leading-6 text-slate-500">فقط مدل‌های embedding اعلام‌شده توسط AISERVICE نمایش داده می‌شوند؛ شناسه فرضی یا نصب‌نشده ذخیره نمی‌شود.</p>
         </div>
-        <input className="input" dir="ltr" placeholder="BAAI/bge-m3" value={settings.embedding_model} onChange={(event) => setSettings({ ...settings, embedding_model: event.target.value })} />
+        <ModelSelect id="embedding-model" label="مدل Embedding" value={settings.embedding_model} models={embeddingModels} onChange={(embedding_model) => setSettings({ ...settings, embedding_model })} />
         <select className="input" value={settings.embedding_route} disabled>
           <option value="ninerouter">/v1/ninerouter/embeddings — 9Router از AISERVICE</option>
         </select>
