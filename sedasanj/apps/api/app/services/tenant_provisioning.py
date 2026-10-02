@@ -493,7 +493,7 @@ async def migrate_tenant(tenant_id: UUID) -> None:
             session.add(job)
         job.status = "running"
         job.step = "provisioning_target"
-        job.attempt += 1
+        job.attempt = (job.attempt or 0) + 1
         job.started_at = now
         job.error_detail = None
 
