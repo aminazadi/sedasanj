@@ -44,6 +44,19 @@ function parties(task: FollowUpTask): string {
   return `${caller} → ${dialed}`;
 }
 
+function EditIcon({ close = false }: { close?: boolean }) {
+  return close ? (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" aria-hidden="true">
+      <path d="m5 5 10 10M15 5 5 15" />
+    </svg>
+  ) : (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+      <path d="M12.8 3.2a2.1 2.1 0 0 1 3 3L7 15l-4 1 1-4Z" />
+      <path d="m11.5 4.5 4 4" />
+    </svg>
+  );
+}
+
 export default function FollowUpTaskCard({
   task,
   canEdit,
@@ -125,7 +138,7 @@ export default function FollowUpTaskCard({
 
   return (
     <li
-      className={`rounded-xl border p-3 ${
+      className={`border px-3 py-2.5 ${
         done ? "border-[#B2AC88] bg-[#B2AC88]/20" : "border-[#B2AC88] bg-[#F2F0EF]"
       }`}
     >
@@ -148,27 +161,42 @@ export default function FollowUpTaskCard({
           </svg>
         </button>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className={`text-sm leading-6 ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>
-              {task.title}
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
+          <div className="flex min-h-7 flex-wrap items-start justify-between gap-x-3 gap-y-1">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              <p className={`min-w-0 text-sm font-medium leading-6 ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                {task.title}
+              </p>
               <span
-                className={`badge ${
+                className={`badge px-1.5 py-0.5 text-[10px] ${
                   done ? "bg-[#4B6E48] text-[#F2F0EF]" : "bg-[#B2AC88] text-black"
                 }`}
               >
                 {TASK_STATUS_LABELS[task.status]}
               </span>
               {task.priority ? (
-                <span className={`badge ${PRIORITY_TONE[task.priority] ?? "bg-slate-100 text-slate-600"}`}>
+                <span className={`badge px-1.5 py-0.5 text-[10px] ${PRIORITY_TONE[task.priority] ?? "bg-slate-100 text-slate-600"}`}>
                   اولویت {TASK_PRIORITY_LABELS[task.priority]}
                 </span>
               ) : null}
-              {overdue ? <span className="badge bg-rose-50 text-rose-700">عقب‌افتاده</span> : null}
+              {overdue ? <span className="badge bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700">عقب‌افتاده</span> : null}
             </div>
+            {canEdit ? (
+              <button
+                type="button"
+                className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${
+                  open
+                    ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
+                    : "border-[#B2AC88] text-[#4B6E48] hover:bg-[#B2AC88]/40"
+                }`}
+                aria-label={open ? "بستن ویرایش" : "ویرایش کار"}
+                title={open ? "بستن ویرایش" : "ویرایش"}
+                onClick={() => setOpen((current) => !current)}
+              >
+                <EditIcon close={open} />
+              </button>
+            ) : null}
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
             <span>ایجاد: {fmt.dateTime(task.created_at)}</span>
             {task.due_date ? (
               <span className={overdue ? "text-rose-600" : undefined}>
@@ -186,22 +214,17 @@ export default function FollowUpTaskCard({
             {task.agent_extension ? <span>داخلی: {fmt.digits(task.agent_extension)}</span> : null}
           </div>
           {task.description ? (
-            <p className={`mt-2 text-xs leading-6 ${done ? "text-slate-400" : "text-slate-600"}`}>
+            <p className={`mt-1.5 text-xs leading-5 ${done ? "text-slate-400" : "text-slate-600"}`}>
               {task.description}
             </p>
           ) : null}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {canEdit ? (
-              <button type="button" className="btn-ghost text-xs" onClick={() => setOpen((current) => !current)}>
-                {open ? "بستن ویرایش" : "ویرایش"}
-              </button>
-            ) : null}
-            {showCallLink ? (
+          {showCallLink ? (
+            <div className="mt-1.5 flex items-center">
               <Link className="text-xs text-brand-700 hover:underline" to={`/calls/${task.call_id}`}>
                 مشاهده تماس
               </Link>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
           {open && canEdit ? (
             <div className="mt-3 grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">

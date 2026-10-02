@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Made follow-up task cards denser and replaced the labeled edit action with a compact accessible icon button.
 - Replaced the single-call metric glyphs with locally bundled Fluent Emoji 3D icons and softly faded the dotted texture around their background-free top-left placement.
 - Moved call follow-up tasks directly below the processing report on the single-call page.
 - Corrected the secure Asterisk setup list's RTL indentation and spacing so its text and numbering keep a consistent distance from the right edge.
