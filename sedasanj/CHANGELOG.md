@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added accessible hover and keyboard-focus tooltips to the assistant export and temporary-chat controls.
 - Added UTF-8 text export to call details with speaker-separated transcript turns, timestamps, call metadata, and the corrected transcript when available.
 - Added UTF-8 text export for completed messages in persistent, archived, and temporary assistant conversations.
 - Shortened the overview credit unit from «تومان» to «ت» and replaced the credit-card purse artwork with a credit card across customer and admin statistic cards.
