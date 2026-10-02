@@ -98,21 +98,21 @@ function MetricCard({
   tone?: "brand" | "violet" | "emerald" | "amber";
 }) {
   const tones = {
-    brand: "bg-brand-50 text-brand-700",
-    violet: "bg-violet-50 text-violet-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-700",
+    brand: "text-brand-700",
+    violet: "text-violet-700",
+    emerald: "text-emerald-700",
+    amber: "text-amber-700",
   };
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <span className="text-xs font-medium text-slate-500">{label}</span>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-lg ${tones[tone]}`}>
+    <div className="call-metric-card p-4 transition duration-300 hover:-translate-y-0.5">
+      <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
+        <span className="text-xs font-medium text-[#F2F0EF]">{label}</span>
+        <span className={`call-metric-icon flex h-10 w-10 items-center justify-center bg-[#F2F0EF] text-lg ${tones[tone]}`}>
           {icon}
         </span>
       </div>
-      <div className="text-2xl font-extrabold tracking-tight text-slate-800">{value}</div>
-      <p className="mt-1 text-[11px] text-slate-400">{hint}</p>
+      <div className="relative z-10 text-2xl font-extrabold tracking-tight text-white">{value}</div>
+      <p className="relative z-10 mt-1 text-[11px] leading-5 text-[#F2F0EF]/75">{hint}</p>
     </div>
   );
 }

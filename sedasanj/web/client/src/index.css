@@ -193,6 +193,30 @@ body {
   background: #f2f0ef radial-gradient(circle, rgb(137 137 137 / 0.12) 0 1px, transparent 1.15px) 0 0 / 7px 7px !important;
 }
 
+.call-metric-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid #b2ac88;
+  background:
+    radial-gradient(circle at 2.25rem 2.25rem, rgb(255 255 255 / 0.2) 0, rgb(255 255 255 / 0.08) 3rem, transparent 6.5rem),
+    radial-gradient(circle, rgb(242 240 239 / 0.13) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
+    #4b6e48;
+  box-shadow: 0 8px 20px rgb(75 110 72 / 0.12);
+}
+
+.call-metric-card:hover {
+  border-color: #898989;
+  box-shadow: 0 13px 28px rgb(75 110 72 / 0.2);
+}
+
+.call-metric-icon {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.7),
+    0 0 18px 7px rgb(255 255 255 / 0.28),
+    0 8px 22px rgb(255 255 255 / 0.16);
+}
+
 .panel-shell,
 .panel-shell * {
   border-radius: 0 !important;
