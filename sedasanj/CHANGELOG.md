@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added context-specific Fluent Emoji 3D icons to every shared statistic card and reproduced the reference card's soft texture fade beneath each icon in both customer and admin panels.
 - Increased the completed-step checkmark size in the call-analysis pipeline without changing its marker dimensions or layout spacing.
 - Matched every shared customer and admin statistic card to the call-metric visual language with a warm surface, olive border, fine dotted texture, square corners, and no shadow while leaving non-statistic panels plain.
 - Unified customer and admin cards through the shared card component, including sales KPI statistics, two-factor settings, API documentation, and call-detail surfaces, without applying the dotted texture globally.

@@ -1,11 +1,43 @@
 import type { ReactNode } from "react";
+import { Icon } from "@iconify/react";
+import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
+import calendarIcon from "@iconify/icons-fluent-emoji/calendar";
+import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
+import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
+import officeBuildingIcon from "@iconify/icons-fluent-emoji/office-building";
+import shoppingCartIcon from "@iconify/icons-fluent-emoji/shopping-cart";
+import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
+import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
+import warningIcon from "@iconify/icons-fluent-emoji/warning";
 import { fmt } from "../api";
 
 export function Stat({ title, value, tone }: { title: string; value: string; tone?: string }) {
+  const icon = title.includes("مشتری")
+    ? officeBuildingIcon
+    : title.includes("تماس")
+      ? telephoneIcon
+      : title.includes("دقیقه")
+        ? stopwatchIcon
+        : title.includes("درآمد") || title === "اعتبار"
+          ? moneyBagIcon
+          : title.includes("سفارش")
+            ? shoppingCartIcon
+            : title.includes("پرداخت")
+              ? warningIcon
+              : title.includes("تمدید")
+                ? calendarIcon
+                : title.includes("کار")
+                  ? clipboardIcon
+                  : alarmClockIcon;
   return (
     <div className="panel-stat-card card">
-      <div className="text-sm text-slate-500">{title}</div>
-      <div className={`mt-1 text-2xl font-bold ${tone ?? ""}`}>{value}</div>
+      <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
+        <div className="text-sm font-medium text-slate-600">{title}</div>
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
+          <Icon icon={icon} className="h-14 w-14" />
+        </span>
+      </div>
+      <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>
     </div>
   );
 }

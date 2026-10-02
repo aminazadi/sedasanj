@@ -102,8 +102,12 @@ body {
 }
 
 .panel-shell .panel-stat-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border: 1px solid #b2ac88;
   background:
+    radial-gradient(circle at 2.75rem 2.75rem, #f2f0ef 0 2.5rem, rgb(242 240 239 / 0.94) 3rem, rgb(242 240 239 / 0.78) 4rem, rgb(242 240 239 / 0.52) 5rem, rgb(242 240 239 / 0.24) 6rem, transparent 7rem),
     radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
     #f2f0ef;
   box-shadow: none;

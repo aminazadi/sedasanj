@@ -1,4 +1,16 @@
 import type { ReactNode } from "react";
+import { Icon } from "@iconify/react";
+import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
+import barChartIcon from "@iconify/icons-fluent-emoji/bar-chart";
+import bullseyeIcon from "@iconify/icons-fluent-emoji/bullseye";
+import checkMarkButtonIcon from "@iconify/icons-fluent-emoji/check-mark-button";
+import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
+import fireIcon from "@iconify/icons-fluent-emoji/fire";
+import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
+import robotIcon from "@iconify/icons-fluent-emoji/robot";
+import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
+import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
+import trophyIcon from "@iconify/icons-fluent-emoji/trophy";
 import { fmt, SENTIMENT_LABELS, STATUS_LABELS, TRAJECTORY_LABELS } from "../api";
 import type { PartySentiment, SentimentPoint } from "../types";
 
@@ -10,11 +22,37 @@ const PIPELINE_STEPS: { label: string; hint: string; statuses: string[] }[] = [
 ];
 
 export function Stat({ title, value, hint, tone }: { title: string; value: string; hint?: string; tone?: string }) {
+  const icon = title.includes("دقیقه") || title.includes("SLA")
+    ? stopwatchIcon
+    : title.includes("اعتبار") || title.includes("ارزش فروش")
+      ? moneyBagIcon
+      : title.includes("تماس")
+        ? telephoneIcon
+        : title.includes("کار")
+          ? clipboardIcon
+          : title.includes("فرصت داغ")
+            ? fireIcon
+            : title.includes("فرصت فروش")
+              ? bullseyeIcon
+              : title.includes("فروش صریح")
+                ? robotIcon
+                : title.includes("پوشش")
+                  ? barChartIcon
+                  : title.includes("تبدیل")
+                    ? checkMarkButtonIcon
+                    : title.includes("کیفیت")
+                      ? trophyIcon
+                      : alarmClockIcon;
   return (
     <div className="panel-stat-card card">
-      <div className="text-sm text-slate-500">{title}</div>
-      <div className={`mt-1 text-2xl font-bold ${tone ?? ""}`}>{value}</div>
-      {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
+      <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
+        <div className="text-sm font-medium text-slate-600">{title}</div>
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
+          <Icon icon={icon} className="h-14 w-14" />
+        </span>
+      </div>
+      <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>
+      {hint ? <div className="relative z-10 mt-1 text-xs leading-5 text-slate-500">{hint}</div> : null}
     </div>
   );
 }
