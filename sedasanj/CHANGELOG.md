@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added structured assistant attachments for organization-admin operator mentions, multiple previous conversations, Jalali date ranges, and multiple explicitly selected read-only tools, with server-enforced tenant, owner, role, date, and tool restrictions.
+
+## 2026-10-02 — AMINAZADI
+
 - Removed the scroll-to-end button shadow and increased its spacing above the assistant prompt.
 
 ## 2026-10-02 — AMINAZADI

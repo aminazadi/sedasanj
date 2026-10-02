@@ -509,8 +509,29 @@ class ChatConversationOut(BaseModel):
     updated_at: datetime
 
 
+class AssistantMessageAttachments(BaseModel):
+    operator_id: UUID | None = None
+    conversation_ids: list[UUID] = Field(default_factory=list, max_length=5)
+    from_date: datetime | None = None
+    to_date: datetime | None = None
+    tool_names: list[str] = Field(default_factory=list, max_length=7)
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> AssistantMessageAttachments:
+        if (self.from_date is None) != (self.to_date is None):
+            raise ValueError("both from_date and to_date are required")
+        if self.from_date is not None and self.from_date >= self.to_date:
+            raise ValueError("from_date must be earlier than to_date")
+        if len(set(self.conversation_ids)) != len(self.conversation_ids):
+            raise ValueError("conversation_ids must be unique")
+        if len(set(self.tool_names)) != len(self.tool_names):
+            raise ValueError("tool_names must be unique")
+        return self
+
+
 class ChatMessageCreate(BaseModel):
     content: str = Field(min_length=2, max_length=4000)
+    attachments: AssistantMessageAttachments = Field(default_factory=AssistantMessageAttachments)
 
 
 class EphemeralChatHistoryItem(BaseModel):

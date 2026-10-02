@@ -28,6 +28,7 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    AssistantMessageAttachments,
     ChatConversationCreate,
     ChatConversationOut,
     ChatConversationUpdate,
@@ -89,6 +90,57 @@ ACTIVE_HISTORY_MESSAGES = 24
 OTHER_CONVERSATIONS = 12
 OTHER_HISTORY_MESSAGES = 4
 MESSAGE_CONTEXT_CHARS = 1_500
+
+
+@router.get("/assistant/context-options")
+async def assistant_context_options(
+    principal: OperatorDep, session: TenantSession
+) -> dict[str, Any]:
+    assert principal.tenant_id is not None
+    operators: list[dict[str, Any]] = []
+    if principal.role == "org_admin":
+        rows = (
+            await session.execute(
+                select(User)
+                .where(User.tenant_id == principal.tenant_id, User.role == "operator")
+                .order_by(User.display_name.asc().nulls_last(), User.email.asc())
+            )
+        ).scalars().all()
+        operators = [
+            {
+                "id": str(row.id),
+                "label": row.display_name or row.email,
+                "extension": row.extension,
+            }
+            for row in rows
+        ]
+    conversations = (
+        await session.execute(
+            select(ChatConversation)
+            .where(
+                ChatConversation.tenant_id == principal.tenant_id,
+                ChatConversation.owner_id == principal.id,
+            )
+            .order_by(ChatConversation.updated_at.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+    return {
+        "operators": operators,
+        "conversations": [
+            {
+                "id": str(row.id),
+                "label": row.title or "گفتگوی بدون عنوان",
+                "updated_at": row.updated_at.isoformat(),
+                "archived": row.archived_at is not None,
+            }
+            for row in conversations
+        ],
+        "tools": [
+            {"name": tool.name, "title": tool.title, "description": tool.description}
+            for tool in assistant_tools.TOOLS
+        ],
+    }
 
 
 async def _active_rubric(
@@ -483,6 +535,117 @@ async def _chat_history(
     return "\n".join(history)
 
 
+async def _attachment_context(
+    session: Any,
+    tenant_id: UUID,
+    owner_id: UUID,
+    principal: Any,
+    attachments: AssistantMessageAttachments,
+) -> str:
+    context: list[str] = []
+    if attachments.operator_id is not None:
+        if principal.role != "org_admin":
+            raise ApiError("forbidden", "only organization admins can mention operators")
+        operator = await session.get(User, attachments.operator_id)
+        if (
+            operator is None
+            or operator.tenant_id != tenant_id
+            or operator.role != "operator"
+        ):
+            raise ApiError("not_found", "operator not found")
+        context.append(
+            "[اپراتور انتخاب‌شده: "
+            f"{operator.display_name or operator.email}؛ شناسه {operator.id}]"
+        )
+    if attachments.from_date is not None and attachments.to_date is not None:
+        context.append(
+            f"[بازه انتخاب‌شده: {attachments.from_date.isoformat()} تا "
+            f"{attachments.to_date.isoformat()}]"
+        )
+    if attachments.conversation_ids:
+        rows = (
+            await session.execute(
+                select(ChatConversation).where(
+                    ChatConversation.id.in_(attachments.conversation_ids),
+                    ChatConversation.tenant_id == tenant_id,
+                    ChatConversation.owner_id == owner_id,
+                )
+            )
+        ).scalars().all()
+        if {row.id for row in rows} != set(attachments.conversation_ids):
+            raise ApiError("not_found", "attached conversation not found")
+        titles = {row.id: row.title or "گفتگوی بدون عنوان" for row in rows}
+        ranked = (
+            select(
+                ChatMessage.conversation_id,
+                ChatMessage.role,
+                ChatMessage.content,
+                ChatMessage.created_at,
+                func.row_number()
+                .over(
+                    partition_by=ChatMessage.conversation_id,
+                    order_by=ChatMessage.created_at.desc(),
+                )
+                .label("position"),
+            )
+            .where(
+                ChatMessage.tenant_id == tenant_id,
+                ChatMessage.conversation_id.in_(attachments.conversation_ids),
+            )
+            .subquery()
+        )
+        messages = (
+            await session.execute(
+                select(ranked)
+                .where(ranked.c.position <= 8)
+                .order_by(ranked.c.conversation_id, ranked.c.created_at)
+            )
+        ).mappings().all()
+        current_id: UUID | None = None
+        for message in messages:
+            if message["conversation_id"] != current_id:
+                current_id = message["conversation_id"]
+                context.append(f"[گفتگوی پیوست‌شده: {titles[current_id]}]")
+            role = "کاربر" if message["role"] == "user" else "دستیار"
+            content = str(message["content"]).strip()[:MESSAGE_CONTEXT_CHARS]
+            context.append(f"{role}: {content}")
+    return "\n".join(context)
+
+
+def _attachment_tools(
+    settings: dict[str, str], attachments: AssistantMessageAttachments
+) -> set[str]:
+    enabled = _enabled_assistant_tools(settings)
+    if not attachments.tool_names:
+        return enabled
+    requested = set(attachments.tool_names)
+    if not requested.issubset(assistant_tools.TOOL_BY_NAME):
+        raise ApiError("invalid_request", "unknown assistant tool")
+    selected = enabled & requested
+    if selected != requested:
+        raise ApiError("invalid_request", "an attached assistant tool is disabled")
+    return selected
+
+
+def _apply_attachment_constraints(
+    plan: assistant_agent.AgentPlan,
+    attachments: AssistantMessageAttachments,
+) -> assistant_agent.AgentPlan:
+    calls: list[assistant_agent.PlannedToolCall] = []
+    for planned in plan.tool_calls:
+        arguments = dict(planned.arguments)
+        fields = assistant_tools.TOOL_BY_NAME[planned.name].arguments.model_fields
+        if attachments.operator_id is not None and "operator_id" in fields:
+            arguments["operator_id"] = str(attachments.operator_id)
+        if attachments.from_date is not None and "from_date" in fields:
+            arguments["from_date"] = attachments.from_date.isoformat()
+        if attachments.to_date is not None and "to_date" in fields:
+            arguments["to_date"] = attachments.to_date.isoformat()
+        assistant_tools.TOOL_BY_NAME[planned.name].arguments.model_validate(arguments)
+        calls.append(assistant_agent.PlannedToolCall(planned.id, planned.name, arguments))
+    return assistant_agent.AgentPlan(plan.answer, calls)
+
+
 async def _assistant_system_prompt(session: Any, principal: Any) -> str:
     instructions = await effective_assistant_instructions(session)
     base = f"{IMMUTABLE_PRIVACY_PROMPT}\n\n{ASSISTANT_SYSTEM_PROMPT}"
@@ -592,19 +755,25 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
             history = await _chat_history(
                 session, principal.tenant_id, principal.id, conversation.id, payload.content
             )
+            attachment_context = await _attachment_context(
+                session, principal.tenant_id, principal.id, principal, payload.attachments
+            )
+            if attachment_context:
+                history = f"{history}\n\n{attachment_context}"
             plan = await assistant_agent.plan(
                 client,
                 system_prompt,
                 payload.content,
                 history,
                 model=model,
-                enabled=_enabled_assistant_tools(models),
+                enabled=_attachment_tools(models, payload.attachments),
                 mode=models.get("assistant_tool_mode", "auto"),
             )
             plan = assistant_agent.AgentPlan(
                 plan.answer,
                 plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
             )
+            plan = _apply_attachment_constraints(plan, payload.attachments)
             if plan.tool_calls:
                 results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
                 seen: set[str] = set()
@@ -772,6 +941,11 @@ async def stream_ephemeral_message(
     refused = assistant_policy.must_refuse(payload.content, principal.role)
     system_prompt = await _assistant_system_prompt(session, principal)
     history = _ephemeral_history(payload)
+    attachment_context = await _attachment_context(
+        session, principal.tenant_id, principal.id, principal, payload.attachments
+    )
+    if attachment_context:
+        history = f"{history}\n\n{attachment_context}"
 
     async def events() -> AsyncIterator[bytes]:
         answer = ""
@@ -801,13 +975,14 @@ async def stream_ephemeral_message(
                         payload.content,
                         history,
                         model=model,
-                        enabled=_enabled_assistant_tools(models),
+                        enabled=_attachment_tools(models, payload.attachments),
                         mode=models.get("assistant_tool_mode", "auto"),
                     )
                     plan = assistant_agent.AgentPlan(
                         plan.answer,
                         plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
                     )
+                    plan = _apply_attachment_constraints(plan, payload.attachments)
                     if plan.tool_calls:
                         yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
                         results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
@@ -912,6 +1087,11 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
     chat_history = await _chat_history(
         session, principal.tenant_id, principal.id, conversation.id, payload.content
     )
+    attachment_context = await _attachment_context(
+        session, principal.tenant_id, principal.id, principal, payload.attachments
+    )
+    if attachment_context:
+        chat_history = f"{chat_history}\n\n{attachment_context}"
 
     async def events() -> AsyncIterator[bytes]:
         answer = ""
@@ -939,13 +1119,14 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                         payload.content,
                         chat_history,
                         model=model,
-                        enabled=_enabled_assistant_tools(models),
+                        enabled=_attachment_tools(models, payload.attachments),
                         mode=models.get("assistant_tool_mode", "auto"),
                     )
                     plan = assistant_agent.AgentPlan(
                         plan.answer,
                         plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
                     )
+                    plan = _apply_attachment_constraints(plan, payload.attachments)
                     if plan.tool_calls:
                         yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
                         results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []

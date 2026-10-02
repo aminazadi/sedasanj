@@ -204,6 +204,20 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface AssistantContextOptions {
+  operators: Array<{ id: string; label: string; extension: string | null }>;
+  conversations: Array<{ id: string; label: string; updated_at: string; archived: boolean }>;
+  tools: Array<{ name: string; title: string; description: string }>;
+}
+
+export interface AssistantMessageAttachments {
+  operator_id: string | null;
+  conversation_ids: string[];
+  from_date: string | null;
+  to_date: string | null;
+  tool_names: string[];
+}
+
 export interface AssistantCallSource {
   call_id: string;
   started_at: string | null;

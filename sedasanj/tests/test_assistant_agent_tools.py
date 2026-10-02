@@ -1,7 +1,13 @@
 import json
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
+from app.errors import ApiError
+from app.routers import assistant
+from app.schemas import AssistantMessageAttachments
 from app.services import assistant_agent, assistant_tools
 from worker_llm.client import LlmClient
 
@@ -102,3 +108,48 @@ def test_tool_preview_preserves_chart_payload() -> None:
     charts = [{"id": "status", "type": "donut", "data": []}]
     result = assistant_tools.preview({"total_calls": 3, "charts": charts})
     assert result["charts"] == charts
+
+
+def test_selected_context_overrides_model_tool_scope() -> None:
+    operator_id = uuid4()
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 10, 1, tzinfo=UTC)
+    plan = assistant_agent.AgentPlan(
+        None,
+        [
+            assistant_agent.PlannedToolCall(
+                "tool-1",
+                "get_call_analytics",
+                {"operator_id": str(uuid4()), "from_date": "2020-01-01T00:00:00Z"},
+            )
+        ],
+    )
+    attachments = AssistantMessageAttachments(
+        operator_id=operator_id,
+        from_date=start,
+        to_date=end,
+    )
+
+    constrained = assistant._apply_attachment_constraints(plan, attachments)
+
+    assert constrained.tool_calls[0].arguments["operator_id"] == str(operator_id)
+    assert constrained.tool_calls[0].arguments["from_date"] == start.isoformat()
+    assert constrained.tool_calls[0].arguments["to_date"] == end.isoformat()
+
+
+def test_attached_tools_are_limited_to_enabled_settings() -> None:
+    settings = {"assistant_enabled_tools": json.dumps(["search_calls", "get_call_analysis"])}
+    attachments = AssistantMessageAttachments(tool_names=["get_call_analysis"])
+
+    assert assistant._attachment_tools(settings, attachments) == {"get_call_analysis"}
+
+
+@pytest.mark.asyncio
+async def test_operator_mentions_are_rejected_for_non_admin_users() -> None:
+    principal = SimpleNamespace(id=uuid4(), role="operator")
+    attachments = AssistantMessageAttachments(operator_id=uuid4())
+
+    with pytest.raises(ApiError):
+        await assistant._attachment_context(
+            object(), uuid4(), principal.id, principal, attachments
+        )

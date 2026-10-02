@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
+import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { Link, useSearchParams } from "react-router-dom";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Funnel, FunnelChart, LabelList, Legend, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, RadialBar, RadialBarChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis } from "recharts";
 import { fmt, INTENT_LABELS, refreshSession, request, STATUS_LABELS, tokens } from "../api";
+import { isOrgAdmin, useAuth } from "../auth";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Widgets";
-import type { AssistantCallSource, AssistantChart, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
+import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 
 function TrashIcon() {
@@ -278,6 +280,14 @@ const promptGuides = [
   "برای منشن کردن اپراتور خاص یا زمان خاص و ... از @ استفاده کنید",
 ];
 
+const emptyAttachments = (): AssistantMessageAttachments => ({
+  operator_id: null,
+  conversation_ids: [],
+  from_date: null,
+  to_date: null,
+  tool_names: [],
+});
+
 function TypingPromptGuide() {
   const [guideIndex, setGuideIndex] = useState(0);
   const [characterCount, setCharacterCount] = useState(0);
@@ -307,6 +317,7 @@ function TypingPromptGuide() {
 }
 
 export default function Assistant() {
+  const { session } = useAuth();
   const [search, setSearch] = useSearchParams();
   const expandedCallId = search.get("source_call");
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -331,6 +342,13 @@ export default function Assistant() {
   const userNearBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [showScrollToEnd, setShowScrollToEnd] = useState(false);
+  const [contextOptions, setContextOptions] = useState<AssistantContextOptions | null>(null);
+  const [attachments, setAttachments] = useState<AssistantMessageAttachments>(emptyAttachments);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionTab, setMentionTab] = useState<"operators" | "conversations" | "dates" | "tools">(() => {
+    const value = search.get("attach_tab");
+    return value === "operators" || value === "conversations" || value === "dates" || value === "tools" ? value : "operators";
+  });
 
   function scrollToEnd() {
     const scroller = messagesScrollerRef.current;
@@ -353,6 +371,15 @@ export default function Assistant() {
       const next = new URLSearchParams(current);
       if (next.get("source_call") === callId) next.delete("source_call");
       else next.set("source_call", callId);
+      return next;
+    }, { replace: true });
+  }
+
+  function selectMentionTab(tab: "operators" | "conversations" | "dates" | "tools") {
+    setMentionTab(tab);
+    setSearch((current) => {
+      const next = new URLSearchParams(current);
+      next.set("attach_tab", tab);
       return next;
     }, { replace: true });
   }
@@ -477,6 +504,11 @@ export default function Assistant() {
     })();
   }, []);
   useEffect(() => {
+    void request<AssistantContextOptions>("/v1/assistant/context-options")
+      .then(setContextOptions)
+      .catch((err) => setError((err as Error).message));
+  }, []);
+  useEffect(() => {
     if (userNearBottomRef.current) scrollToEnd();
     else setShowScrollToEnd(sending);
   }, [messages, sending]);
@@ -502,11 +534,11 @@ export default function Assistant() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [confirmation]);
 
-  async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[]): Promise<ChatMessage> {
+  async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[], messageAttachments: AssistantMessageAttachments): Promise<ChatMessage> {
     const url = conversationId ? `/v1/assistant/conversations/${conversationId}/messages/stream` : "/v1/assistant/ephemeral/messages/stream";
     const body = conversationId
-      ? { content }
-      : { content, history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })) };
+      ? { content, attachments: messageAttachments }
+      : { content, attachments: messageAttachments, history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })) };
     const makeRequest = () => fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(tokens.access() ? { Authorization: `Bearer ${tokens.access()}` } : {}) },
@@ -597,9 +629,11 @@ export default function Assistant() {
     const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
     const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
     try {
+      const messageAttachments = attachments;
       const active = ephemeral ? null : conversation ?? await create();
       setMessages([...history, optimistic, draftReply]);
-      const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history);
+      const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history, messageAttachments);
+      setAttachments(emptyAttachments());
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
         setMessages(rows);
@@ -668,6 +702,12 @@ export default function Assistant() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!text.trim() || sending) return;
+    if (Boolean(attachments.from_date) !== Boolean(attachments.to_date)) {
+      setError("برای بازه زمانی، تاریخ شروع و پایان را کامل انتخاب کنید.");
+      setMentionOpen(true);
+      selectMentionTab("dates");
+      return;
+    }
     const content = text.trim();
     const history = messages.filter((item) => item.status !== "running");
     setText("");
@@ -684,6 +724,24 @@ export default function Assistant() {
       return `${role} - ${timestamp}\n${message.content.trim()}`;
     }).join("\n\n--------------------\n\n");
     downloadTextFile(`${safeDownloadName(heading, "conversation")}.txt`, `${heading}\n\n${transcript}\n`);
+  }
+  const attachmentCount = attachments.conversation_ids.length + attachments.tool_names.length + (attachments.operator_id ? 1 : 0) + (attachments.from_date && attachments.to_date ? 1 : 0);
+  const selectedOperator = contextOptions?.operators.find((item) => item.id === attachments.operator_id);
+  function toggleListAttachment(field: "conversation_ids" | "tool_names", value: string) {
+    setAttachments((current) => ({
+      ...current,
+      [field]: current[field].includes(value)
+        ? current[field].filter((item) => item !== value)
+        : [...current[field], value],
+    }));
+  }
+  function removeAttachment(kind: "operator" | "conversation" | "dates" | "tool", value?: string) {
+    setAttachments((current) => {
+      if (kind === "operator") return { ...current, operator_id: null };
+      if (kind === "dates") return { ...current, from_date: null, to_date: null };
+      if (kind === "conversation") return { ...current, conversation_ids: current.conversation_ids.filter((item) => item !== value) };
+      return { ...current, tool_names: current.tool_names.filter((item) => item !== value) };
+    });
   }
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
@@ -758,7 +816,30 @@ export default function Assistant() {
         })}
       </div>
       {showScrollToEnd ? <button type="button" className="absolute bottom-[7rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
-      <form className="flex shrink-0 items-start gap-2 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-7 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" />{!text && <p className="pointer-events-none absolute inset-x-3 bottom-2 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p>}</div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
+      <form className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
+        {mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
+          <div className="flex overflow-x-auto border-b border-[#B2AC88] bg-[#F2F0EF] p-1" role="tablist">
+            {isOrgAdmin(session?.role) ? <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "operators" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("operators")}>اپراتور</button> : null}
+            <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "conversations" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("conversations")}>گفتگوی قبلی</button>
+            <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "dates" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("dates")}>بازه زمانی</button>
+            <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "tools" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("tools")}>ابزارها</button>
+            <button type="button" className="mr-auto px-3 py-2 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button>
+          </div>
+          <div className="space-y-1 p-2">
+            {mentionTab === "operators" && isOrgAdmin(session?.role) ? contextOptions?.operators.map((item) => <button key={item.id} type="button" className={`flex w-full items-center justify-between px-3 py-2 text-right text-sm ${attachments.operator_id === item.id ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => setAttachments((current) => ({ ...current, operator_id: current.operator_id === item.id ? null : item.id }))}><span>{item.label}</span><span className="text-xs opacity-70">{item.extension ? `داخلی ${item.extension}` : "اپراتور"}</span></button>) : null}
+            {mentionTab === "conversations" ? contextOptions?.conversations.filter((item) => item.id !== conversation?.id).map((item) => <button key={item.id} type="button" className={`flex w-full items-center justify-between px-3 py-2 text-right text-sm ${attachments.conversation_ids.includes(item.id) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => toggleListAttachment("conversation_ids", item.id)}><span className="truncate">{item.label}</span><span className="shrink-0 text-xs opacity-70">{item.archived ? "آرشیو" : fmt.date(item.updated_at)}</span></button>) : null}
+            {mentionTab === "dates" ? <div className="grid gap-2 p-2 sm:grid-cols-2"><JalaliDatePicker includeTime value={attachments.from_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, from_date: value || null }))} placeholder="شروع بازه" /><JalaliDatePicker includeTime value={attachments.to_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, to_date: value || null }))} placeholder="پایان بازه" /></div> : null}
+            {mentionTab === "tools" ? contextOptions?.tools.map((item) => <button key={item.name} type="button" className={`w-full px-3 py-2 text-right text-sm font-bold ${attachments.tool_names.includes(item.name) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => toggleListAttachment("tool_names", item.name)}>{item.title}</button>) : null}
+          </div>
+        </div> : null}
+        {attachmentCount ? <div className="mb-2 flex flex-wrap gap-1.5">
+          {selectedOperator ? <button type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("operator")}>@ {selectedOperator.label} ×</button> : null}
+          {attachments.conversation_ids.map((id) => <button key={id} type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("conversation", id)}>گفتگو: {contextOptions?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده"} ×</button>)}
+          {attachments.from_date && attachments.to_date ? <button type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)} ×</button> : null}
+          {attachments.tool_names.map((name) => <button key={name} type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("tool", name)}>ابزار: {contextOptions?.tools.find((item) => item.name === name)?.title || name} ×</button>)}
+        </div> : null}
+        <div className="flex items-start gap-2"><button type="button" className="inline-flex min-h-12 w-12 shrink-0 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-lg font-bold text-[#4B6E48]" onClick={() => { setMentionOpen((current) => !current); if (!isOrgAdmin(session?.role)) selectMentionTab("conversations"); }} aria-label="افزودن منشن و ابزار" title="افزودن منشن و ابزار">@</button><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-7 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); if (value.endsWith("@")) { setMentionOpen(true); selectMentionTab(isOrgAdmin(session?.role) ? "operators" : "conversations"); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" />{!text && <p className="pointer-events-none absolute inset-x-3 bottom-2 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p>}</div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></div>
+      </form>
     </section>
     <ErrorBox message={error} />
     <ConfirmDialog
