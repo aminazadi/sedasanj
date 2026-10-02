@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Removed the transcript panel's intermediate grid wrapper so the card directly inherits the insight sidebar row height and its internal chat scroller fills that matched height.
 - Made the desktop transcript scroller flex to the full remaining height of the sidebar-aligned conversation panel, eliminating the unused blank area below short conversations.
 - Increased the desktop conversation viewport to a 680–820 pixel height so more transcript messages remain visible before internal scrolling.
 - Matched the conversation transcript panel height to its adjacent insight sidebar on desktop, including the loading-state layout, while preserving the stacked mobile flow and transcript scrolling.
