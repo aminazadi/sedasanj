@@ -44,11 +44,12 @@ type AudioWaveformPlayerProps = {
   downloadName: string;
   src: string;
   onError: () => void;
+  onWaveformReady?: () => void;
 };
 
 const controlClassName = "flex h-11 w-11 shrink-0 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#000000] transition hover:border-[#4B6E48] hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]";
 
-export default function AudioWaveformPlayer({ audioRef, downloadName, src, onError }: AudioWaveformPlayerProps) {
+export default function AudioWaveformPlayer({ audioRef, downloadName, src, onError, onWaveformReady }: AudioWaveformPlayerProps) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -70,6 +71,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
       })
       .catch(() => undefined)
       .finally(() => {
+        if (!cancelled) onWaveformReady?.();
         if (context.state !== "closed") void context.close();
       });
 
@@ -77,7 +79,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
       cancelled = true;
       if (context.state !== "closed") void context.close();
     };
-  }, [src]);
+  }, [onWaveformReady, src]);
 
   useEffect(() => {
     const audio = audioRef.current;

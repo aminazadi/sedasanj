@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { chart, palette } from "@cbi/web-shared/theme";
 import { Icon } from "@iconify/react";
@@ -214,6 +214,36 @@ function ActionTooltip({ label, children }: { label: string; children: ReactNode
 }
 
 const CALL_ACTION_CLASS = "flex h-10 w-10 items-center justify-center border border-[#898989] bg-white text-[#000000] transition hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-40";
+
+function CircularAudioProgress({ progress }: { progress: number | null }) {
+  const radius = 8;
+  const circumference = 2 * Math.PI * radius;
+  const normalizedProgress = progress === null ? 25 : Math.max(0, Math.min(100, progress));
+
+  return (
+    <svg
+      className={`h-6 w-6 -rotate-90 ${progress === null ? "animate-spin" : ""}`}
+      viewBox="0 0 24 24"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={progress ?? undefined}
+    >
+      <circle cx="12" cy="12" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.5" />
+      <circle
+        cx="12"
+        cy="12"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - normalizedProgress / 100)}
+      />
+    </svg>
+  );
+}
 
 function SkeletonLine({ className = "" }: { className?: string }) {
   return <span className={`block rounded-full bg-slate-200 ${className}`} aria-hidden="true" />;
@@ -509,6 +539,8 @@ export default function CallDetailPage() {
   const [sentimentSource, setSentimentSource] = useState<"text" | "voice">("voice");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [audioProgress, setAudioProgress] = useState<number | null>(0);
+  const [audioStage, setAudioStage] = useState<"downloading" | "extracting">("downloading");
   const [correctionLoading, setCorrectionLoading] = useState(false);
   const [correctionFeedback, setCorrectionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -521,6 +553,9 @@ export default function CallDetailPage() {
 
   useEffect(() => {
     setAudioUrl(null);
+    setAudioLoading(false);
+    setAudioProgress(0);
+    setAudioStage("downloading");
     audioRef.current?.pause();
     audioRef.current?.removeAttribute("src");
   }, [callId]);
@@ -564,7 +599,10 @@ export default function CallDetailPage() {
       return;
     }
     setAudioLoading(true);
+    setAudioProgress(0);
+    setAudioStage("downloading");
     setError(null);
+    let awaitingWaveform = false;
     try {
       const fetchAudio = () => fetch(`/v1/calls/${callId}/audio/content`, {
         headers: { Authorization: `Bearer ${tokens.access() ?? ""}` },
@@ -576,9 +614,33 @@ export default function CallDetailPage() {
         return;
       }
       if (!response.ok) throw new Error("دریافت فایل صوتی ممکن نبود");
-      const blob = await response.blob();
+      const contentLength = Number(response.headers.get("content-length"));
+      let blob: Blob;
+      if (response.body) {
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let receivedBytes = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          receivedBytes += value.byteLength;
+          setAudioProgress(
+            Number.isFinite(contentLength) && contentLength > 0
+              ? Math.min(100, Math.round((receivedBytes / contentLength) * 100))
+              : null,
+          );
+        }
+        blob = new Blob(chunks, { type: response.headers.get("content-type") ?? "audio/wav" });
+      } else {
+        setAudioProgress(null);
+        blob = await response.blob();
+      }
       if (!blob.size) throw new Error("فایل صوتی خالی است");
       const url = URL.createObjectURL(blob);
+      awaitingWaveform = true;
+      setAudioStage("extracting");
+      setAudioProgress(null);
       setAudioUrl(url);
       if (audioRef.current) {
         audioRef.current.src = url;
@@ -591,9 +653,14 @@ export default function CallDetailPage() {
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setAudioLoading(false);
+      if (!awaitingWaveform) setAudioLoading(false);
     }
   }
+
+  const handleWaveformReady = useCallback(() => {
+    setAudioProgress(100);
+    setAudioLoading(false);
+  }, []);
 
   async function reanalyze() {
     if (!call?.transcript) {
@@ -779,18 +846,22 @@ export default function CallDetailPage() {
                 </Link>
               </ActionTooltip>
               {session && CAN_HEAR_AUDIO.includes(session.role) && call.audio_available ? (
-                <ActionTooltip label={audioLoading ? "در حال دریافت صوت…" : "پخش فایل صوتی"}>
+                <ActionTooltip label={audioLoading ? (audioStage === "extracting" ? "در حال استخراج موج صدا…" : "در حال دریافت صوت…") : "پخش فایل صوتی"}>
                   <button
                     type="button"
                     className={CALL_ACTION_CLASS}
                     onClick={() => void playAudio()}
                     disabled={audioLoading}
-                    aria-label={audioLoading ? "در حال دریافت صوت" : "پخش فایل صوتی"}
+                    aria-label={audioLoading ? (audioStage === "extracting" ? "در حال استخراج موج صدا" : `در حال دریافت صوت${audioProgress === null ? "" : `، ${audioProgress} درصد`}`) : "پخش فایل صوتی"}
                   >
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
-                      <path d="M5 9v6h4l5 4V5L9 9H5Z" />
-                      <path d="M18 9a4 4 0 0 1 0 6M20.5 6.5a8 8 0 0 1 0 11" />
-                    </svg>
+                    {audioLoading ? (
+                      <CircularAudioProgress progress={audioProgress} />
+                    ) : (
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                        <path d="M5 9v6h4l5 4V5L9 9H5Z" />
+                        <path d="M18 9a4 4 0 0 1 0 6M20.5 6.5a8 8 0 0 1 0 11" />
+                      </svg>
+                    )}
                   </button>
                 </ActionTooltip>
               ) : null}
@@ -830,6 +901,7 @@ export default function CallDetailPage() {
                 downloadName={`call-${call.id}-audio`}
                 src={audioUrl}
                 onError={() => setError("مرورگر قادر به پخش این فایل صوتی نیست.")}
+                onWaveformReady={handleWaveformReady}
               />
             </div>
           ) : null}
