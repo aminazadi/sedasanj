@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Increased the completed-step checkmark size in the call-analysis pipeline without changing its marker dimensions or layout spacing.
 - Matched every shared customer and admin statistic card to the call-metric visual language with a warm surface, olive border, fine dotted texture, square corners, and no shadow while leaving non-statistic panels plain.
 - Unified customer and admin cards through the shared card component, including sales KPI statistics, two-factor settings, API documentation, and call-detail surfaces, without applying the dotted texture globally.
 - Restored the original customer and admin card surfaces and limited the dotted texture to the existing intentionally textured components.

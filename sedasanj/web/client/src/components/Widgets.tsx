@@ -136,7 +136,7 @@ export function ProcessingCard({
                 />
               ) : null}
               <span
-                className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors sm:mx-auto sm:mb-3 ${
+                className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 font-bold transition-colors sm:mx-auto sm:mb-3 ${done ? "text-xl leading-none" : "text-xs"} ${
                   done
                     ? "border-emerald-500 bg-emerald-500 text-white"
                     : active
