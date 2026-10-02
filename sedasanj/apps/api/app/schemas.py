@@ -572,6 +572,9 @@ class CallPage(BaseModel):
     items: list[CallSummary]
     next_cursor: str | None = None
     total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class ProcessingEventOut(BaseModel):

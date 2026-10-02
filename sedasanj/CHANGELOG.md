@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Rebuilt the calls list around URL-persistent status, direction, intent, sentiment, number, text, and Tehran-aware date filters with deterministic backend offset pagination, accurate totals, and direct reloadable page navigation.
 - Rendered Markdown safely in both user and assistant chat messages, including lists, tables, links, quotes, and code, and required assistant responses to present dates in the Persian Jalali calendar with Persian digits.
 - Restored desktop and tablet table filters, added palette-aligned alternating row highlights across both panels, and pinned each row's trailing action controls during horizontal scrolling.
 - Replaced the inactive call-audio action icon with an accessible circular progress indicator that reports download progress and remains active through waveform extraction.

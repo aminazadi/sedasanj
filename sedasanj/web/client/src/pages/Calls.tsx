@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { fmt, INTENT_LABELS, query, request, SENTIMENT_LABELS } from "../api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { fmt, INTENT_LABELS, query, request, SENTIMENT_LABELS, STATUS_LABELS } from "../api";
 import { isOperator, isOrgAdmin, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination, SentimentBadge, StatusBadge, SummaryCell, TrajectoryBadge } from "../components/Widgets";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
@@ -16,6 +16,8 @@ interface Filters {
   intent: string;
   sentiment: string;
   number: string;
+  status: string;
+  direction: string;
 }
 
 function TrashIcon() {
@@ -29,72 +31,117 @@ function TrashIcon() {
   );
 }
 
-const EMPTY: Filters = { from: "", to: "", q: "", intent: "", sentiment: "", number: "" };
+const EMPTY: Filters = {
+  from: "",
+  to: "",
+  q: "",
+  intent: "",
+  sentiment: "",
+  number: "",
+  status: "",
+  direction: "",
+};
+const PAGE_SIZE = 25;
+
+function filtersFromSearch(search: URLSearchParams): Filters {
+  return {
+    from: search.get("from") ?? "",
+    to: search.get("to") ?? "",
+    q: search.get("q") ?? "",
+    intent: search.get("intent") ?? "",
+    sentiment: search.get("sentiment") ?? "",
+    number: search.get("number") ?? "",
+    status: search.get("status") ?? "",
+    direction: search.get("direction") ?? "",
+  };
+}
+
+function pageFromSearch(search: URLSearchParams): number {
+  const page = Number(search.get("page") ?? "1");
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+}
+
+function searchFromFilters(filters: Filters, page = 1): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, rawValue] of Object.entries(filters)) {
+    const value = rawValue.trim();
+    if (value) params.set(key, value);
+  }
+  if (page > 1) params.set("page", String(page));
+  return params;
+}
 
 export default function Calls() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
   const operator = isOperator(session?.role);
   const canDelete = isOrgAdmin(session?.role);
-  const [filters, setFilters] = useState<Filters>(EMPTY);
-  const [applied, setApplied] = useState<Filters>(EMPTY);
+  const searchKey = searchParams.toString();
+  const applied = useMemo(() => filtersFromSearch(new URLSearchParams(searchKey)), [searchKey]);
+  const pageIndex = pageFromSearch(new URLSearchParams(searchKey)) - 1;
+  const [filters, setFilters] = useState<Filters>(applied);
   const [items, setItems] = useState<CallSummary[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([null]);
-  const [pageIndex, setPageIndex] = useState(0);
   const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paginated, setPaginated] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<CallSummary | null>(null);
   const hasAppliedFilters = Object.values(applied).some(Boolean);
-  const appliedFiltersUnchanged =
-    hasAppliedFilters &&
-    (Object.keys(applied) as Array<keyof Filters>).every((key) => applied[key] === filters[key]);
 
   const load = useCallback(
-    async (next: Filters, after: string | null, silent = false) => {
+    async (next: Filters, pageNumber: number, silent = false) => {
       if (!silent) setLoading(true);
       setError(null);
       try {
-        const page = await request<CallPage>(
-          `/v1/calls${query({ ...next, cursor: after, limit: 50 })}`,
+        const response = await request<CallPage>(
+          `/v1/calls${query({
+            ...next,
+            offset: pageNumber * PAGE_SIZE,
+            limit: PAGE_SIZE,
+          })}`,
         );
-        setItems(page.items);
-        setCursor(page.next_cursor);
-        setTotal(page.total);
-        setPaginated(Boolean(after));
+        if (response.total > 0 && pageNumber >= response.pages) {
+          setSearchParams(searchFromFilters(next, response.pages), { replace: true });
+          return;
+        }
+        setItems(response.items);
+        setTotal(response.total);
+        setPages(response.pages);
       } catch (err) {
         if (!silent) setError((err as Error).message);
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [],
+    [setSearchParams],
   );
 
   useEffect(() => {
-    setCursorHistory([null]);
-    setPageIndex(0);
-    void load(applied, null);
-  }, [applied, load]);
+    setFilters(applied);
+    void load(applied, pageIndex);
+  }, [applied, load, pageIndex]);
 
   useEffect(() => {
-    if (paginated || !items.some((call) => call.processing)) return;
+    if (!items.some((call) => call.processing)) return;
     const timer = window.setInterval(() => {
-      void load(applied, null, true);
+      void load(applied, pageIndex, true);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [applied, items, load, paginated]);
+  }, [applied, items, load, pageIndex]);
 
   async function deleteCall(call: CallSummary) {
     setDeletingId(call.id);
     setError(null);
     try {
       await request<void>(`/v1/calls/${call.id}`, { method: "DELETE" });
-      setItems((current) => current.filter((item) => item.id !== call.id));
       setDeleteCandidate(null);
+      if (items.length === 1 && pageIndex > 0) {
+        setSearchParams(searchFromFilters(applied, pageIndex));
+      } else {
+        await load(applied, pageIndex);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -102,19 +149,12 @@ export default function Calls() {
     }
   }
 
-  function nextPage() {
-    if (!cursor) return;
-    const nextIndex = pageIndex + 1;
-    setCursorHistory((current) => [...current.slice(0, nextIndex), cursor]);
-    setPageIndex(nextIndex);
-    void load(applied, cursor);
+  function updateSearch(next: Filters, page = 1) {
+    setSearchParams(searchFromFilters(next, page));
   }
 
-  function previousPage() {
-    if (pageIndex === 0) return;
-    const previousIndex = pageIndex - 1;
-    setPageIndex(previousIndex);
-    void load(applied, cursorHistory[previousIndex]);
+  function goToPage(page: number) {
+    updateSearch(applied, Math.min(Math.max(page, 1), pages));
   }
 
   return (
@@ -128,19 +168,14 @@ export default function Calls() {
             </p>
           ) : null}
         </div>
-        <CallUploadForm onUploaded={() => void load(applied, null)} />
+        <CallUploadForm onUploaded={() => void load(applied, pageIndex)} />
       </div>
       <TableFilters>
       <form
         className="grid gap-3 md:grid-cols-7"
         onSubmit={(event) => {
           event.preventDefault();
-          if (appliedFiltersUnchanged) {
-            setFilters(EMPTY);
-            setApplied(EMPTY);
-          } else {
-            setApplied(filters);
-          }
+          updateSearch(filters);
         }}
       >
         <div>
@@ -206,11 +241,43 @@ export default function Calls() {
             ))}
           </select>
         </div>
-        <div className="flex items-end">
-          <button
-            className={`${appliedFiltersUnchanged ? "btn-ghost text-rose-700" : "btn"} min-h-[42px] w-full`}
+        <div>
+          <label className="label">وضعیت</label>
+          <select
+            className="input"
+            value={filters.status}
+            onChange={(event) => setFilters({ ...filters, status: event.target.value })}
           >
-            {appliedFiltersUnchanged ? "پاک کردن" : "اعمال فیلتر"}
+            <option value="">همه</option>
+            {Object.entries(STATUS_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">جهت تماس</label>
+          <select
+            className="input"
+            value={filters.direction}
+            onChange={(event) => setFilters({ ...filters, direction: event.target.value })}
+          >
+            <option value="">همه</option>
+            <option value="inbound">ورودی</option>
+            <option value="outbound">خروجی</option>
+          </select>
+        </div>
+        <div className="flex items-end gap-2 md:col-span-2">
+          <button className="btn min-h-[42px] flex-1">اعمال فیلتر</button>
+          <button
+            type="button"
+            className="btn-ghost min-h-[42px] flex-1"
+            disabled={!hasAppliedFilters && !Object.values(filters).some(Boolean)}
+            onClick={() => {
+              setFilters(EMPTY);
+              updateSearch(EMPTY);
+            }}
+          >
+            پاک کردن
           </button>
         </div>
       </form>
@@ -291,7 +358,15 @@ export default function Calls() {
             </tbody>
           </table>
         )}
-        <Pagination page={pageIndex + 1} hasPrevious={pageIndex > 0} hasNext={Boolean(cursor)} total={total} loading={loading} onPrevious={previousPage} onNext={nextPage} />
+        <Pagination
+          page={pageIndex + 1}
+          hasPrevious={pageIndex > 0}
+          hasNext={pageIndex + 1 < pages}
+          total={total}
+          loading={loading}
+          onPrevious={() => goToPage(pageIndex)}
+          onNext={() => goToPage(pageIndex + 2)}
+        />
       </div>
       <ConfirmDialog
         open={Boolean(deleteCandidate)}

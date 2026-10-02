@@ -3,10 +3,11 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 from typing import cast as type_cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile, status
@@ -73,6 +74,7 @@ from app.services.transcript_corrections import create_revision
 
 router = APIRouter(prefix="/v1", tags=["calls"])
 logger = logging.getLogger(__name__)
+TEHRAN = ZoneInfo("Asia/Tehran")
 
 
 def _encode_cursor(started_at: datetime, call_id: UUID) -> str:
@@ -86,6 +88,22 @@ def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
         return datetime.fromisoformat(started_raw), UUID(call_raw)
     except (ValueError, binascii.Error) as exc:
         raise ApiError("invalid_request", "malformed cursor") from exc
+
+
+def _parse_date_boundary(value: str | None, *, end: bool) -> datetime | None:
+    if not value:
+        return None
+    try:
+        if len(value) == 10:
+            selected = date.fromisoformat(value)
+            local = datetime.combine(selected, time.max if end else time.min, tzinfo=TEHRAN)
+            return local.astimezone(UTC)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=TEHRAN)
+        return parsed.astimezone(UTC)
+    except ValueError as exc:
+        raise ApiError("invalid_request", "invalid date filter") from exc
 
 
 def _apply_filters(
@@ -132,13 +150,15 @@ async def list_calls(
     principal: UserDep,
     session: TenantSession,
     cursor: Annotated[str | None, Query()] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
-    from_: Annotated[datetime | None, Query(alias="from")] = None,
-    to: Annotated[datetime | None, Query()] = None,
+    from_: Annotated[str | None, Query(alias="from")] = None,
+    to: Annotated[str | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
     intent: Annotated[str | None, Query()] = None,
     sentiment: Annotated[str | None, Query()] = None,
     number: Annotated[str | None, Query()] = None,
+    direction: Annotated[str | None, Query()] = None,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
 ) -> CallPage:
     stmt = (
@@ -157,10 +177,18 @@ async def list_calls(
     )
     stmt = operator_scope.apply_operator_scope(stmt, principal)
     stmt = _apply_filters(
-        stmt, from_date=from_, to_date=to, q=q, intent=intent, sentiment=sentiment, number=number
+        stmt,
+        from_date=_parse_date_boundary(from_, end=False),
+        to_date=_parse_date_boundary(to, end=True),
+        q=q,
+        intent=intent,
+        sentiment=sentiment,
+        number=number,
     )
     if status_filter:
         stmt = stmt.where(Call.status == status_filter)
+    if direction:
+        stmt = stmt.where(Call.direction == direction)
     total = int(
         (
             await session.execute(
@@ -176,6 +204,8 @@ async def list_calls(
                 and_(Call.started_at == started_at, Call.id < call_id),
             )
         )
+    elif offset:
+        stmt = stmt.offset(offset)
 
     rows = (await session.execute(stmt)).all()
     has_more = len(rows) > limit
@@ -188,7 +218,16 @@ async def list_calls(
     next_cursor = (
         _encode_cursor(rows[-1][0].started_at, rows[-1][0].id) if has_more and rows else None
     )
-    return CallPage(items=items, next_cursor=next_cursor, total=total)
+    page = (offset // limit) + 1 if cursor is None else 1
+    pages = max(1, (total + limit - 1) // limit)
+    return CallPage(
+        items=items,
+        next_cursor=next_cursor,
+        total=total,
+        page=page,
+        page_size=limit,
+        pages=pages,
+    )
 
 
 @router.post("/calls/upload", response_model=IngestAccepted, status_code=status.HTTP_201_CREATED)

@@ -36,6 +36,9 @@ export interface CallPage {
   items: CallSummary[];
   next_cursor: string | null;
   total: number;
+  page: number;
+  page_size: number;
+  pages: number;
 }
 
 export interface Page<T> {
