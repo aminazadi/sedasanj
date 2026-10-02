@@ -733,7 +733,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         session, principal.tenant_id, principal.id
     )
     conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
-    user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content)
+    user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content, attachments=payload.attachments.model_dump(mode="json"))
     session.add(user_message)
     await session.flush()
     if assistant_policy.must_refuse(payload.content, principal.role):
@@ -1079,7 +1079,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
         session, principal.tenant_id, principal.id
     )
     conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
-    user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content)
+    user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content, attachments=payload.attachments.model_dump(mode="json"))
     session.add(user_message)
     await session.flush()
     refused = assistant_policy.must_refuse(payload.content, principal.role)

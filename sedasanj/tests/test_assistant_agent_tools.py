@@ -144,6 +144,19 @@ def test_attached_tools_are_limited_to_enabled_settings() -> None:
     assert assistant._attachment_tools(settings, attachments) == {"get_call_analysis"}
 
 
+def test_chat_message_output_preserves_attachments() -> None:
+    attachments = AssistantMessageAttachments(
+        operator_id=uuid4(),
+        conversation_ids=[uuid4()],
+        from_date=datetime(2026, 9, 1, tzinfo=UTC),
+        to_date=datetime(2026, 10, 1, tzinfo=UTC),
+        tool_names=["get_call_analysis"],
+    )
+    payload = attachments.model_dump(mode="json")
+
+    assert AssistantMessageAttachments.model_validate(payload) == attachments
+
+
 @pytest.mark.asyncio
 async def test_operator_mentions_are_rejected_for_non_admin_users() -> None:
     principal = SimpleNamespace(id=uuid4(), role="operator")

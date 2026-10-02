@@ -838,6 +838,7 @@ class ChatMessage(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'succeeded'"))
     model: Mapped[str | None] = mapped_column(Text)
     sources: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    attachments: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "created_at"),)

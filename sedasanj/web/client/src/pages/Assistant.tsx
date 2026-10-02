@@ -632,13 +632,13 @@ export default function Assistant() {
     return completed as ChatMessage;
   }
 
-  async function sendBranch(content: string, history: ChatMessage[]) {
+  async function sendBranch(content: string, history: ChatMessage[], branchAttachments: AssistantMessageAttachments = attachments) {
     setSending(true);
     setError(null);
-    const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+    const messageAttachments = branchAttachments;
+    const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
     const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
     try {
-      const messageAttachments = attachments;
       const active = ephemeral ? null : conversation ?? await create();
       setMessages([...history, optimistic, draftReply]);
       const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history, messageAttachments);
@@ -667,7 +667,7 @@ export default function Assistant() {
     setMessageEdit(null);
     setPendingMessageEdit(null);
     setMessageEditConfirmationOpen(false);
-    await sendBranch(content.trim(), history);
+    await sendBranch(content.trim(), history, target.attachments || emptyAttachments());
   }
 
   async function retryMessage(message: ChatMessage) {
@@ -767,6 +767,27 @@ export default function Assistant() {
       return { ...current, tool_names: current.tool_names.filter((item) => item !== value) };
     });
   }
+  function messageAttachmentLabels(message: ChatMessage): string[] {
+    const selected = message.attachments;
+    if (!selected) return [];
+    const labels: string[] = [];
+    if (selected.operator_id) {
+      const operator = contextOptions?.operators.find((item) => item.id === selected.operator_id);
+      labels.push(`اپراتور: ${operator?.label || selected.operator_id}`);
+    }
+    selected.conversation_ids.forEach((id) => {
+      const attachedConversation = contextOptions?.conversations.find((item) => item.id === id);
+      labels.push(`گفتگو: ${attachedConversation?.label || id}`);
+    });
+    if (selected.from_date && selected.to_date) {
+      labels.push(`بازه: ${fmt.date(selected.from_date)} تا ${fmt.date(selected.to_date)}`);
+    }
+    selected.tool_names.forEach((name) => {
+      const tool = contextOptions?.tools.find((item) => item.name === name);
+      labels.push(`ابزار: ${tool?.title || name}`);
+    });
+    return labels;
+  }
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
     const archived = Boolean(item.archived_at);
@@ -816,6 +837,7 @@ export default function Assistant() {
         {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
+          const attachedLabels = messageAttachmentLabels(message);
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);
           const actionClass = "inline-flex h-7 w-7 items-center justify-center text-[#898989] transition hover:bg-white hover:text-[#4B6E48] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48] disabled:opacity-50";
           const actions = <>
@@ -831,6 +853,7 @@ export default function Assistant() {
                 <textarea autoFocus rows={3} className="input min-h-24 resize-y bg-white text-slate-900" value={messageEdit.value} onChange={(event) => setMessageEdit({ message, value: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") setMessageEdit(null); }} aria-label="ویرایش پیام" />
                 <div className="flex justify-end gap-2"><button type="button" className="border border-[#B2AC88] bg-transparent px-3 py-1.5 text-xs font-bold text-[#F2F0EF] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={() => setMessageEdit(null)}>انصراف</button><button type="button" className="border border-[#F2F0EF] bg-[#F2F0EF] px-3 py-1.5 text-xs font-bold text-[#4B6E48] transition hover:border-white hover:bg-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!messageEdit.value.trim() || sending} onClick={requestMessageEdit}>ثبت و دریافت پاسخ جدید</button></div>
               </div> : <>
+              {user && attachedLabels.length ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="موارد متصل به پیام">{attachedLabels.map((label) => <span key={label} className="inline-flex min-h-6 items-center border border-[#D8D3B9] bg-[#F2F0EF] px-2 py-0.5 text-[11px] font-bold leading-5 text-[#365033]">{label}</span>)}</div> : null}
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
               {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
               {!user ? <AssistantCharts charts={charts} /> : null}

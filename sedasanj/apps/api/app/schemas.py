@@ -552,6 +552,7 @@ class ChatMessageOut(BaseModel):
     status: str
     model: str | None = None
     sources: list[dict[str, Any]] | None = None
+    attachments: AssistantMessageAttachments | None = None
     tool_runs: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
 

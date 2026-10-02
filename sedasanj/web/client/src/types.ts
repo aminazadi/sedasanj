@@ -200,6 +200,7 @@ export interface ChatMessage {
   status: string;
   model: string | null;
   sources: AssistantCallSource[] | null;
+  attachments?: AssistantMessageAttachments | null;
   tool_runs: AssistantToolRun[];
   created_at: string;
 }
