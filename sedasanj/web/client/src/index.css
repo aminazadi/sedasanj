@@ -199,21 +199,12 @@ body {
   overflow: hidden;
   border: 1px solid #b2ac88;
   background:
-    radial-gradient(circle at 2.25rem 2.25rem, rgb(255 255 255 / 0.72) 0, rgb(255 255 255 / 0.34) 2.8rem, transparent 6rem),
     radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
     #f2f0ef;
-  box-shadow: 0 8px 20px rgb(137 137 137 / 0.1);
 }
 
 .call-metric-card:hover {
   border-color: #898989;
-  box-shadow: 0 13px 28px rgb(137 137 137 / 0.16);
-}
-
-.call-metric-icon {
-  box-shadow:
-    0 0 18px 8px rgb(255 255 255 / 0.9),
-    0 8px 24px rgb(255 255 255 / 0.64);
 }
 
 .panel-shell,
