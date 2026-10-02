@@ -148,24 +148,19 @@ class VoiceSanjClient:
             )
         original_audio = path.read_bytes()
         audio = gzip.compress(original_audio, compresslevel=6, mtime=0)
-        form_items: list[tuple[str, str]] = [
-            ("response_format", response_format),
-            ("beam_size", str(beam_size)),
-            ("vad_filter", "true" if vad_filter else "false"),
-            ("audio_encoding", "gzip"),
-            ("uncompressed_audio_bytes", str(len(original_audio))),
-        ]
+        form: dict[str, str | list[str]] = {
+            "response_format": response_format,
+            "beam_size": str(beam_size),
+            "vad_filter": "true" if vad_filter else "false",
+            "audio_encoding": "gzip",
+            "uncompressed_audio_bytes": str(len(original_audio)),
+        }
         if models:
-            form_items.extend(("models", model_id) for model_id in model_ids)
-            form: Any = form_items
+            form["models"] = model_ids
         else:
-            form = dict(form_items)
             form["model"] = model_ids[0]
         if prompt:
-            if isinstance(form, list):
-                form.append(("prompt", prompt))
-            else:
-                form["prompt"] = prompt
+            form["prompt"] = prompt
         headers = {
             **self._headers,
             "Idempotency-Key": f"asr-{uuid4()}",

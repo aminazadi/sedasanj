@@ -402,15 +402,52 @@ async def test_voicesanj_allows_custom_asr_model(wav_file) -> None:
             assert kwargs["data"]["model"] == "custom-asr"  # type: ignore[index]
             return RejectedResponse()
 
-    with patch("app.services.voicesanj.httpx.AsyncClient", FakeClient):
-        with pytest.raises(ProviderError):
-            await client.transcribe(wav_file(seconds=1.0), model="  custom-asr  ")
+    with (
+        patch("app.services.voicesanj.httpx.AsyncClient", FakeClient),
+        pytest.raises(ProviderError),
+    ):
+        await client.transcribe(wav_file(seconds=1.0), model="  custom-asr  ")
 
     with pytest.raises(ProviderError) as caught:
         await client.transcribe(wav_file(seconds=1.0), model="   ")
 
     assert caught.value.code == "asr_provider_model"
     assert caught.value.retryable is False
+
+
+async def test_voicesanj_multiple_asr_models_use_async_multipart(wav_file) -> None:
+    multipart_body = b""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal multipart_body
+        multipart_body = await request.aread()
+        return httpx.Response(
+            200,
+            json={
+                "text": "سلام",
+                "model": "whisper-large-v3",
+                "segments": [{"start": 0.0, "end": 0.5, "text": "سلام"}],
+            },
+        )
+
+    original_client = httpx.AsyncClient
+
+    def mock_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return original_client(*args, **kwargs)
+
+    client = VoiceSanjClient(_voicesanj_settings())
+    with patch("app.services.voicesanj.httpx.AsyncClient", side_effect=mock_client):
+        result = await client.transcribe(
+            wav_file(seconds=1.0),
+            model="whisper-large-v3",
+            models=["whisper-large-v3", "buzzasr-persian"],
+        )
+
+    assert result["text"] == "سلام"
+    assert multipart_body.count(b'name="models"') == 2
+    assert b"whisper-large-v3" in multipart_body
+    assert b"buzzasr-persian" in multipart_body
 
 
 async def test_correct_transcript_times_out() -> None:

@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Fixed multi-model ASR multipart uploads so HTTPX `AsyncClient` receives an asynchronous request stream instead of failing before the AISERVICE request is sent.
 - Made transcript-correction actions immediately observable beside the control, including queued, running, validating, accepted, and API-error feedback, while preventing an active automatic correction from appearing as an inert enabled action.
 - Added Apache AGE to the PostgreSQL 17 local-development image, initialized the shared knowledge graph through an idempotent migration, granted graph schema runtime privileges, and aligned isolated-tenant schema verification with the current migration head.
 - Rebuilt the organizational assistant as a scoped tool-driven agent with six read-only call, transcript, analytics, analysis, and operator-performance tools; live SSE execution timelines; persistent tool-run history; safe tenant/operator enforcement; structured planning fallback; and differentiated provider, indexing, and empty-result failures.
