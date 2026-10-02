@@ -52,13 +52,16 @@ class _ScalarResult:
 
 
 class _AgeBind:
-    def __init__(self, graph_exists: bool) -> None:
+    def __init__(self, graph_exists: bool, age_available: bool = True) -> None:
         self.graph_exists = graph_exists
+        self.age_available = age_available
         self.statements: list[str] = []
 
     def execute(self, statement: object) -> _ScalarResult:
         sql = str(statement)
         self.statements.append(sql)
+        if "FROM pg_available_extensions" in sql:
+            return _ScalarResult(1 if self.age_available else None)
         if "FROM ag_catalog.ag_graph" in sql:
             return _ScalarResult(1 if self.graph_exists else None)
         return _ScalarResult(None)
@@ -74,7 +77,8 @@ def test_apache_age_migration_is_idempotent(
 
     migration.upgrade()
 
-    assert bind.statements[0] == "CREATE EXTENSION IF NOT EXISTS age"
+    assert bind.statements[0] == "SELECT 1 FROM pg_available_extensions WHERE name = 'age'"
+    assert bind.statements[1] == "CREATE EXTENSION IF NOT EXISTS age"
     assert any("GRANT USAGE ON SCHEMA ag_catalog" in sql for sql in bind.statements)
     assert any("GRANT USAGE, CREATE ON SCHEMA tenant_graph" in sql for sql in bind.statements)
     create_graph = [sql for sql in bind.statements if "create_graph" in sql]
@@ -91,7 +95,8 @@ def test_apache_age_repair_migration_is_idempotent(
 
     migration.upgrade()
 
-    assert bind.statements[0] == "CREATE EXTENSION IF NOT EXISTS age"
+    assert bind.statements[0] == "SELECT 1 FROM pg_available_extensions WHERE name = 'age'"
+    assert bind.statements[1] == "CREATE EXTENSION IF NOT EXISTS age"
     assert any("GRANT USAGE ON SCHEMA ag_catalog" in sql for sql in bind.statements)
     assert any("GRANT USAGE, CREATE ON SCHEMA tenant_graph" in sql for sql in bind.statements)
     create_graph = [sql for sql in bind.statements if "create_graph" in sql]
@@ -108,7 +113,8 @@ def test_assistant_index_repair_migration_is_idempotent(
 
     migration.upgrade()
 
-    assert bind.statements[0] == "CREATE EXTENSION IF NOT EXISTS age"
+    assert bind.statements[0] == "SELECT 1 FROM pg_available_extensions WHERE name = 'age'"
+    assert bind.statements[1] == "CREATE EXTENSION IF NOT EXISTS age"
     assert any("GRANT USAGE ON SCHEMA ag_catalog" in sql for sql in bind.statements)
     assert any(
         "UPDATE platform_settings SET value = 'native'" in sql
@@ -116,3 +122,26 @@ def test_assistant_index_repair_migration_is_idempotent(
     )
     create_graph = [sql for sql in bind.statements if "create_graph" in sql]
     assert bool(create_graph) is not graph_exists
+
+
+@pytest.mark.parametrize(
+    ("filename", "updates_settings"),
+    [
+        ("0031_apache_age_graph.py", False),
+        ("0032_repair_apache_age_graph.py", False),
+        ("0033_repair_assistant_indexes.py", True),
+    ],
+)
+def test_apache_age_migrations_allow_unavailable_extension(
+    filename: str, updates_settings: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    migration = _load_migration(filename)
+    bind = _AgeBind(graph_exists=False, age_available=False)
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert bind.statements[0] == "SELECT 1 FROM pg_available_extensions WHERE name = 'age'"
+    assert not any("CREATE EXTENSION" in sql for sql in bind.statements)
+    assert not any("ag_catalog" in sql for sql in bind.statements)
+    assert any("UPDATE platform_settings" in sql for sql in bind.statements) is updates_settings

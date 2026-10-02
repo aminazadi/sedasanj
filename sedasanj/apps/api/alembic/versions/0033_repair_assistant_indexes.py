@@ -16,20 +16,24 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    bind.execute(text("CREATE EXTENSION IF NOT EXISTS age"))
-    graph_exists = bind.execute(
-        text("SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'tenant_graph'")
+    age_available = bind.execute(
+        text("SELECT 1 FROM pg_available_extensions WHERE name = 'age'")
     ).scalar_one_or_none()
-    if graph_exists is None:
-        bind.execute(text("SELECT ag_catalog.create_graph('tenant_graph')"))
-    for statement in (
-        "GRANT USAGE ON SCHEMA ag_catalog TO cbi_app",
-        "GRANT SELECT ON ag_catalog.ag_graph TO cbi_app",
-        "GRANT USAGE, CREATE ON SCHEMA tenant_graph TO cbi_app",
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA tenant_graph TO cbi_app",
-        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph TO cbi_app",
-    ):
-        bind.execute(text(statement))
+    if age_available is not None:
+        bind.execute(text("CREATE EXTENSION IF NOT EXISTS age"))
+        graph_exists = bind.execute(
+            text("SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'tenant_graph'")
+        ).scalar_one_or_none()
+        if graph_exists is None:
+            bind.execute(text("SELECT ag_catalog.create_graph('tenant_graph')"))
+        for statement in (
+            "GRANT USAGE ON SCHEMA ag_catalog TO cbi_app",
+            "GRANT SELECT ON ag_catalog.ag_graph TO cbi_app",
+            "GRANT USAGE, CREATE ON SCHEMA tenant_graph TO cbi_app",
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA tenant_graph TO cbi_app",
+            "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph TO cbi_app",
+        ):
+            bind.execute(text(statement))
     bind.execute(
         text(
             "UPDATE platform_settings SET value = 'native', updated_at = now() "

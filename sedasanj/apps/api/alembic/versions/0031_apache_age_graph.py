@@ -16,6 +16,11 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    age_available = bind.execute(
+        text("SELECT 1 FROM pg_available_extensions WHERE name = 'age'")
+    ).scalar_one_or_none()
+    if age_available is None:
+        return
     bind.execute(text("CREATE EXTENSION IF NOT EXISTS age"))
     graph_exists = bind.execute(
         text("SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'tenant_graph'")

@@ -2,6 +2,15 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Repaired the processing-event database constraint so voice-emotion and transcript-correction jobs can persist lifecycle and retry events without failing the worker transaction.
+
+## 2026-10-02 — AMINAZADI
+
+- Allowed the assistant tool migration chain to complete on PostgreSQL installations without Apache AGE, while retaining graph initialization wherever the extension is available.
+- Restored assistant conversation message loading by ensuring the durable assistant tool-run table can be created independently of the optional graph extension.
+
+## 2026-10-02 — AMINAZADI
+
 - Migrated legacy assistant embedding routing from the obsolete 9Router default to AISERVICE native embeddings and repeated Apache AGE graph initialization during the same repair upgrade.
 - Added a tenant-scoped statistical visualization tool to assistant chat with responsive bar and donut charts, automatically using two columns for compatible charts and a full-width column when needed while retaining the textual answer.
 - Replaced every Fluent Emoji 3D icon in the customer and admin panels with locally bundled Lucide line icons from the project's Iconify integration, including shared statistic cards and call-detail metrics.
