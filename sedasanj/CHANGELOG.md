@@ -2,6 +2,8 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Ensured manual transcript-correction requests always run the configured text model instead of silently copying the existing transcript when automatic correction is set to audio-only mode.
+
 - Added each transcript message's call-relative date and time beneath its bubble with an accessible copy action.
 
 - Aligned conversation avatars with their corresponding message bubble arrows.

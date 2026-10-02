@@ -19,6 +19,7 @@ from app.services.provider_errors import classify_failure
 from app.services.transcript_corrections import (
     CorrectionClient,
     activate_revision,
+    should_run_text_correction,
     source_segments,
     validate_result,
 )
@@ -119,7 +120,9 @@ async def _fail(
                 if revision.trigger == "manual":
                     call = await session.get(Call, call_id)
                     if call is not None:
-                        call.status = str((revision.metrics or {}).get("previous_status") or "complete")
+                        call.status = str(
+                            (revision.metrics or {}).get("previous_status") or "complete"
+                        )
                         call.error_code = None
     return "retry_scheduled" if retried else "failed_terminal"
 
@@ -157,7 +160,7 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
             await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="correction", status="running"
             )
-            if revision.mode == "audio_only":
+            if not should_run_text_correction(revision.mode, revision.trigger):
                 result = {
                     "model": transcript.asr_model,
                     "segments": [
@@ -179,7 +182,11 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
                     result=result,
                 )
                 await pipeline.mark_job(
-                    session, tenant_id=tenant_id, call_id=call_id, kind="correction", status="succeeded"
+                    session,
+                    tenant_id=tenant_id,
+                    call_id=call_id,
+                    kind="correction",
+                    status="succeeded",
                 )
                 dispatch_analysis = True
             elif revision.provider_task_id:

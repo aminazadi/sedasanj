@@ -42,6 +42,14 @@ def profile_version(runtime: Settings) -> str:
     ).hexdigest()[:16]
 
 
+def revision_mode(runtime: Settings, trigger: str) -> str:
+    return "text_only" if trigger == "manual" else runtime.correction_mode
+
+
+def should_run_text_correction(mode: str, trigger: str) -> bool:
+    return trigger == "manual" or mode != "audio_only"
+
+
 async def create_revision(
     session: AsyncSession,
     *,
@@ -91,7 +99,7 @@ async def create_revision(
         source_sha256=source_hash,
         profile_version=version,
         trigger=trigger,
-        mode=runtime.correction_mode,
+        mode=revision_mode(runtime, trigger),
         status="queued",
         audio_models=list(runtime.correction_audio_models),
         text_models=list(runtime.correction_text_models),
@@ -174,7 +182,9 @@ class CorrectionClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def submit(self, revision: TranscriptRevision, segments: list[dict[str, Any]], prompt: str) -> str:
+    async def submit(
+        self, revision: TranscriptRevision, segments: list[dict[str, Any]], prompt: str
+    ) -> str:
         body: dict[str, Any] = {
             "models": revision.text_models,
             "segments": segments,
@@ -212,7 +222,11 @@ class CorrectionClient:
         if isinstance(payload.get("results"), list):
             successful = [row for row in payload["results"] if row.get("status") == "succeeded"]
             if not successful:
-                raise ProviderError("correction_provider_failed", "همه مدل‌های تصحیح ناموفق بودند.", retryable=False)
+                raise ProviderError(
+                    "correction_provider_failed",
+                    "همه مدل‌های تصحیح ناموفق بودند.",
+                    retryable=False,
+                )
             payload = successful[0].get("result") or successful[0]
         return payload
 
@@ -255,7 +269,10 @@ def validate_result(
         if not text:
             raise ValueError("correction returned an empty segment")
         is_uncertain = bool(corrected.get("uncertain")) or original["id"] in uncertain_ids
-        if NUMBER_TOKEN.findall(original["text"]) != NUMBER_TOKEN.findall(text) and not is_uncertain:
+        if (
+            NUMBER_TOKEN.findall(original["text"]) != NUMBER_TOKEN.findall(text)
+            and not is_uncertain
+        ):
             raise ValueError("critical number changed without an uncertain item")
         words = text.split()
         if len(words) >= 8 and len(set(words)) <= max(2, len(words) // 5):
@@ -264,7 +281,10 @@ def validate_result(
     ratio = sum(1 for item in validated if item["uncertain"]) / max(len(validated), 1)
     if ratio > max_uncertain_ratio:
         raise ValueError("correction uncertain ratio exceeds configured limit")
-    normalized_uncertain = [item if isinstance(item, dict) else {"reason": str(item)} for item in uncertain_items]
+    normalized_uncertain = [
+        item if isinstance(item, dict) else {"reason": str(item)}
+        for item in uncertain_items
+    ]
     return validated, normalized_uncertain
 
 

@@ -1,7 +1,12 @@
 import pytest
 
 from app.config import get_settings
-from app.services.transcript_corrections import profile_version, validate_result
+from app.services.transcript_corrections import (
+    profile_version,
+    revision_mode,
+    should_run_text_correction,
+    validate_result,
+)
 
 SOURCE = [
     {
@@ -25,6 +30,15 @@ def test_profile_version_changes_with_prompt() -> None:
     runtime = get_settings()
     changed = runtime.model_copy(update={"correction_prompt": runtime.correction_prompt + " دقیق"})
     assert profile_version(runtime) != profile_version(changed)
+
+
+def test_manual_correction_always_uses_text_processing() -> None:
+    runtime = get_settings().model_copy(update={"correction_mode": "audio_only"})
+
+    assert revision_mode(runtime, "manual") == "text_only"
+    assert revision_mode(runtime, "automatic") == "audio_only"
+    assert should_run_text_correction("audio_only", "manual") is True
+    assert should_run_text_correction("audio_only", "automatic") is False
 
 
 def test_validated_segments_preserve_identity_and_mark_uncertain() -> None:
