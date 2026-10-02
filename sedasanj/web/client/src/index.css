@@ -266,6 +266,28 @@ body {
   }
   .table td {
     @apply border-b border-slate-100 px-3 py-2;
+    background: var(--table-row-surface, transparent);
+    transition: background-color 150ms ease;
+  }
+  .table tbody tr:nth-child(odd) {
+    --table-row-surface: rgb(242 240 239 / 0.38);
+  }
+  .table tbody tr:nth-child(even) {
+    --table-row-surface: rgb(178 172 136 / 0.13);
+  }
+  .table tbody tr:hover {
+    --table-row-surface: rgb(178 172 136 / 0.25);
+  }
+  .table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child,
+  .table tbody > tr > td:last-child:has(button, select) {
+    position: sticky;
+    inset-inline-end: 0;
+    z-index: 2;
+    box-shadow: 1px 0 0 rgb(178 172 136 / 0.55);
+  }
+  .table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child {
+    z-index: 3;
+    background: #f2f0ef;
   }
   .table-row-link {
     @apply cursor-pointer transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-500;
@@ -678,5 +700,5 @@ html {
   .landing-reveal { opacity: 1; transform: none; }
 }
 @media (min-width: 768px) {
-  .table-filters:not([open]) > .table-filters-content { display: block; }
+  .table-filters:not([open]) > .table-filters-content { display: block !important; }
 }

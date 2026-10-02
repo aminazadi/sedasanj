@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Restored desktop and tablet table filters, added palette-aligned alternating row highlights across both panels, and pinned each row's trailing action controls during horizontal scrolling.
 - Replaced the inactive call-audio action icon with an accessible circular progress indicator that reports download progress and remains active through waveform extraction.
 - Fixed multi-model ASR multipart uploads so HTTPX `AsyncClient` receives an asynchronous request stream instead of failing before the AISERVICE request is sent.
 - Fixed first-run organization database provisioning when the unflushed job attempt counter has not yet received its database default, allowing migration, schema version, and backup stages to proceed.
