@@ -226,7 +226,7 @@ function CallDetailSkeleton() {
         درحال استخراج اطلاعات ...
       </div>
 
-      <section className="card relative overflow-hidden p-5 sm:p-6">
+      <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="absolute inset-x-0 top-0 h-1 bg-slate-200" />
         <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
           <SkeletonLine className="h-3 w-36" />
@@ -273,7 +273,7 @@ function CallDetailSkeleton() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((item) => (
-          <div key={item} className="call-metric-card p-4">
+          <div key={item} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-start justify-between">
               <SkeletonLine className="h-3 w-24" />
               <span className="h-9 w-9 animate-pulse rounded-xl bg-slate-200" />
@@ -677,7 +677,7 @@ export default function CallDetailPage() {
         </div>
       ) : null}
 
-      <section className="call-detail-hero card relative overflow-visible !p-0">
+      <section className="call-detail-hero relative overflow-visible border border-[#B2AC88] bg-[#F2F0EF] shadow-sm">
         <div className="absolute inset-x-0 top-0 h-1 bg-[#4B6E48]" />
         <div className="relative p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

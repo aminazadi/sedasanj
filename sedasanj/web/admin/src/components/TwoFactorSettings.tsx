@@ -36,7 +36,7 @@ export default function TwoFactorSettings() {
     finally { setBusy(false); }
   }
 
-  return <section className="card space-y-4 p-5">
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
     <h2 className="font-bold">ورود دومرحله‌ای با گوگل آتنتیکیتور</h2>
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {enabled === null ? <p>در حال بارگذاری…</p> : enabled ? <>

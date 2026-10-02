@@ -2,7 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
-- Unified customer and admin panel cards with the square accent border, warm canvas, fine dotted texture, and shadow-free visual language established by the call metric cards.
+- Restored the original customer and admin card surfaces and limited the dotted texture to the existing intentionally textured components.
 - Bound every Jalali date-picker surface, border, neutral, primary, hover, selected, and focus state to the project's exact palette tokens and removed the browser's blue focus outline.
 - Aligned the Jalali date picker with the project's standard surface and neutral border tokens while reserving the primary color for navigation, hover, focus, today, and selected states.
 - Smoothed the single-call metric-card dot fade with a longer multi-step opacity transition around each icon.
