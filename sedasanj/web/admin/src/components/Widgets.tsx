@@ -3,7 +3,7 @@ import { fmt } from "../api";
 
 export function Stat({ title, value, tone }: { title: string; value: string; tone?: string }) {
   return (
-    <div className="card">
+    <div className="panel-stat-card card">
       <div className="text-sm text-slate-500">{title}</div>
       <div className={`mt-1 text-2xl font-bold ${tone ?? ""}`}>{value}</div>
     </div>

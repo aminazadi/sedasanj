@@ -193,6 +193,14 @@ body {
   background: #f2f0ef radial-gradient(circle, rgb(137 137 137 / 0.12) 0 1px, transparent 1.15px) 0 0 / 7px 7px !important;
 }
 
+.panel-shell .panel-stat-card {
+  border: 1px solid #b2ac88;
+  background:
+    radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
+    #f2f0ef;
+  box-shadow: none;
+}
+
 .call-metric-card {
   position: relative;
   isolation: isolate;

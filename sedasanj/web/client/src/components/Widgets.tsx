@@ -11,7 +11,7 @@ const PIPELINE_STEPS: { label: string; hint: string; statuses: string[] }[] = [
 
 export function Stat({ title, value, hint, tone }: { title: string; value: string; hint?: string; tone?: string }) {
   return (
-    <div className="card">
+    <div className="panel-stat-card card">
       <div className="text-sm text-slate-500">{title}</div>
       <div className={`mt-1 text-2xl font-bold ${tone ?? ""}`}>{value}</div>
       {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
