@@ -1029,8 +1029,8 @@ export default function CallDetailPage() {
       ) : null}
 
       <section className="grid items-stretch gap-4 lg:grid-cols-3">
-        <div className="h-full lg:col-span-2">
-          <div className="card h-full">
+        <div className="h-full min-h-0 lg:col-span-2">
+          <div className="card flex h-full min-h-0 flex-col">
           <SectionTitle
             title="متن مکالمه"
             description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
@@ -1065,10 +1065,10 @@ export default function CallDetailPage() {
             <EmptyState
               icon="transcript"
               message={call.processing ? "در حال پیاده‌سازی مکالمه…" : "هنوز پیاده‌سازی نشده است."}
-              className="min-h-40"
+              className="min-h-40 lg:flex-1"
             />
           ) : (
-            <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4 lg:min-h-[680px] lg:max-h-[820px]">
+            <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4 lg:min-h-0 lg:max-h-none lg:flex-1">
               {conversationTurns.map((utterance, index) => {
                 const caller = utterance.channel === 0;
                 return (
