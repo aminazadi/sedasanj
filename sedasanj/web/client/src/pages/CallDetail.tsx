@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { chart, palette } from "@cbi/web-shared/theme";
+import { Icon } from "@iconify/react";
+import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
+import barChartIcon from "@iconify/icons-fluent-emoji/bar-chart";
+import bullseyeIcon from "@iconify/icons-fluent-emoji/bullseye";
+import repeatButtonIcon from "@iconify/icons-fluent-emoji/repeat-button";
+import starStruckIcon from "@iconify/icons-fluent-emoji/star-struck";
 import {
   Area,
   AreaChart,
@@ -89,25 +95,17 @@ function MetricCard({
   value,
   hint,
   icon,
-  tone = "brand",
 }: {
   label: string;
   value: string;
   hint: string;
   icon: ReactNode;
-  tone?: "brand" | "violet" | "emerald" | "amber";
 }) {
-  const tones = {
-    brand: "text-brand-700",
-    violet: "text-violet-700",
-    emerald: "text-emerald-700",
-    amber: "text-amber-700",
-  };
   return (
     <div className="call-metric-card p-4 transition duration-300 hover:-translate-y-0.5">
       <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
         <span className="text-xs font-medium text-slate-600">{label}</span>
-        <span className={`flex h-12 w-12 items-center justify-center text-3xl ${tones[tone]}`}>
+        <span className="flex h-14 w-14 items-center justify-center" aria-hidden="true">
           {icon}
         </span>
       </div>
@@ -838,29 +836,26 @@ export default function CallDetailPage() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon="◷" />
+        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-14 w-14" />} />
         <MetricCard
           label="نوبت‌های گفت‌وگو"
           value={fmt.int(conversationTurns.length)}
           hint={`میانگین هر نوبت ${fmt.duration(averageTurnDuration)}`}
-          icon="⇄"
-          tone="violet"
+          icon={<Icon icon={repeatButtonIcon} className="h-14 w-14" />}
         />
         <MetricCard
           label="پوشش گفتار"
           value={fmt.percent(speechCoverage)}
           hint="نسبت گفتار تشخیص‌داده‌شده به تماس"
-          icon="≋"
-          tone="emerald"
+          icon={<Icon icon={barChartIcon} className="h-14 w-14" />}
         />
         <MetricCard
           label="امتیاز احساس"
           value={sentimentScore == null ? "—" : fmt.percent(sentimentScore * 100)}
           hint={insights?.intent ? (INTENT_LABELS[insights.intent] ?? insights.intent) : "قصد تماس نامشخص"}
-          icon="◎"
-          tone="amber"
+          icon={<Icon icon={bullseyeIcon} className="h-14 w-14" />}
         />
-        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon="★" tone="violet" />
+        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starStruckIcon} className="h-14 w-14" />} />
       </section>
 
       {operatorScore?.criteria_scores?.length ? <section className="card"><SectionTitle title="ارزیابی عملکرد اپراتور" description={operatorScore.operator_label} /><div className="grid gap-3 md:grid-cols-2">{operatorScore.criteria_scores.map((criterion) => <div key={criterion.title} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between"><strong>{criterion.title}</strong><span>{fmt.decimal(criterion.score)}</span></div>{criterion.evidence ? <p className="mt-2 text-sm text-slate-600">{criterion.evidence}</p> : null}</div>)}</div></section> : null}
