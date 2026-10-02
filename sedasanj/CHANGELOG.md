@@ -6,7 +6,7 @@
 - Extended the dotted texture farther across single-call metric cards while preserving a clear area around each icon.
 - Restyled the shared Jalali date picker across the customer and admin panels with the project green, beige, and warm-white palette, responsive sizing, polished navigation, and distinct selected, today, hover, and keyboard-focus states.
 
-- Replaced the outlined phone symbol in the single-call header with a border-free modern Fluent Emoji 3D mobile-call icon.
+- Replaced the outlined phone symbol in the single-call header with a larger border-free Fluent Emoji 3D telephone icon.
 - Made follow-up task cards denser and replaced the labeled edit action with a compact accessible icon button.
 - Replaced the single-call metric glyphs with locally bundled Fluent Emoji 3D icons and softly faded the dotted texture around their background-free top-left placement.
 - Moved call follow-up tasks directly below the processing report on the single-call page.

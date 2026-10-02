@@ -7,7 +7,7 @@ import barChartIcon from "@iconify/icons-fluent-emoji/bar-chart";
 import bullseyeIcon from "@iconify/icons-fluent-emoji/bullseye";
 import repeatButtonIcon from "@iconify/icons-fluent-emoji/repeat-button";
 import starStruckIcon from "@iconify/icons-fluent-emoji/star-struck";
-import mobilePhoneWithArrowIcon from "@iconify/icons-fluent-emoji/mobile-phone-with-arrow";
+import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
 import {
   Area,
   AreaChart,
@@ -698,7 +698,7 @@ export default function CallDetailPage() {
             <div>
               <div className="mb-2 flex items-center gap-3">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-[#F2F0EF] text-[#000000]" aria-hidden="true">
-                  <Icon icon={mobilePhoneWithArrowIcon} className="h-10 w-10" />
+                  <Icon icon={telephoneIcon} className="h-11 w-11" />
                 </span>
                 <div>
                   <p className="text-xs text-[#000000]">مکالمه تلفنی</p>
