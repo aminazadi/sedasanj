@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     aiservice_analysis_path: str = "/v1/chat/tasks"
     aiservice_chat_path: str = "/v1/chat/tasks"
     aiservice_decision_path: str = "/v1/decisions"
-    aiservice_embedding_path: str = "/v1/ninerouter/embeddings"
+    aiservice_embedding_path: str = "/v1/embeddings"
 
     # Optional, admin-managed audio preparation performed before ASR.  The
     # remote provider receives the resulting PCM WAV through its documented

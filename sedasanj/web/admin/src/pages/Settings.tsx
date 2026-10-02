@@ -1,6 +1,7 @@
 import TwoFactorSettings from "../components/TwoFactorSettings";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { PlatformSettings, ProviderModel } from "../types";
@@ -91,7 +92,11 @@ function ModelSelect({
 }
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("connection");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const activeTab: SettingsTab = SETTINGS_TABS.some((tab) => tab.id === requestedTab)
+    ? requestedTab as SettingsTab
+    : "connection";
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -258,7 +263,9 @@ export default function Settings() {
                   : "border-transparent text-slate-500 hover:text-slate-900"
               }`}
               onClick={() => {
-                setActiveTab(tab.id);
+                const next = new URLSearchParams(searchParams);
+                next.set("tab", tab.id);
+                setSearchParams(next, { replace: true });
                 setError(null);
                 setNotice(null);
               }}
@@ -560,8 +567,9 @@ export default function Settings() {
           <label className="label" htmlFor="decision-threshold">حداقل اطمینان برای استفاده از مدل اصلی</label>
           <input id="decision-threshold" className="input" type="number" min="0" max="1" step="0.01" value={settings.decision_confidence_threshold} onChange={(event) => setSettings({ ...settings, decision_confidence_threshold: Number(event.target.value) })} />
         </div>
-        <select className="input" value={settings.decision_route} disabled>
-          <option value="typed">/v1/decisions — تصمیم‌گیری typed AISERVICE</option>
+        <select className="input" value={settings.decision_route === "typed" ? "native" : settings.decision_route} onChange={(event) => setSettings({ ...settings, decision_route: event.target.value as PlatformSettings["decision_route"] })}>
+          <option value="native">/v1/decisions — موتور تصمیم‌گیری محلی AISERVICE</option>
+          <option value="ninerouter">/v1/ninerouter/decisions — تصمیم‌گیری 9Router</option>
         </select>
       </section>
 
@@ -571,7 +579,8 @@ export default function Settings() {
           <p className="mt-1 text-xs leading-6 text-slate-500">فقط مدل‌های embedding اعلام‌شده توسط AISERVICE نمایش داده می‌شوند؛ شناسه فرضی یا نصب‌نشده ذخیره نمی‌شود.</p>
         </div>
         <ModelSelect id="embedding-model" label="مدل Embedding" value={settings.embedding_model} models={embeddingModels} onChange={(embedding_model) => setSettings({ ...settings, embedding_model })} />
-        <select className="input" value={settings.embedding_route} disabled>
+        <select className="input" value={settings.embedding_route} onChange={(event) => setSettings({ ...settings, embedding_route: event.target.value as PlatformSettings["embedding_route"] })}>
+          <option value="native">/v1/embeddings — مدل نصب‌شده محلی AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/embeddings — 9Router از AISERVICE</option>
         </select>
       </section>

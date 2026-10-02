@@ -57,8 +57,15 @@ AISERVICE_ROUTES = {
         "synchronous": "/v1/chat/completions",
         "ninerouter": "/v1/ninerouter/chat/completions",
     },
-    "decision_route": {"typed": "/v1/decisions"},
-    "embedding_route": {"ninerouter": "/v1/ninerouter/embeddings"},
+    "decision_route": {
+        "native": "/v1/decisions",
+        "typed": "/v1/decisions",
+        "ninerouter": "/v1/ninerouter/decisions",
+    },
+    "embedding_route": {
+        "native": "/v1/embeddings",
+        "ninerouter": "/v1/ninerouter/embeddings",
+    },
 }
 
 __all__ = (
@@ -213,8 +220,8 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "asr_route": "native",
         "analysis_route": "durable",
         "chat_route": "durable",
-        "decision_route": "typed",
-        "embedding_route": "ninerouter",
+        "decision_route": "native",
+        "embedding_route": "native",
     }
     settings_session = session
     if get_settings().tenant_databases_enabled:

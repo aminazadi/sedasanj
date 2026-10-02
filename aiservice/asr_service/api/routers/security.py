@@ -14,7 +14,7 @@ from ..dependencies import authorize_admin, issue_key
 from ..schemas.responses import RequestFailurePageResponse
 
 router = APIRouter(prefix="/api", dependencies=[Depends(authorize_admin)])
-VALID_SCOPES = {"inference", "chat", "transcription", "text", "decision"}
+VALID_SCOPES = {"inference", "chat", "transcription", "text", "decision", "embedding"}
 
 
 class ApiKeyCreate(BaseModel):

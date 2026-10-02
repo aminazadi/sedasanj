@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-02 — AMINAZADI
+
+- Added authenticated native `/v1/embeddings` inference for installed transformer embedding models, including safe pinned model registration, installation validation, model-catalog exposure, and OpenAI-compatible responses.
+- Added decision and embedding capabilities to the 9Router proxy/catalog synchronization so callers can explicitly choose native AISERVICE or 9Router routing.
+
 ## 2026-10-01 — AMINAZADI
 
 - Pinned AISERVICE data and object-storage volumes to stable, configurable Docker volume names so moving the repository does not create an empty replacement data store or invalidate persisted API-key access.

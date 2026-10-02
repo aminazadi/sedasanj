@@ -99,7 +99,7 @@ def require_access(principal: Principal, scope: str, models=()):
         return
     allowed = "*" in principal.scopes or "inference" in principal.scopes or scope in principal.scopes
     if scope == "inference":
-        allowed = allowed or bool({"chat", "transcription", "text", "decision"} & set(principal.scopes))
+        allowed = allowed or bool({"chat", "transcription", "text", "decision", "embedding"} & set(principal.scopes))
     if not allowed:
         raise HTTPException(403, f"API key does not allow {scope}")
     if principal.models is not None and any(model not in principal.models for model in models):

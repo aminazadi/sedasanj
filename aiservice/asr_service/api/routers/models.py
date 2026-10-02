@@ -136,7 +136,7 @@ def _save_custom_model(body: CustomTextModelRequest, *, replace: bool = False):
     ] or ([{
         "filename": body.filename, "download_url": str(body.download_url), "expected_size": body.expected_size, "sha256": body.sha256
     }] if body.kind == "llm" else [])
-    if body.kind == "decision" and body.source_type == "huggingface":
+    if body.kind in {"decision", "embedding"} and body.source_type == "huggingface":
         files = _resolve_hugging_face_artifacts(body)
     if not files:
         raise HTTPException(422, "No model artifacts were provided")
@@ -145,14 +145,14 @@ def _save_custom_model(body: CustomTextModelRequest, *, replace: bool = False):
       VALUES(?,?,?,?,?,?,?,?,?,0,?,?,?,NULL,'fa',?,?,?,?,?,?,?)""", (
         body.id, body.kind, body.display_name, body.description,
         str(body.repository_url or body.download_url or primary["download_url"]),
-        "fasterWhisper" if body.kind == "asr" else body.engine if body.kind == "decision" else "gguf",
+        "fasterWhisper" if body.kind == "asr" else body.engine if body.kind == "decision" else "transformers" if body.kind == "embedding" else "gguf",
         primary["filename"], primary["download_url"],
         primary.get("expected_size"), primary.get("sha256"), body.revision,
-        body.license, "transcribe" if body.kind == "asr" else "decision" if body.kind == "decision" else "text-generation", json.dumps(decoding),
+        body.license, "transcribe" if body.kind == "asr" else "decision" if body.kind == "decision" else "embedding" if body.kind == "embedding" else "text-generation", json.dumps(decoding),
         json.dumps([{
             "filename": item["filename"], "url": item["download_url"],
             "expected_size": item.get("expected_size"), "sha256": item.get("sha256"),
-        } for item in files]), body.engine, body.source_type if body.kind == "decision" else None, json.dumps(source), now(),
+        } for item in files]), body.engine, body.source_type if body.kind in {"decision", "embedding"} else None, json.dumps(source), now(),
     )
     if replace:
         execute("DELETE FROM custom_models WHERE model_id=?", (body.id,))
@@ -170,14 +170,14 @@ def update_model(mid: str, body: CustomTextModelRequest):
     if body.id != mid:
         raise HTTPException(400, "Model id cannot be changed")
     current = CATALOG[mid]
-    if body.kind == "decision":
+    if body.kind in {"decision", "embedding"}:
         requested_source = (body.source_type, body.hf_repository, body.revision, body.hf_subfolder) if body.source_type == "huggingface" else (
             "direct", tuple((item.filename, str(item.download_url), item.sha256) for item in body.files or [])
         )
         current_source = (current.source_type, current.source.get("repository"), current.revision, current.source.get("subfolder")) if current.source_type == "huggingface" else (
             "direct", tuple((item.filename, item.url, item.sha256) for item in current.files)
         )
-        changed_artifacts = current.kind != "decision" or current.engine != body.engine or current_source != requested_source
+        changed_artifacts = current.kind != body.kind or current.engine != body.engine or current_source != requested_source
     elif body.kind == "asr":
         changed_artifacts = current.kind != body.kind or [(item.filename, item.url) for item in current.files] != [
             (item.filename, str(item.download_url)) for item in body.files or []

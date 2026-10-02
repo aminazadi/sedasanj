@@ -32,6 +32,9 @@ class DownloadManager:
    if CATALOG[mid].kind == "decision":
     from .decision_processing import registry
     registry.evict(mid)
+   if CATALOG[mid].kind == "embedding":
+    from .embedding_processing import registry
+    registry.evict(mid)
    for folder in (MODEL_DIR/mid,MODEL_DIR/(mid+".staging")):
     if folder.is_symlink():raise HTTPException(409,"Model directory is a symbolic link")
     if folder.is_dir():shutil.rmtree(folder)
@@ -63,6 +66,10 @@ class DownloadManager:
    if spec.kind == "decision":
     set_state(mid,status="validating",speed_bps=0)
     self._validate_decision_bundle(spec, folder)
+   if spec.kind == "embedding":
+    from .embedding_processing import validate_embedding_bundle
+    set_state(mid,status="validating",speed_bps=0)
+    validate_embedding_bundle(folder)
    manifest={"model":mid,"source_revision":spec.revision,"installed_at":now(),"files":[]}
    for p in sorted(x for x in folder.rglob("*") if x.is_file() and not x.name.endswith(".part")):
     h=hashlib.sha256()

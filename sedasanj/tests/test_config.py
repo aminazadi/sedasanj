@@ -41,6 +41,8 @@ def test_audio_preprocessing_is_safe_by_default() -> None:
 def test_voicesanj_default_uses_https() -> None:
     settings = Settings(environment="development", _env_file=None)
     assert settings.voicesanj_base_url == "https://aiservice.voicesanj.ir"
+    assert settings.aiservice_decision_path == "/v1/decisions"
+    assert settings.aiservice_embedding_path == "/v1/embeddings"
 
 
 @pytest.mark.parametrize("value", ["", "   "])

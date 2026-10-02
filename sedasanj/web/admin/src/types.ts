@@ -126,8 +126,8 @@ export interface PlatformSettings {
   asr_route: "native" | "ninerouter";
   analysis_route: "durable";
   chat_route: "durable" | "synchronous" | "ninerouter";
-  decision_route: "typed";
-  embedding_route: "ninerouter";
+  decision_route: "native" | "ninerouter" | "typed";
+  embedding_route: "native" | "ninerouter";
 }
 
 export interface AudioProcessingModel {

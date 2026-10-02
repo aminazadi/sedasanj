@@ -61,6 +61,23 @@ class ChatCompletionRequest(BaseModel):
         return self
 
 
+class EmbeddingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str = Field(min_length=1, max_length=200)
+    input: str | list[str]
+    encoding_format: str = Field(default="float", pattern="^float$")
+
+    @model_validator(mode="after")
+    def validate_input(self):
+        values = [self.input] if isinstance(self.input, str) else self.input
+        if not values or len(values) > 128:
+            raise ValueError("input must contain one to 128 texts")
+        if any(not value.strip() or len(value) > 12000 for value in values):
+            raise ValueError("each input must contain one to 12000 non-whitespace characters")
+        if sum(len(value) for value in values) > 100000:
+            raise ValueError("combined input is too large")
+        return self
+
 class AsyncChatRequest(BaseModel):
     """Text-only, freely instructed chat inference without a long HTTP connection."""
 
@@ -166,7 +183,7 @@ def remote_model_object(item):
 )
 def list_models(kind: str = Query(default="llm", pattern="^(llm|asr|decision|tts|embedding|image|video|web|vision|all)$"), principal: Principal = Depends(authorize)):
     accessible_kinds = set()
-    for model_kind, scope in (("llm", "chat"), ("asr", "transcription"), ("decision", "decision"), ("tts", "inference"), ("embedding", "inference"), ("image", "inference"), ("video", "inference"), ("web", "inference"), ("vision", "inference")):
+    for model_kind, scope in (("llm", "chat"), ("asr", "transcription"), ("decision", "decision"), ("tts", "inference"), ("embedding", "embedding"), ("image", "inference"), ("video", "inference"), ("web", "inference"), ("vision", "inference")):
         try:
             require_access(principal, scope)
         except HTTPException as error:
@@ -188,6 +205,28 @@ def list_models(kind: str = Query(default="llm", pattern="^(llm|asr|decision|tts
             and (MODEL_DIR / model_id / ".complete").is_file()
             and (principal.models is None or model_id in principal.models)
         ],
+    }
+
+
+@router.post(
+    "/embeddings",
+    summary="Create embeddings",
+    description="Creates normalized embeddings with an installed local transformer model.",
+)
+async def create_embeddings(body: EmbeddingRequest, principal: Principal = Depends(authorize)):
+    require_access(principal, "embedding", [body.model])
+    values = [body.input] if isinstance(body.input, str) else body.input
+    from asr_service.services.embedding_processing import embed
+
+    vectors, prompt_tokens = await run_in_threadpool(embed, body.model, values)
+    return {
+        "object": "list",
+        "data": [
+            {"object": "embedding", "embedding": vector, "index": index}
+            for index, vector in enumerate(vectors)
+        ],
+        "model": body.model,
+        "usage": {"prompt_tokens": prompt_tokens, "total_tokens": prompt_tokens},
     }
 
 

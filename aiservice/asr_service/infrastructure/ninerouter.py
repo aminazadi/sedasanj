@@ -216,7 +216,7 @@ class NineRouterClient:
         return [{"id": str(item.get("id")), "owned_by": item.get("owned_by", "9router")} for item in data if item.get("id")]
 
     def sync_models(self):
-        groups = {"llm": "chat", "asr": "stt", "tts": "tts", "embedding": "embedding", "image": "image", "video": "video", "web": "web", "vision": "image-to-text"}
+        groups = {"llm": "chat", "asr": "stt", "decision": "decision", "tts": "tts", "embedding": "embedding", "image": "image", "video": "video", "web": "web", "vision": "image-to-text"}
         result = []
         for kind, endpoint in groups.items():
             try:

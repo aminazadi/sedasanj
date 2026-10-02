@@ -118,7 +118,7 @@ class CustomTextModelRequest(BaseModel):
 
     id: str = Field(min_length=1, max_length=80, description="Stable model id exposed through the API.")
     display_name: str = Field(min_length=1, max_length=160)
-    kind: Literal["llm", "asr", "decision"] = "llm"
+    kind: Literal["llm", "asr", "decision", "embedding"] = "llm"
     description: str = Field(default="", max_length=2000)
     download_url: HttpUrl | None = None
     filename: str | None = Field(default=None, max_length=255, description="Local GGUF filename.")
@@ -179,6 +179,19 @@ class CustomTextModelRequest(BaseModel):
             else:
                 if not self.files or any(item.sha256 is None for item in self.files):
                     raise ValueError("direct decision model files require SHA-256 values")
+            return self
+        if self.kind == "embedding":
+            if self.engine is not None:
+                raise ValueError("embedding models do not use a decision engine")
+            if self.source_type == "huggingface":
+                if not self.hf_repository or not self.revision or len(self.revision) != 40 or not re.fullmatch(r"[0-9a-fA-F]{40}", self.revision):
+                    raise ValueError("Hugging Face embedding models require a pinned 40-character commit revision")
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*", self.hf_repository):
+                    raise ValueError("hf_repository must be a public owner/repository identifier")
+                if self.download_url or self.filename or self.files:
+                    raise ValueError("Hugging Face embedding models do not accept direct files")
+            elif not self.files or any(item.sha256 is None for item in self.files):
+                raise ValueError("direct embedding model files require SHA-256 values")
             return self
         if self.download_url or self.filename:
             raise ValueError("ASR models require the faster-whisper files list, not a single file")

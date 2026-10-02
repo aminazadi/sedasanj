@@ -25,9 +25,9 @@ from asr_service.api import dependencies
 from asr_service.api.routers import analytics, models, openai_compat, security
 from asr_service.api.cors import DynamicCORSMiddleware
 from asr_service.api.failure_audit import RequestFailureAuditMiddleware
-from asr_service.api.routers.openai_compat import ChatCompletionRequest
+from asr_service.api.routers.openai_compat import ChatCompletionRequest, EmbeddingRequest
 from asr_service.api.schemas.requests import CustomModelFileRequest, CustomTextModelRequest
-from asr_service.domain.catalog import CATALOG, load_custom_models
+from asr_service.domain.catalog import CATALOG, ModelSpec, load_custom_models
 from asr_service.infrastructure import storage
 from asr_service.services import downloader
 
@@ -110,6 +110,45 @@ class SecurityAndCompatibilityTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as denied:
             openai_compat.list_models("llm", dependencies.Principal(False))
         self.assertEqual(denied.exception.status_code, 403)
+
+    def test_local_embedding_endpoint_returns_openai_shape(self):
+        body = EmbeddingRequest(model="test-embedding", input=["first", "second"])
+        with patch(
+            "asr_service.services.embedding_processing.embed",
+            return_value=([[0.1, 0.2], [0.3, 0.4]], 4),
+        ):
+            result = asyncio.run(
+                openai_compat.create_embeddings(body, dependencies.Principal(True))
+            )
+        self.assertEqual(result["model"], "test-embedding")
+        self.assertEqual(result["data"][1]["index"], 1)
+        self.assertEqual(result["usage"]["total_tokens"], 4)
+
+    def test_embedding_model_appears_in_user_catalog(self):
+        CATALOG["test-embedding"] = ModelSpec(
+            "test-embedding",
+            "embedding",
+            "Test Embedding",
+            "",
+            "",
+        )
+        folder = storage.MODEL_DIR / "test-embedding"
+        folder.mkdir(parents=True)
+        (folder / ".complete").touch()
+        result = openai_compat.list_models("embedding", dependencies.Principal(True))
+        self.assertEqual(result["data"][0]["id"], "test-embedding")
+        self.assertEqual(result["data"][0]["kind"], "embedding")
+
+    def test_embedding_model_requires_pinned_safe_bundle(self):
+        with self.assertRaises(ValueError):
+            CustomTextModelRequest(
+                id="test-embedding",
+                display_name="Test Embedding",
+                kind="embedding",
+                source_type="huggingface",
+                hf_repository="org/model",
+                revision="main",
+            )
 
     def test_custom_gguf_model_persists_and_enters_catalog(self):
         result = models.add_model(

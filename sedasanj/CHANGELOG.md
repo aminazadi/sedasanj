@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added selectable native AISERVICE and 9Router routes for typed decisions and embeddings, defaulted new embedding configuration to the native `/v1/embeddings` endpoint, and persisted the active settings tab in the URL query.
 - Organized the admin settings page into accessible, responsive tabs for AISERVICE connection, models and routes, audio processing, prompts, and security, with independent per-tab saves.
 - Rebuilt the admin AI settings surface around explicit ASR, analysis, assistant, decision, fallback, and embedding workloads, with route controls, live capability counts, availability warnings, and model selection sourced from AISERVICE.
 - Replaced the fabricated embedding default and hard-coded model suggestions with the authenticated AISERVICE `kind=all` catalog so unavailable model identifiers can no longer be newly selected from the admin UI.

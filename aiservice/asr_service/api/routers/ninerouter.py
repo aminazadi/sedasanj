@@ -78,6 +78,7 @@ def sync_models():
 
 proxy_router = APIRouter(prefix="/v1/ninerouter", tags=["9Router proxy"])
 ALLOWED_PATHS = {
+    "decisions",
     "embeddings",
     "audio/speech",
     "images/generations",

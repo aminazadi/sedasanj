@@ -164,7 +164,7 @@ def create_app():
             codes = {401: "authentication_failed", 403: "access_denied", 404: "task_not_found", 429: "rate_limit_exceeded"}
             error = exc.detail if isinstance(exc.detail, dict) else {"code": codes.get(exc.status_code, "invalid_request"), "message": str(exc.detail)}
             return JSONResponse({"error": error}, status_code=exc.status_code, headers=exc.headers)
-        if request.url.path.startswith(("/v1/chat/completions", "/v1/models")):
+        if request.url.path.startswith(("/v1/chat/completions", "/v1/embeddings", "/v1/models")):
             error_type = "authentication_error" if exc.status_code == 401 else "permission_error" if exc.status_code == 403 else "rate_limit_error" if exc.status_code == 429 else "invalid_request_error"
             return JSONResponse({"error": {"message": str(exc.detail), "type": error_type, "param": None, "code": None}}, status_code=exc.status_code, headers=exc.headers)
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
@@ -174,7 +174,7 @@ def create_app():
         if request.url.path == "/v1/chat/tasks":
             first = exc.errors()[0]
             return JSONResponse({"error": {"code": "invalid_request", "message": first.get("msg", "Invalid request").split("Value error,")[-1].strip() if first.get("type") == "value_error" else "Invalid request body", "param": ".".join(str(x) for x in first.get("loc", ())[1:]) or None}}, status_code=400)
-        if request.url.path.startswith(("/v1/chat/completions", "/v1/models")):
+        if request.url.path.startswith(("/v1/chat/completions", "/v1/embeddings", "/v1/models")):
             first = exc.errors()[0]
             param = ".".join(str(value) for value in first.get("loc", ())[1:]) or None
             return JSONResponse({"error": {"message": first["msg"], "type": "invalid_request_error", "param": param, "code": None}}, status_code=400)

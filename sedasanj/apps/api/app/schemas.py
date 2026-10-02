@@ -883,8 +883,8 @@ class SettingsUpdate(BaseModel):
     asr_route: Literal["native", "ninerouter"] | None = None
     analysis_route: Literal["durable"] | None = None
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
-    decision_route: Literal["typed"] | None = None
-    embedding_route: Literal["ninerouter"] | None = None
+    decision_route: Literal["native", "ninerouter", "typed"] | None = None
+    embedding_route: Literal["native", "ninerouter"] | None = None
 
 
 class ProviderModelOut(BaseModel):
