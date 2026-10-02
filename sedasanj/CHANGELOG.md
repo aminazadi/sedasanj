@@ -10,6 +10,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Displayed the assistant date-range and tool selectors as distinct outlined buttons opposite the rotating composer guide.
+
+## 2026-10-02 — AMINAZADI
+
 - Added inline searchable at-mentions for organization operators and previous conversations, with date-range and multi-tool selectors placed beside the assistant composer guide.
 
 ## 2026-10-02 — AMINAZADI
