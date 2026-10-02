@@ -37,7 +37,7 @@ def _planner_prompt(question: str, history: str, enabled: set[str] | None) -> st
 {{"answer":"پاسخ فارسی","tool_calls":[]}}
 اگر داده لازم است:
 {{"answer":null,"tool_calls":[{{"name":"نام ابزار","arguments":{{}}}}]}}
-حداکثر دو ابزار مستقل انتخاب کن. هیچ SQL، tenant_id یا user_id نساز. برای پرسش آماری که مقایسه یا توزیع دارد از ابزار visualize_statistics استفاده کن تا پاسخ علاوه بر متن، نمودار هم داشته باشد."""
+حداکثر دو ابزار مستقل انتخاب کن. هیچ SQL، tenant_id یا user_id نساز. برای پرسش آماری از ابزار visualize_statistics استفاده کن و مناسب‌ترین نمودارها را از میان bar، horizontal_bar، line، area، pie، donut، radar، radial_bar، scatter، composed، treemap و funnel انتخاب کن. برای روند زمانی call_trend، برای توزیع وضعیت call_status و برای مقایسه اپراتورها operator_performance را انتخاب کن. بیش از چهار نمودار نساز و فقط نمودارهایی را انتخاب کن که فهم پاسخ را بهتر می‌کنند."""
 
 
 async def plan(

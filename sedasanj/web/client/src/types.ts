@@ -233,10 +233,11 @@ export interface AssistantToolRun {
 export interface AssistantChart {
   id: string;
   title: string;
-  type: "bar" | "donut";
+  type: "bar" | "horizontal_bar" | "line" | "area" | "pie" | "donut" | "radar" | "radial_bar" | "scatter" | "composed" | "treemap" | "funnel";
   size: "half" | "full";
   value_label: string;
-  data: Array<{ label: string; value: number }>;
+  secondary_value_label?: string | null;
+  data: Array<{ label: string; value: number; secondary_value?: number }>;
 }
 
 export interface ProcessingEvent {

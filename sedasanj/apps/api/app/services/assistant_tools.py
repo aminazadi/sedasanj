@@ -76,8 +76,25 @@ class OperatorPerformanceArguments(WindowArguments):
     operator_id: UUID | None = None
 
 
+ChartType = Literal[
+    "bar",
+    "horizontal_bar",
+    "line",
+    "area",
+    "pie",
+    "donut",
+    "radar",
+    "radial_bar",
+    "scatter",
+    "composed",
+    "treemap",
+    "funnel",
+]
+
+
 class VisualizeStatisticsArguments(AnalyticsArguments):
-    view: Literal["call_status", "operator_performance"] = "call_status"
+    view: Literal["call_status", "call_trend", "operator_performance"] = "call_status"
+    chart_types: list[ChartType] = Field(default_factory=list, max_length=4)
 
 
 @dataclass(frozen=True)
@@ -455,23 +472,21 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             {"label": item["operator_label"] or "اپراتور نامشخص", "value": item["scored_calls"]}
             for item in result["items"]
         ]
+        chart_types = args.chart_types or ["bar", "radar"]
         result["charts"] = [
-            {
-                "id": "operator-average-score",
-                "title": "میانگین امتیاز اپراتورها",
-                "type": "bar",
-                "size": "half" if volume_data else "full",
-                "value_label": "امتیاز",
-                "data": score_data,
-            },
-            {
-                "id": "operator-scored-calls",
-                "title": "تعداد تماس‌های امتیازدهی‌شده",
-                "type": "bar",
-                "size": "half" if score_data else "full",
-                "value_label": "تعداد تماس",
-                "data": volume_data,
-            },
+            _chart_payload(
+                f"operator-performance-{index}",
+                "عملکرد اپراتورها",
+                chart_type,
+                [
+                    {**score, "secondary_value": volume["value"]}
+                    for score, volume in zip(score_data, volume_data, strict=True)
+                ],
+                "میانگین امتیاز",
+                "تعداد تماس",
+                len(chart_types),
+            )
+            for index, chart_type in enumerate(chart_types)
         ]
         return result
 
@@ -488,18 +503,88 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             topic=args.topic,
         ),
     )
-    result["charts"] = [{
-        "id": "call-status-distribution",
-        "title": "توزیع وضعیت تماس‌ها",
-        "type": "donut",
-        "size": "full",
-        "value_label": "تعداد تماس",
-        "data": [
+    if args.view == "call_trend":
+        start, end = _window(args)
+        operator_id = await _validate_operator(ctx, args.operator_id)
+        trend_stmt = _apply_window(_base_calls(ctx), start, end)
+        if operator_id is not None and not operator_scope.is_operator(ctx.principal):
+            trend_stmt = trend_stmt.where(select(CallOperatorAssignment.id).where(
+                CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.operator_id == operator_id,
+                CallOperatorAssignment.superseded_at.is_(None),
+            ).exists())
+        for column, value in (
+            (Call.campaign_id, args.campaign_id),
+            (Call.status, args.status),
+            (Call.direction, args.direction),
+        ):
+            if value:
+                trend_stmt = trend_stmt.where(column == value)
+        if args.sentiment or args.topic:
+            trend_stmt = trend_stmt.join(CallInsight, CallInsight.call_id == Call.id)
+            if args.sentiment:
+                trend_stmt = trend_stmt.where(CallInsight.sentiment == args.sentiment)
+            if args.topic:
+                trend_stmt = trend_stmt.where(CallInsight.topics.any(args.topic))
+        filtered = trend_stmt.subquery()
+        day = func.date_trunc("day", filtered.c.started_at).label("day")
+        rows = (await ctx.session.execute(
+            select(day, func.count(), func.coalesce(func.avg(filtered.c.duration_ms), 0))
+            .group_by(day)
+            .order_by(day)
+        )).all()
+        data = [
+            {
+                "label": row[0].date().isoformat(),
+                "value": int(row[1]),
+                "secondary_value": round(float(row[2]) / 60000, 1),
+            }
+            for row in rows
+        ]
+        chart_types = args.chart_types or ["line", "area"]
+        title = "روند تماس‌ها"
+        secondary_label = "میانگین مدت (دقیقه)"
+    else:
+        data = [
             {"label": str(label), "value": value}
             for label, value in result["statuses"].items()
-        ],
-    }]
+        ]
+        chart_types = args.chart_types or ["donut"]
+        title = "توزیع وضعیت تماس‌ها"
+        secondary_label = None
+    result["charts"] = [
+        _chart_payload(
+            f"{args.view}-{index}",
+            title,
+            chart_type,
+            data,
+            "تعداد تماس",
+            secondary_label,
+            len(chart_types),
+        )
+        for index, chart_type in enumerate(chart_types)
+    ]
     return result
+
+
+def _chart_payload(
+    chart_id: str,
+    title: str,
+    chart_type: ChartType,
+    data: list[dict[str, Any]],
+    value_label: str,
+    secondary_value_label: str | None,
+    chart_count: int,
+) -> dict[str, Any]:
+    return {
+        "id": chart_id,
+        "title": title,
+        "type": chart_type,
+        "size": "half" if chart_count > 1 else "full",
+        "value_label": value_label,
+        "secondary_value_label": secondary_value_label,
+        "data": data,
+    }
 
 
 TOOLS = (
@@ -509,7 +594,7 @@ TOOLS = (
     ToolDefinition("get_call_analysis", "دریافت تحلیل تماس‌ها", "Get analysis, sales inference, and authoritative CRM outcome.", CallIdsArguments, _call_analysis),
     ToolDefinition("get_call_analytics", "دریافت آمار تماس‌ها", "Calculate exact call statistics from the database.", AnalyticsArguments, _analytics),
     ToolDefinition("get_operator_performance", "دریافت عملکرد اپراتورها", "Get access-controlled operator scoring statistics.", OperatorPerformanceArguments, _operator_performance),
-    ToolDefinition("visualize_statistics", "ترسیم نمودار آماری", "Create exact, access-controlled charts for statistical questions. Prefer this tool when a chart helps compare call statuses or operator performance.", VisualizeStatisticsArguments, _visualize_statistics),
+    ToolDefinition("visualize_statistics", "ترسیم نمودار آماری", "Create exact, access-controlled charts. Choose up to four suitable types from bar, horizontal_bar, line, area, pie, donut, radar, radial_bar, scatter, composed, treemap, and funnel. Use call_trend for time-based charts, call_status for distributions, and operator_performance for comparisons.", VisualizeStatisticsArguments, _visualize_statistics),
 )
 TOOL_BY_NAME = {tool.name: tool for tool in TOOLS}
 

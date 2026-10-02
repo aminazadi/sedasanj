@@ -87,8 +87,15 @@ def test_tool_schemas_never_expose_security_scope() -> None:
     )
     assert chart_schema["function"]["parameters"]["properties"]["view"]["enum"] == [
         "call_status",
+        "call_trend",
         "operator_performance",
     ]
+    assert chart_schema["function"]["parameters"]["properties"]["chart_types"]["maxItems"] == 4
+    chart_types = chart_schema["function"]["parameters"]["properties"]["chart_types"]
+    assert set(chart_types["items"]["enum"]) == {
+        "bar", "horizontal_bar", "line", "area", "pie", "donut", "radar",
+        "radial_bar", "scatter", "composed", "treemap", "funnel",
+    }
 
 
 def test_tool_preview_preserves_chart_payload() -> None:

@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Expanded the assistant visualization tool to support bar, horizontal bar, line, area, pie, donut, radar, radial bar, scatter, composed, treemap, and funnel charts with exact status, daily trend, and operator-performance datasets.
+
+## 2026-10-02 — AMINAZADI
+
 - Positioned message times opposite their action icons and aligned each avatar with the message-bubble pointer instead of the action row.
 
 ## 2026-10-02 — AMINAZADI
