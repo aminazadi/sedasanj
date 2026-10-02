@@ -697,10 +697,12 @@ export default function Assistant() {
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);
           const actionClass = "inline-flex h-7 w-7 items-center justify-center text-[#898989] transition hover:bg-white hover:text-[#4B6E48] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48] disabled:opacity-50";
           const actions = <>
+            <span className="flex items-center gap-0.5" dir="rtl">
+              {user && message.status !== "running" ? <button type="button" className={actionClass} disabled={sending} onClick={() => setMessageEdit({ message, value: message.content })} aria-label="ویرایش پیام" title="ویرایش پیام"><EditIcon /></button> : null}
+              {message.status !== "running" && message.content ? <button type="button" className={actionClass} onClick={() => void copyMessage(message)} aria-label={copiedMessageId === message.id ? "پیام کپی شد" : "کپی پیام"} title={copiedMessageId === message.id ? "کپی شد" : "کپی پیام"}><CopyIcon checked={copiedMessageId === message.id} /></button> : null}
+              {!user && message.status === "failed" ? <button type="button" className={`${actionClass} hover:text-rose-700`} disabled={sending} onClick={() => void retryMessage(message)} aria-label="تلاش مجدد" title="تلاش مجدد"><RetryIcon /></button> : null}
+            </span>
             <time className="px-1 text-[10px] leading-none text-[#898989]" dateTime={message.created_at} title={fmt.dateTime(message.created_at)}>{fmt.time(message.created_at)}</time>
-            {user && message.status !== "running" ? <button type="button" className={actionClass} disabled={sending} onClick={() => setMessageEdit({ message, value: message.content })} aria-label="ویرایش پیام" title="ویرایش پیام"><EditIcon /></button> : null}
-            {message.status !== "running" && message.content ? <button type="button" className={actionClass} onClick={() => void copyMessage(message)} aria-label={copiedMessageId === message.id ? "پیام کپی شد" : "کپی پیام"} title={copiedMessageId === message.id ? "کپی شد" : "کپی پیام"}><CopyIcon checked={copiedMessageId === message.id} /></button> : null}
-            {!user && message.status === "failed" ? <button type="button" className={`${actionClass} hover:text-rose-700`} disabled={sending} onClick={() => void retryMessage(message)} aria-label="تلاش مجدد" title="تلاش مجدد"><RetryIcon /></button> : null}
           </>;
           return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length || charts.length)} actions={messageEdit?.message.id === message.id ? null : actions}>
               {user && messageEdit?.message.id === message.id ? <div className="space-y-2">

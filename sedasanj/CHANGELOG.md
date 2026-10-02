@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Positioned message times opposite their action icons and aligned each avatar with the message-bubble pointer instead of the action row.
+
+## 2026-10-02 — AMINAZADI
+
 - Displayed each assistant-chat message time in Tehran time beneath its bubble alongside the compact message actions.
 
 ## 2026-10-02 — AMINAZADI
