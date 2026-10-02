@@ -31,6 +31,11 @@ class FakeClient(LlmClient):
         return json.dumps(self.payload, ensure_ascii=False)
 
 
+class FakeTitleClient:
+    async def complete(self, *args, **kwargs) -> str:
+        return "«بررسی عملکرد اپراتور فروش»\nتوضیح اضافه"
+
+
 @pytest.mark.asyncio
 async def test_agent_can_answer_without_a_tool() -> None:
     plan = await assistant_agent.plan(
@@ -42,6 +47,15 @@ async def test_agent_can_answer_without_a_tool() -> None:
     )
     assert plan.answer == "سلام، چطور می‌توانم کمک کنم؟"
     assert plan.tool_calls == []
+
+
+@pytest.mark.asyncio
+async def test_conversation_title_is_generated_and_sanitized() -> None:
+    title = await assistant._generate_conversation_title(
+        FakeTitleClient(), "chat-model", "عملکرد اپراتور را بررسی کن", "پاسخ"
+    )
+
+    assert title == "بررسی عملکرد اپراتور فروش"
 
 
 @pytest.mark.asyncio

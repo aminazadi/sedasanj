@@ -10,6 +10,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Generated concise Persian conversation titles with the assistant after the first successful response and applied the resulting title immediately to the conversation list.
+
+## 2026-10-02 — AMINAZADI
+
 - Removed the typed at-mention query from the composer after selection, leaving only the structured attachment badge on the sent message.
 
 ## 2026-10-02 — AMINAZADI

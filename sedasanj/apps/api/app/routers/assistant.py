@@ -671,6 +671,24 @@ def _assistant_input(question: str, sources: str, history: str) -> str:
     return f"پرسش فعلی: {question}\n\n[سابقهٔ گفتگوها]\n{history or 'سابقه‌ای وجود ندارد.'}\n\n[دادهٔ مجاز سازمان]\n{sources}"
 
 
+async def _generate_conversation_title(
+    client: Any, model: str, question: str, answer: str
+) -> str | None:
+    try:
+        raw = await client.complete(
+            "برای یک گفتگوی دستیار صداسنج عنوان کوتاه فارسی تولید کن.",
+            f"پرسش کاربر: {question}\nپاسخ دستیار: {answer[:1000]}\n\n"
+            "فقط عنوان را در حداکثر ۶ واژه و بدون گیومه، نقطه یا توضیح اضافه برگردان.",
+            json_object=False,
+            model=model,
+        )
+    except Exception:
+        logger.exception("assistant conversation title generation failed")
+        return None
+    title = raw.strip().splitlines()[0].strip("# *_`«»\"'.،")
+    return title[:120].strip() or None
+
+
 def _ephemeral_history(payload: EphemeralChatMessageCreate) -> str:
     history: list[str] = ["[گفتگوی موقت فعال]"]
     for item in payload.history:
@@ -816,6 +834,10 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                 )
             else:
                 answer = plan.answer or ""
+            if conversation.title is None and answer.strip():
+                conversation.title = await _generate_conversation_title(
+                    client, model, payload.content, answer
+                )
         finally:
             await client.close()
         status_value = "succeeded"
@@ -823,7 +845,6 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         answer = "پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید."
         status_value = "failed"
     assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
-    conversation.title = conversation.title or payload.content[:120]
     conversation.updated_at = datetime.now(UTC)
     session.add(assistant_message)
     await session.flush()
@@ -1181,6 +1202,10 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                     else:
                         answer = plan.answer or ""
                         yield _sse("delta", {"content": answer})
+                    if conversation.title is None and answer.strip():
+                        conversation.title = await _generate_conversation_title(
+                            client, model, payload.content, answer
+                        )
                 finally:
                     await client.close()
             if not answer.strip():
@@ -1190,7 +1215,6 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
-        conversation.title = conversation.title or payload.content[:120]
         conversation.updated_at = datetime.now(UTC)
         session.add(assistant_message)
         await session.flush()
@@ -1203,6 +1227,12 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
         message = ChatMessageOut.model_validate(assistant_message).model_copy(
             update={"tool_runs": [_tool_run_payload(run) for run in stored_runs]}
         )
-        yield _sse("done", {"message": message.model_dump(mode="json")})
+        yield _sse(
+            "done",
+            {
+                "message": message.model_dump(mode="json"),
+                "conversation_title": conversation.title,
+            },
+        )
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

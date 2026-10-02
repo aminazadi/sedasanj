@@ -543,7 +543,7 @@ export default function Assistant() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [confirmation]);
 
-  async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[], messageAttachments: AssistantMessageAttachments): Promise<ChatMessage> {
+  async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[], messageAttachments: AssistantMessageAttachments): Promise<{ message: ChatMessage; conversationTitle: string | null }> {
     const url = conversationId ? `/v1/assistant/conversations/${conversationId}/messages/stream` : "/v1/assistant/ephemeral/messages/stream";
     const body = conversationId
       ? { content, attachments: messageAttachments }
@@ -564,6 +564,7 @@ export default function Assistant() {
     const decoder = new TextDecoder();
     let buffer = "";
     let completed: ChatMessage | null = null;
+    let conversationTitle: string | null = null;
     let pendingText = "";
     let renderedText = "";
     let typingTimer: number | null = null;
@@ -597,7 +598,7 @@ export default function Assistant() {
       const event = /^event: (.+)$/m.exec(frame)?.[1];
       const data = /^data: (.+)$/m.exec(frame)?.[1];
       if (!event || !data) return;
-      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string; charts?: AssistantChart[] };
+      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; conversation_title?: string | null; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string; charts?: AssistantChart[] };
       const content = payload.content;
       if (event === "phase" && payload.label) setPhases((current) => ({ ...current, [draftId]: payload.label as string }));
       if ((event === "tool_started" || event === "tool_completed" || event === "tool_failed") && payload.tool_call_id && payload.name && payload.title) {
@@ -616,7 +617,10 @@ export default function Assistant() {
         setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content } : item));
         finishTyping();
       }
-      if (event === "done" && payload.message) completed = payload.message;
+      if (event === "done" && payload.message) {
+        completed = payload.message;
+        conversationTitle = payload.conversation_title || null;
+      }
     };
     while (true) {
       const { done, value } = await reader.read();
@@ -629,7 +633,7 @@ export default function Assistant() {
     if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
     await waitForTyping();
     setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
-    return completed as ChatMessage;
+    return { message: completed as ChatMessage, conversationTitle };
   }
 
   async function sendBranch(content: string, history: ChatMessage[], branchAttachments: AssistantMessageAttachments = attachments) {
@@ -646,7 +650,8 @@ export default function Assistant() {
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
         setMessages(rows);
-        setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: item.title || optimistic.content, updated_at: reply.created_at } : item));
+        setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: reply.conversationTitle || item.title, updated_at: reply.message.created_at } : item));
+        if (reply.conversationTitle) setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
       }
     } catch (err) {
       const message = (err as Error).message;
