@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Replaced the money-bag glyph on credit statistic cards with a Fluent Emoji 3D purse in both customer and admin panels while retaining the money bag for sales value and revenue.
 - Replaced the shared chart palette across overview, call-detail, and analytics visualizations with project-aligned green, olive, and neutral tones, removing purple, yellow, orange, blue, and saturated default colors.
 - Added context-specific Fluent Emoji 3D icons to every shared statistic card and reproduced the reference card's soft texture fade beneath each icon in both customer and admin panels.
 - Increased the completed-step checkmark size in the call-analysis pipeline without changing its marker dimensions or layout spacing.

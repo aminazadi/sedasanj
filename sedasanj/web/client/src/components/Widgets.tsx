@@ -7,6 +7,7 @@ import checkMarkButtonIcon from "@iconify/icons-fluent-emoji/check-mark-button";
 import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
 import fireIcon from "@iconify/icons-fluent-emoji/fire";
 import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
+import purseIcon from "@iconify/icons-fluent-emoji/purse";
 import robotIcon from "@iconify/icons-fluent-emoji/robot";
 import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
 import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
@@ -24,9 +25,11 @@ const PIPELINE_STEPS: { label: string; hint: string; statuses: string[] }[] = [
 export function Stat({ title, value, hint, tone }: { title: string; value: string; hint?: string; tone?: string }) {
   const icon = title.includes("دقیقه") || title.includes("SLA")
     ? stopwatchIcon
-    : title.includes("اعتبار") || title.includes("ارزش فروش")
-      ? moneyBagIcon
-      : title.includes("تماس")
+    : title.includes("اعتبار")
+      ? purseIcon
+      : title.includes("ارزش فروش")
+        ? moneyBagIcon
+        : title.includes("تماس")
         ? telephoneIcon
         : title.includes("کار")
           ? clipboardIcon

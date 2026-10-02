@@ -5,6 +5,7 @@ import calendarIcon from "@iconify/icons-fluent-emoji/calendar";
 import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
 import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
 import officeBuildingIcon from "@iconify/icons-fluent-emoji/office-building";
+import purseIcon from "@iconify/icons-fluent-emoji/purse";
 import shoppingCartIcon from "@iconify/icons-fluent-emoji/shopping-cart";
 import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
 import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
@@ -18,9 +19,11 @@ export function Stat({ title, value, tone }: { title: string; value: string; ton
       ? telephoneIcon
       : title.includes("دقیقه")
         ? stopwatchIcon
-        : title.includes("درآمد") || title === "اعتبار"
-          ? moneyBagIcon
-          : title.includes("سفارش")
+        : title === "اعتبار"
+          ? purseIcon
+          : title.includes("درآمد")
+            ? moneyBagIcon
+            : title.includes("سفارش")
             ? shoppingCartIcon
             : title.includes("پرداخت")
               ? warningIcon
