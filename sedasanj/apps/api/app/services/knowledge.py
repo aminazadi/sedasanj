@@ -28,12 +28,19 @@ async def embed(content: str) -> tuple[list[float], str]:
     model = settings["embedding_model"].strip()
     if not base_url or not api_key or not model:
         raise RuntimeError("embedding provider is not configured")
+    route = settings["embedding_route"]
     async with httpx.AsyncClient(timeout=120.0, follow_redirects=False) as client:
         response = await client.post(
-            f"{base_url}{AISERVICE_ROUTES['embedding_route'][settings['embedding_route']]}",
+            f"{base_url}{AISERVICE_ROUTES['embedding_route'][route]}",
             headers={"Authorization": f"Bearer {api_key}"},
             json={"model": model, "input": content},
         )
+        if response.status_code == 422 and route == "ninerouter":
+            response = await client.post(
+                f"{base_url}{AISERVICE_ROUTES['embedding_route']['native']}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "input": content},
+            )
     response.raise_for_status()
     body = response.json()
     vector = body.get("data", [{}])[0].get("embedding")
