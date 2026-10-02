@@ -35,7 +35,7 @@ export default function ConversationBubble({ side, children, header, ariaLabel, 
       <div className={`flex max-w-[calc(85%_-_2.75rem)] flex-col ${wide ? "w-full" : "w-fit"} ${user ? "items-end" : "items-start"}`}>
         <div
           dir="rtl"
-          className={`assistant-message-bubble relative w-full break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-slate-800"}`}
+          className={`assistant-message-bubble relative w-full break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-black"}`}
         >
           {header}
           {children}

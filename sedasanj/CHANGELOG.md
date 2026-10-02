@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Changed assistant-message text to black for stronger readability.
+
+## 2026-10-02 — AMINAZADI
+
 - Added a centered fixed scroll-to-end control above the assistant prompt while a response is streaming and the user has scrolled away from the latest message.
 
 ## 2026-10-02 — AMINAZADI
