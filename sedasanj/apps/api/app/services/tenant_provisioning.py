@@ -6,10 +6,13 @@ import json
 import os
 import re
 import secrets
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import Table, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import URL, make_url
@@ -46,7 +49,19 @@ _CONTROL_ONLY = {
     "contact_leads",
 }
 _GLOBAL_REFERENCE = {"plans", "plan_versions"}
-SCHEMA_HEAD = "0034_repair_processing_event_kinds"
+
+
+def _schema_head() -> str:
+    api_root = Path(__file__).resolve().parents[2]
+    config = Config(str(api_root / "alembic.ini"))
+    config.set_main_option("script_location", str(api_root / "alembic"))
+    heads = ScriptDirectory.from_config(config).get_heads()
+    if len(heads) != 1:
+        raise RuntimeError(f"tenant migrations must have exactly one head; found {len(heads)}")
+    return heads[0]
+
+
+SCHEMA_HEAD = _schema_head()
 
 
 def database_identifiers(tenant_id: UUID) -> tuple[str, str]:
@@ -79,7 +94,11 @@ async def _run_alembic(database_url: str) -> None:
     env = dict(os.environ)
     env["DATABASE_URL"] = database_url
     process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
         "alembic",
+        "-c",
+        str(root / "alembic.ini"),
         "upgrade",
         "head",
         cwd=str(root),
@@ -118,7 +137,10 @@ async def _verify_runtime_database(runtime_dsn: str, tenant_id: UUID) -> None:
                 await connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
             ).scalar_one_or_none()
             if revision != SCHEMA_HEAD:
-                raise RuntimeError("tenant runtime schema revision check failed")
+                raise RuntimeError(
+                    "tenant runtime schema revision check failed: "
+                    f"expected {SCHEMA_HEAD}, found {revision or 'none'}"
+                )
             extensions = set(
                 (
                     await connection.execute(

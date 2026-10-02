@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.config import Settings, get_settings
 from app.models import TenantProvisioningJob
 from app.services.assistant_policy import PRIVACY_REFUSAL, must_refuse
-from app.services.tenant_provisioning import SCHEMA_HEAD, database_identifiers
+from app.services.tenant_provisioning import SCHEMA_HEAD, _schema_head, database_identifiers
 from app.services.tenant_secrets import decrypt_dsn, encrypt_dsn
 
 
@@ -22,7 +22,7 @@ def test_database_identifiers_are_deterministic_and_safe() -> None:
 
 
 def test_tenant_schema_head_matches_latest_migration() -> None:
-    assert SCHEMA_HEAD == "0034_repair_processing_event_kinds"
+    assert _schema_head() == SCHEMA_HEAD
 
 
 def test_new_provisioning_job_attempt_can_be_incremented_before_flush() -> None:
