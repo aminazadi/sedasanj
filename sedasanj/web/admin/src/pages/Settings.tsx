@@ -534,8 +534,9 @@ export default function Settings() {
           models={llmModels}
           onChange={(llm_model) => setSettings({ ...settings, llm_model })}
         />
-        <select className="input mt-2" value={settings.analysis_route} disabled>
+        <select className="input mt-2" value={settings.analysis_route} onChange={(event) => setSettings({ ...settings, analysis_route: event.target.value as PlatformSettings["analysis_route"] })}>
           <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
+          <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
         </select>
       </div>
 

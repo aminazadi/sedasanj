@@ -51,6 +51,7 @@ AISERVICE_ROUTES = {
     },
     "analysis_route": {
         "durable": "/v1/chat/tasks",
+        "ninerouter": "/v1/ninerouter/chat/completions",
     },
     "chat_route": {
         "durable": "/v1/chat/tasks",

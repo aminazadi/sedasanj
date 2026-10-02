@@ -881,7 +881,7 @@ class SettingsUpdate(BaseModel):
     embedding_api_key: str | None = None
     embedding_model: str | None = Field(default=None, min_length=1, max_length=200)
     asr_route: Literal["native", "ninerouter"] | None = None
-    analysis_route: Literal["durable"] | None = None
+    analysis_route: Literal["durable", "ninerouter"] | None = None
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     decision_route: Literal["native", "ninerouter", "typed"] | None = None
     embedding_route: Literal["native", "ninerouter"] | None = None

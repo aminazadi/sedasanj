@@ -248,6 +248,35 @@ async def test_voicesanj_chat_uses_configured_aiservice_ninerouter_path() -> Non
     assert content == "پاسخ"
 
 
+async def test_voicesanj_analysis_uses_configured_aiservice_ninerouter_path() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ninerouter/chat/completions"
+        body = json.loads(request.content)
+        assert body["model"] == "analysis-model"
+        assert body["response_format"] == {"type": "json_object"}
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"sentiment":"neutral"}'}}]},
+        )
+
+    client = VoiceSanjChatClient(
+        _voicesanj_settings(
+            aiservice_analysis_path="/v1/ninerouter/chat/completions"
+        ),
+        purpose="analysis",
+    )
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        content = await client.complete(
+            "system", "user", json_object=True, model="analysis-model"
+        )
+    finally:
+        await client.close()
+
+    assert content == '{"sentiment":"neutral"}'
+
+
 async def test_voicesanj_chat_rejects_failed_task_without_fetching_result() -> None:
     paths: list[str] = []
 

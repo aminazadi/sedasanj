@@ -189,6 +189,7 @@ async def test_resolve_provider_settings_routes_9router_through_aiservice(
         )(),
         type("Row", (), {"key": "asr_api_key", "value": 'Bearer "router-secret"'})(),
         type("Row", (), {"key": "asr_model", "value": "openai/whisper-1"})(),
+        type("Row", (), {"key": "analysis_route", "value": "ninerouter"})(),
         type("Row", (), {"key": "api_key", "value": "voicesanj-secret"})(),
     ]
 
@@ -207,6 +208,7 @@ async def test_resolve_provider_settings_routes_9router_through_aiservice(
     assert runtime.asr_provider_base_url == "https://aiservice.voicesanj.ir"
     assert runtime.asr_provider_api_key == "voicesanj-secret"
     assert runtime.aiservice_asr_path == "/v1/ninerouter/audio/transcriptions"
+    assert runtime.aiservice_analysis_path == "/v1/ninerouter/chat/completions"
     assert runtime.voicesanj_api_key == "voicesanj-secret"
 
 

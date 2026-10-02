@@ -124,7 +124,7 @@ export interface PlatformSettings {
   audio_denoiser_models: AudioProcessingModel[];
   audio_enhancement_models: AudioProcessingModel[];
   asr_route: "native" | "ninerouter";
-  analysis_route: "durable";
+  analysis_route: "durable" | "ninerouter";
   chat_route: "durable" | "synchronous" | "ninerouter";
   decision_route: "native" | "ninerouter" | "typed";
   embedding_route: "native" | "ninerouter";
