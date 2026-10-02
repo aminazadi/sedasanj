@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added a centered fixed scroll-to-end control above the assistant prompt while a response is streaming and the user has scrolled away from the latest message.
+
+## 2026-10-02 — AMINAZADI
+
 - Added self-service profile completion for organization managers and operators, including personal introduction and preferred communication style, and supplied this read-only identity and organization context to the assistant for warm name-based personalization.
 - Explicitly restricted the assistant from wallet charges, payments, settings changes, and every other organization mutation while preserving authorized read-only analysis.
 

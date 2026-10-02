@@ -78,6 +78,14 @@ function SendIcon() {
   );
 }
 
+function ScrollDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 function RetryIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
@@ -319,8 +327,26 @@ export default function Assistant() {
   const [messageEditConfirmationOpen, setMessageEditConfirmationOpen] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [phases, setPhases] = useState<Record<string, string>>({});
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesScrollerRef = useRef<HTMLDivElement>(null);
+  const userNearBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [showScrollToEnd, setShowScrollToEnd] = useState(false);
+
+  function scrollToEnd() {
+    const scroller = messagesScrollerRef.current;
+    if (!scroller) return;
+    userNearBottomRef.current = true;
+    setShowScrollToEnd(false);
+    scroller.scrollTo({ top: scroller.scrollHeight });
+  }
+
+  function handleMessagesScroll() {
+    const scroller = messagesScrollerRef.current;
+    if (!scroller) return;
+    const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 72;
+    userNearBottomRef.current = nearBottom;
+    setShowScrollToEnd(sending && !nearBottom);
+  }
 
   function toggleCallSource(callId: string) {
     setSearch((current) => {
@@ -347,6 +373,8 @@ export default function Assistant() {
       setConversation(item);
       setEphemeral(false);
       setMessages(rows);
+      userNearBottomRef.current = true;
+      setShowScrollToEnd(false);
       setConversationsOpen(false);
     } catch (err) {
       setError((err as Error).message);
@@ -367,6 +395,8 @@ export default function Assistant() {
     setConversation(null);
     setEphemeral(true);
     setMessages([]);
+    userNearBottomRef.current = true;
+    setShowScrollToEnd(false);
     setEditingId(null);
     setConversationsOpen(false);
     setError(null);
@@ -447,7 +477,8 @@ export default function Assistant() {
     })();
   }, []);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (userNearBottomRef.current) scrollToEnd();
+    else setShowScrollToEnd(sending);
   }, [messages, sending]);
   useEffect(() => {
     if (!conversationsOpen) return;
@@ -698,7 +729,7 @@ export default function Assistant() {
           <button type="button" className="inline-flex h-11 w-11 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50" onClick={exportMessages} aria-label="خروجی متن پیام‌ها" disabled={!messages.some((message) => message.status !== "running" && message.content.trim())}><DownloadIcon /></button>
         </IconTooltip>
       </div>
-      <div className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7">
+      <div ref={messagesScrollerRef} className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7" onScroll={handleMessagesScroll}>
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
         {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
@@ -725,8 +756,8 @@ export default function Assistant() {
               </>}
           </ConversationBubble>;
         })}
-        <div ref={endRef} />
       </div>
+      {showScrollToEnd ? <button type="button" className="absolute bottom-[6.4rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] shadow-[0_5px_18px_rgba(75,110,72,0.2)] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
       <form className="flex shrink-0 items-start gap-2 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-7 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { setText(event.target.value); requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" />{!text && <p className="pointer-events-none absolute inset-x-3 bottom-2 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p>}</div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></form>
     </section>
     <ErrorBox message={error} />
