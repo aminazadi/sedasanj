@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { chart, palette } from "@cbi/web-shared/theme";
 import { Icon } from "@iconify/react";
-import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
-import barChartIcon from "@iconify/icons-fluent-emoji/bar-chart";
-import bullseyeIcon from "@iconify/icons-fluent-emoji/bullseye";
-import repeatButtonIcon from "@iconify/icons-fluent-emoji/repeat-button";
-import starStruckIcon from "@iconify/icons-fluent-emoji/star-struck";
-import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
+import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
+import barChartIcon from "@iconify-icons/lucide/chart-no-axes-column";
+import bullseyeIcon from "@iconify-icons/lucide/target";
+import repeatButtonIcon from "@iconify-icons/lucide/refresh-cw";
+import starIcon from "@iconify-icons/lucide/star";
+import telephoneIcon from "@iconify-icons/lucide/phone";
 import {
   Area,
   AreaChart,
@@ -819,7 +819,7 @@ export default function CallDetailPage() {
             <div>
               <div className="mb-2 flex items-center gap-3">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-[#F2F0EF] text-[#000000]" aria-hidden="true">
-                  <Icon icon={telephoneIcon} className="h-11 w-11" />
+                  <Icon icon={telephoneIcon} className="h-8 w-8" />
                 </span>
                 <div>
                   <p className="text-xs text-[#000000]">مکالمه تلفنی</p>
@@ -961,26 +961,26 @@ export default function CallDetailPage() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-14 w-14" />} />
+        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
         <MetricCard
           label="نوبت‌های گفت‌وگو"
           value={fmt.int(conversationTurns.length)}
           hint={`میانگین هر نوبت ${fmt.duration(averageTurnDuration)}`}
-          icon={<Icon icon={repeatButtonIcon} className="h-14 w-14" />}
+          icon={<Icon icon={repeatButtonIcon} className="h-9 w-9 text-[#4B6E48]" />}
         />
         <MetricCard
           label="پوشش گفتار"
           value={fmt.percent(speechCoverage)}
           hint="نسبت گفتار تشخیص‌داده‌شده به تماس"
-          icon={<Icon icon={barChartIcon} className="h-14 w-14" />}
+          icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />}
         />
         <MetricCard
           label="امتیاز احساس"
           value={sentimentScore == null ? "—" : fmt.percent(sentimentScore * 100)}
           hint={insights?.intent ? (INTENT_LABELS[insights.intent] ?? insights.intent) : "قصد تماس نامشخص"}
-          icon={<Icon icon={bullseyeIcon} className="h-14 w-14" />}
+          icon={<Icon icon={bullseyeIcon} className="h-9 w-9 text-[#4B6E48]" />}
         />
-        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starStruckIcon} className="h-14 w-14" />} />
+        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starIcon} className="h-9 w-9 text-[#4B6E48]" />} />
       </section>
 
       {operatorScore?.criteria_scores?.length ? <section className="card"><SectionTitle title="ارزیابی عملکرد اپراتور" description={operatorScore.operator_label} /><div className="grid gap-3 md:grid-cols-2">{operatorScore.criteria_scores.map((criterion) => <div key={criterion.title} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between"><strong>{criterion.title}</strong><span>{fmt.decimal(criterion.score)}</span></div>{criterion.evidence ? <p className="mt-2 text-sm text-slate-600">{criterion.evidence}</p> : null}</div>)}</div></section> : null}

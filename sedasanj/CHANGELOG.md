@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Replaced every Fluent Emoji 3D icon in the customer and admin panels with locally bundled Lucide line icons from the project's Iconify integration, including shared statistic cards and call-detail metrics.
 - Fixed assistant knowledge health and retry handling so graph failures are counted, displayed, and retried alongside vector failures, and added an idempotent Apache AGE repair migration for databases that missed graph initialization.
 - Replaced assistant call-source cards with a compact responsive table whose rows expand as URL-persistent accordions for full metadata, summaries, classifications, and call navigation.
 - Replaced the assistant's compact call-source links with responsive detail cards and persisted tenant-scoped call metadata including numbers, direction, duration, status, extension, intent, sentiment, and summary for each cited call.

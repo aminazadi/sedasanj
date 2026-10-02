@@ -1,17 +1,17 @@
 import type { ReactNode } from "react";
 import { Icon } from "@iconify/react";
-import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
-import barChartIcon from "@iconify/icons-fluent-emoji/bar-chart";
-import bullseyeIcon from "@iconify/icons-fluent-emoji/bullseye";
-import checkMarkButtonIcon from "@iconify/icons-fluent-emoji/check-mark-button";
-import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
-import creditCardIcon from "@iconify/icons-fluent-emoji/credit-card";
-import fireIcon from "@iconify/icons-fluent-emoji/fire";
-import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
-import robotIcon from "@iconify/icons-fluent-emoji/robot";
-import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
-import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
-import trophyIcon from "@iconify/icons-fluent-emoji/trophy";
+import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
+import barChartIcon from "@iconify-icons/lucide/chart-no-axes-column";
+import bullseyeIcon from "@iconify-icons/lucide/target";
+import checkMarkButtonIcon from "@iconify-icons/lucide/circle-check";
+import clipboardIcon from "@iconify-icons/lucide/clipboard-list";
+import creditCardIcon from "@iconify-icons/lucide/credit-card";
+import fireIcon from "@iconify-icons/lucide/flame";
+import moneyBagIcon from "@iconify-icons/lucide/circle-dollar-sign";
+import robotIcon from "@iconify-icons/lucide/bot";
+import stopwatchIcon from "@iconify-icons/lucide/timer";
+import telephoneIcon from "@iconify-icons/lucide/phone";
+import trophyIcon from "@iconify-icons/lucide/trophy";
 import { fmt, SENTIMENT_LABELS, STATUS_LABELS, TRAJECTORY_LABELS } from "../api";
 import type { PartySentiment, SentimentPoint } from "../types";
 
@@ -51,7 +51,7 @@ export function Stat({ title, value, hint, tone }: { title: string; value: strin
       <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
         <div className="text-sm font-medium text-slate-600">{title}</div>
         <span className="flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
-          <Icon icon={icon} className="h-14 w-14" />
+          <Icon icon={icon} className="h-9 w-9 text-[#4B6E48]" />
         </span>
       </div>
       <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>

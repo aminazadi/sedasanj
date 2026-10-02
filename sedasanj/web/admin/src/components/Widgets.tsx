@@ -1,20 +1,20 @@
 import type { ReactNode } from "react";
 import { Icon } from "@iconify/react";
-import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
-import calendarIcon from "@iconify/icons-fluent-emoji/calendar";
-import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
-import creditCardIcon from "@iconify/icons-fluent-emoji/credit-card";
-import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
-import officeBuildingIcon from "@iconify/icons-fluent-emoji/office-building";
-import shoppingCartIcon from "@iconify/icons-fluent-emoji/shopping-cart";
-import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
-import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
-import warningIcon from "@iconify/icons-fluent-emoji/warning";
+import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
+import buildingIcon from "@iconify-icons/lucide/building-2";
+import calendarIcon from "@iconify-icons/lucide/calendar";
+import clipboardIcon from "@iconify-icons/lucide/clipboard-list";
+import creditCardIcon from "@iconify-icons/lucide/credit-card";
+import revenueIcon from "@iconify-icons/lucide/circle-dollar-sign";
+import shoppingCartIcon from "@iconify-icons/lucide/shopping-cart";
+import stopwatchIcon from "@iconify-icons/lucide/timer";
+import telephoneIcon from "@iconify-icons/lucide/phone";
+import warningIcon from "@iconify-icons/lucide/triangle-alert";
 import { fmt } from "../api";
 
 export function Stat({ title, value, tone }: { title: string; value: string; tone?: string }) {
   const icon = title.includes("مشتری")
-    ? officeBuildingIcon
+    ? buildingIcon
     : title.includes("تماس")
       ? telephoneIcon
       : title.includes("دقیقه")
@@ -22,7 +22,7 @@ export function Stat({ title, value, tone }: { title: string; value: string; ton
         : title === "اعتبار"
           ? creditCardIcon
           : title.includes("درآمد")
-            ? moneyBagIcon
+            ? revenueIcon
             : title.includes("سفارش")
             ? shoppingCartIcon
             : title.includes("پرداخت")
@@ -37,7 +37,7 @@ export function Stat({ title, value, tone }: { title: string; value: string; ton
       <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
         <div className="text-sm font-medium text-slate-600">{title}</div>
         <span className="flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
-          <Icon icon={icon} className="h-14 w-14" />
+          <Icon icon={icon} className="h-9 w-9 text-[#4B6E48]" />
         </span>
       </div>
       <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>

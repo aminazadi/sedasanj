@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@cbi/web-shared": "file:../shared",
-    "@iconify/icons-fluent-emoji": "^1.2.11",
+    "@iconify-icons/lucide": "^2.0.14",
     "@iconify/react": "^6.0.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
