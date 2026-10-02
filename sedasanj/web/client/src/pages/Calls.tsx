@@ -172,7 +172,7 @@ export default function Calls() {
       </div>
       <TableFilters>
       <form
-        className="grid gap-3 md:grid-cols-7"
+        className="calls-filters-form grid gap-3 md:grid-cols-4 xl:grid-cols-10 xl:gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           updateSearch(filters);
@@ -267,10 +267,10 @@ export default function Calls() {
           </select>
         </div>
         <div className="flex items-end gap-2 md:col-span-2">
-          <button className="btn min-h-[42px] flex-1">اعمال فیلتر</button>
+          <button className="btn min-h-[42px] flex-1 xl:min-h-[38px] xl:px-2">اعمال فیلتر</button>
           <button
             type="button"
-            className="btn-ghost min-h-[42px] flex-1"
+            className="btn-ghost min-h-[42px] flex-1 xl:min-h-[38px] xl:px-2"
             disabled={!hasAppliedFilters && !Object.values(filters).some(Boolean)}
             onClick={() => {
               setFilters(EMPTY);

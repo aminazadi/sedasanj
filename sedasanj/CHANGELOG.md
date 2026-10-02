@@ -7,6 +7,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Compacted the desktop calls-table filters into a minimal single-row layout while retaining responsive multi-row and mobile accordion behavior.
 - Restored table filter controls inside their desktop cards while preserving the collapsed mobile accordion behavior across the customer and admin panels.
 - Expanded the assistant visualization tool to support bar, horizontal bar, line, area, pie, donut, radar, radial bar, scatter, composed, treemap, and funnel charts with exact status, daily trend, and operator-performance datasets.
 
