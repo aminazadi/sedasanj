@@ -2,7 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
-- Replaced the outlined phone symbol in the single-call header with a border-free Fluent Emoji 3D telephone receiver.
+- Replaced the outlined phone symbol in the single-call header with a border-free modern Fluent Emoji 3D mobile-call icon.
 - Made follow-up task cards denser and replaced the labeled edit action with a compact accessible icon button.
 - Replaced the single-call metric glyphs with locally bundled Fluent Emoji 3D icons and softly faded the dotted texture around their background-free top-left placement.
 - Moved call follow-up tasks directly below the processing report on the single-call page.
