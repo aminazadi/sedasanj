@@ -37,6 +37,7 @@ import {
   TrajectoryBadge,
 } from "../components/Widgets";
 import type { CallDetail, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
+import { downloadTextFile } from "../utils/download";
 
 const NER_LABELS: Record<string, string> = {
   persons: "افراد",
@@ -667,6 +668,25 @@ export default function CallDetailPage() {
   const sentimentData = sentimentChartData(activeSentimentProfile);
   const sentimentScore = insights?.sentiment_score;
 
+  const exportTranscript = () => {
+    if (!conversationTurns.length) return;
+    const transcript = conversationTurns.map((turn) => {
+      const speaker = turn.channel === 0 ? "مشتری" : "اپراتور";
+      return `${speaker} (${fmt.duration(turn.t_start_ms)} تا ${fmt.duration(turn.t_end_ms)})\n${turn.text}`;
+    }).join("\n\n--------------------\n\n");
+    const corrected = call.corrected_transcript?.trim()
+      ? `\n\n====================\n\nنسخه اصلاح‌شده\n\n${call.corrected_transcript.trim()}`
+      : "";
+    const heading = [
+      "متن مکالمه تماس",
+      `تاریخ تماس: ${fmt.dateTime(call.started_at)}`,
+      `مدت تماس: ${fmt.duration(call.duration_ms)}`,
+      `شماره تماس‌گیرنده: ${call.caller_number ? fmt.digits(call.caller_number) : "—"}`,
+      `شماره مقصد: ${call.dialed_number ? fmt.digits(call.dialed_number) : "—"}`,
+    ].join("\n");
+    downloadTextFile(`call-${call.id}-transcript.txt`, `${heading}\n\n${transcript}${corrected}\n`);
+  };
+
   return (
     <div className="space-y-5">
       <ErrorBox message={error} />
@@ -1037,6 +1057,21 @@ export default function CallDetailPage() {
             action={
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
+                  className="group relative flex h-9 w-9 shrink-0 items-center justify-center border border-[#898989] bg-white text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50"
+                  onClick={exportTranscript}
+                  disabled={!conversationTurns.length}
+                  aria-label="خروجی متن مکالمه"
+                  title="خروجی متن مکالمه"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                    <path d="M12 3v12" />
+                    <path d="m7 10 5 5 5-5" />
+                    <path d="M5 21h14" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
                   className="btn-ghost inline-flex h-9 items-center justify-center bg-white px-3 py-0 text-xs"
                   onClick={() => void correctTranscript()}
                   disabled={!call.transcript || correctionLoading}

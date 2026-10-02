@@ -5,6 +5,7 @@ import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { ChatConversation, ChatMessage } from "../types";
+import { downloadTextFile, safeDownloadName } from "../utils/download";
 
 function TrashIcon() {
   return (
@@ -410,16 +411,7 @@ export default function Assistant() {
       const timestamp = new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(message.created_at));
       return `${role} - ${timestamp}\n${message.content.trim()}`;
     }).join("\n\n--------------------\n\n");
-    const safeTitle = heading.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "conversation";
-    const blob = new Blob(["\uFEFF", `${heading}\n\n${transcript}\n`], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${safeTitle}.txt`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    downloadTextFile(`${safeDownloadName(heading, "conversation")}.txt`, `${heading}\n\n${transcript}\n`);
   }
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
