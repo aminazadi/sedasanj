@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Matched each chat bubble tail background to its parent bubble surface.
 - Enabled the admin-selectable 9Router route for conversation analysis and carried it through persisted settings into the analysis worker's synchronous AISERVICE proxy call.
 - Recognized AISERVICE models explicitly sourced from 9Router as remotely available even when their upstream owner is OpenAI, Codex, or another provider.
 - Added selectable native AISERVICE and 9Router routes for typed decisions and embeddings, defaulted new embedding configuration to the native `/v1/embeddings` endpoint, and persisted the active settings tab in the URL query.

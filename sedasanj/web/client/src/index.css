@@ -89,6 +89,7 @@ body {
   bottom: 0.65rem;
   width: 0.75rem;
   height: 0.75rem;
+  background: inherit;
   content: "";
   transform: rotate(45deg);
 }
@@ -97,14 +98,12 @@ body {
   right: -0.4rem;
   border-top: 1px solid #4b6e48;
   border-right: 1px solid #4b6e48;
-  background: #4b6e48;
 }
 
 .assistant-message-bubble-ai::before {
   left: -0.4rem;
   border-bottom: 1px solid #b2ac88;
   border-left: 1px solid #b2ac88;
-  background: #fff;
 }
 
 @keyframes assistant-thinking-shimmer {
