@@ -138,6 +138,14 @@ body {
   background: #f2f0ef;
 }
 
+.panel-shell .card {
+  border: 1px solid #b2ac88;
+  background:
+    radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
+    #f2f0ef;
+  box-shadow: none;
+}
+
 .panel-shell .btn {
   background: #4b6e48;
   color: #f2f0ef;
