@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { chart, palette } from "@cbi/web-shared/theme";
 import { Icon } from "@iconify/react";
 import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
@@ -498,6 +498,8 @@ function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
 export default function CallDetailPage() {
   const { callId } = useParams<{ callId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const transcriptView = searchParams.get("transcript") === "raw" ? "raw" : "final";
   const { session } = useAuth();
   const [call, setCall] = useState<CallDetail | null>(null);
   const [operatorScore, setOperatorScore] = useState<OperatorScore | null>(null);
@@ -535,7 +537,7 @@ export default function CallDetailPage() {
         setCall(data);
         void request<OperatorScore | null>(`/v1/calls/${callId}/operator-score`).then(setOperatorScore).catch(() => setOperatorScore(null));
         setError(null);
-        processing = data.processing;
+        processing = data.processing || ["queued", "running", "validating"].includes(data.correction?.status ?? "");
       } catch (err) {
         if (!cancelled && !hasCall) setError((err as Error).message);
       }
@@ -624,8 +626,8 @@ export default function CallDetailPage() {
     setCorrectionLoading(true);
     setError(null);
     try {
-      await request<void>(`/v1/calls/${callId}/correct-transcript`, { method: "POST" });
-      setNotice("نسخهٔ اصلاح‌شدهٔ متن آماده شد؛ تحلیل تماس همچنان بر پایهٔ متن خام انجام می‌شود.");
+      await request<{ correction_run_id: string; status: string }>(`/v1/calls/${callId}/correct-transcript`, { method: "POST" });
+      setNotice("درخواست تصحیح ثبت شد و پس از اعتبارسنجی، نسخهٔ نهایی مبنای تحلیل مجدد قرار می‌گیرد.");
       setReload((value) => value + 1);
     } catch (err) {
       setError((err as Error).message);
@@ -643,7 +645,8 @@ export default function CallDetailPage() {
     return left.status === "open" ? -1 : 1;
   });
   const canEditTasks = Boolean(session && CAN_EDIT_TASKS.includes(session.role));
-  const conversationTurns = buildConversationTurns(call.utterances);
+  const visibleUtterances = transcriptView === "raw" ? call.raw_utterances : call.utterances;
+  const conversationTurns = buildConversationTurns(visibleUtterances);
   const callerDuration = conversationTurns
     .filter((turn) => turn.channel === 0)
     .reduce((total, turn) => total + Math.max(0, turn.t_end_ms - turn.t_start_ms), 0);
@@ -671,12 +674,9 @@ export default function CallDetailPage() {
   const exportTranscript = () => {
     if (!conversationTurns.length) return;
     const transcript = conversationTurns.map((turn) => {
-      const speaker = turn.channel === 0 ? "مشتری" : "اپراتور";
+      const speaker = call.speaker_labels[turn.channel] ?? `کانال ${fmt.int(turn.channel + 1)}`;
       return `${speaker} (${fmt.duration(turn.t_start_ms)} تا ${fmt.duration(turn.t_end_ms)})\n${turn.text}`;
     }).join("\n\n--------------------\n\n");
-    const corrected = call.corrected_transcript?.trim()
-      ? `\n\n====================\n\nنسخه اصلاح‌شده\n\n${call.corrected_transcript.trim()}`
-      : "";
     const heading = [
       "متن مکالمه تماس",
       `تاریخ تماس: ${fmt.dateTime(call.started_at)}`,
@@ -684,7 +684,7 @@ export default function CallDetailPage() {
       `شماره تماس‌گیرنده: ${call.caller_number ? fmt.digits(call.caller_number) : "—"}`,
       `شماره مقصد: ${call.dialed_number ? fmt.digits(call.dialed_number) : "—"}`,
     ].join("\n");
-    downloadTextFile(`call-${call.id}-transcript.txt`, `${heading}\n\n${transcript}${corrected}\n`);
+    downloadTextFile(`call-${call.id}-transcript.txt`, `${heading}\n\n${transcript}\n`);
   };
 
   return (
@@ -1056,6 +1056,13 @@ export default function CallDetailPage() {
             description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
             action={
               <div className="flex items-center gap-2">
+                <div className="flex border border-slate-200 bg-white p-0.5" role="group" aria-label="نسخه متن">
+                  {(["final", "raw"] as const).map((view) => (
+                    <button key={view} type="button" className={`px-2 py-1 text-xs ${transcriptView === view ? "bg-[#4B6E48] text-white" : "text-slate-600"}`} onClick={() => { const next = new URLSearchParams(searchParams); next.set("transcript", view); setSearchParams(next, { replace: true }); }}>
+                      {view === "final" ? "نسخه نهایی" : "متن خام"}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   className="group relative flex h-9 w-9 shrink-0 items-center justify-center border border-[#898989] bg-white text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50"
@@ -1074,7 +1081,7 @@ export default function CallDetailPage() {
                   type="button"
                   className="btn-ghost inline-flex h-9 items-center justify-center bg-white px-3 py-0 text-xs"
                   onClick={() => void correctTranscript()}
-                  disabled={!call.transcript || correctionLoading}
+                  disabled={!call.transcript || correctionLoading || ["queued", "running", "validating"].includes(call.correction?.status ?? "")}
                 >
                   {correctionLoading ? "در حال تصحیح…" : call.corrected_transcript ? "تصحیح دوباره متن" : "تصحیح متن"}
                 </button>
@@ -1105,32 +1112,31 @@ export default function CallDetailPage() {
           ) : (
             <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4 lg:min-h-0 lg:max-h-none lg:flex-1">
               {conversationTurns.map((utterance, index) => {
-                const caller = utterance.channel === 0;
+                const caller = call.speaker_labels[utterance.channel] === "مشتری";
+                const speaker = call.speaker_labels[utterance.channel] ?? `کانال ${fmt.int(utterance.channel + 1)}`;
                 return (
                   <ConversationBubble
                     key={`${utterance.channel}-${utterance.t_start_ms}-${index}`}
                     side={caller ? "user" : "assistant"}
-                    ariaLabel={caller ? "مشتری" : "اپراتور"}
+                    ariaLabel={speaker}
                     header={
                       <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-[#F2F0EF]/75" : "text-[#898989]"}`}>
-                        <span className={`font-bold ${caller ? "text-[#F2F0EF]" : "text-[#4B6E48]"}`}>{caller ? "مشتری" : "اپراتور"}</span>
+                        <span className={`font-bold ${caller ? "text-[#F2F0EF]" : "text-[#4B6E48]"}`}>{speaker}{utterance.uncertain ? " — نیازمند بررسی" : ""}</span>
                         <span className="tabular-nums" dir="ltr">{fmt.duration(utterance.t_start_ms)} — {fmt.duration(utterance.t_end_ms)}</span>
                       </div>
                     }
                   >
-                    <p className="whitespace-pre-wrap text-sm leading-7" dir="auto">{utterance.text}</p>
+                    <p className={`whitespace-pre-wrap text-sm leading-7 ${utterance.uncertain ? "underline decoration-amber-400 decoration-2 underline-offset-4" : ""}`} dir="auto">{utterance.text}</p>
                   </ConversationBubble>
                 );
               })}
             </div>
           )}
-          {call.corrected_transcript ? (
-            <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-emerald-800">نسخهٔ اصلاح‌شده</h3>
-                {call.corrected_transcript_at ? <span className="text-[11px] text-emerald-700">{fmt.dateTime(call.corrected_transcript_at)}</span> : null}
-              </div>
-              <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700" dir="auto">{call.corrected_transcript}</p>
+          {call.correction ? (
+            <div className={`mt-4 border p-3 text-xs ${call.correction.status === "failed" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-100 bg-emerald-50/50 text-emerald-800"}`} role="status">
+              وضعیت تصحیح: {({ queued: "در صف", running: "در حال اجرا", validating: "در حال اعتبارسنجی", succeeded: "موفق", failed: "ناموفق" } as const)[call.correction.status]}
+              {call.correction.provider_model ? ` — مدل: ${call.correction.provider_model}` : ""}
+              {call.correction.error_detail ? ` — ${call.correction.error_detail}` : ""}
             </div>
           ) : null}
           </div>

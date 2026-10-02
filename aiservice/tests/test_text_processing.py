@@ -48,3 +48,39 @@ class ModelPoolTests(unittest.TestCase):
         first.close.assert_called_once()
         self.assertEqual(2, load.call_count)
         self.assertEqual(1, pool.total)
+
+
+class SegmentCorrectionTests(unittest.TestCase):
+    def test_segment_prompt_uses_strict_schema_and_preserves_ids(self):
+        segments = [
+            {"id": "a", "channel": 0, "t_start_ms": 0, "t_end_ms": 1000, "text": "سلام"},
+            {"id": "b", "channel": 1, "t_start_ms": 1100, "t_end_ms": 2000, "text": "درود"},
+        ]
+        messages, options = text_processing.process_messages(
+            None, "correction", "formal", segments, "Correct conservatively"
+        )
+        self.assertEqual("json_schema", options["response_format"]["type"])
+        self.assertIn('"id":"a"', messages[1]["content"])
+
+        parsed = text_processing.process_response(
+            '{"segments":[{"id":"a","corrected_text":"سلام.","uncertain":false},'
+            '{"id":"b","corrected_text":"درود.","uncertain":false}],"uncertain_items":[]}',
+            "correction",
+            "formal",
+            segments,
+        )
+        self.assertEqual("سلام.\nدرود.", parsed["corrected_text"])
+
+    def test_segment_response_rejects_reordering(self):
+        segments = [
+            {"id": "a", "channel": 0, "t_start_ms": 0, "t_end_ms": 1000, "text": "سلام"},
+            {"id": "b", "channel": 1, "t_start_ms": 1100, "t_end_ms": 2000, "text": "درود"},
+        ]
+        with self.assertRaises(ValueError):
+            text_processing.process_response(
+                '{"segments":[{"id":"b","corrected_text":"درود","uncertain":false},'
+                '{"id":"a","corrected_text":"سلام","uncertain":false}],"uncertain_items":[]}',
+                "correction",
+                "formal",
+                segments,
+            )

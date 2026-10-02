@@ -103,6 +103,19 @@ class Settings(BaseSettings):
     voicesanj_correction_timeout_seconds: float = 120.0
     voicesanj_poll_interval_seconds: float = 2.0
     voicesanj_poll_timeout_seconds: float = 1800.0
+    correction_enabled: bool = True
+    correction_mode: Literal["text_only", "audio_only", "two_stage"] = "two_stage"
+    correction_audio_models: list[str] = Field(default_factory=lambda: ["buzzasr-persian"])
+    correction_text_models: list[str] = Field(default_factory=lambda: ["dorna-8b-q4_k_m"])
+    correction_prompt: str = (
+        "رونویسی فارسی را فقط با حفظ کامل معنا، ترتیب قطعه‌ها، نام‌ها، اعداد و زمان‌ها "
+        "اصلاح کن. برای هر بخش نامطمئن یک مورد در uncertain_items ثبت کن."
+    )
+    correction_strictness: Literal["strict", "balanced"] = "strict"
+    correction_max_uncertain_ratio: float = Field(default=0.25, ge=0.0, le=1.0)
+    correction_timeout_seconds: int = Field(default=1800, ge=60, le=3600)
+    correction_max_retries: int = Field(default=3, ge=1, le=5)
+    correction_failure_policy: Literal["stop"] = "stop"
     decision_api_key: str | None = None
     decision_model: str = "gliner2_5_multi_decide"
     decision_fallback_model: str = "laya_multilingual"

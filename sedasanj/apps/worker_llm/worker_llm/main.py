@@ -48,6 +48,7 @@ from app.services.platform import (
 from app.services.provider_errors import classify_failure
 from worker_llm.chunking import plan_chunks
 from worker_llm.client import LlmClient, build_client, extract_json, load_run_prompt
+from worker_llm.correction import poll_transcript_correction, start_transcript_correction
 from worker_llm.durable import poll_analysis_step, start_analysis, submit_analysis_step
 from worker_llm.prompts import build_repair_request
 
@@ -251,7 +252,7 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             ).scalar_one_or_none()
             if transcript is None:
                 raise RuntimeError("call has no transcript")
-            text = transcript.full_text
+            text = transcript.corrected_text or transcript.full_text
             duration_ms = claimed.duration_ms
             previous_status = (
                 str(previous_status_raw)
@@ -603,7 +604,14 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
-    functions = [analyze_call, submit_analysis_step, poll_analysis_step, score_operator_call]
+    functions = [
+        analyze_call,
+        start_transcript_correction,
+        poll_transcript_correction,
+        submit_analysis_step,
+        poll_analysis_step,
+        score_operator_call,
+    ]
     queue_name = queue.QUEUE_LLM
     on_startup = startup
     on_shutdown = shutdown

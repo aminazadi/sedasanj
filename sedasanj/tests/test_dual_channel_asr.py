@@ -207,7 +207,7 @@ async def test_resolve_provider_settings_routes_9router_through_aiservice(
     assert runtime.whisper_model == "openai/whisper-1"
     assert runtime.asr_provider_base_url == "https://aiservice.voicesanj.ir"
     assert runtime.asr_provider_api_key == "voicesanj-secret"
-    assert runtime.aiservice_asr_path == "/v1/ninerouter/audio/transcriptions"
+    assert runtime.aiservice_asr_path == "/v1/audio/transcriptions"
     assert runtime.aiservice_analysis_path == "/v1/ninerouter/chat/completions"
     assert runtime.voicesanj_api_key == "voicesanj-secret"
 

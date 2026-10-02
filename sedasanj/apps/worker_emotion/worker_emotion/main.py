@@ -18,13 +18,15 @@ from app.config import get_settings
 from app.db import dispose_engine, resolve_tenant_for_call, session_scope
 from app.logging import configure_logging, log_context
 from app.metrics import start_metrics_server
-from app.models import AudioObject, Call, CallInsight, Job, Utterance
+from app.models import AudioObject, Call, CallInsight, Job, Transcript, Utterance
 from app.schemas import DualPartySentiment, PartySentiment, SentimentPoint, SentimentWindow
 from app.sentiment import merge_sentiment_profile
 from app.services import outbox, pipeline, processing_events, progress, queue
 from app.services.audio import resample_to_16k, split_channels
+from app.services.platform import resolve_provider_settings
 from app.services.provider_errors import classify_failure
 from app.services.storage import get_storage
+from app.services.transcript_corrections import create_revision
 from worker_emotion.engine import TARGET_LABELS, Emotion2VecEngine, EmotionPrediction
 
 logger = logging.getLogger(__name__)
@@ -189,6 +191,20 @@ async def _stage_llm(
     *, tenant_id: UUID, call_id: UUID, analysis_run_id: UUID, message: str
 ) -> UUID | None:
     async with session_scope(tenant_id) as session:
+        runtime = await resolve_provider_settings(session)
+        call = await session.get(Call, call_id)
+        if runtime.correction_enabled and call is not None:
+            transcript = await session.get(Transcript, call_id)
+            if transcript is None:
+                raise RuntimeError("call has no transcript")
+            _revision, _job, outbox_id, created = await create_revision(
+                session,
+                call=call,
+                transcript=transcript,
+                runtime=runtime,
+                trigger="automatic",
+            )
+            return outbox_id if created else None
         active = (
             await session.execute(
                 select(Job)
@@ -202,7 +218,6 @@ async def _stage_llm(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        call = await session.get(Call, call_id)
         if call is not None:
             call.status = "transcribed"
             call.error_code = None

@@ -32,6 +32,9 @@ CALL_STATUSES = (
     "stored",
     "transcribing",
     "transcribed",
+    "correcting",
+    "emotion_queued",
+    "emotion_analyzing",
     "analyzing",
     "analyzed",
     "billed",
@@ -328,6 +331,8 @@ class Utterance(Base):
     t_start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     t_end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(REAL)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
 
     __table_args__ = (
         CheckConstraint("channel IN (0,1)", name="utterances_channel_check"),
@@ -347,6 +352,9 @@ class Transcript(Base):
     full_text: Mapped[str] = mapped_column(Text, nullable=False)
     corrected_text: Mapped[str | None] = mapped_column(Text)
     corrected_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    active_revision_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("transcript_revisions.id", ondelete="SET NULL")
+    )
     search: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('simple', full_text)", persisted=True)
     )
@@ -355,6 +363,94 @@ class Transcript(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (Index("idx_transcripts_search", "search", postgresql_using="gin"),)
+
+
+class TranscriptRevision(Base):
+    __tablename__ = "transcript_revisions"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    call_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    source_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    profile_version: Mapped[str] = mapped_column(Text, nullable=False)
+    trigger: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    audio_models: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    text_models: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_text: Mapped[str | None] = mapped_column(Text)
+    provider_task_id: Mapped[str | None] = mapped_column(Text)
+    provider_model: Mapped[str | None] = mapped_column(Text)
+    uncertain_items: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    queued_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    provider_submitted_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    activated_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "trigger IN ('automatic','manual')", name="transcript_revisions_trigger_check"
+        ),
+        CheckConstraint(
+            "mode IN ('text_only','audio_only','two_stage')",
+            name="transcript_revisions_mode_check",
+        ),
+        CheckConstraint(
+            "status IN ('queued','running','validating','succeeded','failed')",
+            name="transcript_revisions_status_check",
+        ),
+        Index("idx_transcript_revisions_call", "call_id", text("created_at DESC")),
+        Index("idx_transcript_revisions_pending", "status", "queued_at"),
+    )
+
+
+class TranscriptRevisionSegment(Base):
+    __tablename__ = "transcript_revision_segments"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    revision_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("transcript_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    source_utterance_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("utterances.id", ondelete="SET NULL")
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    channel: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    t_start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    t_end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_text: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_text: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(REAL)
+    uncertain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+
+    __table_args__ = (
+        CheckConstraint("channel IN (0,1)", name="transcript_revision_segments_channel_check"),
+        UniqueConstraint(
+            "revision_id", "position", name="transcript_revision_segments_revision_position_key"
+        ),
+        Index("idx_transcript_revision_segments_revision", "revision_id", "position"),
+    )
 
 
 class AnalysisRun(Base):
@@ -852,7 +948,9 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("kind IN ('asr','emotion','llm','notify')", name="jobs_kind_check"),
+        CheckConstraint(
+            "kind IN ('asr','emotion','correction','llm','notify')", name="jobs_kind_check"
+        ),
         Index(
             "idx_jobs_run",
             "status",

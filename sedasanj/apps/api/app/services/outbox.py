@@ -25,6 +25,7 @@ def payload_for_job(
     recovery: bool = False,
     reanalysis: bool = False,
     previous_status: str | None = None,
+    correction_run_id: UUID | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     if kind == "asr":
         return queue.QUEUE_ASR, queue.JOB_ASR, {
@@ -47,6 +48,14 @@ def payload_for_job(
             "previous_status": previous_status,
             "recovery": recovery,
         }
+    if kind == "correction":
+        if correction_run_id is None:
+            raise ValueError("correction job requires correction_run_id")
+        return queue.QUEUE_LLM, queue.JOB_CORRECTION, {
+            "call_id": str(call_id),
+            "correction_run_id": str(correction_run_id),
+            "recovery": recovery,
+        }
     if kind == "notify":
         return queue.QUEUE_NOTIFY, queue.JOB_NOTIFY, {
             "call_id": str(call_id),
@@ -67,6 +76,7 @@ async def stage_job(
     recovery: bool = False,
     reanalysis: bool = False,
     previous_status: str | None = None,
+    correction_run_id: UUID | None = None,
     available_at: datetime | None = None,
 ) -> UUID:
     queue_name, function_name, payload = payload_for_job(
@@ -77,6 +87,7 @@ async def stage_job(
         recovery=recovery,
         reanalysis=reanalysis,
         previous_status=previous_status,
+        correction_run_id=correction_run_id,
     )
     payload["tenant_id"] = str(tenant_id)
     return await stage(

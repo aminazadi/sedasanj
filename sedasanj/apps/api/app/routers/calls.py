@@ -30,6 +30,8 @@ from app.models import (
     ProcessingEvent,
     SalesInsight,
     Transcript,
+    TranscriptRevision,
+    TranscriptRevisionSegment,
     Utterance,
     WebhookDelivery,
 )
@@ -40,6 +42,7 @@ from app.schemas import (
     CallDetail,
     CallPage,
     CallSummary,
+    CorrectionStatusOut,
     IngestAccepted,
     InsightsOut,
     ProcessingEventOut,
@@ -66,7 +69,7 @@ from app.services.platform import (
 )
 from app.services.progress import resolve as resolve_progress
 from app.services.storage import get_storage
-from app.services.voicesanj import correct_transcript
+from app.services.transcript_corrections import create_revision
 
 router = APIRouter(prefix="/v1", tags=["calls"])
 logger = logging.getLogger(__name__)
@@ -354,6 +357,31 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         .scalars()
         .all()
     )
+    latest_revision = (
+        await session.execute(
+            select(TranscriptRevision)
+            .where(
+                TranscriptRevision.call_id == call_id,
+                TranscriptRevision.tenant_id == principal.tenant_id,
+            )
+            .order_by(TranscriptRevision.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    corrected_segments: list[TranscriptRevisionSegment] = []
+    if transcript is not None and transcript.active_revision_id is not None:
+        corrected_segments = list(
+            (
+                await session.execute(
+                    select(TranscriptRevisionSegment)
+                    .where(
+                        TranscriptRevisionSegment.revision_id == transcript.active_revision_id,
+                        TranscriptRevisionSegment.tenant_id == principal.tenant_id,
+                    )
+                    .order_by(TranscriptRevisionSegment.position)
+                )
+            ).scalars()
+        )
     run = (
         await session.execute(
             select(AnalysisRun)
@@ -467,7 +495,49 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         corrected_transcript=transcript.corrected_text if transcript else None,
         corrected_transcript_at=transcript.corrected_at if transcript else None,
         asr_model=f"{transcript.asr_model}:{transcript.asr_version}" if transcript else None,
-        utterances=[UtteranceOut.model_validate(u) for u in utterances],
+        utterances=(
+            [
+                UtteranceOut(
+                    channel=item.channel,
+                    t_start_ms=item.t_start_ms,
+                    t_end_ms=item.t_end_ms,
+                    text=item.corrected_text,
+                    source_text=item.source_text,
+                    uncertain=item.uncertain,
+                )
+                for item in corrected_segments
+            ]
+            if corrected_segments
+            else [UtteranceOut.model_validate(u) for u in utterances]
+        ),
+        raw_utterances=[UtteranceOut.model_validate(u) for u in utterances],
+        speaker_labels=(
+            {0: "مشتری", 1: "اپراتور"}
+            if call.direction == "inbound"
+            else {0: "اپراتور", 1: "مشتری"}
+            if call.direction == "outbound"
+            else {0: "کانال ۱", 1: "کانال ۲"}
+        ),
+        correction=(
+            CorrectionStatusOut(
+                id=latest_revision.id,
+                status=latest_revision.status,
+                trigger=latest_revision.trigger,
+                mode=latest_revision.mode,
+                audio_models=latest_revision.audio_models,
+                text_models=latest_revision.text_models,
+                provider_model=latest_revision.provider_model,
+                error_code=latest_revision.error_code,
+                error_detail=processing_events.sanitize_detail(latest_revision.error_detail),
+                uncertain_items=latest_revision.uncertain_items or [],
+                queued_at=latest_revision.queued_at,
+                started_at=latest_revision.started_at,
+                provider_submitted_at=latest_revision.provider_submitted_at,
+                completed_at=latest_revision.completed_at,
+            )
+            if latest_revision
+            else None
+        ),
         insights=InsightsOut.model_validate(insight) if insight else None,
         sales=(
             SalesBlock.model_validate(
@@ -607,14 +677,14 @@ async def get_call_audio_content(
     return Response(content=content, media_type="audio/wav")
 
 
-@router.post("/calls/{call_id}/correct-transcript")
+@router.post("/calls/{call_id}/correct-transcript", status_code=status.HTTP_202_ACCEPTED)
 async def correct_call_transcript(
     call_id: UUID, request: Request, principal: OperatorDep
 ) -> dict[str, str]:
     assert principal.tenant_id is not None
     tenant_id = principal.tenant_id
     async with session_scope(tenant_id) as session:
-        await _load_call(session, call_id, tenant_id, principal)
+        call = await _load_call(session, call_id, tenant_id, principal)
         transcript = (
             await session.execute(
                 select(Transcript).where(
@@ -627,46 +697,31 @@ async def correct_call_transcript(
                 "not_found",
                 "متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.",
             )
-        source_text = transcript.full_text
-
-    try:
-        async with session_scope(None, staff=True) as session:
-            runtime = await resolve_provider_settings(session)
-        corrected = await correct_transcript(runtime, source_text)
-    except Exception as exc:
-        logger.warning(
-            "manual transcript correction failed",
-            extra={"extra_fields": {"call_id": str(call_id), "error": repr(exc)}},
+        runtime = await resolve_provider_settings(session)
+        if not runtime.correction_enabled:
+            raise ApiError("invalid_request", "تصحیح هوشمند در تنظیمات ادمین غیرفعال است.")
+        revision, _job, outbox_id, created = await create_revision(
+            session,
+            call=call,
+            transcript=transcript,
+            runtime=runtime,
+            trigger="manual",
         )
-        raise ApiError(
-            "internal", "تصحیح متن توسط سرویس هوش مصنوعی انجام نشد؛ دوباره تلاش کنید.", True
-        ) from exc
-
-    async with session_scope(tenant_id) as session:
-        transcript = (
-            await session.execute(
-                select(Transcript).where(
-                    Transcript.call_id == call_id, Transcript.tenant_id == tenant_id
-                )
-            )
-        ).scalar_one_or_none()
-        if transcript is None:
-            raise ApiError(
-                "not_found",
-                "متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.",
-            )
-        transcript.corrected_text = corrected
-        transcript.corrected_at = datetime.now(UTC)
         await audit.record(
             session,
             actor_type="user",
             actor_id=principal.id,
             tenant_id=tenant_id,
             action="call.correct_transcript",
-            payload={"call_id": str(call_id), "characters": len(source_text)},
+            payload={"call_id": str(call_id), "correction_run_id": str(revision.id)},
             ip=client_ip(request),
         )
-    return {"status": "succeeded"}
+    if created:
+        try:
+            await outbox.dispatch_one(outbox_id)
+        except Exception:
+            logger.exception("immediate correction dispatch failed; durable dispatcher will retry")
+    return {"status": revision.status, "correction_run_id": str(revision.id)}
 
 
 @router.post("/calls/{call_id}/reanalyze", status_code=status.HTTP_202_ACCEPTED)

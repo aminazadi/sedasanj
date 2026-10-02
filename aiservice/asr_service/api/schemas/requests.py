@@ -6,6 +6,20 @@ import re
 from typing import Any, Literal
 
 
+class TextSegmentRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    channel: int = Field(ge=0, le=1)
+    t_start_ms: int = Field(ge=0)
+    t_end_ms: int = Field(gt=0)
+    text: str = Field(min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def valid_time_range(self):
+        if self.t_end_ms <= self.t_start_ms:
+            raise ValueError("t_end_ms must be greater than t_start_ms")
+        return self
+
+
 class TextProcessRequest(BaseModel):
     """JSON body accepted when scheduling Persian text post-processing."""
 
@@ -22,9 +36,15 @@ class TextProcessRequest(BaseModel):
         }
     )
 
-    text: str = Field(
-        min_length=1, max_length=12000, description="Persian source text to process."
+    text: str | None = Field(
+        default=None, min_length=1, max_length=12000,
+        description="Legacy Persian source text to process.",
     )
+    segments: list[TextSegmentRequest] | None = Field(
+        default=None, min_length=1, max_length=500,
+        description="Ordered immutable transcript segments.",
+    )
+    prompt: str | None = Field(default=None, max_length=8000)
     model: str | None = Field(
         default=None,
         min_length=1,
@@ -48,6 +68,12 @@ class TextProcessRequest(BaseModel):
     def exactly_one_model_field(self):
         if (self.model is None) == (self.models is None):
             raise ValueError("Specify exactly one of model or models")
+        if (self.text is None) == (self.segments is None):
+            raise ValueError("Specify exactly one of text or segments")
+        if self.segments is not None:
+            identifiers = [segment.id for segment in self.segments]
+            if len(set(identifiers)) != len(identifiers):
+                raise ValueError("segment ids must be unique")
         return self
 
 

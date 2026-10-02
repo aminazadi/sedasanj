@@ -128,6 +128,16 @@ export interface PlatformSettings {
   chat_route: "durable" | "synchronous" | "ninerouter";
   decision_route: "native" | "ninerouter" | "typed";
   embedding_route: "native" | "ninerouter";
+  correction_enabled: boolean;
+  correction_mode: "text_only" | "audio_only" | "two_stage";
+  correction_audio_models: string[];
+  correction_text_models: string[];
+  correction_prompt: string;
+  correction_strictness: "strict" | "balanced";
+  correction_max_uncertain_ratio: number;
+  correction_timeout_seconds: number;
+  correction_max_retries: number;
+  correction_failure_policy: "stop";
 }
 
 export interface AudioProcessingModel {

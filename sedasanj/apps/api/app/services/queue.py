@@ -18,6 +18,7 @@ QUEUE_NOTIFY = "q:notify"
 JOB_ASR = "transcribe_call"
 JOB_EMOTION = "analyze_voice_sentiment"
 JOB_LLM = "analyze_call"
+JOB_CORRECTION = "start_transcript_correction"
 JOB_NOTIFY = "deliver_event"
 
 

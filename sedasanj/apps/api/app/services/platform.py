@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 from urllib.parse import urlsplit
 
@@ -42,12 +43,22 @@ OVERRIDE_KEYS = (
     "chat_route",
     "decision_route",
     "embedding_route",
+    "correction_enabled",
+    "correction_mode",
+    "correction_audio_models",
+    "correction_text_models",
+    "correction_prompt",
+    "correction_strictness",
+    "correction_max_uncertain_ratio",
+    "correction_timeout_seconds",
+    "correction_max_retries",
+    "correction_failure_policy",
 )
 
 AISERVICE_ROUTES = {
     "asr_route": {
         "native": "/v1/audio/transcriptions",
-        "ninerouter": "/v1/ninerouter/audio/transcriptions",
+        "ninerouter": "/v1/audio/transcriptions",
     },
     "analysis_route": {
         "durable": "/v1/chat/tasks",
@@ -223,6 +234,16 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "chat_route": "durable",
         "decision_route": "native",
         "embedding_route": "native",
+        "correction_enabled": "true",
+        "correction_mode": "two_stage",
+        "correction_audio_models": json.dumps([_default_asr_model(settings)]),
+        "correction_text_models": json.dumps([_default_llm_model(settings)]),
+        "correction_prompt": settings.correction_prompt,
+        "correction_strictness": "strict",
+        "correction_max_uncertain_ratio": "0.25",
+        "correction_timeout_seconds": "1800",
+        "correction_max_retries": "3",
+        "correction_failure_policy": "stop",
     }
     settings_session = session
     if get_settings().tenant_databases_enabled:
@@ -301,6 +322,16 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "chat_route": values["chat_route"],
         "decision_route": values["decision_route"],
         "embedding_route": values["embedding_route"],
+        "correction_enabled": _as_bool(values["correction_enabled"]),
+        "correction_mode": values["correction_mode"],
+        "correction_audio_models": _string_list(values["correction_audio_models"]),
+        "correction_text_models": _string_list(values["correction_text_models"]),
+        "correction_prompt": values["correction_prompt"],
+        "correction_strictness": values["correction_strictness"],
+        "correction_max_uncertain_ratio": float(values["correction_max_uncertain_ratio"]),
+        "correction_timeout_seconds": int(values["correction_timeout_seconds"]),
+        "correction_max_retries": int(values["correction_max_retries"]),
+        "correction_failure_policy": values["correction_failure_policy"],
         "audio_denoiser_models": _audio_catalog(DENOISER_MODELS),
         "audio_enhancement_models": _audio_catalog(ENHANCEMENT_MODELS),
     }
@@ -314,13 +345,23 @@ async def resolve_provider_settings(session: AsyncSession) -> Settings:
     asr_api_key = normalize_api_key(overrides.get("asr_api_key")) or None
     decision_api_key = normalize_api_key(overrides.get("decision_api_key")) or None
     embedding_api_key = normalize_api_key(overrides.get("embedding_api_key")) or None
+    correction_audio_models = _string_list(overrides["correction_audio_models"])
+    correction_text_models = _string_list(overrides["correction_text_models"])
+    use_correction_audio = _as_bool(overrides["correction_enabled"]) and overrides[
+        "correction_mode"
+    ] in {"audio_only", "two_stage"}
+    active_asr_model = (
+        correction_audio_models[0]
+        if use_correction_audio and correction_audio_models
+        else overrides["asr_model"]
+    )
     asr_engine = "voicesanj"
     return base.model_copy(
         update={
             "asr_engine": asr_engine,
             "asr_model_name": overrides["asr_model"],
             "whisper_model": overrides["asr_model"],
-            "voicesanj_asr_model": overrides["asr_model"],
+            "voicesanj_asr_model": active_asr_model,
             "llm_client": "voicesanj",
             "llm_model": overrides["llm_model"],
             "voicesanj_llm_model": overrides["llm_model"],
@@ -342,6 +383,18 @@ async def resolve_provider_settings(session: AsyncSession) -> Settings:
             "embedding_base_url": overrides["embedding_base_url"],
             "embedding_api_key": embedding_api_key,
             "embedding_model": overrides["embedding_model"],
+            "correction_enabled": _as_bool(overrides["correction_enabled"]),
+            "correction_mode": overrides["correction_mode"],
+            "correction_audio_models": correction_audio_models,
+            "correction_text_models": correction_text_models,
+            "correction_prompt": overrides["correction_prompt"],
+            "correction_strictness": overrides["correction_strictness"],
+            "correction_max_uncertain_ratio": float(
+                overrides["correction_max_uncertain_ratio"]
+            ),
+            "correction_timeout_seconds": int(overrides["correction_timeout_seconds"]),
+            "correction_max_retries": int(overrides["correction_max_retries"]),
+            "correction_failure_policy": overrides["correction_failure_policy"],
             "aiservice_asr_path": AISERVICE_ROUTES["asr_route"][overrides["asr_route"]],
             "aiservice_analysis_path": AISERVICE_ROUTES["analysis_route"][overrides["analysis_route"]],
             "aiservice_chat_path": AISERVICE_ROUTES["chat_route"][overrides["chat_route"]],
@@ -353,6 +406,16 @@ async def resolve_provider_settings(session: AsyncSession) -> Settings:
 
 def _as_bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _string_list(value: str) -> list[str]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = [item.strip() for item in value.split(",")]
+    if not isinstance(parsed, list):
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
 
 
 def _audio_catalog(models: dict[str, tuple[str, str]]) -> list[dict[str, str]]:

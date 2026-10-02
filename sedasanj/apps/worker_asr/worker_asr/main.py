@@ -38,6 +38,7 @@ from app.services.platform import (
 )
 from app.services.provider_errors import classify_failure
 from app.services.storage import get_storage
+from app.services.transcript_corrections import create_revision
 from worker_asr.engine import AsrEngine, AsrSegment, build_engine
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,8 @@ def consolidate_segments(rows: list[tuple[int, AsrSegment]]) -> list[tuple[int, 
             t_start_ms=max(segment.t_start_ms, 0),
             t_end_ms=max(segment.t_end_ms, segment.t_start_ms, 0),
             text=text,
+            confidence=segment.confidence,
+            metadata=segment.metadata,
         )
         if not merged:
             merged.append((channel, current))
@@ -92,6 +95,18 @@ def consolidate_segments(rows: list[tuple[int, AsrSegment]]) -> list[tuple[int, 
                     t_start_ms=previous.t_start_ms,
                     t_end_ms=max(previous.t_end_ms, current.t_end_ms),
                     text=combined_text,
+                    confidence=(
+                        min(
+                            value
+                            for value in (previous.confidence, current.confidence)
+                            if value is not None
+                        )
+                        if previous.confidence is not None or current.confidence is not None
+                        else None
+                    ),
+                    metadata={
+                        "merged_segments": [previous.metadata or {}, current.metadata or {}]
+                    },
                 ),
             )
             continue
@@ -381,6 +396,8 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                         t_start_ms=segment.t_start_ms,
                         t_end_ms=segment.t_end_ms,
                         text=segment.text,
+                        confidence=segment.confidence,
+                        metadata_json=segment.metadata,
                     )
                 )
             existing = (
@@ -401,13 +418,19 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                     )
                 )
             else:
-                existing.full_text = full_text
-                existing.asr_model = engine.model_name
-                existing.asr_version = f"{engine.model_version}|{preprocessing.identity}"
+                logger.info("preserving immutable raw transcript on repeated ASR delivery")
 
             run = await _load_or_create_analysis_run(session, call_id, tenant_id)
             emotion_enabled = get_settings().voice_sentiment_enabled
-            next_status = "emotion_queued" if emotion_enabled else "transcribed"
+            correction_runtime = await resolve_provider_settings(session)
+            correction_enabled = correction_runtime.correction_enabled
+            next_status = (
+                "emotion_queued"
+                if emotion_enabled
+                else "correcting"
+                if correction_enabled
+                else "transcribed"
+            )
             call = (
                 await session.execute(
                     select(Call).where(Call.id == call_id, Call.tenant_id == tenant_id)
@@ -423,38 +446,63 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="asr", status="succeeded"
             )
-            next_kind = "emotion" if emotion_enabled else "llm"
-            next_job = Job(
-                tenant_id=tenant_id,
-                call_id=call_id,
-                kind=next_kind,
-                status="queued",
-                attempt=0,
+            next_kind = (
+                "emotion"
+                if emotion_enabled
+                else "correction"
+                if correction_enabled
+                else "llm"
             )
-            session.add(next_job)
-            await session.flush()
-            await processing_events.record(
-                session,
-                tenant_id=tenant_id,
-                call_id=call_id,
-                kind=next_kind,
-                status="queued",
-                progress_pct=int(next_progress["progress_pct"]),
-                message=(
-                    "تحلیل لحن صدا در صف پردازش قرار گرفت"
-                    if emotion_enabled
-                    else "تحلیل هوشمند در صف پردازش قرار گرفت"
-                ),
-                step_key=f"{next_job.id}:queued:0",
-            )
-            outbox_id = await outbox.stage_job(
-                session,
-                job_id=next_job.id,
-                tenant_id=tenant_id,
-                call_id=call_id,
-                kind=next_kind,
-                analysis_run_id=run.id,
-            )
+            if next_kind == "correction":
+                assert call is not None
+                transcript_row = (
+                    await session.execute(
+                        select(Transcript).where(
+                            Transcript.call_id == call_id, Transcript.tenant_id == tenant_id
+                        )
+                    )
+                ).scalar_one()
+                _revision, _job, outbox_id, _created = await create_revision(
+                    session,
+                    call=call,
+                    transcript=transcript_row,
+                    runtime=correction_runtime,
+                    trigger="automatic",
+                )
+                next_job = None
+            else:
+                next_job = Job(
+                    tenant_id=tenant_id,
+                    call_id=call_id,
+                    kind=next_kind,
+                    status="queued",
+                    attempt=0,
+                )
+                session.add(next_job)
+                await session.flush()
+            if next_job is not None:
+                await processing_events.record(
+                    session,
+                    tenant_id=tenant_id,
+                    call_id=call_id,
+                    kind=next_kind,
+                    status="queued",
+                    progress_pct=int(next_progress["progress_pct"]),
+                    message=(
+                        "تحلیل لحن صدا در صف پردازش قرار گرفت"
+                        if emotion_enabled
+                        else "تحلیل هوشمند در صف پردازش قرار گرفت"
+                    ),
+                    step_key=f"{next_job.id}:queued:0",
+                )
+                outbox_id = await outbox.stage_job(
+                    session,
+                    job_id=next_job.id,
+                    tenant_id=tenant_id,
+                    call_id=call_id,
+                    kind=next_kind,
+                    analysis_run_id=run.id,
+                )
         asr_seconds_processed.inc(probe.duration_ms / 1000)
         try:
             await outbox.dispatch_one(outbox_id)

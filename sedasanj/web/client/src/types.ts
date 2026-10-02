@@ -49,6 +49,25 @@ export interface Utterance {
   t_start_ms: number;
   t_end_ms: number;
   text: string;
+  source_text?: string | null;
+  uncertain?: boolean;
+}
+
+export interface CorrectionStatus {
+  id: string;
+  status: "queued" | "running" | "validating" | "succeeded" | "failed";
+  trigger: "automatic" | "manual";
+  mode: "text_only" | "audio_only" | "two_stage";
+  audio_models: string[];
+  text_models: string[];
+  provider_model: string | null;
+  error_code: string | null;
+  error_detail: string | null;
+  uncertain_items: Array<Record<string, unknown>>;
+  queued_at: string;
+  started_at: string | null;
+  provider_submitted_at: string | null;
+  completed_at: string | null;
 }
 
 export interface SentimentPoint {
@@ -103,6 +122,9 @@ export interface CallDetail extends CallSummary {
   corrected_transcript_at: string | null;
   asr_model: string | null;
   utterances: Utterance[];
+  raw_utterances: Utterance[];
+  speaker_labels: Record<number, string>;
+  correction: CorrectionStatus | null;
   insights: Insights | null;
   sales: {
     funnel_stage: string;

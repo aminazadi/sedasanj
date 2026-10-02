@@ -919,12 +919,12 @@ class TaskManager:
             elif task["kind"] == "text":
                 with (nullcontext() if admitted_slot else inference_slot()):
                     if provider.text_enabled and run["model_id"] == provider.text_model:
-                        messages, options = process_messages(args["text"], args["operation"], args["style"])
+                        messages, options = process_messages(args.get("text"), args["operation"], args["style"], args.get("segments"), args.get("prompt"))
                         completion = NineRouterClient(provider).chat(run["model_id"], messages, options)
                         content = completion["choices"][0].get("message", {}).get("content", "")
-                        result = {"model": run["model_id"], "operation": args["operation"], **process_response(content, args["operation"], args["style"])}
+                        result = {"model": completion.get("model") or run["model_id"], "operation": args["operation"], **process_response(content, args["operation"], args["style"], args.get("segments")), "finish_reason": completion["choices"][0].get("finish_reason"), "usage": completion.get("usage")}
                     else:
-                        result = {"model": run["model_id"], "operation": args["operation"], **process_text(run["model_id"], args["text"], args["operation"], args["style"])}
+                        result = {"model": run["model_id"], "operation": args["operation"], **process_text(run["model_id"], args.get("text"), args["operation"], args["style"], args.get("segments"), args.get("prompt"))}
                 duration = duration_vad = None
             elif task["kind"] == "decision":
                 with (nullcontext() if admitted_slot else inference_slot()):

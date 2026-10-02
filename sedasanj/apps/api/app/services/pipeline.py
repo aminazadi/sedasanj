@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 RETRY_POLICY: dict[str, tuple[int, int, int]] = {
     "asr": (5, 5, 2),
     "emotion": (3, 10, 2),
+    "correction": (3, 10, 2),
     "llm": (4, 10, 2),
     "notify": (8, 15, 2),
 }
@@ -158,6 +159,7 @@ async def mark_job(
     step_labels = {
         "asr": "تبدیل گفتار",
         "emotion": "تحلیل لحن صدا",
+        "correction": "تصحیح هوشمند متن",
         "llm": "تحلیل هوشمند",
         "notify": "اطلاع‌رسانی",
     }
@@ -193,10 +195,12 @@ async def handle_failure(
     error_code: str,
     error_detail: str,
     analysis_run_id: UUID | None = None,
+    correction_run_id: UUID | None = None,
     reanalysis: bool = False,
     previous_status: str | None = None,
     event: str | None = None,
     retryable: bool | None = None,
+    max_attempts_override: int | None = None,
 ) -> bool:
     """§6 step 3: back off and requeue, or go terminal and release the hold.
 
@@ -206,8 +210,9 @@ async def handle_failure(
 
     Returns True when the job was rescheduled.
     """
-    max_attempts, _, _ = RETRY_POLICY[kind]
-    touches_call = kind in {"asr", "llm"} and not reanalysis
+    configured_max_attempts, _, _ = RETRY_POLICY[kind]
+    max_attempts = max_attempts_override or configured_max_attempts
+    touches_call = kind in {"asr", "correction", "llm"} and not reanalysis
     outbox_id: UUID | None = None
     async with session_scope(tenant_id) as session:
         job = (
@@ -264,7 +269,7 @@ async def handle_failure(
                     **progress.values_for_status("emotion_queued"),
                 )
             )
-        if not retry and kind in ("asr", "llm") and not reanalysis:
+        if not retry and kind in ("asr", "correction", "llm") and not reanalysis:
             await billing.release(session, tenant_id=tenant_id, call_id=call_id)
         if retry and job is not None:
             outbox_id = await outbox.stage_job(
@@ -274,6 +279,7 @@ async def handle_failure(
                 call_id=call_id,
                 kind=kind,
                 analysis_run_id=analysis_run_id,
+                correction_run_id=correction_run_id,
                 reanalysis=reanalysis,
                 previous_status=previous_status,
                 event=event,

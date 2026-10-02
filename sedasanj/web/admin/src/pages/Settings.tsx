@@ -13,11 +13,12 @@ const KIND_LABELS: Record<string, string> = {
   decision: "تصمیم‌گیری",
   embedding: "Embedding",
 };
-type SettingsTab = "connection" | "models" | "audio" | "prompts" | "security";
+type SettingsTab = "connection" | "models" | "audio" | "correction" | "prompts" | "security";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "اتصال AISERVICE" },
   { id: "models", label: "مدل‌ها و مسیرها" },
   { id: "audio", label: "پردازش صوت" },
+  { id: "correction", label: "تصحیح متن" },
   { id: "prompts", label: "پرامپت‌ها" },
   { id: "security", label: "امنیت" },
 ];
@@ -91,6 +92,49 @@ function ModelSelect({
   );
 }
 
+function ModelPriorityList({
+  id,
+  label,
+  value,
+  models,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string[];
+  models: ProviderModel[];
+  onChange: (value: string[]) => void;
+}) {
+  const available = models.filter((model) => !value.includes(model.id));
+  function move(index: number, offset: number) {
+    const target = index + offset;
+    if (target < 0 || target >= value.length) return;
+    const next = [...value];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  }
+  return (
+    <div className="space-y-2">
+      <label className="label" htmlFor={id}>{label}</label>
+      <ol className="space-y-2">
+        {value.map((modelId, index) => (
+          <li key={modelId} className="flex items-center gap-2 border border-slate-200 bg-white p-2">
+            <span className="w-6 text-center text-xs text-slate-500">{fmt.int(index + 1)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm" dir="ltr">{modelId}</span>
+            <button type="button" className="btn-ghost px-2" disabled={index === 0} onClick={() => move(index, -1)} aria-label="انتقال به بالا">↑</button>
+            <button type="button" className="btn-ghost px-2" disabled={index === value.length - 1} onClick={() => move(index, 1)} aria-label="انتقال به پایین">↓</button>
+            <button type="button" className="btn-ghost px-2 text-rose-700" disabled={value.length === 1} onClick={() => onChange(value.filter((item) => item !== modelId))}>حذف</button>
+          </li>
+        ))}
+      </ol>
+      <select id={id} className="input" value="" onChange={(event) => event.target.value && onChange([...value, event.target.value])}>
+        <option value="">افزودن مدل fallback</option>
+        {available.map((model) => <option key={model.id} value={model.id}>{modelOptionLabel(model)}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -104,6 +148,7 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [testingCorrection, setTestingCorrection] = useState(false);
 
   async function loadModels() {
     setLoadingModels(true);
@@ -185,7 +230,7 @@ export default function Settings() {
       }
     }
     try {
-      const body: Record<string, string | boolean | number> = {};
+      const body: Record<string, string | boolean | number | string[]> = {};
       if (activeTab === "connection") {
         body.voicesanj_base_url = settings.voicesanj_base_url;
         body.llm_provider = settings.llm_provider;
@@ -217,6 +262,19 @@ export default function Settings() {
           audio_enhancement_model: settings.audio_enhancement_model,
           analysis_concurrency: settings.analysis_concurrency,
         });
+      } else if (activeTab === "correction") {
+        Object.assign(body, {
+          correction_enabled: settings.correction_enabled,
+          correction_mode: settings.correction_mode,
+          correction_audio_models: settings.correction_audio_models,
+          correction_text_models: settings.correction_text_models,
+          correction_prompt: settings.correction_prompt,
+          correction_strictness: settings.correction_strictness,
+          correction_max_uncertain_ratio: settings.correction_max_uncertain_ratio,
+          correction_timeout_seconds: settings.correction_timeout_seconds,
+          correction_max_retries: settings.correction_max_retries,
+          correction_failure_policy: settings.correction_failure_policy,
+        });
       } else if (activeTab === "prompts") {
         body.extract_prompt = settings.extract_prompt;
         body.assistant_instructions = settings.assistant_instructions;
@@ -236,6 +294,21 @@ export default function Settings() {
       }
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+
+  async function testCorrection() {
+    setTestingCorrection(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await request<{ status: string; stages: Array<{ stage: string; status: string }> }>("/v1/admin/settings/test-correction", { method: "POST" });
+      const stages = result.stages.map((item) => `${item.stage}: ${item.status}`).join("، ");
+      setNotice(`نتیجه آزمایش مسیر: ${result.status} — ${stages}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTestingCorrection(false);
     }
   }
 
@@ -493,6 +566,51 @@ export default function Settings() {
             </p>
           </div>
         </div>
+      </section>
+
+      <section className={`${activeTab === "correction" ? "" : "hidden"} space-y-5 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-bold text-slate-900">تصحیح هوشمند و نسخه نهایی متن</h2>
+            <p className="mt-1 text-xs leading-6 text-slate-500">همه درخواست‌ها از مسیر ثابت AISERVICE ارسال می‌شوند و انتخاب مدل محلی یا 9Router داخل همان سرویس انجام می‌شود.</p>
+          </div>
+          <ToggleSwitch checked={settings.correction_enabled} onChange={(correction_enabled) => setSettings({ ...settings, correction_enabled })} label="فعال" labelClassName="text-sm font-medium" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="correction-mode">حالت اجرا</label>
+            <select id="correction-mode" className="input" value={settings.correction_mode} onChange={(event) => setSettings({ ...settings, correction_mode: event.target.value as PlatformSettings["correction_mode"] })}>
+              <option value="two_stage">دو مرحله‌ای دقیق</option>
+              <option value="text_only">فقط تصحیح متن</option>
+              <option value="audio_only">فقط خروجی مدل صوتی</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="correction-strictness">سطح محافظه‌کاری</label>
+            <select id="correction-strictness" className="input" value={settings.correction_strictness} onChange={(event) => setSettings({ ...settings, correction_strictness: event.target.value as PlatformSettings["correction_strictness"] })}>
+              <option value="strict">سخت‌گیرانه</option>
+              <option value="balanced">متعادل</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <ModelPriorityList id="correction-audio-models" label="مدل‌های صوتی به‌ترتیب اولویت" value={settings.correction_audio_models} models={asrModels} onChange={(correction_audio_models) => setSettings({ ...settings, correction_audio_models })} />
+          <ModelPriorityList id="correction-text-models" label="مدل‌های متنی به‌ترتیب اولویت" value={settings.correction_text_models} models={llmModels} onChange={(correction_text_models) => setSettings({ ...settings, correction_text_models })} />
+        </div>
+        <div>
+          <label className="label" htmlFor="correction-prompt">پرامپت تصحیح</label>
+          <textarea id="correction-prompt" className="input min-h-48 resize-y" value={settings.correction_prompt} onChange={(event) => setSettings({ ...settings, correction_prompt: event.target.value })} required />
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div><label className="label">حداکثر نسبت موارد مشکوک</label><input className="input" type="number" min="0" max="1" step="0.01" value={settings.correction_max_uncertain_ratio} onChange={(event) => setSettings({ ...settings, correction_max_uncertain_ratio: Number(event.target.value) })} /></div>
+          <div><label className="label">مهلت کل پردازش (ثانیه)</label><input className="input" type="number" min="60" max="3600" value={settings.correction_timeout_seconds} onChange={(event) => setSettings({ ...settings, correction_timeout_seconds: Number(event.target.value) })} /></div>
+          <div><label className="label">تعداد تلاش</label><input className="input" type="number" min="1" max="5" value={settings.correction_max_retries} onChange={(event) => setSettings({ ...settings, correction_max_retries: Number(event.target.value) })} /></div>
+        </div>
+        <div>
+          <label className="label">رفتار هنگام شکست همه مدل‌ها</label>
+          <select className="input" value={settings.correction_failure_policy} disabled><option value="stop">توقف تحلیل و نیاز به بررسی؛ بدون fallback خام</option></select>
+        </div>
+        <button type="button" className="btn-ghost" disabled={testingCorrection} onClick={() => void testCorrection()}>{testingCorrection ? "در حال آزمایش submit، provider و validation…" : "آزمایش واقعی مسیر تصحیح"}</button>
       </section>
 
       <div className={activeTab === "audio" ? "" : "hidden"}>

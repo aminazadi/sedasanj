@@ -133,13 +133,14 @@ class VoiceSanjClient:
         path: Path,
         *,
         model: str,
+        models: list[str] | None = None,
         response_format: str = "verbose_json",
         beam_size: int = 2,
         vad_filter: bool = True,
         prompt: str | None = None,
     ) -> dict[str, Any]:
-        model_id = model.strip()
-        if not model_id:
+        model_ids = [item.strip() for item in (models or [model]) if item.strip()]
+        if not model_ids:
             raise ProviderError(
                 "asr_provider_model",
                 "شناسه مدل پیاده‌سازی صوت خالی است.",
@@ -147,19 +148,24 @@ class VoiceSanjClient:
             )
         original_audio = path.read_bytes()
         audio = gzip.compress(original_audio, compresslevel=6, mtime=0)
-        form: dict[str, Any] = {
-            # The VoiceSanj contract requires exactly one of `model` or
-            # repeated `models`. This client intentionally uses single-model
-            # mode and never emits the `models` multipart field.
-            "model": model_id,
-            "response_format": response_format,
-            "beam_size": str(beam_size),
-            "vad_filter": "true" if vad_filter else "false",
-            "audio_encoding": "gzip",
-            "uncompressed_audio_bytes": str(len(original_audio)),
-        }
+        form_items: list[tuple[str, str]] = [
+            ("response_format", response_format),
+            ("beam_size", str(beam_size)),
+            ("vad_filter", "true" if vad_filter else "false"),
+            ("audio_encoding", "gzip"),
+            ("uncompressed_audio_bytes", str(len(original_audio))),
+        ]
+        if models:
+            form_items.extend(("models", model_id) for model_id in model_ids)
+            form: Any = form_items
+        else:
+            form = dict(form_items)
+            form["model"] = model_ids[0]
         if prompt:
-            form["prompt"] = prompt
+            if isinstance(form, list):
+                form.append(("prompt", prompt))
+            else:
+                form["prompt"] = prompt
         headers = {
             **self._headers,
             "Idempotency-Key": f"asr-{uuid4()}",

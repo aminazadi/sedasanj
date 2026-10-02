@@ -363,6 +363,25 @@ class UtteranceOut(BaseModel):
     t_start_ms: int
     t_end_ms: int
     text: str
+    source_text: str | None = None
+    uncertain: bool = False
+
+
+class CorrectionStatusOut(BaseModel):
+    id: UUID
+    status: Literal["queued", "running", "validating", "succeeded", "failed"]
+    trigger: Literal["automatic", "manual"]
+    mode: Literal["text_only", "audio_only", "two_stage"]
+    audio_models: list[str] = Field(default_factory=list)
+    text_models: list[str] = Field(default_factory=list)
+    provider_model: str | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    uncertain_items: list[dict[str, Any]] = Field(default_factory=list)
+    queued_at: datetime
+    started_at: datetime | None = None
+    provider_submitted_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class InsightsOut(BaseModel):
@@ -624,6 +643,9 @@ class CallDetail(CallSummary):
     corrected_transcript_at: datetime | None = None
     asr_model: str | None = None
     utterances: list[UtteranceOut] = Field(default_factory=list)
+    raw_utterances: list[UtteranceOut] = Field(default_factory=list)
+    speaker_labels: dict[int, str] = Field(default_factory=dict)
+    correction: CorrectionStatusOut | None = None
     insights: InsightsOut | None = None
     sales: SalesBlock | None = None
     tasks: list[TaskOut] = Field(default_factory=list)
@@ -885,6 +907,16 @@ class SettingsUpdate(BaseModel):
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     decision_route: Literal["native", "ninerouter", "typed"] | None = None
     embedding_route: Literal["native", "ninerouter"] | None = None
+    correction_enabled: bool | None = None
+    correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
+    correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
+    correction_text_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
+    correction_prompt: str | None = Field(default=None, min_length=20, max_length=20_000)
+    correction_strictness: Literal["strict", "balanced"] | None = None
+    correction_max_uncertain_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    correction_timeout_seconds: int | None = Field(default=None, ge=60, le=3600)
+    correction_max_retries: int | None = Field(default=None, ge=1, le=5)
+    correction_failure_policy: Literal["stop"] | None = None
 
 
 class ProviderModelOut(BaseModel):

@@ -2,6 +2,12 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Rebuilt transcript correction as a durable asynchronous pipeline with immutable raw transcripts, revision history, segment-level validation, deterministic idempotency, provider task tracking, retries, timeouts, and strict failure handling before downstream analysis.
+- Added the admin `?tab=correction` settings surface for automatic execution, two-stage mode, ordered local/9Router audio and text model fallbacks, correction prompt, validation limits, retries, timeout, failure policy, and a live staged path test.
+- Extended AISERVICE text processing with backward-compatible segment input, strict structured correction output, uncertain-item preservation, actual model and usage metadata, and mixed local/9Router ordered fallback lists.
+- Standardized all speech transcription through `/v1/audio/transcriptions`, removed fixed 30-second client-side audio slicing, and retained AISERVICE VAD processing for complete per-channel tracks.
+- Changed the call correction endpoint to return `202` with a durable correction run, exposed reload-safe correction state and errors, and made successful corrected revisions the official source for analysis, summaries, KPIs, and operator scoring without re-billing manual reruns.
+- Replaced the detached corrected-text panel with final transcript bubbles, added a URL-persistent raw/final selector, highlighted uncertain segments, and derived speaker labels only from a valid call direction with neutral channel labels otherwise.
 - Restricted assistant grounding to summaries retrieved from the vector index, removing full-transcript, lexical-search, graph, and aggregate-statistics fallbacks from model context.
 - Added accessible hover and keyboard-focus tooltips to the assistant export and temporary-chat controls.
 - Added UTF-8 text export to call details with speaker-separated transcript turns, timestamps, call metadata, and the corrected transcript when available.

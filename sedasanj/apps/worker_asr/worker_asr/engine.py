@@ -7,6 +7,7 @@ import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -22,6 +23,8 @@ class AsrSegment:
     t_start_ms: int
     t_end_ms: int
     text: str
+    confidence: float | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class AsrEngine(abc.ABC):
@@ -221,7 +224,23 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
             start_ms = int(float(item.get("start") or 0) * 1000)
             end_raw = item.get("end")
             end_ms = int(float(end_raw) * 1000) if end_raw is not None else duration
-            rows.append(AsrSegment(t_start_ms=start_ms, t_end_ms=max(end_ms, start_ms), text=text))
+            avg_logprob = item.get("avg_logprob")
+            confidence = None
+            if isinstance(avg_logprob, (int, float)):
+                confidence = max(0.0, min(1.0, 2.718281828 ** float(avg_logprob)))
+            rows.append(
+                AsrSegment(
+                    t_start_ms=start_ms,
+                    t_end_ms=max(end_ms, start_ms),
+                    text=text,
+                    confidence=confidence,
+                    metadata={
+                        key: item.get(key)
+                        for key in ("avg_logprob", "no_speech_prob", "compression_ratio")
+                        if item.get(key) is not None
+                    },
+                )
+            )
         if rows:
             return rows
     text = str(payload.get("text") or "").strip()
@@ -235,6 +254,12 @@ class VoiceSanjEngine(AsrEngine):
 
     def __init__(self, settings: Settings) -> None:
         self.model_name = settings.voicesanj_asr_model
+        self._models = (
+            settings.correction_audio_models
+            if settings.correction_enabled
+            and settings.correction_mode in {"audio_only", "two_stage"}
+            else [settings.voicesanj_asr_model]
+        )
         self.model_version = "voicesanj"
         self._client = VoiceSanjClient(
             settings.model_copy(
@@ -250,35 +275,19 @@ class VoiceSanjEngine(AsrEngine):
         )
 
     async def transcribe(self, path: Path) -> list[AsrSegment]:
-        duration = _duration_ms(path)
-        max_ms = 30 * 1000
-        if duration <= max_ms + 2_000:
-            return await self._transcribe_file(path)
-        rows: list[AsrSegment] = []
-        with tempfile.TemporaryDirectory(prefix="cbi-aiservice-") as tmp:
-            parts = await _split_wav(path, Path(tmp), seconds=max_ms // 1000)
-            for index, part in enumerate(parts):
-                offset = index * max_ms
-                for segment in await self._transcribe_file(part):
-                    rows.append(
-                        AsrSegment(
-                            t_start_ms=segment.t_start_ms + offset,
-                            t_end_ms=min(segment.t_end_ms + offset, duration),
-                            text=segment.text,
-                        )
-                    )
-        if not rows:
-            raise RuntimeError("AISERVICE returned empty text")
-        return rows
+        return await self._transcribe_file(path)
 
     async def _transcribe_file(self, path: Path) -> list[AsrSegment]:
         payload = await self._client.transcribe(
             path,
             model=self.model_name,
+            models=self._models if len(self._models) > 1 else None,
             response_format="verbose_json",
             beam_size=5,
             vad_filter=True,
         )
+        if payload.get("model"):
+            self.model_name = str(payload["model"])
         return _segments_from_whisper(payload, path)
 
 

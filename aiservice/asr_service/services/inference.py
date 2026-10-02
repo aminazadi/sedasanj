@@ -54,7 +54,10 @@ def _decode_whisper(engine, source, options):
  """Materialize the lazy segment iterator while its input stream is still alive."""
  iterator, info = engine.transcribe(source, **options)
  segments = [
-  {"id": index, "start": segment.start, "end": segment.end, "text": normalize(segment.text)}
+  {"id": index, "start": segment.start, "end": segment.end, "text": normalize(segment.text),
+   "avg_logprob": getattr(segment,"avg_logprob",None),
+   "no_speech_prob": getattr(segment,"no_speech_prob",None),
+   "compression_ratio": getattr(segment,"compression_ratio",None)}
   for index, segment in enumerate(iterator)
  ]
  return [segment for segment in segments if segment["text"]], info

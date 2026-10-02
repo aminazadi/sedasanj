@@ -161,6 +161,7 @@ export const STATUS_LABELS: Record<string, string> = {
   stored: "ذخیره‌شده",
   transcribing: "در حال پیاده‌سازی",
   transcribed: "پیاده‌سازی شد",
+  correcting: "در حال تصحیح متن",
   emotion_queued: "در صف تحلیل لحن",
   emotion_analyzing: "در حال تحلیل لحن",
   analyzing: "در حال تحلیل",

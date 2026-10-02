@@ -406,7 +406,10 @@ class TextCorrectionResultResponse(ApiSchema):
     model: str
     operation: Literal["correction"]
     corrected_text: str
-    uncertain_items: list[str]
+    segments: list[dict[str, Any]] = Field(default_factory=list)
+    uncertain_items: list[str | dict[str, Any]] = Field(default_factory=list)
+    finish_reason: str | None = None
+    usage: dict[str, Any] | None = None
 
 
 class MeetingMinutesResultResponse(ApiSchema):
@@ -424,6 +427,9 @@ class SegmentResponse(ApiSchema):
     start: float
     end: float
     text: str
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    compression_ratio: float | None = None
 
 
 class TranscriptionResponse(ApiSchema):

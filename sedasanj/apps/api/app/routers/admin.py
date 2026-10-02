@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -85,6 +88,7 @@ from app.services.platform import (
 )
 from app.services.provider_errors import ProviderError
 from app.services.tenant_provisioning import rollback_tenant
+from app.services.transcript_corrections import CorrectionClient, validate_result
 from app.services.voicesanj import VoiceSanjClient
 from worker_llm.client import available_prompt_versions
 
@@ -1064,6 +1068,13 @@ async def update_platform_settings(
     for key in ("asr_model", "llm_model", "chat_model"):
         if key in changes:
             changes[key] = str(changes[key]).strip()
+    for key in ("correction_audio_models", "correction_text_models"):
+        if key not in changes:
+            continue
+        normalized = [str(item).strip() for item in changes[key] if str(item).strip()]
+        if not normalized or len(normalized) != len(set(normalized)):
+            raise ApiError("invalid_request", f"{key} must contain unique model ids")
+        changes[key] = normalized
     denoiser_model = changes.get("audio_denoiser_model")
     if denoiser_model is not None and denoiser_model not in DENOISER_MODELS:
         raise ApiError("invalid_request", f"unknown denoiser model: {denoiser_model}")
@@ -1073,9 +1084,20 @@ async def update_platform_settings(
     for key, value in changes.items():
         row = await session.get(PlatformSetting, key)
         if row is None:
-            session.add(PlatformSetting(key=key, value=str(value)))
+            session.add(
+                PlatformSetting(
+                    key=key,
+                    value=(
+                        json.dumps(value, ensure_ascii=False)
+                        if isinstance(value, list)
+                        else str(value)
+                    ),
+                )
+            )
         else:
-            row.value = str(value)
+            row.value = (
+                json.dumps(value, ensure_ascii=False) if isinstance(value, list) else str(value)
+            )
             row.updated_at = datetime.now(UTC)
     if extract_prompt is not None:
         row = await session.get(PlatformSetting, EXTRACT_PROMPT_KEY)
@@ -1204,6 +1226,67 @@ async def list_provider_models(staff: StaffDep, session: StaffSession) -> list[P
             item.display_name.casefold(),
         ),
     )
+
+
+@router.post("/settings/test-correction")
+async def test_correction_path(
+    staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
+    runtime = await resolve_provider_settings(session)
+    stages: list[dict[str, str]] = []
+    source = [
+        {
+            "id": "connection-test-1",
+            "channel": 0,
+            "t_start_ms": 0,
+            "t_end_ms": 1500,
+            "text": "سلام وقت بخیر شماره سفارش ۱۲۳ است.",
+        }
+    ]
+    revision = SimpleNamespace(
+        text_models=runtime.correction_text_models,
+        idempotency_key=f"admin-correction-test-{uuid4()}",
+    )
+    client = CorrectionClient(runtime)
+    current_stage = "submit"
+    try:
+        task_id = await client.submit(revision, source, runtime.correction_prompt)
+        stages.append({"stage": "submit", "status": "succeeded"})
+        current_stage = "provider"
+        deadline = asyncio.get_running_loop().time() + 30
+        while True:
+            task = await client.status(task_id)
+            task_status = str(task.get("status") or "unknown")
+            if task_status in {"succeeded", "partially_succeeded"}:
+                stages.append({"stage": "provider", "status": task_status})
+                result = await client.result(task_id)
+                current_stage = "validation"
+                validate_result(
+                    source,
+                    result,
+                    max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
+                )
+                stages.append({"stage": "validation", "status": "succeeded"})
+                return {"status": "succeeded", "task_id": task_id, "stages": stages}
+            if task_status in {"failed", "cancelled"}:
+                stages.append({"stage": "provider", "status": task_status})
+                raise ApiError(
+                    "invalid_request",
+                    str(task.get("error") or task.get("error_code") or task_status),
+                )
+            if asyncio.get_running_loop().time() >= deadline:
+                stages.append({"stage": "provider", "status": task_status})
+                return {"status": "running", "task_id": task_id, "stages": stages}
+            await asyncio.sleep(1)
+    except ApiError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ApiError(
+            "invalid_request",
+            f"آزمایش مسیر تصحیح در مرحله {current_stage} ناموفق بود: {exc}",
+        ) from exc
+    finally:
+        await client.close()
 
 
 @router.get("/packages")
