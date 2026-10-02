@@ -10,6 +10,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Removed the typed at-mention query from the composer after selection, leaving only the structured attachment badge on the sent message.
+
+## 2026-10-02 — AMINAZADI
+
 - Persisted selected assistant context on user messages and displayed operator, conversation, date-range, and tool attachments inside the sent message with accessible high-contrast colors.
 
 ## 2026-10-02 — AMINAZADI
