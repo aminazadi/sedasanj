@@ -2,7 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
-- Restyled the single-call metric cards with the main navigation's green dotted texture, palette-aligned typography, and a soft white glow beneath each icon.
+- Restyled the single-call metric cards with a neutral dotted texture, palette-aligned typography, and background-free icons over a soft white glow.
 - Moved call follow-up tasks directly below the processing report on the single-call page.
 - Corrected the secure Asterisk setup list's RTL indentation and spacing so its text and numbering keep a consistent distance from the right edge.
 - Reduced and balanced the top spacing above the assistant conversation and archive tabs.

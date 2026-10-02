@@ -106,13 +106,13 @@ function MetricCard({
   return (
     <div className="call-metric-card p-4 transition duration-300 hover:-translate-y-0.5">
       <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
-        <span className="text-xs font-medium text-[#F2F0EF]">{label}</span>
-        <span className={`call-metric-icon flex h-10 w-10 items-center justify-center bg-[#F2F0EF] text-lg ${tones[tone]}`}>
+        <span className="text-xs font-medium text-slate-600">{label}</span>
+        <span className={`call-metric-icon flex h-10 w-10 items-center justify-center text-lg ${tones[tone]}`}>
           {icon}
         </span>
       </div>
-      <div className="relative z-10 text-2xl font-extrabold tracking-tight text-white">{value}</div>
-      <p className="relative z-10 mt-1 text-[11px] leading-5 text-[#F2F0EF]/75">{hint}</p>
+      <div className="relative z-10 text-2xl font-extrabold tracking-tight text-slate-900">{value}</div>
+      <p className="relative z-10 mt-1 text-[11px] leading-5 text-slate-500">{hint}</p>
     </div>
   );
 }
