@@ -330,8 +330,8 @@ function CallDetailSkeleton() {
         </div>
       </section>
 
-      <section className="grid items-start gap-4 lg:grid-cols-3">
-        <div className="card lg:col-span-2">
+      <section className="grid items-stretch gap-4 lg:grid-cols-3">
+        <div className="card h-full lg:col-span-2">
           <div className="mb-5 space-y-2">
             <SkeletonLine className="h-4 w-28" />
             <SkeletonLine className="h-3 w-48" />
@@ -1028,9 +1028,9 @@ export default function CallDetailPage() {
         </section>
       ) : null}
 
-      <section className="grid items-start gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          <div className="card">
+      <section className="grid items-stretch gap-4 lg:grid-cols-3">
+        <div className="h-full lg:col-span-2">
+          <div className="card h-full">
           <SectionTitle
             title="متن مکالمه"
             description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
