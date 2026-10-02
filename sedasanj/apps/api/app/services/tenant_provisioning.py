@@ -46,7 +46,7 @@ _CONTROL_ONLY = {
     "contact_leads",
 }
 _GLOBAL_REFERENCE = {"plans", "plan_versions"}
-SCHEMA_HEAD = "0024_hybrid_knowledge"
+SCHEMA_HEAD = "0031_apache_age_graph"
 
 
 def database_identifiers(tenant_id: UUID) -> tuple[str, str]:
@@ -216,7 +216,9 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
             await connection.execute(
                 text(f"GRANT SELECT ON ag_catalog.ag_graph TO {runtime_role}")
             )
-            await connection.execute(text(f"GRANT USAGE ON SCHEMA tenant_graph TO {runtime_role}"))
+            await connection.execute(
+                text(f"GRANT USAGE, CREATE ON SCHEMA tenant_graph TO {runtime_role}")
+            )
             await connection.execute(
                 text(
                     f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public "
@@ -230,6 +232,12 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
                 text(
                     f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
                     f"IN SCHEMA tenant_graph TO {runtime_role}"
+                )
+            )
+            await connection.execute(
+                text(
+                    f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph "
+                    f"TO {runtime_role}"
                 )
             )
             await connection.execute(

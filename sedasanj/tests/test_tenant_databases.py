@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.services.assistant_policy import PRIVACY_REFUSAL, must_refuse
-from app.services.tenant_provisioning import database_identifiers
+from app.services.tenant_provisioning import SCHEMA_HEAD, database_identifiers
 from app.services.tenant_secrets import decrypt_dsn, encrypt_dsn
 
 
@@ -18,6 +18,10 @@ def test_database_identifiers_are_deterministic_and_safe() -> None:
     assert role == "cbi_tenant_12345678123456781234567812345678_app"
     assert len(database) <= 63
     assert len(role) <= 63
+
+
+def test_tenant_schema_head_matches_latest_migration() -> None:
+    assert SCHEMA_HEAD == "0031_apache_age_graph"
 
 
 def test_production_requires_tenant_database_secrets() -> None:

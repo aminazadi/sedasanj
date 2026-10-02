@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added Apache AGE to the PostgreSQL 17 local-development image, initialized the shared knowledge graph through an idempotent migration, granted graph schema runtime privileges, and aligned isolated-tenant schema verification with the current migration head.
 - Rebuilt the organizational assistant as a scoped tool-driven agent with six read-only call, transcript, analytics, analysis, and operator-performance tools; live SSE execution timelines; persistent tool-run history; safe tenant/operator enforcement; structured planning fallback; and differentiated provider, indexing, and empty-result failures.
 - Activated hybrid transcript retrieval with revision-aware overlapping chunks, vector/full-text lookup, retry metadata and backoff, independent graph/vector health, admin knowledge diagnostics, and audited retry controls.
 - Extended AISERVICE chat request contracts for OpenAI-compatible assistant/tool messages, tool definitions, and tool-choice forwarding while preserving existing requests without tools.
