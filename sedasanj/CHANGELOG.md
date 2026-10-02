@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Removed the border, rounding, and padding around each operator score criterion row for a cleaner compact layout.
+
+## 2026-10-02 — AMINAZADI
+
 - Added inline searchable at-mentions for organization operators and previous conversations, with date-range and multi-tool selectors placed beside the assistant composer guide.
 
 ## 2026-10-02 — AMINAZADI
