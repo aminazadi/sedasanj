@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Fixed assistant knowledge health and retry handling so graph failures are counted, displayed, and retried alongside vector failures, and added an idempotent Apache AGE repair migration for databases that missed graph initialization.
 - Replaced assistant call-source cards with a compact responsive table whose rows expand as URL-persistent accordions for full metadata, summaries, classifications, and call navigation.
 - Replaced the assistant's compact call-source links with responsive detail cards and persisted tenant-scoped call metadata including numbers, direction, duration, status, extension, intent, sentiment, and summary for each cited call.
 - Rebuilt the calls list around URL-persistent status, direction, intent, sentiment, number, text, and Tehran-aware date filters with deterministic backend offset pagination, accurate totals, and direct reloadable page navigation.

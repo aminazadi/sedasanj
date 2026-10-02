@@ -79,3 +79,20 @@ def test_apache_age_migration_is_idempotent(
     assert any("GRANT USAGE, CREATE ON SCHEMA tenant_graph" in sql for sql in bind.statements)
     create_graph = [sql for sql in bind.statements if "create_graph" in sql]
     assert bool(create_graph) is not graph_exists
+
+
+@pytest.mark.parametrize("graph_exists", [False, True])
+def test_apache_age_repair_migration_is_idempotent(
+    graph_exists: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    migration = _load_migration("0032_repair_apache_age_graph.py")
+    bind = _AgeBind(graph_exists)
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert bind.statements[0] == "CREATE EXTENSION IF NOT EXISTS age"
+    assert any("GRANT USAGE ON SCHEMA ag_catalog" in sql for sql in bind.statements)
+    assert any("GRANT USAGE, CREATE ON SCHEMA tenant_graph" in sql for sql in bind.statements)
+    create_graph = [sql for sql in bind.statements if "create_graph" in sql]
+    assert bool(create_graph) is not graph_exists

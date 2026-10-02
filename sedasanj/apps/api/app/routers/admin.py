@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Query, Request, status
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings, normalize_api_key
@@ -1006,10 +1006,28 @@ async def assistant_knowledge_status(
     latest_error: str | None = None
     for tenant_id in await operational_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
+            index_status = case(
+                (
+                    or_(
+                        CallKnowledge.vector_status == "failed",
+                        CallKnowledge.graph_status == "failed",
+                    ),
+                    "failed",
+                ),
+                (
+                    and_(
+                        CallKnowledge.vector_status == "ready",
+                        CallKnowledge.graph_status == "ready",
+                    ),
+                    "ready",
+                ),
+                else_="pending",
+            ).label("index_status")
             rows = (
                 await tenant_session.execute(
-                    select(CallKnowledge.vector_status, func.count(CallKnowledge.call_id))
-                    .group_by(CallKnowledge.vector_status)
+                    select(index_status, func.count(CallKnowledge.call_id)).group_by(
+                        index_status
+                    )
                 )
             ).all()
             for state, count in rows:
@@ -1057,7 +1075,12 @@ async def retry_assistant_knowledge(
             if payload.call_id is not None:
                 stmt = stmt.where(CallKnowledge.call_id == payload.call_id)
             if payload.failed_only:
-                stmt = stmt.where(CallKnowledge.vector_status == "failed")
+                stmt = stmt.where(
+                    or_(
+                        CallKnowledge.vector_status == "failed",
+                        CallKnowledge.graph_status == "failed",
+                    )
+                )
             call_ids = (await tenant_session.execute(stmt.limit(100))).scalars().all()
             for call_id in call_ids:
                 await knowledge.index_call(tenant_session, tenant_id, call_id)
