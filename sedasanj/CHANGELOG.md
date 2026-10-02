@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Unified customer and admin cards through the shared card component, including sales KPI statistics, two-factor settings, API documentation, and call-detail surfaces, without applying the dotted texture globally.
 - Restored the original customer and admin card surfaces and limited the dotted texture to the existing intentionally textured components.
 - Bound every Jalali date-picker surface, border, neutral, primary, hover, selected, and focus state to the project's exact palette tokens and removed the browser's blue focus outline.
 - Aligned the Jalali date picker with the project's standard surface and neutral border tokens while reserving the primary color for navigation, hover, focus, today, and selected states.
