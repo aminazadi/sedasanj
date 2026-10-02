@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Removed the scroll-to-end button shadow and increased its spacing above the assistant prompt.
+
+## 2026-10-02 — AMINAZADI
+
 - Changed assistant-message text to black for stronger readability.
 
 ## 2026-10-02 — AMINAZADI
