@@ -3,9 +3,9 @@ import { Icon } from "@iconify/react";
 import alarmClockIcon from "@iconify/icons-fluent-emoji/alarm-clock";
 import calendarIcon from "@iconify/icons-fluent-emoji/calendar";
 import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
+import creditCardIcon from "@iconify/icons-fluent-emoji/credit-card";
 import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
 import officeBuildingIcon from "@iconify/icons-fluent-emoji/office-building";
-import purseIcon from "@iconify/icons-fluent-emoji/purse";
 import shoppingCartIcon from "@iconify/icons-fluent-emoji/shopping-cart";
 import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
 import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
@@ -20,7 +20,7 @@ export function Stat({ title, value, tone }: { title: string; value: string; ton
       : title.includes("دقیقه")
         ? stopwatchIcon
         : title === "اعتبار"
-          ? purseIcon
+          ? creditCardIcon
           : title.includes("درآمد")
             ? moneyBagIcon
             : title.includes("سفارش")

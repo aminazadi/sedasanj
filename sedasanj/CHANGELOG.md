@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Shortened the overview credit unit from «تومان» to «ت» and replaced the credit-card purse artwork with a credit card across customer and admin statistic cards.
 - Matched each chat bubble tail background to its parent bubble surface.
 - Enabled the admin-selectable 9Router route for conversation analysis and carried it through persisted settings into the analysis worker's synchronous AISERVICE proxy call.
 - Recognized AISERVICE models explicitly sourced from 9Router as remotely available even when their upstream owner is OpenAI, Codex, or another provider.

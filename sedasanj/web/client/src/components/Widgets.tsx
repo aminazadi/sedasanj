@@ -5,9 +5,9 @@ import barChartIcon from "@iconify/icons-fluent-emoji/bar-chart";
 import bullseyeIcon from "@iconify/icons-fluent-emoji/bullseye";
 import checkMarkButtonIcon from "@iconify/icons-fluent-emoji/check-mark-button";
 import clipboardIcon from "@iconify/icons-fluent-emoji/clipboard";
+import creditCardIcon from "@iconify/icons-fluent-emoji/credit-card";
 import fireIcon from "@iconify/icons-fluent-emoji/fire";
 import moneyBagIcon from "@iconify/icons-fluent-emoji/money-bag";
-import purseIcon from "@iconify/icons-fluent-emoji/purse";
 import robotIcon from "@iconify/icons-fluent-emoji/robot";
 import stopwatchIcon from "@iconify/icons-fluent-emoji/stopwatch";
 import telephoneIcon from "@iconify/icons-fluent-emoji/telephone";
@@ -26,7 +26,7 @@ export function Stat({ title, value, hint, tone }: { title: string; value: strin
   const icon = title.includes("دقیقه") || title.includes("SLA")
     ? stopwatchIcon
     : title.includes("اعتبار")
-      ? purseIcon
+      ? creditCardIcon
       : title.includes("ارزش فروش")
         ? moneyBagIcon
         : title.includes("تماس")

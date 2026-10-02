@@ -82,7 +82,7 @@ export default function Overview() {
       <div className={`grid gap-4 ${operator ? "md:grid-cols-3" : "md:grid-cols-5"}`}>
         {operator || !balance ? null : (
           <>
-            <Stat title="اعتبار (تومان)" value={fmt.toman(balance.toman)} />
+            <Stat title="اعتبار (ت)" value={`${fmt.int(balance.toman)} ت`} />
             <Stat title="اعتبار (دقیقه)" value={fmt.int(balance.minutes)} />
           </>
         )}
