@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Displayed each assistant-chat message time in Tehran time beneath its bubble alongside the compact message actions.
+
+## 2026-10-02 — AMINAZADI
+
 - Improved edit-mode action contrast with an outlined light cancel button and a warm-white primary submit button on user-message bubbles.
 
 ## 2026-10-02 — AMINAZADI

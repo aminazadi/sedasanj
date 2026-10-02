@@ -142,6 +142,12 @@ export const fmt = {
       timeStyle: "short",
       timeZone: "Asia/Tehran",
     }),
+  time: (iso: string) =>
+    new Date(iso).toLocaleTimeString("fa-IR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Tehran",
+    }),
   date: (iso: string) =>
     new Date(iso).toLocaleDateString("fa-IR-u-ca-persian", { timeZone: "Asia/Tehran" }),
   calendarDate: (value: string) => {
