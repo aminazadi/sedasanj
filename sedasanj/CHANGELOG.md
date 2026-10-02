@@ -10,6 +10,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Updated the assistant composer guidance to explain searchable operator and previous-conversation mentions plus the dedicated date-range and tool buttons.
+
+## 2026-10-02 — AMINAZADI
+
 - Generated concise Persian conversation titles with the assistant after the first successful response and applied the resulting title immediately to the conversation list.
 
 ## 2026-10-02 — AMINAZADI

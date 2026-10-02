@@ -285,7 +285,8 @@ function CallSources({ sources, expandedCallId, onToggle }: { sources: Assistant
 const promptGuides = [
   "برای ارسال، Ctrl + Enter را بزنید",
   "هوش مصنوعی می‌تواند خطا کند",
-  "برای منشن کردن اپراتور خاص یا زمان خاص و ... از @ استفاده کنید",
+  "برای جست‌وجو و انتخاب اپراتور یا گفتگوی قبلی، @ را تایپ کنید",
+  "بازه زمانی و ابزارهای موردنیاز را از دکمه‌های روبه‌رو انتخاب کنید",
 ];
 
 const emptyAttachments = (): AssistantMessageAttachments => ({
