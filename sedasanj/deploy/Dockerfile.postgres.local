@@ -1,6 +1,8 @@
 FROM pgvector/pgvector:0.8.0-pg17-bookworm
 
-ARG AGE_COMMIT=2db2f060c4c9265a14d40f007eb8c56febf31e4c
+ARG AGE_COMMIT=54905a09bf8462f22a87c3adfd2ab5752e5c1e71
+
+COPY deploy/postgres/healthcheck.sh /usr/local/bin/age-healthcheck
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -8,5 +10,6 @@ RUN apt-get update \
     && git clone https://github.com/apache/age.git /tmp/age \
     && git -C /tmp/age checkout "${AGE_COMMIT}" \
     && make -C /tmp/age install \
+    && chmod 0755 /usr/local/bin/age-healthcheck \
     && rm -rf /tmp/age /var/lib/apt/lists/* \
     && apt-get purge -y --auto-remove build-essential flex bison git libreadline-dev postgresql-server-dev-17 zlib1g-dev

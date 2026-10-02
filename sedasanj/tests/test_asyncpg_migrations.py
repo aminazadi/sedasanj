@@ -57,7 +57,7 @@ class _AgeBind:
         self.age_available = age_available
         self.statements: list[str] = []
 
-    def execute(self, statement: object) -> _ScalarResult:
+    def execute(self, statement: object, params: object = None) -> _ScalarResult:
         sql = str(statement)
         self.statements.append(sql)
         if "FROM pg_available_extensions" in sql:
@@ -145,3 +145,35 @@ def test_apache_age_migrations_allow_unavailable_extension(
     assert not any("CREATE EXTENSION" in sql for sql in bind.statements)
     assert not any("ag_catalog" in sql for sql in bind.statements)
     assert any("UPDATE platform_settings" in sql for sql in bind.statements) is updates_settings
+
+
+@pytest.mark.parametrize("graph_exists", [False, True])
+def test_apache_age_runtime_repair_is_idempotent(
+    graph_exists: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    migration = _load_migration("0037_repair_apache_age_runtime.py")
+    bind = _AgeBind(graph_exists)
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert "CREATE EXTENSION IF NOT EXISTS vector" in bind.statements
+    assert "CREATE EXTENSION IF NOT EXISTS age" in bind.statements
+    assert any("GRANT USAGE ON SCHEMA ag_catalog" in sql for sql in bind.statements)
+    assert any("RETURN 1" in sql and "ag_catalog.cypher" in sql for sql in bind.statements)
+    create_graph = [sql for sql in bind.statements if "create_graph" in sql]
+    assert bool(create_graph) is not graph_exists
+
+
+def test_knowledge_graph_labels_are_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration("0038_initialize_knowledge_graph_labels.py")
+    bind = _AgeBind(graph_exists=True)
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert sum("create_vlabel" in sql for sql in bind.statements) == 4
+    assert sum("create_elabel" in sql for sql in bind.statements) == 3
+    assert any("GRANT SELECT, INSERT, UPDATE, DELETE" in sql for sql in bind.statements)

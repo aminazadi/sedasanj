@@ -2,11 +2,14 @@ FROM pgvector/pgvector:0.8.0-pg16-bookworm@sha256:a132765ec351c65111b5b675928a3a
 
 ARG AGE_COMMIT=2db2f060c4c9265a14d40f007eb8c56febf31e4c
 
+COPY deploy/postgres/healthcheck.sh /usr/local/bin/age-healthcheck
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential ca-certificates flex bison git libreadline-dev postgresql-server-dev-16 zlib1g-dev \
     && git clone https://github.com/apache/age.git /tmp/age \
     && git -C /tmp/age checkout "${AGE_COMMIT}" \
     && make -C /tmp/age install \
+    && chmod 0755 /usr/local/bin/age-healthcheck \
     && rm -rf /tmp/age /var/lib/apt/lists/* \
     && apt-get purge -y --auto-remove build-essential flex bison git libreadline-dev postgresql-server-dev-16 zlib1g-dev

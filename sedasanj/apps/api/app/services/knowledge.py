@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import operational_tenant_ids, session_scope
 from app.models import Call, CallInsight, Transcript
+from app.services.apache_age import execute_cypher
 from app.services.platform import AISERVICE_ROUTES, effective_models
 
 
@@ -72,14 +73,7 @@ async def _index_graph(
             f"MERGE (c:Call {{id: {call_id}}}) MERGE (c)-[:EXPRESSED]->(s)"
         )
     for statement in statements:
-        await session.execute(
-            text(
-                "SELECT * FROM ag_catalog.cypher('tenant_graph', $$"
-                + statement
-                + " RETURN 1"
-                + "$$) AS (result ag_catalog.agtype)"
-            )
-        )
+        await execute_cypher(session, f"{statement} RETURN 1", ("result",))
 
 
 async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> None:
@@ -166,6 +160,56 @@ async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> N
     )
     if vector_status == "ready":
         await _index_transcript_chunks(session, call, tenant_id)
+
+
+def _without_graph_error(detail: str | None) -> str | None:
+    if not detail:
+        return None
+    if detail.startswith("graph: "):
+        return None
+    return detail.partition("; graph: ")[0].strip() or None
+
+
+async def retry_graph(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> bool:
+    call = await session.get(Call, call_id)
+    insight = await session.get(CallInsight, call_id)
+    if call is None or insight is None or call.tenant_id != tenant_id or not insight.summary:
+        return False
+    row = (
+        await session.execute(
+            text(
+                "SELECT operator_id, error_detail FROM call_knowledge "
+                "WHERE call_id = :call_id AND tenant_id = :tenant_id"
+            ),
+            {"call_id": call_id, "tenant_id": tenant_id},
+        )
+    ).one_or_none()
+    if row is None:
+        return False
+    operator_id = row[0]
+    error_detail = _without_graph_error(str(row[1]) if row[1] else None)
+    try:
+        async with session.begin_nested():
+            await _index_graph(session, call, insight, operator_id)
+        graph_status = "ready"
+    except Exception as exc:
+        graph_status = "failed"
+        graph_error = f"graph: {exc}"
+        error_detail = f"{error_detail}; {graph_error}" if error_detail else graph_error
+    await session.execute(
+        text(
+            "UPDATE call_knowledge SET graph_status = :graph_status, "
+            "error_detail = :error, updated_at = now() "
+            "WHERE call_id = :call_id AND tenant_id = :tenant_id"
+        ),
+        {
+            "graph_status": graph_status,
+            "error": error_detail[:4000] if error_detail else None,
+            "call_id": call_id,
+            "tenant_id": tenant_id,
+        },
+    )
+    return graph_status == "ready"
 
 
 def _chunks(content: str, size: int = 1200, overlap: int = 200) -> list[str]:
@@ -390,6 +434,27 @@ async def backfill_next() -> str:
     return "idle"
 
 
+async def backfill_graph_next() -> str:
+    for tenant_id in await operational_tenant_ids():
+        async with session_scope(tenant_id) as session:
+            call_id = (
+                await session.execute(
+                    text(
+                        "SELECT call_id FROM call_knowledge "
+                        "WHERE tenant_id = :tenant_id AND graph_status = 'failed' "
+                        "AND updated_at <= now() - interval '30 seconds' "
+                        "ORDER BY updated_at LIMIT 1"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+            ).scalar_one_or_none()
+            if call_id is not None:
+                ready = await retry_graph(session, tenant_id, UUID(str(call_id)))
+                status = "indexed" if ready else "failed"
+                return f"graph-{status}:{tenant_id}:{call_id}"
+    return "idle"
+
+
 async def graph_context(session: AsyncSession, call_ids: list[UUID]) -> str:
     if not call_ids:
         return ""
@@ -400,16 +465,9 @@ async def graph_context(session: AsyncSession, call_ids: list[UUID]) -> str:
         + "] RETURN c.id, type(r), properties(n) LIMIT 100"
     )
     async with session.begin_nested():
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT * FROM ag_catalog.cypher('tenant_graph', $$"
-                    + query
-                    + "$$) AS (call_id ag_catalog.agtype, relation ag_catalog.agtype, "
-                    "properties ag_catalog.agtype)"
-                )
-            )
-        ).all()
+        rows = await execute_cypher(
+            session, query, ("call_id", "relation", "properties")
+        )
     return "\n".join(
         f"تماس {call_id}: رابطه {relation} با {properties}"
         for call_id, relation, properties in rows

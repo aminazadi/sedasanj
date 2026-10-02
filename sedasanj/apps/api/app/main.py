@@ -12,7 +12,7 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.config import get_settings
-from app.db import assert_rls_enforced, dispose_engine
+from app.db import assert_database_runtime_ready, assert_rls_enforced, dispose_engine
 from app.errors import install_error_handlers
 from app.logging import configure_logging, log_context
 from app.metrics import http_request_seconds, http_requests_total
@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.service_name, settings.log_level)
     await assert_rls_enforced()
+    await assert_database_runtime_ready()
     await get_storage().ensure_bucket()
     yield
     await get_queue().close()

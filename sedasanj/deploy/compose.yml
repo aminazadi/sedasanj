@@ -170,11 +170,12 @@ services:
           echo "migrate: POSTGRES_PASSWORD is empty" >&2
           exit 1
         fi
+        until pg_isready -h postgres -U cbi -d cbi; do sleep 1; done
         echo "migrate: running alembic upgrade head"
         alembic upgrade head
 
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres: { condition: service_started }
     restart: "no"
     logging: *logging
 
@@ -391,12 +392,14 @@ services:
       - max_connections=${PG_MAX_CONNECTIONS:-100}
       - -c
       - work_mem=${PG_WORK_MEM:-8MB}
+      - -c
+      - shared_preload_libraries=age
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backup:/backup
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cbi -d cbi && psql -U cbi -d cbi -tAc \"SELECT 1 FROM pg_available_extensions WHERE name IN ('vector','age') GROUP BY 1 HAVING count(*) = 2\" | grep -q 1"]
+      test: ["CMD", "/usr/local/bin/age-healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 10

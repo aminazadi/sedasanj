@@ -8,11 +8,11 @@ import httpx
 from fastapi import APIRouter, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
-from sqlalchemy import text
 
 from app.config import get_settings, normalize_api_key
 from app.db import get_sessionmaker
 from app.errors import ApiError
+from app.services.apache_age import assert_age_ready
 from app.services.platform import resolve_provider_settings
 from app.services.storage import get_storage
 
@@ -26,7 +26,7 @@ async def healthz() -> dict[str, str]:
 
 async def _check_postgres() -> bool:
     async with get_sessionmaker()() as session:
-        await session.execute(text("SELECT 1"))
+        await assert_age_ready(session)
     return True
 
 

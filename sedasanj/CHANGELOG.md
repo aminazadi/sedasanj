@@ -3,6 +3,7 @@
 ## 2026-10-02 — AMINAZADI
 
 - Synchronized tenant schema verification with the live Alembic migration head and executed tenant upgrades through the worker's active Python environment to prevent false runtime revision mismatches.
+- Preloaded Apache AGE for every PostgreSQL connection, pinned local PostgreSQL 17 to its matching AGE release, initialized fixed graph labels under the database owner for safe non-superuser writes, added full graph readiness checks and repair migrations, centralized Cypher execution, and restored local-only retries for graph failures without resending content to the embedding provider.
 - Ensured manual transcript-correction requests always run the configured text model instead of silently copying the existing transcript when automatic correction is set to audio-only mode.
 
 - Added each transcript message's call-relative date and time beneath its bubble with an accessible copy action.

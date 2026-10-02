@@ -11,7 +11,7 @@ from app.db import dispose_engine
 from app.logging import configure_logging
 from app.metrics import start_metrics_server
 from app.services.identity_projection import dispatch_next as dispatch_identity_projection
-from app.services.knowledge import backfill_next
+from app.services.knowledge import backfill_graph_next, backfill_next
 from app.services.tenant_backups import backup_next_due, purge_expired
 from app.services.tenant_provisioning import (
     run_next_fleet_migration,
@@ -58,6 +58,9 @@ async def backup_tick(ctx: dict[str, Any]) -> str:
 
 async def knowledge_backfill_tick(ctx: dict[str, Any]) -> str:
     try:
+        graph_result = await backfill_graph_next()
+        if graph_result != "idle":
+            return graph_result
         return await backfill_next()
     except Exception:
         logger.exception("knowledge backfill failed")

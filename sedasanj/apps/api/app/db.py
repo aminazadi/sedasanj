@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.config import get_settings
+from app.services.apache_age import assert_age_ready
 from app.services.tenant_secrets import decrypt_dsn
 
 logger = logging.getLogger(__name__)
@@ -115,32 +116,26 @@ async def _tenant_engine(tenant_id: UUID) -> AsyncEngine | None:
             pool_pre_ping=True,
             pool_recycle=settings.tenant_database_pool_idle_seconds,
         )
-        async with engine.connect() as connection:
-            identity = (
-                await connection.execute(text("SELECT tenant_id FROM tenant_identity LIMIT 1"))
-            ).scalar_one_or_none()
-            if str(identity) != str(tenant_id):
-                await engine.dispose()
-                raise RuntimeError("tenant database identity mismatch")
-            extensions = set(
-                (
+        try:
+            async with engine.connect() as connection:
+                identity = (
                     await connection.execute(
-                        text(
-                            "SELECT extname FROM pg_extension "
-                            "WHERE extname IN ('vector', 'age')"
-                        )
+                        text("SELECT tenant_id FROM tenant_identity LIMIT 1")
                     )
-                ).scalars()
-            )
-            if extensions != {"vector", "age"}:
-                await engine.dispose()
-                raise RuntimeError("tenant database extensions are incomplete")
-            revision = (
-                await connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
-            ).scalar_one_or_none()
-            if expected_revision is not None and revision != expected_revision:
-                await engine.dispose()
-                raise RuntimeError("tenant database schema revision mismatch")
+                ).scalar_one_or_none()
+                if str(identity) != str(tenant_id):
+                    raise RuntimeError("tenant database identity mismatch")
+                await assert_age_ready(connection)
+                revision = (
+                    await connection.execute(
+                        text("SELECT version_num FROM alembic_version LIMIT 1")
+                    )
+                ).scalar_one_or_none()
+                if expected_revision is not None and revision != expected_revision:
+                    raise RuntimeError("tenant database schema revision mismatch")
+        except BaseException:
+            await engine.dispose()
+            raise
         _tenant_engines[tenant_id] = (engine, now, database_name)
         while len(_tenant_engines) > settings.tenant_database_max_pools:
             _, (old_engine, _, _) = _tenant_engines.popitem(last=False)
@@ -270,6 +265,11 @@ async def assert_rls_enforced() -> None:
     if get_settings().environment == "production":
         raise RuntimeError(message)
     logger.warning(message)
+
+
+async def assert_database_runtime_ready() -> None:
+    async with get_engine().connect() as connection:
+        await assert_age_ready(connection)
 
 
 async def ping() -> dict[str, Any]:

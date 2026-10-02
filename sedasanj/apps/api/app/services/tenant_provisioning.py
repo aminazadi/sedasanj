@@ -33,6 +33,7 @@ from app.models import (
     TenantDataMigration,
     TenantProvisioningJob,
 )
+from app.services.apache_age import assert_age_ready
 from app.services.tenant_secrets import encrypt_dsn
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
@@ -141,25 +142,7 @@ async def _verify_runtime_database(runtime_dsn: str, tenant_id: UUID) -> None:
                     "tenant runtime schema revision check failed: "
                     f"expected {SCHEMA_HEAD}, found {revision or 'none'}"
                 )
-            extensions = set(
-                (
-                    await connection.execute(
-                        text(
-                            "SELECT extname FROM pg_extension "
-                            "WHERE extname IN ('vector', 'age')"
-                        )
-                    )
-                ).scalars()
-            )
-            if extensions != {"vector", "age"}:
-                raise RuntimeError("tenant runtime extension check failed")
-            graph = (
-                await connection.execute(
-                    text("SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'tenant_graph'")
-                )
-            ).scalar_one_or_none()
-            if graph is None:
-                raise RuntimeError("tenant runtime graph check failed")
+            await assert_age_ready(connection)
     finally:
         await engine.dispose()
 
@@ -269,6 +252,7 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
                 )
             )
             await connection.execute(text(f"GRANT SELECT ON tenant_identity TO {runtime_role}"))
+            await assert_age_ready(connection)
     finally:
         await target.dispose()
 
