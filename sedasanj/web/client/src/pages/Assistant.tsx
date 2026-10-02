@@ -4,7 +4,7 @@ import { fmt, refreshSession, request, tokens } from "../api";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { ErrorBox, Loading } from "../components/Widgets";
-import type { ChatConversation, ChatMessage } from "../types";
+import type { AssistantToolRun, ChatConversation, ChatMessage } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 
 function TrashIcon() {
@@ -112,12 +112,31 @@ function IconTooltip({ label, children }: { label: string; children: ReactNode }
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ label = "در حال فکر کردن و دریافت نتیجه ..." }: { label?: string }) {
   return (
     <div className="flex h-8 items-center px-1" role="status" aria-live="polite">
-      <span className="assistant-thinking-text">در حال فکر کردن و دریافت نتیجه ...</span>
+      <span className="assistant-thinking-text">{label}</span>
     </div>
   );
+}
+
+function ToolTimeline({ runs, active }: { runs: AssistantToolRun[]; active: boolean }) {
+  const [open, setOpen] = useState(active);
+  useEffect(() => { if (active) setOpen(true); }, [active]);
+  if (!runs.length) return null;
+  const succeeded = runs.filter((run) => run.status === "succeeded").length;
+  return <div className="mb-3 border border-[#B2AC88] bg-white/70 text-xs text-[#4B6E48]" aria-live="polite">
+    <button type="button" className="flex w-full items-center justify-between gap-3 px-3 py-2 text-right font-bold" onClick={() => setOpen((current) => !current)} aria-expanded={open}>
+      <span>{active ? "در حال استفاده از ابزارها" : `${fmt.int(succeeded)} ابزار استفاده شد`}</span>
+      <span aria-hidden="true">{open ? "−" : "+"}</span>
+    </button>
+    {open ? <ol className="space-y-2 border-t border-[#B2AC88] px-3 py-2">
+      {runs.map((run) => <li key={run.tool_call_id} className="flex items-start gap-2">
+        <span className={`mt-0.5 inline-block h-2.5 w-2.5 shrink-0 ${run.status === "running" ? "animate-pulse bg-[#B2AC88]" : run.status === "succeeded" ? "bg-[#4B6E48]" : "bg-rose-600"}`} />
+        <span className="min-w-0"><span className="font-bold">{run.title}</span>{run.summary ? <span className="mr-2 text-[#898989]">{run.summary}</span> : run.status === "failed" ? <span className="mr-2 text-rose-700">اجرای ابزار ناموفق بود</span> : <span className="mr-2 text-[#898989]">در حال اجرا…</span>}</span>
+      </li>)}
+    </ol> : null}
+  </div>;
 }
 
 const promptGuides = [
@@ -169,6 +188,7 @@ export default function Assistant() {
   const [conversationsOpen, setConversationsOpen] = useState(false);
   const [conversationView, setConversationView] = useState<"active" | "archived">("active");
   const [confirmation, setConfirmation] = useState<{ action: "archive" | "delete"; item: ChatConversation } | null>(null);
+  const [phases, setPhases] = useState<Record<string, string>>({});
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -366,8 +386,13 @@ export default function Assistant() {
       const event = /^event: (.+)$/m.exec(frame)?.[1];
       const data = /^data: (.+)$/m.exec(frame)?.[1];
       if (!event || !data) return;
-      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage };
+      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string };
       const content = payload.content;
+      if (event === "phase" && payload.label) setPhases((current) => ({ ...current, [draftId]: payload.label as string }));
+      if ((event === "tool_started" || event === "tool_completed" || event === "tool_failed") && payload.tool_call_id && payload.name && payload.title) {
+        const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title, status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"), duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null, error_code: payload.error_code ?? null };
+        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, tool_runs: [...(item.tool_runs || []).filter((existing) => existing.tool_call_id !== run.tool_call_id), run] } : item));
+      }
       if (event === "delta" && content) {
         pendingText += content;
         scheduleTyping();
@@ -403,8 +428,8 @@ export default function Assistant() {
       setSending(true); setError(null);
       const active = ephemeral ? null : conversation ?? await create();
       const history = messages.filter((item) => item.status !== "running");
-      const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content: text.trim(), status: "succeeded", model: null, sources: null, created_at: new Date().toISOString() };
-      const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, created_at: new Date().toISOString() };
+      const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content: text.trim(), status: "succeeded", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+      const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
       setMessages((current) => [...current, optimistic, draftReply]); setText("");
       requestAnimationFrame(resizeInput);
       const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history);
@@ -474,7 +499,8 @@ export default function Assistant() {
         {messages.map((message) => {
           const user = message.role === "user";
           return <ConversationBubble key={message.id} side={user ? "user" : "assistant"}>
-              {message.status === "running" && !message.content ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
+              {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
+              {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <p className="whitespace-pre-wrap">{message.content}</p>}
               {message.sources?.length ? <div className="mt-3 border-t border-[#B2AC88] pt-2 text-xs text-[#898989]">{message.sources.map((source) => <Link className="ml-3 text-[#4B6E48]" key={source.call_id} to={`/calls/${source.call_id}`}>تماس {fmt.date(source.started_at)}</Link>)}</div> : null}
           </ConversationBubble>;
         })}

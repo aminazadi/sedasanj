@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { ErrorBox, Loading } from "../components/Widgets";
-import type { PlatformSettings, ProviderModel } from "../types";
+import type { AssistantKnowledgeStatus, PlatformSettings, ProviderModel } from "../types";
 
 const LLM_KINDS = new Set(["llm", "language", "chat", "text"]);
 const KIND_LABELS: Record<string, string> = {
@@ -13,10 +13,19 @@ const KIND_LABELS: Record<string, string> = {
   decision: "تصمیم‌گیری",
   embedding: "Embedding",
 };
-type SettingsTab = "connection" | "models" | "audio" | "correction" | "prompts" | "security";
+const ASSISTANT_TOOLS: Array<[string, string]> = [
+  ["search_calls", "جست‌وجوی تماس‌ها"],
+  ["get_call_details", "جزئیات تماس"],
+  ["search_transcripts", "جست‌وجوی متن مکالمات"],
+  ["get_call_analysis", "تحلیل تماس"],
+  ["get_call_analytics", "آمار تماس‌ها"],
+  ["get_operator_performance", "عملکرد اپراتورها"],
+];
+type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "اتصال AISERVICE" },
   { id: "models", label: "مدل‌ها و مسیرها" },
+  { id: "assistant", label: "ابزارهای دستیار" },
   { id: "audio", label: "پردازش صوت" },
   { id: "correction", label: "تصحیح متن" },
   { id: "prompts", label: "پرامپت‌ها" },
@@ -149,6 +158,16 @@ export default function Settings() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [testingCorrection, setTestingCorrection] = useState(false);
+  const [knowledge, setKnowledge] = useState<AssistantKnowledgeStatus | null>(null);
+  const [retryingKnowledge, setRetryingKnowledge] = useState(false);
+
+  async function loadKnowledge() {
+    try {
+      setKnowledge(await request<AssistantKnowledgeStatus>("/v1/admin/assistant/knowledge-status"));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function loadModels() {
     setLoadingModels(true);
@@ -173,6 +192,7 @@ export default function Settings() {
       })
       .catch((err) => setError(err.message));
   }, []);
+  useEffect(() => { if (activeTab === "assistant") void loadKnowledge(); }, [activeTab]);
 
   const asrModels = useMemo(
     () => models.filter((model) => model.kind === "asr"),
@@ -262,6 +282,13 @@ export default function Settings() {
           audio_enhancement_model: settings.audio_enhancement_model,
           analysis_concurrency: settings.analysis_concurrency,
         });
+      } else if (activeTab === "assistant") {
+        Object.assign(body, {
+          assistant_tool_mode: settings.assistant_tool_mode,
+          assistant_max_tool_calls: settings.assistant_max_tool_calls,
+          assistant_parallel_tools: settings.assistant_parallel_tools,
+          assistant_enabled_tools: settings.assistant_enabled_tools,
+        });
       } else if (activeTab === "correction") {
         Object.assign(body, {
           correction_enabled: settings.correction_enabled,
@@ -309,6 +336,20 @@ export default function Settings() {
       setError((err as Error).message);
     } finally {
       setTestingCorrection(false);
+    }
+  }
+
+  async function retryKnowledge() {
+    setRetryingKnowledge(true);
+    setError(null);
+    try {
+      const result = await request<{ processed: number }>("/v1/admin/assistant/knowledge-retry", { method: "POST", body: { failed_only: true } });
+      setNotice(`${fmt.int(result.processed)} رکورد دوباره پردازش شد.`);
+      await loadKnowledge();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRetryingKnowledge(false);
     }
   }
 
@@ -496,6 +537,29 @@ export default function Settings() {
           ))}
         </div>
       ) : null}
+
+      <section className={`${activeTab === "assistant" ? "" : "hidden"} space-y-5 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div>
+          <h2 className="font-bold text-slate-900">عامل ابزارمحور دستیار</h2>
+          <p className="mt-1 text-xs leading-6 text-slate-500">مدل فقط ابزارهای خواندنی و محدود را انتخاب می‌کند؛ کنترل tenant و سطح دسترسی داخل سرور اعمال می‌شود.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div><label className="label">حالت فراخوانی ابزار</label><select className="input" value={settings.assistant_tool_mode} onChange={(event) => setSettings({ ...settings, assistant_tool_mode: event.target.value as PlatformSettings["assistant_tool_mode"] })}><option value="auto">خودکار</option><option value="native">Native</option><option value="structured">Structured JSON</option></select></div>
+          <div><label className="label">حداکثر ابزار در هر پیام</label><input className="input" type="number" min="1" max="4" value={settings.assistant_max_tool_calls} onChange={(event) => setSettings({ ...settings, assistant_max_tool_calls: Number(event.target.value) })} /></div>
+          <div><label className="label">حداکثر اجرای هم‌زمان</label><input className="input" type="number" min="1" max="2" value={settings.assistant_parallel_tools} onChange={(event) => setSettings({ ...settings, assistant_parallel_tools: Number(event.target.value) })} /></div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {ASSISTANT_TOOLS.map(([id, label]) => <ToggleSwitch key={id} checked={settings.assistant_enabled_tools.includes(id)} onChange={(checked) => setSettings({ ...settings, assistant_enabled_tools: checked ? [...settings.assistant_enabled_tools, id] : settings.assistant_enabled_tools.filter((item) => item !== id) })} label={label} />)}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">آماده</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.ready || 0)}</strong></div>
+          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">در انتظار</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.pending || 0)}</strong></div>
+          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">ناموفق</span><strong className="mt-1 block text-lg text-rose-700">{fmt.int(knowledge?.failed || 0)}</strong></div>
+          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">قطعه متن</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.chunks || 0)}</strong></div>
+        </div>
+        {knowledge?.latest_error ? <p className="border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{knowledge.latest_error}</p> : null}
+        <button type="button" className="btn-ghost" disabled={retryingKnowledge || !knowledge?.failed} onClick={() => void retryKnowledge()}>{retryingKnowledge ? "در حال تلاش مجدد…" : "تلاش مجدد برای ایندکس‌های ناموفق"}</button>
+      </section>
 
       <section className={`${activeTab === "audio" ? "" : "hidden"} space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div className="flex items-start justify-between gap-4">

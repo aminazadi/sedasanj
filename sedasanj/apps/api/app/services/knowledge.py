@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import operational_tenant_ids, session_scope
-from app.models import Call, CallInsight
+from app.models import Call, CallInsight, Transcript
 from app.services.platform import AISERVICE_ROUTES, effective_models
 
 
@@ -120,7 +121,8 @@ async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> N
             await session.execute(
                 text(
                     "UPDATE call_knowledge SET embedding = CAST(:embedding AS vector), "
-                    "embedding_model = :model, vector_status = 'ready', indexed_at = now() "
+                    "embedding_model = :model, vector_status = 'ready', indexed_at = now(), "
+                    "attempt_count = 0, last_attempt_at = now(), next_retry_at = NULL "
                     "WHERE call_id = :call_id AND tenant_id = :tenant_id"
                 ),
                 {
@@ -133,6 +135,15 @@ async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> N
         vector_status = "ready"
     except Exception as exc:
         errors.append(f"vector: {exc}")
+        await session.execute(
+            text(
+                "UPDATE call_knowledge SET attempt_count = attempt_count + 1, "
+                "last_attempt_at = now(), next_retry_at = now() + "
+                "(LEAST(3600, 30 * power(2, LEAST(attempt_count, 7))) * interval '1 second') "
+                "WHERE call_id = :call_id AND tenant_id = :tenant_id"
+            ),
+            {"call_id": call_id, "tenant_id": tenant_id},
+        )
     try:
         async with session.begin_nested():
             await _index_graph(session, call, insight, operator_id)
@@ -153,6 +164,80 @@ async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> N
             "tenant_id": tenant_id,
         },
     )
+    if vector_status == "ready":
+        await _index_transcript_chunks(session, call, tenant_id)
+
+
+def _chunks(content: str, size: int = 1200, overlap: int = 200) -> list[str]:
+    text_value = " ".join(content.split())
+    if not text_value:
+        return []
+    values: list[str] = []
+    cursor = 0
+    while cursor < len(text_value):
+        values.append(text_value[cursor : cursor + size])
+        if cursor + size >= len(text_value):
+            break
+        cursor += size - overlap
+    return values[:100]
+
+
+async def _index_transcript_chunks(
+    session: AsyncSession, call: Call, tenant_id: UUID
+) -> None:
+    transcript = await session.get(Transcript, call.id)
+    if transcript is None:
+        return
+    content = transcript.corrected_text or transcript.full_text
+    chunks = _chunks(content)
+    if not chunks:
+        return
+    await session.execute(
+        text("DELETE FROM transcript_chunks WHERE call_id = :call_id AND tenant_id = :tenant_id"),
+        {"call_id": call.id, "tenant_id": tenant_id},
+    )
+    for ordinal, chunk in enumerate(chunks):
+        digest = hashlib.sha256(chunk.encode()).hexdigest()
+        try:
+            vector, model = await embed(chunk)
+            await session.execute(
+                text(
+                    "INSERT INTO transcript_chunks "
+                    "(tenant_id, call_id, ordinal, content, content_sha256, embedding, "
+                    "source_revision_id, embedding_model, vector_status, last_attempt_at) "
+                    "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, "
+                    "CAST(:embedding AS vector), :revision_id, :model, 'ready', now())"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "call_id": call.id,
+                    "ordinal": ordinal,
+                    "content": chunk,
+                    "digest": digest,
+                    "embedding": _vector_literal(vector),
+                    "revision_id": transcript.active_revision_id,
+                    "model": model,
+                },
+            )
+        except Exception as exc:
+            await session.execute(
+                text(
+                    "INSERT INTO transcript_chunks "
+                    "(tenant_id, call_id, ordinal, content, content_sha256, source_revision_id, "
+                    "vector_status, attempt_count, last_attempt_at, next_retry_at, error_detail) "
+                    "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, :revision_id, "
+                    "'failed', 1, now(), now() + interval '30 seconds', :error)"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "call_id": call.id,
+                    "ordinal": ordinal,
+                    "content": chunk,
+                    "digest": digest,
+                    "revision_id": transcript.active_revision_id,
+                    "error": str(exc)[:1000],
+                },
+            )
 
 
 async def vector_call_ids(
@@ -223,6 +308,57 @@ async def vector_call_context(
     ]
 
 
+async def vector_transcript_context(
+    session: AsyncSession,
+    tenant_id: UUID,
+    question: str,
+    limit: int,
+    operator_id: UUID | None,
+    call_id: UUID | None = None,
+) -> list[dict[str, object]]:
+    vector, model = await embed(question)
+    operator_join = ""
+    operator_clause = ""
+    if operator_id:
+        operator_join = (
+            "JOIN call_operator_assignments a ON a.call_id = c.id "
+            "AND a.tenant_id = c.tenant_id AND a.superseded_at IS NULL "
+        )
+        operator_clause = "AND a.operator_id = :operator_id"
+    call_clause = "AND t.call_id = :call_id" if call_id else ""
+    rows = await session.execute(
+        text(
+            "SELECT t.call_id, c.started_at, t.ordinal, t.content, "
+            "1 - (t.embedding <=> CAST(:embedding AS vector)) AS score "
+            "FROM transcript_chunks t "
+            "JOIN calls c ON c.id = t.call_id AND c.tenant_id = t.tenant_id "
+            f"{operator_join}"
+            "WHERE t.tenant_id = :tenant_id AND t.vector_status = 'ready' "
+            "AND t.embedding IS NOT NULL AND t.embedding_model = :model "
+            f"{operator_clause} {call_clause} "
+            "ORDER BY t.embedding <=> CAST(:embedding AS vector) LIMIT :limit"
+        ),
+        {
+            "tenant_id": tenant_id,
+            "operator_id": operator_id,
+            "call_id": call_id,
+            "model": model,
+            "embedding": _vector_literal(vector),
+            "limit": limit,
+        },
+    )
+    return [
+        {
+            "call_id": UUID(str(row.call_id)),
+            "started_at": row.started_at,
+            "ordinal": int(row.ordinal),
+            "content": str(row.content),
+            "score": float(row.score),
+        }
+        for row in rows
+    ]
+
+
 async def backfill_next() -> str:
     async with session_scope(None, staff=True) as control_session:
         models = await effective_models(control_session)
@@ -237,8 +373,12 @@ async def backfill_next() -> str:
                         "LEFT JOIN call_knowledge k ON k.call_id = i.call_id "
                         "WHERE i.tenant_id = :tenant_id AND i.summary IS NOT NULL "
                         "AND (k.call_id IS NULL OR k.vector_status <> 'ready' "
-                        "OR k.graph_status <> 'ready' "
-                        "OR k.embedding_model IS DISTINCT FROM :model) "
+                        "OR k.embedding_model IS DISTINCT FROM :model "
+                        "OR (EXISTS (SELECT 1 FROM transcripts tr WHERE tr.call_id = i.call_id) "
+                        "AND NOT EXISTS (SELECT 1 FROM transcript_chunks t "
+                        "WHERE t.call_id = i.call_id AND t.tenant_id = i.tenant_id "
+                        "AND t.vector_status = 'ready' AND t.embedding_model = :model))) "
+                        "AND (k.next_retry_at IS NULL OR k.next_retry_at <= now()) "
                         "ORDER BY c.created_at DESC LIMIT 1"
                     ),
                     {"tenant_id": tenant_id, "model": expected_model},

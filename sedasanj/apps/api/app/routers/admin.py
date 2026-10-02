@@ -13,13 +13,19 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings, normalize_api_key
-from app.db import resolve_tenant_for_job, routable_tenant_ids, session_scope
+from app.db import (
+    operational_tenant_ids,
+    resolve_tenant_for_job,
+    routable_tenant_ids,
+    session_scope,
+)
 from app.deps import PublicSession, StaffDep, StaffSession, SuperAdminDep, client_ip
 from app.errors import ApiError
 from app.models import (
     AnalysisRun,
     AuditEvent,
     Call,
+    CallKnowledge,
     Job,
     JobOutbox,
     LedgerEntry,
@@ -36,11 +42,13 @@ from app.models import (
     TenantDatabaseRegistry,
     TenantDataMigration,
     Transcript,
+    TranscriptChunk,
     User,
 )
 from app.schemas import (
     AuditEventOut,
     JobOut,
+    KnowledgeRetryRequest,
     LoginRequest,
     LoginStep,
     PackageCreate,
@@ -75,7 +83,16 @@ from app.security import (
     verify_password,
     verify_totp,
 )
-from app.services import audit, billing, outbox, processing_events, progress, queue, ratelimit
+from app.services import (
+    audit,
+    billing,
+    knowledge,
+    outbox,
+    processing_events,
+    progress,
+    queue,
+    ratelimit,
+)
 from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
 from app.services.platform import (
     EXTRACT_PROMPT_KEY,
@@ -977,6 +994,87 @@ async def _ensure_analysis_run(session: AsyncSession, tenant_id: UUID, call_id: 
 @router.get("/settings")
 async def get_platform_settings(staff: StaffDep, session: StaffSession) -> dict[str, object]:
     return await settings_public_view(session)
+
+
+@router.get("/assistant/knowledge-status")
+async def assistant_knowledge_status(
+    staff: StaffDep, session: StaffSession
+) -> dict[str, object]:
+    del staff
+    settings = await effective_models(session)
+    totals = {"ready": 0, "pending": 0, "failed": 0, "chunks": 0}
+    latest_error: str | None = None
+    for tenant_id in await operational_tenant_ids():
+        async with session_scope(tenant_id) as tenant_session:
+            rows = (
+                await tenant_session.execute(
+                    select(CallKnowledge.vector_status, func.count(CallKnowledge.call_id))
+                    .group_by(CallKnowledge.vector_status)
+                )
+            ).all()
+            for state, count in rows:
+                if state in totals:
+                    totals[state] += int(count)
+            totals["chunks"] += int(
+                (
+                    await tenant_session.execute(select(func.count(TranscriptChunk.id)))
+                ).scalar_one()
+            )
+            if latest_error is None:
+                latest_error = (
+                    await tenant_session.execute(
+                        select(CallKnowledge.error_detail)
+                        .where(CallKnowledge.error_detail.is_not(None))
+                        .order_by(CallKnowledge.updated_at.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+    return {
+        "embedding_model": settings["embedding_model"],
+        "embedding_route": settings["embedding_route"],
+        "embedding_configured": bool(settings["embedding_model"] and settings["api_key"]),
+        **totals,
+        "latest_error": latest_error[:500] if latest_error else None,
+    }
+
+
+@router.post("/assistant/knowledge-retry")
+async def retry_assistant_knowledge(
+    payload: KnowledgeRetryRequest,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, object]:
+    tenant_ids = await operational_tenant_ids()
+    if payload.tenant_id is not None:
+        if payload.tenant_id not in tenant_ids:
+            raise ApiError("not_found", "tenant not found")
+        tenant_ids = [payload.tenant_id]
+    queued = 0
+    for tenant_id in tenant_ids:
+        async with session_scope(tenant_id) as tenant_session:
+            stmt = select(CallKnowledge.call_id).where(CallKnowledge.tenant_id == tenant_id)
+            if payload.call_id is not None:
+                stmt = stmt.where(CallKnowledge.call_id == payload.call_id)
+            if payload.failed_only:
+                stmt = stmt.where(CallKnowledge.vector_status == "failed")
+            call_ids = (await tenant_session.execute(stmt.limit(100))).scalars().all()
+            for call_id in call_ids:
+                await knowledge.index_call(tenant_session, tenant_id, call_id)
+                queued += 1
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="assistant.knowledge_retry",
+        payload={
+            "tenant_id": str(payload.tenant_id) if payload.tenant_id else None,
+            "call_id": str(payload.call_id) if payload.call_id else None,
+            "processed": queued,
+        },
+        ip=client_ip(request),
+    )
+    return {"status": "completed", "processed": queued}
 
 
 @router.patch("/settings")

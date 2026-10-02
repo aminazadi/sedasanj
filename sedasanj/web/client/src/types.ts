@@ -197,7 +197,18 @@ export interface ChatMessage {
   status: string;
   model: string | null;
   sources: Array<{ call_id: string; started_at: string; summary: string | null }> | null;
+  tool_runs: AssistantToolRun[];
   created_at: string;
+}
+
+export interface AssistantToolRun {
+  tool_call_id: string;
+  name: string;
+  title: string;
+  status: "running" | "succeeded" | "failed";
+  duration_ms: number | null;
+  summary: string | null;
+  error_code: string | null;
 }
 
 export interface ProcessingEvent {

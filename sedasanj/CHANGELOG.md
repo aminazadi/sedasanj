@@ -2,6 +2,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Rebuilt the organizational assistant as a scoped tool-driven agent with six read-only call, transcript, analytics, analysis, and operator-performance tools; live SSE execution timelines; persistent tool-run history; safe tenant/operator enforcement; structured planning fallback; and differentiated provider, indexing, and empty-result failures.
+- Activated hybrid transcript retrieval with revision-aware overlapping chunks, vector/full-text lookup, retry metadata and backoff, independent graph/vector health, admin knowledge diagnostics, and audited retry controls.
+- Extended AISERVICE chat request contracts for OpenAI-compatible assistant/tool messages, tool definitions, and tool-choice forwarding while preserving existing requests without tools.
+- Added URL-persistent assistant settings for tool mode, execution limits, enabled tools, and live knowledge-index health without exposing provider secrets.
 - Rebuilt transcript correction as a durable asynchronous pipeline with immutable raw transcripts, revision history, segment-level validation, deterministic idempotency, provider task tracking, retries, timeouts, and strict failure handling before downstream analysis.
 - Added the admin `?tab=correction` settings surface for automatic execution, two-stage mode, ordered local/9Router audio and text model fallbacks, correction prompt, validation limits, retries, timeout, failure policy, and a live staged path test.
 - Extended AISERVICE text processing with backward-compatible segment input, strict structured correction output, uncertain-item preservation, actual model and usage metadata, and mixed local/9Router ordered fallback lists.

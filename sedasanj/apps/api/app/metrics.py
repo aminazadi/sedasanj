@@ -44,6 +44,15 @@ http_requests_total = Counter(
     "cbi_http_requests_total", "HTTP requests", ["method", "path", "status"]
 )
 http_request_seconds = Histogram("cbi_http_request_seconds", "HTTP latency", ["method", "path"])
+assistant_tool_calls_total = Counter(
+    "cbi_assistant_tool_calls_total", "Assistant tool executions", ["tool", "status"]
+)
+assistant_tool_seconds = Histogram(
+    "cbi_assistant_tool_seconds", "Assistant tool execution latency", ["tool"]
+)
+assistant_agent_turns_total = Counter(
+    "cbi_assistant_agent_turns_total", "Assistant planning turns", ["mode", "result"]
+)
 
 
 def start_metrics_server(settings: Settings) -> None:

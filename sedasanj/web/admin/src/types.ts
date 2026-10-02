@@ -128,6 +128,10 @@ export interface PlatformSettings {
   chat_route: "durable" | "synchronous" | "ninerouter";
   decision_route: "native" | "ninerouter" | "typed";
   embedding_route: "native" | "ninerouter";
+  assistant_tool_mode: "auto" | "native" | "structured";
+  assistant_max_tool_calls: number;
+  assistant_parallel_tools: number;
+  assistant_enabled_tools: string[];
   correction_enabled: boolean;
   correction_mode: "text_only" | "audio_only" | "two_stage";
   correction_audio_models: string[];
@@ -138,6 +142,17 @@ export interface PlatformSettings {
   correction_timeout_seconds: number;
   correction_max_retries: number;
   correction_failure_policy: "stop";
+}
+
+export interface AssistantKnowledgeStatus {
+  embedding_model: string;
+  embedding_route: string;
+  embedding_configured: boolean;
+  ready: number;
+  pending: number;
+  failed: number;
+  chunks: number;
+  latest_error: string | null;
 }
 
 export interface AudioProcessingModel {

@@ -161,6 +161,20 @@ class LlmClient(abc.ABC):
     async def close(self) -> None:
         return None
 
+    async def complete_with_tools(
+        self,
+        system: str,
+        user: str,
+        tools: list[dict[str, Any]],
+        *,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        raise ProviderError(
+            "llm_tools_unsupported",
+            "مدل انتخاب‌شده فراخوانی Native ابزار را پشتیبانی نمی‌کند.",
+            retryable=False,
+        )
+
     async def stream(
         self, system: str, user: str, *, json_object: bool = True, model: str | None = None
     ) -> AsyncIterator[str]:
@@ -292,6 +306,37 @@ class LlamaClient(LlmClient):
         if last_error is not None:
             raise last_error
         raise RuntimeError("all llama-server endpoints failed without an error")
+
+    async def complete_with_tools(
+        self,
+        system: str,
+        user: str,
+        tools: list[dict[str, Any]],
+        *,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        body = {
+            "model": model or self._model,
+            "temperature": 0.2,
+            "max_tokens": self._max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "tools": tools,
+            "tool_choice": "auto",
+        }
+        base = next(self._cycle)
+        response = await self._client.post(f"{base}/v1/chat/completions", json=body)
+        classified = classify_http(response.status_code, response.text, kind="llm")
+        if classified is not None:
+            raise classified
+        payload = response.json()
+        inspect_payload(payload, kind="llm")
+        message = payload.get("choices", [{}])[0].get("message")
+        if not isinstance(message, dict):
+            raise ProviderError("llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد.")
+        return message
 
     @staticmethod
     async def _stream_response(response: httpx.Response) -> AsyncIterator[str]:
@@ -432,6 +477,46 @@ class VoiceSanjChatClient(LlmClient):
             raise ProviderError("llm_provider_empty", "سرویس هوش مصنوعی پاسخ متنی برنگرداند.")
         return content
 
+    async def complete_with_tools(
+        self,
+        system: str,
+        user: str,
+        tools: list[dict[str, Any]],
+        *,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        body = self._request_body(system, user, model=model)
+        body["tools"] = tools
+        body["tool_choice"] = "auto"
+        if self._path == "/v1/chat/tasks":
+            identity = json.dumps(body, ensure_ascii=False, sort_keys=True)
+            key = "cbi-tools-" + hashlib.sha256(
+                f"{self._request_namespace}:{identity}".encode()
+            ).hexdigest()
+            task_id = await self.submit_task(body, idempotency_key=key)
+            deadline = time.monotonic() + self._poll_timeout
+            while time.monotonic() < deadline:
+                status = await self.task_status(task_id)
+                if status.get("status") == "succeeded":
+                    payload = await self.task_result_payload(task_id)
+                    choices = payload.get("choices")
+                    message = choices[0].get("message") if isinstance(choices, list) and choices else None
+                    if isinstance(message, dict):
+                        return message
+                    break
+                if status.get("status") in {"failed", "cancelled", "partially_succeeded"}:
+                    break
+                await asyncio.sleep(self._poll_interval)
+            raise ProviderError("llm_provider_response", "فراخوانی ابزار توسط مدل کامل نشد.")
+        response = await self._client.post(f"{self._base}{self._path}", json=body)
+        self._check_response(response, expected=200)
+        payload = response.json()
+        choices = payload.get("choices") if isinstance(payload, dict) else None
+        message = choices[0].get("message") if isinstance(choices, list) and choices else None
+        if not isinstance(message, dict):
+            raise ProviderError("llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد.")
+        return message
+
     def _request_body(
         self, system: str, user: str, *, model: str | None = None
     ) -> dict[str, Any]:
@@ -505,17 +590,7 @@ class VoiceSanjChatClient(LlmClient):
             ) from exc
 
     async def task_result(self, task_id: str) -> tuple[str, int]:
-        path = f"{self._base}/v1/tasks/{task_id}/result"
-        response = await self._client.get(path)
-        if response.status_code == 409:
-            raise ProviderError(
-                "llm_result_pending", "نتیجه هنوز آماده دریافت نیست.", retryable=True
-            )
-        self._check_response(response, expected=200)
-        result = response.json()
-        inspect_payload(result, kind="llm")
-        if not isinstance(result, dict):
-            raise ProviderError("llm_provider_response", "نتیجه سرویس نامعتبر است.")
+        result = await self.task_result_payload(task_id)
         choices = result.get("choices")
         message = (
             choices[0].get("message")
@@ -528,6 +603,20 @@ class VoiceSanjChatClient(LlmClient):
         usage = result.get("usage")
         tokens = int(usage.get("completion_tokens") or 0) if isinstance(usage, dict) else 0
         return content, tokens
+
+    async def task_result_payload(self, task_id: str) -> dict[str, Any]:
+        path = f"{self._base}/v1/tasks/{task_id}/result"
+        response = await self._client.get(path)
+        if response.status_code == 409:
+            raise ProviderError(
+                "llm_result_pending", "نتیجه هنوز آماده دریافت نیست.", retryable=True
+            )
+        self._check_response(response, expected=200)
+        result = response.json()
+        inspect_payload(result, kind="llm")
+        if not isinstance(result, dict):
+            raise ProviderError("llm_provider_response", "نتیجه سرویس نامعتبر است.")
+        return result
 
     @staticmethod
     def _check_response(response: httpx.Response, *, expected: int) -> None:

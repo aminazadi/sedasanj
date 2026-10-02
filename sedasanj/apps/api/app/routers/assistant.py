@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -12,9 +12,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import session_scope
 from app.deps import OperatorDep, OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
+    AssistantToolRun,
     AssistantUsage,
     Call,
     ChatConversation,
@@ -38,7 +40,9 @@ from app.schemas import (
     ScoreRubricOut,
 )
 from app.services import (
+    assistant_agent,
     assistant_policy,
+    assistant_tools,
     audit,
     commerce,
     entitlements,
@@ -54,6 +58,7 @@ from app.services.platform import (
 from worker_llm.client import build_client
 
 router = APIRouter(prefix="/v1", tags=["call assistant"])
+logger = logging.getLogger(__name__)
 
 DEFAULT_CRITERIA = [
     {"title": "برخورد حرفه‌ای", "description": "لحن محترمانه و حرفه‌ای", "weight": 20, "levels": ["رفتار نامناسب یا توهین‌آمیز", "لحن ضعیف و غیرحرفه‌ای", "رفتار قابل‌قبول اما معمولی", "محترمانه و حرفه‌ای", "کاملاً حرفه‌ای، محترمانه و مسئولانه"]},
@@ -251,7 +256,25 @@ async def list_messages(conversation_id: UUID, principal: OperatorDep, session: 
     assert principal.tenant_id is not None
     await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     rows = (await session.execute(select(ChatMessage).where(ChatMessage.conversation_id == conversation_id, ChatMessage.tenant_id == principal.tenant_id).order_by(ChatMessage.created_at))).scalars().all()
-    return [ChatMessageOut.model_validate(row) for row in rows]
+    message_ids = [row.id for row in rows if row.role == "assistant"]
+    tool_rows = (
+        await session.execute(
+            select(AssistantToolRun)
+            .where(AssistantToolRun.assistant_message_id.in_(message_ids))
+            .order_by(AssistantToolRun.started_at)
+        )
+    ).scalars().all() if message_ids else []
+    by_message: dict[UUID, list[dict[str, Any]]] = {}
+    for run in tool_rows:
+        if run.assistant_message_id is None:
+            continue
+        by_message.setdefault(run.assistant_message_id, []).append(_tool_run_payload(run))
+    return [
+        ChatMessageOut.model_validate(row).model_copy(
+            update={"tool_runs": by_message.get(row.id, [])}
+        )
+        for row in rows
+    ]
 
 
 async def _sources(
@@ -414,6 +437,15 @@ def _ephemeral_history(payload: EphemeralChatMessageCreate) -> str:
     return "\n".join(history)
 
 
+def _enabled_assistant_tools(settings: dict[str, str]) -> set[str]:
+    try:
+        values = json.loads(settings.get("assistant_enabled_tools", "[]"))
+    except json.JSONDecodeError:
+        values = []
+    enabled = {str(value) for value in values if str(value) in assistant_tools.TOOL_BY_NAME}
+    return enabled or set(assistant_tools.TOOL_BY_NAME)
+
+
 async def _reserve_assistant_usage(
     session: Any, tenant_id: UUID, user_id: UUID
 ) -> tuple[entitlements.Entitlements, AssistantUsage]:
@@ -469,28 +501,73 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         usage.message_id = assistant_message.id
         await session.flush()
         return ChatMessageOut.model_validate(assistant_message)
-    sources, context = await _sources(
-        session,
-        principal.tenant_id,
-        conversation.call_id,
-        payload.content,
-        entitlement.assistant_source_limit,
-        principal,
-    )
-    if not context:
-        assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content="دادهٔ کافی و قابل‌دسترسی برای پاسخ به این پرسش پیدا نشد.", status="insufficient_evidence", sources=[])
-        session.add(assistant_message)
-        await session.flush()
-        usage.status = "succeeded"
-        usage.message_id = assistant_message.id
-        return ChatMessageOut.model_validate(assistant_message)
     models = await effective_models(session)
     runtime = await resolve_provider_settings(session)
     model = entitlement.assistant_model or models["chat_model"]
+    stored_runs: list[AssistantToolRun] = []
+    sources: list[dict[str, Any]] = []
     try:
         client = build_client(runtime, request_namespace=str(user_message.id), purpose="chat")
         try:
-            answer = await client.complete(await _assistant_system_prompt(session), _assistant_input(payload.content, context, await _chat_history(session, principal.tenant_id, principal.id, conversation.id, payload.content)), json_object=False, model=model)
+            system_prompt = await _assistant_system_prompt(session)
+            history = await _chat_history(
+                session, principal.tenant_id, principal.id, conversation.id, payload.content
+            )
+            plan = await assistant_agent.plan(
+                client,
+                system_prompt,
+                payload.content,
+                history,
+                model=model,
+                enabled=_enabled_assistant_tools(models),
+                mode=models.get("assistant_tool_mode", "auto"),
+            )
+            plan = assistant_agent.AgentPlan(
+                plan.answer,
+                plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
+            )
+            if plan.tool_calls:
+                results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
+                seen: set[str] = set()
+                for planned in plan.tool_calls:
+                    marker = assistant_tools.fingerprint(planned.name, planned.arguments)
+                    if marker in seen:
+                        continue
+                    seen.add(marker)
+                    run = AssistantToolRun(
+                        tenant_id=principal.tenant_id,
+                        conversation_id=conversation.id,
+                        user_message_id=user_message.id,
+                        tool_call_id=planned.id,
+                        tool_name=planned.name,
+                        status="running",
+                        arguments=planned.arguments,
+                    )
+                    session.add(run)
+                    await session.flush()
+                    stored_runs.append(run)
+                    try:
+                        result, duration_ms = await _execute_planned_tool(
+                            planned, principal, conversation.call_id
+                        )
+                        results.append((planned, result))
+                        run.status = "succeeded"
+                        run.duration_ms = duration_ms
+                        run.result_preview = assistant_tools.preview(result)
+                    except Exception:
+                        logger.exception("assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
+                        run.status = "failed"
+                        run.error_code = "tool_failed"
+                    run.completed_at = datetime.now(UTC)
+                sources = _tool_sources(results)
+                answer = await client.complete(
+                    system_prompt,
+                    assistant_agent.final_input(payload.content, history, results),
+                    json_object=False,
+                    model=model,
+                )
+            else:
+                answer = plan.answer or ""
         finally:
             await client.close()
         status_value = "succeeded"
@@ -502,15 +579,60 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
     conversation.updated_at = datetime.now(UTC)
     session.add(assistant_message)
     await session.flush()
+    for run in stored_runs:
+        run.assistant_message_id = assistant_message.id
     usage.status = "succeeded" if status_value == "succeeded" else "failed"
     usage.message_id = assistant_message.id
     await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.message", payload={"conversation_id": str(conversation.id), "sources": len(sources)}, ip=client_ip(request))
     await session.flush()
-    return ChatMessageOut.model_validate(assistant_message)
+    return ChatMessageOut.model_validate(assistant_message).model_copy(
+        update={"tool_runs": [_tool_run_payload(run) for run in stored_runs]}
+    )
 
 
 def _sse(event: str, payload: dict[str, Any]) -> bytes:
-    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n".encode()
+    return f"event: {event}\ndata: {json.dumps({'version': 1, **payload}, ensure_ascii=False, default=str)}\n\n".encode()
+
+
+def _tool_run_payload(run: AssistantToolRun) -> dict[str, Any]:
+    return {
+        "tool_call_id": run.tool_call_id,
+        "name": run.tool_name,
+        "title": assistant_tools.title(run.tool_name),
+        "status": run.status,
+        "duration_ms": run.duration_ms,
+        "summary": (run.result_preview or {}).get("summary"),
+        "error_code": run.error_code,
+    }
+
+
+def _tool_sources(results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]]) -> list[dict[str, Any]]:
+    sources: dict[str, dict[str, Any]] = {}
+    for _call, result in results:
+        for item in result.get("items", []):
+            if not isinstance(item, dict) or not item.get("call_id"):
+                continue
+            call_id = str(item["call_id"])
+            sources[call_id] = {
+                "call_id": call_id,
+                "started_at": item.get("started_at"),
+                "summary": item.get("summary") or item.get("snippet"),
+            }
+    return list(sources.values())
+
+
+async def _execute_planned_tool(
+    planned: assistant_agent.PlannedToolCall,
+    principal: Any,
+    bound_call_id: UUID | None,
+) -> tuple[dict[str, Any], int]:
+    assert principal.tenant_id is not None
+    async with session_scope(principal.tenant_id) as tool_session:
+        return await assistant_tools.execute(
+            planned.name,
+            planned.arguments,
+            assistant_tools.ToolContext(tool_session, principal, bound_call_id),
+        )
 
 
 @router.post("/assistant/ephemeral/messages/stream")
@@ -531,18 +653,6 @@ async def stream_ephemeral_message(
             raise ApiError("not_found", "call not found")
         await operator_scope.assert_call_visible_canonical(session, call, principal)
     refused = assistant_policy.must_refuse(payload.content, principal.role)
-    if refused:
-        sources: list[dict[str, Any]] = []
-        context = ""
-    else:
-        sources, context = await _sources(
-            session,
-            principal.tenant_id,
-            payload.call_id,
-            payload.content,
-            entitlement.assistant_source_limit,
-            principal,
-        )
     system_prompt = await _assistant_system_prompt(session)
     history = _ephemeral_history(payload)
 
@@ -550,13 +660,11 @@ async def stream_ephemeral_message(
         answer = ""
         status_value = "succeeded"
         model: str | None = None
+        sources: list[dict[str, Any]] = []
+        public_runs: list[dict[str, Any]] = []
         try:
             if refused:
                 answer = assistant_policy.PRIVACY_REFUSAL
-                status_value = "insufficient_evidence"
-                yield _sse("delta", {"content": answer})
-            elif not context:
-                answer = "دادهٔ کافی و قابل‌دسترسی برای پاسخ به این پرسش پیدا نشد."
                 status_value = "insufficient_evidence"
                 yield _sse("delta", {"content": answer})
             else:
@@ -569,15 +677,69 @@ async def stream_ephemeral_message(
                     purpose="chat",
                 )
                 try:
-                    async for chunk in client.stream(
+                    yield _sse("phase", {"phase": "planning", "label": "در حال بررسی درخواست"})
+                    plan = await assistant_agent.plan(
+                        client,
                         system_prompt,
-                        _assistant_input(payload.content, context, history),
-                        json_object=False,
+                        payload.content,
+                        history,
                         model=model,
-                    ):
-                        answer += chunk
-                        yield _sse("delta", {"content": chunk})
-                        await asyncio.sleep(0)
+                        enabled=_enabled_assistant_tools(models),
+                        mode=models.get("assistant_tool_mode", "auto"),
+                    )
+                    plan = assistant_agent.AgentPlan(
+                        plan.answer,
+                        plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
+                    )
+                    if plan.tool_calls:
+                        yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
+                        results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
+                        seen: set[str] = set()
+                        for planned in plan.tool_calls:
+                            marker = assistant_tools.fingerprint(planned.name, planned.arguments)
+                            if marker in seen:
+                                continue
+                            seen.add(marker)
+                            started = {
+                                "tool_call_id": planned.id,
+                                "name": planned.name,
+                                "title": assistant_tools.title(planned.name),
+                                "status": "running",
+                            }
+                            public_runs.append(started)
+                            yield _sse("tool_started", started)
+                            try:
+                                result, duration_ms = await _execute_planned_tool(
+                                    planned, principal, payload.call_id
+                                )
+                                results.append((planned, result))
+                                completed = {
+                                    **started,
+                                    "status": "succeeded",
+                                    "duration_ms": duration_ms,
+                                    "summary": assistant_tools.result_summary(result),
+                                }
+                                public_runs[-1] = completed
+                                yield _sse("tool_completed", completed)
+                            except Exception:
+                                logger.exception("ephemeral assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
+                                failed = {**started, "status": "failed", "error_code": "tool_failed"}
+                                public_runs[-1] = failed
+                                yield _sse("tool_failed", failed)
+                        yield _sse("tool_batch_completed", {"count": len(public_runs)})
+                        sources = _tool_sources(results)
+                        yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
+                        async for chunk in client.stream(
+                            system_prompt,
+                            assistant_agent.final_input(payload.content, history, results),
+                            json_object=False,
+                            model=model,
+                        ):
+                            answer += chunk
+                            yield _sse("delta", {"content": chunk})
+                    else:
+                        answer = plan.answer or ""
+                        yield _sse("delta", {"content": answer})
                 finally:
                     await client.close()
             if not answer.strip():
@@ -604,6 +766,7 @@ async def stream_ephemeral_message(
             status=status_value,
             model=model,
             sources=sources,
+            tool_runs=public_runs,
             created_at=datetime.now(UTC),
         )
         yield _sse("done", {"message": message.model_dump(mode="json")})
@@ -627,18 +790,6 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
     session.add(user_message)
     await session.flush()
     refused = assistant_policy.must_refuse(payload.content, principal.role)
-    if refused:
-        sources: list[dict[str, Any]] = []
-        context = ""
-    else:
-        sources, context = await _sources(
-            session,
-            principal.tenant_id,
-            conversation.call_id,
-            payload.content,
-            entitlement.assistant_source_limit,
-            principal,
-        )
     system_prompt = await _assistant_system_prompt(session)
     chat_history = await _chat_history(
         session, principal.tenant_id, principal.id, conversation.id, payload.content
@@ -648,13 +799,11 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
         answer = ""
         status_value = "succeeded"
         model: str | None = None
+        sources: list[dict[str, Any]] = []
+        stored_runs: list[AssistantToolRun] = []
         try:
             if refused:
                 answer = assistant_policy.PRIVACY_REFUSAL
-                status_value = "insufficient_evidence"
-                yield _sse("delta", {"content": answer})
-            elif not context:
-                answer = "دادهٔ کافی و قابل‌دسترسی برای پاسخ به این پرسش پیدا نشد."
                 status_value = "insufficient_evidence"
                 yield _sse("delta", {"content": answer})
             else:
@@ -665,10 +814,74 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                     runtime, request_namespace=str(user_message.id), purpose="chat"
                 )
                 try:
-                    async for chunk in client.stream(system_prompt, _assistant_input(payload.content, context, chat_history), json_object=False, model=model):
-                        answer += chunk
-                        yield _sse("delta", {"content": chunk})
-                        await asyncio.sleep(0)
+                    yield _sse("phase", {"phase": "planning", "label": "در حال بررسی درخواست"})
+                    plan = await assistant_agent.plan(
+                        client,
+                        system_prompt,
+                        payload.content,
+                        chat_history,
+                        model=model,
+                        enabled=_enabled_assistant_tools(models),
+                        mode=models.get("assistant_tool_mode", "auto"),
+                    )
+                    plan = assistant_agent.AgentPlan(
+                        plan.answer,
+                        plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
+                    )
+                    if plan.tool_calls:
+                        yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
+                        results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
+                        seen: set[str] = set()
+                        for planned in plan.tool_calls:
+                            marker = assistant_tools.fingerprint(planned.name, planned.arguments)
+                            if marker in seen:
+                                continue
+                            seen.add(marker)
+                            run = AssistantToolRun(
+                                tenant_id=principal.tenant_id,
+                                conversation_id=conversation.id,
+                                user_message_id=user_message.id,
+                                tool_call_id=planned.id,
+                                tool_name=planned.name,
+                                status="running",
+                                arguments=planned.arguments,
+                            )
+                            session.add(run)
+                            await session.flush()
+                            stored_runs.append(run)
+                            yield _sse("tool_started", _tool_run_payload(run))
+                            try:
+                                result, duration_ms = await _execute_planned_tool(
+                                    planned, principal, conversation.call_id
+                                )
+                                results.append((planned, result))
+                                run.status = "succeeded"
+                                run.duration_ms = duration_ms
+                                run.result_preview = assistant_tools.preview(result)
+                            except Exception:
+                                logger.exception("assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
+                                run.status = "failed"
+                                run.error_code = "tool_failed"
+                            run.completed_at = datetime.now(UTC)
+                            await session.flush()
+                            yield _sse(
+                                "tool_completed" if run.status == "succeeded" else "tool_failed",
+                                _tool_run_payload(run),
+                            )
+                        yield _sse("tool_batch_completed", {"count": len(stored_runs)})
+                        sources = _tool_sources(results)
+                        yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
+                        async for chunk in client.stream(
+                            system_prompt,
+                            assistant_agent.final_input(payload.content, chat_history, results),
+                            json_object=False,
+                            model=model,
+                        ):
+                            answer += chunk
+                            yield _sse("delta", {"content": chunk})
+                    else:
+                        answer = plan.answer or ""
+                        yield _sse("delta", {"content": answer})
                 finally:
                     await client.close()
             if not answer.strip():
@@ -682,10 +895,15 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
         conversation.updated_at = datetime.now(UTC)
         session.add(assistant_message)
         await session.flush()
+        for run in stored_runs:
+            run.assistant_message_id = assistant_message.id
         usage.status = "failed" if status_value == "failed" else "succeeded"
         usage.message_id = assistant_message.id
         await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.message", payload={"conversation_id": str(conversation.id), "sources": len(sources)}, ip=client_ip(request))
         await session.flush()
-        yield _sse("done", {"message": ChatMessageOut.model_validate(assistant_message).model_dump(mode="json")})
+        message = ChatMessageOut.model_validate(assistant_message).model_copy(
+            update={"tool_runs": [_tool_run_payload(run) for run in stored_runs]}
+        )
+        yield _sse("done", {"message": message.model_dump(mode="json")})
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

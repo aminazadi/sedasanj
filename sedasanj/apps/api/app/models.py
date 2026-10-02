@@ -842,6 +842,42 @@ class ChatMessage(Base):
     __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "created_at"),)
 
 
+class AssistantToolRun(Base):
+    __tablename__ = "assistant_tool_runs"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_message_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    assistant_message_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="SET NULL")
+    )
+    tool_call_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    tool_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    result_preview: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "tool_call_id", name="assistant_tool_runs_call_key"),
+        Index("idx_assistant_tool_runs_message", "user_message_id", "started_at"),
+    )
+
+
 class TranscriptChunk(Base):
     __tablename__ = "transcript_chunks"
 
@@ -858,6 +894,15 @@ class TranscriptChunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Any | None] = mapped_column(VectorType())
+    source_revision_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("transcript_revisions.id", ondelete="SET NULL")
+    )
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    vector_status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'pending'"))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    next_retry_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    error_detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (UniqueConstraint("call_id", "ordinal"),)
@@ -882,6 +927,9 @@ class CallKnowledge(Base):
     graph_status: Mapped[str] = mapped_column(String(24), nullable=False)
     indexed_at: Mapped[datetime | None] = mapped_column(TSTZ)
     error_detail: Mapped[str | None] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    next_retry_at: Mapped[datetime | None] = mapped_column(TSTZ)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
@@ -1802,6 +1850,7 @@ TENANT_TABLES: tuple[str, ...] = (
     "operator_call_scores",
     "chat_conversations",
     "chat_messages",
+    "assistant_tool_runs",
     "transcript_chunks",
     "call_knowledge",
     "follow_up_tasks",

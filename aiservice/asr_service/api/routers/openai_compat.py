@@ -13,10 +13,20 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from asr_service.domain.catalog import CATALOG
-from asr_service.infrastructure.failures import record_failure
+from asr_service.infrastructure.ninerouter import (
+    NineRouterError,
+    cached_models,
+    configured_model,
+)
 from asr_service.infrastructure.storage import MODEL_DIR
-from asr_service.infrastructure.ninerouter import NineRouterError, cached_models, configured_model
-from asr_service.services.task_queue import IdempotencyConflict, enqueue, fingerprint, get_by_key, get_task, public_task
+from asr_service.services.task_queue import (
+    IdempotencyConflict,
+    enqueue,
+    fingerprint,
+    get_by_key,
+    get_task,
+    public_task,
+)
 
 from ..dependencies import Principal, authorize, require_access
 from ..schemas.common import ChatTaskErrorResponse
@@ -32,6 +42,8 @@ class ChatMessage(BaseModel):
     role: str
     content: str | list[dict[str, Any]] | None = None
     name: str | None = None
+    tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -48,13 +60,17 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: float | None = Field(default=0, ge=-2, le=2)
     frequency_penalty: float | None = Field(default=0, ge=-2, le=2)
     user: str | None = None
+    tools: list[dict[str, Any]] | None = Field(default=None, max_length=32)
+    tool_choice: str | dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def bounded_text_only_input(self):
         total = 0
         for message in self.messages:
+            if message.role not in {"system", "user", "assistant", "tool"}:
+                raise ValueError("Unsupported chat message role")
             if not isinstance(message.content, (str, type(None))):
-                raise ValueError("This local model supports text message content only")
+                raise TypeError("This local model supports text message content only")
             total += len(message.content or "")
         if total > 24000:
             raise ValueError("Total message content must not exceed 24000 characters")
@@ -91,13 +107,16 @@ class AsyncChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=64)
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_tokens: int = Field(default=1024, ge=1, le=4096)
+    tools: list[dict[str, Any]] | None = Field(default=None, max_length=32)
+    tool_choice: str | dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_messages(self):
-        if any(m.role not in {"system", "user"} or not isinstance(m.content, str)
+        if any(m.role not in {"system", "user", "assistant", "tool"}
+               or not isinstance(m.content, (str, type(None)))
                for m in self.messages):
-            raise ValueError("Only text messages with system or user roles are supported")
-        if sum(len(m.content) for m in self.messages) > 24000:
+            raise ValueError("Only OpenAI-compatible text and tool messages are supported")
+        if sum(len(m.content or "") for m in self.messages) > 24000:
             raise ValueError("Total message content must not exceed 24000 characters")
         return self
 
@@ -129,8 +148,12 @@ def create_chat_task(
             chat_task_error(400, "invalid_idempotency_key", "Idempotency-Key must be 1 to 200 characters")
     if not installed_llm(body.model) and not get_by_key(idempotency_key, principal.key_id):
         chat_task_error(404, "model_unavailable", "The requested text model is not installed")
+    options = {"temperature": body.temperature, "max_tokens": body.max_tokens, "stream": False}
+    if body.tools:
+        options["tools"] = body.tools
+        options["tool_choice"] = body.tool_choice or "auto"
     data = {"messages": [m.model_dump(exclude_none=True) for m in body.messages],
-            "options": {"temperature": body.temperature, "max_tokens": body.max_tokens, "stream": False}}
+            "options": options}
     try:
         task, _ = enqueue(
             "chat_async", models=[body.model], input_data=data, response_format="json",
@@ -293,6 +316,9 @@ async def create_completion(
         "presence_penalty": body.presence_penalty,
         "frequency_penalty": body.frequency_penalty,
     }
+    if body.tools:
+        options["tools"] = body.tools
+        options["tool_choice"] = body.tool_choice or "auto"
     options = {key: value for key, value in options.items() if value is not None}
     try:
         task, _ = await run_in_threadpool(

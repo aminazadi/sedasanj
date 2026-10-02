@@ -531,6 +531,7 @@ class ChatMessageOut(BaseModel):
     status: str
     model: str | None = None
     sources: list[dict[str, Any]] | None = None
+    tool_runs: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -907,6 +908,19 @@ class SettingsUpdate(BaseModel):
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     decision_route: Literal["native", "ninerouter", "typed"] | None = None
     embedding_route: Literal["native", "ninerouter"] | None = None
+    assistant_tool_mode: Literal["auto", "native", "structured"] | None = None
+    assistant_max_tool_calls: int | None = Field(default=None, ge=1, le=4)
+    assistant_parallel_tools: int | None = Field(default=None, ge=1, le=2)
+    assistant_enabled_tools: list[
+        Literal[
+            "search_calls",
+            "get_call_details",
+            "search_transcripts",
+            "get_call_analysis",
+            "get_call_analytics",
+            "get_operator_performance",
+        ]
+    ] | None = Field(default=None, min_length=1, max_length=6)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
     correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
@@ -917,6 +931,12 @@ class SettingsUpdate(BaseModel):
     correction_timeout_seconds: int | None = Field(default=None, ge=60, le=3600)
     correction_max_retries: int | None = Field(default=None, ge=1, le=5)
     correction_failure_policy: Literal["stop"] | None = None
+
+
+class KnowledgeRetryRequest(BaseModel):
+    tenant_id: UUID | None = None
+    call_id: UUID | None = None
+    failed_only: bool = True
 
 
 class ProviderModelOut(BaseModel):
