@@ -17,13 +17,11 @@ from app.errors import ApiError
 from app.models import (
     AssistantUsage,
     Call,
-    CallInsight,
     ChatConversation,
     ChatMessage,
     OperatorCallScore,
     OperatorScoreRubric,
     Tenant,
-    Transcript,
 )
 from app.schemas import (
     ChatConversationCreate,
@@ -264,49 +262,39 @@ async def _sources(
     source_limit: int,
     principal: Any,
 ) -> tuple[list[dict[str, Any]], str]:
-    stmt = select(Call, Transcript, CallInsight).join(Transcript, (Transcript.call_id == Call.id) & (Transcript.tenant_id == tenant_id)).outerjoin(CallInsight, (CallInsight.call_id == Call.id) & (CallInsight.tenant_id == tenant_id)).where(Call.tenant_id == tenant_id)
-    if call_id is not None:
-        stmt = stmt.where(Call.id == call_id)
-    else:
-        vector_ids: list[UUID] = []
-        try:
-            vector_ids = await knowledge.vector_call_ids(
-                session,
-                tenant_id,
-                question,
-                source_limit,
-                principal.id if operator_scope.is_operator(principal) else None,
-            )
-        except Exception:
-            vector_ids = []
-        terms = [term for term in question.split() if len(term) > 2][:8]
-        if vector_ids:
-            stmt = stmt.where(Call.id.in_(vector_ids))
-        elif terms:
-            stmt = stmt.where(func.to_tsvector("simple", Transcript.full_text).op("@@")(func.websearch_to_tsquery("simple", " ".join(terms))))
-    stmt = operator_scope.apply_operator_scope(stmt, principal)
-    rows = (
-        await session.execute(
-            stmt.order_by(Call.started_at.desc()).limit(source_limit)
+    try:
+        rows = await knowledge.vector_call_context(
+            session,
+            tenant_id,
+            question,
+            source_limit,
+            principal.id if operator_scope.is_operator(principal) else None,
+            call_id,
         )
-    ).all()
+    except Exception:
+        rows = []
     sources: list[dict[str, Any]] = []
     context: list[str] = []
-    for call, transcript, insight in rows:
-        excerpt = transcript.corrected_text or transcript.full_text
-        excerpt = excerpt[:3500]
-        sources.append({"call_id": str(call.id), "started_at": call.started_at.isoformat(), "summary": insight.summary if insight else None})
-        context.append(f"[تماس {call.id} در {call.started_at.isoformat()}]\nخلاصه: {(insight.summary if insight else '')}\nمتن: {excerpt}")
-    try:
-        graph = await knowledge.graph_context(session, [call.id for call, _, _ in rows])
-    except Exception:
-        graph = ""
-    if graph:
-        context.append(f"[روابط گراف دانش]\n{graph}")
-    totals_stmt = select(func.count(func.distinct(Call.id)), func.coalesce(func.avg(OperatorCallScore.total_score), 0)).outerjoin(OperatorCallScore, (OperatorCallScore.call_id == Call.id) & (OperatorCallScore.tenant_id == tenant_id) & (OperatorCallScore.status == "succeeded")).where(Call.tenant_id == tenant_id)
-    totals = await session.execute(operator_scope.apply_operator_scope(totals_stmt, principal))
-    call_count, average_score = totals.one()
-    context.append(f"[آمار جاری سازمان]\nتعداد تماس‌ها: {int(call_count)}\nمیانگین امتیاز عملکرد: {round(float(average_score), 1) if call_count else 'نامشخص'}")
+    for row in rows:
+        started_at = row["started_at"]
+        started_at_value = (
+            started_at.isoformat()
+            if hasattr(started_at, "isoformat")
+            else str(started_at)
+        )
+        call_id_value = str(row["call_id"])
+        summary = str(row["summary"])
+        sources.append(
+            {
+                "call_id": call_id_value,
+                "started_at": started_at_value,
+                "summary": summary,
+            }
+        )
+        context.append(
+            f"[خلاصهٔ بازیابی‌شده از ایندکس برداری تماس {call_id_value} "
+            f"در {started_at_value}]\n{summary}"
+        )
     return sources, "\n\n".join(context)
 
 

@@ -182,6 +182,47 @@ async def vector_call_ids(
     return [UUID(str(value)) for value in rows.scalars()]
 
 
+async def vector_call_context(
+    session: AsyncSession,
+    tenant_id: UUID,
+    question: str,
+    limit: int,
+    operator_id: UUID | None,
+    call_id: UUID | None = None,
+) -> list[dict[str, object]]:
+    vector, model = await embed(question)
+    operator_clause = "AND k.operator_id = :operator_id" if operator_id else ""
+    call_clause = "AND k.call_id = :call_id" if call_id else ""
+    rows = await session.execute(
+        text(
+            "SELECT k.call_id, c.started_at, k.summary "
+            "FROM call_knowledge k "
+            "JOIN calls c ON c.id = k.call_id AND c.tenant_id = k.tenant_id "
+            "WHERE k.tenant_id = :tenant_id "
+            "AND k.vector_status = 'ready' AND k.embedding IS NOT NULL "
+            "AND k.embedding_model = :model "
+            f"{operator_clause} {call_clause} "
+            "ORDER BY k.embedding <=> CAST(:embedding AS vector) LIMIT :limit"
+        ),
+        {
+            "tenant_id": tenant_id,
+            "operator_id": operator_id,
+            "call_id": call_id,
+            "model": model,
+            "embedding": _vector_literal(vector),
+            "limit": limit,
+        },
+    )
+    return [
+        {
+            "call_id": UUID(str(row.call_id)),
+            "started_at": row.started_at,
+            "summary": str(row.summary),
+        }
+        for row in rows
+    ]
+
+
 async def backfill_next() -> str:
     async with session_scope(None, staff=True) as control_session:
         models = await effective_models(control_session)
