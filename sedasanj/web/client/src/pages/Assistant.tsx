@@ -56,6 +56,16 @@ function TemporaryChatIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5">
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
 function SendIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="h-5 w-5">
@@ -391,6 +401,26 @@ export default function Assistant() {
     } catch (err) { setError((err as Error).message); }
     finally { setSending(false); }
   }
+  function exportMessages() {
+    const completedMessages = messages.filter((message) => message.status !== "running" && message.content.trim());
+    if (!completedMessages.length) return;
+    const heading = ephemeral ? "چت موقت" : conversation?.title?.trim() || "گفتگوی جدید";
+    const transcript = completedMessages.map((message) => {
+      const role = message.role === "user" ? "کاربر" : "دستیار";
+      const timestamp = new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(message.created_at));
+      return `${role} - ${timestamp}\n${message.content.trim()}`;
+    }).join("\n\n--------------------\n\n");
+    const safeTitle = heading.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "conversation";
+    const blob = new Blob(["\uFEFF", `${heading}\n\n${transcript}\n`], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeTitle}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
     const archived = Boolean(item.archived_at);
@@ -427,7 +457,10 @@ export default function Assistant() {
       </button>
     </aside>
     <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0">
-      <button type="button" className={`absolute left-3 top-3 z-20 inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] md:left-4 md:top-4 ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" title="چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
+      <div className="absolute left-3 top-3 z-20 flex gap-2 md:left-4 md:top-4">
+        <button type="button" className={`inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" title="چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
+        <button type="button" className="inline-flex h-11 w-11 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50" onClick={exportMessages} aria-label="خروجی متن پیام‌ها" title="خروجی متن پیام‌ها" disabled={!messages.some((message) => message.status !== "running" && message.content.trim())}><DownloadIcon /></button>
+      </div>
       <div className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7">
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
         {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}

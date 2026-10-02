@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added UTF-8 text export for completed messages in persistent, archived, and temporary assistant conversations.
 - Shortened the overview credit unit from «تومان» to «ت» and replaced the credit-card purse artwork with a credit card across customer and admin statistic cards.
 - Matched each chat bubble tail background to its parent bubble surface.
 - Enabled the admin-selectable 9Router route for conversation analysis and carried it through persisted settings into the analysis worker's synchronous AISERVICE proxy call.
