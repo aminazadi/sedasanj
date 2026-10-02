@@ -345,9 +345,10 @@ export default function Assistant() {
   const [contextOptions, setContextOptions] = useState<AssistantContextOptions | null>(null);
   const [attachments, setAttachments] = useState<AssistantMessageAttachments>(emptyAttachments);
   const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionTab, setMentionTab] = useState<"operators" | "conversations" | "dates" | "tools">(() => {
+  const [mentionAnchor, setMentionAnchor] = useState<number | null>(null);
+  const [mentionTab, setMentionTab] = useState<"mentions" | "dates" | "tools">(() => {
     const value = search.get("attach_tab");
-    return value === "operators" || value === "conversations" || value === "dates" || value === "tools" ? value : "operators";
+    return value === "dates" || value === "tools" ? value : "mentions";
   });
 
   function scrollToEnd() {
@@ -375,7 +376,7 @@ export default function Assistant() {
     }, { replace: true });
   }
 
-  function selectMentionTab(tab: "operators" | "conversations" | "dates" | "tools") {
+  function selectMentionTab(tab: "mentions" | "dates" | "tools") {
     setMentionTab(tab);
     setSearch((current) => {
       const next = new URLSearchParams(current);
@@ -727,6 +728,21 @@ export default function Assistant() {
   }
   const attachmentCount = attachments.conversation_ids.length + attachments.tool_names.length + (attachments.operator_id ? 1 : 0) + (attachments.from_date && attachments.to_date ? 1 : 0);
   const selectedOperator = contextOptions?.operators.find((item) => item.id === attachments.operator_id);
+  const mentionStart = mentionAnchor ?? -1;
+  const mentionQuery = mentionStart >= 0 && text[mentionStart] === "@" && !text.slice(mentionStart + 1).includes("\n") ? text.slice(mentionStart + 1).trim().toLocaleLowerCase("fa") : "";
+  const mentionActive = mentionStart >= 0 && text[mentionStart] === "@" && text.slice(mentionStart + 1).length <= 80 && !text.slice(mentionStart + 1).includes("\n");
+  const matchingOperators = isOrgAdmin(session?.role) ? (contextOptions?.operators || []).filter((item) => `${item.label} ${item.extension || ""}`.toLocaleLowerCase("fa").includes(mentionQuery)) : [];
+  const matchingConversations = (contextOptions?.conversations || []).filter((item) => item.id !== conversation?.id && item.label.toLocaleLowerCase("fa").includes(mentionQuery));
+  function completeMention(label: string) {
+    if (!mentionActive) return;
+    setText(`${text.slice(0, mentionStart)}@${label} `);
+    setMentionAnchor(null);
+    setMentionOpen(false);
+    requestAnimationFrame(() => {
+      resizeInput();
+      inputRef.current?.focus();
+    });
+  }
   function toggleListAttachment(field: "conversation_ids" | "tool_names", value: string) {
     setAttachments((current) => ({
       ...current,
@@ -818,34 +834,24 @@ export default function Assistant() {
       {showScrollToEnd ? <button type="button" className="absolute bottom-[7rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
       <form className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
         {mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
-          <div className="flex overflow-x-auto border-b border-[#B2AC88] bg-[#F2F0EF] p-1" role="tablist">
-            {isOrgAdmin(session?.role) ? <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "operators" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("operators")}>اپراتور</button> : null}
-            <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "conversations" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("conversations")}>گفتگوی قبلی</button>
-            <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "dates" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("dates")}>بازه زمانی</button>
-            <button type="button" className={`px-3 py-2 text-xs font-bold ${mentionTab === "tools" ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => selectMentionTab("tools")}>ابزارها</button>
-            <button type="button" className="mr-auto px-3 py-2 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button>
-          </div>
+          <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-3 py-2"><strong className="text-xs text-[#4B6E48]">{mentionTab === "mentions" ? `نتایج برای @${mentionQuery}` : mentionTab === "dates" ? "انتخاب بازه زمانی" : "انتخاب ابزارها"}</strong><button type="button" className="px-2 py-1 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button></div>
           <div className="space-y-1 p-2">
-            {mentionTab === "operators" && isOrgAdmin(session?.role) ? contextOptions?.operators.map((item) => <button key={item.id} type="button" className={`flex w-full items-center justify-between px-3 py-2 text-right text-sm ${attachments.operator_id === item.id ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => setAttachments((current) => ({ ...current, operator_id: current.operator_id === item.id ? null : item.id }))}><span>{item.label}</span><span className="text-xs opacity-70">{item.extension ? `داخلی ${item.extension}` : "اپراتور"}</span></button>) : null}
-            {mentionTab === "conversations" ? contextOptions?.conversations.filter((item) => item.id !== conversation?.id).map((item) => <button key={item.id} type="button" className={`flex w-full items-center justify-between px-3 py-2 text-right text-sm ${attachments.conversation_ids.includes(item.id) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => toggleListAttachment("conversation_ids", item.id)}><span className="truncate">{item.label}</span><span className="shrink-0 text-xs opacity-70">{item.archived ? "آرشیو" : fmt.date(item.updated_at)}</span></button>) : null}
+            {mentionTab === "mentions" ? <>
+              {matchingOperators.length ? <><p className="px-3 pb-1 pt-2 text-[11px] font-bold text-[#898989]">اپراتورها</p>{matchingOperators.map((item) => <button key={item.id} type="button" className={`flex w-full items-center justify-between px-3 py-2 text-right text-sm ${attachments.operator_id === item.id ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => { setAttachments((current) => ({ ...current, operator_id: item.id })); completeMention(item.label); }}><span>{item.label}</span><span className="text-xs opacity-70">{item.extension ? `داخلی ${item.extension}` : "اپراتور"}</span></button>)}</> : null}
+              {matchingConversations.length ? <><p className="px-3 pb-1 pt-2 text-[11px] font-bold text-[#898989]">گفتگوهای قبلی</p>{matchingConversations.map((item) => <button key={item.id} type="button" className={`flex w-full items-center justify-between px-3 py-2 text-right text-sm ${attachments.conversation_ids.includes(item.id) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => { setAttachments((current) => ({ ...current, conversation_ids: current.conversation_ids.includes(item.id) ? current.conversation_ids : [...current.conversation_ids, item.id] })); completeMention(item.label); }}><span className="truncate">{item.label}</span><span className="shrink-0 text-xs opacity-70">{item.archived ? "آرشیو" : fmt.date(item.updated_at)}</span></button>)}</> : null}
+              {!matchingOperators.length && !matchingConversations.length ? <p className="px-3 py-6 text-center text-xs text-[#898989]">نتیجه‌ای پیدا نشد.</p> : null}
+            </> : null}
             {mentionTab === "dates" ? <div className="grid gap-2 p-2 sm:grid-cols-2"><JalaliDatePicker includeTime value={attachments.from_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, from_date: value || null }))} placeholder="شروع بازه" /><JalaliDatePicker includeTime value={attachments.to_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, to_date: value || null }))} placeholder="پایان بازه" /></div> : null}
             {mentionTab === "tools" ? contextOptions?.tools.map((item) => <button key={item.name} type="button" className={`w-full px-3 py-2 text-right text-sm font-bold ${attachments.tool_names.includes(item.name) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => toggleListAttachment("tool_names", item.name)}>{item.title}</button>) : null}
           </div>
         </div> : null}
-        <div className="border border-[#B2AC88] bg-[#F2F0EF] p-3 transition focus-within:border-[#4B6E48]">
-          {attachmentCount ? <div className="mb-2 flex flex-wrap gap-1.5">
-            {selectedOperator ? <button type="button" className="border border-[#B2AC88] bg-white px-2.5 py-1.5 text-xs text-[#4B6E48]" onClick={() => removeAttachment("operator")}>@ {selectedOperator.label} ×</button> : null}
-            {attachments.conversation_ids.map((id) => <button key={id} type="button" className="border border-[#B2AC88] bg-white px-2.5 py-1.5 text-xs text-[#4B6E48]" onClick={() => removeAttachment("conversation", id)}>گفتگو: {contextOptions?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده"} ×</button>)}
-            {attachments.from_date && attachments.to_date ? <button type="button" className="border border-[#B2AC88] bg-white px-2.5 py-1.5 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)} ×</button> : null}
-            {attachments.tool_names.map((name) => <button key={name} type="button" className="border border-[#B2AC88] bg-white px-2.5 py-1.5 text-xs text-[#4B6E48]" onClick={() => removeAttachment("tool", name)}>ابزار: {contextOptions?.tools.find((item) => item.name === name)?.title || name} ×</button>)}
-          </div> : null}
-          <textarea ref={inputRef} rows={1} dir="rtl" className="block h-[3.75rem] min-h-[3.75rem] w-full resize-none overflow-y-hidden border-0 bg-transparent p-0 text-slate-900 outline-none focus:ring-0" value={text} onChange={(event) => { const value = event.target.value; setText(value); if (value.endsWith("@")) { setMentionOpen(true); selectMentionTab(isOrgAdmin(session?.role) ? "operators" : "conversations"); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" />
-          <div className="mt-2 flex items-center justify-between gap-3" dir="ltr">
-            <button type="button" className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[#4B6E48] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48]" onClick={() => { setMentionOpen((current) => !current); if (!isOrgAdmin(session?.role)) selectMentionTab("conversations"); }} aria-label="افزودن زمینه و ابزار" title="افزودن زمینه و ابزار"><PlusIcon /></button>
-            {!text ? <p className="min-w-0 flex-1 truncate text-center text-[11px] text-[#898989]" dir="rtl"><TypingPromptGuide /></p> : <span className="flex-1" />}
-            <button type="submit" className="inline-flex h-9 w-9 shrink-0 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button>
-          </div>
-        </div>
+        {attachmentCount ? <div className="mb-2 flex flex-wrap gap-1.5">
+          {selectedOperator ? <button type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("operator")}>@ {selectedOperator.label} ×</button> : null}
+          {attachments.conversation_ids.map((id) => <button key={id} type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("conversation", id)}>گفتگو: {contextOptions?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده"} ×</button>)}
+          {attachments.from_date && attachments.to_date ? <button type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)} ×</button> : null}
+          {attachments.tool_names.map((name) => <button key={name} type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("tool", name)}>ابزار: {contextOptions?.tools.find((item) => item.name === name)?.title || name} ×</button>)}
+        </div> : null}
+        <div className="flex items-start gap-2"><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" /><div className="absolute inset-x-3 bottom-1.5 flex min-w-0 items-center gap-2"><button type="button" className="shrink-0 text-[11px] font-bold text-[#4B6E48] hover:underline" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}>بازه زمانی</button><button type="button" className="shrink-0 text-[11px] font-bold text-[#4B6E48] hover:underline" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}>ابزارها</button>{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p> : null}</div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></div>
       </form>
     </section>
     <ErrorBox message={error} />

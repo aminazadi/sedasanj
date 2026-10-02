@@ -2,7 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
-- Reworked the assistant composer into a unified ChatGPT-style input, replacing the detached at-sign control with an integrated plus menu and placing selected context attachments inside the composer.
+- Added inline searchable at-mentions for organization operators and previous conversations, with date-range and multi-tool selectors placed beside the assistant composer guide.
 
 ## 2026-10-02 — AMINAZADI
 
