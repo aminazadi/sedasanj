@@ -770,6 +770,7 @@ class UserUpdate(BaseModel):
     extension: str | None = None
     password: str | None = Field(default=None, min_length=8)
     display_name: str | None = Field(default=None, max_length=120)
+    profile_context: str | None = Field(default=None, max_length=2000)
 
     @field_validator("mobile_number", "extension", mode="before")
     @classmethod
@@ -786,7 +787,20 @@ class UserOut(BaseModel):
     mobile_number: str | None = None
     extension: str | None = None
     display_name: str | None = None
+    profile_context: str | None = None
     created_at: datetime
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str = Field(min_length=2, max_length=120)
+    mobile_number: str | None = Field(default=None, max_length=32)
+    extension: str | None = Field(default=None, max_length=32)
+    profile_context: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("display_name", "mobile_number", "extension", "profile_context", mode="before")
+    @classmethod
+    def _trim_profile_values(cls, value: object) -> object:
+        return _blank_to_none(value)
 
 
 class TenantCreate(BaseModel):

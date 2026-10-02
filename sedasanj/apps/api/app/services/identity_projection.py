@@ -26,6 +26,7 @@ def _user_payload(user: User) -> dict[str, str | None]:
         "mobile_number": user.mobile_number,
         "extension": user.extension,
         "display_name": user.display_name,
+        "profile_context": user.profile_context,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
@@ -79,6 +80,7 @@ async def _apply(row: IdentityProjectionOutbox) -> None:
                     mobile_number=None,
                     extension=None,
                     display_name=None,
+                    profile_context=None,
                 )
             )
         else:
@@ -99,6 +101,7 @@ async def _apply(row: IdentityProjectionOutbox) -> None:
                         "mobile_number": statement.excluded.mobile_number,
                         "extension": statement.excluded.extension,
                         "display_name": statement.excluded.display_name,
+                        "profile_context": statement.excluded.profile_context,
                     },
                 )
             )

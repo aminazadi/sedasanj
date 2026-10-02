@@ -20,6 +20,7 @@ from app.schemas import (
     ArchiveFormat,
     LoginRequest,
     LoginStep,
+    ProfileUpdate,
     RefreshRequest,
     TokenPair,
     TotpCheck,
@@ -392,6 +393,46 @@ async def me(session: ControlSession, principal: UserDep) -> UserOut:
     return UserOut.model_validate(user)
 
 
+@router.patch("/me", response_model=UserOut)
+async def update_me(
+    payload: ProfileUpdate,
+    request: Request,
+    session: ControlSession,
+    principal: UserDep,
+) -> UserOut:
+    user = await session.get(User, principal.id)
+    if user is None or user.tenant_id != principal.tenant_id:
+        raise ApiError("unauthorized", "user no longer exists")
+    operator_scope.require_operator_numbers(
+        role=user.role,
+        mobile_number=payload.mobile_number,
+        extension=payload.extension,
+    )
+    await operator_scope.assert_unique_operator_numbers(
+        session,
+        user.tenant_id,
+        mobile_number=payload.mobile_number,
+        extension=payload.extension,
+        exclude_user_id=user.id,
+    )
+    user.display_name = payload.display_name
+    user.mobile_number = payload.mobile_number
+    user.extension = payload.extension
+    user.profile_context = payload.profile_context
+    await session.flush()
+    await identity_projection.stage_user_projection(session, user)
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=user.id,
+        tenant_id=user.tenant_id,
+        action="user.profile_update",
+        payload={"user_id": str(user.id)},
+        ip=client_ip(request),
+    )
+    return UserOut.model_validate(user)
+
+
 @router.get("/users")
 async def list_users(
     session: ControlSession,
@@ -441,6 +482,7 @@ async def create_user(
         role=payload.role,
         mobile_number=payload.mobile_number,
         extension=payload.extension,
+        display_name=payload.display_name,
     )
     session.add(user)
     await session.flush()

@@ -2,6 +2,11 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added self-service profile completion for organization managers and operators, including personal introduction and preferred communication style, and supplied this read-only identity and organization context to the assistant for warm name-based personalization.
+- Explicitly restricted the assistant from wallet charges, payments, settings changes, and every other organization mutation while preserving authorized read-only analysis.
+
+## 2026-10-02 — AMINAZADI
+
 - Expanded the assistant visualization tool to support bar, horizontal bar, line, area, pie, donut, radar, radial bar, scatter, composed, treemap, and funnel charts with exact status, daily trend, and operator-performance datasets.
 
 ## 2026-10-02 — AMINAZADI

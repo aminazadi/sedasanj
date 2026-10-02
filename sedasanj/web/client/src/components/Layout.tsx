@@ -35,6 +35,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "حساب و سامانه",
     items: [
+      { to: "/profile", label: "پروفایل من", icon: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" },
       { to: "/account", label: "حساب کاربری", icon: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z", hideForOperator: true },
       { to: "/install", label: "راه‌اندازی", icon: "M14.7 6.3a4 4 0 0 0-5-5L7.4 3.6l3 3 2.3-2.3M5.5 8.5l-3.8 3.8a2.4 2.4 0 0 0 0 3.4l6.6 6.6a2.4 2.4 0 0 0 3.4 0l3.8-3.8M14 12l6.3 6.3a2.4 2.4 0 0 1-3.4 3.4l-6.3-6.3", hideForOperator: true },
       { to: "/api-docs", label: "مستندات API", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6" },

@@ -20,6 +20,7 @@ import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
 import KpiSettings from "./pages/KpiSettings";
+import Profile from "./pages/Profile";
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/assistant" element={<Assistant />} />
         <Route path="/operator-scores" element={<OperatorScores />} />
+        <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
         {orgAdmin ? <Route path="/kpi-settings" element={<KpiSettings />} /> : null}

@@ -110,6 +110,7 @@ class User(Base):
     mobile_number: Mapped[str | None] = mapped_column(Text)
     extension: Mapped[str | None] = mapped_column(Text)
     display_name: Mapped[str | None] = mapped_column(Text)
+    profile_context: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (

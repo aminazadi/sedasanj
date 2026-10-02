@@ -428,6 +428,8 @@ export interface User {
   role: string;
   mobile_number: string | null;
   extension: string | null;
+  display_name: string | null;
+  profile_context: string | null;
   created_at: string;
 }
 
