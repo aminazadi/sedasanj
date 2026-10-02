@@ -10,6 +10,10 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Rendered the shared Jalali date picker through a viewport-positioned high-z-index portal so calendars no longer expand or scroll parent layouts, and compacted the assistant context buttons with matching icons.
+
+## 2026-10-02 — AMINAZADI
+
 - Displayed the assistant date-range and tool selectors as distinct outlined buttons opposite the rotating composer guide.
 
 ## 2026-10-02 — AMINAZADI

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { jalaliMonthLength, toGregorian, toJalali, type JalaliDate } from "../lib/jalali";
 
 const MONTHS = [
@@ -81,12 +82,32 @@ export default function JalaliDatePicker({
   placeholder = "انتخاب تاریخ",
 }: JalaliDatePickerProps) {
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const initial = parseValue(value) ?? todayDraft();
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(initial.year);
   const [viewMonth, setViewMonth] = useState(initial.month);
   const [draft, setDraft] = useState<DraftDate>(initial);
+  const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0, width: 352 });
   const today = todayDraft();
+
+  const positionPanel = useCallback(() => {
+    if (!trigger.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    const viewportPadding = 8;
+    const width = Math.min(352, window.innerWidth - viewportPadding * 2);
+    const height = panel.current?.offsetHeight ?? (includeTime ? 540 : 440);
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const top = spaceBelow >= height || spaceBelow >= rect.top
+      ? Math.min(rect.bottom + 8, window.innerHeight - height - viewportPadding)
+      : Math.max(viewportPadding, rect.top - height - 8);
+    const left = Math.min(
+      window.innerWidth - width - viewportPadding,
+      Math.max(viewportPadding, rect.right - width),
+    );
+    setPanelPosition({ top: Math.max(viewportPadding, top), left, width });
+  }, [includeTime]);
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +117,8 @@ export default function JalaliDatePicker({
     setViewMonth(selected.month);
 
     function dismiss(event: MouseEvent) {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!root.current?.contains(target) && !panel.current?.contains(target)) setOpen(false);
     }
 
     function dismissWithKeyboard(event: KeyboardEvent) {
@@ -105,11 +127,18 @@ export default function JalaliDatePicker({
 
     document.addEventListener("mousedown", dismiss);
     document.addEventListener("keydown", dismissWithKeyboard);
+    window.addEventListener("resize", positionPanel);
+    window.addEventListener("scroll", positionPanel, true);
+    positionPanel();
+    const frame = window.requestAnimationFrame(positionPanel);
     return () => {
       document.removeEventListener("mousedown", dismiss);
       document.removeEventListener("keydown", dismissWithKeyboard);
+      window.removeEventListener("resize", positionPanel);
+      window.removeEventListener("scroll", positionPanel, true);
+      window.cancelAnimationFrame(frame);
     };
-  }, [open, value]);
+  }, [open, positionPanel, value]);
 
   const offset = useMemo(() => {
     const first = toGregorian(viewYear, viewMonth, 1);
@@ -148,6 +177,7 @@ export default function JalaliDatePicker({
   return (
     <div ref={root} className="relative">
       <button
+        ref={trigger}
         type="button"
         className="input flex min-h-[42px] w-full items-center justify-between gap-2 bg-white text-right"
         aria-haspopup="dialog"
@@ -162,12 +192,14 @@ export default function JalaliDatePicker({
         </svg>
       </button>
 
-      {open ? (
+      {open ? createPortal(
         <div
+          ref={panel}
           role="dialog"
           aria-label="انتخاب تاریخ شمسی"
           dir="rtl"
-          className="absolute right-0 z-[70] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[#B2AC88] bg-[#F2F0EF]"
+          className="fixed z-[10000] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-2xl border border-[#B2AC88] bg-[#F2F0EF] shadow-2xl"
+          style={{ top: panelPosition.top, left: panelPosition.left, width: panelPosition.width }}
         >
           <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-4 py-3">
             <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" aria-label="ماه بعد" onClick={() => moveMonth(1)}>
@@ -251,7 +283,8 @@ export default function JalaliDatePicker({
               پاک کردن تاریخ
             </button>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
