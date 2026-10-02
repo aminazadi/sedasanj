@@ -20,6 +20,7 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
   ["get_call_analysis", "تحلیل تماس"],
   ["get_call_analytics", "آمار تماس‌ها"],
   ["get_operator_performance", "عملکرد اپراتورها"],
+  ["visualize_statistics", "نمودارهای آماری"],
 ];
 type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [

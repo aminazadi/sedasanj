@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fmt, INTENT_LABELS, refreshSession, request, tokens } from "../api";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { fmt, INTENT_LABELS, refreshSession, request, STATUS_LABELS, tokens } from "../api";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Widgets";
-import type { AssistantCallSource, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
+import type { AssistantCallSource, AssistantChart, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 
 function TrashIcon() {
@@ -138,6 +139,35 @@ function ToolTimeline({ runs, active }: { runs: AssistantToolRun[]; active: bool
       </li>)}
     </ol> : null}
   </div>;
+}
+
+const assistantChartColors = ["#4B6E48", "#B2AC88", "#7A8B73", "#898989", "#D8D3B9"];
+
+function AssistantCharts({ charts }: { charts: AssistantChart[] }) {
+  const visible = charts.filter((chart) => chart.data.some((item) => Number.isFinite(item.value)));
+  if (!visible.length) return null;
+  return <section className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="نمودارهای آماری پاسخ">
+    {visible.map((chart) => <article key={chart.id} className={`min-w-0 border border-[#B2AC88] bg-white p-3 ${chart.size === "full" ? "md:col-span-2" : ""}`}>
+      <h3 className="mb-3 text-sm font-bold text-[#4B6E48]">{chart.title}</h3>
+      <div className="h-64 w-full" dir="ltr">
+        <ResponsiveContainer width="100%" height="100%">
+          {chart.type === "donut" ? <PieChart>
+            <Pie data={chart.data.map((item) => ({ ...item, label: STATUS_LABELS[item.label] || item.label }))} dataKey="value" nameKey="label" innerRadius={54} outerRadius={82} paddingAngle={2}>
+              {chart.data.map((item, index) => <Cell key={`${chart.id}-${item.label}`} fill={assistantChartColors[index % assistantChartColors.length]} />)}
+            </Pie>
+            <Tooltip formatter={(value) => [fmt.int(Number(value)), chart.value_label]} />
+            <Legend wrapperStyle={{ direction: "rtl", fontSize: 11 }} />
+          </PieChart> : <BarChart data={chart.data} margin={{ top: 8, right: 8, left: 8, bottom: 32 }}>
+            <CartesianGrid stroke="#E3E0D4" strokeDasharray="3 3" />
+            <XAxis dataKey="label" interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 10 }} />
+            <YAxis orientation="right" allowDecimals={false} tickFormatter={(value) => fmt.int(Number(value))} tick={{ fontSize: 10 }} />
+            <Tooltip formatter={(value) => [fmt.decimal(Number(value)), chart.value_label]} />
+            <Bar dataKey="value" name={chart.value_label} fill="#4B6E48" />
+          </BarChart>}
+        </ResponsiveContainer>
+      </div>
+    </article>)}
+  </section>;
 }
 
 function PhoneIcon() {
@@ -465,11 +495,11 @@ export default function Assistant() {
       const event = /^event: (.+)$/m.exec(frame)?.[1];
       const data = /^data: (.+)$/m.exec(frame)?.[1];
       if (!event || !data) return;
-      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string };
+      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string; charts?: AssistantChart[] };
       const content = payload.content;
       if (event === "phase" && payload.label) setPhases((current) => ({ ...current, [draftId]: payload.label as string }));
       if ((event === "tool_started" || event === "tool_completed" || event === "tool_failed") && payload.tool_call_id && payload.name && payload.title) {
-        const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title, status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"), duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null, error_code: payload.error_code ?? null };
+        const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title, status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"), duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null, error_code: payload.error_code ?? null, charts: payload.charts || [] };
         setMessages((current) => current.map((item) => item.id === draftId ? { ...item, tool_runs: [...(item.tool_runs || []).filter((existing) => existing.tool_call_id !== run.tool_call_id), run] } : item));
       }
       if (event === "delta" && content) {
@@ -577,9 +607,11 @@ export default function Assistant() {
         {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
-          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length)}>
+          const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);
+          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length || charts.length)}>
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
               {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
+              {!user ? <AssistantCharts charts={charts} /> : null}
               {message.sources?.length ? <CallSources sources={message.sources} expandedCallId={expandedCallId} onToggle={toggleCallSource} /> : null}
           </ConversationBubble>;
         })}

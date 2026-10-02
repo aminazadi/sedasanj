@@ -7,7 +7,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,6 +74,10 @@ class AnalyticsArguments(WindowArguments):
 
 class OperatorPerformanceArguments(WindowArguments):
     operator_id: UUID | None = None
+
+
+class VisualizeStatisticsArguments(AnalyticsArguments):
+    view: Literal["call_status", "operator_performance"] = "call_status"
 
 
 @dataclass(frozen=True)
@@ -432,6 +436,72 @@ async def _operator_performance(ctx: ToolContext, raw: ToolArguments) -> dict[st
     }
 
 
+async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
+    args = VisualizeStatisticsArguments.model_validate(raw)
+    if args.view == "operator_performance":
+        result = await _operator_performance(
+            ctx,
+            OperatorPerformanceArguments(
+                from_date=args.from_date,
+                to_date=args.to_date,
+                operator_id=args.operator_id,
+            ),
+        )
+        score_data = [
+            {"label": item["operator_label"] or "اپراتور نامشخص", "value": item["average_score"]}
+            for item in result["items"]
+        ]
+        volume_data = [
+            {"label": item["operator_label"] or "اپراتور نامشخص", "value": item["scored_calls"]}
+            for item in result["items"]
+        ]
+        result["charts"] = [
+            {
+                "id": "operator-average-score",
+                "title": "میانگین امتیاز اپراتورها",
+                "type": "bar",
+                "size": "half" if volume_data else "full",
+                "value_label": "امتیاز",
+                "data": score_data,
+            },
+            {
+                "id": "operator-scored-calls",
+                "title": "تعداد تماس‌های امتیازدهی‌شده",
+                "type": "bar",
+                "size": "half" if score_data else "full",
+                "value_label": "تعداد تماس",
+                "data": volume_data,
+            },
+        ]
+        return result
+
+    result = await _analytics(
+        ctx,
+        AnalyticsArguments(
+            from_date=args.from_date,
+            to_date=args.to_date,
+            operator_id=args.operator_id,
+            campaign_id=args.campaign_id,
+            status=args.status,
+            direction=args.direction,
+            sentiment=args.sentiment,
+            topic=args.topic,
+        ),
+    )
+    result["charts"] = [{
+        "id": "call-status-distribution",
+        "title": "توزیع وضعیت تماس‌ها",
+        "type": "donut",
+        "size": "full",
+        "value_label": "تعداد تماس",
+        "data": [
+            {"label": str(label), "value": value}
+            for label, value in result["statuses"].items()
+        ],
+    }]
+    return result
+
+
 TOOLS = (
     ToolDefinition("search_calls", "جست‌وجوی تماس‌ها", "Find calls using safe filters.", SearchCallsArguments, _search_calls),
     ToolDefinition("get_call_details", "دریافت جزئیات تماس", "Get metadata for specific visible calls.", CallIdsArguments, _call_details),
@@ -439,6 +509,7 @@ TOOLS = (
     ToolDefinition("get_call_analysis", "دریافت تحلیل تماس‌ها", "Get analysis, sales inference, and authoritative CRM outcome.", CallIdsArguments, _call_analysis),
     ToolDefinition("get_call_analytics", "دریافت آمار تماس‌ها", "Calculate exact call statistics from the database.", AnalyticsArguments, _analytics),
     ToolDefinition("get_operator_performance", "دریافت عملکرد اپراتورها", "Get access-controlled operator scoring statistics.", OperatorPerformanceArguments, _operator_performance),
+    ToolDefinition("visualize_statistics", "ترسیم نمودار آماری", "Create exact, access-controlled charts for statistical questions. Prefer this tool when a chart helps compare call statuses or operator performance.", VisualizeStatisticsArguments, _visualize_statistics),
 )
 TOOL_BY_NAME = {tool.name: tool for tool in TOOLS}
 
@@ -482,6 +553,7 @@ def preview(result: dict[str, Any]) -> dict[str, Any]:
         "version": 1,
         "count": int(result.get("count", result.get("total_calls", 0)) or 0),
         "summary": result_summary(result),
+        "charts": result.get("charts", []),
     }
 
 

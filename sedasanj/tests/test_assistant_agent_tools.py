@@ -77,8 +77,21 @@ async def test_agent_rejects_disabled_tool() -> None:
 
 def test_tool_schemas_never_expose_security_scope() -> None:
     schemas = assistant_tools.schemas()
-    assert len(schemas) == 6
+    assert len(schemas) == 7
     serialized = json.dumps(schemas)
     assert "tenant_id" not in serialized
     assert "user_id" not in serialized
     assert all(item["type"] == "function" for item in schemas)
+    chart_schema = next(
+        item for item in schemas if item["function"]["name"] == "visualize_statistics"
+    )
+    assert chart_schema["function"]["parameters"]["properties"]["view"]["enum"] == [
+        "call_status",
+        "operator_performance",
+    ]
+
+
+def test_tool_preview_preserves_chart_payload() -> None:
+    charts = [{"id": "status", "type": "donut", "data": []}]
+    result = assistant_tools.preview({"total_calls": 3, "charts": charts})
+    assert result["charts"] == charts

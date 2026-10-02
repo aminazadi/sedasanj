@@ -227,6 +227,16 @@ export interface AssistantToolRun {
   duration_ms: number | null;
   summary: string | null;
   error_code: string | null;
+  charts?: AssistantChart[];
+}
+
+export interface AssistantChart {
+  id: string;
+  title: string;
+  type: "bar" | "donut";
+  size: "half" | "full";
+  value_label: string;
+  data: Array<{ label: string; value: number }>;
 }
 
 export interface ProcessingEvent {

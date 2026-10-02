@@ -922,8 +922,9 @@ class SettingsUpdate(BaseModel):
             "get_call_analysis",
             "get_call_analytics",
             "get_operator_performance",
+            "visualize_statistics",
         ]
-    ] | None = Field(default=None, min_length=1, max_length=6)
+    ] | None = Field(default=None, min_length=1, max_length=7)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
     correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)

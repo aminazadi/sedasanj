@@ -604,6 +604,7 @@ def _tool_run_payload(run: AssistantToolRun) -> dict[str, Any]:
         "status": run.status,
         "duration_ms": run.duration_ms,
         "summary": (run.result_preview or {}).get("summary"),
+        "charts": (run.result_preview or {}).get("charts", []),
         "error_code": run.error_code,
     }
 
@@ -757,6 +758,7 @@ async def stream_ephemeral_message(
                                     "status": "succeeded",
                                     "duration_ms": duration_ms,
                                     "summary": assistant_tools.result_summary(result),
+                                    "charts": result.get("charts", []),
                                 }
                                 public_runs[-1] = completed
                                 yield _sse("tool_completed", completed)

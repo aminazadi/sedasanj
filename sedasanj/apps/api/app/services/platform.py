@@ -248,6 +248,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
             "get_call_analysis",
             "get_call_analytics",
             "get_operator_performance",
+            "visualize_statistics",
         ]),
         "correction_enabled": "true",
         "correction_mode": "two_stage",
