@@ -167,15 +167,14 @@ export default function JalaliDatePicker({
           role="dialog"
           aria-label="انتخاب تاریخ شمسی"
           dir="rtl"
-          className="absolute right-0 z-[70] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border-2 bg-white"
-          style={{ borderColor: "var(--color-primary, #4B6E48)" }}
+          className="absolute right-0 z-[70] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white"
         >
-          <div className="flex items-center justify-between border-b bg-brand-50/80 px-4 py-3" style={{ borderColor: "var(--color-primary, #4B6E48)" }}>
-            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white transition hover:bg-brand-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ borderColor: "var(--color-primary, #4B6E48)", color: "var(--color-primary, #4B6E48)", outlineColor: "var(--color-primary, #4B6E48)" }} aria-label="ماه بعد" onClick={() => moveMonth(1)}>
+          <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-brand-700 transition hover:bg-brand-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" aria-label="ماه بعد" onClick={() => moveMonth(1)}>
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6" /></svg>
             </button>
-            <div className="text-base font-extrabold" style={{ color: "var(--color-primary, #4B6E48)" }}>{MONTHS[viewMonth - 1]} {persianNumber.format(viewYear)}</div>
-            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white transition hover:bg-brand-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ borderColor: "var(--color-primary, #4B6E48)", color: "var(--color-primary, #4B6E48)", outlineColor: "var(--color-primary, #4B6E48)" }} aria-label="ماه قبل" onClick={() => moveMonth(-1)}>
+            <div className="text-base font-extrabold text-brand-700">{MONTHS[viewMonth - 1]} {persianNumber.format(viewYear)}</div>
+            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-brand-700 transition hover:bg-brand-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" aria-label="ماه قبل" onClick={() => moveMonth(-1)}>
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6" /></svg>
             </button>
           </div>
@@ -194,11 +193,8 @@ export default function JalaliDatePicker({
                   aria-label={`${persianNumber.format(day)} ${MONTHS[viewMonth - 1]} ${persianNumber.format(viewYear)}`}
                   aria-current={isToday ? "date" : undefined}
                   aria-pressed={selected}
-                  className={`flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${selected ? "text-white" : isToday ? "border bg-brand-50" : "text-slate-700 hover:bg-brand-50"}`}
+                  className={`flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition hover:bg-brand-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 ${selected ? "bg-brand-500 text-white" : isToday ? "border border-brand-500 text-brand-700" : "text-slate-700"}`}
                   style={{
-                    backgroundColor: selected ? "var(--color-primary, #4B6E48)" : undefined,
-                    borderColor: isToday ? "var(--color-primary, #4B6E48)" : undefined,
-                    color: selected || isToday ? (selected ? "#FFFFFF" : "var(--color-primary, #4B6E48)") : undefined,
                     outlineColor: "var(--color-primary, #4B6E48)",
                   }}
                   onClick={() => chooseDay(day)}
@@ -210,7 +206,7 @@ export default function JalaliDatePicker({
           </div>
 
           {includeTime ? (
-            <div className="border-t border-brand-200 bg-brand-50/50 px-4 py-3">
+            <div className="border-t border-slate-200 bg-white px-4 py-3">
               <div className="mb-3 flex items-center gap-2">
                 <span className="text-sm font-semibold text-slate-700">ساعت</span>
                 <input
@@ -221,7 +217,7 @@ export default function JalaliDatePicker({
                   value={persianDigits(draft.hour)}
                   onChange={(event) => setDraft({ ...draft, hour: latinDigits(event.target.value) })}
                 />
-                <span className="font-bold" style={{ color: "var(--color-primary, #4B6E48)" }}>:</span>
+                <span className="font-bold text-brand-700">:</span>
                 <input
                   className="input min-w-0 py-1.5 text-center"
                   type="text"
@@ -250,8 +246,8 @@ export default function JalaliDatePicker({
           {value ? (
             <button
               type="button"
-              className="w-full border-t bg-white py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
-              style={{ borderColor: "var(--color-primary, #4B6E48)", outlineColor: "var(--color-primary, #4B6E48)" }}
+              className="w-full border-t border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-brand-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+              style={{ outlineColor: "var(--color-primary, #4B6E48)" }}
               onClick={() => {
                 onChange("");
                 setOpen(false);
