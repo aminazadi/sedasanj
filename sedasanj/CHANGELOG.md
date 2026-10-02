@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Replaced assistant call-source cards with a compact responsive table whose rows expand as URL-persistent accordions for full metadata, summaries, classifications, and call navigation.
 - Replaced the assistant's compact call-source links with responsive detail cards and persisted tenant-scoped call metadata including numbers, direction, duration, status, extension, intent, sentiment, and summary for each cited call.
 - Rebuilt the calls list around URL-persistent status, direction, intent, sentiment, number, text, and Tehran-aware date filters with deterministic backend offset pagination, accurate totals, and direct reloadable page navigation.
 - Rendered Markdown safely in both user and assistant chat messages, including lists, tables, links, quotes, and code, and required assistant responses to present dates in the Persian Jalali calendar with Persian digits.

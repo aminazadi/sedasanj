@@ -5,6 +5,7 @@ type ConversationBubbleProps = {
   children: ReactNode;
   header?: ReactNode;
   ariaLabel?: string;
+  wide?: boolean;
 };
 
 function ConversationAvatar({ side, ariaLabel }: Pick<ConversationBubbleProps, "side" | "ariaLabel">) {
@@ -24,7 +25,7 @@ function ConversationAvatar({ side, ariaLabel }: Pick<ConversationBubbleProps, "
   );
 }
 
-export default function ConversationBubble({ side, children, header, ariaLabel }: ConversationBubbleProps) {
+export default function ConversationBubble({ side, children, header, ariaLabel, wide = false }: ConversationBubbleProps) {
   const user = side === "user";
 
   return (
@@ -32,7 +33,7 @@ export default function ConversationBubble({ side, children, header, ariaLabel }
       {!user ? <ConversationAvatar side={side} ariaLabel={ariaLabel} /> : null}
       <div
         dir="rtl"
-        className={`assistant-message-bubble relative w-fit max-w-[calc(85%_-_2.75rem)] break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-slate-800"}`}
+        className={`assistant-message-bubble relative max-w-[calc(85%_-_2.75rem)] break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${wide ? "w-full" : "w-fit"} ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-slate-800"}`}
       >
         {header}
         {children}
