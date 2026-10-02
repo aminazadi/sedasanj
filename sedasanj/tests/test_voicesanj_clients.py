@@ -488,7 +488,12 @@ async def test_voicesanj_list_models() -> None:
             return {
                 "data": [
                     {"id": "dorna-8b-q4_k_m", "kind": "llm"},
-                    {"id": "custom-llm", "kind": "llm", "owned_by": "9router"},
+                    {
+                        "id": "custom-llm",
+                        "kind": "llm",
+                        "owned_by": "openai",
+                        "source": "9router",
+                    },
                     {"id": "shenava-koochik-v1-5-rnnt", "kind": "asr"},
                     {"id": "embed-live", "kind": "embedding", "owned_by": "9router"},
                     {"id": "decision-live", "kind": "decision"},

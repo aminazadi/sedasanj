@@ -106,7 +106,11 @@ class VoiceSanjClient:
         for row in rows:
             available = row.get("available")
             if not isinstance(available, bool):
-                available = row["id"] in installed or row.get("owned_by") == "9router"
+                available = (
+                    row["id"] in installed
+                    or row.get("source") == "9router"
+                    or row.get("owned_by") == "9router"
+                )
             row["available"] = available
             row["status"] = row.get("status") or ("ready" if available else "not_installed")
             row["display_name"] = row.get("display_name") or row["id"]
@@ -333,6 +337,7 @@ def _openai_models(payload: Any) -> list[dict[str, Any]]:
                 "display_name": str(item.get("display_name") or model_id),
                 "description": str(item.get("description") or ""),
                 "owned_by": str(item.get("owned_by") or ""),
+                "source": str(item.get("source") or ""),
                 "available": item.get("available"),
                 "status": item.get("status"),
                 "recommended": bool(item.get("recommended")),

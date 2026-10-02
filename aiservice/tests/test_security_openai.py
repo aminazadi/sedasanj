@@ -139,6 +139,18 @@ class SecurityAndCompatibilityTests(unittest.TestCase):
         self.assertEqual(result["data"][0]["id"], "test-embedding")
         self.assertEqual(result["data"][0]["kind"], "embedding")
 
+    def test_remote_model_is_reported_as_ready_independent_of_owner(self):
+        with patch(
+            "asr_service.api.routers.openai_compat.cached_models",
+            return_value=[{"id": "openai/gpt-test", "kind": "llm", "owned_by": "openai"}],
+        ):
+            result = openai_compat.list_models("llm", dependencies.Principal(True))
+        remote = next(item for item in result["data"] if item["id"] == "openai/gpt-test")
+        self.assertEqual(remote["owned_by"], "openai")
+        self.assertEqual(remote["source"], "9router")
+        self.assertTrue(remote["available"])
+        self.assertEqual(remote["status"], "ready")
+
     def test_embedding_model_requires_pinned_safe_bundle(self):
         with self.assertRaises(ValueError):
             CustomTextModelRequest(

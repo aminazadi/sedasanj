@@ -162,18 +162,39 @@ def installed_llm(model_id):
 
 def model_object(model_id):
     if configured_model("llm") == model_id:
-        return {"id": model_id, "object": "model", "created": int(time.time()), "owned_by": "9router", "kind": "llm"}
+        return {
+            "id": model_id,
+            "object": "model",
+            "created": int(time.time()),
+            "owned_by": "9router",
+            "kind": "llm",
+            "source": "9router",
+            "available": True,
+            "status": "ready",
+        }
     return {
         "id": model_id,
         "object": "model",
         "created": int((MODEL_DIR / model_id / ".complete").stat().st_mtime),
         "owned_by": "persian-asr-service",
         "kind": CATALOG[model_id].kind,
+        "source": "local",
+        "available": True,
+        "status": "ready",
     }
 
 
 def remote_model_object(item):
-    return {"id": item["id"], "object": "model", "created": int(time.time()), "owned_by": item.get("owned_by", "9router"), "kind": item["kind"]}
+    return {
+        "id": item["id"],
+        "object": "model",
+        "created": int(time.time()),
+        "owned_by": item.get("owned_by", "9router"),
+        "kind": item["kind"],
+        "source": "9router",
+        "available": True,
+        "status": "ready",
+    }
 
 
 @router.get(

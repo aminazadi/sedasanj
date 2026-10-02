@@ -2,6 +2,7 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Marked synchronized 9Router catalog models as remotely ready regardless of their upstream owner, preventing clients from treating them as uninstalled local models.
 - Added authenticated native `/v1/embeddings` inference for installed transformer embedding models, including safe pinned model registration, installation validation, model-catalog exposure, and OpenAI-compatible responses.
 - Added decision and embedding capabilities to the 9Router proxy/catalog synchronization so callers can explicitly choose native AISERVICE or 9Router routing.
 
