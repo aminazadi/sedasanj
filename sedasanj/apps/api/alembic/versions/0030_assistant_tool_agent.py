@@ -30,53 +30,67 @@ def upgrade() -> None:
             started_at timestamptz NOT NULL DEFAULT now(),
             completed_at timestamptz,
             CONSTRAINT assistant_tool_runs_call_key UNIQUE (conversation_id, tool_call_id)
-        );
+        )
+    """)
+    op.execute("""
         CREATE INDEX idx_assistant_tool_runs_message
-          ON assistant_tool_runs(user_message_id, started_at);
-        ALTER TABLE assistant_tool_runs ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE assistant_tool_runs FORCE ROW LEVEL SECURITY;
+          ON assistant_tool_runs(user_message_id, started_at)
+    """)
+    op.execute("ALTER TABLE assistant_tool_runs ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE assistant_tool_runs FORCE ROW LEVEL SECURITY")
+    op.execute("""
         CREATE POLICY assistant_tool_runs_tenant_isolation ON assistant_tool_runs
           USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid
             OR current_setting('app.staff', true) = 'on')
           WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid
-            OR current_setting('app.staff', true) = 'on');
-        GRANT SELECT, INSERT, UPDATE, DELETE ON assistant_tool_runs TO cbi_app;
+            OR current_setting('app.staff', true) = 'on')
+    """)
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON assistant_tool_runs TO cbi_app")
 
-        ALTER TABLE call_knowledge ADD COLUMN attempt_count integer NOT NULL DEFAULT 0;
-        ALTER TABLE call_knowledge ADD COLUMN last_attempt_at timestamptz;
-        ALTER TABLE call_knowledge ADD COLUMN next_retry_at timestamptz;
+    op.execute("ALTER TABLE call_knowledge ADD COLUMN attempt_count integer NOT NULL DEFAULT 0")
+    op.execute("ALTER TABLE call_knowledge ADD COLUMN last_attempt_at timestamptz")
+    op.execute("ALTER TABLE call_knowledge ADD COLUMN next_retry_at timestamptz")
+    op.execute("""
         CREATE INDEX idx_call_knowledge_retry
-          ON call_knowledge(vector_status, next_retry_at);
+          ON call_knowledge(vector_status, next_retry_at)
+    """)
 
+    op.execute("""
         ALTER TABLE transcript_chunks ADD COLUMN source_revision_id uuid
-          REFERENCES transcript_revisions(id) ON DELETE SET NULL;
-        ALTER TABLE transcript_chunks ADD COLUMN embedding_model text;
-        ALTER TABLE transcript_chunks ADD COLUMN vector_status varchar(24) NOT NULL DEFAULT 'pending';
-        ALTER TABLE transcript_chunks ADD COLUMN attempt_count integer NOT NULL DEFAULT 0;
-        ALTER TABLE transcript_chunks ADD COLUMN last_attempt_at timestamptz;
-        ALTER TABLE transcript_chunks ADD COLUMN next_retry_at timestamptz;
-        ALTER TABLE transcript_chunks ADD COLUMN error_detail text;
+          REFERENCES transcript_revisions(id) ON DELETE SET NULL
+    """)
+    op.execute("ALTER TABLE transcript_chunks ADD COLUMN embedding_model text")
+    op.execute(
+        "ALTER TABLE transcript_chunks ADD COLUMN vector_status varchar(24) NOT NULL DEFAULT 'pending'"
+    )
+    op.execute("ALTER TABLE transcript_chunks ADD COLUMN attempt_count integer NOT NULL DEFAULT 0")
+    op.execute("ALTER TABLE transcript_chunks ADD COLUMN last_attempt_at timestamptz")
+    op.execute("ALTER TABLE transcript_chunks ADD COLUMN next_retry_at timestamptz")
+    op.execute("ALTER TABLE transcript_chunks ADD COLUMN error_detail text")
+    op.execute("""
         ALTER TABLE transcript_chunks ADD CONSTRAINT transcript_chunks_vector_status_check
-          CHECK (vector_status IN ('pending','ready','failed'));
+          CHECK (vector_status IN ('pending','ready','failed'))
+    """)
+    op.execute("""
         CREATE INDEX idx_transcript_chunks_retry
-          ON transcript_chunks(tenant_id, vector_status, next_retry_at);
+          ON transcript_chunks(tenant_id, vector_status, next_retry_at)
     """)
 
 
 def downgrade() -> None:
-    op.execute("""
-        DROP TABLE IF EXISTS assistant_tool_runs;
-        DROP INDEX IF EXISTS idx_call_knowledge_retry;
-        ALTER TABLE call_knowledge DROP COLUMN IF EXISTS next_retry_at;
-        ALTER TABLE call_knowledge DROP COLUMN IF EXISTS last_attempt_at;
-        ALTER TABLE call_knowledge DROP COLUMN IF EXISTS attempt_count;
-        DROP INDEX IF EXISTS idx_transcript_chunks_retry;
-        ALTER TABLE transcript_chunks DROP CONSTRAINT IF EXISTS transcript_chunks_vector_status_check;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS error_detail;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS next_retry_at;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS last_attempt_at;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS attempt_count;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS vector_status;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS embedding_model;
-        ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS source_revision_id;
-    """)
+    op.execute("DROP TABLE IF EXISTS assistant_tool_runs")
+    op.execute("DROP INDEX IF EXISTS idx_call_knowledge_retry")
+    op.execute("ALTER TABLE call_knowledge DROP COLUMN IF EXISTS next_retry_at")
+    op.execute("ALTER TABLE call_knowledge DROP COLUMN IF EXISTS last_attempt_at")
+    op.execute("ALTER TABLE call_knowledge DROP COLUMN IF EXISTS attempt_count")
+    op.execute("DROP INDEX IF EXISTS idx_transcript_chunks_retry")
+    op.execute(
+        "ALTER TABLE transcript_chunks DROP CONSTRAINT IF EXISTS transcript_chunks_vector_status_check"
+    )
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS error_detail")
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS next_retry_at")
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS last_attempt_at")
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS attempt_count")
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS vector_status")
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS embedding_model")
+    op.execute("ALTER TABLE transcript_chunks DROP COLUMN IF EXISTS source_revision_id")
