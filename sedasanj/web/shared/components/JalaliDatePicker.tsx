@@ -86,6 +86,7 @@ export default function JalaliDatePicker({
   const [viewYear, setViewYear] = useState(initial.year);
   const [viewMonth, setViewMonth] = useState(initial.month);
   const [draft, setDraft] = useState<DraftDate>(initial);
+  const today = todayDraft();
 
   useEffect(() => {
     if (!open) return;
@@ -165,25 +166,34 @@ export default function JalaliDatePicker({
         <div
           role="dialog"
           aria-label="انتخاب تاریخ شمسی"
-          className="absolute right-0 z-[70] mt-2 w-[19rem] rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+          dir="rtl"
+          className="absolute right-0 z-[70] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-2xl shadow-brand-950/15"
         >
-          <div className="mb-3 flex items-center justify-between">
-            <button type="button" className="btn-ghost px-2" aria-label="ماه بعد" onClick={() => moveMonth(1)}>‹</button>
-            <div className="font-bold">{MONTHS[viewMonth - 1]} {persianNumber.format(viewYear)}</div>
-            <button type="button" className="btn-ghost px-2" aria-label="ماه قبل" onClick={() => moveMonth(-1)}>›</button>
+          <div className="flex items-center justify-between border-b border-brand-200 bg-brand-50/80 px-4 py-3">
+            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-200 bg-white text-brand-700 transition hover:border-brand-500 hover:bg-brand-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" aria-label="ماه بعد" onClick={() => moveMonth(1)}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <div className="text-base font-extrabold text-brand-700">{MONTHS[viewMonth - 1]} {persianNumber.format(viewYear)}</div>
+            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-200 bg-white text-brand-700 transition hover:border-brand-500 hover:bg-brand-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" aria-label="ماه قبل" onClick={() => moveMonth(-1)}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center text-xs text-slate-400">
-            {WEEKDAYS.map((weekday) => <span key={weekday} className="py-1">{weekday}</span>)}
+          <div className="grid grid-cols-7 gap-1 p-4 pt-3 text-center text-xs">
+            {WEEKDAYS.map((weekday) => <span key={weekday} className="py-1.5 font-bold text-slate-500">{weekday}</span>)}
             {Array.from({ length: offset }, (_, index) => <span key={`empty-${index}`} />)}
             {Array.from({ length: monthLength }, (_, index) => {
               const day = index + 1;
-              const selected = draft.year === viewYear && draft.month === viewMonth && draft.day === day;
+              const selected = Boolean(value) && draft.year === viewYear && draft.month === viewMonth && draft.day === day;
+              const isToday = today.year === viewYear && today.month === viewMonth && today.day === day;
               return (
                 <button
                   key={day}
                   type="button"
-                  className={`h-9 rounded-lg text-sm transition ${selected ? "bg-brand-500 text-white" : "text-slate-700 hover:bg-brand-50"}`}
+                  aria-label={`${persianNumber.format(day)} ${MONTHS[viewMonth - 1]} ${persianNumber.format(viewYear)}`}
+                  aria-current={isToday ? "date" : undefined}
+                  aria-pressed={selected}
+                  className={`flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 ${selected ? "bg-brand-500 text-white shadow-md shadow-brand-500/25" : isToday ? "border border-brand-500 bg-brand-50 text-brand-700 hover:bg-brand-100" : "text-slate-700 hover:bg-brand-50 hover:text-brand-700"}`}
                   onClick={() => chooseDay(day)}
                 >
                   {persianNumber.format(day)}
@@ -193,21 +203,23 @@ export default function JalaliDatePicker({
           </div>
 
           {includeTime ? (
-            <div className="mt-3 border-t border-slate-100 pt-3">
+            <div className="border-t border-brand-200 bg-brand-50/50 px-4 py-3">
               <div className="mb-3 flex items-center gap-2">
-                <span className="text-sm text-slate-500">ساعت</span>
+                <span className="text-sm font-semibold text-slate-700">ساعت</span>
                 <input
-                  className="input py-1 text-center"
+                  className="input min-w-0 py-1.5 text-center"
                   type="text"
                   inputMode="numeric"
+                  aria-label="ساعت"
                   value={persianDigits(draft.hour)}
                   onChange={(event) => setDraft({ ...draft, hour: latinDigits(event.target.value) })}
                 />
-                <span>:</span>
+                <span className="font-bold text-brand-700">:</span>
                 <input
-                  className="input py-1 text-center"
+                  className="input min-w-0 py-1.5 text-center"
                   type="text"
                   inputMode="numeric"
+                  aria-label="دقیقه"
                   value={persianDigits(draft.minute)}
                   onChange={(event) => setDraft({ ...draft, minute: latinDigits(event.target.value) })}
                 />
@@ -230,7 +242,7 @@ export default function JalaliDatePicker({
           {value ? (
             <button
               type="button"
-              className="mt-2 w-full py-1 text-sm text-rose-600"
+              className="w-full border-t border-brand-200 bg-white py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-500"
               onClick={() => {
                 onChange("");
                 setOpen(false);
