@@ -268,8 +268,12 @@ class NineRouterClient:
         return payload
 
     def transcribe(self, model, path, prompt=None):
+        normalized_model = model.lower().rsplit("/", 1)[-1]
         response_format = (
-            "json" if "gpt-4o-transcribe" in model.lower() else "verbose_json"
+            "json"
+            if normalized_model.startswith("gpt-4o-")
+            and "transcribe" in normalized_model
+            else "verbose_json"
         )
         with Path(path).open("rb") as audio:
             response, _ = self._request(

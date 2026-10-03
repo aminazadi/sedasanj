@@ -102,7 +102,7 @@ class NineRouterTests(unittest.TestCase):
             "واژگان تخصصی را حفظ کن",
         )
 
-    def test_gpt_4o_transcription_uses_json_response_format(self):
+    def test_gpt_4o_transcription_models_use_json_response_format(self):
         settings = ninerouter.ProviderSettings(
             "https://router.example", "key", False, "", False, "", (1, 1)
         )
@@ -110,18 +110,22 @@ class NineRouterTests(unittest.TestCase):
         response.json.return_value = {"text": "سلام"}
         audio = Path(self.tmp.name) / "audio.wav"
         audio.write_bytes(b"audio")
-        with patch(
-            "asr_service.infrastructure.ninerouter.requests.request",
-            return_value=response,
-        ) as request:
-            result = ninerouter.NineRouterClient(settings).transcribe(
-                "openai/gpt-4o-transcribe", audio
+        for model in (
+            "openai/gpt-4o-transcribe",
+            "openai/gpt-4o-mini-transcribe",
+        ):
+            with self.subTest(model=model), patch(
+                "asr_service.infrastructure.ninerouter.requests.request",
+                return_value=response,
+            ) as request:
+                result = ninerouter.NineRouterClient(settings).transcribe(model, audio)
+            self.assertEqual(
+                request.call_args.kwargs["data"]["response_format"], "json"
             )
-        self.assertEqual(request.call_args.kwargs["data"]["response_format"], "json")
-        self.assertEqual(
-            result["segments"],
-            [{"id": 0, "start": 0, "end": 0, "text": "سلام"}],
-        )
+            self.assertEqual(
+                result["segments"],
+                [{"id": 0, "start": 0, "end": 0, "text": "سلام"}],
+            )
 
     def test_versioned_gpt_4o_transcription_uses_json_response_format(self):
         settings = ninerouter.ProviderSettings(
