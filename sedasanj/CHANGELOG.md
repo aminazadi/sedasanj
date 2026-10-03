@@ -4,6 +4,7 @@
 
 - Added tenant-scoped manual transcription recovery for terminal ASR failures, including fresh auditable jobs, durable dispatch, retry-safe credit holds, and a call-detail recovery action.
 - Preserved timestamped conversational turns for 9Router OpenAI-compatible transcription responses and repaired invalid zero-length segment timestamps before transcript correction.
+- Added distinct, accessible color badges for call processing statuses, sentiments, and sales outcomes across call lists and details.
 - Highlighted a newly selected Jalali date with the primary color before confirming date-time values.
 - Changed transcript-correction model priority to submit one AISERVICE task at a time and advance to the next text model only after the current model ends in technical failure.
 - Fixed route-aware AI model settings so inactive optional 9Router prompts no longer block saving, and exposed safe rejected-model details for ASR failures.
@@ -11,8 +12,16 @@
 
 ## 2026-10-02 — AMINAZADI
 
+- Added an automatic native AISERVICE fallback when the configured 9Router embedding endpoint rejects an indexing request with HTTP 422.
+- Added independent admin-managed 9Router prompts for ASR, analysis, assistant chat, and typed decisions, with conditional controls and route-scoped request injection.
+
+## 2026-10-02 — AMINAZADI
+
 - Synchronized tenant schema verification with the live Alembic migration head and executed tenant upgrades through the worker's active Python environment to prevent false runtime revision mismatches.
 - Preloaded Apache AGE for every PostgreSQL connection, pinned local PostgreSQL 17 to its matching AGE release, initialized fixed graph labels under the database owner for safe non-superuser writes, added full graph readiness checks and repair migrations, centralized Cypher execution, and restored local-only retries for graph failures without resending content to the embedding provider.
+
+## 2026-10-02 — AMINAZADI
+
 - Ensured manual transcript-correction requests always run the configured text model instead of silently copying the existing transcript when automatic correction is set to audio-only mode.
 
 - Added each transcript message's call-relative date and time beneath its bubble with an accessible copy action.

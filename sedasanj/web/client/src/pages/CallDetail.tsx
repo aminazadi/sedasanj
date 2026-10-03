@@ -863,10 +863,10 @@ export default function CallDetailPage() {
                 </span>
                 <div>
                   <p className="text-xs text-[#000000]">مکالمه تلفنی</p>
-                  <h1 className="mt-0.5 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="rtl">
-                    {call.dialed_number ? fmt.digits(call.dialed_number) : "—"}{" "}
-                    <span className="px-1 text-[#B2AC88]">←</span>{" "}
-                    {call.caller_number ? fmt.digits(call.caller_number) : "—"}
+                  <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="rtl">
+                    <bdi dir="ltr">{call.dialed_number ? fmt.digits(call.dialed_number) : "—"}</bdi>
+                    <span className="px-1 text-[#B2AC88]" aria-hidden="true">←</span>
+                    <bdi dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</bdi>
                   </h1>
                 </div>
               </div>
