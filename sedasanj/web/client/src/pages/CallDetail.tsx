@@ -48,6 +48,12 @@ const NER_LABELS: Record<string, string> = {
   organizations: "سازمان‌ها",
 };
 
+const DIRECTION_LABELS: Record<string, string> = {
+  inbound: "ورودی",
+  outbound: "خروجی",
+  internal: "داخلی",
+};
+
 const TURN_MERGE_GAP_MS = 1200;
 const SPEAKER_COLORS = [chart.primary, chart.secondary];
 
@@ -863,9 +869,12 @@ export default function CallDetailPage() {
                 </span>
                 <div>
                   <p className="text-xs text-[#000000]">مکالمه تلفنی</p>
-                  <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="ltr">
+                  <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="rtl">
                     <bdi dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</bdi>
-                    <span className="px-1 text-[#B2AC88]" aria-hidden="true">←</span>
+                    <span className="px-1 text-[#B2AC88]">
+                      <span aria-hidden="true">←</span>
+                      <span className="sr-only">به</span>
+                    </span>
                     <bdi dir="ltr">{call.dialed_number ? fmt.digits(call.dialed_number) : "—"}</bdi>
                   </h1>
                 </div>
@@ -873,7 +882,7 @@ export default function CallDetailPage() {
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[#000000]">
                 <span>تاریخ تماس: {fmt.dateTime(call.started_at)}</span>
                 <span>مدت: {fmt.duration(call.duration_ms)}</span>
-                {call.direction ? <span>جهت: {call.direction}</span> : null}
+                {call.direction ? <span>جهت: {DIRECTION_LABELS[call.direction] ?? call.direction}</span> : null}
                 {call.agent_extension ? <span>داخلی: {fmt.digits(call.agent_extension)}</span> : null}
               </div>
             </div>
