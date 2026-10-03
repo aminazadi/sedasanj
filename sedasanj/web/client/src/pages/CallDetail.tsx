@@ -552,6 +552,7 @@ export default function CallDetailPage() {
   const [audioProgress, setAudioProgress] = useState<number | null>(0);
   const [audioStage, setAudioStage] = useState<"downloading" | "extracting">("downloading");
   const [correctionLoading, setCorrectionLoading] = useState(false);
+  const [processingActionLoading, setProcessingActionLoading] = useState(false);
   const [correctionFeedback, setCorrectionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [copiedTurnId, setCopiedTurnId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -678,6 +679,7 @@ export default function CallDetailPage() {
       setError("متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.");
       return;
     }
+    setProcessingActionLoading(true);
     setError(null);
     try {
       await request<void>(`/v1/calls/${callId}/reanalyze`, { method: "POST" });
@@ -685,6 +687,23 @@ export default function CallDetailPage() {
       setReload((value) => value + 1);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setProcessingActionLoading(false);
+    }
+  }
+
+  async function retryTranscription() {
+    if (!call?.can_retry_transcription) return;
+    setProcessingActionLoading(true);
+    setError(null);
+    try {
+      await request<void>(`/v1/calls/${callId}/retry-transcription`, { method: "POST" });
+      setNotice("پردازش مجدد صوت در صف قرار گرفت.");
+      setReload((value) => value + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setProcessingActionLoading(false);
     }
   }
 
@@ -896,14 +915,30 @@ export default function CallDetailPage() {
                   </Link>
                 </ActionTooltip>
               ) : null}
-              <ActionTooltip label={call.transcript ? "تحلیل مجدد" : "پس از آماده‌شدن متن تماس، تحلیل مجدد فعال می‌شود"}>
-                <button type="button" className={CALL_ACTION_CLASS} onClick={() => void reanalyze()} disabled={!call.transcript} aria-label="تحلیل مجدد">
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
-                    <path d="M20 7v5h-5M4 17v-5h5" />
-                    <path d="M6.1 9A7 7 0 0 1 18.7 6.7L20 12M4 12l1.3 5.3A7 7 0 0 0 17.9 15" />
-                  </svg>
-                </button>
-              </ActionTooltip>
+              {session?.role === "org_admin" || session?.role === "operator" ? (
+                <ActionTooltip label={
+                  processingActionLoading
+                    ? "در حال ثبت درخواست…"
+                    : call.transcript
+                      ? "تحلیل مجدد"
+                      : call.can_retry_transcription
+                        ? "پردازش مجدد صوت"
+                        : "پس از آماده‌شدن متن تماس، تحلیل مجدد فعال می‌شود"
+                }>
+                  <button
+                    type="button"
+                    className={CALL_ACTION_CLASS}
+                    onClick={() => void (call.transcript ? reanalyze() : retryTranscription())}
+                    disabled={processingActionLoading || (!call.transcript && !call.can_retry_transcription)}
+                    aria-label={call.transcript ? "تحلیل مجدد" : "پردازش مجدد صوت"}
+                  >
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                      <path d="M20 7v5h-5M4 17v-5h5" />
+                      <path d="M6.1 9A7 7 0 0 1 18.7 6.7L20 12M4 12l1.3 5.3A7 7 0 0 0 17.9 15" />
+                    </svg>
+                  </button>
+                </ActionTooltip>
+              ) : null}
               {isOrgAdmin(session?.role) ? (
                 <ActionTooltip label={deleting ? "در حال حذف…" : "حذف تماس"}>
                   <button type="button" className={CALL_ACTION_CLASS} disabled={deleting} onClick={() => setDeleteConfirmationOpen(true)} aria-label="حذف تماس">

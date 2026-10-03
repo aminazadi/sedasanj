@@ -2,6 +2,7 @@
 
 ## 2026-10-03 — AMINAZADI
 
+- Added tenant-scoped manual transcription recovery for terminal ASR failures, including fresh auditable jobs, durable dispatch, retry-safe credit holds, and a call-detail recovery action.
 - Preserved timestamped conversational turns for 9Router OpenAI-compatible transcription responses and repaired invalid zero-length segment timestamps before transcript correction.
 - Highlighted a newly selected Jalali date with the primary color before confirming date-time values.
 - Changed transcript-correction model priority to submit one AISERVICE task at a time and advance to the next text model only after the current model ends in technical failure.

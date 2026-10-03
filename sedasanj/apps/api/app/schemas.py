@@ -664,6 +664,7 @@ class TaskBoard(BaseModel):
 
 class CallDetail(CallSummary):
     audio_available: bool = False
+    can_retry_transcription: bool = False
     transcript: str | None = None
     corrected_transcript: str | None = None
     corrected_transcript_at: datetime | None = None

@@ -2,6 +2,7 @@
 
 ## 2026-10-03 — AMINAZADI
 
+- Added regression coverage for versioned GPT-4o transcription aliases so 9Router never sends unsupported verbose JSON to those models.
 - Requested provider-compatible JSON for GPT-4o transcription models while retaining timestamped verbose JSON for compatible 9Router ASR models, then normalized both response shapes internally.
 - Replaced execute-all multi-model processing with ordered first-success failover, including per-model retries, explicit skipped runs, crash recovery, and aggregated all-model failure details.
 - Made every enabled cached 9Router model executable through the same catalog and dispatch contract while preserving installed local-model priority.

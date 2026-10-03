@@ -275,6 +275,64 @@ async def reserve(
     return reservation
 
 
+async def reserve_retry(
+    session: AsyncSession, *, tenant: Tenant, call_id: UUID, duration_ms: int
+) -> CreditReservation:
+    """Create a fresh hold for a manually retried call."""
+    held = (
+        await session.execute(
+            select(CreditReservation)
+            .where(
+                CreditReservation.call_id == call_id,
+                CreditReservation.tenant_id == tenant.id,
+                CreditReservation.status == "held",
+            )
+            .order_by(CreditReservation.created_at.desc(), CreditReservation.id.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if held is not None:
+        return held
+
+    seconds = billable_seconds(duration_ms)
+    toman = seconds_to_toman(seconds, tenant.price_per_minute_toman)
+    cache = await _lock_cache(session, tenant.id)
+    if cache.seconds < seconds:
+        raise ApiError(
+            "insufficient_credit",
+            f"Reservation requires {seconds} seconds; available {cache.seconds}",
+        )
+    await _ensure_legacy_grant(session, tenant.id, cache)
+
+    reservation = CreditReservation(
+        tenant_id=tenant.id,
+        call_id=call_id,
+        seconds=seconds,
+        toman=toman,
+        status="held",
+    )
+    session.add(reservation)
+    await session.flush()
+    await _allocate_grants(
+        session,
+        tenant_id=tenant.id,
+        reservation_id=reservation.id,
+        seconds=seconds,
+    )
+    await _apply(
+        session,
+        tenant_id=tenant.id,
+        call_id=call_id,
+        kind="reservation",
+        seconds_delta=-seconds,
+        toman_delta=-toman,
+        idempotency_key=f"reserve:{call_id}:{reservation.id}",
+        reservation_id=reservation.id,
+    )
+    return reservation
+
+
 async def settle(
     session: AsyncSession, *, tenant_id: UUID, call_id: UUID, actual_duration_ms: int
 ) -> int:
@@ -285,11 +343,27 @@ async def settle(
             .where(
                 CreditReservation.call_id == call_id,
                 CreditReservation.tenant_id == tenant_id,
+                CreditReservation.status == "held",
             )
+            .order_by(CreditReservation.created_at.desc(), CreditReservation.id.desc())
+            .limit(1)
             .with_for_update()
         )
     ).scalar_one_or_none()
     if reservation is None:
+        settled = (
+            await session.execute(
+                select(LedgerEntry.id)
+                .where(
+                    LedgerEntry.tenant_id == tenant_id,
+                    LedgerEntry.call_id == call_id,
+                    LedgerEntry.kind == "settlement",
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if settled is not None:
+            return billable_seconds(actual_duration_ms)
         raise ApiError("not_found", f"no reservation for call {call_id}")
 
     tenant = (
@@ -301,11 +375,20 @@ async def settle(
     actual_seconds = billable_seconds(actual_duration_ms)
     actual_toman = seconds_to_toman(actual_seconds, tenant.price_per_minute_toman)
 
-    key = f"settle:{call_id}"
-    if await _existing_entry(session, tenant_id, key) is not None:
+    settled = (
+        await session.execute(
+            select(LedgerEntry.id)
+            .where(
+                LedgerEntry.tenant_id == tenant_id,
+                LedgerEntry.call_id == call_id,
+                LedgerEntry.kind == "settlement",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if settled is not None:
         return actual_seconds
-    if reservation.status != "held":
-        return actual_seconds
+    key = f"settle:{call_id}:{reservation.id}"
 
     seconds_delta = reservation.seconds - actual_seconds
     if seconds_delta > 0:
@@ -356,17 +439,18 @@ async def release(session: AsyncSession, *, tenant_id: UUID, call_id: UUID) -> N
             .where(
                 CreditReservation.call_id == call_id,
                 CreditReservation.tenant_id == tenant_id,
+                CreditReservation.status == "held",
             )
+            .order_by(CreditReservation.created_at.desc(), CreditReservation.id.desc())
+            .limit(1)
             .with_for_update()
         )
     ).scalar_one_or_none()
     if reservation is None:
         return
 
-    key = f"release:{call_id}"
+    key = f"release:{call_id}:{reservation.id}"
     if await _existing_entry(session, tenant_id, key) is not None:
-        return
-    if reservation.status != "held":
         return
 
     restored = await _restore_allocations(

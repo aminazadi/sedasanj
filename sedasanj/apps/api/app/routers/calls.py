@@ -30,6 +30,7 @@ from app.models import (
     LedgerEntry,
     ProcessingEvent,
     SalesInsight,
+    Tenant,
     Transcript,
     TranscriptRevision,
     TranscriptRevisionSegment,
@@ -55,6 +56,7 @@ from app.schemas import (
 from app.sentiment import SENTIMENT_SET, caller_trajectory, normalize_sentiment
 from app.services import (
     audit,
+    billing,
     follow_up_tasks,
     operator_scope,
     outbox,
@@ -471,7 +473,6 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
                     Job.call_id == call_id,
                     Job.tenant_id == principal.tenant_id,
                     Job.status.in_(("failed_retryable", "failed_terminal")),
-                    Job.error_detail.is_not(None),
                 )
                 .order_by(Job.created_at.desc(), Job.id.desc())
                 .limit(1)
@@ -530,6 +531,14 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
     return CallDetail(
         **summary_payload,
         audio_available=audio_available,
+        can_retry_transcription=(
+            transcript is None
+            and audio_available
+            and call.status == "failed_terminal"
+            and latest_failed_job is not None
+            and latest_failed_job.kind == "asr"
+            and latest_failed_job.status == "failed_terminal"
+        ),
         transcript=transcript.full_text if transcript else None,
         corrected_transcript=transcript.corrected_text if transcript else None,
         corrected_transcript_at=transcript.corrected_at if transcript else None,
@@ -605,6 +614,130 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         ),
         processing_events=public_events,
     )
+
+
+@router.post("/calls/{call_id}/retry-transcription", status_code=status.HTTP_202_ACCEPTED)
+async def retry_transcription(
+    call_id: UUID, request: Request, principal: OperatorDep
+) -> dict[str, str]:
+    assert principal.tenant_id is not None
+    tenant_id = principal.tenant_id
+    job_id: UUID
+
+    async with session_scope(tenant_id) as session:
+        visible_call = await _load_call(session, call_id, tenant_id, principal)
+        call = (
+            await session.execute(
+                select(Call)
+                .where(Call.id == visible_call.id, Call.tenant_id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one()
+        transcript = (
+            await session.execute(
+                select(Transcript.call_id).where(
+                    Transcript.call_id == call_id,
+                    Transcript.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if transcript is not None:
+            raise ApiError("invalid_request", "متن تماس قبلاً ایجاد شده است.")
+        if call.status != "failed_terminal":
+            raise ApiError("conflict_idempotency", "این تماس در وضعیت قابل پردازش مجدد نیست.")
+        audio = (
+            await session.execute(
+                select(AudioObject).where(
+                    AudioObject.id == call.audio_id,
+                    AudioObject.tenant_id == tenant_id,
+                    AudioObject.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if audio is None:
+            raise ApiError("not_found", "فایل صوتی این تماس در دسترس نیست.")
+        latest_asr_job = (
+            await session.execute(
+                select(Job)
+                .where(
+                    Job.call_id == call_id,
+                    Job.tenant_id == tenant_id,
+                    Job.kind == "asr",
+                )
+                .order_by(Job.created_at.desc(), Job.id.desc())
+                .limit(1)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if latest_asr_job is None or latest_asr_job.status != "failed_terminal":
+            raise ApiError("conflict_idempotency", "خطای نهایی تبدیل گفتار برای این تماس یافت نشد.")
+
+        tenant = await session.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError("not_found", "tenant not found")
+        await billing.reserve_retry(
+            session,
+            tenant=tenant,
+            call_id=call_id,
+            duration_ms=audio.duration_ms,
+        )
+
+        job = Job(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+            status="queued",
+            attempt=0,
+            run_after=datetime.now(UTC),
+        )
+        session.add(job)
+        await session.flush()
+        job_id = job.id
+        call.status = "stored"
+        call.error_code = None
+        restored = progress.values_for_status("stored")
+        call.progress_pct = int(restored["progress_pct"])
+        call.progress_detail = "پردازش مجدد صوت در صف قرار گرفت"
+        call.updated_at = datetime.now(UTC)
+        await processing_events.record(
+            session,
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+            status="queued",
+            progress_pct=int(restored["progress_pct"]),
+            message="پردازش مجدد صوت توسط کاربر در صف قرار گرفت",
+            step_key=f"{job.id}:queued:0",
+        )
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=tenant_id,
+            action="call.retry_transcription",
+            payload={
+                "call_id": str(call_id),
+                "job_id": str(job.id),
+                "previous_job_id": str(latest_asr_job.id),
+            },
+            ip=client_ip(request),
+        )
+        outbox_id = await outbox.stage_job(
+            session,
+            job_id=job.id,
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+        )
+
+    try:
+        await outbox.dispatch_one(outbox_id)
+    except Exception:
+        logger.exception(
+            "immediate transcription retry dispatch failed; durable dispatcher will retry",
+            extra={"extra_fields": {"call_id": str(call_id), "job_id": str(job_id)}},
+        )
+    return {"status": "queued", "job_id": str(job_id)}
 
 
 @router.delete("/calls/{call_id}", status_code=status.HTTP_204_NO_CONTENT)

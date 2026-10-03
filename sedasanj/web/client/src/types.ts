@@ -120,6 +120,7 @@ export interface Insights {
 
 export interface CallDetail extends CallSummary {
   audio_available: boolean;
+  can_retry_transcription: boolean;
   transcript: string | null;
   corrected_transcript: string | null;
   corrected_transcript_at: string | null;

@@ -123,6 +123,23 @@ class NineRouterTests(unittest.TestCase):
             [{"id": 0, "start": 0, "end": 0, "text": "سلام"}],
         )
 
+    def test_versioned_gpt_4o_transcription_uses_json_response_format(self):
+        settings = ninerouter.ProviderSettings(
+            "https://router.example", "key", False, "", False, "", (1, 1)
+        )
+        response = Mock(status_code=200)
+        response.json.return_value = {"text": "سلام"}
+        audio = Path(self.tmp.name) / "audio.wav"
+        audio.write_bytes(b"audio")
+        with patch(
+            "asr_service.infrastructure.ninerouter.requests.request",
+            return_value=response,
+        ) as request:
+            ninerouter.NineRouterClient(settings).transcribe(
+                "openai/gpt-4o-transcribe-api-eV3", audio
+            )
+        self.assertEqual(request.call_args.kwargs["data"]["response_format"], "json")
+
     def test_all_cached_asr_models_are_executable_when_provider_is_enabled(self):
         ninerouter.save_models(
             [
