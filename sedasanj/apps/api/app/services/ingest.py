@@ -19,6 +19,7 @@ from app.models import AudioObject, Call, CreditReservation, Job, Tenant
 from app.schemas import IngestAccepted
 from app.services import billing, entitlements, outbox, processing_events, progress
 from app.services.audio import probe_wav_bytes, probe_wav_file
+from app.services.phone_numbers import normalize_call_number
 from app.services.storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,10 @@ async def accept_upload(
     """§4.3 upload contract: validate, reserve credit, store, queue ASR."""
     settings = get_settings()
     unique_id = resolve_uniqueid(asterisk_uniqueid)
+    caller_number = normalize_call_number(caller_number)
+    dialed_number = normalize_call_number(dialed_number)
+    if not caller_number or not dialed_number:
+        raise ApiError("invalid_request", "caller_number and dialed_number are required")
     if direction is not None and direction not in DIRECTIONS:
         raise ApiError("invalid_request", f"direction must be one of {', '.join(DIRECTIONS)}")
     if idempotency_key is not None and idempotency_key.strip() not in ("", unique_id):
