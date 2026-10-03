@@ -89,6 +89,7 @@ export default function JalaliDatePicker({
   const [viewYear, setViewYear] = useState(initial.year);
   const [viewMonth, setViewMonth] = useState(initial.month);
   const [draft, setDraft] = useState<DraftDate>(initial);
+  const [hasDraftSelection, setHasDraftSelection] = useState(Boolean(value));
   const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0, width: 352 });
   const today = todayDraft();
 
@@ -113,6 +114,7 @@ export default function JalaliDatePicker({
     if (!open) return;
     const selected = parseValue(value) ?? todayDraft();
     setDraft(selected);
+    setHasDraftSelection(Boolean(value));
     setViewYear(selected.year);
     setViewMonth(selected.month);
 
@@ -168,6 +170,7 @@ export default function JalaliDatePicker({
   function chooseDay(day: number) {
     const next = { ...draft, year: viewYear, month: viewMonth, day };
     setDraft(next);
+    setHasDraftSelection(true);
     if (!includeTime) {
       onChange(serialize(next));
       setOpen(false);
@@ -216,7 +219,7 @@ export default function JalaliDatePicker({
             {Array.from({ length: offset }, (_, index) => <span key={`empty-${index}`} />)}
             {Array.from({ length: monthLength }, (_, index) => {
               const day = index + 1;
-              const selected = Boolean(value) && draft.year === viewYear && draft.month === viewMonth && draft.day === day;
+              const selected = hasDraftSelection && draft.year === viewYear && draft.month === viewMonth && draft.day === day;
               const isToday = today.year === viewYear && today.month === viewMonth && today.day === day;
               return (
                 <button

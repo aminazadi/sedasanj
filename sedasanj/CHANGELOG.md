@@ -2,6 +2,7 @@
 
 ## 2026-10-03 — AMINAZADI
 
+- Highlighted a newly selected Jalali date with the primary color before confirming date-time values.
 - Changed transcript-correction model priority to submit one AISERVICE task at a time and advance to the next text model only after the current model ends in technical failure.
 - Fixed route-aware AI model settings so inactive optional 9Router prompts no longer block saving, and exposed safe rejected-model details for ASR failures.
 - Unified operator scoring with canonical call assignments, allowed previously ineligible calls to recover after an operator mapping is added, prevented AMI destination extensions from being misidentified as answering operators, and added database support for scores requiring manual review.
