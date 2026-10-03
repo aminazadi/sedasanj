@@ -206,11 +206,14 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
             True,
         )
     text = f"{exc!r} {exc}"
-    if "empty text" in text.lower() or "empty transcript" in text.lower():
+    if any(
+        marker in text.lower()
+        for marker in ("empty text", "empty transcript", "did not contain text")
+    ):
         return (
             f"{kind}_empty_transcript",
             "پیاده‌سازی گفتار متنی برنگرداند. فایل صوتی و وضعیت سرویس VoiceSanj را بررسی کنید.",
-            None,
+            False,
         )
     if looks_like_credit(text):
         credit = _credit(kind, 0, text)

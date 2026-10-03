@@ -214,6 +214,48 @@ def _safe_detail(response):
     return re.sub(r"(?i)(bearer\s+|sk-[\w-]+)[^\s,;\"]+", r"\1[redacted]", str(detail))[:500]
 
 
+def _transcription_text(payload):
+    if isinstance(payload, str):
+        return payload.strip()
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("text", "transcript", "transcription"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    for key in ("data", "result", "output"):
+        value = payload.get(key)
+        text = _transcription_text(value)
+        if text:
+            return text
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        message = choices[0].get("message")
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+    return ""
+
+
+def _transcription_error(payload):
+    if not isinstance(payload, dict):
+        return None
+    detail = payload.get("error") or payload.get("detail")
+    status = str(payload.get("status") or "").lower()
+    if detail is None and status not in {"failed", "error"}:
+        return None
+    if isinstance(detail, dict):
+        detail = detail.get("message") or detail.get("detail") or detail.get("code")
+    safe = re.sub(r"(?i)(bearer\s+|sk-[\w-]+)[^\s,;\"]+", r"\1[redacted]", str(detail or status))
+    lowered = safe.lower()
+    retryable = any(
+        marker in lowered
+        for marker in ("timeout", "rate limit", "temporar", "unavailable", "overload", "429", "5xx")
+    )
+    return NineRouterError(f"9Router transcription failed: {safe[:500]}", retryable=retryable)
+
+
 class NineRouterClient:
     def __init__(self, settings):
         self.settings = settings
@@ -275,24 +317,48 @@ class NineRouterClient:
             and "transcribe" in normalized_model
             else "verbose_json"
         )
-        with Path(path).open("rb") as audio:
-            response, _ = self._request(
-                "POST", "/v1/audio/transcriptions",
-                data={
-                    "model": model,
-                    "language": "fa",
-                    "response_format": response_format,
-                    **({"prompt": prompt} if prompt else {}),
-                },
-                files={"file": (Path(path).name, audio)},
-            )
+        def request(format_name):
+            with Path(path).open("rb") as audio:
+                return self._request(
+                    "POST", "/v1/audio/transcriptions",
+                    data={
+                        "model": model,
+                        "language": "fa",
+                        "response_format": format_name,
+                        **({"prompt": prompt} if prompt else {}),
+                    },
+                    files={"file": (Path(path).name, audio)},
+                )[0]
+
+        response = request(response_format)
         try:
             payload = response.json()
         except ValueError as exc:
             raise NineRouterError("9Router returned an invalid transcription response") from exc
-        text = str(payload.get("text") or "").strip()
+        error = _transcription_error(payload)
+        if error is not None:
+            raise error
+        text = _transcription_text(payload)
+        if not text and response_format != "text":
+            fallback = request("text")
+            try:
+                fallback_payload = fallback.json()
+            except ValueError:
+                fallback_payload = fallback.text
+            error = _transcription_error(fallback_payload)
+            if error is not None:
+                raise error
+            fallback_text = _transcription_text(fallback_payload)
+            if fallback_text:
+                text = fallback_text
+                payload = {"text": text}
         if not text:
-            raise NineRouterError("9Router transcription response did not contain text")
-        duration = payload.get("duration")
-        segments = payload.get("segments") or []
-        return {"text": text, "language": payload.get("language") or "fa", "duration": duration, "duration_after_vad": duration, "model": model, "segments": segments}
+            keys = ", ".join(sorted(str(key) for key in payload)) if isinstance(payload, dict) else type(payload).__name__
+            raise NineRouterError(
+                f"9Router transcription response did not contain text (fields: {keys or 'none'})",
+                retryable=False,
+            )
+        duration = payload.get("duration") if isinstance(payload, dict) else None
+        segments = payload.get("segments") or [] if isinstance(payload, dict) else []
+        language = payload.get("language") if isinstance(payload, dict) else None
+        return {"text": text, "language": language or "fa", "duration": duration, "duration_after_vad": duration, "model": model, "segments": segments}

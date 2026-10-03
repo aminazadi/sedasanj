@@ -40,9 +40,19 @@ def test_empty_whisper_text_gets_a_readable_message() -> None:
         RuntimeError("whisper returned empty text"), kind="asr"
     )
     assert code == "asr_empty_transcript"
-    assert retryable is None
+    assert retryable is False
     assert "متن" in detail
     assert "GapGPT" not in detail
+
+
+def test_missing_provider_transcription_text_is_terminal() -> None:
+    code, detail, retryable = classify_failure(
+        RuntimeError("9Router transcription response did not contain text"), kind="asr"
+    )
+
+    assert code == "asr_empty_transcript"
+    assert retryable is False
+    assert "متن" in detail
 
 
 def test_timeout_classification_is_retryable_and_specific() -> None:

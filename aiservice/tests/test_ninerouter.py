@@ -124,6 +124,66 @@ class NineRouterTests(unittest.TestCase):
             )
             self.assertEqual(result["segments"], [])
 
+    def test_empty_json_transcription_falls_back_to_text_format(self):
+        settings = ninerouter.ProviderSettings(
+            "https://router.example", "key", False, "", False, "", (1, 1)
+        )
+        empty = Mock(status_code=200)
+        empty.json.return_value = {"model": "gpt-4o-mini-transcribe"}
+        fallback = Mock(status_code=200, text="سلام از فرمت متنی")
+        fallback.json.side_effect = ValueError("not json")
+        audio = Path(self.tmp.name) / "audio.wav"
+        audio.write_bytes(b"audio")
+
+        with patch(
+            "asr_service.infrastructure.ninerouter.requests.request",
+            side_effect=[empty, fallback],
+        ) as request:
+            result = ninerouter.NineRouterClient(settings).transcribe(
+                "openai/gpt-4o-mini-transcribe", audio
+            )
+
+        self.assertEqual(result["text"], "سلام از فرمت متنی")
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0].kwargs["data"]["response_format"], "json")
+        self.assertEqual(request.call_args_list[1].kwargs["data"]["response_format"], "text")
+
+    def test_nested_transcription_text_is_normalized(self):
+        settings = ninerouter.ProviderSettings(
+            "https://router.example", "key", False, "", False, "", (1, 1)
+        )
+        response = Mock(status_code=200)
+        response.json.return_value = {"result": {"transcription": "سلام"}}
+        audio = Path(self.tmp.name) / "audio.wav"
+        audio.write_bytes(b"audio")
+
+        with patch(
+            "asr_service.infrastructure.ninerouter.requests.request",
+            return_value=response,
+        ):
+            result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
+
+        self.assertEqual(result["text"], "سلام")
+
+    def test_provider_error_in_success_response_is_not_treated_as_transcript(self):
+        settings = ninerouter.ProviderSettings(
+            "https://router.example", "key", False, "", False, "", (1, 1)
+        )
+        response = Mock(status_code=200)
+        response.json.return_value = {"error": {"message": "unsupported audio"}}
+        audio = Path(self.tmp.name) / "audio.wav"
+        audio.write_bytes(b"audio")
+
+        with patch(
+            "asr_service.infrastructure.ninerouter.requests.request",
+            return_value=response,
+        ):
+            with self.assertRaises(ninerouter.NineRouterError) as caught:
+                ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
+
+        self.assertFalse(caught.exception.retryable)
+        self.assertIn("unsupported audio", str(caught.exception))
+
     def test_versioned_gpt_4o_transcription_uses_json_response_format(self):
         settings = ninerouter.ProviderSettings(
             "https://router.example", "key", False, "", False, "", (1, 1)
