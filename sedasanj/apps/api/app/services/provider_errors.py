@@ -208,7 +208,12 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
     text = f"{exc!r} {exc}"
     if any(
         marker in text.lower()
-        for marker in ("empty text", "empty transcript", "did not contain text")
+        for marker in (
+            "empty text",
+            "empty transcript",
+            "did not contain text",
+            "returned no text",
+        )
     ):
         return (
             f"{kind}_empty_transcript",

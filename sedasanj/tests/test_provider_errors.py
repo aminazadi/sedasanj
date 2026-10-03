@@ -55,6 +55,15 @@ def test_missing_provider_transcription_text_is_terminal() -> None:
     assert "متن" in detail
 
 
+def test_empty_detected_speech_regions_are_terminal() -> None:
+    code, _detail, retryable = classify_failure(
+        RuntimeError("9Router returned no text for detected speech regions"), kind="asr"
+    )
+
+    assert code == "asr_empty_transcript"
+    assert retryable is False
+
+
 def test_timeout_classification_is_retryable_and_specific() -> None:
     code, detail, retryable = classify_failure(TimeoutError(), kind="llm")
 

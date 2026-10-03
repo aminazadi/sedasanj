@@ -362,6 +362,32 @@ async def test_dual_channel_transcribes_in_parallel(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dual_channel_keeps_speaking_channel_when_other_channel_is_silent(
+    tmp_path: Path,
+) -> None:
+    original = tmp_path / "stereo.wav"
+    original.write_bytes(b"RIFF")
+
+    class FakeEngine:
+        model_name = "test"
+        model_version = "v1"
+
+        async def transcribe(self, path: Path) -> list[AsrSegment]:
+            if path.stem == "left":
+                raise RuntimeError("No speech regions were detected for timestamp recovery")
+            return [AsrSegment(t_start_ms=100, t_end_ms=900, text="صدای راست")]
+
+    async def fake_split(source: Path, left_out: Path, right_out: Path) -> None:
+        left_out.write_bytes(b"L")
+        right_out.write_bytes(b"R")
+
+    with patch("worker_asr.main.split_channels", fake_split):
+        rows = await _transcribe_tracks(FakeEngine(), original, tmp_path, channels=2)
+
+    assert [(channel, segment.text) for channel, segment in rows] == [(1, "صدای راست")]
+
+
+@pytest.mark.asyncio
 async def test_dual_channel_sends_preprocessed_files_to_asr(tmp_path: Path) -> None:
     original = tmp_path / "stereo.wav"
     original.write_bytes(b"RIFF")

@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from asr_service.infrastructure.ninerouter import NineRouterEmptyTranscriptionError
 from asr_service.services.speech_segmentation import (
     normalize_transcription,
     vad_regions,
@@ -80,6 +81,29 @@ class SpeechSegmentationTests(unittest.TestCase):
 
         self.assertEqual(len(result["segments"]), 2)
         self.assertTrue(all(row["timestamp_source"] == "vad_window" for row in result["segments"]))
+
+    def test_empty_provider_region_does_not_discard_other_speech_regions(self):
+        calls = 0
+
+        def decode(_path):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise NineRouterEmptyTranscriptionError("empty", retryable=False)
+            return {"text": "بخش دوم", "segments": [], "duration": 1.0}
+
+        result = normalize_transcription(
+            self.path,
+            {"text": "", "segments": [], "duration": 4.0},
+            decode,
+            ensure_timestamps=True,
+            diarize=False,
+            min_seconds=0.2,
+            padding_seconds=0.05,
+        )
+
+        self.assertEqual(result["text"], "بخش دوم")
+        self.assertEqual(len(result["segments"]), 1)
 
 
 if __name__ == "__main__":

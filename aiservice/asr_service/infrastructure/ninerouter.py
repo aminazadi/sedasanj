@@ -27,6 +27,10 @@ class NineRouterError(RuntimeError):
         self.retryable = retryable
 
 
+class NineRouterEmptyTranscriptionError(NineRouterError):
+    pass
+
+
 def normalize_url(value):
     value = (value or DEFAULT_URL).strip().rstrip("/")
     try:
@@ -354,7 +358,7 @@ class NineRouterClient:
                 payload = {"text": text}
         if not text:
             keys = ", ".join(sorted(str(key) for key in payload)) if isinstance(payload, dict) else type(payload).__name__
-            raise NineRouterError(
+            raise NineRouterEmptyTranscriptionError(
                 f"9Router transcription response did not contain text (fields: {keys or 'none'})",
                 retryable=False,
             )

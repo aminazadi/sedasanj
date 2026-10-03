@@ -203,10 +203,20 @@ async def _transcribe_tracks(
                 await on_preprocessed()
         else:
             left_ready, right_ready = left, right
-        left_segments, right_segments = await asyncio.gather(
+        track_results = await asyncio.gather(
             engine.transcribe(left_ready),
             engine.transcribe(right_ready),
+            return_exceptions=True,
         )
+        channel_segments: list[list[AsrSegment]] = [[], []]
+        for channel, result in enumerate(track_results):
+            if isinstance(result, BaseException):
+                detail = str(result).lower()
+                if "no speech" in detail or "no text for detected speech regions" in detail:
+                    continue
+                raise result
+            channel_segments[channel] = result
+        left_segments, right_segments = channel_segments
         rows.extend((0, segment) for segment in left_segments)
         rows.extend((1, segment) for segment in right_segments)
     else:

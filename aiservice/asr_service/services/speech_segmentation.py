@@ -9,7 +9,9 @@ from typing import Callable
 import numpy as np
 import soundfile as sf
 
+from asr_service.infrastructure.ninerouter import NineRouterEmptyTranscriptionError
 from asr_service.infrastructure.storage import MODEL_DIR
+from asr_service.services.inference import NoSpeechDetectedError
 
 
 @dataclass(frozen=True)
@@ -207,7 +209,7 @@ def normalize_transcription(
         path, min_seconds=min_seconds, padding_seconds=padding_seconds
     )
     if not regions:
-        raise RuntimeError("No speech regions were detected for timestamp recovery")
+        raise NoSpeechDetectedError("No speech regions were detected for timestamp recovery")
     recovered: list[dict] = []
     with tempfile.TemporaryDirectory(prefix="asr-regions-") as temp_dir:
         for index, region in enumerate(regions):
@@ -217,7 +219,10 @@ def normalize_transcription(
                 continue
             part = Path(temp_dir) / f"region-{index:04d}.wav"
             sf.write(part, audio[start_sample:end_sample], sample_rate, subtype="PCM_16")
-            partial = decode(part)
+            try:
+                partial = decode(part)
+            except NineRouterEmptyTranscriptionError:
+                continue
             text = str(partial.get("text") or "").strip()
             if not text:
                 continue
@@ -245,7 +250,10 @@ def normalize_transcription(
                     }
                 )
     if not recovered:
-        raise RuntimeError("ASR returned no text for detected speech regions")
+        raise NineRouterEmptyTranscriptionError(
+            "9Router returned no text for detected speech regions",
+            retryable=False,
+        )
     result["segments"] = recovered
     result["text"] = " ".join(str(row["text"]).strip() for row in recovered)
     result["duration"] = result.get("duration") or duration

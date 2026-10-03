@@ -20,6 +20,7 @@ from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.failures import record_failure
 from asr_service.infrastructure.ninerouter import (
     NineRouterClient,
+    NineRouterEmptyTranscriptionError,
     NineRouterError,
     is_configured_model,
     resolve_settings,
@@ -982,7 +983,17 @@ class TaskManager:
                             }
                         if uses_ninerouter("asr", run["model_id"]):
                             log_run(run["id"], "Submitting audio to 9Router")
-                        result = decode_audio(Path(local_input))
+                        try:
+                            result = decode_audio(Path(local_input))
+                        except NineRouterEmptyTranscriptionError:
+                            result = {
+                                "text": "",
+                                "language": "fa",
+                                "duration": None,
+                                "duration_after_vad": None,
+                                "model": run["model_id"],
+                                "segments": [],
+                            }
                         from .speech_segmentation import normalize_transcription
 
                         result = normalize_transcription(
