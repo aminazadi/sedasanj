@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from asr_service.domain.catalog import BUILTIN_MODEL_IDS, CATALOG, load_custom_models
 from asr_service.infrastructure.storage import MODEL_DIR, execute, now, state
-from asr_service.infrastructure.ninerouter import cached_models
+from asr_service.infrastructure.ninerouter import cached_models, configured_models
 from asr_service.services.downloader import manager
 
 from ..dependencies import authorize_admin
@@ -103,17 +103,47 @@ def _resolve_hugging_face_artifacts(body: CustomTextModelRequest) -> list[dict]:
 def models():
     """Return the static model catalog enriched with live installation state."""
 
+    cached = cached_models()
+    remote_by_kind = {
+        kind: configured_models(kind)
+        for kind in {str(item.get("kind") or "") for item in cached}
+    }
     local = [
         {
             **vars(model),
             "files": [vars(item) for item in model.files],
             **state(model.id),
-            "available": (MODEL_DIR / model.id / ".complete").exists(),
+            "available": (
+                (MODEL_DIR / model.id / ".complete").exists()
+                or model.id in remote_by_kind.get(model.kind, set())
+            ),
             "custom": model.id not in BUILTIN_MODEL_IDS,
         }
         for model in CATALOG.values()
     ]
-    remote = [{"id": item["id"], "kind": item["kind"], "display_name": item["id"], "description": f"9Router {item.get('owned_by', '')}", "repository_url": "", "architecture": "9router", "recommended": False, "files": [], "model_id": item["id"], "status": "installed", "available": True, "custom": False, "source": {"provider": "9router"}} for item in cached_models()]
+    remote = [
+        {
+            "id": item["id"],
+            "kind": item["kind"],
+            "display_name": item["id"],
+            "description": f"9Router {item.get('owned_by', '')}",
+            "repository_url": "",
+            "architecture": "9router",
+            "recommended": False,
+            "files": [],
+            "model_id": item["id"],
+            "status": (
+                "installed"
+                if item["id"] in remote_by_kind.get(item["kind"], set())
+                else "provider_disabled"
+            ),
+            "available": item["id"] in remote_by_kind.get(item["kind"], set()),
+            "custom": False,
+            "source": {"provider": "9router"},
+        }
+        for item in cached
+        if item["id"] not in CATALOG
+    ]
     return local + remote
 
 

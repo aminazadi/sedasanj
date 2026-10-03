@@ -97,6 +97,31 @@ class NineRouterTests(unittest.TestCase):
             "واژگان تخصصی را حفظ کن",
         )
 
+    def test_all_cached_asr_models_are_executable_when_provider_is_enabled(self):
+        ninerouter.save_models(
+            [
+                {"id": "openai/gpt-4o-transcribe", "kind": "asr"},
+                {"id": "openai/whisper-1", "kind": "asr"},
+            ]
+        )
+        ninerouter.save_config(
+            {
+                "url": "https://router.example",
+                "api_key": "secret-value",
+                "asr_enabled": True,
+                "asr_model": "openai/gpt-4o-transcribe",
+                "text_enabled": False,
+                "text_model": "",
+                "connect_timeout_seconds": 10,
+                "read_timeout_seconds": 300,
+            }
+        )
+
+        self.assertEqual(
+            {"openai/gpt-4o-transcribe", "openai/whisper-1"},
+            ninerouter.configured_models("asr"),
+        )
+
     def test_openai_chat_completions_proxy_path_is_allowed(self):
         self.assertIn("chat/completions", ninerouter_router.ALLOWED_PATHS)
 
@@ -106,10 +131,13 @@ class NineRouterTests(unittest.TestCase):
             (model_dir / model_id).mkdir(parents=True)
             (model_dir / model_id / ".complete").touch()
 
-        configured = {"asr": "openai/gpt-4o-transcribe", "llm": "codex-three-accounts"}
+        configured = {
+            "asr": {"openai/gpt-4o-transcribe", "openai/whisper-1"},
+            "llm": {"codex-three-accounts"},
+        }
         with (
             patch.object(tasks, "MODEL_DIR", model_dir),
-            patch.object(tasks, "configured_model", side_effect=configured.get),
+            patch.object(tasks, "configured_models", side_effect=configured.get),
         ):
             self.assertEqual(
                 tasks.ordered_models("whisper-large-v3", None, "asr"),
@@ -118,6 +146,10 @@ class NineRouterTests(unittest.TestCase):
             self.assertEqual(
                 tasks.ordered_models("openai/gpt-4o-transcribe", None, "asr"),
                 ["openai/gpt-4o-transcribe"],
+            )
+            self.assertEqual(
+                tasks.ordered_models("openai/whisper-1", None, "asr"),
+                ["openai/whisper-1"],
             )
             self.assertEqual(
                 tasks.ordered_models("dorna-8b-q4_k_m", None, "llm"),
@@ -131,5 +163,5 @@ class NineRouterTests(unittest.TestCase):
                 tasks.ordered_models("unknown-model", None, "asr")
 
         self.assertEqual(caught.exception.status_code, 400)
-        self.assertIn("openai/gpt-4o-transcribe", caught.exception.detail)
+        self.assertIn("unknown-model", caught.exception.detail)
         self.assertIn("whisper-large-v3", CATALOG)

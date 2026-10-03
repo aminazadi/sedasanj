@@ -102,6 +102,19 @@ def test_asr_model_contract_error_is_terminal_and_specific() -> None:
     assert error.retryable is False
 
 
+def test_asr_model_contract_error_preserves_safe_provider_detail() -> None:
+    error = classify_http(
+        400,
+        '{"detail":"ASR model openai/whisper-1 is not available; api_key=secret-value"}',
+        kind="asr",
+    )
+
+    assert error is not None
+    assert "openai/whisper-1" in error.detail
+    assert "secret-value" not in error.detail
+    assert "[redacted]" in error.detail
+
+
 def test_llm_extra_field_error_is_terminal_and_specific() -> None:
     error = classify_http(
         422,

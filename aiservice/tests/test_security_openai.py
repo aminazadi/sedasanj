@@ -139,10 +139,16 @@ class SecurityAndCompatibilityTests(unittest.TestCase):
         self.assertEqual(result["data"][0]["id"], "test-embedding")
         self.assertEqual(result["data"][0]["kind"], "embedding")
 
-    def test_remote_model_is_reported_as_ready_independent_of_owner(self):
-        with patch(
-            "asr_service.api.routers.openai_compat.cached_models",
-            return_value=[{"id": "openai/gpt-test", "kind": "llm", "owned_by": "openai"}],
+    def test_executable_remote_model_is_reported_as_ready_independent_of_owner(self):
+        with (
+            patch(
+                "asr_service.api.routers.openai_compat.cached_models",
+                return_value=[{"id": "openai/gpt-test", "kind": "llm", "owned_by": "openai"}],
+            ),
+            patch(
+                "asr_service.api.routers.openai_compat.configured_models",
+                return_value={"openai/gpt-test"},
+            ),
         ):
             result = openai_compat.list_models("llm", dependencies.Principal(True))
         remote = next(item for item in result["data"] if item["id"] == "openai/gpt-test")

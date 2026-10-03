@@ -16,7 +16,8 @@ from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.ninerouter import (
     NineRouterError,
     cached_models,
-    configured_model,
+    configured_models,
+    is_configured_model,
 )
 from asr_service.infrastructure.storage import MODEL_DIR
 from asr_service.services.task_queue import (
@@ -172,7 +173,7 @@ def create_chat_task(
 
 def installed_llm(model_id):
     try:
-        if configured_model("llm") == model_id:
+        if is_configured_model("llm", model_id):
             return True
     except NineRouterError:
         return False
@@ -184,7 +185,7 @@ def installed_llm(model_id):
 
 
 def model_object(model_id):
-    if configured_model("llm") == model_id:
+    if is_configured_model("llm", model_id):
         return {
             "id": model_id,
             "object": "model",
@@ -207,7 +208,7 @@ def model_object(model_id):
     }
 
 
-def remote_model_object(item):
+def remote_model_object(item, available):
     return {
         "id": item["id"],
         "object": "model",
@@ -215,8 +216,8 @@ def remote_model_object(item):
         "owned_by": item.get("owned_by", "9router"),
         "kind": item["kind"],
         "source": "9router",
-        "available": True,
-        "status": "ready",
+        "available": available,
+        "status": "ready" if available else "provider_disabled",
     }
 
 
@@ -239,7 +240,16 @@ def list_models(kind: str = Query(default="llm", pattern="^(llm|asr|decision|tts
         accessible_kinds.intersection_update((kind,))
     if not accessible_kinds:
         raise HTTPException(403, "API key does not allow model listing")
-    remote = [remote_model_object(item) for item in cached_models() if item.get("kind") in accessible_kinds and (principal.models is None or item["id"] in principal.models)]
+    executable = {model_kind: configured_models(model_kind) for model_kind in accessible_kinds}
+    remote = [
+        remote_model_object(
+            item,
+            item["id"] in executable.get(item.get("kind"), set()),
+        )
+        for item in cached_models()
+        if item.get("kind") in accessible_kinds
+        and (principal.models is None or item["id"] in principal.models)
+    ]
     return {
         "object": "list",
         "data": remote + [

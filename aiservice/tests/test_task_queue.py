@@ -23,7 +23,7 @@ class TaskQueueTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_idempotency_and_successful_lifecycle(self):
-        self.queue.process_text = lambda model, text, operation, style: {"output": text}
+        self.queue.process_text = lambda model, text, operation, style, *_args: {"output": text}
         manager = self.queue.TaskManager()
         manager.start()
         try:
@@ -152,6 +152,19 @@ class TaskQueueTests(unittest.TestCase):
         self.assertIsNotNone(claimed_asr)
         self.assertEqual(asr["task_id"], claimed_asr["task_id"])
 
+    def test_installed_local_model_wins_over_same_remote_identifier(self):
+        model_dir = storage.MODEL_DIR
+        local = model_dir / "whisper-large-v3"
+        local.mkdir(parents=True)
+        (local / ".complete").touch()
+
+        with (
+            patch.object(self.queue, "MODEL_DIR", model_dir),
+            patch.object(self.queue, "is_configured_model", return_value=True),
+        ):
+            self.assertFalse(self.queue.uses_ninerouter("asr", "whisper-large-v3"))
+            self.assertTrue(self.queue.uses_ninerouter("asr", "openai/whisper-1"))
+
     def test_single_plain_text_transcription_keeps_its_content_type_in_history(self):
         self.queue.TASK_DIR.mkdir(parents=True, exist_ok=True)
         audio = self.queue.TASK_DIR / "sample.wav"
@@ -255,9 +268,9 @@ class TaskQueueTests(unittest.TestCase):
             self.assertEqual(1, saved["cancel_requested"])
             self.assertEqual("failed", storage.row("SELECT status FROM usage WHERE id=?", (task["usage_id"],))["status"])
 
-    def test_models_run_sequentially_and_keep_order(self):
+    def test_first_success_skips_remaining_failover_models(self):
         calls = []
-        self.queue.process_text = lambda model, text, operation, style: (
+        self.queue.process_text = lambda model, text, operation, style, *_args: (
             calls.append(model) or {"corrected_text": model, "uncertain_items": []}
         )
         task, _ = self.queue.enqueue(
@@ -274,10 +287,17 @@ class TaskQueueTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual("succeeded", current["status"])
-            self.assertEqual(["first", "second", "third"], calls)
+            self.assertEqual(["first"], calls)
             runs = self.queue.get_runs(task["task_id"])
             self.assertEqual([0, 1, 2], [x["position"] for x in runs])
-            self.assertTrue(all(x["status"] == "succeeded" for x in runs))
+            self.assertEqual(
+                ["succeeded", "skipped", "skipped"],
+                [x["status"] for x in runs],
+            )
+            self.assertEqual(
+                [None, "failover_not_needed", "failover_not_needed"],
+                [x["error"] for x in runs],
+            )
             result = self.queue.public_task(current)["result"]
             self.assertEqual(
                 ["first", "second", "third"], [x["model"] for x in result["results"]]
@@ -285,12 +305,12 @@ class TaskQueueTests(unittest.TestCase):
         finally:
             manager.stop()
 
-    def test_failed_model_does_not_stop_later_models(self):
+    def test_failed_model_falls_back_and_stops_after_success(self):
         old_attempts = self.queue.MAX_ATTEMPTS
         self.queue.MAX_ATTEMPTS = 1
         calls = []
 
-        def process(model, text, operation, style):
+        def process(model, text, operation, style, *_args):
             calls.append(model)
             if model == "bad":
                 raise RuntimeError("broken")
@@ -299,7 +319,7 @@ class TaskQueueTests(unittest.TestCase):
         self.queue.process_text = process
         task, _ = self.queue.enqueue(
             "text",
-            models=["good", "bad", "later"],
+            models=["bad", "good", "later"],
             input_data={"text": "x", "operation": "correction", "style": "formal"},
         )
         manager = self.queue.TaskManager()
@@ -310,13 +330,46 @@ class TaskQueueTests(unittest.TestCase):
                 if current["status"] in self.queue.TERMINAL:
                     break
                 time.sleep(0.01)
-            self.assertEqual("partially_succeeded", current["status"])
-            self.assertEqual(["good", "bad", "later"], calls)
+            self.assertEqual("succeeded", current["status"])
+            self.assertEqual(["bad", "good"], calls)
             self.assertEqual(
-                ["succeeded", "failed", "succeeded"],
+                ["failed", "succeeded", "skipped"],
                 [x["status"] for x in self.queue.get_runs(task["task_id"])],
             )
+            self.assertIsNone(current["error"])
             self.assertIsNotNone(self.queue.public_task(current)["result_url"])
+        finally:
+            manager.stop()
+            self.queue.MAX_ATTEMPTS = old_attempts
+
+    def test_all_failed_models_return_aggregated_failure(self):
+        old_attempts = self.queue.MAX_ATTEMPTS
+        self.queue.MAX_ATTEMPTS = 1
+
+        def process(model, *_args, **_kwargs):
+            raise RuntimeError(f"{model} failed")
+
+        self.queue.process_text = process
+        task, _ = self.queue.enqueue(
+            "text",
+            models=["first", "second"],
+            input_data={"text": "x", "operation": "correction", "style": "formal"},
+        )
+        manager = self.queue.TaskManager()
+        manager.start()
+        try:
+            for _ in range(300):
+                current = self.queue.get_task(task["task_id"])
+                if current["status"] in self.queue.TERMINAL:
+                    break
+                time.sleep(0.01)
+            self.assertEqual("failed", current["status"])
+            self.assertEqual(
+                ["failed", "failed"],
+                [run["status"] for run in self.queue.get_runs(task["task_id"])],
+            )
+            self.assertIn("first:", current["error"])
+            self.assertIn("second:", current["error"])
         finally:
             manager.stop()
             self.queue.MAX_ATTEMPTS = old_attempts
@@ -367,7 +420,7 @@ class TaskQueueTests(unittest.TestCase):
         self.assertFalse(created)
         self.assertEqual(first["task_id"], duplicate["task_id"])
 
-    def test_recovery_resumes_crash_after_completed_run(self):
+    def test_recovery_finalizes_crash_after_successful_failover_run(self):
         task, _ = self.queue.enqueue(
             "text",
             models=["one", "two"],
@@ -382,9 +435,9 @@ class TaskQueueTests(unittest.TestCase):
             "UPDATE tasks SET status='running' WHERE task_id=?", (task["task_id"],)
         )
         self.queue.TaskManager()._recover()
-        self.assertEqual("queued", self.queue.get_task(task["task_id"])["status"])
+        self.assertEqual("succeeded", self.queue.get_task(task["task_id"])["status"])
         self.assertEqual(
-            ["succeeded", "pending"],
+            ["succeeded", "skipped"],
             [x["status"] for x in self.queue.get_runs(task["task_id"])],
         )
 

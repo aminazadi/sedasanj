@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from asr_service.infrastructure.storage import execute, now, row, rows
-from asr_service.infrastructure.ninerouter import configured_model
+from asr_service.infrastructure.ninerouter import configured_models
 from ..dependencies import authorize_admin, issue_key
 from ..schemas.responses import RequestFailurePageResponse
 
@@ -79,7 +79,7 @@ def list_keys():
 @router.post("/keys", status_code=201, summary="Create an API key", description="Creates a non-admin API key. The secret is returned exactly once.")
 def create_key(body: ApiKeyCreate):
     from asr_service.domain.catalog import CATALOG
-    allowed_models = set(CATALOG) | {value for value in (configured_model("asr"), configured_model("llm")) if value}
+    allowed_models = set(CATALOG) | configured_models("asr") | configured_models("llm")
     if body.models is not None and any(model not in allowed_models for model in body.models):
         raise HTTPException(400, "models contains an unknown model id")
     secret, prefix, digest = issue_key()
@@ -99,7 +99,7 @@ def update_key(key_id: int, body: ApiKeyUpdate):
     if "models" in values:
         from asr_service.domain.catalog import CATALOG
         requested_models = values.pop("models")
-        allowed_models = set(CATALOG) | {value for value in (configured_model("asr"), configured_model("llm")) if value}
+        allowed_models = set(CATALOG) | configured_models("asr") | configured_models("llm")
         if requested_models is not None and any(model not in allowed_models for model in requested_models):
             raise HTTPException(400, "models contains an unknown model id")
         values["models_json"] = json.dumps(requested_models) if requested_models is not None else None

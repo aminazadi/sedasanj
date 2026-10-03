@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-03 — AMINAZADI
+
+- Replaced execute-all multi-model processing with ordered first-success failover, including per-model retries, explicit skipped runs, crash recovery, and aggregated all-model failure details.
+- Made every enabled cached 9Router model executable through the same catalog and dispatch contract while preserving installed local-model priority.
+
 ## 2026-10-02 — AMINAZADI
 
 - Documented and verified the existing 9Router transcription prompt passthrough used by Sedasanj's new admin-managed ASR prompt.

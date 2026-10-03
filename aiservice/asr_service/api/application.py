@@ -9,7 +9,7 @@ from fastapi.openapi.utils import get_openapi
 
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure import storage
-from asr_service.infrastructure.ninerouter import cached_models, configured_model
+from asr_service.infrastructure.ninerouter import configured_models
 
 from .lifecycle import lifespan
 from .admission import IngressAdmissionMiddleware
@@ -19,7 +19,7 @@ from .routers import analytics, models, ninerouter, openai_compat, pages, proxy,
 
 DESCRIPTION = """Persian speech-to-text and text-processing service.
 
-Inference runs asynchronously through a persistent task queue. A request may select one model or an explicitly ordered list; model runs execute sequentially with independent retries, results, and logs. Submit work, poll the returned task URL, and retrieve the result after it succeeds or partially succeeds. Protected operations require `Authorization: Bearer <ASR_API_KEY>`.
+Inference runs asynchronously through a persistent task queue. A request may select one model or an explicitly ordered failover list; each model exhausts its retries before the next model runs, and processing stops after the first success. Submit work, poll the returned task URL, and retrieve the result after it succeeds. Protected operations require `Authorization: Bearer <ASR_API_KEY>`.
 """
 
 TAGS = [
@@ -60,9 +60,7 @@ def installed_model_ids(kind):
         for model_id, spec in CATALOG.items()
         if spec.kind == kind and (storage.MODEL_DIR / model_id / ".complete").is_file()
     ]
-    remote = [item["id"] for item in cached_models() if item.get("kind") == kind]
-    configured = configured_model(kind)
-    return list(dict.fromkeys(values + remote + ([configured] if configured else [])))
+    return list(dict.fromkeys(values + sorted(configured_models(kind))))
 
 
 def document_installed_models(schema):

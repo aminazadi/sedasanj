@@ -253,6 +253,42 @@ async def test_settings_update_rejects_blank_values(payload: SettingsUpdate) -> 
 
 
 @pytest.mark.asyncio
+async def test_settings_update_allows_blank_optional_ninerouter_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved: dict[str, PlatformSetting] = {}
+
+    class FakeSession:
+        async def get(self, model: object, key: str) -> PlatformSetting | None:
+            return saved.get(key)
+
+        def add(self, row: PlatformSetting) -> None:
+            saved[row.key] = row
+
+        async def flush(self) -> None:
+            pass
+
+    async def fake_audit(*args: object, **kwargs: object) -> None:
+        pass
+
+    async def fake_view(session: object) -> dict[str, object]:
+        return {key: row.value for key, row in saved.items()}
+
+    monkeypatch.setattr(admin.audit, "record", fake_audit)
+    monkeypatch.setattr(admin, "settings_public_view", fake_view)
+    monkeypatch.setattr(admin, "client_ip", lambda request: "127.0.0.1")
+
+    result = await admin.update_platform_settings(
+        SettingsUpdate(ninerouter_decision_prompt=""),
+        None,  # type: ignore[arg-type]
+        type("S", (), {"id": uuid4()})(),  # type: ignore[arg-type]
+        FakeSession(),  # type: ignore[arg-type]
+    )
+
+    assert result == {"ninerouter_decision_prompt": ""}
+
+
+@pytest.mark.asyncio
 async def test_settings_update_requires_key_for_voicesanj_llm() -> None:
     class FakeSession:
         async def get(self, model: object, key: str) -> None:

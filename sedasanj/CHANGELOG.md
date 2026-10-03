@@ -2,6 +2,7 @@
 
 ## 2026-10-03 — AMINAZADI
 
+- Fixed route-aware AI model settings so inactive optional 9Router prompts no longer block saving, and exposed safe rejected-model details for ASR failures.
 - Unified operator scoring with canonical call assignments, allowed previously ineligible calls to recover after an operator mapping is added, prevented AMI destination extensions from being misidentified as answering operators, and added database support for scores requiring manual review.
 
 ## 2026-10-02 — AMINAZADI

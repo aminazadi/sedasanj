@@ -1110,7 +1110,15 @@ async def update_platform_settings(
     decision_api_key = changes.pop("decision_api_key", None)
     embedding_api_key = changes.pop("embedding_api_key", None)
     assistant_instructions = changes.pop("assistant_instructions", None)
+    optional_blank_keys = {
+        "ninerouter_asr_prompt",
+        "ninerouter_analysis_prompt",
+        "ninerouter_chat_prompt",
+        "ninerouter_decision_prompt",
+    }
     for key, value in changes.items():
+        if key in optional_blank_keys:
+            continue
         if not str(value).strip():
             raise ApiError("invalid_request", f"{key} must not be empty")
     if api_key is not None:
@@ -1189,12 +1197,7 @@ async def update_platform_settings(
     for key in ("asr_model", "llm_model", "chat_model"):
         if key in changes:
             changes[key] = str(changes[key]).strip()
-    ninerouter_prompt_keys = {
-        "ninerouter_asr_prompt",
-        "ninerouter_analysis_prompt",
-        "ninerouter_chat_prompt",
-        "ninerouter_decision_prompt",
-    }
+    ninerouter_prompt_keys = optional_blank_keys
     for key in ninerouter_prompt_keys:
         if key in changes:
             changes[key] = str(changes[key]).strip()

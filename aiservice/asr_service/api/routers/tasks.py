@@ -26,8 +26,7 @@ from fastapi.responses import PlainTextResponse
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR, connect, execute, now, row
 from asr_service.infrastructure.failures import record_failure
-from asr_service.infrastructure import storage
-from asr_service.infrastructure.ninerouter import NineRouterError, configured_model
+from asr_service.infrastructure.ninerouter import NineRouterError, configured_models
 from asr_service.services import object_storage
 from asr_service.services.audio_compression import GzipAudioError, decompress_gzip
 from asr_service.services.ingress import (
@@ -203,23 +202,26 @@ def ordered_models(single, multiple, kind):
     if any(not item for item in values) or len(set(values)) != len(values):
         raise HTTPException(400, "models must contain unique, non-empty identifiers")
     try:
-        remote = configured_model(kind)
+        remote = configured_models(kind)
     except NineRouterError as error:
         raise HTTPException(503, str(error))
     for model_id in values:
-        if remote is not None and model_id == remote:
-            continue
-        if model_id not in CATALOG or CATALOG[model_id].kind != kind:
-            remote_hint = f" or the configured 9Router model {remote}" if remote else ""
+        local_model = CATALOG.get(model_id)
+        local_available = (
+            local_model is not None
+            and local_model.kind == kind
+            and (MODEL_DIR / model_id / ".complete").exists()
+        )
+        if not local_available and model_id not in remote:
             raise HTTPException(
                 400,
-                f"Specify valid installed {kind.upper()} model ids{remote_hint}",
+                f"{kind.upper()} model '{model_id}' is not installed locally or "
+                "available from the configured 9Router provider",
             )
-        if not (MODEL_DIR / model_id / ".complete").exists():
-            raise HTTPException(503, f"Model {model_id} is not installed")
         if (
-            kind == "asr"
-            and CATALOG[model_id].architecture in {"nemoCtc", "transducer"}
+            local_available
+            and kind == "asr"
+            and local_model.architecture in {"nemoCtc", "transducer"}
             and not (MODEL_DIR / "silero-vad" / ".complete").exists()
         ):
             raise HTTPException(503, "Install silero-vad before using Shenava")
@@ -250,7 +252,7 @@ TASK_ACCEPT_ERRORS = documented_responses(
     status_code=202,
     response_model=TaskResponse,
     summary="Schedule Persian text processing",
-    description="Queues transcript correction or meeting-minutes generation with one model or an explicitly ordered list of installed Dorna models. Models run sequentially and failures do not prevent later models from running. Reusing an Idempotency-Key with different content returns 409.",
+    description="Queues transcript correction or meeting-minutes generation with one model or an explicitly ordered failover list. Each model exhausts its retries before the next model runs, and processing stops after the first success. Reusing an Idempotency-Key with different content returns 409.",
     response_description="The accepted asynchronous task and its polling URL.",
     responses=TASK_ACCEPT_ERRORS,
     tags=["Text processing"],
@@ -303,7 +305,7 @@ async def text_process(
     status_code=202,
     response_model=TaskResponse,
     summary="Schedule an audio transcription",
-    description="Uploads audio once and queues Persian speech recognition with either one model or an ordered list supplied through repeated `models` multipart fields. Models run sequentially; each has independent retries and results. Reusing an Idempotency-Key with different content returns 409.",
+    description="Uploads audio once and queues Persian speech recognition with either one model or an ordered failover list supplied through repeated `models` multipart fields. Each model exhausts its retries before the next model runs, and remaining models are skipped after the first success. Reusing an Idempotency-Key with different content returns 409.",
     response_description="The accepted asynchronous transcription task and its polling URL.",
     responses={
         **TASK_ACCEPT_ERRORS,
@@ -660,7 +662,7 @@ def transcribe_upload(
     "/tasks/{task_id}",
     response_model=TaskResponse,
     summary="Get task status",
-    description="Returns lifecycle metadata, ordered models, current model, progress, and result availability. A partially_succeeded task exposes results for all successful and failed model runs.",
+    description="Returns lifecycle metadata, ordered failover models, the current model, progress, and result availability. Completed multi-model tasks expose failed attempts, the first successful result, and models skipped after success.",
     responses=documented_responses(
         **{
             "404": {
@@ -757,7 +759,7 @@ RESULT_RESPONSES = documented_responses(
 @router.get(
     "/tasks/{task_id}/result",
     summary="Get a completed task result",
-    description="Returns a succeeded or partially-succeeded task result. Single-model media types remain backward compatible; multi-model tasks return an ordered JSON envelope with independent results and errors.",
+    description="Returns a completed task result. Single-model media types remain backward compatible; multi-model tasks return an ordered JSON envelope containing failed attempts, the first success, and skipped models.",
     responses=RESULT_RESPONSES,
     tags=["Tasks"],
 )

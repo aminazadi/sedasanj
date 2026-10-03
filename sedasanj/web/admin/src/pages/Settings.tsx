@@ -272,11 +272,19 @@ export default function Settings() {
           chat_route: settings.chat_route,
           decision_route: settings.decision_route,
           embedding_route: settings.embedding_route,
-          ninerouter_asr_prompt: settings.ninerouter_asr_prompt,
-          ninerouter_analysis_prompt: settings.ninerouter_analysis_prompt,
-          ninerouter_chat_prompt: settings.ninerouter_chat_prompt,
-          ninerouter_decision_prompt: settings.ninerouter_decision_prompt,
         });
+        if (settings.asr_route === "ninerouter") {
+          body.ninerouter_asr_prompt = settings.ninerouter_asr_prompt;
+        }
+        if (settings.analysis_route === "ninerouter") {
+          body.ninerouter_analysis_prompt = settings.ninerouter_analysis_prompt;
+        }
+        if (settings.chat_route === "ninerouter") {
+          body.ninerouter_chat_prompt = settings.ninerouter_chat_prompt;
+        }
+        if (settings.decision_route === "ninerouter") {
+          body.ninerouter_decision_prompt = settings.ninerouter_decision_prompt;
+        }
         if (settings.embedding_model.trim()) {
           body.embedding_model = settings.embedding_model;
         }

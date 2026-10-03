@@ -173,6 +173,39 @@ def configured_model(kind):
     return None
 
 
+def configured_models(kind):
+    """Return every cached model executable through the enabled 9Router route."""
+    settings = resolve_settings()
+    enabled = (
+        settings.asr_enabled
+        if kind == "asr"
+        else settings.text_enabled
+        if kind == "llm"
+        else settings.asr_enabled or settings.text_enabled
+    )
+    if not enabled:
+        return set()
+    models = {
+        str(item.get("id") or "").strip()
+        for item in cached_models()
+        if item.get("kind") == kind and str(item.get("id") or "").strip()
+    }
+    selected = (
+        settings.asr_model
+        if kind == "asr"
+        else settings.text_model
+        if kind == "llm"
+        else ""
+    )
+    if selected:
+        models.add(selected)
+    return models
+
+
+def is_configured_model(kind, model_id):
+    return model_id in configured_models(kind)
+
+
 def _safe_detail(response):
     try:
         detail = response.json().get("error") or response.json().get("detail") or response.text

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import suppress
 
 import httpx
@@ -53,7 +54,22 @@ def looks_like_auth(text: str) -> bool:
 
 def _body_snippet(body: str, limit: int = 240) -> str:
     compact = " ".join(body.split())
-    return compact[:limit]
+    redacted = re.sub(
+        r"(?i)(bearer\s+|(?:api[_ -]?key|token)[\"'=:\s]+|sk-)[^\s,;\"}]+",
+        r"\1[redacted]",
+        compact,
+    )
+    return redacted[:limit]
+
+
+def _error_detail(body: str) -> str:
+    with suppress(TypeError, ValueError):
+        payload = json.loads(body)
+        if isinstance(payload, dict):
+            detail = payload.get("detail") or payload.get("error")
+            if isinstance(detail, str):
+                return _body_snippet(detail, 300)
+    return _body_snippet(body, 300)
 
 
 def classify_http(status_code: int, body: str, *, kind: str) -> ProviderError | None:
@@ -83,15 +99,19 @@ def classify_http(status_code: int, body: str, *, kind: str) -> ProviderError | 
         for marker in (
             "model or models",
             "valid asr model",
+            "asr model",
             "model ids",
             '"model"',
             '"models"',
         )
     ):
+        provider_detail = _error_detail(body)
+        suffix = f" جزئیات سرویس: {provider_detail}" if provider_detail else ""
         return ProviderError(
             "asr_provider_model",
             "شناسه مدل پیاده‌سازی صوت نامعتبر است یا فیلدهای model/models "
-            "برخلاف قرارداد VoiceSanj ارسال شده‌اند. دقیقاً یک مدل ASR معتبر انتخاب کنید.",
+            "برخلاف قرارداد VoiceSanj ارسال شده‌اند. یک مدل ASR قابل‌اجرا انتخاب کنید."
+            f"{suffix}",
             retryable=False,
         )
     if kind == "llm" and status_code in (400, 422) and any(

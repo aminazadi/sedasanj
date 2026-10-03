@@ -4,8 +4,10 @@ import hashlib, json, logging, os, random, subprocess, sys, tempfile, threading,
 from contextlib import closing, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import (
     DATA_DIR,
+    MODEL_DIR,
     connect,
     execute,
     now,
@@ -15,8 +17,20 @@ from asr_service.infrastructure.storage import (
 from asr_service.infrastructure.failures import record_failure
 from .inference import NoSpeechDetectedError, transcribe
 from .text_processing import chat_completion, process as process_text, process_messages, process_response
-from asr_service.infrastructure.ninerouter import NineRouterClient, NineRouterError, resolve_settings
-from .resources import DECISION_MAX_CONCURRENT, LLM_MAX_CONCURRENT, TASK_WORKERS, admission_allowed, inference_slot
+from asr_service.infrastructure.ninerouter import (
+    NineRouterClient,
+    NineRouterError,
+    is_configured_model,
+    resolve_settings,
+)
+from .resources import (
+    DECISION_MAX_CONCURRENT,
+    LLM_MAX_CONCURRENT,
+    TASK_WORKERS,
+    InferenceCapacityError,
+    admission_allowed,
+    inference_slot,
+)
 from . import object_storage
 from .audio_compression import decompress_gzip
 from .ingress import ensure_spool_capacity
@@ -41,6 +55,17 @@ CHAT_TASK_TIMEOUT_SECONDS = max(121, int(os.getenv("ASR_CHAT_TASK_TIMEOUT_SECOND
 POLL_SECONDS = max(0.1, float(os.getenv("ASR_TASK_POLL_SECONDS", ".5")))
 TERMINAL = {"succeeded", "partially_succeeded", "failed", "cancelled"}
 RUN_TERMINAL = {"succeeded", "failed", "cancelled", "skipped"}
+
+
+def uses_ninerouter(kind, model_id):
+    local = CATALOG.get(model_id)
+    if (
+        local is not None
+        and local.kind == kind
+        and (MODEL_DIR / model_id / ".complete").exists()
+    ):
+        return False
+    return is_configured_model(kind, model_id)
 
 
 def get_task(task_id):
@@ -605,6 +630,11 @@ class TaskManager:
         # Repair crashes between committing a run and advancing/finalizing its parent.
         for task in rows("SELECT task_id FROM tasks WHERE status='running'"):
             runs = get_runs(task["task_id"])
+            succeeded = next((run for run in runs if run["status"] == "succeeded"), None)
+            if succeeded is not None:
+                self._skip_remaining(task["task_id"], succeeded["position"])
+                self._finish_parent(task["task_id"])
+                continue
             if any(x["status"] in {"pending", "retrying"} for x in runs):
                 execute(
                     "UPDATE tasks SET status='queued',worker_id=NULL,heartbeat_at=NULL,available_at=?,updated_at=? WHERE task_id=?",
@@ -781,11 +811,7 @@ class TaskManager:
         status = (
             "cancelled"
             if task.get("cancel_requested") and not succeeded
-            else (
-                "succeeded"
-                if succeeded == len(runs)
-                else "partially_succeeded" if succeeded else "failed"
-            )
+            else "succeeded" if succeeded else "failed"
         )
         results = [serialize_run(x, task["response_format"]) for x in runs]
         result = (
@@ -807,14 +833,14 @@ class TaskManager:
             ),
             None,
         )
-        errors = [f"{x['model_id']}: {x['error']}" for x in runs if x.get("error")]
+        errors = [
+            f"{x['model_id']}: {x['error']}"
+            for x in runs
+            if x["status"] == "failed" and x.get("error")
+        ]
         stamp = now()
-        error_text = "\n".join(errors)[:4000] or None
-        usage_status = (
-            "success"
-            if status == "succeeded"
-            else "partial_success" if status == "partially_succeeded" else "failed"
-        )
+        error_text = "\n".join(errors)[:4000] if status == "failed" else None
+        usage_status = "success" if status == "succeeded" else "failed"
         with closing(connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             db.execute(
@@ -850,21 +876,38 @@ class TaskManager:
         log_task(
             task_id,
             f"Task finished with status {status}",
-            "info" if status == "succeeded" else "warning" if status == "partially_succeeded" else "error",
+            "info" if status == "succeeded" else "error",
             "finished",
         )
         if status != "succeeded":
             record_failure(
                 phase="processing",
-                reason={
-                    "partially_succeeded": "task_partially_succeeded",
-                    "cancelled": "task_cancelled",
-                }.get(status, "task_failed"),
+                reason={"cancelled": "task_cancelled"}.get(status, "task_failed"),
                 detail=error_text or f"Task finished with status {status}",
                 task_id=task_id,
                 usage_id=task.get("usage_id"),
                 client_ip=task.get("client_ip"),
                 dedupe_key=f"task:{task_id}:{status}",
+            )
+
+    def _skip_remaining(self, task_id, succeeded_position):
+        stamp = now()
+        skipped = rows(
+            "SELECT id FROM task_runs WHERE task_id=? AND position>? "
+            "AND status IN ('pending','retrying')",
+            (task_id, succeeded_position),
+        )
+        execute(
+            "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,"
+            "error='failover_not_needed',worker_id=NULL,heartbeat_at=NULL "
+            "WHERE task_id=? AND position>? AND status IN ('pending','retrying')",
+            (stamp, stamp, task_id, succeeded_position),
+        )
+        for run in skipped:
+            log_run(
+                run["id"],
+                "Skipped because an earlier failover model succeeded",
+                event_type="skipped",
             )
 
     def _run(self, task, admitted_slot=None):
@@ -902,7 +945,7 @@ class TaskManager:
                 with (nullcontext() if admitted_slot else inference_slot()):
                     local_input, temporary_input = _materialize_input(task)
                     try:
-                        if provider.asr_enabled and run["model_id"] == provider.asr_model:
+                        if uses_ninerouter("asr", run["model_id"]):
                             log_run(run["id"], "Submitting audio to 9Router")
                             result = NineRouterClient(provider).transcribe(run["model_id"], local_input, args.get("prompt"))
                         else:
@@ -918,7 +961,7 @@ class TaskManager:
                 duration_vad = result.get("duration_after_vad")
             elif task["kind"] == "text":
                 with (nullcontext() if admitted_slot else inference_slot()):
-                    if provider.text_enabled and run["model_id"] == provider.text_model:
+                    if uses_ninerouter("llm", run["model_id"]):
                         messages, options = process_messages(args.get("text"), args["operation"], args["style"], args.get("segments"), args.get("prompt"))
                         completion = NineRouterClient(provider).chat(run["model_id"], messages, options)
                         content = completion["choices"][0].get("message", {}).get("content", "")
@@ -938,10 +981,10 @@ class TaskManager:
                 # result is stored; native generation never runs in an HTTP
                 # request thread.
                 with (nullcontext() if admitted_slot else inference_slot()):
-                    result = NineRouterClient(provider).chat(run["model_id"], args["messages"], args["options"]) if provider.text_enabled and run["model_id"] == provider.text_model else chat_completion(run["model_id"], args["messages"], **args["options"])
+                    result = NineRouterClient(provider).chat(run["model_id"], args["messages"], args["options"]) if uses_ninerouter("llm", run["model_id"]) else chat_completion(run["model_id"], args["messages"], **args["options"])
                 duration = duration_vad = None
             elif task["kind"] == "chat_async":
-                if provider.text_enabled and run["model_id"] == provider.text_model:
+                if uses_ninerouter("llm", run["model_id"]):
                     result = NineRouterClient(provider).chat(run["model_id"], args["messages"], args["options"])
                     result.setdefault("id", "chatcmpl-" + uuid.uuid4().hex)
                     result.setdefault("object", "chat.completion")
@@ -1011,6 +1054,7 @@ class TaskManager:
                 f"Completed successfully in {elapsed:.2f} seconds",
                 event_type="finished",
             )
+            self._skip_remaining(task_id, run["position"])
         except CancelledError:
             elapsed = time.monotonic() - started
             execute(
