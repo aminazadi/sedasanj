@@ -32,4 +32,4 @@ RUN python -m pip install --no-cache-dir --only-binary=:all: --retries 5 --timeo
     && python -m pip install --no-cache-dir --only-binary=:all: --retries 5 --timeout 120 \
         "setuptools==75.8.2" "wheel==0.45.1" \
     && python scripts/install_project_dependencies.py \
-        --extra emotion --extra-only --exclude torch --no-binary jieba
+        --extra emotion --extra-only --exclude torch --allow-source

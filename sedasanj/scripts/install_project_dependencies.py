@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument("--extra")
     parser.add_argument("--extra-only", action="store_true")
     parser.add_argument("--exclude", action="append", default=[])
-    parser.add_argument("--no-binary", action="append", default=[])
+    parser.add_argument("--allow-source", action="store_true")
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
 
@@ -62,13 +62,13 @@ def main() -> None:
         "pip",
         "install",
         "--no-cache-dir",
-        "--only-binary=:all:",
         "--retries",
         "5",
         "--timeout",
         "120",
     ]
-    command.extend(f"--no-binary={name}" for name in args.no_binary)
+    if not args.allow_source:
+        command.append("--only-binary=:all:")
     subprocess.run([*command, *dependencies], check=True)
 
 
