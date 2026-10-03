@@ -217,7 +217,7 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
     raw_segments = payload.get("segments")
     if isinstance(raw_segments, list) and raw_segments:
         rows: list[AsrSegment] = []
-        for item in raw_segments:
+        for index, item in enumerate(raw_segments):
             if not isinstance(item, dict):
                 continue
             text = str(item.get("text") or "").strip()
@@ -226,6 +226,16 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
             start_ms = int(float(item.get("start") or 0) * 1000)
             end_raw = item.get("end")
             end_ms = int(float(end_raw) * 1000) if end_raw is not None else duration
+            if end_ms <= start_ms:
+                next_start_ms = duration
+                for candidate in raw_segments[index + 1 :]:
+                    if not isinstance(candidate, dict):
+                        continue
+                    candidate_start_ms = int(float(candidate.get("start") or 0) * 1000)
+                    if candidate_start_ms > start_ms:
+                        next_start_ms = candidate_start_ms
+                        break
+                end_ms = max(next_start_ms, start_ms + 1)
             avg_logprob = item.get("avg_logprob")
             confidence = None
             if isinstance(avg_logprob, (int, float)):
@@ -233,7 +243,7 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
             rows.append(
                 AsrSegment(
                     t_start_ms=start_ms,
-                    t_end_ms=max(end_ms, start_ms),
+                    t_end_ms=end_ms,
                     text=text,
                     confidence=confidence,
                     metadata={

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from worker_asr.engine import FixtureEngine
+from worker_asr.engine import FixtureEngine, _segments_from_whisper
 from worker_asr.main import build_full_text, consolidate_segments
 
 
@@ -20,6 +20,19 @@ async def test_fixture_engine_reports_a_model_identity() -> None:
     engine = FixtureEngine()
     assert engine.model_name
     assert engine.model_version
+
+
+def test_whisper_segments_replace_zero_end_time_with_audio_duration(wav_file) -> None:
+    path: Path = wav_file(seconds=2.0)
+
+    segments = _segments_from_whisper(
+        {"text": "سلام", "segments": [{"start": 0, "end": 0, "text": "سلام"}]},
+        path,
+    )
+
+    assert len(segments) == 1
+    assert segments[0].t_start_ms == 0
+    assert segments[0].t_end_ms == 2_000
 
 
 def test_full_text_labels_channels_and_sorts_by_time() -> None:

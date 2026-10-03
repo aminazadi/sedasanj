@@ -13,6 +13,7 @@ from app.services.transcript_corrections import (
     profile_version,
     revision_mode,
     should_run_text_correction,
+    source_segments,
     validate_result,
 )
 
@@ -47,6 +48,20 @@ def test_manual_correction_always_uses_text_processing() -> None:
     assert revision_mode(runtime, "automatic") == "audio_only"
     assert should_run_text_correction("audio_only", "manual") is True
     assert should_run_text_correction("audio_only", "automatic") is False
+
+
+def test_source_segments_repairs_invalid_zero_length_timestamps() -> None:
+    utterance = SimpleNamespace(
+        id="segment-id",
+        channel=0,
+        t_start_ms=0,
+        t_end_ms=0,
+        text="سلام",
+        confidence=None,
+        metadata_json=None,
+    )
+
+    assert source_segments([utterance])[0]["t_end_ms"] == 1
 
 
 def test_text_correction_models_advance_only_after_failure() -> None:

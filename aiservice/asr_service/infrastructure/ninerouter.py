@@ -271,7 +271,7 @@ class NineRouterClient:
         with Path(path).open("rb") as audio:
             response, _ = self._request(
                 "POST", "/v1/audio/transcriptions",
-                data={"model": model, "language": "fa", "response_format": "json", **({"prompt": prompt} if prompt else {})},
+                data={"model": model, "language": "fa", "response_format": "verbose_json", **({"prompt": prompt} if prompt else {})},
                 files={"file": (Path(path).name, audio)},
             )
         try:

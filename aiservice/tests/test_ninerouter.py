@@ -78,7 +78,9 @@ class NineRouterTests(unittest.TestCase):
         ) as request:
             result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
         self.assertEqual(result["segments"], [{"id": 0, "start": 0, "end": 3.5, "text": "سلام"}])
-        self.assertEqual(request.call_args.kwargs["data"]["response_format"], "json")
+        self.assertEqual(
+            request.call_args.kwargs["data"]["response_format"], "verbose_json"
+        )
 
     def test_transcription_prompt_is_forwarded(self):
         settings = ninerouter.ProviderSettings(

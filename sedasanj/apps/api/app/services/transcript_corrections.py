@@ -187,7 +187,7 @@ def source_segments(utterances: list[Utterance]) -> list[dict[str, Any]]:
             "id": str(item.id),
             "channel": item.channel,
             "t_start_ms": item.t_start_ms,
-            "t_end_ms": item.t_end_ms,
+            "t_end_ms": max(item.t_end_ms, item.t_start_ms + 1),
             "text": item.text,
             "confidence": item.confidence,
             "metadata": item.metadata_json,
