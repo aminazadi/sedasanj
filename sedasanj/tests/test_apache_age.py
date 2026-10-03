@@ -27,8 +27,13 @@ class _Result:
 
 
 class _Executor:
-    def __init__(self, *, preload: str = "age", cypher_error: Exception | None = None) -> None:
-        self.preload = preload
+    def __init__(
+        self,
+        *,
+        extensions: list[str] | None = None,
+        cypher_error: Exception | None = None,
+    ) -> None:
+        self.extensions = extensions or ["vector", "age"]
         self.cypher_error = cypher_error
         self.statements: list[str] = []
         self.statement_parameters: list[dict[str, object]] = []
@@ -37,10 +42,8 @@ class _Executor:
         sql = str(statement)
         self.statements.append(sql)
         self.statement_parameters.append(dict(statement.compile().params))
-        if "shared_preload_libraries" in sql:
-            return _Result(scalar=self.preload)
         if "FROM pg_extension" in sql:
-            return _Result(values=["vector", "age"])
+            return _Result(values=self.extensions)
         if "FROM ag_catalog.ag_graph" in sql:
             return _Result(scalar=1)
         if "ag_catalog.cypher" in sql and self.cypher_error is not None:
@@ -49,8 +52,8 @@ class _Executor:
 
 
 @pytest.mark.asyncio
-async def test_age_readiness_checks_preload_extensions_graph_and_cypher() -> None:
-    executor = _Executor(preload="pg_stat_statements, age")
+async def test_age_readiness_checks_extensions_graph_and_cypher() -> None:
+    executor = _Executor()
 
     await assert_age_ready(executor)
 
@@ -58,12 +61,13 @@ async def test_age_readiness_checks_preload_extensions_graph_and_cypher() -> Non
     assert any("FROM pg_extension" in sql for sql in executor.statements)
     assert any("FROM ag_catalog.ag_graph" in sql for sql in executor.statements)
     assert any("RETURN 1" in sql for sql in executor.statements)
+    assert not any("shared_preload_libraries" in sql for sql in executor.statements)
 
 
 @pytest.mark.asyncio
-async def test_age_readiness_rejects_missing_preload() -> None:
-    with pytest.raises(ApacheAgeNotReadyError, match="not preloaded"):
-        await assert_age_ready(_Executor(preload=""))
+async def test_age_readiness_rejects_missing_extension() -> None:
+    with pytest.raises(ApacheAgeNotReadyError, match="extension is not installed"):
+        await assert_age_ready(_Executor(extensions=["vector"]))
 
 
 @pytest.mark.asyncio

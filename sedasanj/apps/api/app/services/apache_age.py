@@ -49,17 +49,6 @@ async def execute_cypher(
 
 async def assert_age_ready(executor: Any) -> None:
     try:
-        preload_value = str(
-            (
-                await executor.execute(
-                    text("SELECT current_setting('shared_preload_libraries')")
-                )
-            ).scalar_one()
-        )
-        preloaded = {item.strip() for item in preload_value.split(",") if item.strip()}
-        if "age" not in preloaded:
-            raise ApacheAgeNotReadyError("Apache AGE runtime is not preloaded")
-
         extensions = set(
             (
                 await executor.execute(
