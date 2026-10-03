@@ -10,8 +10,7 @@ from fastapi import HTTPException
 from asr_service.api.routers import ninerouter as ninerouter_router
 from asr_service.api.routers import tasks
 from asr_service.domain.catalog import CATALOG
-from asr_service.infrastructure import storage
-from asr_service.infrastructure import ninerouter
+from asr_service.infrastructure import ninerouter, storage
 
 
 class NineRouterTests(unittest.TestCase):
@@ -73,9 +72,13 @@ class NineRouterTests(unittest.TestCase):
         response.json.return_value = {"text": "سلام", "duration": 3.5}
         audio = Path(self.tmp.name) / "audio.wav"
         audio.write_bytes(b"audio")
-        with patch("asr_service.infrastructure.ninerouter.requests.request", return_value=response):
+        with patch(
+            "asr_service.infrastructure.ninerouter.requests.request",
+            return_value=response,
+        ) as request:
             result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
         self.assertEqual(result["segments"], [{"id": 0, "start": 0, "end": 3.5, "text": "سلام"}])
+        self.assertEqual(request.call_args.kwargs["data"]["response_format"], "json")
 
     def test_transcription_prompt_is_forwarded(self):
         settings = ninerouter.ProviderSettings(
