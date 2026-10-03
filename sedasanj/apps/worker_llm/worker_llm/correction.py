@@ -19,6 +19,8 @@ from app.services.provider_errors import classify_failure
 from app.services.transcript_corrections import (
     CorrectionClient,
     activate_revision,
+    advance_correction_model,
+    current_correction_model,
     should_run_text_correction,
     source_segments,
     validate_result,
@@ -195,7 +197,10 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
                 client = CorrectionClient(runtime)
                 try:
                     revision.provider_task_id = await client.submit(
-                        revision, segments, runtime.correction_prompt
+                        revision,
+                        segments,
+                        runtime.correction_prompt,
+                        model=current_correction_model(revision),
                     )
                 finally:
                     await client.close()
@@ -284,6 +289,36 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                         status="succeeded",
                     )
                     return_value = ("succeeded", None)
+                elif status == "failed":
+                    model = advance_correction_model(
+                        revision,
+                        error=str(state.get("error") or state.get("error_code") or status),
+                    )
+                    revision.provider_task_id = await client.submit(
+                        revision,
+                        segments,
+                        runtime.correction_prompt,
+                        model=model,
+                    )
+                    revision.provider_submitted_at = datetime.now(UTC)
+                    job = (
+                        await session.execute(
+                            select(Job)
+                            .where(Job.call_id == call_id, Job.kind == "correction")
+                            .order_by(Job.created_at.desc())
+                            .limit(1)
+                        )
+                    ).scalar_one()
+                    outbox_id = await outbox.stage(
+                        session,
+                        tenant_id=tenant_id,
+                        job_id=job.id,
+                        queue_name="q:llm",
+                        function_name="poll_transcript_correction",
+                        payload={**payload, "tenant_id": str(tenant_id)},
+                        available_at=datetime.now(UTC) + timedelta(seconds=3),
+                    )
+                    return_value = ("polling", outbox_id)
                 else:
                     raise RuntimeError(
                         str(state.get("error") or state.get("error_code") or status)

@@ -50,6 +50,44 @@ def should_run_text_correction(mode: str, trigger: str) -> bool:
     return trigger == "manual" or mode != "audio_only"
 
 
+def correction_model_index(revision: TranscriptRevision) -> int:
+    metrics = revision.metrics or {}
+    value = metrics.get("text_model_index", 0)
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
+def current_correction_model(revision: TranscriptRevision) -> str:
+    index = correction_model_index(revision)
+    if index >= len(revision.text_models):
+        raise ProviderError(
+            "correction_provider_failed",
+            "همه مدل‌های تصحیح متن ناموفق بودند.",
+            retryable=False,
+        )
+    return revision.text_models[index]
+
+
+def advance_correction_model(
+    revision: TranscriptRevision, *, error: str | None = None
+) -> str:
+    index = correction_model_index(revision)
+    failures = list((revision.metrics or {}).get("text_model_failures") or [])
+    failures.append(
+        {
+            "model": revision.text_models[index],
+            "error": (error or "model_failed")[:1000],
+        }
+    )
+    revision.metrics = {
+        **(revision.metrics or {}),
+        "text_model_index": index + 1,
+        "text_model_failures": failures,
+    }
+    revision.provider_task_id = None
+    revision.provider_submitted_at = None
+    return current_correction_model(revision)
+
+
 async def create_revision(
     session: AsyncSession,
     *,
@@ -183,10 +221,15 @@ class CorrectionClient:
         await self._client.aclose()
 
     async def submit(
-        self, revision: TranscriptRevision, segments: list[dict[str, Any]], prompt: str
+        self,
+        revision: TranscriptRevision,
+        segments: list[dict[str, Any]],
+        prompt: str,
+        *,
+        model: str,
     ) -> str:
         body: dict[str, Any] = {
-            "models": revision.text_models,
+            "model": model,
             "segments": segments,
             "operation": "correction",
             "style": "formal",
@@ -194,7 +237,11 @@ class CorrectionClient:
         }
         response = await self._client.post(
             f"{self._base}/v1/text/process",
-            headers={"Idempotency-Key": revision.idempotency_key},
+            headers={
+                "Idempotency-Key": (
+                    f"{revision.idempotency_key}-text-{correction_model_index(revision)}"
+                )
+            },
             json=body,
         )
         self._check(response, 202)
