@@ -12,7 +12,7 @@ import robotIcon from "@iconify-icons/lucide/bot";
 import stopwatchIcon from "@iconify-icons/lucide/timer";
 import telephoneIcon from "@iconify-icons/lucide/phone";
 import trophyIcon from "@iconify-icons/lucide/trophy";
-import { fmt, SENTIMENT_LABELS, STATUS_LABELS, TRAJECTORY_LABELS } from "../api";
+import { fmt, SALES_OUTCOME_LABELS, SENTIMENT_LABELS, STATUS_LABELS, TRAJECTORY_LABELS } from "../api";
 import type { PartySentiment, SentimentPoint } from "../types";
 
 const PIPELINE_STEPS: { label: string; hint: string; statuses: string[] }[] = [
@@ -90,13 +90,26 @@ export function Pagination({
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const tone =
-    status === "complete"
-      ? "bg-emerald-50 text-emerald-700"
-      : status.startsWith("failed")
-        ? "bg-rose-50 text-rose-700"
-        : "bg-amber-50 text-amber-700";
-  return <span className={`badge ${tone}`}>{STATUS_LABELS[status] ?? status}</span>;
+  const tones: Record<string, string> = {
+    received: "border-sky-200 bg-sky-50 text-sky-700",
+    reserved: "border-violet-200 bg-violet-50 text-violet-700",
+    stored: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    transcribing: "border-blue-200 bg-blue-50 text-blue-700",
+    transcribed: "border-cyan-200 bg-cyan-50 text-cyan-700",
+    correcting: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+    emotion_queued: "border-purple-200 bg-purple-50 text-purple-700",
+    emotion_analyzing: "border-pink-200 bg-pink-50 text-pink-700",
+    analyzing: "border-amber-200 bg-amber-50 text-amber-700",
+    analyzed: "border-lime-200 bg-lime-50 text-lime-700",
+    billed: "border-teal-200 bg-teal-50 text-teal-700",
+    notified: "border-green-200 bg-green-50 text-green-700",
+    complete: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    failed_retryable: "border-orange-200 bg-orange-50 text-orange-700",
+    failed_terminal: "border-rose-200 bg-rose-50 text-rose-700",
+    canceled: "border-slate-300 bg-slate-100 text-slate-600",
+  };
+  const tone = tones[status] ?? "border-slate-200 bg-slate-50 text-slate-600";
+  return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{STATUS_LABELS[status] ?? status}</span>;
 }
 
 export function ProcessingCard({
@@ -216,14 +229,27 @@ export function ProcessingCard({
 export function SentimentBadge({ sentiment }: { sentiment: string | null }) {
   if (!sentiment) return <span className="text-slate-400">—</span>;
   const tones: Record<string, string> = {
-    angry: "bg-red-50 text-red-700",
-    sad: "bg-orange-50 text-orange-700",
-    neutral: "bg-slate-100 text-slate-600",
-    satisfied: "bg-sky-50 text-sky-700",
-    happy: "bg-emerald-50 text-emerald-700",
+    angry: "border-red-200 bg-red-50 text-red-700",
+    sad: "border-orange-200 bg-orange-50 text-orange-700",
+    neutral: "border-slate-300 bg-slate-100 text-slate-600",
+    satisfied: "border-sky-200 bg-sky-50 text-sky-700",
+    happy: "border-emerald-200 bg-emerald-50 text-emerald-700",
   };
-  const tone = tones[sentiment] ?? "bg-slate-100 text-slate-600";
-  return <span className={`badge ${tone}`}>{SENTIMENT_LABELS[sentiment] ?? sentiment}</span>;
+  const tone = tones[sentiment] ?? "border-slate-300 bg-slate-100 text-slate-600";
+  return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{SENTIMENT_LABELS[sentiment] ?? sentiment}</span>;
+}
+
+export function OutcomeBadge({ outcome }: { outcome: string }) {
+  const tones: Record<string, string> = {
+    won: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    lost: "border-rose-200 bg-rose-50 text-rose-700",
+    follow_up: "border-amber-200 bg-amber-50 text-amber-700",
+    interested: "border-sky-200 bg-sky-50 text-sky-700",
+    not_qualified: "border-orange-200 bg-orange-50 text-orange-700",
+    unknown: "border-slate-300 bg-slate-100 text-slate-600",
+  };
+  const tone = tones[outcome] ?? "border-slate-300 bg-slate-100 text-slate-600";
+  return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{SALES_OUTCOME_LABELS[outcome] ?? outcome}</span>;
 }
 
 export function TrajectoryBadge({ trajectory }: { trajectory: string | null | undefined }) {

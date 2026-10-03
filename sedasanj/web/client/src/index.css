@@ -408,7 +408,7 @@ body {
     @apply cursor-pointer transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-500;
   }
   .badge {
-    @apply rounded-full px-2 py-0.5 text-xs;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs;
   }
 }
 

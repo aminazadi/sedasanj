@@ -188,6 +188,15 @@ export const SENTIMENT_LABELS: Record<string, string> = {
   happy: "خوشحال",
 };
 
+export const SALES_OUTCOME_LABELS: Record<string, string> = {
+  won: "فروش موفق",
+  lost: "فروش ناموفق",
+  follow_up: "نیازمند پیگیری",
+  interested: "علاقه‌مند",
+  not_qualified: "فاقد شرایط",
+  unknown: "نامشخص",
+};
+
 export const TRAJECTORY_LABELS: Record<string, string> = {
   improved: "بهبود",
   worsened: "افت",

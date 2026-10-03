@@ -31,6 +31,7 @@ import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {
   ErrorBox,
+  OutcomeBadge,
   ProcessingCard,
   SentimentBadge,
   StatusBadge,
@@ -1331,7 +1332,7 @@ export default function CallDetailPage() {
               <SectionTitle title="نتیجه فروش" description="تخمین AI؛ نتیجه رسمی پس از اتصال CRM مشخص می‌شود" />
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs text-slate-400">مرحله قیف</dt><dd className="mt-1 font-semibold">{call.sales.funnel_stage}</dd></div>
-                <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs text-slate-400">نتیجه</dt><dd className="mt-1 font-semibold">{call.sales.outcome}</dd></div>
+                <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs text-slate-400">نتیجه</dt><dd className="mt-1"><OutcomeBadge outcome={call.sales.outcome} /></dd></div>
                 <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs text-slate-400">قطعیت</dt><dd className="mt-1 font-semibold">{call.sales.certainty}</dd></div>
                 <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs text-slate-400">اطمینان</dt><dd className="mt-1 font-semibold">{fmt.decimal(call.sales.confidence * 100)}٪</dd></div>
               </dl>
