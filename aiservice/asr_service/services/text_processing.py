@@ -1,9 +1,14 @@
-import json, os, threading
+import json
+import os
+import threading
 from collections import defaultdict
 from contextlib import contextmanager
+
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
+
 from .resources import LLM_CPU_THREADS, LLM_MAX_CONCURRENT
+
 
 def _load(mid):
  from llama_cpp import Llama
@@ -167,14 +172,57 @@ def process_messages(text,operation,style,segments=None,prompt=None):
   options["response_format"]=_segment_schema([str(item["id"]) for item in segments]) if segments else {"type":"json_object"}
  return messages,options
 
+def _json_from_model_output(output):
+ try:return json.loads(output)
+ except (json.JSONDecodeError,TypeError):pass
+ decoder=json.JSONDecoder()
+ for index,char in enumerate(output):
+  if char not in "[{":continue
+  try:
+   value,_=decoder.raw_decode(output[index:])
+  except json.JSONDecodeError:continue
+  if isinstance(value,(dict,list)):return value
+ return None
+
+def _plain_correction(output,segments):
+ lines=[line.strip() for line in output.splitlines() if line.strip()]
+ if len(lines)==len(segments):pieces=lines
+ else:
+  words=output.split()
+  weights=[max(1,len(str(item.get("text") or "").split())) for item in segments]
+  total_weight=sum(weights)
+  pieces=[];start=0;consumed=0
+  for index,(segment,weight) in enumerate(zip(segments,weights,strict=True)):
+   consumed+=weight
+   end=len(words) if index==len(segments)-1 else round(len(words)*consumed/total_weight)
+   piece=" ".join(words[start:end]).strip()
+   pieces.append(piece or str(segment.get("text") or "").strip())
+   start=end
+ rows=[];uncertain=[]
+ for segment,piece in zip(segments,pieces,strict=True):
+  segment_id=str(segment["id"])
+  rows.append({"id":segment_id,"corrected_text":piece,"uncertain":True})
+  uncertain.append({"segment_id":segment_id,"source":str(segment.get("text") or ""),"suggestion":piece,"reason":"خروجی مدل یکپارچه بود و مرزبندی بخش‌ها به‌صورت خودکار بازسازی شد."})
+ return {"segments":rows,"uncertain_items":uncertain,"normalized_from":"plain_text"}
+
 def process_response(output,operation,style,segments=None):
- output=(output or "").strip()
+ if isinstance(output,list):
+  output="".join(str(item.get("text") or "") if isinstance(item,dict) else str(item) for item in output)
+ output=str(output or "").strip()
  if operation=="correction":
-  parsed=json.loads(output)
+  parsed=_json_from_model_output(output)
+  if parsed is None:
+   if not segments or not output:raise ValueError("correction output is neither JSON nor usable text")
+   parsed=_plain_correction(output,segments)
+  elif isinstance(parsed,list):
+   parsed={"segments":parsed,"uncertain_items":[]}
   if not isinstance(parsed,dict):raise ValueError("correction output must be an object")
   if segments:
    corrected=parsed.get("segments")
-   if not isinstance(corrected,list):raise ValueError("correction output has no segments")
+   if not isinstance(corrected,list):
+    monolithic=parsed.get("corrected_text") or parsed.get("text")
+    if not isinstance(monolithic,str) or not monolithic.strip():raise ValueError("correction output has no segments")
+    parsed=_plain_correction(monolithic.strip(),segments);corrected=parsed["segments"]
    expected=[str(item["id"]) for item in segments]
    received=[str(item.get("id")) for item in corrected if isinstance(item,dict)]
    if received != expected:raise ValueError("correction segment order or ids changed")

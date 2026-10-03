@@ -84,3 +84,53 @@ class SegmentCorrectionTests(unittest.TestCase):
                 "formal",
                 segments,
             )
+
+    def test_segment_response_extracts_json_from_markdown(self):
+        segments = [
+            {"id": "a", "channel": 0, "t_start_ms": 0, "t_end_ms": 1000, "text": "سلام"},
+        ]
+
+        parsed = text_processing.process_response(
+            'خروجی:\n```json\n{"segments":[{"id":"a","corrected_text":"سلام.",'
+            '"uncertain":false}],"uncertain_items":[]}\n```',
+            "correction",
+            "formal",
+            segments,
+        )
+
+        self.assertEqual(parsed["segments"][0]["corrected_text"], "سلام.")
+        self.assertEqual(parsed["corrected_text"], "سلام.")
+
+    def test_monolithic_correction_is_mapped_to_original_segments_as_uncertain(self):
+        segments = [
+            {"id": "a", "channel": 0, "t_start_ms": 0, "t_end_ms": 1000, "text": "سلام خوبی"},
+            {"id": "b", "channel": 1, "t_start_ms": 1100, "t_end_ms": 2000, "text": "بله ممنون"},
+        ]
+
+        parsed = text_processing.process_response(
+            "سلام، خوبی؟ بله، ممنون.",
+            "correction",
+            "formal",
+            segments,
+        )
+
+        self.assertEqual([item["id"] for item in parsed["segments"]], ["a", "b"])
+        self.assertTrue(all(item["uncertain"] for item in parsed["segments"]))
+        self.assertEqual(len(parsed["uncertain_items"]), 2)
+        self.assertEqual(parsed["normalized_from"], "plain_text")
+
+    def test_corrected_text_only_object_is_mapped_to_original_segments(self):
+        segments = [
+            {"id": "a", "channel": 0, "t_start_ms": 0, "t_end_ms": 1000, "text": "سلام"},
+            {"id": "b", "channel": 1, "t_start_ms": 1100, "t_end_ms": 2000, "text": "درود"},
+        ]
+
+        parsed = text_processing.process_response(
+            '{"corrected_text":"سلام. درود.","uncertain_items":[]}',
+            "correction",
+            "formal",
+            segments,
+        )
+
+        self.assertEqual([item["id"] for item in parsed["segments"]], ["a", "b"])
+        self.assertTrue(all(item["uncertain"] for item in parsed["segments"]))

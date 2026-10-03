@@ -292,12 +292,72 @@ class CorrectionClient:
         )
 
 
+def _normalize_monolithic_result(
+    source: list[dict[str, Any]], result: dict[str, Any]
+) -> None:
+    rows = result.get("segments")
+    monolithic: str | None = None
+    if isinstance(rows, str):
+        monolithic = rows.strip()
+    elif isinstance(rows, list) and len(rows) == 1 and len(source) > 1:
+        item = rows[0]
+        item_id = str(item.get("id") or "").strip().lower() if isinstance(item, dict) else ""
+        if isinstance(item, dict) and item_id in {"", "all", "transcript"}:
+            monolithic = str(item.get("corrected_text") or item.get("text") or "").strip()
+        elif isinstance(item, str):
+            monolithic = item.strip()
+    elif not isinstance(rows, list):
+        value = result.get("corrected_text") or result.get("text") or result.get("output")
+        if isinstance(value, str):
+            monolithic = value.strip()
+    if not monolithic:
+        return
+    lines = [line.strip() for line in monolithic.splitlines() if line.strip()]
+    if len(lines) == len(source):
+        pieces = lines
+    else:
+        words = monolithic.split()
+        weights = [max(1, len(str(item.get("text") or "").split())) for item in source]
+        total_weight = sum(weights)
+        pieces = []
+        start = 0
+        consumed = 0
+        for index, (original, weight) in enumerate(zip(source, weights, strict=True)):
+            consumed += weight
+            end = (
+                len(words)
+                if index == len(source) - 1
+                else round(len(words) * consumed / total_weight)
+            )
+            piece = " ".join(words[start:end]).strip()
+            pieces.append(piece or str(original.get("text") or "").strip())
+            start = end
+    normalized_rows = []
+    normalized_uncertain = list(result.get("uncertain_items") or [])
+    for original, piece in zip(source, pieces, strict=True):
+        normalized_rows.append(
+            {"id": original["id"], "corrected_text": piece, "uncertain": True}
+        )
+        normalized_uncertain.append(
+            {
+                "segment_id": original["id"],
+                "source": original["text"],
+                "suggestion": piece,
+                "reason": "خروجی مدل یکپارچه بود و مرزبندی بخش‌ها به‌صورت خودکار بازسازی شد.",
+            }
+        )
+    result["segments"] = normalized_rows
+    result["uncertain_items"] = normalized_uncertain
+    result["normalized_from"] = "monolithic_text"
+
+
 def validate_result(
     source: list[dict[str, Any]], result: dict[str, Any], *, max_uncertain_ratio: float
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     finish_reason = result.get("finish_reason")
     if finish_reason not in (None, "stop"):
         raise ValueError(f"correction output is incomplete: {finish_reason}")
+    _normalize_monolithic_result(source, result)
     rows = result.get("segments")
     uncertain_items = result.get("uncertain_items") or []
     if not isinstance(rows, list) or len(rows) != len(source):
@@ -376,6 +436,7 @@ async def activate_revision(
         **(revision.metrics or {}),
         "usage": result.get("usage"),
         "finish_reason": result.get("finish_reason"),
+        "normalized_from": result.get("normalized_from"),
         **(result.get("validation_metrics") or {}),
     }
     revision.completed_at = now

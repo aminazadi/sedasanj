@@ -154,6 +154,26 @@ def test_uncertain_ratio_is_a_warning_not_a_rejection() -> None:
     assert all(item["uncertain"] for item in segments)
 
 
+def test_monolithic_correction_is_resegmented_and_accepted_as_uncertain() -> None:
+    result = {
+        "finish_reason": "stop",
+        "segments": [
+            {
+                "corrected_text": "شماره سفارش ۱۲۳ است. بله، ثبت شد.",
+                "uncertain": False,
+            }
+        ],
+        "uncertain_items": [],
+    }
+
+    segments, uncertain = validate_result(SOURCE, result, max_uncertain_ratio=0.25)
+
+    assert [row["id"] for row in segments] == ["one", "two"]
+    assert all(row["uncertain"] for row in segments)
+    assert len(uncertain) == 2
+    assert result["normalized_from"] == "monolithic_text"
+
+
 @pytest.mark.parametrize(
     "result",
     [
