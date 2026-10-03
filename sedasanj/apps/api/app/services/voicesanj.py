@@ -138,6 +138,10 @@ class VoiceSanjClient:
         beam_size: int = 2,
         vad_filter: bool = True,
         prompt: str | None = None,
+        ensure_timestamps: bool = True,
+        diarize: bool = False,
+        turn_min_seconds: float = 0.3,
+        turn_padding_seconds: float = 0.2,
     ) -> dict[str, Any]:
         model_ids = [item.strip() for item in (models or [model]) if item.strip()]
         if not model_ids:
@@ -154,6 +158,10 @@ class VoiceSanjClient:
             "vad_filter": "true" if vad_filter else "false",
             "audio_encoding": "gzip",
             "uncompressed_audio_bytes": str(len(original_audio)),
+            "ensure_timestamps": "true" if ensure_timestamps else "false",
+            "diarize": "true" if diarize else "false",
+            "turn_min_seconds": str(turn_min_seconds),
+            "turn_padding_seconds": str(turn_padding_seconds),
         }
         if models:
             form["models"] = model_ids

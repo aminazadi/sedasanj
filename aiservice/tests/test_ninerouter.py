@@ -77,7 +77,7 @@ class NineRouterTests(unittest.TestCase):
             return_value=response,
         ) as request:
             result = ninerouter.NineRouterClient(settings).transcribe("stt/model", audio)
-        self.assertEqual(result["segments"], [{"id": 0, "start": 0, "end": 3.5, "text": "سلام"}])
+        self.assertEqual(result["segments"], [])
         self.assertEqual(
             request.call_args.kwargs["data"]["response_format"], "verbose_json"
         )
@@ -122,10 +122,7 @@ class NineRouterTests(unittest.TestCase):
             self.assertEqual(
                 request.call_args.kwargs["data"]["response_format"], "json"
             )
-            self.assertEqual(
-                result["segments"],
-                [{"id": 0, "start": 0, "end": 0, "text": "سلام"}],
-            )
+            self.assertEqual(result["segments"], [])
 
     def test_versioned_gpt_4o_transcription_uses_json_response_format(self):
         settings = ninerouter.ProviderSettings(

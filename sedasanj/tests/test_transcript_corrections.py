@@ -139,6 +139,21 @@ def test_validated_segments_preserve_identity_and_mark_uncertain() -> None:
     assert uncertain[0]["segment_id"] == "two"
 
 
+def test_uncertain_ratio_is_a_warning_not_a_rejection() -> None:
+    result = {
+        "finish_reason": "stop",
+        "segments": [
+            {"id": "one", "corrected_text": "شماره سفارش ۱۲۳ است.", "uncertain": True},
+            {"id": "two", "corrected_text": "بله، ثبت شد.", "uncertain": True},
+        ],
+        "uncertain_items": [],
+    }
+
+    segments, _ = validate_result(SOURCE, result, max_uncertain_ratio=0.25)
+
+    assert all(item["uncertain"] for item in segments)
+
+
 @pytest.mark.parametrize(
     "result",
     [

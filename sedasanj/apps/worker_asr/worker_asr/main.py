@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from arq.connections import RedisSettings
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -22,8 +22,16 @@ from app.db import (
 )
 from app.logging import configure_logging, log_context
 from app.metrics import asr_seconds_processed, start_metrics_server
-from app.models import AnalysisRun, AudioObject, Call, Job, Tenant, Transcript, Utterance
+from app.models import (
+    AnalysisRun,
+    AsrTranscriptRevision,
+    AudioObject,
+    Call,
+    Job,
+    Tenant,
+)
 from app.services import outbox, pipeline, processing_events, progress, queue
+from app.services.asr_revisions import activate_new
 from app.services.audio import (
     AudioPreprocessingConfig,
     preprocess_mono_audio,
@@ -51,7 +59,9 @@ def _clean_segment_text(text: str) -> str:
     return " ".join(text.split()).strip()
 
 
-def consolidate_segments(rows: list[tuple[int, AsrSegment]]) -> list[tuple[int, AsrSegment]]:
+def consolidate_segments(
+    rows: list[tuple[int, AsrSegment]], *, merge_gap_ms: int = TURN_MERGE_GAP_MS
+) -> list[tuple[int, AsrSegment]]:
     """Create readable chronological turns without discarding cross-talk.
 
     Some providers emit word-sized segments. Consecutive segments from the
@@ -78,7 +88,7 @@ def consolidate_segments(rows: list[tuple[int, AsrSegment]]) -> list[tuple[int, 
         previous_channel, previous = merged[-1]
         if (
             previous_channel == channel
-            and current.t_start_ms <= previous.t_end_ms + TURN_MERGE_GAP_MS
+            and current.t_start_ms <= previous.t_end_ms + merge_gap_ms
         ):
             overlaps = current.t_start_ms <= previous.t_end_ms
             if overlaps and (
@@ -105,7 +115,16 @@ def consolidate_segments(rows: list[tuple[int, AsrSegment]]) -> list[tuple[int, 
                         else None
                     ),
                     metadata={
-                        "merged_segments": [previous.metadata or {}, current.metadata or {}]
+                        "merged_segments": [previous.metadata or {}, current.metadata or {}],
+                        "timestamp_source": (previous.metadata or {}).get(
+                            "timestamp_source",
+                            (current.metadata or {}).get("timestamp_source", "native"),
+                        ),
+                        **(
+                            {"speaker": (previous.metadata or {}).get("speaker")}
+                            if (previous.metadata or {}).get("speaker") is not None
+                            else {}
+                        ),
                     },
                 ),
             )
@@ -198,13 +217,20 @@ async def _transcribe_tracks(
                 await on_preprocessed()
         else:
             await resample_to_16k(original, mono)
-        rows.extend((0, segment) for segment in await engine.transcribe(mono))
+        mono_segments = await engine.transcribe(mono, diarize=True)
+        rows.extend(
+            (
+                int((segment.metadata or {}).get("speaker", 0)),
+                segment,
+            )
+            for segment in mono_segments
+        )
     return [row for row in rows if row[1].text]
 
 
 async def _engine_for_job(
     ctx: dict[str, Any], session: AsyncSession
-) -> tuple[AsrEngine, AudioPreprocessingConfig]:
+) -> tuple[AsrEngine, AudioPreprocessingConfig, Any]:
     """Remote engines rebuild per job so admin model/API-key changes apply immediately."""
     runtime = await resolve_provider_settings(session)
     if runtime.asr_engine in {"voicesanj", "whisper"}:
@@ -221,12 +247,17 @@ async def _engine_for_job(
         enhancement_model=runtime.audio_enhancement_model,
     )
     preprocessing.validate()
-    return engine, preprocessing
+    return engine, preprocessing, runtime
 
 
 async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
     call_id = UUID(str(payload["call_id"]))
     recovery = bool(payload.get("recovery", False))
+    retranscription = bool(payload.get("retranscription", False))
+    previous_status = str(payload.get("previous_status") or "complete")
+    asr_revision_id = (
+        UUID(str(payload["asr_revision_id"])) if payload.get("asr_revision_id") else None
+    )
     tenant_hint = UUID(str(payload["tenant_id"])) if payload.get("tenant_id") else None
     tenant_id = await resolve_tenant_for_call(call_id, tenant_hint)
     if tenant_id is None:
@@ -271,6 +302,9 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 call_id=call_id,
                 kind="asr",
                 recovery=recovery,
+                asr_revision_id=asr_revision_id,
+                retranscription=retranscription,
+                previous_status=previous_status,
                 available_at=datetime.now(UTC) + timedelta(seconds=30),
             )
         else:
@@ -278,7 +312,9 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 session,
                 call_id,
                 tenant_id=tenant_id,
-                expected=("stored", "failed_retryable", "transcribing")
+                expected=(previous_status, "failed_retryable", "transcribing")
+                if retranscription
+                else ("stored", "failed_retryable", "transcribing")
                 if recovery
                 else ("stored", "failed_retryable"),
                 next_status="transcribing",
@@ -305,6 +341,10 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             asr_job = await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="asr", status="running"
             )
+            if asr_revision_id is not None:
+                asr_revision = await session.get(AsrTranscriptRevision, asr_revision_id)
+                if asr_revision is not None:
+                    asr_revision.status = "running"
             asr_running_step_key = f"{asr_job.id}:running:{asr_job.attempt}"
 
     if deferred_outbox_id is not None:
@@ -313,7 +353,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
 
     try:
         async with session_scope(None, staff=True) as session:
-            engine, preprocessing = await _engine_for_job(ctx, session)
+            engine, preprocessing, runtime = await _engine_for_job(ctx, session)
         if preprocessing.enabled:
             async with session_scope(tenant_id) as session:
                 # This is deliberately a separate, settled event.  Otherwise the
@@ -374,7 +414,8 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                     audio_channels,
                     preprocessing,
                     on_preprocessed=mark_audio_ready if preprocessing.enabled else None,
-                )
+                ),
+                merge_gap_ms=runtime.turn_merge_gap_ms,
             )
 
         full_text = build_full_text(rows)
@@ -382,43 +423,22 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             raise RuntimeError("ASR produced no text")
 
         async with session_scope(tenant_id) as session:
-            await session.execute(
-                delete(Utterance).where(
-                    Utterance.call_id == call_id, Utterance.tenant_id == tenant_id
-                )
+            asr_revision = (
+                await session.get(AsrTranscriptRevision, asr_revision_id)
+                if asr_revision_id is not None
+                else None
             )
-            for channel, segment in rows:
-                session.add(
-                    Utterance(
-                        call_id=call_id,
-                        tenant_id=tenant_id,
-                        channel=channel,
-                        t_start_ms=segment.t_start_ms,
-                        t_end_ms=segment.t_end_ms,
-                        text=segment.text,
-                        confidence=segment.confidence,
-                        metadata_json=segment.metadata,
-                    )
-                )
-            existing = (
-                await session.execute(
-                    select(Transcript).where(
-                        Transcript.call_id == call_id, Transcript.tenant_id == tenant_id
-                    )
-                )
-            ).scalar_one_or_none()
-            if existing is None:
-                session.add(
-                    Transcript(
-                        call_id=call_id,
-                        tenant_id=tenant_id,
-                        full_text=full_text,
-                        asr_model=engine.model_name,
-                        asr_version=f"{engine.model_version}|{preprocessing.identity}",
-                    )
-                )
-            else:
-                logger.info("preserving immutable raw transcript on repeated ASR delivery")
+            transcript_row, _ = await activate_new(
+                session,
+                call_id=call_id,
+                tenant_id=tenant_id,
+                rows=rows,
+                full_text=full_text,
+                asr_model=engine.model_name,
+                asr_version=f"{engine.model_version}|{preprocessing.identity}",
+                audio_channels=audio_channels,
+                revision=asr_revision,
+            )
 
             run = await _load_or_create_analysis_run(session, call_id, tenant_id)
             emotion_enabled = get_settings().voice_sentiment_enabled
@@ -455,13 +475,6 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             )
             if next_kind == "correction":
                 assert call is not None
-                transcript_row = (
-                    await session.execute(
-                        select(Transcript).where(
-                            Transcript.call_id == call_id, Transcript.tenant_id == tenant_id
-                        )
-                    )
-                ).scalar_one()
                 _revision, _job, outbox_id, _created = await create_revision(
                     session,
                     call=call,
@@ -519,7 +532,24 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             error_code=code,
             error_detail=detail,
             retryable=retryable,
+            reanalysis=retranscription,
+            previous_status=previous_status,
+            asr_revision_id=asr_revision_id,
+            retranscription=retranscription,
         )
+        if asr_revision_id is not None:
+            async with session_scope(tenant_id) as session:
+                revision = await session.get(AsrTranscriptRevision, asr_revision_id)
+                if revision is not None:
+                    revision.status = "running" if retried else "failed"
+                    revision.error_code = code
+                    revision.error_detail = detail[:2000]
+                    if not retried:
+                        revision.completed_at = datetime.now(UTC)
+                        call = await session.get(Call, call_id)
+                        if call is not None:
+                            call.status = previous_status
+                            call.error_code = None
         # handle_failure already requeued: re-raising would let ARQ add a second attempt (§6).
         return "retry_scheduled" if retried else "failed_terminal"
 

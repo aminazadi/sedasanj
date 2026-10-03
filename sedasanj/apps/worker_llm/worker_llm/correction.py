@@ -15,7 +15,7 @@ from app.services.platform import (
     effective_models,
     resolve_provider_settings,
 )
-from app.services.provider_errors import classify_failure
+from app.services.provider_errors import ProviderError, classify_failure
 from app.services.transcript_corrections import (
     CorrectionClient,
     activate_revision,
@@ -268,27 +268,64 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                 elif status in {"succeeded", "partially_succeeded"}:
                     revision.status = "validating"
                     result = await client.result(revision.provider_task_id)
-                    validated, uncertain = validate_result(
-                        segments,
-                        result,
-                        max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
-                    )
-                    await activate_revision(
-                        session,
-                        transcript=transcript,
-                        revision=revision,
-                        segments=validated,
-                        uncertain_items=uncertain,
-                        result=result,
-                    )
-                    await pipeline.mark_job(
-                        session,
-                        tenant_id=tenant_id,
-                        call_id=call_id,
-                        kind="correction",
-                        status="succeeded",
-                    )
-                    return_value = ("succeeded", None)
+                    try:
+                        validated, uncertain = validate_result(
+                            segments,
+                            result,
+                            max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
+                        )
+                    except ValueError as exc:
+                        try:
+                            model = advance_correction_model(revision, error=str(exc))
+                        except Exception as exhausted:
+                            raise ProviderError(
+                                "correction_validation_failed",
+                                "همه مدل‌های تصحیح متن خروجی نامعتبر ساختاری برگرداندند.",
+                                retryable=False,
+                            ) from exhausted
+                        revision.status = "running"
+                        revision.provider_task_id = await client.submit(
+                            revision,
+                            segments,
+                            runtime.correction_prompt,
+                            model=model,
+                        )
+                        revision.provider_submitted_at = datetime.now(UTC)
+                        job = (
+                            await session.execute(
+                                select(Job)
+                                .where(Job.call_id == call_id, Job.kind == "correction")
+                                .order_by(Job.created_at.desc())
+                                .limit(1)
+                            )
+                        ).scalar_one()
+                        outbox_id = await outbox.stage(
+                            session,
+                            tenant_id=tenant_id,
+                            job_id=job.id,
+                            queue_name="q:llm",
+                            function_name="poll_transcript_correction",
+                            payload={**payload, "tenant_id": str(tenant_id)},
+                            available_at=datetime.now(UTC) + timedelta(seconds=3),
+                        )
+                        return_value = ("polling", outbox_id)
+                    else:
+                        await activate_revision(
+                            session,
+                            transcript=transcript,
+                            revision=revision,
+                            segments=validated,
+                            uncertain_items=uncertain,
+                            result=result,
+                        )
+                        await pipeline.mark_job(
+                            session,
+                            tenant_id=tenant_id,
+                            call_id=call_id,
+                            kind="correction",
+                            status="succeeded",
+                        )
+                        return_value = ("succeeded", None)
                 elif status == "failed":
                     model = advance_correction_model(
                         revision,

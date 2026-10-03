@@ -1,7 +1,7 @@
 """Asynchronous text, transcription, status, result, and cancellation routes."""
 
-import hashlib
 import asyncio
+import hashlib
 import json
 import os
 import tempfile
@@ -24,9 +24,9 @@ from fastapi import (
 from fastapi.responses import PlainTextResponse
 
 from asr_service.domain.catalog import CATALOG
-from asr_service.infrastructure.storage import MODEL_DIR, connect, execute, now, row
 from asr_service.infrastructure.failures import record_failure
 from asr_service.infrastructure.ninerouter import NineRouterError, configured_models
+from asr_service.infrastructure.storage import MODEL_DIR, connect, execute, now, row
 from asr_service.services import object_storage
 from asr_service.services.audio_compression import GzipAudioError, decompress_gzip
 from asr_service.services.ingress import (
@@ -39,28 +39,21 @@ from asr_service.services.task_queue import (
     MAX_MODELS,
     QUEUE_LIMIT,
     TASK_DIR,
+    IdempotencyConflict,
+    _delete_input,
     enqueue,
     fingerprint,
-    get_task,
     get_runs,
-    IdempotencyConflict,
+    get_task,
     log_task,
     public_task,
     queue_depth,
-    _delete_input,
 )
 
 from ..dependencies import Principal, authorize, require_access
 from ..openapi import documented_responses
 from ..schemas.common import ChatTaskErrorResponse, ErrorResponse
 from ..schemas.requests import DecisionRequest, TextProcessRequest
-from ..schemas.uploads import (
-    UploadCompleteRequest,
-    UploadCreateRequest,
-    UploadPartUrlResponse,
-    UploadResponse,
-    UploadTranscriptionRequest,
-)
 from ..schemas.responses import (
     ChatCompletionResultResponse,
     DecisionResultResponse,
@@ -70,6 +63,13 @@ from ..schemas.responses import (
     TextCorrectionResultResponse,
     TranscriptionResponse,
     VerboseTranscriptionResponse,
+)
+from ..schemas.uploads import (
+    UploadCompleteRequest,
+    UploadCreateRequest,
+    UploadPartUrlResponse,
+    UploadResponse,
+    UploadTranscriptionRequest,
 )
 
 router = APIRouter(prefix="/v1")
@@ -347,6 +347,14 @@ async def transcription(
     vad_filter: bool = Form(
         True, description="Whether voice activity detection should filter silence."
     ),
+    ensure_timestamps: bool = Form(
+        True, description="Recover speech-region timestamps when the selected ASR model omits them."
+    ),
+    diarize: bool = Form(
+        False, description="Run local two-speaker diarization for mono audio."
+    ),
+    turn_min_seconds: float = Form(0.3, ge=0.1, le=3.0),
+    turn_padding_seconds: float = Form(0.2, ge=0.0, le=1.0),
     idempotency_key: str | None = Header(
         default=None,
         alias="Idempotency-Key",
@@ -414,6 +422,10 @@ async def transcription(
             "beam_size": beam_size,
             "vad_filter": vad_filter,
             "prompt": prompt,
+            "ensure_timestamps": ensure_timestamps,
+            "diarize": diarize,
+            "turn_min_seconds": turn_min_seconds,
+            "turn_padding_seconds": turn_padding_seconds,
         }
         if audio_encoding == "gzip":
             input_data.update(

@@ -5,6 +5,7 @@
 - Made per-minute analysis pricing tenant-specific across admin creation, active subscriptions, tenant settings, and billing consumption.
 - Added tenant-scoped manual transcription recovery for terminal ASR failures, including fresh auditable jobs, durable dispatch, retry-safe credit holds, and a call-detail recovery action.
 - Preserved timestamped conversational turns for 9Router OpenAI-compatible transcription responses and repaired invalid zero-length segment timestamps before transcript correction.
+- Added timestamp-safe VAD and two-speaker diarization across ASR providers, immutable transcript revision history with no-charge retranscription and rollback, version-aware conversation metrics and exports, and warning-only correction uncertainty with structural model failover.
 - Added distinct, accessible color badges for call processing statuses, sentiments, and sales outcomes across call lists and details.
 - Highlighted a newly selected Jalali date with the primary color before confirming date-time values.
 - Changed transcript-correction model priority to submit one AISERVICE task at a time and advance to the next text model only after the current model ends in technical failure.

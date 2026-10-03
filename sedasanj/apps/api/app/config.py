@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     audio_enhancement_model: Literal[
         "none", "speech-clarity-balanced", "speech-clarity-strong"
     ] = "speech-clarity-balanced"
+    mono_diarization_enabled: bool = False
+    diarization_model: str = "sherpa-diarization-2speaker"
+    turn_min_seconds: float = Field(default=0.3, ge=0.1, le=3.0)
+    turn_padding_seconds: float = Field(default=0.2, ge=0.0, le=1.0)
+    turn_merge_gap_ms: int = Field(default=1200, ge=0, le=5000)
 
     voice_sentiment_enabled: bool = False
     voice_sentiment_model: str = "iic/emotion2vec_plus_base"

@@ -294,5 +294,5 @@ class NineRouterClient:
         if not text:
             raise NineRouterError("9Router transcription response did not contain text")
         duration = payload.get("duration")
-        segments = payload.get("segments") or [{"id": 0, "start": 0, "end": duration or 0, "text": text}]
+        segments = payload.get("segments") or []
         return {"text": text, "language": payload.get("language") or "fa", "duration": duration, "duration_after_vad": duration, "model": model, "segments": segments}

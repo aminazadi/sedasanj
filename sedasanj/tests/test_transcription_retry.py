@@ -8,7 +8,7 @@ import pytest
 
 from app.deps import Principal
 from app.errors import ApiError
-from app.models import AudioObject, Call, Job, Tenant
+from app.models import AsrTranscriptRevision, AudioObject, Call, Job, Tenant, Transcript
 from app.routers import calls
 
 
@@ -242,3 +242,73 @@ async def test_retry_transcription_does_not_mutate_state_when_credit_is_insuffic
     assert call.status == "failed_terminal"
     assert call.error_code == "asr_failed"
     assert session.added == []
+
+
+@pytest.mark.asyncio
+async def test_retranscription_creates_revision_without_reserving_credit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call, audio, _previous_job, tenant = _rows(status="complete")
+    transcript = Transcript(
+        call_id=call.id,
+        tenant_id=tenant.id,
+        full_text="متن فعلی",
+        asr_model="current-model",
+        asr_version="1",
+    )
+
+    class Session(_Session):
+        async def get(self, model: object, key: object) -> object | None:
+            if model is Transcript and key == call.id:
+                return transcript
+            return await super().get(model, key)
+
+        async def flush(self) -> None:
+            await super().flush()
+            for value in self.added:
+                if isinstance(value, AsrTranscriptRevision) and value.id is None:
+                    value.id = uuid4()
+
+    session = Session([call, audio, None], tenant)
+    staged: dict[str, object] = {}
+
+    async def load_call(*args: object, **kwargs: object) -> Call:
+        return call
+
+    @asynccontextmanager
+    async def scope(*args: object, **kwargs: object):
+        yield session
+
+    async def reject_credit(*args: object, **kwargs: object) -> None:
+        raise AssertionError("retranscription must not reserve credit")
+
+    async def no_op(*args: object, **kwargs: object) -> None:
+        return None
+
+    async def stage(*args: object, **kwargs: object):
+        staged.update(kwargs)
+        return uuid4()
+
+    async def dispatch(*args: object, **kwargs: object) -> bool:
+        return True
+
+    monkeypatch.setattr(calls, "_load_call", load_call)
+    monkeypatch.setattr(calls, "session_scope", scope)
+    monkeypatch.setattr(calls.billing, "reserve_retry", reject_credit)
+    monkeypatch.setattr(calls.processing_events, "record", no_op)
+    monkeypatch.setattr(calls.audit, "record", no_op)
+    monkeypatch.setattr(calls.outbox, "stage_job", stage)
+    monkeypatch.setattr(calls.outbox, "dispatch_one", dispatch)
+    monkeypatch.setattr(calls, "client_ip", lambda request: "127.0.0.1")
+    principal = Principal(kind="user", id=uuid4(), tenant_id=tenant.id, role="operator")
+
+    result = await calls.retranscribe_call(call.id, None, principal)  # type: ignore[arg-type]
+
+    revisions = [value for value in session.added if isinstance(value, AsrTranscriptRevision)]
+    assert len(revisions) == 1
+    assert revisions[0].status == "queued"
+    assert revisions[0].trigger == "manual"
+    assert result == {"status": "queued", "asr_revision_id": str(revisions[0].id)}
+    assert staged["retranscription"] is True
+    assert staged["recovery"] is True
+    assert staged["previous_status"] == "complete"

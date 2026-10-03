@@ -123,6 +123,11 @@ export interface PlatformSettings {
   embedding_api_key_hint: string;
   audio_denoiser_models: AudioProcessingModel[];
   audio_enhancement_models: AudioProcessingModel[];
+  mono_diarization_enabled: boolean;
+  diarization_model: string;
+  turn_min_seconds: number;
+  turn_padding_seconds: number;
+  turn_merge_gap_ms: number;
   asr_route: "native" | "ninerouter";
   analysis_route: "durable" | "ninerouter";
   chat_route: "durable" | "synchronous" | "ninerouter";

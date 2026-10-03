@@ -26,11 +26,16 @@ def payload_for_job(
     reanalysis: bool = False,
     previous_status: str | None = None,
     correction_run_id: UUID | None = None,
+    asr_revision_id: UUID | None = None,
+    retranscription: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     if kind == "asr":
         return queue.QUEUE_ASR, queue.JOB_ASR, {
             "call_id": str(call_id),
             "recovery": recovery,
+            "asr_revision_id": str(asr_revision_id) if asr_revision_id else None,
+            "retranscription": retranscription,
+            "previous_status": previous_status,
         }
     if kind == "emotion":
         if analysis_run_id is None:
@@ -77,6 +82,8 @@ async def stage_job(
     reanalysis: bool = False,
     previous_status: str | None = None,
     correction_run_id: UUID | None = None,
+    asr_revision_id: UUID | None = None,
+    retranscription: bool = False,
     available_at: datetime | None = None,
 ) -> UUID:
     queue_name, function_name, payload = payload_for_job(
@@ -88,6 +95,8 @@ async def stage_job(
         reanalysis=reanalysis,
         previous_status=previous_status,
         correction_run_id=correction_run_id,
+        asr_revision_id=asr_revision_id,
+        retranscription=retranscription,
     )
     payload["tenant_id"] = str(tenant_id)
     return await stage(

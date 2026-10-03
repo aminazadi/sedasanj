@@ -378,10 +378,32 @@ class CorrectionStatusOut(BaseModel):
     error_code: str | None = None
     error_detail: str | None = None
     uncertain_items: list[dict[str, Any]] = Field(default_factory=list)
+    uncertain_count: int = 0
+    uncertain_ratio: float = 0.0
     queued_at: datetime
     started_at: datetime | None = None
     provider_submitted_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+class AsrTranscriptRevisionOut(BaseModel):
+    id: UUID
+    status: Literal["queued", "running", "succeeded", "failed"]
+    trigger: Literal["initial", "manual"]
+    full_text: str | None = None
+    asr_model: str | None = None
+    asr_version: str | None = None
+    speaker_mode: str | None = None
+    timestamp_source: str | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+    activated_at: datetime | None = None
+    active: bool = False
+    correction_status: Literal["queued", "running", "validating", "succeeded", "failed"] | None = None
+    utterances: list[UtteranceOut] = Field(default_factory=list)
+    corrected_utterances: list[UtteranceOut] = Field(default_factory=list)
 
 
 class InsightsOut(BaseModel):
@@ -669,6 +691,8 @@ class CallDetail(CallSummary):
     corrected_transcript: str | None = None
     corrected_transcript_at: datetime | None = None
     asr_model: str | None = None
+    active_asr_revision_id: UUID | None = None
+    speaker_mode: str | None = None
     utterances: list[UtteranceOut] = Field(default_factory=list)
     raw_utterances: list[UtteranceOut] = Field(default_factory=list)
     speaker_labels: dict[int, str] = Field(default_factory=dict)
@@ -935,6 +959,11 @@ class SettingsUpdate(BaseModel):
     audio_preprocessing_enabled: bool | None = None
     audio_denoiser_model: str | None = None
     audio_enhancement_model: str | None = None
+    mono_diarization_enabled: bool | None = None
+    diarization_model: str | None = Field(default=None, min_length=1, max_length=100)
+    turn_min_seconds: float | None = Field(default=None, ge=0.1, le=3.0)
+    turn_padding_seconds: float | None = Field(default=None, ge=0.0, le=1.0)
+    turn_merge_gap_ms: int | None = Field(default=None, ge=0, le=5000)
     analysis_concurrency: int | None = Field(default=None, ge=1, le=3)
     decision_model: str | None = Field(default=None, min_length=1, max_length=80)
     decision_fallback_model: str | None = Field(default=None, min_length=1, max_length=80)

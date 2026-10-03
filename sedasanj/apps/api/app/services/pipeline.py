@@ -201,6 +201,8 @@ async def handle_failure(
     event: str | None = None,
     retryable: bool | None = None,
     max_attempts_override: int | None = None,
+    asr_revision_id: UUID | None = None,
+    retranscription: bool = False,
 ) -> bool:
     """§6 step 3: back off and requeue, or go terminal and release the hold.
 
@@ -282,6 +284,8 @@ async def handle_failure(
                 correction_run_id=correction_run_id,
                 reanalysis=reanalysis,
                 previous_status=previous_status,
+                asr_revision_id=asr_revision_id,
+                retranscription=retranscription,
                 event=event,
                 available_at=datetime.now(UTC) + delay,
             )

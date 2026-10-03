@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 
@@ -55,6 +56,21 @@ del model
 
 
 def prepare_model(spec, staging, status_callback=lambda status: None):
+    if spec.preparation == "diarization_bundle":
+        staging = Path(staging)
+        archive = staging / "segmentation.tar.bz2"
+        status_callback("preparing")
+        with tarfile.open(archive, "r:bz2") as package:
+            members = [member for member in package.getmembers() if member.isfile()]
+            model = next((member for member in members if member.name.endswith("/model.onnx")), None)
+            if model is None or ".." in Path(model.name).parts:
+                raise ModelPreparationError("diarization archive has no safe model.onnx")
+            source = package.extractfile(model)
+            if source is None:
+                raise ModelPreparationError("unable to extract diarization model")
+            (staging / "model.onnx").write_bytes(source.read())
+        archive.unlink()
+        return
     if spec.preparation != "whisper_ct2_int8":
         return
     staging = Path(staging)

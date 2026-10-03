@@ -34,7 +34,7 @@ class AsrEngine(abc.ABC):
     model_version: str
 
     @abc.abstractmethod
-    async def transcribe(self, path: Path) -> list[AsrSegment]: ...
+    async def transcribe(self, path: Path, *, diarize: bool = False) -> list[AsrSegment]: ...
 
 
 def _duration_ms(path: Path) -> int:
@@ -68,7 +68,7 @@ class ShenavaEngine(AsrEngine):
             self._session = onnxruntime.InferenceSession(str(self._model_path))
         return self._session
 
-    async def transcribe(self, path: Path) -> list[AsrSegment]:
+    async def transcribe(self, path: Path, *, diarize: bool = False) -> list[AsrSegment]:
         session = self._load()
         decode = getattr(session, "transcribe", None)
         if decode is None:
@@ -108,7 +108,7 @@ class WhisperEngine(AsrEngine):
             )
         return key
 
-    async def transcribe(self, path: Path) -> list[AsrSegment]:
+    async def transcribe(self, path: Path, *, diarize: bool = False) -> list[AsrSegment]:
         duration = _duration_ms(path)
         # One request per channel. Split only when the file would exceed typical
         # 25 MB cloud STT limits (~10 minutes of 16 kHz mono PCM).
@@ -248,7 +248,13 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
                     confidence=confidence,
                     metadata={
                         key: item.get(key)
-                        for key in ("avg_logprob", "no_speech_prob", "compression_ratio")
+                        for key in (
+                            "avg_logprob",
+                            "no_speech_prob",
+                            "compression_ratio",
+                            "timestamp_source",
+                            "speaker",
+                        )
                         if item.get(key) is not None
                     },
                 )
@@ -265,6 +271,7 @@ class VoiceSanjEngine(AsrEngine):
     """Remote Persian ASR via aiservice.voicesanj.ir (async task + poll)."""
 
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self.model_name = settings.voicesanj_asr_model
         self._models = (
             settings.correction_audio_models
@@ -287,10 +294,10 @@ class VoiceSanjEngine(AsrEngine):
             )
         )
 
-    async def transcribe(self, path: Path) -> list[AsrSegment]:
-        return await self._transcribe_file(path)
+    async def transcribe(self, path: Path, *, diarize: bool = False) -> list[AsrSegment]:
+        return await self._transcribe_file(path, diarize=diarize)
 
-    async def _transcribe_file(self, path: Path) -> list[AsrSegment]:
+    async def _transcribe_file(self, path: Path, *, diarize: bool = False) -> list[AsrSegment]:
         payload = await self._client.transcribe(
             path,
             model=self.model_name,
@@ -299,6 +306,10 @@ class VoiceSanjEngine(AsrEngine):
             beam_size=5,
             vad_filter=True,
             prompt=self._prompt,
+            ensure_timestamps=True,
+            diarize=diarize and self._settings.mono_diarization_enabled,
+            turn_min_seconds=self._settings.turn_min_seconds,
+            turn_padding_seconds=self._settings.turn_padding_seconds,
         )
         if payload.get("model"):
             self.model_name = str(payload["model"])
@@ -312,7 +323,7 @@ class FixtureEngine(AsrEngine):
         self.model_name = "fixture"
         self.model_version = "v1"
 
-    async def transcribe(self, path: Path) -> list[AsrSegment]:
+    async def transcribe(self, path: Path, *, diarize: bool = False) -> list[AsrSegment]:
         duration = _duration_ms(path)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
         return [

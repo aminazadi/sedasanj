@@ -1,10 +1,29 @@
 """Durable sequential multi-model task orchestration."""
 
-import hashlib, json, logging, os, random, subprocess, sys, tempfile, threading, time, traceback, uuid
+import hashlib
+import json
+import logging
+import os
+import random
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import traceback
+import uuid
 from contextlib import closing, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 from asr_service.domain.catalog import CATALOG
+from asr_service.infrastructure.failures import record_failure
+from asr_service.infrastructure.ninerouter import (
+    NineRouterClient,
+    NineRouterError,
+    is_configured_model,
+    resolve_settings,
+)
 from asr_service.infrastructure.storage import (
     DATA_DIR,
     MODEL_DIR,
@@ -14,15 +33,11 @@ from asr_service.infrastructure.storage import (
     row,
     rows,
 )
-from asr_service.infrastructure.failures import record_failure
+
+from . import object_storage
+from .audio_compression import decompress_gzip
 from .inference import NoSpeechDetectedError, transcribe
-from .text_processing import chat_completion, process as process_text, process_messages, process_response
-from asr_service.infrastructure.ninerouter import (
-    NineRouterClient,
-    NineRouterError,
-    is_configured_model,
-    resolve_settings,
-)
+from .ingress import ensure_spool_capacity
 from .resources import (
     DECISION_MAX_CONCURRENT,
     LLM_MAX_CONCURRENT,
@@ -31,9 +46,8 @@ from .resources import (
     admission_allowed,
     inference_slot,
 )
-from . import object_storage
-from .audio_compression import decompress_gzip
-from .ingress import ensure_spool_capacity
+from .text_processing import chat_completion, process_messages, process_response
+from .text_processing import process as process_text
 
 logger = logging.getLogger(__name__)
 
@@ -945,15 +959,41 @@ class TaskManager:
                 with (nullcontext() if admitted_slot else inference_slot()):
                     local_input, temporary_input = _materialize_input(task)
                     try:
+                        def decode_audio(audio_path):
+                            if uses_ninerouter("asr", run["model_id"]):
+                                return NineRouterClient(provider).transcribe(
+                                    run["model_id"], audio_path, args.get("prompt")
+                                )
+                            decoded_text, decoded_segments, decoded_duration, decoded_vad = transcribe(
+                                audio_path,
+                                run["model_id"],
+                                args.get("beam_size", 2),
+                                args.get("vad_filter", True),
+                                args.get("prompt"),
+                                lambda message: log_run(run["id"], message),
+                            )
+                            return {
+                                "text": decoded_text,
+                                "language": "fa",
+                                "duration": decoded_duration,
+                                "duration_after_vad": decoded_vad,
+                                "model": run["model_id"],
+                                "segments": decoded_segments,
+                            }
                         if uses_ninerouter("asr", run["model_id"]):
                             log_run(run["id"], "Submitting audio to 9Router")
-                            result = NineRouterClient(provider).transcribe(run["model_id"], local_input, args.get("prompt"))
-                        else:
-                            text, segments, duration, duration_vad = transcribe(
-                                local_input, run["model_id"], args.get("beam_size", 2), args.get("vad_filter", True),
-                                args.get("prompt"), lambda message: log_run(run["id"], message),
-                            )
-                            result = {"text": text, "language": "fa", "duration": duration, "duration_after_vad": duration_vad, "model": run["model_id"], "segments": segments}
+                        result = decode_audio(Path(local_input))
+                        from .speech_segmentation import normalize_transcription
+
+                        result = normalize_transcription(
+                            local_input,
+                            result,
+                            decode_audio,
+                            ensure_timestamps=bool(args.get("ensure_timestamps", False)),
+                            diarize=bool(args.get("diarize", False)),
+                            min_seconds=float(args.get("turn_min_seconds", 0.3)),
+                            padding_seconds=float(args.get("turn_padding_seconds", 0.2)),
+                        )
                     finally:
                         if temporary_input:
                             Path(local_input).unlink(missing_ok=True)

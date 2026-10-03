@@ -135,6 +135,7 @@ async def create_revision(
         tenant_id=call.tenant_id,
         idempotency_key=idempotency_key,
         source_sha256=source_hash,
+        asr_revision_id=transcript.active_asr_revision_id,
         profile_version=version,
         trigger=trigger,
         mode=revision_mode(runtime, trigger),
@@ -325,13 +326,17 @@ def validate_result(
         if len(words) >= 8 and len(set(words)) <= max(2, len(words) // 5):
             raise ValueError("correction contains abnormal repetition")
         validated.append({**original, "corrected_text": text, "uncertain": is_uncertain})
-    ratio = sum(1 for item in validated if item["uncertain"]) / max(len(validated), 1)
-    if ratio > max_uncertain_ratio:
-        raise ValueError("correction uncertain ratio exceeds configured limit")
     normalized_uncertain = [
         item if isinstance(item, dict) else {"reason": str(item)}
         for item in uncertain_items
     ]
+    ratio = sum(1 for item in validated if item["uncertain"]) / max(len(validated), 1)
+    result["validation_metrics"] = {
+        "uncertain_count": sum(1 for item in validated if item["uncertain"]),
+        "uncertain_ratio": ratio,
+        "uncertain_warning": ratio > max_uncertain_ratio,
+        "uncertain_warning_threshold": max_uncertain_ratio,
+    }
     return validated, normalized_uncertain
 
 
@@ -371,6 +376,7 @@ async def activate_revision(
         **(revision.metrics or {}),
         "usage": result.get("usage"),
         "finish_reason": result.get("finish_reason"),
+        **(result.get("validation_metrics") or {}),
     }
     revision.completed_at = now
     revision.activated_at = now

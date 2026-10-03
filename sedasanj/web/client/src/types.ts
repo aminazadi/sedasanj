@@ -67,10 +67,32 @@ export interface CorrectionStatus {
   error_code: string | null;
   error_detail: string | null;
   uncertain_items: Array<Record<string, unknown>>;
+  uncertain_count: number;
+  uncertain_ratio: number;
   queued_at: string;
   started_at: string | null;
   provider_submitted_at: string | null;
   completed_at: string | null;
+}
+
+export interface AsrTranscriptRevision {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  trigger: "initial" | "manual";
+  full_text: string | null;
+  asr_model: string | null;
+  asr_version: string | null;
+  speaker_mode: string | null;
+  timestamp_source: string | null;
+  error_code: string | null;
+  error_detail: string | null;
+  created_at: string;
+  completed_at: string | null;
+  activated_at: string | null;
+  active: boolean;
+  correction_status: CorrectionStatus["status"] | null;
+  utterances: Utterance[];
+  corrected_utterances: Utterance[];
 }
 
 export interface SentimentPoint {
@@ -125,6 +147,8 @@ export interface CallDetail extends CallSummary {
   corrected_transcript: string | null;
   corrected_transcript_at: string | null;
   asr_model: string | null;
+  active_asr_revision_id: string | null;
+  speaker_mode: string | null;
   utterances: Utterance[];
   raw_utterances: Utterance[];
   speaker_labels: Record<number, string>;

@@ -1,7 +1,7 @@
 """Static catalog of supported model artifacts and metadata."""
 
-from dataclasses import dataclass, field
 import json
+from dataclasses import dataclass, field
 
 HF = "https://huggingface.co/{repo}/resolve/{revision}/{name}?download=true"
 
@@ -16,6 +16,7 @@ class ModelSpec:
     revision: str | None = None; license: str | None = None; preparation: str | None = None
     language: str | None = None; task: str | None = None; decoding: dict = field(default_factory=dict)
     engine: str | None = None; source_type: str | None = None; source: dict = field(default_factory=dict)
+    segment_timestamps: bool | None = None
 
 def hf(repo, names, revision="main"):
     entries = ((*entry, None) if len(entry) == 3 else entry for entry in names)
@@ -40,13 +41,14 @@ BUZZASR_FILES = [
 CATALOG = {m.id:m for m in (
  ModelSpec("silero-vad","vad","Silero VAD","تشخیص گفتار و حذف سکوت (اجباری برای Shenava)","https://github.com/k2-fsa/sherpa-onnx",files=(ModelFile("silero_vad.onnx","https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",643854),)),
  ModelSpec("gtcrn-denoiser","denoiser","GTCRN Denoiser","کاهش نویز اختیاری پیش از رونویسی","https://github.com/k2-fsa/sherpa-onnx",files=(ModelFile("gtcrn_simple.onnx","https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx",1700000,True),)),
- ModelSpec("shenava-koochik","asr","شنوا کوچیک v1","مدل دقیق فارسی 114M","https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx","nemoCtc",True,hf("Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",[("model.onnx",458819249,False),("tokens.txt",12236,False)])),
- ModelSpec("shenava-koochik-v1-5-rnnt","asr","شنوا کوچیک v1.5 RNNT","مدل سبک‌تر با معماری Transducer","https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx","transducer",False,hf("Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx",[("encoder.int8.onnx",131000000,True),("decoder.int8.onnx",3960000,True),("joiner.int8.onnx",1410000,True),("tokens.txt",12236,False)])),
- ModelSpec("shenava-rizeh","asr","شنوا ریزه","تعادل سرعت، حافظه و دقت","https://huggingface.co/Reza2kn/Shenava-Rizeh-v1.0-sherpa-onnx","nemoCtc",False,hf("Reza2kn/Shenava-Rizeh-v1.0-sherpa-onnx",[("model.onnx",116700660,False),("tokens.txt",12236,False)])),
- ModelSpec("shenava-rizeh-pizeh","asr","شنوا ریزه‌پیزه","سریع برای سرور ضعیف","https://huggingface.co/Reza2kn/Shenava-Rizeh-Pizeh-v1.0-sherpa-onnx","nemoCtc",False,hf("Reza2kn/Shenava-Rizeh-Pizeh-v1.0-sherpa-onnx",[("model.onnx",33201018,False),("tokens.txt",12236,False)])),
- ModelSpec("whisper-large-v3","asr","Whisper Large v3","نسخه CTranslate2 چندزبانه","https://huggingface.co/Systran/faster-whisper-large-v3","fasterWhisper",False,hf("Systran/faster-whisper-large-v3",[(n,None,True) for n in ["config.json","model.bin","tokenizer.json","vocabulary.json","preprocessor_config.json"]]),language="fa",task="transcribe"),
- ModelSpec("whisper-persian-v4","asr","Whisper Persian v4","مدل دقیق فارسی؛ تبدیل محلی و امن به CTranslate2 INT8","https://huggingface.co/nezamisafa/whisper-persian-v4","fasterWhisper",True,hf("nezamisafa/whisper-persian-v4",PERSIAN_V4_FILES,PERSIAN_V4_REVISION),PERSIAN_V4_REVISION,"apache-2.0","whisper_ct2_int8","fa","transcribe"),
- ModelSpec("buzzasr-persian","asr","BuzzASR Persian","مدل تک‌زبانه فارسی با tokenizer اختصاصی؛ CTranslate2 INT8","https://huggingface.co/BuzzASR/persian","fasterWhisper",False,hf("BuzzASR/persian",BUZZASR_FILES,BUZZASR_REVISION),BUZZASR_REVISION,"mit","whisper_ct2_int8","fa","transcribe",{"repetition_penalty":1.2,"no_repeat_ngram_size":3}),
+ ModelSpec("sherpa-diarization-2speaker","diarization","Sherpa two-speaker diarization","تفکیک محلی دو گوینده برای صوت تک‌کاناله","https://github.com/k2-fsa/sherpa-onnx",files=(ModelFile("segmentation.tar.bz2","https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",None,True),ModelFile("speaker-embedding.onnx","https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",None,True)),preparation="diarization_bundle"),
+ ModelSpec("shenava-koochik","asr","شنوا کوچیک v1","مدل دقیق فارسی 114M","https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx","nemoCtc",True,hf("Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",[("model.onnx",458819249,False),("tokens.txt",12236,False)]),segment_timestamps=False),
+ ModelSpec("shenava-koochik-v1-5-rnnt","asr","شنوا کوچیک v1.5 RNNT","مدل سبک‌تر با معماری Transducer","https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx","transducer",False,hf("Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx",[("encoder.int8.onnx",131000000,True),("decoder.int8.onnx",3960000,True),("joiner.int8.onnx",1410000,True),("tokens.txt",12236,False)]),segment_timestamps=False),
+ ModelSpec("shenava-rizeh","asr","شنوا ریزه","تعادل سرعت، حافظه و دقت","https://huggingface.co/Reza2kn/Shenava-Rizeh-v1.0-sherpa-onnx","nemoCtc",False,hf("Reza2kn/Shenava-Rizeh-v1.0-sherpa-onnx",[("model.onnx",116700660,False),("tokens.txt",12236,False)]),segment_timestamps=False),
+ ModelSpec("shenava-rizeh-pizeh","asr","شنوا ریزه‌پیزه","سریع برای سرور ضعیف","https://huggingface.co/Reza2kn/Shenava-Rizeh-Pizeh-v1.0-sherpa-onnx","nemoCtc",False,hf("Reza2kn/Shenava-Rizeh-Pizeh-v1.0-sherpa-onnx",[("model.onnx",33201018,False),("tokens.txt",12236,False)]),segment_timestamps=False),
+ ModelSpec("whisper-large-v3","asr","Whisper Large v3","نسخه CTranslate2 چندزبانه","https://huggingface.co/Systran/faster-whisper-large-v3","fasterWhisper",False,hf("Systran/faster-whisper-large-v3",[(n,None,True) for n in ["config.json","model.bin","tokenizer.json","vocabulary.json","preprocessor_config.json"]]),language="fa",task="transcribe",segment_timestamps=True),
+ ModelSpec("whisper-persian-v4","asr","Whisper Persian v4","مدل دقیق فارسی؛ تبدیل محلی و امن به CTranslate2 INT8","https://huggingface.co/nezamisafa/whisper-persian-v4","fasterWhisper",True,hf("nezamisafa/whisper-persian-v4",PERSIAN_V4_FILES,PERSIAN_V4_REVISION),PERSIAN_V4_REVISION,"apache-2.0","whisper_ct2_int8","fa","transcribe",segment_timestamps=True),
+ ModelSpec("buzzasr-persian","asr","BuzzASR Persian","مدل تک‌زبانه فارسی با tokenizer اختصاصی؛ CTranslate2 INT8","https://huggingface.co/BuzzASR/persian","fasterWhisper",False,hf("BuzzASR/persian",BUZZASR_FILES,BUZZASR_REVISION),BUZZASR_REVISION,"mit","whisper_ct2_int8","fa","transcribe",{"repetition_penalty":1.2,"no_repeat_ngram_size":3},segment_timestamps=True),
  ModelSpec("dorna-8b-q4_k_m","llm","Dorna 8B Q4_K_M","نسخه پیشنهادی با کیفیت بهتر؛ حدود ۶GB RAM","https://huggingface.co/QuantFactory/Dorna-Llama3-8B-Instruct-GGUF","gguf",True,hf("QuantFactory/Dorna-Llama3-8B-Instruct-GGUF",[("Dorna-Llama3-8B-Instruct.Q4_K_M.gguf",4920734240,False)])),
  ModelSpec("dorna-8b-q3_k_m","llm","Dorna 8B Q3_K_M","مصرف حافظه کمتر با افت کیفیت محدود","https://huggingface.co/QuantFactory/Dorna-Llama3-8B-Instruct-GGUF","gguf",False,hf("QuantFactory/Dorna-Llama3-8B-Instruct-GGUF",[("Dorna-Llama3-8B-Instruct.Q3_K_M.gguf",4018917920,False)])),
  ModelSpec("dorna-8b-q2_k","llm","Dorna 8B Q2_K","کم‌حجم‌ترین نسخه با کیفیت پایین‌تر","https://huggingface.co/QuantFactory/Dorna-Llama3-8B-Instruct-GGUF","gguf",False,hf("QuantFactory/Dorna-Llama3-8B-Instruct-GGUF",[("Dorna-Llama3-8B-Instruct.Q2_K.gguf",3179131424,False)])),

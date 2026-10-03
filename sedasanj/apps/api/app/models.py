@@ -356,6 +356,9 @@ class Transcript(Base):
     active_revision_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("transcript_revisions.id", ondelete="SET NULL")
     )
+    active_asr_revision_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("asr_transcript_revisions.id", ondelete="SET NULL")
+    )
     search: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('simple', full_text)", persisted=True)
     )
@@ -380,6 +383,9 @@ class TranscriptRevision(Base):
     )
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     source_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    asr_revision_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("asr_transcript_revisions.id", ondelete="SET NULL")
+    )
     profile_version: Mapped[str] = mapped_column(Text, nullable=False)
     trigger: Mapped[str] = mapped_column(Text, nullable=False)
     mode: Mapped[str] = mapped_column(Text, nullable=False)
@@ -451,6 +457,75 @@ class TranscriptRevisionSegment(Base):
             "revision_id", "position", name="transcript_revision_segments_revision_position_key"
         ),
         Index("idx_transcript_revision_segments_revision", "revision_id", "position"),
+    )
+
+
+class AsrTranscriptRevision(Base):
+    __tablename__ = "asr_transcript_revisions"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    call_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    trigger: Mapped[str] = mapped_column(Text, nullable=False)
+    full_text: Mapped[str | None] = mapped_column(Text)
+    asr_model: Mapped[str | None] = mapped_column(Text)
+    asr_version: Mapped[str | None] = mapped_column(Text)
+    speaker_mode: Mapped[str | None] = mapped_column(Text)
+    timestamp_source: Mapped[str | None] = mapped_column(Text)
+    metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    activated_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed')",
+            name="asr_transcript_revisions_status_check",
+        ),
+        CheckConstraint(
+            "trigger IN ('initial','manual')", name="asr_transcript_revisions_trigger_check"
+        ),
+        Index("idx_asr_transcript_revisions_call", "call_id", text("created_at DESC")),
+    )
+
+
+class AsrTranscriptRevisionSegment(Base):
+    __tablename__ = "asr_transcript_revision_segments"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    revision_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("asr_transcript_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    channel: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    t_start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    t_end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(REAL)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+
+    __table_args__ = (
+        CheckConstraint("channel IN (0,1)", name="asr_revision_segments_channel_check"),
+        UniqueConstraint(
+            "revision_id", "position", name="asr_revision_segments_revision_position_key"
+        ),
+        Index("idx_asr_revision_segments_revision", "revision_id", "position"),
     )
 
 

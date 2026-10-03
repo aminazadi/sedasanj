@@ -22,6 +22,8 @@ from app.deps import OperatorDep, OrgAdminDep, Principal, TenantSession, UserDep
 from app.errors import ApiError
 from app.models import (
     AnalysisRun,
+    AsrTranscriptRevision,
+    AsrTranscriptRevisionSegment,
     AudioObject,
     Call,
     CallInsight,
@@ -41,6 +43,7 @@ from app.schemas import (
     AnalyticsBucket,
     AnalyticsSummary,
     AnalyticsTrendPoint,
+    AsrTranscriptRevisionOut,
     CallDetail,
     CallPage,
     CallSummary,
@@ -64,6 +67,7 @@ from app.services import (
     progress,
     ratelimit,
 )
+from app.services.asr_revisions import activate_existing
 from app.services.ingest import accept_upload
 from app.services.platform import (
     effective_extract_prompt,
@@ -404,12 +408,19 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
             .where(
                 TranscriptRevision.call_id == call_id,
                 TranscriptRevision.tenant_id == principal.tenant_id,
+                TranscriptRevision.asr_revision_id
+                == (transcript.active_asr_revision_id if transcript is not None else None),
             )
             .order_by(TranscriptRevision.created_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
     corrected_segments: list[TranscriptRevisionSegment] = []
+    active_asr_revision = None
+    if transcript is not None and transcript.active_asr_revision_id is not None:
+        active_asr_revision = await session.get(
+            AsrTranscriptRevision, transcript.active_asr_revision_id
+        )
     if transcript is not None and transcript.active_revision_id is not None:
         corrected_segments = list(
             (
@@ -543,6 +554,8 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         corrected_transcript=transcript.corrected_text if transcript else None,
         corrected_transcript_at=transcript.corrected_at if transcript else None,
         asr_model=f"{transcript.asr_model}:{transcript.asr_version}" if transcript else None,
+        active_asr_revision_id=transcript.active_asr_revision_id if transcript else None,
+        speaker_mode=active_asr_revision.speaker_mode if active_asr_revision else None,
         utterances=(
             [
                 UtteranceOut(
@@ -560,6 +573,9 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         ),
         raw_utterances=[UtteranceOut.model_validate(u) for u in utterances],
         speaker_labels=(
+            {0: "گوینده ۱", 1: "گوینده ۲"}
+            if active_asr_revision and (active_asr_revision.speaker_mode or "").startswith("mono")
+            else
             {0: "مشتری", 1: "اپراتور"}
             if call.direction == "inbound"
             else {0: "اپراتور", 1: "مشتری"}
@@ -578,6 +594,8 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
                 error_code=latest_revision.error_code,
                 error_detail=processing_events.sanitize_detail(latest_revision.error_detail),
                 uncertain_items=latest_revision.uncertain_items or [],
+                uncertain_count=int((latest_revision.metrics or {}).get("uncertain_count") or 0),
+                uncertain_ratio=float((latest_revision.metrics or {}).get("uncertain_ratio") or 0),
                 queued_at=latest_revision.queued_at,
                 started_at=latest_revision.started_at,
                 provider_submitted_at=latest_revision.provider_submitted_at,
@@ -738,6 +756,313 @@ async def retry_transcription(
             extra={"extra_fields": {"call_id": str(call_id), "job_id": str(job_id)}},
         )
     return {"status": "queued", "job_id": str(job_id)}
+
+
+@router.post("/calls/{call_id}/retranscribe", status_code=status.HTTP_202_ACCEPTED)
+async def retranscribe_call(
+    call_id: UUID, request: Request, principal: OperatorDep
+) -> dict[str, str]:
+    assert principal.tenant_id is not None
+    tenant_id = principal.tenant_id
+    async with session_scope(tenant_id) as session:
+        visible = await _load_call(session, call_id, tenant_id, principal)
+        call = (
+            await session.execute(
+                select(Call)
+                .where(Call.id == visible.id, Call.tenant_id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one()
+        transcript = await session.get(Transcript, call_id)
+        if transcript is None:
+            raise ApiError("invalid_request", "برای این تماس هنوز نسخه متنی وجود ندارد.")
+        audio = (
+            await session.execute(
+                select(AudioObject).where(
+                    AudioObject.id == call.audio_id,
+                    AudioObject.tenant_id == tenant_id,
+                    AudioObject.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if audio is None:
+            raise ApiError("not_found", "فایل صوتی این تماس در دسترس نیست.")
+        active = (
+            await session.execute(
+                select(AsrTranscriptRevision.id).where(
+                    AsrTranscriptRevision.call_id == call_id,
+                    AsrTranscriptRevision.tenant_id == tenant_id,
+                    AsrTranscriptRevision.status.in_(("queued", "running")),
+                )
+            )
+        ).scalar_one_or_none()
+        if active is not None:
+            raise ApiError("conflict_idempotency", "بازپردازش دیگری برای این تماس فعال است.")
+        previous_status = call.status
+        revision = AsrTranscriptRevision(
+            call_id=call_id,
+            tenant_id=tenant_id,
+            status="queued",
+            trigger="manual",
+            metrics={"previous_status": previous_status},
+        )
+        session.add(revision)
+        job = Job(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+            status="queued",
+            attempt=0,
+            run_after=datetime.now(UTC),
+        )
+        session.add(job)
+        await session.flush()
+        await processing_events.record(
+            session,
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+            status="queued",
+            progress_pct=5,
+            message="ساخت نسخه جدید متن بدون کسر اعتبار در صف قرار گرفت",
+            step_key=f"{job.id}:queued:0",
+        )
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=tenant_id,
+            action="call.retranscribe",
+            payload={"call_id": str(call_id), "asr_revision_id": str(revision.id)},
+            ip=client_ip(request),
+        )
+        outbox_id = await outbox.stage_job(
+            session,
+            job_id=job.id,
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+            recovery=True,
+            retranscription=True,
+            previous_status=previous_status,
+            asr_revision_id=revision.id,
+        )
+    try:
+        await outbox.dispatch_one(outbox_id)
+    except Exception:
+        logger.exception("immediate retranscription dispatch failed; durable dispatcher will retry")
+    return {"status": "queued", "asr_revision_id": str(revision.id)}
+
+
+@router.get(
+    "/calls/{call_id}/transcript-versions",
+    response_model=list[AsrTranscriptRevisionOut],
+)
+async def transcript_versions(
+    call_id: UUID, principal: OperatorDep, session: TenantSession
+) -> list[AsrTranscriptRevisionOut]:
+    assert principal.tenant_id is not None
+    await _load_call(session, call_id, principal.tenant_id, principal)
+    transcript = await session.get(Transcript, call_id)
+    revisions = list(
+        (
+            await session.execute(
+                select(AsrTranscriptRevision)
+                .where(
+                    AsrTranscriptRevision.call_id == call_id,
+                    AsrTranscriptRevision.tenant_id == principal.tenant_id,
+                )
+                .order_by(AsrTranscriptRevision.created_at.desc())
+            )
+        ).scalars()
+    )
+    result: list[AsrTranscriptRevisionOut] = []
+    for revision in revisions:
+        segments = list(
+            (
+                await session.execute(
+                    select(AsrTranscriptRevisionSegment)
+                    .where(
+                        AsrTranscriptRevisionSegment.revision_id == revision.id,
+                        AsrTranscriptRevisionSegment.tenant_id == principal.tenant_id,
+                    )
+                    .order_by(AsrTranscriptRevisionSegment.position)
+                )
+        ).scalars()
+        )
+        correction = (
+            await session.execute(
+                select(TranscriptRevision)
+                .where(
+                    TranscriptRevision.asr_revision_id == revision.id,
+                    TranscriptRevision.tenant_id == principal.tenant_id,
+                )
+                .order_by(
+                    TranscriptRevision.activated_at.desc().nullslast(),
+                    TranscriptRevision.created_at.desc(),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        successful_correction = correction
+        if correction is not None and correction.status != "succeeded":
+            successful_correction = (
+                await session.execute(
+                    select(TranscriptRevision)
+                    .where(
+                        TranscriptRevision.asr_revision_id == revision.id,
+                        TranscriptRevision.tenant_id == principal.tenant_id,
+                        TranscriptRevision.status == "succeeded",
+                    )
+                    .order_by(TranscriptRevision.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        corrected_segments = []
+        if successful_correction is not None:
+            corrected_segments = list(
+                (
+                    await session.execute(
+                        select(TranscriptRevisionSegment)
+                        .where(
+                            TranscriptRevisionSegment.revision_id == successful_correction.id,
+                            TranscriptRevisionSegment.tenant_id == principal.tenant_id,
+                        )
+                        .order_by(TranscriptRevisionSegment.position)
+                    )
+                ).scalars()
+            )
+        result.append(
+            AsrTranscriptRevisionOut(
+                id=revision.id,
+                status=revision.status,
+                trigger=revision.trigger,
+                full_text=revision.full_text,
+                asr_model=revision.asr_model,
+                asr_version=revision.asr_version,
+                speaker_mode=revision.speaker_mode,
+                timestamp_source=revision.timestamp_source,
+                error_code=revision.error_code,
+                error_detail=processing_events.sanitize_detail(revision.error_detail),
+                created_at=revision.created_at,
+                completed_at=revision.completed_at,
+                activated_at=revision.activated_at,
+                active=bool(transcript and transcript.active_asr_revision_id == revision.id),
+                correction_status=correction.status if correction is not None else None,
+                utterances=[
+                    UtteranceOut(
+                        channel=item.channel,
+                        t_start_ms=item.t_start_ms,
+                        t_end_ms=item.t_end_ms,
+                        text=item.text,
+                    )
+                    for item in segments
+                ],
+                corrected_utterances=[
+                    UtteranceOut(
+                        channel=item.channel,
+                        t_start_ms=item.t_start_ms,
+                        t_end_ms=item.t_end_ms,
+                        text=item.corrected_text,
+                        source_text=item.source_text,
+                        uncertain=item.uncertain,
+                    )
+                    for item in corrected_segments
+                ],
+            )
+        )
+    return result
+
+
+@router.post(
+    "/calls/{call_id}/transcript-versions/{revision_id}/activate",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def activate_transcript_version(
+    call_id: UUID, revision_id: UUID, request: Request, principal: OperatorDep
+) -> dict[str, str]:
+    assert principal.tenant_id is not None
+    tenant_id = principal.tenant_id
+    async with session_scope(tenant_id) as session:
+        call = await _load_call(session, call_id, tenant_id, principal)
+        transcript = await session.get(Transcript, call_id)
+        revision = await session.get(AsrTranscriptRevision, revision_id)
+        if (
+            transcript is None
+            or revision is None
+            or revision.call_id != call_id
+            or revision.tenant_id != tenant_id
+        ):
+            raise ApiError("not_found", "نسخه متن یافت نشد.")
+        pending = (
+            await session.execute(
+                select(AsrTranscriptRevision.id).where(
+                    AsrTranscriptRevision.call_id == call_id,
+                    AsrTranscriptRevision.status.in_(("queued", "running")),
+                )
+            )
+        ).scalar_one_or_none()
+        if pending is not None:
+            raise ApiError("conflict_idempotency", "بازپردازش فعال باید ابتدا تمام شود.")
+        await activate_existing(session, transcript=transcript, revision=revision)
+        runtime = await resolve_provider_settings(session)
+        correction = None
+        if transcript.active_revision_id is None and runtime.correction_enabled:
+            correction, _job, outbox_id, _created = await create_revision(
+                session,
+                call=call,
+                transcript=transcript,
+                runtime=runtime,
+                trigger="automatic",
+            )
+        else:
+            models = await effective_models(session)
+            run = AnalysisRun(
+                call_id=call_id,
+                tenant_id=tenant_id,
+                llm_model=models["llm_model"],
+                prompt_version=models["prompt_version"],
+                system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
+                status="queued",
+            )
+            session.add(run)
+            job = Job(
+                tenant_id=tenant_id,
+                call_id=call_id,
+                kind="llm",
+                status="queued",
+                attempt=0,
+            )
+            session.add(job)
+            call.status = "transcribed"
+            await session.flush()
+            outbox_id = await outbox.stage_job(
+                session,
+                job_id=job.id,
+                tenant_id=tenant_id,
+                call_id=call_id,
+                kind="llm",
+                analysis_run_id=run.id,
+                reanalysis=True,
+                previous_status="complete",
+            )
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=tenant_id,
+            action="call.activate_transcript_version",
+            payload={"call_id": str(call_id), "asr_revision_id": str(revision_id)},
+            ip=client_ip(request),
+        )
+    try:
+        await outbox.dispatch_one(outbox_id)
+    except Exception:
+        logger.exception("transcript activation correction dispatch failed")
+    return {
+        "status": correction.status if correction is not None else "queued",
+        "asr_revision_id": str(revision_id),
+    }
 
 
 @router.delete("/calls/{call_id}", status_code=status.HTTP_204_NO_CONTENT)

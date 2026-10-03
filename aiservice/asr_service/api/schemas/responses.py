@@ -79,6 +79,7 @@ class ModelResponse(ApiSchema):
     engine: str | None = None
     source_type: str | None = None
     source: dict[str, Any] = Field(default_factory=dict)
+    segment_timestamps: bool | None = None
     model_id: str
     status: str
     received_bytes: int = 0

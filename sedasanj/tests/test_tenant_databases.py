@@ -22,7 +22,7 @@ def test_database_identifiers_are_deterministic_and_safe() -> None:
 
 
 def test_tenant_schema_head_matches_latest_migration() -> None:
-    assert SCHEMA_HEAD == "0039_operator_score_needs_review"
+    assert SCHEMA_HEAD == "0040_asr_transcript_revisions"
     assert _schema_head() == SCHEMA_HEAD
 
 

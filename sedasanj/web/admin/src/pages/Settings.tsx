@@ -294,6 +294,11 @@ export default function Settings() {
           audio_denoiser_model: settings.audio_denoiser_model,
           audio_enhancement_model: settings.audio_enhancement_model,
           analysis_concurrency: settings.analysis_concurrency,
+          mono_diarization_enabled: settings.mono_diarization_enabled,
+          diarization_model: settings.diarization_model,
+          turn_min_seconds: settings.turn_min_seconds,
+          turn_padding_seconds: settings.turn_padding_seconds,
+          turn_merge_gap_ms: settings.turn_merge_gap_ms,
         });
       } else if (activeTab === "assistant") {
         Object.assign(body, {
@@ -649,6 +654,18 @@ export default function Settings() {
             </p>
           </div>
         </div>
+        <div className="border-t border-slate-200 pt-4">
+          <div className="flex items-start justify-between gap-4">
+            <div><h3 className="font-bold text-slate-900">تفکیک نوبت‌ها</h3><p className="mt-1 text-xs leading-6 text-slate-500">برای مدل‌های بدون زمان‌بندی از VAD و برای صوت تک‌کاناله از تفکیک دو گوینده استفاده می‌شود.</p></div>
+            <ToggleSwitch checked={settings.mono_diarization_enabled} onChange={(mono_diarization_enabled) => setSettings({ ...settings, mono_diarization_enabled })} label="تفکیک mono" />
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-4">
+            <div><label className="label">مدل تفکیک گوینده</label><input className="input" dir="ltr" value={settings.diarization_model} onChange={(event) => setSettings({ ...settings, diarization_model: event.target.value })} /></div>
+            <div><label className="label">حداقل نوبت (ثانیه)</label><input className="input" type="number" min="0.1" max="3" step="0.1" value={settings.turn_min_seconds} onChange={(event) => setSettings({ ...settings, turn_min_seconds: Number(event.target.value) })} /></div>
+            <div><label className="label">حاشیه نوبت (ثانیه)</label><input className="input" type="number" min="0" max="1" step="0.05" value={settings.turn_padding_seconds} onChange={(event) => setSettings({ ...settings, turn_padding_seconds: Number(event.target.value) })} /></div>
+            <div><label className="label">فاصله ادغام (میلی‌ثانیه)</label><input className="input" type="number" min="0" max="5000" step="100" value={settings.turn_merge_gap_ms} onChange={(event) => setSettings({ ...settings, turn_merge_gap_ms: Number(event.target.value) })} /></div>
+          </div>
+        </div>
       </section>
 
       <section className={`${activeTab === "correction" ? "" : "hidden"} space-y-5 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
@@ -685,7 +702,7 @@ export default function Settings() {
           <textarea id="correction-prompt" className="input min-h-48 resize-y" value={settings.correction_prompt} onChange={(event) => setSettings({ ...settings, correction_prompt: event.target.value })} required />
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          <div><label className="label">حداکثر نسبت موارد مشکوک</label><input className="input" type="number" min="0" max="1" step="0.01" value={settings.correction_max_uncertain_ratio} onChange={(event) => setSettings({ ...settings, correction_max_uncertain_ratio: Number(event.target.value) })} /></div>
+          <div><label className="label">آستانه هشدار موارد مشکوک</label><input className="input" type="number" min="0" max="1" step="0.01" value={settings.correction_max_uncertain_ratio} onChange={(event) => setSettings({ ...settings, correction_max_uncertain_ratio: Number(event.target.value) })} /></div>
           <div><label className="label">مهلت کل پردازش (ثانیه)</label><input className="input" type="number" min="60" max="3600" value={settings.correction_timeout_seconds} onChange={(event) => setSettings({ ...settings, correction_timeout_seconds: Number(event.target.value) })} /></div>
           <div><label className="label">تعداد تلاش</label><input className="input" type="number" min="1" max="5" value={settings.correction_max_retries} onChange={(event) => setSettings({ ...settings, correction_max_retries: Number(event.target.value) })} /></div>
         </div>

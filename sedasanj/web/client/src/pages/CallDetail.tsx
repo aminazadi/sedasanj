@@ -37,7 +37,7 @@ import {
   StatusBadge,
   TrajectoryBadge,
 } from "../components/Widgets";
-import type { CallDetail, CorrectionStatus, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
+import type { AsrTranscriptRevision, CallDetail, CorrectionStatus, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
 import { downloadTextFile } from "../utils/download";
 
 const NER_LABELS: Record<string, string> = {
@@ -101,6 +101,25 @@ function buildConversationTurns(utterances: Utterance[]): Utterance[] {
     }
   }
   return turns;
+}
+
+function intervalUnionDuration(utterances: Utterance[]): number {
+  const intervals = utterances
+    .map((item) => [Math.max(0, item.t_start_ms), Math.max(item.t_start_ms, item.t_end_ms)] as const)
+    .filter(([start, end]) => end > start)
+    .sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  let total = 0;
+  let start = 0;
+  let end = 0;
+  for (const interval of intervals) {
+    if (interval[0] > end) {
+      total += Math.max(0, end - start);
+      [start, end] = interval;
+    } else {
+      end = Math.max(end, interval[1]);
+    }
+  }
+  return total + Math.max(0, end - start);
 }
 
 function clampScore(value: number | undefined): number {
@@ -546,8 +565,10 @@ export default function CallDetailPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const transcriptView = searchParams.get("transcript") === "raw" ? "raw" : "final";
+  const selectedTranscriptVersion = searchParams.get("transcriptVersion");
   const { session } = useAuth();
   const [call, setCall] = useState<CallDetail | null>(null);
+  const [transcriptVersions, setTranscriptVersions] = useState<AsrTranscriptRevision[]>([]);
   const [operatorScore, setOperatorScore] = useState<OperatorScore | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -589,9 +610,14 @@ export default function CallDetailPage() {
         if (cancelled) return;
         hasCall = true;
         setCall(data);
+        const versions = await request<AsrTranscriptRevision[]>(`/v1/calls/${callId}/transcript-versions`).catch(() => []);
+        if (cancelled) return;
+        setTranscriptVersions(versions);
         void request<OperatorScore | null>(`/v1/calls/${callId}/operator-score`).then(setOperatorScore).catch(() => setOperatorScore(null));
         setError(null);
-        processing = data.processing || ["queued", "running", "validating"].includes(data.correction?.status ?? "");
+        processing = data.processing
+          || ["queued", "running", "validating"].includes(data.correction?.status ?? "")
+          || versions.some((item) => ["queued", "running"].includes(item.status));
       } catch (err) {
         if (!cancelled && !hasCall) setError((err as Error).message);
       }
@@ -713,6 +739,37 @@ export default function CallDetailPage() {
     }
   }
 
+  async function retranscribe() {
+    setProcessingActionLoading(true);
+    setError(null);
+    try {
+      await request(`/v1/calls/${callId}/retranscribe`, { method: "POST" });
+      setNotice("ساخت نسخه جدید متن بدون کسر اعتبار در صف قرار گرفت.");
+      setReload((value) => value + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setProcessingActionLoading(false);
+    }
+  }
+
+  async function activateTranscriptVersion(revisionId: string) {
+    setProcessingActionLoading(true);
+    setError(null);
+    try {
+      await request(`/v1/calls/${callId}/transcript-versions/${revisionId}/activate`, { method: "POST" });
+      const next = new URLSearchParams(searchParams);
+      next.set("transcriptVersion", revisionId);
+      setSearchParams(next, { replace: true });
+      setNotice("نسخه انتخاب‌شده فعال و تحلیل مجدد در صف قرار گرفت.");
+      setReload((value) => value + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setProcessingActionLoading(false);
+    }
+  }
+
   async function deleteCall() {
     setDeleting(true);
     setError(null);
@@ -749,6 +806,8 @@ export default function CallDetailPage() {
           error_code: null,
           error_detail: null,
           uncertain_items: [],
+          uncertain_count: 0,
+          uncertain_ratio: 0,
           queued_at: new Date().toISOString(),
           started_at: null,
           provider_submitted_at: null,
@@ -792,7 +851,16 @@ export default function CallDetailPage() {
     : call.corrected_transcript
       ? "تصحیح دوباره متن"
       : "تصحیح متن";
-  const visibleUtterances = transcriptView === "raw" ? call.raw_utterances : call.utterances;
+  const selectedRevision = transcriptVersions.find((item) => item.id === selectedTranscriptVersion);
+  const displayRevision = selectedRevision ?? transcriptVersions.find((item) => item.active);
+  const visibleUtterances = selectedRevision && !selectedRevision.active
+    ? transcriptView === "final" && selectedRevision.corrected_utterances.length
+      ? selectedRevision.corrected_utterances
+      : selectedRevision.utterances
+    : transcriptView === "raw" ? call.raw_utterances : call.utterances;
+  const speakerLabels = (selectedRevision?.speaker_mode ?? call.speaker_mode)?.startsWith("mono")
+    ? { 0: "گوینده ۱", 1: "گوینده ۲" }
+    : call.speaker_labels;
   const conversationTurns = buildConversationTurns(visibleUtterances);
   const callerDuration = conversationTurns
     .filter((turn) => turn.channel === 0)
@@ -801,15 +869,16 @@ export default function CallDetailPage() {
     .filter((turn) => turn.channel !== 0)
     .reduce((total, turn) => total + Math.max(0, turn.t_end_ms - turn.t_start_ms), 0);
   const totalSpeechDuration = callerDuration + agentDuration;
+  const coveredSpeechDuration = intervalUnionDuration(conversationTurns);
   const speechCoverage = call.duration_ms
-    ? Math.min(100, Math.round((totalSpeechDuration / call.duration_ms) * 100))
+    ? Math.min(100, Math.round((coveredSpeechDuration / call.duration_ms) * 100))
     : 0;
   const averageTurnDuration = conversationTurns.length
     ? Math.round(totalSpeechDuration / conversationTurns.length)
     : 0;
   const speakerData = [
-    { name: "مشتری", value: callerDuration },
-    { name: "اپراتور", value: agentDuration },
+    { name: speakerLabels[0] ?? "گوینده ۱", value: callerDuration },
+    { name: speakerLabels[1] ?? "گوینده ۲", value: agentDuration },
   ].filter((item) => item.value > 0);
   const activeSentimentProfile =
     sentimentSource === "voice"
@@ -821,7 +890,7 @@ export default function CallDetailPage() {
   const exportTranscript = () => {
     if (!conversationTurns.length) return;
     const transcript = conversationTurns.map((turn) => {
-      const speaker = call.speaker_labels[turn.channel] ?? `کانال ${fmt.int(turn.channel + 1)}`;
+      const speaker = speakerLabels[turn.channel] ?? `کانال ${fmt.int(turn.channel + 1)}`;
       return `${speaker} (${fmt.duration(turn.t_start_ms)} تا ${fmt.duration(turn.t_end_ms)})\n${turn.text}`;
     }).join("\n\n--------------------\n\n");
     const heading = [
@@ -1227,6 +1296,28 @@ export default function CallDetailPage() {
             description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
             action={
               <div className="flex items-center gap-2">
+                {transcriptVersions.length ? (
+                  <select
+                    className="input h-9 max-w-48 py-0 text-xs"
+                    aria-label="نسخه خام متن"
+                    value={selectedRevision?.id ?? call.active_asr_revision_id ?? ""}
+                    onChange={(event) => {
+                      const next = new URLSearchParams(searchParams);
+                      next.set("transcriptVersion", event.target.value);
+                      setSearchParams(next, { replace: true });
+                    }}
+                  >
+                    {transcriptVersions.map((revision, index) => (
+                      <option key={revision.id} value={revision.id}>
+                        نسخه {fmt.int(transcriptVersions.length - index)}{revision.active ? " — فعال" : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {selectedRevision && !selectedRevision.active && selectedRevision.status === "succeeded" ? (
+                  <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" disabled={processingActionLoading} onClick={() => void activateTranscriptVersion(selectedRevision.id)}>فعال‌سازی نسخه</button>
+                ) : null}
+                <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" disabled={!call.audio_available || processingActionLoading || transcriptVersions.some((item) => ["queued", "running"].includes(item.status))} onClick={() => void retranscribe()}>رونویسی مجدد</button>
                 <div className="flex border border-slate-200 bg-white p-0.5" role="group" aria-label="نسخه متن">
                   {(["final", "raw"] as const).map((view) => (
                     <button key={view} type="button" className={`px-2 py-1 text-xs ${transcriptView === view ? "bg-[#4B6E48] text-white" : "text-slate-600"}`} onClick={() => { const next = new URLSearchParams(searchParams); next.set("transcript", view); setSearchParams(next, { replace: true }); }}>
@@ -1282,8 +1373,18 @@ export default function CallDetailPage() {
               </span>
             ) : correctionActive ? (
               <span className="text-[#4B6E48]">درخواست تصحیح فعال است؛ وضعیت به‌صورت خودکار به‌روز می‌شود.</span>
+            ) : call.correction?.status === "succeeded" && call.correction.uncertain_count > 0 ? (
+              <span className="text-amber-700">{fmt.int(call.correction.uncertain_count)} بخش نیازمند بررسی است ({fmt.percent(Math.round(call.correction.uncertain_ratio * 100))}).</span>
             ) : null}
           </div>
+          {displayRevision ? (
+            <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+              <span>مدل: <bdi dir="ltr">{displayRevision.asr_model ?? "نامشخص"}</bdi></span>
+              <span>زمان‌بندی: <bdi dir="ltr">{displayRevision.timestamp_source ?? "نامشخص"}</bdi></span>
+              <span>ایجاد: {fmt.dateTime(displayRevision.created_at)}</span>
+              <span>تصحیح: {displayRevision.correction_status ? ({ queued: "در صف", running: "در حال اجرا", validating: "در حال اعتبارسنجی", succeeded: "موفق", failed: "ناموفق" } as const)[displayRevision.correction_status] : "انجام نشده"}</span>
+            </div>
+          ) : null}
           {conversationTurns.length === 0 ? (
             <EmptyState
               icon="transcript"
@@ -1293,8 +1394,8 @@ export default function CallDetailPage() {
           ) : (
             <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4 lg:min-h-0 lg:max-h-none lg:flex-1">
               {conversationTurns.map((utterance, index) => {
-                const caller = call.speaker_labels[utterance.channel] === "مشتری";
-                const speaker = call.speaker_labels[utterance.channel] ?? `کانال ${fmt.int(utterance.channel + 1)}`;
+                const caller = speakerLabels[utterance.channel] === "مشتری" || speakerLabels[utterance.channel] === "گوینده ۱";
+                const speaker = speakerLabels[utterance.channel] ?? `کانال ${fmt.int(utterance.channel + 1)}`;
                 const turnId = `${utterance.channel}-${utterance.t_start_ms}-${index}`;
                 const messageDate = new Date(Date.parse(call.started_at) + utterance.t_start_ms).toISOString();
                 return (

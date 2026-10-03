@@ -404,6 +404,10 @@ async def test_voicesanj_engine_polls_and_parses_segments(wav_file) -> None:
                 "vad_filter",
                 "audio_encoding",
                 "uncompressed_audio_bytes",
+                "ensure_timestamps",
+                "diarize",
+                "turn_min_seconds",
+                "turn_padding_seconds",
             }
             assert kwargs["data"]["audio_encoding"] == "gzip"
             assert kwargs["files"]["file"][2] == "application/gzip"
