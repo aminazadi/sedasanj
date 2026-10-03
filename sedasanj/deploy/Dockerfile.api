@@ -18,19 +18,16 @@ WORKDIR /srv/app
 COPY pyproject.toml README.md ./
 COPY apps ./apps
 COPY scripts ./scripts
-RUN python -m pip install --no-cache-dir --only-binary=:all: --retries 5 --timeout 120 \
-        "setuptools==75.8.2" "wheel==0.45.1" \
-    && python -m pip install --no-cache-dir --only-binary=:all: --retries 5 --timeout 120 \
-        "hatchling==1.27.0" "pluggy==1.5.0" \
-    && python -m pip install --no-cache-dir --no-build-isolation --retries 5 --timeout 120 .
+RUN python scripts/install_project_dependencies.py
 
-ENV PYTHONPATH=/srv/app/apps/api:/srv/app/apps/worker_asr:/srv/app/apps/worker_llm:/srv/app/apps/worker_notify:/srv/app/apps/worker_dispatch:/srv/app/apps/worker_provision
+ENV PYTHONPATH=/srv/app/apps/api:/srv/app/apps/worker_asr:/srv/app/apps/worker_emotion:/srv/app/apps/worker_llm:/srv/app/apps/worker_notify:/srv/app/apps/worker_dispatch:/srv/app/apps/worker_provision:/srv/app/apps/agent
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
 
 FROM base AS emotion
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir --retries 5 --timeout 120 \
+RUN python -m pip install --no-cache-dir --only-binary=:all: --retries 5 --timeout 120 \
         --index-url "${TORCH_INDEX_URL}" "torch==2.14.0" \
-    && pip install --no-cache-dir --retries 5 --timeout 120 ".[emotion]"
+    && python scripts/install_project_dependencies.py \
+        --extra emotion --extra-only --exclude torch
