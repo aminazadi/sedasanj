@@ -2,6 +2,7 @@
 
 ## 2026-10-03 — AMINAZADI
 
+- Made per-minute analysis pricing tenant-specific across admin creation, active subscriptions, tenant settings, and billing consumption.
 - Added tenant-scoped manual transcription recovery for terminal ASR failures, including fresh auditable jobs, durable dispatch, retry-safe credit holds, and a call-detail recovery action.
 - Preserved timestamped conversational turns for 9Router OpenAI-compatible transcription responses and repaired invalid zero-length segment timestamps before transcript correction.
 - Added distinct, accessible color badges for call processing statuses, sentiments, and sales outcomes across call lists and details.

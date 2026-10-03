@@ -16,7 +16,7 @@ export default function TenantDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [topup, setTopup] = useState({ minutes: 100, toman: "", note: "" });
-  const [settingsDraft, setSettingsDraft] = useState({ monthly_minute_quota: 0, max_concurrent_jobs: 0, audio_retention_days: 0 });
+  const [settingsDraft, setSettingsDraft] = useState({ price_per_minute_toman: 0, monthly_minute_quota: 0, max_concurrent_jobs: 0, audio_retention_days: 0 });
   const [commerce, setCommerce] = useState<{subscriptions:Array<Record<string,unknown>>;orders:Array<Record<string,unknown>>;credit_grants:Array<Record<string,unknown>>;reservations:Array<Record<string,unknown>>;assistant_messages_total:number;audit:Array<Record<string,unknown>>}|null>(null);
 
   async function reload() {
@@ -32,7 +32,7 @@ export default function TenantDetailPage() {
       setLedger(entries.items);
       setLedgerTotal(entries.total);
       setCommerce(commerceData);
-      setSettingsDraft({ monthly_minute_quota: detail.monthly_minute_quota ?? 0, max_concurrent_jobs: detail.max_concurrent_jobs, audio_retention_days: detail.audio_retention_days });
+      setSettingsDraft({ price_per_minute_toman: detail.price_per_minute_toman, monthly_minute_quota: detail.monthly_minute_quota ?? 0, max_concurrent_jobs: detail.max_concurrent_jobs, audio_retention_days: detail.audio_retention_days });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -159,6 +159,17 @@ export default function TenantDetailPage() {
         <div className="card space-y-3">
           <h2 className="font-bold">تنظیمات سازمان</h2>
           <div>
+            <label className="label">نرخ هر دقیقه تحلیل (تومان)</label>
+            <input
+              className="input"
+              type="text"
+              inputMode="numeric"
+              value={fmt.digits(settingsDraft.price_per_minute_toman)}
+              onChange={(event) => setSettingsDraft({...settingsDraft, price_per_minute_toman: Number(fmt.latinDigits(event.target.value))})}
+              required
+            />
+          </div>
+          <div>
             <label className="label">سهمیه ماهانه (دقیقه)</label>
             <input
               className="input"
@@ -188,8 +199,8 @@ export default function TenantDetailPage() {
               onChange={(event) => setSettingsDraft({...settingsDraft, audio_retention_days: Number(fmt.latinDigits(event.target.value))})}
             />
           </div>
-          <p className="text-xs text-slate-400">ظرفیت اپراتور و نرخ مصرف از اشتراک فعال خوانده می‌شود.</p>
-          <button className="btn" type="button" onClick={() => void patchTenant({monthly_minute_quota: settingsDraft.monthly_minute_quota || null, max_concurrent_jobs: settingsDraft.max_concurrent_jobs, audio_retention_days: settingsDraft.audio_retention_days})}>ذخیره تنظیمات</button>
+          <p className="text-xs text-slate-400">نرخ مصرف مخصوص همین سازمان است و با اشتراک فعال آن همگام می‌شود.</p>
+          <button className="btn" type="button" disabled={settingsDraft.price_per_minute_toman <= 0} onClick={() => void patchTenant({price_per_minute_toman: settingsDraft.price_per_minute_toman, monthly_minute_quota: settingsDraft.monthly_minute_quota || null, max_concurrent_jobs: settingsDraft.max_concurrent_jobs, audio_retention_days: settingsDraft.audio_retention_days})}>ذخیره تنظیمات</button>
         </div>
       </div>
 

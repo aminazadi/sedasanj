@@ -145,6 +145,18 @@ async def _balance_cache(session: AsyncSession, tenant_id: UUID) -> TenantBalanc
     return billing.normalize_balance_cache(cache)
 
 
+def _organization_price_per_minute(
+    tenant: Tenant | None,
+    subscription: Subscription | None,
+    version: PlanVersion,
+) -> int:
+    if tenant is not None:
+        return tenant.price_per_minute_toman
+    if subscription is not None:
+        return subscription.price_per_minute_toman
+    return version.overage_price_per_minute_toman
+
+
 async def grant_credit(session: AsyncSession, *, tenant_id: UUID, seconds: int, source: str, source_id: UUID, expires_at: datetime | None, toman: int, idem: str) -> None:
     existing = (await session.execute(select(LedgerEntry).where(LedgerEntry.tenant_id == tenant_id, LedgerEntry.idempotency_key == idem))).scalar_one_or_none()
     if existing is not None:
@@ -167,20 +179,21 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
         version = await session.get(PlanVersion, UUID(str(upgrade_item.metadata_json["target_plan_version_id"])))
         if subscription is None or version is None or subscription.tenant_id != order.tenant_id:
             raise ApiError("internal", "subscription upgrade snapshot is invalid")
+        tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
         extra = int(upgrade_item.metadata_json.get("extra_operators", 0))
         subscription.plan_version_id = version.id
         subscription.base_operators = version.base_operators
         subscription.extra_operators = extra
-        subscription.price_per_minute_toman = version.overage_price_per_minute_toman
+        subscription.price_per_minute_toman = _organization_price_per_minute(
+            tenant, subscription, version
+        )
         subscription.assistant_tier = version.assistant_tier
         subscription.assistant_monthly_messages = version.assistant_monthly_messages
         subscription.assistant_source_limit = version.assistant_source_limit
         subscription.assistant_model = version.assistant_model
         subscription.updated_at = now
-        tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
         if tenant is not None:
             tenant.max_operators = version.base_operators + extra
-            tenant.price_per_minute_toman = version.overage_price_per_minute_toman
         changes = (await session.execute(select(SubscriptionChange).where(SubscriptionChange.order_id == order.id).with_for_update())).scalars().all()
         for change in changes:
             change.status = "applied"
@@ -192,6 +205,8 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
         period = str(subscription_item.metadata_json["billing_period"])
         extra = sum(item.quantity for item in items if item.kind == "extra_operator")
         current = (await session.execute(select(Subscription).where(Subscription.tenant_id == order.tenant_id, Subscription.status.in_(("active", "trialing", "expired", "pending_payment"))).order_by(Subscription.created_at.desc()).limit(1).with_for_update())).scalar_one_or_none()
+        tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
+        organization_price = _organization_price_per_minute(tenant, current, version)
         start = current.period_end if current and current.status == "active" and current.period_end > now else now
         end = add_months(start, 12 if period == "annual" else 1)
         # A bonus belongs only to the first paid activation.  In particular,
@@ -205,7 +220,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
         if current is None or current.billing_period == "trial":
             if current is not None:
                 current.status = "canceled"
-            current = Subscription(tenant_id=order.tenant_id, plan_version_id=version.id, status="active", billing_period=period, period_start=start, period_end=end, base_operators=version.base_operators, extra_operators=extra, price_per_minute_toman=version.overage_price_per_minute_toman, assistant_tier=version.assistant_tier, assistant_monthly_messages=version.assistant_monthly_messages, assistant_source_limit=version.assistant_source_limit, assistant_model=version.assistant_model)
+            current = Subscription(tenant_id=order.tenant_id, plan_version_id=version.id, status="active", billing_period=period, period_start=start, period_end=end, base_operators=version.base_operators, extra_operators=extra, price_per_minute_toman=organization_price, assistant_tier=version.assistant_tier, assistant_monthly_messages=version.assistant_monthly_messages, assistant_source_limit=version.assistant_source_limit, assistant_model=version.assistant_model)
             session.add(current)
         else:
             current.plan_version_id = version.id
@@ -215,7 +230,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             current.period_end = end
             current.base_operators = version.base_operators
             current.extra_operators = extra
-            current.price_per_minute_toman = version.overage_price_per_minute_toman
+            current.price_per_minute_toman = organization_price
             current.assistant_tier = version.assistant_tier
             current.assistant_monthly_messages = version.assistant_monthly_messages
             current.assistant_source_limit = version.assistant_source_limit
@@ -226,10 +241,8 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
                 for change in scheduled_changes:
                     change.status = "applied"
             current.updated_at = now
-        tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
         if tenant is not None:
             tenant.max_operators = version.base_operators + extra
-            tenant.price_per_minute_toman = version.overage_price_per_minute_toman
         await session.flush()
         subscription_item.metadata_json = {
             **subscription_item.metadata_json,

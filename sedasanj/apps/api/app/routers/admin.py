@@ -525,7 +525,6 @@ async def create_tenant(
         days = payload.subscription_days or (365 if payload.billing_period == "annual" else 30)
         period_end = period_start + timedelta(days=days)
     tenant.max_operators = plan_version.base_operators
-    tenant.price_per_minute_toman = plan_version.overage_price_per_minute_toman
     session.add(
         Subscription(
             tenant_id=tenant.id,
@@ -536,7 +535,7 @@ async def create_tenant(
             period_end=period_end,
             base_operators=plan_version.base_operators,
             extra_operators=0,
-            price_per_minute_toman=plan_version.overage_price_per_minute_toman,
+            price_per_minute_toman=payload.price_per_minute_toman,
             assistant_tier=plan_version.assistant_tier,
             assistant_monthly_messages=plan_version.assistant_monthly_messages,
             assistant_source_limit=plan_version.assistant_source_limit,
