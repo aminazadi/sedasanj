@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-04 — AMINAZADI
+
+- Added a fully Persian customer presentation document covering active Sedasanj capabilities, customer value, architecture, security, resilience, onboarding, and the near-term assistant training and scheduled reporting roadmap.
+
 ## 2026-10-03 — AMINAZADI
 
 - Made per-minute analysis pricing tenant-specific across admin creation, active subscriptions, tenant settings, and billing consumption.
