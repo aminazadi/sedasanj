@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings, normalize_api_key
+from app.services.ninerouter import NineRouterClient, retry_json_chat
 from app.services.provider_errors import ProviderError, classify_http
 
 
@@ -16,13 +17,20 @@ class AiServiceDecisionClient:
     """Durable typed-decision client for the AISERVICE gateway."""
 
     def __init__(self, settings: Settings, *, request_namespace: str) -> None:
+        self._settings = settings
+        self._direct = settings.active_ai_provider == "ninerouter_direct"
+        self._ninerouter = NineRouterClient(settings) if self._direct else None
         self._path = settings.aiservice_decision_path
         self._base = (settings.voicesanj_base_url or "").rstrip("/")
         key = normalize_api_key(settings.decision_api_key or settings.voicesanj_api_key)
         if not self._base or not key:
             raise ProviderError("decision_provider_config", "تنظیمات سرویس تصمیم‌گیری کامل نیست.")
         self._threshold = settings.decision_confidence_threshold
-        self._ninerouter_prompt = settings.ninerouter_decision_prompt
+        self._ninerouter_prompt = (
+            settings.ninerouter_direct_prompt
+            if self._direct
+            else settings.ninerouter_decision_prompt
+        )
         self._namespace = request_namespace
         self._timeout = min(max(settings.llm_timeout_seconds, 30.0), 300.0)
         self._client = httpx.AsyncClient(
@@ -42,6 +50,47 @@ class AiServiceDecisionClient:
                 }
                 for key, question in questions.items()
             }
+        if self._direct:
+            assert self._ninerouter is not None
+            contract = {
+                "version": "v1",
+                "answers": {
+                    key: {
+                        "type": question.get("type"),
+                        "answer": "typed answer or null when abstained",
+                        "probabilities": {"candidate": 0.0},
+                        "confidence": "number from 0 to 1",
+                        "margin": "number from 0 to 1",
+                        "abstained": False,
+                        "evidence": ["short verbatim excerpts from the supplied state"],
+                    }
+                    for key, question in questions.items()
+                },
+            }
+            parsed = await retry_json_chat(
+                self._ninerouter,
+                model=model,
+                max_tokens=self._settings.llm_max_tokens,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Answer the typed decision questions from the supplied state. "
+                            "Return only JSON matching this contract and never invent evidence.\n"
+                            + json.dumps(contract, ensure_ascii=False)
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {"state": state, "questions": questions},
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                    },
+                ],
+            )
+            return _validate_direct_decision(parsed, questions)
         body = {"model": model, "state": state, "questions": questions, "confidence_threshold": self._threshold}
         fingerprint = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         idempotency_key = "cbi-decision-" + hashlib.sha256(f"{self._namespace}:{fingerprint}".encode()).hexdigest()
@@ -81,4 +130,68 @@ class AiServiceDecisionClient:
         return response
 
     async def close(self) -> None:
+        if self._ninerouter is not None:
+            await self._ninerouter.close()
         await self._client.aclose()
+
+
+def _validate_direct_decision(
+    payload: dict[str, Any], questions: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    answers = payload.get("answers")
+    if not isinstance(answers, dict) or set(answers) != set(questions):
+        raise ProviderError(
+            "decision_provider_response", "خروجی تصمیم‌گیری 9Router با پرسش‌ها منطبق نیست."
+        )
+    normalized: dict[str, Any] = {}
+    for key, question in questions.items():
+        answer = answers.get(key)
+        if not isinstance(answer, dict):
+            raise ProviderError("decision_provider_response", "پاسخ تصمیم‌گیری نامعتبر است.")
+        confidence = answer.get("confidence")
+        if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
+            raise ProviderError("decision_provider_response", "اطمینان تصمیم‌گیری نامعتبر است.")
+        question_type = str(question.get("type") or "")
+        if answer.get("type") != question_type:
+            raise ProviderError("decision_provider_response", "نوع پاسخ تصمیم‌گیری نامعتبر است.")
+        margin = answer.get("margin")
+        if not isinstance(margin, (int, float)) or not 0 <= float(margin) <= 1:
+            raise ProviderError("decision_provider_response", "حاشیه اطمینان تصمیم‌گیری نامعتبر است.")
+        abstained = answer.get("abstained")
+        if not isinstance(abstained, bool):
+            raise ProviderError("decision_provider_response", "وضعیت abstain تصمیم‌گیری نامعتبر است.")
+        value = answer.get("answer")
+        criteria = question.get("criteria")
+        if not abstained and question_type == "score":
+            if not isinstance(value, (int, float)) or not isinstance(criteria, list) or not 0 <= float(value) < len(criteria):
+                raise ProviderError("decision_provider_response", "امتیاز تصمیم‌گیری خارج از محدوده است.")
+        if not abstained and question_type == "choice" and isinstance(criteria, dict) and value not in criteria:
+            raise ProviderError("decision_provider_response", "انتخاب تصمیم‌گیری خارج از گزینه‌های مجاز است.")
+        probabilities = answer.get("probabilities")
+        if not isinstance(probabilities, dict) or any(
+            not isinstance(item, (int, float)) or not 0 <= float(item) <= 1
+            for item in probabilities.values()
+        ):
+            raise ProviderError("decision_provider_response", "احتمال‌های تصمیم‌گیری نامعتبر است.")
+        evidence = answer.get("evidence")
+        if not isinstance(evidence, list) or any(
+            not isinstance(item, str) or not item.strip() for item in evidence
+        ):
+            raise ProviderError("decision_provider_response", "شواهد تصمیم‌گیری نامعتبر است.")
+        normalized[key] = {
+            "type": question_type,
+            "answer": value,
+            "probabilities": {str(name): float(item) for name, item in probabilities.items()},
+            "confidence": float(confidence),
+            "margin": float(margin),
+            "abstained": abstained,
+            "evidence": [item.strip() for item in evidence],
+        }
+    return {
+        "version": "v1",
+        "model": str(payload.get("model") or "ninerouter-direct"),
+        "engine": "ninerouter_chat_adapter",
+        "answers": normalized,
+        "capabilities": ["typed_json_adapter"],
+        "latency_ms": 0.0,
+    }

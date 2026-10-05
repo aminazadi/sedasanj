@@ -70,6 +70,7 @@ from app.services import (
 from app.services.asr_revisions import activate_existing
 from app.services.ingest import accept_upload
 from app.services.platform import (
+    capability_model,
     effective_extract_prompt,
     effective_models,
     resolve_provider_settings,
@@ -700,6 +701,7 @@ async def retry_transcription(
             duration_ms=audio.duration_ms,
         )
 
+        models = await effective_models(session)
         job = Job(
             tenant_id=tenant_id,
             call_id=call_id,
@@ -707,6 +709,8 @@ async def retry_transcription(
             status="queued",
             attempt=0,
             run_after=datetime.now(UTC),
+            ai_provider=models["asr_ai_provider"],
+            ai_model=capability_model(models, "asr"),
         )
         session.add(job)
         await session.flush()
@@ -799,12 +803,15 @@ async def retranscribe_call(
         if active is not None:
             raise ApiError("conflict_idempotency", "بازپردازش دیگری برای این تماس فعال است.")
         previous_status = call.status
+        models = await effective_models(session)
         revision = AsrTranscriptRevision(
             call_id=call_id,
             tenant_id=tenant_id,
             status="queued",
             trigger="manual",
             metrics={"previous_status": previous_status},
+            ai_provider=models["asr_ai_provider"],
+            asr_model=capability_model(models, "asr"),
         )
         session.add(revision)
         job = Job(
@@ -814,6 +821,8 @@ async def retranscribe_call(
             status="queued",
             attempt=0,
             run_after=datetime.now(UTC),
+            ai_provider=models["asr_ai_provider"],
+            ai_model=capability_model(models, "asr"),
         )
         session.add(job)
         await session.flush()
@@ -1005,7 +1014,7 @@ async def activate_transcript_version(
         if pending is not None:
             raise ApiError("conflict_idempotency", "بازپردازش فعال باید ابتدا تمام شود.")
         await activate_existing(session, transcript=transcript, revision=revision)
-        runtime = await resolve_provider_settings(session)
+        runtime = await resolve_provider_settings(session, capability="correction")
         correction = None
         if transcript.active_revision_id is None and runtime.correction_enabled:
             correction, _job, outbox_id, _created = await create_revision(
@@ -1020,7 +1029,10 @@ async def activate_transcript_version(
             run = AnalysisRun(
                 call_id=call_id,
                 tenant_id=tenant_id,
-                llm_model=models["llm_model"],
+                llm_model=capability_model(models, "analysis"),
+                ai_provider=models.get("analysis_provider", "aiservice"),
+                decision_provider=models.get("decision_provider", "aiservice"),
+                decision_model=capability_model(models, "decision"),
                 prompt_version=models["prompt_version"],
                 system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
                 status="queued",
@@ -1032,6 +1044,7 @@ async def activate_transcript_version(
                 kind="llm",
                 status="queued",
                 attempt=0,
+                ai_provider=models["analysis_provider"],
             )
             session.add(job)
             call.status = "transcribed"
@@ -1275,14 +1288,24 @@ async def reanalyze_call(call_id: UUID, request: Request, principal: OperatorDep
         run = AnalysisRun(
             call_id=call.id,
             tenant_id=call.tenant_id,
-            llm_model=models["llm_model"],
+            llm_model=capability_model(models, "analysis"),
+            ai_provider=models.get("analysis_provider", "aiservice"),
+            decision_provider=models.get("decision_provider", "aiservice"),
+            decision_model=capability_model(models, "decision"),
             prompt_version=models["prompt_version"],
             system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
             status="queued",
             result={"_reanalysis": True, "_previous_status": previous_status},
         )
         session.add(run)
-        job = Job(tenant_id=call.tenant_id, call_id=call.id, kind="llm", status="queued", attempt=0)
+        job = Job(
+            tenant_id=call.tenant_id,
+            call_id=call.id,
+            kind="llm",
+            status="queued",
+            attempt=0,
+            ai_provider=models["analysis_provider"],
+        )
         session.add(job)
         await session.flush()
         await processing_events.record(

@@ -40,6 +40,7 @@ from app.services.audio import (
     split_channels,
 )
 from app.services.platform import (
+    capability_model,
     effective_extract_prompt,
     effective_models,
     resolve_provider_settings,
@@ -170,7 +171,10 @@ async def _load_or_create_analysis_run(
     run = AnalysisRun(
         call_id=call_id,
         tenant_id=tenant_id,
-        llm_model=models["llm_model"],
+        llm_model=capability_model(models, "analysis"),
+        ai_provider=models.get("analysis_provider", "aiservice"),
+        decision_provider=models.get("decision_provider", "aiservice"),
+        decision_model=capability_model(models, "decision"),
         prompt_version=models["prompt_version"],
         system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
         status="queued",
@@ -239,10 +243,23 @@ async def _transcribe_tracks(
 
 
 async def _engine_for_job(
-    ctx: dict[str, Any], session: AsyncSession
+    ctx: dict[str, Any],
+    session: AsyncSession,
+    provider_override: str | None = None,
+    model_override: str | None = None,
 ) -> tuple[AsrEngine, AudioPreprocessingConfig, Any]:
     """Remote engines rebuild per job so admin model/API-key changes apply immediately."""
-    runtime = await resolve_provider_settings(session)
+    runtime = await resolve_provider_settings(
+        session, capability="asr", provider_override=provider_override
+    )
+    if model_override:
+        runtime = runtime.model_copy(
+            update={
+                "asr_model_name": model_override,
+                "voicesanj_asr_model": model_override,
+                "whisper_model": model_override,
+            }
+        )
     if runtime.asr_engine in {"voicesanj", "whisper"}:
         engine = build_engine(runtime)
     else:
@@ -280,6 +297,33 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
         concurrency_limit = min(
             tenant.max_concurrent_jobs if tenant else get_settings().max_concurrent_asr_jobs,
             get_settings().max_concurrent_asr_jobs,
+        )
+        revision_snapshot = (
+            await session.get(AsrTranscriptRevision, asr_revision_id)
+            if asr_revision_id is not None
+            else None
+        )
+        latest_job = (
+            await session.execute(
+                select(Job)
+                .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == "asr")
+                .order_by(Job.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        provider_snapshot = (
+            revision_snapshot.ai_provider
+            if revision_snapshot is not None
+            else latest_job.ai_provider
+            if latest_job is not None
+            else "aiservice"
+        )
+        model_snapshot = (
+            revision_snapshot.asr_model
+            if revision_snapshot is not None and revision_snapshot.asr_model
+            else latest_job.ai_model
+            if latest_job is not None
+            else None
         )
     log_context(tenant_id=str(tenant_id), call_id=str(call_id))
 
@@ -363,7 +407,9 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
 
     try:
         async with session_scope(None, staff=True) as session:
-            engine, preprocessing, runtime = await _engine_for_job(ctx, session)
+            engine, preprocessing, runtime = await _engine_for_job(
+                ctx, session, provider_snapshot, model_snapshot
+            )
         if preprocessing.enabled:
             async with session_scope(tenant_id) as session:
                 # This is deliberately a separate, settled event.  Otherwise the
@@ -447,12 +493,13 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 asr_model=engine.model_name,
                 asr_version=f"{engine.model_version}|{preprocessing.identity}",
                 audio_channels=audio_channels,
+                ai_provider=runtime.active_ai_provider,
                 revision=asr_revision,
             )
 
             run = await _load_or_create_analysis_run(session, call_id, tenant_id)
             emotion_enabled = get_settings().voice_sentiment_enabled
-            correction_runtime = await resolve_provider_settings(session)
+            correction_runtime = await resolve_provider_settings(session, capability="correction")
             correction_enabled = correction_runtime.correction_enabled
             next_status = (
                 "emotion_queued"

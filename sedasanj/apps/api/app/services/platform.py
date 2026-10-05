@@ -12,6 +12,7 @@ from app.config import Settings, get_settings, normalize_api_key
 from app.db import get_sessionmaker
 from app.models import KpiConfiguration, PlatformSetting
 from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
+from app.services.platform_secrets import decrypt_secret
 from worker_llm.client import load_prompt
 
 EXTRACT_PROMPT_KEY = "extract-fa-v3-prompt"
@@ -66,6 +67,27 @@ OVERRIDE_KEYS = (
     "correction_timeout_seconds",
     "correction_max_retries",
     "correction_failure_policy",
+    "asr_ai_provider",
+    "analysis_provider",
+    "assistant_provider",
+    "correction_provider",
+    "decision_provider",
+    "embedding_provider",
+    "ninerouter_base_url",
+    "ninerouter_api_key",
+    "ninerouter_connect_timeout_seconds",
+    "ninerouter_read_timeout_seconds",
+    "ninerouter_asr_model",
+    "ninerouter_analysis_model",
+    "ninerouter_assistant_model",
+    "ninerouter_correction_models",
+    "ninerouter_decision_model",
+    "ninerouter_embedding_model",
+    "ninerouter_direct_asr_prompt",
+    "ninerouter_direct_analysis_prompt",
+    "ninerouter_direct_assistant_prompt",
+    "ninerouter_direct_correction_prompt",
+    "ninerouter_direct_decision_prompt",
 )
 
 AISERVICE_ROUTES = {
@@ -96,6 +118,7 @@ AISERVICE_ROUTES = {
 __all__ = (
     "OVERRIDE_KEYS",
     "effective_models",
+    "capability_model",
     "effective_extract_prompt",
     "effective_assistant_instructions",
     "mask_api_key",
@@ -103,6 +126,25 @@ __all__ = (
     "resolve_provider_settings",
     "settings_public_view",
 )
+
+
+def capability_model(values: dict[str, str], capability: str) -> str:
+    provider_key = "asr_ai_provider" if capability == "asr" else f"{capability}_provider"
+    if values.get(provider_key) == "ninerouter_direct":
+        return values.get(
+            {
+                "asr": "ninerouter_asr_model",
+                "analysis": "ninerouter_analysis_model",
+                "assistant": "ninerouter_assistant_model",
+                "decision": "ninerouter_decision_model",
+                "embedding": "ninerouter_embedding_model",
+            }.get(capability, ""),
+            "",
+        )
+    return values.get(
+        {"asr": "asr_model", "analysis": "llm_model", "assistant": "chat_model", "decision": "decision_model", "embedding": "embedding_model"}.get(capability, ""),
+        "",
+    )
 
 
 async def effective_extract_prompt(session: AsyncSession, prompt_version: str) -> str:
@@ -278,6 +320,27 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "correction_timeout_seconds": "1800",
         "correction_max_retries": "3",
         "correction_failure_policy": "stop",
+        "asr_ai_provider": "aiservice",
+        "analysis_provider": "aiservice",
+        "assistant_provider": "aiservice",
+        "correction_provider": "aiservice",
+        "decision_provider": "aiservice",
+        "embedding_provider": "aiservice",
+        "ninerouter_base_url": "http://127.0.0.1:20128",
+        "ninerouter_api_key": "",
+        "ninerouter_connect_timeout_seconds": "15",
+        "ninerouter_read_timeout_seconds": "300",
+        "ninerouter_asr_model": "",
+        "ninerouter_analysis_model": "",
+        "ninerouter_assistant_model": "",
+        "ninerouter_correction_models": "[]",
+        "ninerouter_decision_model": "",
+        "ninerouter_embedding_model": "",
+        "ninerouter_direct_asr_prompt": "",
+        "ninerouter_direct_analysis_prompt": "",
+        "ninerouter_direct_assistant_prompt": "",
+        "ninerouter_direct_correction_prompt": "",
+        "ninerouter_direct_decision_prompt": "",
     }
     settings_session = session
     if get_settings().tenant_databases_enabled:
@@ -295,6 +358,9 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
     row_keys = {row.key for row in rows}
     for row in rows:
         values[row.key] = (
+            decrypt_secret(row.value)
+            if row.key == "ninerouter_api_key"
+            else
             normalize_api_key(row.value)
             if row.key in {"api_key", "asr_api_key", "decision_api_key", "embedding_api_key"}
             else row.value
@@ -381,10 +447,37 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "correction_failure_policy": values["correction_failure_policy"],
         "audio_denoiser_models": _audio_catalog(DENOISER_MODELS),
         "audio_enhancement_models": _audio_catalog(ENHANCEMENT_MODELS),
+        "asr_ai_provider": values["asr_ai_provider"],
+        "analysis_provider": values["analysis_provider"],
+        "assistant_provider": values["assistant_provider"],
+        "correction_provider": values["correction_provider"],
+        "decision_provider": values["decision_provider"],
+        "embedding_provider": values["embedding_provider"],
+        "ninerouter_base_url": values["ninerouter_base_url"],
+        "ninerouter_api_key_configured": bool(values["ninerouter_api_key"].strip()),
+        "ninerouter_api_key_hint": mask_api_key(values["ninerouter_api_key"]),
+        "ninerouter_connect_timeout_seconds": int(values["ninerouter_connect_timeout_seconds"]),
+        "ninerouter_read_timeout_seconds": int(values["ninerouter_read_timeout_seconds"]),
+        "ninerouter_asr_model": values["ninerouter_asr_model"],
+        "ninerouter_analysis_model": values["ninerouter_analysis_model"],
+        "ninerouter_assistant_model": values["ninerouter_assistant_model"],
+        "ninerouter_correction_models": _string_list(values["ninerouter_correction_models"]),
+        "ninerouter_decision_model": values["ninerouter_decision_model"],
+        "ninerouter_embedding_model": values["ninerouter_embedding_model"],
+        "ninerouter_direct_asr_prompt": values["ninerouter_direct_asr_prompt"],
+        "ninerouter_direct_analysis_prompt": values["ninerouter_direct_analysis_prompt"],
+        "ninerouter_direct_assistant_prompt": values["ninerouter_direct_assistant_prompt"],
+        "ninerouter_direct_correction_prompt": values["ninerouter_direct_correction_prompt"],
+        "ninerouter_direct_decision_prompt": values["ninerouter_direct_decision_prompt"],
     }
 
 
-async def resolve_provider_settings(session: AsyncSession) -> Settings:
+async def resolve_provider_settings(
+    session: AsyncSession,
+    *,
+    capability: str | None = None,
+    provider_override: str | None = None,
+) -> Settings:
     """Env settings overlaid with admin platform overrides for provider calls."""
     base = get_settings()
     overrides = await effective_models(session)
@@ -403,7 +496,7 @@ async def resolve_provider_settings(session: AsyncSession) -> Settings:
         else overrides["asr_model"]
     )
     asr_engine = "voicesanj"
-    return base.model_copy(
+    runtime = base.model_copy(
         update={
             "asr_engine": asr_engine,
             "asr_model_name": overrides["asr_model"],
@@ -472,6 +565,60 @@ async def resolve_provider_settings(session: AsyncSession) -> Settings:
                 if overrides["decision_route"] == "ninerouter"
                 else ""
             ),
+        }
+    )
+    if capability is None:
+        return runtime
+    provider_key = "asr_ai_provider" if capability == "asr" else f"{capability}_provider"
+    provider = provider_override or overrides.get(provider_key, "aiservice")
+    if provider != "ninerouter_direct":
+        return runtime.model_copy(update={"active_ai_provider": "aiservice"})
+    direct_key = normalize_api_key(overrides.get("ninerouter_api_key")) or None
+    direct_base = normalize_provider_base_url(overrides["ninerouter_base_url"])
+    model_key = {
+        "asr": "ninerouter_asr_model",
+        "analysis": "ninerouter_analysis_model",
+        "assistant": "ninerouter_assistant_model",
+        "decision": "ninerouter_decision_model",
+        "embedding": "ninerouter_embedding_model",
+    }.get(capability)
+    direct_model = overrides.get(model_key, "") if model_key else ""
+    direct_correction_models = _string_list(overrides["ninerouter_correction_models"])
+    prompt_key = {
+        "asr": "ninerouter_direct_asr_prompt",
+        "analysis": "ninerouter_direct_analysis_prompt",
+        "assistant": "ninerouter_direct_assistant_prompt",
+        "correction": "ninerouter_direct_correction_prompt",
+        "decision": "ninerouter_direct_decision_prompt",
+    }.get(capability)
+    return runtime.model_copy(
+        update={
+            "active_ai_provider": "ninerouter_direct",
+            "analysis_provider": overrides["analysis_provider"],
+            "assistant_provider": overrides["assistant_provider"],
+            "correction_provider": overrides["correction_provider"],
+            "decision_provider": overrides["decision_provider"],
+            "embedding_provider": overrides["embedding_provider"],
+            "ninerouter_base_url": direct_base,
+            "ninerouter_api_key": direct_key,
+            "ninerouter_connect_timeout_seconds": float(overrides["ninerouter_connect_timeout_seconds"]),
+            "ninerouter_read_timeout_seconds": float(overrides["ninerouter_read_timeout_seconds"]),
+            "ninerouter_direct_prompt": overrides.get(prompt_key, "") if prompt_key else "",
+            "llm_client": "ninerouter" if capability in {"analysis", "assistant", "correction"} else runtime.llm_client,
+            "llm_model": direct_model or runtime.llm_model,
+            "voicesanj_llm_model": direct_model or runtime.voicesanj_llm_model,
+            "llama_server_urls": direct_base,
+            "openai_api_key": direct_key,
+            "asr_engine": "whisper" if capability == "asr" else runtime.asr_engine,
+            "whisper_model": direct_model or runtime.whisper_model,
+            "asr_provider_base_url": direct_base,
+            "asr_provider_api_key": direct_key,
+            "correction_text_models": direct_correction_models or runtime.correction_text_models,
+            "decision_model": direct_model or runtime.decision_model,
+            "decision_api_key": direct_key,
+            "embedding_base_url": direct_base,
+            "embedding_api_key": direct_key,
+            "embedding_model": direct_model or runtime.embedding_model,
         }
     )
 

@@ -54,6 +54,7 @@ from app.services import (
     ratelimit,
 )
 from app.services.platform import (
+    capability_model,
     effective_assistant_instructions,
     effective_models,
     resolve_provider_settings,
@@ -762,8 +763,12 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         await session.flush()
         return ChatMessageOut.model_validate(assistant_message)
     models = await effective_models(session)
-    runtime = await resolve_provider_settings(session)
-    model = entitlement.assistant_model or models["chat_model"]
+    runtime = await resolve_provider_settings(session, capability="assistant")
+    model = (
+        capability_model(models, "assistant")
+        if models["assistant_provider"] == "ninerouter_direct"
+        else entitlement.assistant_model or capability_model(models, "assistant")
+    )
     stored_runs: list[AssistantToolRun] = []
     sources: list[dict[str, Any]] = []
     try:
@@ -981,8 +986,12 @@ async def stream_ephemeral_message(
                 yield _sse("delta", {"content": answer})
             else:
                 models = await effective_models(session)
-                runtime = await resolve_provider_settings(session)
-                model = entitlement.assistant_model or models["chat_model"]
+                runtime = await resolve_provider_settings(session, capability="assistant")
+                model = (
+                    capability_model(models, "assistant")
+                    if models["assistant_provider"] == "ninerouter_direct"
+                    else entitlement.assistant_model or capability_model(models, "assistant")
+                )
                 client = build_client(
                     runtime,
                     request_namespace=f"ephemeral:{usage.id}",
@@ -1127,8 +1136,12 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                 yield _sse("delta", {"content": answer})
             else:
                 models = await effective_models(session)
-                runtime = await resolve_provider_settings(session)
-                model = entitlement.assistant_model or models["chat_model"]
+                runtime = await resolve_provider_settings(session, capability="assistant")
+                model = (
+                    capability_model(models, "assistant")
+                    if models["assistant_provider"] == "ninerouter_direct"
+                    else entitlement.assistant_model or capability_model(models, "assistant")
+                )
                 client = build_client(
                     runtime, request_namespace=str(user_message.id), purpose="chat"
                 )

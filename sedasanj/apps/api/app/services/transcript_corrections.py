@@ -21,6 +21,7 @@ from app.models import (
     Utterance,
 )
 from app.services import outbox, processing_events, progress
+from app.services.ninerouter import NineRouterClient, retry_json_chat
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
 from app.services.voicesanj import VOICESANJ_USER_AGENT
 
@@ -142,6 +143,7 @@ async def create_revision(
         status="queued",
         audio_models=list(runtime.correction_audio_models),
         text_models=list(runtime.correction_text_models),
+        ai_provider=runtime.active_ai_provider,
         raw_text=transcript.full_text,
         metrics={"previous_status": previous_status} if trigger == "manual" else {},
     )
@@ -152,6 +154,7 @@ async def create_revision(
         kind="correction",
         status="queued",
         attempt=0,
+        ai_provider=runtime.active_ai_provider,
     )
     session.add(job)
     call.status = "correcting"
@@ -199,9 +202,12 @@ def source_segments(utterances: list[Utterance]) -> list[dict[str, Any]]:
 
 class CorrectionClient:
     def __init__(self, runtime: Settings) -> None:
+        self._runtime = runtime
+        self._direct = runtime.active_ai_provider == "ninerouter_direct"
+        self._ninerouter = NineRouterClient(runtime) if self._direct else None
         base = (runtime.voicesanj_base_url or "").rstrip("/")
         key = normalize_api_key(runtime.voicesanj_api_key)
-        if not base or not key:
+        if not self._direct and (not base or not key):
             raise ProviderError(
                 "correction_provider_configuration",
                 "آدرس یا کلید AISERVICE برای تصحیح متن تنظیم نشده است.",
@@ -219,7 +225,46 @@ class CorrectionClient:
         )
 
     async def close(self) -> None:
+        if self._ninerouter is not None:
+            await self._ninerouter.close()
         await self._client.aclose()
+
+    async def complete_direct(
+        self,
+        segments: list[dict[str, Any]],
+        prompt: str,
+        *,
+        model: str,
+    ) -> dict[str, Any]:
+        if self._ninerouter is None:
+            raise RuntimeError("direct 9Router correction is not active")
+        contract = (
+            "Only return JSON with keys segments and uncertain_items. "
+            "segments must contain exactly one object per source segment, in the same order, "
+            "with id, corrected_text and uncertain. Do not add or remove facts, names, numbers, "
+            "URLs or Latin tokens. uncertain_items must be an array."
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    f"{contract}\n\n{self._runtime.ninerouter_direct_prompt.strip()}"
+                ).strip(),
+            },
+            {
+                "role": "user",
+                "content": json.dumps({"segments": segments}, ensure_ascii=False),
+            },
+        ]
+        result = await retry_json_chat(
+            self._ninerouter,
+            model=model,
+            messages=messages,
+            max_tokens=self._runtime.llm_max_tokens,
+        )
+        result.setdefault("model", model)
+        result.setdefault("finish_reason", "stop")
+        return result
 
     async def submit(
         self,
@@ -229,6 +274,8 @@ class CorrectionClient:
         *,
         model: str,
     ) -> str:
+        if self._direct:
+            raise RuntimeError("direct 9Router correction does not create remote tasks")
         body: dict[str, Any] = {
             "model": model,
             "segments": segments,

@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import operational_tenant_ids, session_scope
 from app.models import Call, CallInsight, Transcript
 from app.services.apache_age import execute_cypher
-from app.services.platform import AISERVICE_ROUTES, effective_models
+from app.services.ninerouter import NineRouterClient
+from app.services.platform import AISERVICE_ROUTES, effective_models, resolve_provider_settings
 
 
 def _vector_literal(values: list[float]) -> str:
@@ -20,9 +21,27 @@ def _vector_literal(values: list[float]) -> str:
     return "[" + ",".join(format(float(value), ".9g") for value in values) + "]"
 
 
+def _embedding_provider(model: str) -> str:
+    return "ninerouter_direct" if model.startswith("ninerouter_direct:") else "aiservice"
+
+
 async def embed(content: str) -> tuple[list[float], str]:
     async with session_scope(None, staff=True) as control_session:
         settings = await effective_models(control_session)
+        runtime = (
+            await resolve_provider_settings(control_session, capability="embedding")
+            if settings.get("embedding_provider") == "ninerouter_direct"
+            else None
+        )
+    if settings.get("embedding_provider") == "ninerouter_direct":
+        model = settings["ninerouter_embedding_model"].strip()
+        assert runtime is not None
+        client = NineRouterClient(runtime)
+        try:
+            vector = await client.embedding(model=model, content=content)
+        finally:
+            await client.close()
+        return vector, f"ninerouter_direct:{model}"
     base_url = settings["voicesanj_base_url"].rstrip("/")
     api_key = settings["api_key"].strip()
     model = settings["embedding_model"].strip()
@@ -47,6 +66,22 @@ async def embed(content: str) -> tuple[list[float], str]:
     if not isinstance(vector, list):
         raise RuntimeError("embedding provider returned no vector")
     return [float(value) for value in vector], model
+
+
+async def invalidate_embeddings() -> int:
+    updated = 0
+    for tenant_id in await operational_tenant_ids():
+        async with session_scope(tenant_id) as session:
+            for table in ("call_knowledge", "transcript_chunks"):
+                result = await session.execute(
+                    text(
+                        f"UPDATE {table} SET embedding = NULL, vector_status = 'pending', "
+                        "next_retry_at = NULL, error_detail = NULL "
+                        "WHERE embedding IS NOT NULL OR vector_status = 'ready'"
+                    )
+                )
+                updated += int(result.rowcount or 0)
+    return updated
 
 
 def _cypher_value(value: object) -> str:
@@ -118,17 +153,20 @@ async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> N
     errors: list[str] = []
     try:
         vector, model = await embed(insight.summary)
+        embedding_provider = _embedding_provider(model)
         async with session.begin_nested():
             await session.execute(
                 text(
                     "UPDATE call_knowledge SET embedding = CAST(:embedding AS vector), "
-                    "embedding_model = :model, vector_status = 'ready', indexed_at = now(), "
+                    "embedding_model = :model, embedding_provider = :provider, "
+                    "vector_status = 'ready', indexed_at = now(), "
                     "attempt_count = 0, last_attempt_at = now(), next_retry_at = NULL "
                     "WHERE call_id = :call_id AND tenant_id = :tenant_id"
                 ),
                 {
                     "embedding": _vector_literal(vector),
                     "model": model,
+                    "provider": embedding_provider,
                     "call_id": call_id,
                     "tenant_id": tenant_id,
                 },
@@ -251,13 +289,14 @@ async def _index_transcript_chunks(
         digest = hashlib.sha256(chunk.encode()).hexdigest()
         try:
             vector, model = await embed(chunk)
+            embedding_provider = _embedding_provider(model)
             await session.execute(
                 text(
                     "INSERT INTO transcript_chunks "
                     "(tenant_id, call_id, ordinal, content, content_sha256, embedding, "
-                    "source_revision_id, embedding_model, vector_status, last_attempt_at) "
+                    "source_revision_id, embedding_model, embedding_provider, vector_status, last_attempt_at) "
                     "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, "
-                    "CAST(:embedding AS vector), :revision_id, :model, 'ready', now())"
+                    "CAST(:embedding AS vector), :revision_id, :model, :provider, 'ready', now())"
                 ),
                 {
                     "tenant_id": tenant_id,
@@ -268,6 +307,7 @@ async def _index_transcript_chunks(
                     "embedding": _vector_literal(vector),
                     "revision_id": transcript.active_revision_id,
                     "model": model,
+                    "provider": embedding_provider,
                 },
             )
         except Exception as exc:
@@ -304,13 +344,14 @@ async def vector_call_ids(
         text(
             "SELECT call_id FROM call_knowledge WHERE tenant_id = :tenant_id "
             "AND vector_status = 'ready' AND embedding IS NOT NULL "
-            "AND embedding_model = :model "
+            "AND embedding_model = :model AND embedding_provider = :provider "
             f"{operator_clause} ORDER BY embedding <=> CAST(:embedding AS vector) LIMIT :limit"
         ),
         {
             "tenant_id": tenant_id,
             "operator_id": operator_id,
             "model": model,
+            "provider": _embedding_provider(model),
             "embedding": _vector_literal(vector),
             "limit": limit,
         },
@@ -336,7 +377,7 @@ async def vector_call_context(
             "JOIN calls c ON c.id = k.call_id AND c.tenant_id = k.tenant_id "
             "WHERE k.tenant_id = :tenant_id "
             "AND k.vector_status = 'ready' AND k.embedding IS NOT NULL "
-            "AND k.embedding_model = :model "
+            "AND k.embedding_model = :model AND k.embedding_provider = :provider "
             f"{operator_clause} {call_clause} "
             "ORDER BY k.embedding <=> CAST(:embedding AS vector) LIMIT :limit"
         ),
@@ -345,6 +386,7 @@ async def vector_call_context(
             "operator_id": operator_id,
             "call_id": call_id,
             "model": model,
+            "provider": _embedding_provider(model),
             "embedding": _vector_literal(vector),
             "limit": limit,
         },
@@ -386,6 +428,7 @@ async def vector_transcript_context(
             f"{operator_join}"
             "WHERE t.tenant_id = :tenant_id AND t.vector_status = 'ready' "
             "AND t.embedding IS NOT NULL AND t.embedding_model = :model "
+            "AND t.embedding_provider = :provider "
             f"{operator_clause} {call_clause} "
             "ORDER BY t.embedding <=> CAST(:embedding AS vector) LIMIT :limit"
         ),
@@ -394,6 +437,7 @@ async def vector_transcript_context(
             "operator_id": operator_id,
             "call_id": call_id,
             "model": model,
+            "provider": _embedding_provider(model),
             "embedding": _vector_literal(vector),
             "limit": limit,
         },
@@ -413,7 +457,12 @@ async def vector_transcript_context(
 async def backfill_next() -> str:
     async with session_scope(None, staff=True) as control_session:
         models = await effective_models(control_session)
-    expected_model = models["embedding_model"].strip()
+    expected_model = (
+        f"ninerouter_direct:{models['ninerouter_embedding_model'].strip()}"
+        if models["embedding_provider"] == "ninerouter_direct"
+        else models["embedding_model"].strip()
+    )
+    expected_provider = _embedding_provider(expected_model)
     for tenant_id in await operational_tenant_ids():
         async with session_scope(tenant_id) as session:
             call_id = (
@@ -425,14 +474,20 @@ async def backfill_next() -> str:
                         "WHERE i.tenant_id = :tenant_id AND i.summary IS NOT NULL "
                         "AND (k.call_id IS NULL OR k.vector_status <> 'ready' "
                         "OR k.embedding_model IS DISTINCT FROM :model "
+                        "OR k.embedding_provider IS DISTINCT FROM :provider "
                         "OR (EXISTS (SELECT 1 FROM transcripts tr WHERE tr.call_id = i.call_id) "
                         "AND NOT EXISTS (SELECT 1 FROM transcript_chunks t "
                         "WHERE t.call_id = i.call_id AND t.tenant_id = i.tenant_id "
-                        "AND t.vector_status = 'ready' AND t.embedding_model = :model))) "
+                        "AND t.vector_status = 'ready' AND t.embedding_model = :model "
+                        "AND t.embedding_provider = :provider))) "
                         "AND (k.next_retry_at IS NULL OR k.next_retry_at <= now()) "
                         "ORDER BY c.created_at DESC LIMIT 1"
                     ),
-                    {"tenant_id": tenant_id, "model": expected_model},
+                    {
+                        "tenant_id": tenant_id,
+                        "model": expected_model,
+                        "provider": expected_provider,
+                    },
                 )
             ).scalar_one_or_none()
             if call_id is not None:

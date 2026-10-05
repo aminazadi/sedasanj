@@ -20,6 +20,7 @@ from app.schemas import IngestAccepted
 from app.services import billing, entitlements, outbox, processing_events, progress
 from app.services.audio import probe_wav_bytes, probe_wav_file
 from app.services.phone_numbers import normalize_call_number
+from app.services.platform import capability_model, effective_models
 from app.services.storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -293,7 +294,16 @@ async def accept_upload(
                 progress_pct=int(stored["progress_pct"]),
                 message=str(stored["progress_detail"]),
             )
-            job = Job(tenant_id=tenant_id, call_id=call_id, kind="asr", status="queued", attempt=0)
+            models = await effective_models(session)
+            job = Job(
+                tenant_id=tenant_id,
+                call_id=call_id,
+                kind="asr",
+                status="queued",
+                attempt=0,
+                ai_provider=models["asr_ai_provider"],
+                ai_model=capability_model(models, "asr"),
+            )
             session.add(job)
             await session.flush()
             await processing_events.record(

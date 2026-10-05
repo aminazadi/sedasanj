@@ -62,6 +62,7 @@ function ModelSelect({
   models,
   onChange,
   required = true,
+  sourceLabel = "AISERVICE",
 }: {
   id: string;
   label: string;
@@ -69,6 +70,7 @@ function ModelSelect({
   models: ProviderModel[];
   onChange: (value: string) => void;
   required?: boolean;
+  sourceLabel?: string;
 }) {
   const selected = models.find((model) => model.id === value);
   const missing = Boolean(value) && !selected;
@@ -83,8 +85,8 @@ function ModelSelect({
         onChange={(event) => onChange(event.target.value)}
         required={required}
       >
-        <option value="">انتخاب مدل از AISERVICE</option>
-        {missing ? <option value={value}>{value} — در فهرست AISERVICE نیست</option> : null}
+        <option value="">انتخاب مدل از {sourceLabel}</option>
+        {missing ? <option value={value}>{value} — در فهرست {sourceLabel} نیست</option> : null}
         {models.map((model) => (
           <option key={`${model.kind}:${model.id}`} value={model.id} disabled={model.available === false}>
             {modelOptionLabel(model)}
@@ -93,7 +95,7 @@ function ModelSelect({
       </select>
       {missing ? (
         <p className="mt-1 text-xs font-medium text-rose-700">
-          مدل ذخیره‌شده در فهرست فعلی AISERVICE وجود ندارد؛ یک مدل معتبر انتخاب کنید.
+          مدل ذخیره‌شده در فهرست فعلی {sourceLabel} وجود ندارد؛ یک مدل معتبر انتخاب کنید.
         </p>
       ) : selected?.description ? (
         <p className="mt-1 text-xs leading-5 text-slate-500">{selected.description}</p>
@@ -155,6 +157,9 @@ export default function Settings() {
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [nineRouterKeyDraft, setNineRouterKeyDraft] = useState("");
+  const [nineRouterModels, setNineRouterModels] = useState<ProviderModel[]>([]);
+  const [testingNineRouter, setTestingNineRouter] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -183,6 +188,37 @@ export default function Settings() {
     }
   }
 
+  async function loadNineRouterModels() {
+    setLoadingModels(true);
+    setModelsError(null);
+    try {
+      const [chat, stt, embedding] = await Promise.all([
+        request<ProviderModel[]>("/v1/admin/ninerouter/models?kind=chat"),
+        request<ProviderModel[]>("/v1/admin/ninerouter/models?kind=stt"),
+        request<ProviderModel[]>("/v1/admin/ninerouter/models?kind=embedding"),
+      ]);
+      setNineRouterModels([...chat, ...stt, ...embedding]);
+    } catch (err) {
+      setNineRouterModels([]);
+      setModelsError((err as Error).message);
+    } finally {
+      setLoadingModels(false);
+    }
+  }
+
+  async function testNineRouter() {
+    setTestingNineRouter(true);
+    setError(null);
+    try {
+      await request("/v1/admin/ninerouter/test", { method: "POST" });
+      setNotice("اتصال مستقیم 9Router با موفقیت بررسی شد.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTestingNineRouter(false);
+    }
+  }
+
   useEffect(() => {
     request<PlatformSettings>("/v1/admin/settings")
       .then((data) => {
@@ -190,6 +226,7 @@ export default function Settings() {
         if (data.api_key_configured) {
           void loadModels();
         }
+        if (data.ninerouter_api_key_configured) void loadNineRouterModels();
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -211,6 +248,9 @@ export default function Settings() {
     () => models.filter((model) => model.kind === "embedding"),
     [models],
   );
+  const nineRouterAsrModels = useMemo(() => nineRouterModels.filter((model) => model.kind === "asr"), [nineRouterModels]);
+  const nineRouterLlmModels = useMemo(() => nineRouterModels.filter((model) => LLM_KINDS.has(model.kind)), [nineRouterModels]);
+  const nineRouterEmbeddingModels = useMemo(() => nineRouterModels.filter((model) => model.kind === "embedding"), [nineRouterModels]);
   const modelCounts = useMemo(
     () => models.reduce<Record<string, number>>((result, model) => {
       result[model.kind] = (result[model.kind] || 0) + 1;
@@ -223,8 +263,17 @@ export default function Settings() {
     if (!settings) return;
     setError(null);
     setNotice(null);
+    const modelsNeedAiService = [
+      settings.asr_ai_provider,
+      settings.analysis_provider,
+      settings.assistant_provider,
+      settings.correction_provider,
+      settings.decision_provider,
+      settings.embedding_provider,
+    ].includes("aiservice");
     if (
-      (activeTab === "connection" || activeTab === "models") &&
+      activeTab === "models" &&
+      modelsNeedAiService &&
       !settings.api_key_configured &&
       !apiKeyDraft.trim()
     ) {
@@ -233,12 +282,11 @@ export default function Settings() {
     }
     if (activeTab === "models" && models.length) {
       const selections = [
-        ["مدل ASR", settings.asr_model, asrModels],
-        ["مدل تحلیل", settings.llm_model, llmModels],
-        ["مدل دستیار", settings.chat_model, llmModels],
-        ["مدل تصمیم‌گیری", settings.decision_model, decisionModels],
-        ["مدل fallback تصمیم‌گیری", settings.decision_fallback_model, decisionModels],
-        ["مدل embedding", settings.embedding_model, embeddingModels],
+        ["مدل ASR", settings.asr_ai_provider === "ninerouter_direct" ? settings.ninerouter_asr_model : settings.asr_model, settings.asr_ai_provider === "ninerouter_direct" ? nineRouterAsrModels : asrModels],
+        ["مدل تحلیل", settings.analysis_provider === "ninerouter_direct" ? settings.ninerouter_analysis_model : settings.llm_model, settings.analysis_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels],
+        ["مدل دستیار", settings.assistant_provider === "ninerouter_direct" ? settings.ninerouter_assistant_model : settings.chat_model, settings.assistant_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels],
+        ["مدل تصمیم‌گیری", settings.decision_provider === "ninerouter_direct" ? settings.ninerouter_decision_model : settings.decision_model, settings.decision_provider === "ninerouter_direct" ? nineRouterLlmModels : decisionModels],
+        ["مدل embedding", settings.embedding_provider === "ninerouter_direct" ? settings.ninerouter_embedding_model : settings.embedding_model, settings.embedding_provider === "ninerouter_direct" ? nineRouterEmbeddingModels : embeddingModels],
       ] as const;
       const invalid = selections.find(([, value, options]) => {
         if (!options.length) return false;
@@ -246,7 +294,7 @@ export default function Settings() {
         return !selected || selected.available === false;
       });
       if (invalid) {
-        setError(`${invalid[0]} باید از فهرست مدل‌های آماده AISERVICE انتخاب شود.`);
+        setError(`${invalid[0]} باید از فهرست مدل‌های آماده سرویس انتخاب‌شده انتخاب شود.`);
         return;
       }
     }
@@ -254,11 +302,17 @@ export default function Settings() {
       const body: Record<string, string | boolean | number | string[]> = {};
       if (activeTab === "connection") {
         body.voicesanj_base_url = settings.voicesanj_base_url;
-        body.llm_provider = settings.llm_provider;
-        body.asr_provider = settings.asr_provider;
+        if (settings.api_key_configured || apiKeyDraft.trim()) {
+          body.llm_provider = settings.llm_provider;
+          body.asr_provider = settings.asr_provider;
+        }
         if (apiKeyDraft.trim()) {
           body.api_key = normalizeApiKey(apiKeyDraft);
         }
+        body.ninerouter_base_url = settings.ninerouter_base_url;
+        body.ninerouter_connect_timeout_seconds = settings.ninerouter_connect_timeout_seconds;
+        body.ninerouter_read_timeout_seconds = settings.ninerouter_read_timeout_seconds;
+        if (nineRouterKeyDraft.trim()) body.ninerouter_api_key = normalizeApiKey(nineRouterKeyDraft);
       } else if (activeTab === "models") {
         Object.assign(body, {
           asr_model: settings.asr_model,
@@ -272,6 +326,20 @@ export default function Settings() {
           chat_route: settings.chat_route,
           decision_route: settings.decision_route,
           embedding_route: settings.embedding_route,
+          asr_ai_provider: settings.asr_ai_provider,
+          analysis_provider: settings.analysis_provider,
+          assistant_provider: settings.assistant_provider,
+          decision_provider: settings.decision_provider,
+          embedding_provider: settings.embedding_provider,
+          ninerouter_asr_model: settings.ninerouter_asr_model,
+          ninerouter_analysis_model: settings.ninerouter_analysis_model,
+          ninerouter_assistant_model: settings.ninerouter_assistant_model,
+          ninerouter_decision_model: settings.ninerouter_decision_model,
+          ninerouter_embedding_model: settings.ninerouter_embedding_model,
+          ninerouter_direct_asr_prompt: settings.ninerouter_direct_asr_prompt,
+          ninerouter_direct_analysis_prompt: settings.ninerouter_direct_analysis_prompt,
+          ninerouter_direct_assistant_prompt: settings.ninerouter_direct_assistant_prompt,
+          ninerouter_direct_decision_prompt: settings.ninerouter_direct_decision_prompt,
         });
         if (settings.asr_route === "ninerouter") {
           body.ninerouter_asr_prompt = settings.ninerouter_asr_prompt;
@@ -319,6 +387,9 @@ export default function Settings() {
           correction_timeout_seconds: settings.correction_timeout_seconds,
           correction_max_retries: settings.correction_max_retries,
           correction_failure_policy: settings.correction_failure_policy,
+          correction_provider: settings.correction_provider,
+          ninerouter_correction_models: settings.ninerouter_correction_models,
+          ninerouter_direct_correction_prompt: settings.ninerouter_direct_correction_prompt,
         });
       } else if (activeTab === "prompts") {
         body.extract_prompt = settings.extract_prompt;
@@ -330,12 +401,16 @@ export default function Settings() {
       });
       setSettings(saved);
       setApiKeyDraft("");
+      setNineRouterKeyDraft("");
       setNotice("ذخیره شد.");
       if (
         saved.api_key_configured &&
         (activeTab === "connection" || activeTab === "models")
       ) {
         await loadModels();
+      }
+      if (saved.ninerouter_api_key_configured && (activeTab === "connection" || activeTab === "models")) {
+        await loadNineRouterModels();
       }
     } catch (err) {
       setError((err as Error).message);
@@ -442,6 +517,30 @@ export default function Settings() {
         </p>
       </div>
 
+      <section className={`${activeTab === "connection" ? "" : "hidden"} space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div>
+          <h2 className="font-bold text-slate-900">اتصال مستقیم 9Router</h2>
+          <p className="mt-1 text-xs leading-6 text-slate-500">این اتصال هیچ درخواستی را از AISERVICE عبور نمی‌دهد و فقط برای قابلیت‌هایی استفاده می‌شود که مسیر مستقیم آن‌ها فعال شده باشد.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="ninerouter-base-url">آدرس پایه 9Router</label>
+          <input id="ninerouter-base-url" className="input" dir="ltr" type="url" value={settings.ninerouter_base_url} onChange={(event) => setSettings({ ...settings, ninerouter_base_url: event.target.value })} placeholder="https://router.example.com" />
+        </div>
+        <div>
+          <label className="label" htmlFor="ninerouter-api-key">کلید API مستقیم 9Router</label>
+          <input id="ninerouter-api-key" className="input" dir="ltr" type="password" autoComplete="off" value={nineRouterKeyDraft} onChange={(event) => setNineRouterKeyDraft(event.target.value)} placeholder={settings.ninerouter_api_key_configured ? `کلید فعلی: ${settings.ninerouter_api_key_hint || "••••"} (برای تغییر بنویسید)` : "9r_..."} />
+          <p className="mt-1 text-xs text-slate-500">کلید با PLATFORM_SECRETS_KEY رمزگذاری می‌شود و مقدار کامل آن هرگز به مرورگر بازگردانده نمی‌شود.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div><label className="label">مهلت اتصال (ثانیه)</label><input className="input" type="number" min="1" max="60" value={settings.ninerouter_connect_timeout_seconds} onChange={(event) => setSettings({ ...settings, ninerouter_connect_timeout_seconds: Number(event.target.value) })} /></div>
+          <div><label className="label">مهلت پاسخ (ثانیه)</label><input className="input" type="number" min="10" max="3600" value={settings.ninerouter_read_timeout_seconds} onChange={(event) => setSettings({ ...settings, ninerouter_read_timeout_seconds: Number(event.target.value) })} /></div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-ghost" disabled={!settings.ninerouter_api_key_configured || testingNineRouter} onClick={() => void testNineRouter()}>{testingNineRouter ? "در حال آزمایش…" : "آزمایش اتصال مستقیم"}</button>
+          <button type="button" className="btn-ghost" disabled={!settings.ninerouter_api_key_configured || loadingModels} onClick={() => void loadNineRouterModels()}>بازیابی مدل‌های 9Router</button>
+        </div>
+      </section>
+
       <div className={activeTab === "connection" ? "" : "hidden"}>
         <label className="label">کلید API مشترک AISERVICE</label>
         <input
@@ -472,6 +571,8 @@ export default function Settings() {
             ارائه‌دهنده ASR مستقل از سرویس تحلیل متن انتخاب می‌شود.
           </p>
         </div>
+        <div><label className="label">مسیر اجرای ASR</label><select className="input" value={settings.asr_ai_provider} onChange={(event) => setSettings({ ...settings, asr_ai_provider: event.target.value as PlatformSettings["asr_ai_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select></div>
+        {settings.asr_ai_provider === "ninerouter_direct" ? <><ModelSelect id="ninerouter-asr-model" label="مدل مستقیم ASR" value={settings.ninerouter_asr_model} models={nineRouterAsrModels} sourceLabel="9Router" onChange={(ninerouter_asr_model) => setSettings({ ...settings, ninerouter_asr_model })} /><div><label className="label">پرامپت مستقیم ASR</label><textarea className="input min-h-32" value={settings.ninerouter_direct_asr_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_asr_prompt: event.target.value })} /></div></> : null}
         <div>
           <label className="label" htmlFor="asr-provider">درگاه اتصال</label>
           <select
@@ -506,7 +607,7 @@ export default function Settings() {
             <option value="ninerouter">/v1/ninerouter/audio/transcriptions — 9Router</option>
           </select>
           <p className="mt-1 text-xs text-slate-500">فایل صوتی در هر دو مسیر به‌صورت gzip به AISERVICE ارسال می‌شود.</p>
-          {settings.asr_route === "ninerouter" ? (
+          {settings.asr_ai_provider === "aiservice" && settings.asr_route === "ninerouter" ? (
             <div className="mt-3">
               <label className="label" htmlFor="ninerouter-asr-prompt">پرامپت Speech-to-Text در 9Router</label>
               <textarea id="ninerouter-asr-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_asr_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_asr_prompt: event.target.value })} />
@@ -672,7 +773,7 @@ export default function Settings() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-bold text-slate-900">تصحیح هوشمند و نسخه نهایی متن</h2>
-            <p className="mt-1 text-xs leading-6 text-slate-500">همه درخواست‌ها از مسیر ثابت AISERVICE ارسال می‌شوند و انتخاب مدل محلی یا 9Router داخل همان سرویس انجام می‌شود.</p>
+            <p className="mt-1 text-xs leading-6 text-slate-500">ارائه‌دهنده تصحیح مستقل است و هر نسخه با مسیر و مدل زمان ایجاد خود ادامه پیدا می‌کند.</p>
           </div>
           <ToggleSwitch checked={settings.correction_enabled} onChange={(correction_enabled) => setSettings({ ...settings, correction_enabled })} label="فعال" labelClassName="text-sm font-medium" />
         </div>
@@ -693,10 +794,27 @@ export default function Settings() {
             </select>
           </div>
         </div>
+        <div>
+          <label className="label" htmlFor="correction-provider">مسیر تصحیح متن</label>
+          <select id="correction-provider" className="input" value={settings.correction_provider} onChange={(event) => setSettings({ ...settings, correction_provider: event.target.value as PlatformSettings["correction_provider"] })}>
+            <option value="aiservice">AISERVICE</option>
+            <option value="ninerouter_direct">9Router مستقیم</option>
+          </select>
+        </div>
+        {settings.correction_provider === "ninerouter_direct" ? (
+          <>
+            <ModelPriorityList id="ninerouter-correction-models" label="مدل‌های مستقیم تصحیح به‌ترتیب اولویت" value={settings.ninerouter_correction_models} models={nineRouterLlmModels} onChange={(ninerouter_correction_models) => setSettings({ ...settings, ninerouter_correction_models })} />
+            <div>
+              <label className="label" htmlFor="ninerouter-direct-correction-prompt">پرامپت مستقیم تصحیح</label>
+              <textarea id="ninerouter-direct-correction-prompt" className="input min-h-48 resize-y" value={settings.ninerouter_direct_correction_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_correction_prompt: event.target.value })} />
+            </div>
+          </>
+        ) : (
         <div className="grid gap-5 lg:grid-cols-2">
           <ModelPriorityList id="correction-audio-models" label="مدل‌های صوتی به‌ترتیب اولویت" value={settings.correction_audio_models} models={asrModels} onChange={(correction_audio_models) => setSettings({ ...settings, correction_audio_models })} />
           <ModelPriorityList id="correction-text-models" label="مدل‌های متنی به‌ترتیب اولویت" value={settings.correction_text_models} models={llmModels} onChange={(correction_text_models) => setSettings({ ...settings, correction_text_models })} />
         </div>
+        )}
         <div>
           <label className="label" htmlFor="correction-prompt">پرامپت تصحیح</label>
           <textarea id="correction-prompt" className="input min-h-48 resize-y" value={settings.correction_prompt} onChange={(event) => setSettings({ ...settings, correction_prompt: event.target.value })} required />
@@ -735,6 +853,7 @@ export default function Settings() {
       </div>
 
       <div className={activeTab === "models" ? "" : "hidden"}>
+        <label className="label">مسیر تحلیل مکالمات</label><select className="input mb-2" value={settings.analysis_provider} onChange={(event) => setSettings({ ...settings, analysis_provider: event.target.value as PlatformSettings["analysis_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select>
         <ModelSelect
           id="asr-model"
           label="مدل پیاده‌سازی صوت (ASR)"
@@ -748,41 +867,46 @@ export default function Settings() {
         <ModelSelect
           id="analysis-model"
           label="مدل تحلیل مکالمات"
-          value={settings.llm_model}
-          models={llmModels}
-          onChange={(llm_model) => setSettings({ ...settings, llm_model })}
+          value={settings.analysis_provider === "ninerouter_direct" ? settings.ninerouter_analysis_model : settings.llm_model}
+          models={settings.analysis_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels}
+          sourceLabel={settings.analysis_provider === "ninerouter_direct" ? "9Router" : "AISERVICE"}
+          onChange={(value) => setSettings(settings.analysis_provider === "ninerouter_direct" ? { ...settings, ninerouter_analysis_model: value } : { ...settings, llm_model: value })}
         />
-        <select className="input mt-2" value={settings.analysis_route} onChange={(event) => setSettings({ ...settings, analysis_route: event.target.value as PlatformSettings["analysis_route"] })}>
+        <select className="input mt-2" disabled={settings.analysis_provider === "ninerouter_direct"} value={settings.analysis_route} onChange={(event) => setSettings({ ...settings, analysis_route: event.target.value as PlatformSettings["analysis_route"] })}>
           <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
         </select>
-        {settings.analysis_route === "ninerouter" ? (
+        {settings.analysis_provider === "aiservice" && settings.analysis_route === "ninerouter" ? (
           <div className="mt-3">
             <label className="label" htmlFor="ninerouter-analysis-prompt">دستور تکمیلی تحلیل در 9Router</label>
             <textarea id="ninerouter-analysis-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_analysis_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_analysis_prompt: event.target.value })} />
           </div>
         ) : null}
+        {settings.analysis_provider === "ninerouter_direct" ? <div className="mt-3"><label className="label">پرامپت مستقیم تحلیل</label><textarea className="input min-h-40" value={settings.ninerouter_direct_analysis_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_analysis_prompt: event.target.value })} /></div> : null}
       </div>
 
       <div className={activeTab === "models" ? "" : "hidden"}>
+        <label className="label">مسیر دستیار سازمانی</label><select className="input mb-2" value={settings.assistant_provider} onChange={(event) => setSettings({ ...settings, assistant_provider: event.target.value as PlatformSettings["assistant_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select>
         <ModelSelect
           id="assistant-model"
           label="مدل دستیار سازمانی"
-          value={settings.chat_model}
-          models={llmModels}
-          onChange={(chat_model) => setSettings({ ...settings, chat_model })}
+          value={settings.assistant_provider === "ninerouter_direct" ? settings.ninerouter_assistant_model : settings.chat_model}
+          models={settings.assistant_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels}
+          sourceLabel={settings.assistant_provider === "ninerouter_direct" ? "9Router" : "AISERVICE"}
+          onChange={(value) => setSettings(settings.assistant_provider === "ninerouter_direct" ? { ...settings, ninerouter_assistant_model: value } : { ...settings, chat_model: value })}
         />
-        <select className="input mt-2" value={settings.chat_route} onChange={(event) => setSettings({ ...settings, chat_route: event.target.value as PlatformSettings["chat_route"] })}>
+        <select className="input mt-2" disabled={settings.assistant_provider === "ninerouter_direct"} value={settings.chat_route} onChange={(event) => setSettings({ ...settings, chat_route: event.target.value as PlatformSettings["chat_route"] })}>
           <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
           <option value="synchronous">/v1/chat/completions — پاسخ مستقیم AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
         </select>
-        {settings.chat_route === "ninerouter" ? (
+        {settings.assistant_provider === "aiservice" && settings.chat_route === "ninerouter" ? (
           <div className="mt-3">
             <label className="label" htmlFor="ninerouter-chat-prompt">دستور تکمیلی دستیار در 9Router</label>
             <textarea id="ninerouter-chat-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_chat_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_chat_prompt: event.target.value })} />
           </div>
         ) : null}
+        {settings.assistant_provider === "ninerouter_direct" ? <div className="mt-3"><label className="label">پرامپت مستقیم دستیار</label><textarea className="input min-h-40" value={settings.ninerouter_direct_assistant_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_assistant_prompt: event.target.value })} /></div> : null}
       </div>
 
       <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
@@ -790,6 +914,8 @@ export default function Settings() {
           <h2 className="font-bold text-slate-900">تصمیم‌گیری محلی AISERVICE</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">مدل اصلی و fallback را از مدل‌های واقعاً قابل دسترس AISERVICE انتخاب کنید.</p>
         </div>
+        <div><label className="label">مسیر تصمیم‌گیری</label><select className="input" value={settings.decision_provider} onChange={(event) => setSettings({ ...settings, decision_provider: event.target.value as PlatformSettings["decision_provider"] })}><option value="aiservice">AISERVICE typed decision</option><option value="ninerouter_direct">9Router مستقیم با JSON adapter</option></select></div>
+        {settings.decision_provider === "ninerouter_direct" ? <ModelSelect id="ninerouter-decision-model" label="مدل مستقیم تصمیم‌گیری" value={settings.ninerouter_decision_model} models={nineRouterLlmModels} sourceLabel="9Router" onChange={(ninerouter_decision_model) => setSettings({ ...settings, ninerouter_decision_model })} /> : null}
         <div className="grid gap-3 md:grid-cols-2">
           <ModelSelect id="decision-model" label="مدل اصلی" value={settings.decision_model} models={decisionModels} onChange={(decision_model) => setSettings({ ...settings, decision_model })} />
           <ModelSelect id="decision-fallback-model" label="مدل fallback" value={settings.decision_fallback_model} models={decisionModels} onChange={(decision_fallback_model) => setSettings({ ...settings, decision_fallback_model })} />
@@ -798,16 +924,17 @@ export default function Settings() {
           <label className="label" htmlFor="decision-threshold">حداقل اطمینان برای استفاده از مدل اصلی</label>
           <input id="decision-threshold" className="input" type="number" min="0" max="1" step="0.01" value={settings.decision_confidence_threshold} onChange={(event) => setSettings({ ...settings, decision_confidence_threshold: Number(event.target.value) })} />
         </div>
-        <select className="input" value={settings.decision_route === "typed" ? "native" : settings.decision_route} onChange={(event) => setSettings({ ...settings, decision_route: event.target.value as PlatformSettings["decision_route"] })}>
+        <select className="input" disabled={settings.decision_provider === "ninerouter_direct"} value={settings.decision_route === "typed" ? "native" : settings.decision_route} onChange={(event) => setSettings({ ...settings, decision_route: event.target.value as PlatformSettings["decision_route"] })}>
           <option value="native">/v1/decisions — موتور تصمیم‌گیری محلی AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/decisions — تصمیم‌گیری 9Router</option>
         </select>
-        {settings.decision_route === "ninerouter" ? (
+        {settings.decision_provider === "aiservice" && settings.decision_route === "ninerouter" ? (
           <div>
             <label className="label" htmlFor="ninerouter-decision-prompt">دستور تکمیلی تصمیم‌گیری در 9Router</label>
             <textarea id="ninerouter-decision-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_decision_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_decision_prompt: event.target.value })} />
           </div>
         ) : null}
+        {settings.decision_provider === "ninerouter_direct" ? <div><label className="label">پرامپت مستقیم تصمیم‌گیری</label><textarea className="input min-h-40" value={settings.ninerouter_direct_decision_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_decision_prompt: event.target.value })} /></div> : null}
       </section>
 
       <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
@@ -815,8 +942,9 @@ export default function Settings() {
           <h2 className="font-bold text-slate-900">Embedding و بازیابی برداری</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">فقط مدل‌های embedding اعلام‌شده توسط AISERVICE نمایش داده می‌شوند؛ شناسه فرضی یا نصب‌نشده ذخیره نمی‌شود.</p>
         </div>
-        <ModelSelect id="embedding-model" label="مدل Embedding" value={settings.embedding_model} models={embeddingModels} onChange={(embedding_model) => setSettings({ ...settings, embedding_model })} />
-        <select className="input" value={settings.embedding_route} onChange={(event) => setSettings({ ...settings, embedding_route: event.target.value as PlatformSettings["embedding_route"] })}>
+        <div><label className="label">مسیر Embedding</label><select className="input" value={settings.embedding_provider} onChange={(event) => setSettings({ ...settings, embedding_provider: event.target.value as PlatformSettings["embedding_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select></div>
+        <ModelSelect id="embedding-model" label="مدل Embedding" value={settings.embedding_provider === "ninerouter_direct" ? settings.ninerouter_embedding_model : settings.embedding_model} models={settings.embedding_provider === "ninerouter_direct" ? nineRouterEmbeddingModels : embeddingModels} sourceLabel={settings.embedding_provider === "ninerouter_direct" ? "9Router" : "AISERVICE"} onChange={(value) => setSettings(settings.embedding_provider === "ninerouter_direct" ? { ...settings, ninerouter_embedding_model: value } : { ...settings, embedding_model: value })} />
+        <select className="input" disabled={settings.embedding_provider === "ninerouter_direct"} value={settings.embedding_route} onChange={(event) => setSettings({ ...settings, embedding_route: event.target.value as PlatformSettings["embedding_route"] })}>
           <option value="native">/v1/embeddings — مدل نصب‌شده محلی AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/embeddings — 9Router از AISERVICE</option>
         </select>

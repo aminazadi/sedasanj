@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-05 — AMINAZADI
+
+- Added an encrypted, admin-managed direct 9Router integration with independent ASR, analysis, assistant, correction, decision, and embedding routing while preserving all existing AISERVICE paths.
+
 ## 2026-10-04 — AMINAZADI
 
 - Added a fully Persian customer presentation document covering active Sedasanj capabilities, customer value, architecture, security, resilience, onboarding, and the near-term assistant training and scheduled reporting roadmap.

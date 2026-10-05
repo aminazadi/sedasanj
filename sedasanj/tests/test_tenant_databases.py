@@ -22,7 +22,7 @@ def test_database_identifiers_are_deterministic_and_safe() -> None:
 
 
 def test_tenant_schema_head_matches_latest_migration() -> None:
-    assert SCHEMA_HEAD == "0040_asr_transcript_revisions"
+    assert SCHEMA_HEAD == "0041_direct_ninerouter_provider"
     assert _schema_head() == SCHEMA_HEAD
 
 

@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings, normalize_api_key
+from app.services.ninerouter import NineRouterClient
 from app.services.provider_errors import classify_http, inspect_payload
 from app.services.voicesanj import VoiceSanjClient
 
@@ -136,6 +137,17 @@ class WhisperEngine(AsrEngine):
         return rows
 
     async def _transcribe_file(self, path: Path) -> object:
+        if self._settings.active_ai_provider == "ninerouter_direct":
+            client = NineRouterClient(self._settings)
+            try:
+                return await client.transcribe(
+                    path,
+                    model=self.model_name,
+                    language=self._settings.asr_language,
+                    prompt=self._settings.ninerouter_direct_prompt or None,
+                )
+            finally:
+                await client.close()
         audio = path.read_bytes()
         url = f"{self._base_url()}/v1/audio/transcriptions"
         headers = {"Authorization": f"Bearer {self._api_key()}"}

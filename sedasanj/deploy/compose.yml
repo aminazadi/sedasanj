@@ -26,6 +26,7 @@ x-python-env: &python-env
   MINIO_BUCKET_AUDIO: audio
   JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
   API_KEY_PEPPER: ${API_KEY_PEPPER:?Set API_KEY_PEPPER}
+  PLATFORM_SECRETS_KEY: ${PLATFORM_SECRETS_KEY:-}
   LLAMA_SERVER_URLS: http://llm1:8081,http://llm2:8081
   LLM_MODEL: ${LLM_MODEL:-dorna-llama3-8b-instruct-q4_k_m}
   ASR_ENGINE: ${ASR_ENGINE:-shenava}

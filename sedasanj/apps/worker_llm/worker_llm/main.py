@@ -41,6 +41,7 @@ from app.services import (
 )
 from app.services.operator_scoring import score_call
 from app.services.platform import (
+    capability_model,
     effective_extract_prompt,
     effective_models,
     resolve_provider_settings,
@@ -150,7 +151,7 @@ async def _run_model_analysis(
     run_id: UUID,
 ) -> tuple[ExtractionResult, str]:
     owned_client = False
-    if runtime.llm_client in {"voicesanj", "llama"}:
+    if runtime.llm_client in {"voicesanj", "llama", "ninerouter"}:
         client = build_client(runtime, request_namespace=str(run_id))
         owned_client = True
     if client is None:
@@ -279,7 +280,10 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 run = AnalysisRun(
                     call_id=call_id,
                     tenant_id=tenant_id,
-                    llm_model=models["llm_model"],
+                    llm_model=capability_model(models, "analysis"),
+                    ai_provider=models.get("analysis_provider", "aiservice"),
+                    decision_provider=models.get("decision_provider", "aiservice"),
+                    decision_model=capability_model(models, "decision"),
                     prompt_version=models["prompt_version"],
                     system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
                     status="pending",
@@ -300,7 +304,9 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
 
     try:
         async with session_scope(None, staff=True) as session:
-            runtime = await resolve_provider_settings(session)
+            runtime = await resolve_provider_settings(
+                session, capability="analysis", provider_override=run.ai_provider
+            )
         if runtime.llm_client == "voicesanj":
             return await start_analysis(
                 tenant_id=tenant_id,
@@ -591,7 +597,9 @@ async def startup(ctx: dict[str, Any]) -> None:
     # HTTP-backed clients are rebuilt per job from DB-backed platform settings.
     # Only the fixture client is safe and useful to initialize before a DB session.
     ctx["client"] = (
-        None if settings.llm_client in {"voicesanj", "llama"} else build_client(settings)
+        None
+        if settings.llm_client in {"voicesanj", "llama", "ninerouter"}
+        else build_client(settings)
     )
 
 

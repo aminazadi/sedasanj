@@ -315,7 +315,7 @@ async def test_engine_job_rejects_corrupt_persisted_audio_model(
     base = Settings(environment="development", asr_engine="fixture")
     corrupt = base.model_copy(update={"audio_denoiser_model": "unknown"})
 
-    async def fake_runtime(session: object) -> Settings:
+    async def fake_runtime(session: object, **kwargs: object) -> Settings:
         return corrupt
 
     monkeypatch.setattr("worker_asr.main.get_settings", lambda: base)

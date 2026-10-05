@@ -151,6 +151,28 @@ export interface PlatformSettings {
   correction_timeout_seconds: number;
   correction_max_retries: number;
   correction_failure_policy: "stop";
+  asr_ai_provider: "aiservice" | "ninerouter_direct";
+  analysis_provider: "aiservice" | "ninerouter_direct";
+  assistant_provider: "aiservice" | "ninerouter_direct";
+  correction_provider: "aiservice" | "ninerouter_direct";
+  decision_provider: "aiservice" | "ninerouter_direct";
+  embedding_provider: "aiservice" | "ninerouter_direct";
+  ninerouter_base_url: string;
+  ninerouter_api_key_configured: boolean;
+  ninerouter_api_key_hint: string;
+  ninerouter_connect_timeout_seconds: number;
+  ninerouter_read_timeout_seconds: number;
+  ninerouter_asr_model: string;
+  ninerouter_analysis_model: string;
+  ninerouter_assistant_model: string;
+  ninerouter_correction_models: string[];
+  ninerouter_decision_model: string;
+  ninerouter_embedding_model: string;
+  ninerouter_direct_asr_prompt: string;
+  ninerouter_direct_analysis_prompt: string;
+  ninerouter_direct_assistant_prompt: string;
+  ninerouter_direct_correction_prompt: string;
+  ninerouter_direct_decision_prompt: string;
 }
 
 export interface AssistantKnowledgeStatus {

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://cbi:cbi@127.0.0.1:5432/cbi"
     provisioner_database_url: str | None = None
     tenant_database_master_key: str | None = None
+    platform_secrets_key: str | None = None
     tenant_databases_enabled: bool = False
     tenant_database_auto_migrate: bool = False
     tenant_database_pool_size: int = Field(default=3, ge=1, le=20)
@@ -135,7 +136,7 @@ class Settings(BaseSettings):
 
     llama_server_urls: str = "http://llm1:8081,http://llm2:8081"
     llm_model: str = "dorna-llama3-8b-instruct-q4_k_m"
-    llm_client: Literal["llama", "voicesanj", "fixture"] = "llama"
+    llm_client: Literal["llama", "voicesanj", "ninerouter", "fixture"] = "llama"
     prompt_version: str = "extract-fa-v3"
     llm_timeout_seconds: float = 300.0
     # Supported by VoiceSanj's documented ChatCompletionRequest (1..4096).
@@ -150,6 +151,17 @@ class Settings(BaseSettings):
     outbox_dispatch_interval_seconds: float = Field(default=1.0, ge=0.25, le=30.0)
     # Runtime carrier only — set from admin Settings via resolve_provider_settings.
     openai_api_key: str | None = None
+    active_ai_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    analysis_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    assistant_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    correction_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    decision_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    embedding_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    ninerouter_base_url: str = "http://127.0.0.1:20128"
+    ninerouter_api_key: str | None = None
+    ninerouter_connect_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
+    ninerouter_read_timeout_seconds: float = Field(default=300.0, ge=10.0, le=3600.0)
+    ninerouter_direct_prompt: str = ""
 
     smtp_url: str | None = None
     notify_from_email: str = "noreply@example.com"
@@ -185,7 +197,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     @field_validator(
-        "voicesanj_api_key", "openai_api_key", "asr_provider_api_key", "decision_api_key", mode="before"
+        "voicesanj_api_key", "openai_api_key", "asr_provider_api_key", "decision_api_key", "ninerouter_api_key", mode="before"
     )
     @classmethod
     def _normalize_provider_api_keys(cls, value: object) -> object:

@@ -122,6 +122,11 @@ async def test_retry_transcription_creates_a_fresh_job_after_commit(
     monkeypatch.setattr(calls.outbox, "dispatch_one", dispatch)
     monkeypatch.setattr(calls, "client_ip", lambda request: "127.0.0.1")
 
+    async def models(session: object) -> dict[str, str]:
+        return {"asr_ai_provider": "aiservice", "asr_model": "asr-model"}
+
+    monkeypatch.setattr(calls, "effective_models", models)
+
     principal = Principal(
         kind="user",
         id=uuid4(),
@@ -300,6 +305,10 @@ async def test_retranscription_creates_revision_without_reserving_credit(
     monkeypatch.setattr(calls.outbox, "stage_job", stage)
     monkeypatch.setattr(calls.outbox, "dispatch_one", dispatch)
     monkeypatch.setattr(calls, "client_ip", lambda request: "127.0.0.1")
+    async def models(session: object) -> dict[str, str]:
+        return {"asr_ai_provider": "aiservice", "asr_model": "asr-model"}
+
+    monkeypatch.setattr(calls, "effective_models", models)
     principal = Principal(kind="user", id=uuid4(), tenant_id=tenant.id, role="operator")
 
     result = await calls.retranscribe_call(call.id, None, principal)  # type: ignore[arg-type]

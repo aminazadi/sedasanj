@@ -11,6 +11,7 @@ from app.db import resolve_tenant_for_call, session_scope
 from app.models import AnalysisRun, Call, Job, Transcript, TranscriptRevision, Utterance
 from app.services import outbox, pipeline, processing_events, progress
 from app.services.platform import (
+    capability_model,
     effective_extract_prompt,
     effective_models,
     resolve_provider_settings,
@@ -51,7 +52,10 @@ async def _stage_analysis(
             run = AnalysisRun(
                 call_id=call_id,
                 tenant_id=tenant_id,
-                llm_model=models["llm_model"],
+                llm_model=capability_model(models, "analysis"),
+                ai_provider=models.get("analysis_provider", "aiservice"),
+                decision_provider=models.get("decision_provider", "aiservice"),
+                decision_model=capability_model(models, "decision"),
                 prompt_version=models["prompt_version"],
                 system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
                 status="queued",
@@ -59,7 +63,14 @@ async def _stage_analysis(
             session.add(run)
         else:
             run.status = "queued"
-        job = Job(tenant_id=tenant_id, call_id=call_id, kind="llm", status="queued", attempt=0)
+        job = Job(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="llm",
+            status="queued",
+            attempt=0,
+            ai_provider=run.ai_provider,
+        )
         session.add(job)
         if call is not None:
             call.status = "transcribed"
@@ -96,8 +107,12 @@ async def _fail(
 ) -> str:
     code, detail, retryable = classify_failure(exc, kind="llm")
     async with session_scope(tenant_id) as session:
-        runtime = await resolve_provider_settings(session)
         revision = await session.get(TranscriptRevision, revision_id)
+        runtime = await resolve_provider_settings(
+            session,
+            capability="correction",
+            provider_override=revision.ai_provider if revision is not None else None,
+        )
         is_manual = revision is not None and revision.trigger == "manual"
         if revision is not None:
             revision.error_code = code
@@ -156,7 +171,9 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
             segments = source_segments(utterances)
             if not segments:
                 raise RuntimeError("call has no transcript segments")
-            runtime = await resolve_provider_settings(session)
+            runtime = await resolve_provider_settings(
+                session, capability="correction", provider_override=revision.ai_provider
+            )
             revision.status = "running"
             revision.started_at = revision.started_at or datetime.now(UTC)
             await pipeline.mark_job(
@@ -196,16 +213,55 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
             else:
                 client = CorrectionClient(runtime)
                 try:
-                    revision.provider_task_id = await client.submit(
-                        revision,
-                        segments,
-                        runtime.correction_prompt,
-                        model=current_correction_model(revision),
-                    )
+                    if runtime.active_ai_provider == "ninerouter_direct":
+                        while True:
+                            model = current_correction_model(revision)
+                            try:
+                                result = await client.complete_direct(
+                                    segments,
+                                    runtime.correction_prompt,
+                                    model=model,
+                                )
+                                validated, uncertain = validate_result(
+                                    segments,
+                                    result,
+                                    max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
+                                )
+                            except (ProviderError, ValueError) as exc:
+                                try:
+                                    advance_correction_model(revision, error=str(exc))
+                                except Exception:
+                                    raise exc from None
+                                continue
+                            revision.provider_model = model
+                            await activate_revision(
+                                session,
+                                transcript=transcript,
+                                revision=revision,
+                                segments=validated,
+                                uncertain_items=uncertain,
+                                result=result,
+                            )
+                            await pipeline.mark_job(
+                                session,
+                                tenant_id=tenant_id,
+                                call_id=call_id,
+                                kind="correction",
+                                status="succeeded",
+                            )
+                            dispatch_analysis = True
+                            break
+                    else:
+                        revision.provider_task_id = await client.submit(
+                            revision,
+                            segments,
+                            runtime.correction_prompt,
+                            model=current_correction_model(revision),
+                        )
+                        revision.provider_submitted_at = datetime.now(UTC)
+                        dispatch_analysis = False
                 finally:
                     await client.close()
-                revision.provider_submitted_at = datetime.now(UTC)
-                dispatch_analysis = False
         if dispatch_analysis:
             outbox_id = await _stage_analysis(
                 tenant_id=tenant_id, call_id=call_id, revision=revision
@@ -227,7 +283,9 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
             transcript = await session.get(Transcript, call_id)
             if revision is None or transcript is None or not revision.provider_task_id:
                 raise RuntimeError("correction provider task is missing")
-            runtime = await resolve_provider_settings(session)
+            runtime = await resolve_provider_settings(
+                session, capability="correction", provider_override=revision.ai_provider
+            )
             if revision.started_at is not None and (
                 datetime.now(UTC) - revision.started_at
             ).total_seconds() > runtime.correction_timeout_seconds:

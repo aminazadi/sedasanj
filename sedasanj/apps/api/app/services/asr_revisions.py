@@ -36,6 +36,7 @@ async def activate_new(
     asr_model: str,
     asr_version: str,
     audio_channels: int,
+    ai_provider: str = "aiservice",
     revision: AsrTranscriptRevision | None = None,
 ) -> tuple[Transcript, AsrTranscriptRevision]:
     now = datetime.now(UTC)
@@ -45,6 +46,7 @@ async def activate_new(
             tenant_id=tenant_id,
             status="running",
             trigger="initial",
+            ai_provider=ai_provider,
         )
         session.add(revision)
         await session.flush()
@@ -52,6 +54,7 @@ async def activate_new(
     revision.full_text = full_text
     revision.asr_model = asr_model
     revision.asr_version = asr_version
+    revision.ai_provider = ai_provider
     revision.speaker_mode = (
         "dual_channel"
         if audio_channels == 2

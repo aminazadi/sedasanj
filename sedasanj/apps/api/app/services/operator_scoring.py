@@ -18,7 +18,7 @@ from app.models import (
 )
 from app.services.aiservice_decision import AiServiceDecisionClient
 from app.services.operator_scope import number_matches
-from app.services.platform import effective_models, resolve_provider_settings
+from app.services.platform import capability_model, effective_models, resolve_provider_settings
 
 
 async def score_call(tenant_id: UUID, call_id: UUID, analysis_run_id: UUID) -> str:
@@ -190,7 +190,11 @@ async def score_call(tenant_id: UUID, call_id: UUID, analysis_run_id: UUID) -> s
         text = (transcript.corrected_text or transcript.full_text)[:12000]
         criteria = list(rubric.criteria)
         models = await effective_models(session)
-        runtime = await resolve_provider_settings(session)
+        runtime = await resolve_provider_settings(
+            session,
+            capability="decision",
+            provider_override=run.decision_provider,
+        )
     try:
         questions = {
             f"criterion_{index}": {
@@ -206,11 +210,11 @@ async def score_call(tenant_id: UUID, call_id: UUID, analysis_run_id: UUID) -> s
         client = AiServiceDecisionClient(runtime, request_namespace=str(score.id))
         try:
             primary = await client.decide(
-                model=models["decision_model"],
+                model=run.decision_model or capability_model(models, "decision"),
                 state={"transcript": text, "subject": "operator_performance"},
                 questions=questions,
             )
-            if any(
+            if runtime.active_ai_provider != "ninerouter_direct" and any(
                 not isinstance(answer, dict) or answer.get("abstained")
                 for answer in primary["answers"].values()
             ):

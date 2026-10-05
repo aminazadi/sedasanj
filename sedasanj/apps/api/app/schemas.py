@@ -1005,6 +1005,27 @@ class SettingsUpdate(BaseModel):
     correction_timeout_seconds: int | None = Field(default=None, ge=60, le=3600)
     correction_max_retries: int | None = Field(default=None, ge=1, le=5)
     correction_failure_policy: Literal["stop"] | None = None
+    asr_ai_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    analysis_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    assistant_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    correction_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    decision_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    embedding_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    ninerouter_base_url: str | None = None
+    ninerouter_api_key: str | None = Field(default=None, max_length=4096)
+    ninerouter_connect_timeout_seconds: int | None = Field(default=None, ge=1, le=60)
+    ninerouter_read_timeout_seconds: int | None = Field(default=None, ge=10, le=3600)
+    ninerouter_asr_model: str | None = Field(default=None, max_length=200)
+    ninerouter_analysis_model: str | None = Field(default=None, max_length=200)
+    ninerouter_assistant_model: str | None = Field(default=None, max_length=200)
+    ninerouter_correction_models: list[str] | None = Field(default=None, max_length=5)
+    ninerouter_decision_model: str | None = Field(default=None, max_length=200)
+    ninerouter_embedding_model: str | None = Field(default=None, max_length=200)
+    ninerouter_direct_asr_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_direct_analysis_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_direct_assistant_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_direct_correction_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_direct_decision_prompt: str | None = Field(default=None, max_length=20_000)
 
 
 class KnowledgeRetryRequest(BaseModel):

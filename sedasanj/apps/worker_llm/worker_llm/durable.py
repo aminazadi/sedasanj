@@ -184,7 +184,9 @@ async def submit_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> 
 
     try:
         async with session_scope(None, staff=True) as session:
-            runtime = await resolve_provider_settings(session)
+            runtime = await resolve_provider_settings(
+                session, capability="analysis", provider_override=run.ai_provider
+            )
         client = VoiceSanjChatClient(runtime, request_namespace=str(step.analysis_run_id))
         try:
             provider_task_id = await client.submit(
@@ -249,7 +251,9 @@ async def poll_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> st
 
     try:
         async with session_scope(None, staff=True) as session:
-            runtime = await resolve_provider_settings(session)
+            runtime = await resolve_provider_settings(
+                session, capability="analysis", provider_override=run.ai_provider
+            )
         if submitted_at and datetime.now(UTC) - submitted_at > timedelta(
             seconds=runtime.analysis_timeout_seconds
         ):

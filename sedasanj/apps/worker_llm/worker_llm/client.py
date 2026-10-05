@@ -193,15 +193,27 @@ class LlamaClient(LlmClient):
         self._cycle = itertools.cycle(self._urls)
         self._model = settings.llm_model
         self._max_tokens = settings.llm_max_tokens
+        self._direct = settings.active_ai_provider == "ninerouter_direct"
+        self._extra_prompt = settings.ninerouter_direct_prompt.strip()
         headers: dict[str, str] = {}
         api_key = normalize_api_key(settings.openai_api_key)
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        self._client = httpx.AsyncClient(timeout=settings.llm_timeout_seconds, headers=headers)
+        timeout: float | httpx.Timeout = settings.llm_timeout_seconds
+        if settings.active_ai_provider == "ninerouter_direct":
+            timeout = httpx.Timeout(
+                connect=settings.ninerouter_connect_timeout_seconds,
+                read=settings.ninerouter_read_timeout_seconds,
+                write=max(settings.ninerouter_read_timeout_seconds, 120.0),
+                pool=settings.ninerouter_connect_timeout_seconds,
+            )
+        self._client = httpx.AsyncClient(timeout=timeout, headers=headers)
 
     async def complete(
         self, system: str, user: str, *, json_object: bool = True, model: str | None = None
     ) -> str:
+        if self._extra_prompt:
+            system = f"{system.rstrip()}\n\n{self._extra_prompt}"
         body: dict[str, Any] = {
             "model": model or self._model,
             "temperature": 0.2,
@@ -215,7 +227,7 @@ class LlamaClient(LlmClient):
             body["response_format"] = {"type": "json_object"}
 
         last_error: Exception | None = None
-        for _ in range(len(self._urls)):
+        for _ in range(3 if self._direct else len(self._urls)):
             base = next(self._cycle)
             started = time.perf_counter()
             try:
@@ -266,6 +278,8 @@ class LlamaClient(LlmClient):
     async def stream(
         self, system: str, user: str, *, json_object: bool = True, model: str | None = None
     ) -> AsyncIterator[str]:
+        if self._extra_prompt:
+            system = f"{system.rstrip()}\n\n{self._extra_prompt}"
         body: dict[str, Any] = {
             "model": model or self._model,
             "temperature": 0.2,
@@ -280,7 +294,7 @@ class LlamaClient(LlmClient):
             body["response_format"] = {"type": "json_object"}
 
         last_error: Exception | None = None
-        for _ in range(len(self._urls)):
+        for _ in range(3 if self._direct else len(self._urls)):
             base = next(self._cycle)
             try:
                 async with self._client.stream("POST", f"{base}/v1/chat/completions", json=body) as response:
@@ -315,6 +329,8 @@ class LlamaClient(LlmClient):
         *,
         model: str | None = None,
     ) -> dict[str, Any]:
+        if self._extra_prompt:
+            system = f"{system.rstrip()}\n\n{self._extra_prompt}"
         body = {
             "model": model or self._model,
             "temperature": 0.2,
@@ -326,17 +342,37 @@ class LlamaClient(LlmClient):
             "tools": tools,
             "tool_choice": "auto",
         }
-        base = next(self._cycle)
-        response = await self._client.post(f"{base}/v1/chat/completions", json=body)
-        classified = classify_http(response.status_code, response.text, kind="llm")
-        if classified is not None:
-            raise classified
-        payload = response.json()
-        inspect_payload(payload, kind="llm")
-        message = payload.get("choices", [{}])[0].get("message")
-        if not isinstance(message, dict):
-            raise ProviderError("llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد.")
-        return message
+        last_error: Exception | None = None
+        for attempt in range(3 if self._direct else len(self._urls)):
+            base = next(self._cycle)
+            try:
+                response = await self._client.post(f"{base}/v1/chat/completions", json=body)
+                classified = classify_http(response.status_code, response.text, kind="llm")
+                if classified is not None:
+                    raise classified
+                payload = response.json()
+                inspect_payload(payload, kind="llm")
+                message = payload.get("choices", [{}])[0].get("message")
+                if not isinstance(message, dict):
+                    raise ProviderError(
+                        "llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد."
+                    )
+                return message
+            except ProviderError as exc:
+                if not exc.retryable:
+                    raise
+                last_error = exc
+            except httpx.HTTPError as exc:
+                last_error = exc
+            if attempt < 2 and self._direct:
+                await asyncio.sleep(0.25 * (2**attempt))
+        if isinstance(last_error, ProviderError):
+            raise last_error
+        raise ProviderError(
+            "llm_provider_unavailable",
+            "ارتباط با سرویس هوش مصنوعی موقتاً برقرار نشد.",
+            retryable=True,
+        ) from last_error
 
     @staticmethod
     async def _stream_response(response: httpx.Response) -> AsyncIterator[str]:

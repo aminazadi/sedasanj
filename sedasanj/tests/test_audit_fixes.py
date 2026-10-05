@@ -391,7 +391,7 @@ async def test_settings_update_persists_and_redacts_ninerouter_prompts(
         "ninerouter_chat_prompt": "راهنمای دستیار",
         "ninerouter_decision_prompt": "قاعده تصمیم",
     }
-    assert seen["audit"] == dict.fromkeys(result, "updated")
+    assert seen["audit"] == {"changed_settings": sorted(result)}
 
 
 @pytest.mark.asyncio
@@ -433,7 +433,7 @@ async def test_settings_update_ignores_blank_api_key(monkeypatch: pytest.MonkeyP
         FakeSession(),  # type: ignore[arg-type]
     )
     assert "get" not in seen
-    assert seen.get("audit") == {}
+    assert seen.get("audit") == {"changed_settings": []}
     assert result["api_key_configured"] is False
 
 
@@ -484,7 +484,7 @@ async def test_settings_update_normalizes_and_validates_api_key(
     assert seen["validated"] == "quoted-secret"
     assert isinstance(seen["row"], PlatformSetting)
     assert seen["row"].value == "quoted-secret"
-    assert seen["audit"] == {"api_key": "••••cret"}
+    assert seen["audit"] == {"changed_settings": ["api_key"]}
     assert result["api_key_configured"] is True
 
 
@@ -533,9 +533,8 @@ async def test_settings_update_persists_independent_9router_asr_config(
         "asr_api_key": "router-secret",
     }
     assert seen["audit"] == {
-        "asr_provider": "openai_compatible",
-        "asr_base_url": "https://router.sedasanj.ir",
-        "asr_api_key": "••••cret",
+        "changed_settings": ["asr_api_key", "asr_base_url", "asr_provider"],
+        "providers": {"asr_provider": "openai_compatible"},
     }
     assert result["asr_provider"] == "openai_compatible"
 
