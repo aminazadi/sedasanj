@@ -17,10 +17,13 @@ docker compose up -d --build
 ```env
 PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 PIP_DEFAULT_TIMEOUT=600
+TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ```
 
 بعد از تغییر mirror، `docker compose build --no-cache` را اجرا کنید. مقدار
 `PIP_EXTRA_INDEX_URL` عمداً خالی است تا pip مجدداً سراغ PyPI محدودشده نرود.
+فقط wheel اصلی PyTorch از `TORCH_INDEX_URL` دریافت می‌شود و همهٔ وابستگی‌های آن از
+mirror ایرانی `PIP_INDEX_URL` نصب می‌شوند.
 
 نسخه `sherpa-onnx` روی `1.12.39` ثابت شده است؛ این نسخه برای Python 3.11 و Linux
 x86_64/ARM64 wheel آماده دارد و روی mirror نیز موجود است.

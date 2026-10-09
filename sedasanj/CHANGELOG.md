@@ -2,6 +2,7 @@
 
 ## 2026-10-09 — AMINAZADI
 
+- Isolated PyTorch wheel downloads from dependency resolution so all transitive Python packages are installed through the configured Iranian PyPI mirror instead of `files.pythonhosted.org`.
 - Switched deployment Python package installation to the free Novin Cloud PyPI mirror hosted in Iran while preserving explicit overrides and the dedicated PyTorch wheel index.
 
 ## 2026-10-05 — AMINAZADI

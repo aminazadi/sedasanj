@@ -6,6 +6,7 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
         PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-600}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     image: persian-asr:latest
     restart: unless-stopped
     ports:

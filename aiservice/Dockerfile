@@ -4,6 +4,7 @@ FROM python:3.11-slim-bookworm AS python-builder
 ARG PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_DEFAULT_TIMEOUT=600
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG TARGETARCH
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
@@ -22,7 +23,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && if [ "${TARGETARCH}" = "arm64" ]; then \
          export CMAKE_ARGS="-DGGML_NATIVE=OFF"; \
        fi \
-    && /opt/venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.7.1+cpu \
+    && mkdir -p /tmp/torch-wheel \
+    && /opt/venv/bin/python -m pip download --no-deps --only-binary=:all: \
+       --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" --dest /tmp/torch-wheel \
+       --index-url "${TORCH_INDEX_URL}" torch==2.7.1+cpu \
+    && /opt/venv/bin/python -m pip install \
+       --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" /tmp/torch-wheel/torch-*.whl \
+    && rm -rf /tmp/torch-wheel \
     && /opt/venv/bin/python -m pip install \
        --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
        -r requirements-runtime.txt -r requirements-build.txt
