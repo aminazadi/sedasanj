@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
         PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-600}
     image: persian-asr:latest

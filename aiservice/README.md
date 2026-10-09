@@ -11,18 +11,12 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-برای شبکه‌هایی که دسترسی به PyPI محدود است، build به‌صورت پیش‌فرض از mirror دانشگاه
-Tsinghua استفاده می‌کند. منبع از `.env` قابل تغییر است:
+برای شبکه‌هایی که دسترسی به PyPI محدود است، build به‌صورت پیش‌فرض از mirror رایگان
+نوین‌کلاد در ایران استفاده می‌کند. منبع از `.env` قابل تغییر است:
 
 ```env
-PIP_INDEX_URL=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 PIP_DEFAULT_TIMEOUT=600
-```
-
-گزینه جایگزین:
-
-```env
-PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ```
 
 بعد از تغییر mirror، `docker compose build --no-cache` را اجرا کنید. مقدار

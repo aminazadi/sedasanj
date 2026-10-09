@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-09 — AMINAZADI
+
+- Switched deployment Python package installation to the free Novin Cloud PyPI mirror hosted in Iran while preserving explicit overrides and the dedicated PyTorch wheel index.
+
 ## 2026-10-05 — AMINAZADI
 
 - Added an encrypted, admin-managed direct 9Router integration with independent ASR, analysis, assistant, correction, decision, and embedding routing while preserving all existing AISERVICE paths.

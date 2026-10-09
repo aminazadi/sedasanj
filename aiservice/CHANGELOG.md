@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-09 — AMINAZADI
+
+- Switched deployment Python package installation to the free Novin Cloud PyPI mirror hosted in Iran while preserving explicit overrides and the dedicated PyTorch wheel index.
+
 ## 2026-10-03 — AMINAZADI
 
 - Added regression coverage for versioned GPT-4o transcription aliases so 9Router never sends unsupported verbose JSON to those models.

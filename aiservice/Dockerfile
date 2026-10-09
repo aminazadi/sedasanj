@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 FROM python:3.11-slim-bookworm AS python-builder
 
-ARG PIP_INDEX_URL=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+ARG PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_DEFAULT_TIMEOUT=600
 ARG TARGETARCH

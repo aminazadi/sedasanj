@@ -88,7 +88,7 @@ x-api-build: &api-build
   target: base
   network: ${BUILD_NETWORK:-host}
   args:
-    PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
 
 services:
   client:
@@ -232,7 +232,7 @@ services:
       target: emotion
       network: ${BUILD_NETWORK:-host}
       args:
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     restart: unless-stopped
     command: ["arq", "worker_emotion.main.WorkerSettings"]
