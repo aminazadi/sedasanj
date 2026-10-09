@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -672,22 +673,36 @@ def _assistant_input(question: str, sources: str, history: str) -> str:
     return f"پرسش فعلی: {question}\n\n[سابقهٔ گفتگوها]\n{history or 'سابقه‌ای وجود ندارد.'}\n\n[دادهٔ مجاز سازمان]\n{sources}"
 
 
+def _assistant_error(exc: Exception) -> str:
+    code = getattr(exc, "code", type(exc).__name__)
+    logger.warning("assistant response failed", extra={"extra_fields": {"error_code": code}})
+    return f"پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید. (کد: {code})"
+
+
 async def _generate_conversation_title(
     client: Any, model: str, question: str, answer: str
 ) -> str | None:
     try:
-        raw = await client.complete(
-            "برای یک گفتگوی دستیار صداسنج عنوان کوتاه فارسی تولید کن.",
-            f"پرسش کاربر: {question}\nپاسخ دستیار: {answer[:1000]}\n\n"
-            "فقط عنوان را در حداکثر ۶ واژه و بدون گیومه، نقطه یا توضیح اضافه برگردان.",
-            json_object=False,
-            model=model,
+        # Optional metadata must not delay or invalidate the completed answer.
+        async with asyncio.timeout(10):
+            raw = await client.complete(
+                "برای یک گفتگوی دستیار صداسنج عنوان کوتاه فارسی تولید کن.",
+                f"پرسش کاربر: {question}\nپاسخ دستیار: {answer[:1000]}\n\n"
+                "فقط عنوان را در حداکثر ۶ واژه و بدون گیومه، نقطه یا توضیح اضافه برگردان.",
+                json_object=False,
+                model=model,
+            )
+        lines = raw.strip().splitlines()
+        if not lines:
+            return None
+        title = lines[0].strip("# *_`«»\"'.،")
+        return title[:120].strip() or None
+    except Exception as exc:
+        logger.warning(
+            "assistant title unavailable",
+            extra={"extra_fields": {"error_code": getattr(exc, "code", type(exc).__name__)}},
         )
-    except Exception:
-        logger.exception("assistant conversation title generation failed")
         return None
-    title = raw.strip().splitlines()[0].strip("# *_`«»\"'.،")
-    return title[:120].strip() or None
 
 
 def _ephemeral_history(payload: EphemeralChatMessageCreate) -> str:
@@ -846,8 +861,8 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         finally:
             await client.close()
         status_value = "succeeded"
-    except Exception:
-        answer = "پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید."
+    except Exception as exc:
+        answer = _assistant_error(exc)
         status_value = "failed"
     assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
     conversation.updated_at = datetime.now(UTC)
@@ -1067,8 +1082,8 @@ async def stream_ephemeral_message(
                     await client.close()
             if not answer.strip():
                 raise RuntimeError("empty assistant response")
-        except Exception:
-            answer = "پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید."
+        except Exception as exc:
+            answer = _assistant_error(exc)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         usage.status = "failed" if status_value == "failed" else "succeeded"
@@ -1223,8 +1238,8 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                     await client.close()
             if not answer.strip():
                 raise RuntimeError("empty assistant response")
-        except Exception:
-            answer = "پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید."
+        except Exception as exc:
+            answer = _assistant_error(exc)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)

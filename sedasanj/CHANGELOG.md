@@ -2,6 +2,8 @@
 
 ## 2026-10-09 — AMINAZADI
 
+- Enabled upstream streaming exclusively for direct 9Router chat calls; normalized Chat Completions and Responses text/tool streams, retained JSON compatibility, and excluded reasoning from displayed answers.
+- Hardened assistant SSE framing and cleanup, bounded optional title generation, and added safe error codes without logging conversation content.
 - Fixed silent settings submission caused by invalid hidden-tab fields, removed unrelated AISERVICE-key dependencies, retained unsaved tab drafts, and added visible save feedback.
 - Added non-persisting 9Router connection/model previews, independent model discovery results, effective provider/model validation, and recoverable encrypted-secret configuration errors.
 - Audited direct ASR, analysis, assistant, correction, decision, and embedding routing; fixed ASR model metadata, correction prompt/deadline handling, and AISERVICE-independent decisions with confidence-threshold enforcement.

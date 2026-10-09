@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings, normalize_api_key
+from app.services.provider_chat import chat_message, post_streamed_chat
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
 
 SECRET_PATTERN = re.compile(r"(?i)(bearer\s+|9r_|sk-)[A-Za-z0-9._-]+")
@@ -30,20 +31,6 @@ def response_json(response: httpx.Response) -> Any:
         return response.json()
     except ValueError as exc:
         raise ProviderError("provider_response", "پاسخ سرویس JSON معتبر نیست.") from exc
-
-
-def chat_message(payload: Any) -> dict[str, Any]:
-    inspect_payload(payload, kind="llm")
-    choices = payload.get("choices") if isinstance(payload, dict) else None
-    choice = choices[0] if isinstance(choices, list) and choices else None
-    message = choice.get("message") if isinstance(choice, dict) else None
-    if not isinstance(message, dict) or choice.get("finish_reason") in {"length", "content_filter"}:
-        raise ProviderError("llm_provider_response", "پاسخ مدل ناقص یا نامعتبر است.")
-    if not isinstance(message.get("content"), str) and not isinstance(
-        message.get("tool_calls"), list
-    ):
-        raise ProviderError("llm_provider_response", "مدل متن یا فراخوانی ابزار معتبری برنگرداند.")
-    return message
 
 
 class NineRouterClient:
@@ -91,7 +78,12 @@ class NineRouterClient:
         last_error: ProviderError | None = None
         for attempt in range(3):
             try:
-                response = await self._client.request(method, f"{self._base}{path}", **kwargs)
+                if method == "POST" and path == "/v1/chat/completions":
+                    response = await post_streamed_chat(
+                        self._client, f"{self._base}{path}", kwargs["json"]
+                    )
+                else:
+                    response = await self._client.request(method, f"{self._base}{path}", **kwargs)
             except httpx.TimeoutException as exc:
                 last_error = ProviderError(
                     f"{kind}_provider_timeout",

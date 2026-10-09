@@ -16,7 +16,8 @@ import httpx
 
 from app.config import Settings, normalize_api_key
 from app.metrics import llm_tokens_per_second
-from app.services.ninerouter import chat_message, response_json
+from app.services.ninerouter import response_json
+from app.services.provider_chat import ChatStream, chat_message, post_streamed_chat, stream_chat
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
 from app.services.voicesanj import VOICESANJ_USER_AGENT
 
@@ -217,6 +218,11 @@ class LlamaClient(LlmClient):
             )
         self._client = httpx.AsyncClient(timeout=timeout, headers=headers)
 
+    async def _post_chat(self, url: str, body: dict[str, Any]) -> httpx.Response:
+        if self._direct:
+            return await post_streamed_chat(self._client, url, body)
+        return await self._client.post(url, json=body)
+
     async def complete(
         self, system: str, user: str, *, json_object: bool = True, model: str | None = None
     ) -> str:
@@ -239,14 +245,12 @@ class LlamaClient(LlmClient):
             base = next(self._cycle)
             started = time.perf_counter()
             try:
-                response = await self._client.post(f"{base}/v1/chat/completions", json=body)
+                response = await self._post_chat(f"{base}/v1/chat/completions", body)
                 if response.status_code == 400 and json_object and "response_format" in body:
                     retry_body = {
                         key: value for key, value in body.items() if key != "response_format"
                     }
-                    response = await self._client.post(
-                        f"{base}/v1/chat/completions", json=retry_body
-                    )
+                    response = await self._post_chat(f"{base}/v1/chat/completions", retry_body)
                 classified = classify_http(
                     response.status_code,
                     response.text.replace(self._secret, "[redacted]")
@@ -279,7 +283,11 @@ class LlamaClient(LlmClient):
                     )
             else:
                 elapsed = max(time.perf_counter() - started, 1e-6)
-                completion_tokens = int(data.get("usage", {}).get("completion_tokens") or 0)
+                completion_tokens = int(
+                    (data.get("usage") or {}).get("completion_tokens")
+                    or (data.get("usage") or {}).get("output_tokens")
+                    or 0
+                )
                 if completion_tokens:
                     llm_tokens_per_second.observe(completion_tokens / elapsed)
                 content = message.get("content")
@@ -376,7 +384,7 @@ class LlamaClient(LlmClient):
         for attempt in range(3 if self._direct else len(self._urls)):
             base = next(self._cycle)
             try:
-                response = await self._client.post(f"{base}/v1/chat/completions", json=body)
+                response = await self._post_chat(f"{base}/v1/chat/completions", body)
                 classified = classify_http(
                     response.status_code,
                     response.text.replace(self._secret, "[redacted]")
@@ -419,38 +427,12 @@ class LlamaClient(LlmClient):
             ) is not None:
                 raise classified
             raise ProviderError("llm_provider_response", "سرویس هوش مصنوعی پاسخ نامنتظره داد.")
-        emitted = False
-        finished = False
-        async for line in response.aiter_lines():
-            if not line.startswith("data:"):
-                continue
-            payload = line[5:].strip()
-            if payload == "[DONE]":
-                if not emitted:
-                    raise ProviderError("llm_provider_response", "مدل پاسخ خالی برگرداند.")
-                return
-            try:
-                data = json.loads(payload)
-            except json.JSONDecodeError as exc:
-                raise ProviderError("llm_provider_response", "جریان پاسخ مدل نامعتبر است.") from exc
-            inspect_payload(data, kind="llm")
-            choices = data.get("choices") if isinstance(data, dict) else None
-            if choices == [] and isinstance(data.get("usage"), dict):
-                continue
-            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-                raise ProviderError("llm_provider_response", "جریان پاسخ مدل نامعتبر است.")
-            choice = choices[0]
-            if choice.get("finish_reason") in {"length", "content_filter"}:
-                raise ProviderError("llm_provider_response", "پاسخ مدل ناقص است.")
-            finished = finished or choice.get("finish_reason") == "stop"
-            delta = choice.get("delta", {})
-            content = delta.get("content") if isinstance(delta, dict) else None
-            if isinstance(content, str) and content:
-                emitted = True
-                yield content
-        if not finished or not emitted:
+        state = ChatStream()
+        async for text in stream_chat(response, state):
+            yield text
+        if not state.text.strip():
             raise ProviderError(
-                "llm_provider_stream_interrupted", "جریان پاسخ مدل پیش از تکمیل قطع شد."
+                "llm_provider_response", "مدل پاسخ متنی برنگرداند.", retryable=False
             )
 
     async def close(self) -> None:

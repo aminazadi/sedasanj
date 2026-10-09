@@ -596,8 +596,9 @@ export default function Assistant() {
       return new Promise<void>((resolve) => { resolveTyping = resolve; });
     };
     const handleEvent = (frame: string) => {
-      const event = /^event: (.+)$/m.exec(frame)?.[1];
-      const data = /^data: (.+)$/m.exec(frame)?.[1];
+      const lines = frame.split(/\r?\n/);
+      const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
+      const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
       if (!event || !data) return;
       const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; conversation_title?: string | null; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string; charts?: AssistantChart[] };
       const content = payload.content;
@@ -623,18 +624,29 @@ export default function Assistant() {
         conversationTitle = payload.conversation_title || null;
       }
     };
-    while (true) {
-      const { done, value } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? "";
-      frames.forEach(handleEvent);
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const frames = buffer.split(/\r?\n\r?\n/);
+        buffer = frames.pop() ?? "";
+        frames.forEach(handleEvent);
+        if (done) {
+          if (buffer.trim()) handleEvent(buffer);
+          break;
+        }
+      }
+      if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
+      await waitForTyping();
+      setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
+      return { message: completed as ChatMessage, conversationTitle };
+    } finally {
+      if (typingTimer !== null) window.clearTimeout(typingTimer);
+      pendingText = "";
+      finishTyping();
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
     }
-    if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
-    await waitForTyping();
-    setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
-    return { message: completed as ChatMessage, conversationTitle };
   }
 
   async function sendBranch(content: string, history: ChatMessage[], branchAttachments: AssistantMessageAttachments = attachments) {
