@@ -7,6 +7,14 @@ from app.config import get_settings
 PREFIX = "fernet:v1:"
 
 
+def secret_storage_error() -> str:
+    try:
+        _fernet()
+    except RuntimeError as exc:
+        return str(exc)
+    return ""
+
+
 def _fernet() -> Fernet:
     key = (get_settings().platform_secrets_key or "").strip()
     if not key:

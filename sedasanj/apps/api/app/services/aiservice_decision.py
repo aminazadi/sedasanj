@@ -23,7 +23,7 @@ class AiServiceDecisionClient:
         self._path = settings.aiservice_decision_path
         self._base = (settings.voicesanj_base_url or "").rstrip("/")
         key = normalize_api_key(settings.decision_api_key or settings.voicesanj_api_key)
-        if not self._base or not key:
+        if not self._direct and (not self._base or not key):
             raise ProviderError("decision_provider_config", "تنظیمات سرویس تصمیم‌گیری کامل نیست.")
         self._threshold = settings.decision_confidence_threshold
         self._ninerouter_prompt = (
@@ -38,7 +38,9 @@ class AiServiceDecisionClient:
             headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
         )
 
-    async def decide(self, *, model: str, state: str | dict[str, Any], questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    async def decide(
+        self, *, model: str, state: str | dict[str, Any], questions: dict[str, dict[str, Any]]
+    ) -> dict[str, Any]:
         if self._ninerouter_prompt:
             questions = {
                 key: {
@@ -90,42 +92,89 @@ class AiServiceDecisionClient:
                     },
                 ],
             )
-            return _validate_direct_decision(parsed, questions)
-        body = {"model": model, "state": state, "questions": questions, "confidence_threshold": self._threshold}
+            result = _validate_direct_decision(parsed, questions)
+            for answer in result["answers"].values():
+                if answer["confidence"] < self._threshold or answer["abstained"]:
+                    answer["abstained"] = True
+                    answer["answer"] = None
+            return result
+        body = {
+            "model": model,
+            "state": state,
+            "questions": questions,
+            "confidence_threshold": self._threshold,
+        }
         fingerprint = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        idempotency_key = "cbi-decision-" + hashlib.sha256(f"{self._namespace}:{fingerprint}".encode()).hexdigest()
-        response = await self._request("POST", self._path, json=body, headers={"Idempotency-Key": idempotency_key}, expected={200, 202})
+        idempotency_key = (
+            "cbi-decision-"
+            + hashlib.sha256(f"{self._namespace}:{fingerprint}".encode()).hexdigest()
+        )
+        response = await self._request(
+            "POST",
+            self._path,
+            json=body,
+            headers={"Idempotency-Key": idempotency_key},
+            expected={200, 202},
+        )
         task = response.json()
         if not isinstance(task, dict) or not isinstance(task.get("task_id"), str):
-            raise ProviderError("decision_provider_response", "پاسخ task سرویس تصمیم‌گیری نامعتبر است.")
+            raise ProviderError(
+                "decision_provider_response", "پاسخ task سرویس تصمیم‌گیری نامعتبر است."
+            )
         deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
             status = await self._request("GET", f"/v1/tasks/{task['task_id']}", expected={200})
             payload = status.json()
             if not isinstance(payload, dict):
-                raise ProviderError("decision_provider_response", "وضعیت task تصمیم‌گیری نامعتبر است.")
+                raise ProviderError(
+                    "decision_provider_response", "وضعیت task تصمیم‌گیری نامعتبر است."
+                )
             if payload.get("status") == "succeeded":
-                result = await self._request("GET", f"/v1/tasks/{task['task_id']}/result", expected={200})
+                result = await self._request(
+                    "GET", f"/v1/tasks/{task['task_id']}/result", expected={200}
+                )
                 parsed = result.json()
-                if not isinstance(parsed, dict) or parsed.get("version") != "v1" or not isinstance(parsed.get("answers"), dict):
-                    raise ProviderError("decision_provider_response", "خروجی typed سرویس تصمیم‌گیری نامعتبر است.")
+                if (
+                    not isinstance(parsed, dict)
+                    or parsed.get("version") != "v1"
+                    or not isinstance(parsed.get("answers"), dict)
+                ):
+                    raise ProviderError(
+                        "decision_provider_response", "خروجی typed سرویس تصمیم‌گیری نامعتبر است."
+                    )
                 return parsed
             if payload.get("status") in {"failed", "cancelled"}:
-                raise ProviderError("decision_provider_task_failed", "سرویس تصمیم‌گیری task را ناموفق اعلام کرد.", retryable=False)
+                raise ProviderError(
+                    "decision_provider_task_failed",
+                    "سرویس تصمیم‌گیری task را ناموفق اعلام کرد.",
+                    retryable=False,
+                )
             await asyncio.sleep(0.5)
-        raise ProviderError("decision_provider_timeout", "مهلت دریافت نتیجه تصمیم‌گیری تمام شد.", retryable=True)
+        raise ProviderError(
+            "decision_provider_timeout", "مهلت دریافت نتیجه تصمیم‌گیری تمام شد.", retryable=True
+        )
 
-    async def _request(self, method: str, path: str, *, expected: set[int], **kwargs: Any) -> httpx.Response:
+    async def _request(
+        self, method: str, path: str, *, expected: set[int], **kwargs: Any
+    ) -> httpx.Response:
         try:
             response = await self._client.request(method, f"{self._base}{path}", **kwargs)
         except httpx.TimeoutException as exc:
-            raise ProviderError("decision_provider_timeout", "ارتباط با سرویس تصمیم‌گیری timeout شد.", retryable=True) from exc
+            raise ProviderError(
+                "decision_provider_timeout", "ارتباط با سرویس تصمیم‌گیری timeout شد.", retryable=True
+            ) from exc
         except httpx.HTTPError as exc:
-            raise ProviderError("decision_provider_unavailable", "ارتباط با سرویس تصمیم‌گیری برقرار نشد.", retryable=True) from exc
+            raise ProviderError(
+                "decision_provider_unavailable",
+                "ارتباط با سرویس تصمیم‌گیری برقرار نشد.",
+                retryable=True,
+            ) from exc
         if response.status_code not in expected:
             classified = classify_http(response.status_code, response.text, kind="llm")
             if classified is not None:
-                raise ProviderError(f"decision_{classified.code}", classified.detail, retryable=classified.retryable)
+                raise ProviderError(
+                    f"decision_{classified.code}", classified.detail, retryable=classified.retryable
+                )
             raise ProviderError("decision_provider_response", "سرویس تصمیم‌گیری پاسخ نامنتظره داد.")
         return response
 
@@ -149,27 +198,55 @@ def _validate_direct_decision(
         if not isinstance(answer, dict):
             raise ProviderError("decision_provider_response", "پاسخ تصمیم‌گیری نامعتبر است.")
         confidence = answer.get("confidence")
-        if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0 <= float(confidence) <= 1
+        ):
             raise ProviderError("decision_provider_response", "اطمینان تصمیم‌گیری نامعتبر است.")
         question_type = str(question.get("type") or "")
         if answer.get("type") != question_type:
             raise ProviderError("decision_provider_response", "نوع پاسخ تصمیم‌گیری نامعتبر است.")
         margin = answer.get("margin")
-        if not isinstance(margin, (int, float)) or not 0 <= float(margin) <= 1:
-            raise ProviderError("decision_provider_response", "حاشیه اطمینان تصمیم‌گیری نامعتبر است.")
+        if (
+            isinstance(margin, bool)
+            or not isinstance(margin, (int, float))
+            or not 0 <= float(margin) <= 1
+        ):
+            raise ProviderError(
+                "decision_provider_response", "حاشیه اطمینان تصمیم‌گیری نامعتبر است."
+            )
         abstained = answer.get("abstained")
         if not isinstance(abstained, bool):
-            raise ProviderError("decision_provider_response", "وضعیت abstain تصمیم‌گیری نامعتبر است.")
+            raise ProviderError(
+                "decision_provider_response", "وضعیت abstain تصمیم‌گیری نامعتبر است."
+            )
         value = answer.get("answer")
         criteria = question.get("criteria")
         if not abstained and question_type == "score":
-            if not isinstance(value, (int, float)) or not isinstance(criteria, list) or not 0 <= float(value) < len(criteria):
-                raise ProviderError("decision_provider_response", "امتیاز تصمیم‌گیری خارج از محدوده است.")
-        if not abstained and question_type == "choice" and isinstance(criteria, dict) and value not in criteria:
-            raise ProviderError("decision_provider_response", "انتخاب تصمیم‌گیری خارج از گزینه‌های مجاز است.")
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isinstance(criteria, list)
+                or not 0 <= float(value) < len(criteria)
+            ):
+                raise ProviderError(
+                    "decision_provider_response", "امتیاز تصمیم‌گیری خارج از محدوده است."
+                )
+        if (
+            not abstained
+            and question_type == "choice"
+            and isinstance(criteria, dict)
+            and (not isinstance(value, str) or value not in criteria)
+        ):
+            raise ProviderError(
+                "decision_provider_response", "انتخاب تصمیم‌گیری خارج از گزینه‌های مجاز است."
+            )
         probabilities = answer.get("probabilities")
         if not isinstance(probabilities, dict) or any(
-            not isinstance(item, (int, float)) or not 0 <= float(item) <= 1
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not 0 <= float(item) <= 1
             for item in probabilities.values()
         ):
             raise ProviderError("decision_provider_response", "احتمال‌های تصمیم‌گیری نامعتبر است.")

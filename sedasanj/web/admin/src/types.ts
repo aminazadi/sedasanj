@@ -158,6 +158,7 @@ export interface PlatformSettings {
   decision_provider: "aiservice" | "ninerouter_direct";
   embedding_provider: "aiservice" | "ninerouter_direct";
   ninerouter_base_url: string;
+  ninerouter_configuration_error?: string;
   ninerouter_api_key_configured: boolean;
   ninerouter_api_key_hint: string;
   ninerouter_connect_timeout_seconds: number;

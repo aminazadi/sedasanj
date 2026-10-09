@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -24,10 +25,32 @@ def redact_detail(value: object) -> str:
     return SECRET_PATTERN.sub(lambda match: f"{match.group(1)}[redacted]", str(value))[:500]
 
 
+def response_json(response: httpx.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise ProviderError("provider_response", "پاسخ سرویس JSON معتبر نیست.") from exc
+
+
+def chat_message(payload: Any) -> dict[str, Any]:
+    inspect_payload(payload, kind="llm")
+    choices = payload.get("choices") if isinstance(payload, dict) else None
+    choice = choices[0] if isinstance(choices, list) and choices else None
+    message = choice.get("message") if isinstance(choice, dict) else None
+    if not isinstance(message, dict) or choice.get("finish_reason") in {"length", "content_filter"}:
+        raise ProviderError("llm_provider_response", "پاسخ مدل ناقص یا نامعتبر است.")
+    if not isinstance(message.get("content"), str) and not isinstance(
+        message.get("tool_calls"), list
+    ):
+        raise ProviderError("llm_provider_response", "مدل متن یا فراخوانی ابزار معتبری برنگرداند.")
+    return message
+
+
 class NineRouterClient:
     def __init__(self, settings: Settings) -> None:
         self._base = settings.ninerouter_base_url.rstrip("/")
         key = normalize_api_key(settings.ninerouter_api_key)
+        self._secret = key
         if not self._base or not key:
             raise ProviderError(
                 "ninerouter_configuration",
@@ -88,10 +111,11 @@ class NineRouterClient:
             else:
                 if response.status_code in expected:
                     return response
-                classified = classify_http(response.status_code, response.text, kind=kind)
+                safe_detail = response.text.replace(self._secret, "[redacted]")
+                classified = classify_http(response.status_code, safe_detail, kind=kind)
                 last_error = classified or ProviderError(
                     f"{kind}_provider_response",
-                    f"9Router پاسخ HTTP {response.status_code} داد: {redact_detail(response.text)}",
+                    f"9Router پاسخ HTTP {response.status_code} داد: {redact_detail(safe_detail)}",
                     retryable=response.status_code == 429 or response.status_code >= 500,
                 )
                 if not last_error.retryable or attempt == 2:
@@ -103,7 +127,7 @@ class NineRouterClient:
 
     async def health(self) -> dict[str, Any]:
         response = await self._request("GET", "/api/health")
-        payload = response.json()
+        payload = response_json(response)
         if not isinstance(payload, dict):
             raise ProviderError("ninerouter_response", "پاسخ سلامت 9Router نامعتبر است.")
         version = str(payload.get("version") or "").strip().lstrip("v")
@@ -120,7 +144,7 @@ class NineRouterClient:
         if kind not in MODEL_PATHS:
             raise ValueError("kind must be chat, stt, or embedding")
         response = await self._request("GET", MODEL_PATHS[kind])
-        payload = response.json()
+        payload = response_json(response)
         rows = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(rows, list):
             raise ProviderError("ninerouter_response", "فهرست مدل‌های 9Router نامعتبر است.")
@@ -133,22 +157,32 @@ class NineRouterClient:
             kind="llm",
             json={"model": model, "input": content, "encoding_format": "float"},
         )
-        payload = response.json()
+        payload = response_json(response)
         inspect_payload(payload, kind="llm")
         data = payload.get("data") if isinstance(payload, dict) else None
-        vector = data[0].get("embedding") if isinstance(data, list) and data else None
-        if not isinstance(vector, list) or not vector:
+        vector = (
+            data[0].get("embedding")
+            if isinstance(data, list) and data and isinstance(data[0], dict)
+            else None
+        )
+        if (
+            not isinstance(vector, list)
+            or not vector
+            or len(vector) > 4096
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                for value in vector
+            )
+        ):
             raise ProviderError("embedding_provider_response", "9Router بردار معتبری برنگرداند.")
         return [float(value) for value in vector]
 
     async def chat(self, body: dict[str, Any]) -> dict[str, Any]:
-        response = await self._request(
-            "POST", "/v1/chat/completions", kind="llm", json=body
-        )
-        payload = response.json()
-        inspect_payload(payload, kind="llm")
-        if not isinstance(payload, dict) or not isinstance(payload.get("choices"), list):
-            raise ProviderError("llm_provider_response", "پاسخ Chat از 9Router نامعتبر است.")
+        response = await self._request("POST", "/v1/chat/completions", kind="llm", json=body)
+        payload = response_json(response)
+        chat_message(payload)
         return payload
 
     async def transcribe(
@@ -192,6 +226,7 @@ class NineRouterClient:
                 fallback_payload: Any = fallback.json()
             except ValueError:
                 fallback_payload = fallback.text
+            inspect_payload(fallback_payload, kind="asr")
             text = _transcription_text(fallback_payload)
             if text:
                 payload = {"text": text}
@@ -201,7 +236,7 @@ class NineRouterClient:
             )
         if not isinstance(payload, dict):
             payload = {"text": text}
-        payload.setdefault("text", text)
+        payload["text"] = text
         payload.setdefault("model", model)
         return payload
 
@@ -253,8 +288,7 @@ async def retry_json_chat(
                 {
                     "role": "user",
                     "content": (
-                        "خروجی قبلی JSON معتبر نبود. فقط یک شیء JSON معتبر "
-                        "مطابق قرارداد برگردان."
+                        "خروجی قبلی JSON معتبر نبود. فقط یک شیء JSON معتبر مطابق قرارداد برگردان."
                     ),
                 },
             ]

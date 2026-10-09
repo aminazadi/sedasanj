@@ -943,6 +943,13 @@ class AuditEventOut(BaseModel):
     created_at: datetime
 
 
+class NineRouterConnectionInput(BaseModel):
+    ninerouter_base_url: str | None = None
+    ninerouter_api_key: str | None = Field(default=None, max_length=4096)
+    ninerouter_connect_timeout_seconds: int | None = Field(default=None, ge=1, le=60)
+    ninerouter_read_timeout_seconds: int | None = Field(default=None, ge=10, le=3600)
+
+
 class SettingsUpdate(BaseModel):
     asr_model: str | None = None
     llm_provider: Literal["local", "voicesanj"] | None = None

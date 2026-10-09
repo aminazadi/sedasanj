@@ -248,7 +248,7 @@ class CorrectionClient:
             {
                 "role": "system",
                 "content": (
-                    f"{contract}\n\n{self._runtime.ninerouter_direct_prompt.strip()}"
+                    f"{contract}\n\n{prompt.strip()}\n\n{self._runtime.ninerouter_direct_prompt.strip()}"
                 ).strip(),
             },
             {

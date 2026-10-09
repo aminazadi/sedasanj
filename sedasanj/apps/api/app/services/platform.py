@@ -12,7 +12,8 @@ from app.config import Settings, get_settings, normalize_api_key
 from app.db import get_sessionmaker
 from app.models import KpiConfiguration, PlatformSetting
 from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
-from app.services.platform_secrets import decrypt_secret
+from app.services.platform_secrets import decrypt_secret, secret_storage_error
+from app.services.provider_errors import ProviderError
 from worker_llm.client import load_prompt
 
 EXTRACT_PROMPT_KEY = "extract-fa-v3-prompt"
@@ -356,15 +357,23 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
             await settings_session.close()
     rows = scalar_rows.all() if hasattr(scalar_rows, "all") else list(scalar_rows)
     row_keys = {row.key for row in rows}
+    values["ninerouter_configuration_error"] = ""
     for row in rows:
-        values[row.key] = (
-            decrypt_secret(row.value)
-            if row.key == "ninerouter_api_key"
-            else
-            normalize_api_key(row.value)
-            if row.key in {"api_key", "asr_api_key", "decision_api_key", "embedding_api_key"}
-            else row.value
-        )
+        if row.key == "ninerouter_api_key":
+            try:
+                values[row.key] = decrypt_secret(row.value)
+            except RuntimeError:
+                values[row.key] = ""
+                values["ninerouter_configuration_error"] = (
+                    "کلید ذخیره‌شدهٔ 9Router قابل خواندن نیست؛ "
+                    "تنظیم کلید رمزنگاری سرور را بررسی کنید."
+                )
+        else:
+            values[row.key] = (
+                normalize_api_key(row.value)
+                if row.key in {"api_key", "asr_api_key", "decision_api_key", "embedding_api_key"}
+                else row.value
+            )
     shared_key = normalize_api_key(values["api_key"])
     values["llm_provider"] = "voicesanj"
     values["asr_provider"] = "voicesanj"
@@ -454,6 +463,8 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "decision_provider": values["decision_provider"],
         "embedding_provider": values["embedding_provider"],
         "ninerouter_base_url": values["ninerouter_base_url"],
+        "ninerouter_configuration_error": values["ninerouter_configuration_error"]
+        or secret_storage_error(),
         "ninerouter_api_key_configured": bool(values["ninerouter_api_key"].strip()),
         "ninerouter_api_key_hint": mask_api_key(values["ninerouter_api_key"]),
         "ninerouter_connect_timeout_seconds": int(values["ninerouter_connect_timeout_seconds"]),
@@ -573,6 +584,10 @@ async def resolve_provider_settings(
     provider = provider_override or overrides.get(provider_key, "aiservice")
     if provider != "ninerouter_direct":
         return runtime.model_copy(update={"active_ai_provider": "aiservice"})
+    if overrides.get("ninerouter_configuration_error"):
+        raise ProviderError(
+            "ninerouter_configuration", overrides["ninerouter_configuration_error"], retryable=False
+        )
     direct_key = normalize_api_key(overrides.get("ninerouter_api_key")) or None
     direct_base = normalize_provider_base_url(overrides["ninerouter_base_url"])
     model_key = {
@@ -610,6 +625,7 @@ async def resolve_provider_settings(
             "llama_server_urls": direct_base,
             "openai_api_key": direct_key,
             "asr_engine": "whisper" if capability == "asr" else runtime.asr_engine,
+            "asr_model_name": direct_model if capability == "asr" else runtime.asr_model_name,
             "whisper_model": direct_model or runtime.whisper_model,
             "asr_provider_base_url": direct_base,
             "asr_provider_api_key": direct_key,

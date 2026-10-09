@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings, normalize_api_key
+from app.config import Settings, get_settings, normalize_api_key
 from app.db import (
     operational_tenant_ids,
     resolve_tenant_for_job,
@@ -51,6 +51,7 @@ from app.schemas import (
     KnowledgeRetryRequest,
     LoginRequest,
     LoginStep,
+    NineRouterConnectionInput,
     PackageCreate,
     PackageOut,
     PackageUpdate,
@@ -104,7 +105,7 @@ from app.services.platform import (
     resolve_provider_settings,
     settings_public_view,
 )
-from app.services.platform_secrets import encrypt_secret
+from app.services.platform_secrets import decrypt_secret, encrypt_secret
 from app.services.provider_errors import ProviderError
 from app.services.tenant_provisioning import rollback_tenant
 from app.services.transcript_corrections import CorrectionClient, validate_result
@@ -1201,24 +1202,43 @@ async def update_platform_settings(
         "decision_provider": "ninerouter_decision_model",
         "embedding_provider": "ninerouter_embedding_model",
     }
-    if any(changes.get(key) == "ninerouter_direct" for key in direct_provider_keys):
+    for provider_key, model_key in direct_provider_keys.items():
+        if not {provider_key, model_key, "ninerouter_api_key"}.intersection(changes):
+            continue
+        saved_provider = await session.get(PlatformSetting, provider_key)
+        provider = changes.get(
+            provider_key, saved_provider.value if saved_provider else "aiservice"
+        )
+        if provider != "ninerouter_direct":
+            continue
         saved_secret = await session.get(PlatformSetting, "ninerouter_api_key")
-        if not changes.get("ninerouter_api_key") and saved_secret is None:
-            raise ApiError("invalid_request", "9Router API key is required")
-        for provider_key, model_key in direct_provider_keys.items():
-            if changes.get(provider_key) != "ninerouter_direct":
-                continue
-            selected = changes.get(model_key)
-            if selected is None:
-                saved_model = await session.get(PlatformSetting, model_key)
-                selected = saved_model.value if saved_model is not None else None
-            if model_key == "ninerouter_correction_models" and isinstance(selected, str):
+        encrypted = changes.get("ninerouter_api_key") or (
+            saved_secret.value if saved_secret else ""
+        )
+        try:
+            if not decrypt_secret(encrypted):
+                raise ApiError("invalid_request", "9Router API key is required")
+        except RuntimeError as exc:
+            raise ApiError("invalid_request", str(exc)) from exc
+        selected = changes.get(model_key)
+        if selected is None:
+            saved_model = await session.get(PlatformSetting, model_key)
+            selected = saved_model.value if saved_model else None
+        if model_key == "ninerouter_correction_models":
+            if isinstance(selected, str):
                 try:
                     selected = json.loads(selected)
-                except json.JSONDecodeError:
+                except ValueError:
                     selected = []
-            if not selected:
-                raise ApiError("invalid_request", f"{model_key} is required")
+            valid = (
+                isinstance(selected, list)
+                and bool(selected)
+                and all(str(item).strip() for item in selected)
+            )
+        else:
+            valid = isinstance(selected, str) and bool(selected.strip())
+        if not valid:
+            raise ApiError("invalid_request", f"{model_key} is required")
     selected_asr_provider = changes.get("asr_provider")
     if selected_asr_provider == "local" and get_settings().asr_engine in {
         "voicesanj",
@@ -1432,25 +1452,47 @@ async def list_provider_models(staff: StaffDep, session: StaffSession) -> list[P
     )
 
 
-@router.get("/ninerouter/models", response_model=list[ProviderModelOut])
-async def list_ninerouter_models(
-    staff: StaffDep,
-    session: StaffSession,
-    kind: Annotated[str, Query(pattern="^(chat|stt|embedding)$")] = "chat",
-) -> list[ProviderModelOut]:
-    del staff
-    capability = "asr" if kind == "stt" else "embedding" if kind == "embedding" else "assistant"
-    runtime = await resolve_provider_settings(
-        session, capability=capability, provider_override="ninerouter_direct"
+async def _ninerouter_runtime(
+    session: AsyncSession, payload: NineRouterConnectionInput | None = None
+) -> Settings:
+    updates = payload.model_dump(exclude_none=True) if payload else {}
+    # Connection discovery must not depend on models or the other provider's configuration.
+    values: dict[str, Any] = {}
+    for key in NineRouterConnectionInput.model_fields:
+        value = updates.get(key)
+        if key == "ninerouter_api_key":
+            value = normalize_api_key(value)
+        if value is None or (key == "ninerouter_api_key" and not value):
+            row = await session.get(PlatformSetting, key)
+            if row is not None:
+                value = decrypt_secret(row.value) if key == "ninerouter_api_key" else row.value
+        if value is not None:
+            values[key] = value
+    values["ninerouter_base_url"] = normalize_provider_base_url(
+        str(values.get("ninerouter_base_url") or "http://127.0.0.1:20128")
     )
-    client = NineRouterClient(runtime)
+    for key in ("ninerouter_connect_timeout_seconds", "ninerouter_read_timeout_seconds"):
+        if key in values:
+            values[key] = float(values[key])
+    return get_settings().model_copy(update=values)
+
+
+async def _ninerouter_models(
+    session: AsyncSession, kind: str, payload: NineRouterConnectionInput | None = None
+) -> list[ProviderModelOut]:
+    client = None
     try:
+        client = NineRouterClient(await _ninerouter_runtime(session, payload))
         rows = await client.list_models(kind)
     except ProviderError as exc:
-        code = "invalid_request" if not exc.retryable else "internal"
-        raise ApiError(code, exc.detail, retryable=exc.retryable) from exc
+        raise ApiError(
+            "internal" if exc.retryable else "invalid_request", exc.detail, retryable=exc.retryable
+        ) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise ApiError("invalid_request", str(exc)) from exc
     finally:
-        await client.close()
+        if client is not None:
+            await client.close()
     mapped_kind = "asr" if kind == "stt" else "embedding" if kind == "embedding" else "llm"
     return [
         ProviderModelOut(
@@ -1465,25 +1507,37 @@ async def list_ninerouter_models(
     ]
 
 
+@router.get("/ninerouter/models", response_model=list[ProviderModelOut])
+async def list_ninerouter_models(
+    staff: StaffDep,
+    session: StaffSession,
+    kind: Annotated[str, Query(pattern="^(chat|stt|embedding)$")] = "chat",
+) -> list[ProviderModelOut]:
+    return await _ninerouter_models(session, kind)
+
+
+@router.post("/ninerouter/models", response_model=list[ProviderModelOut])
+async def preview_ninerouter_models(
+    payload: NineRouterConnectionInput,
+    staff: SuperAdminDep,
+    session: StaffSession,
+    kind: Annotated[str, Query(pattern="^(chat|stt|embedding)$")] = "chat",
+) -> list[ProviderModelOut]:
+    return await _ninerouter_models(session, kind, payload)
+
+
 @router.post("/ninerouter/test")
 async def test_ninerouter_connection(
-    request: Request, staff: StaffDep, session: StaffSession
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+    payload: NineRouterConnectionInput | None = None,
 ) -> dict[str, Any]:
-    runtime = await resolve_provider_settings(
-        session, capability="assistant", provider_override="ninerouter_direct"
-    )
-    client = NineRouterClient(runtime)
+    client = None
     try:
+        client = NineRouterClient(await _ninerouter_runtime(session, payload))
         health = await client.health()
         chat_models = await client.list_models("chat")
-        await audit.record(
-            session,
-            actor_type="staff",
-            actor_id=staff.id,
-            action="ninerouter.connection_test",
-            payload={"provider": "ninerouter_direct", "status": "connected"},
-            ip=client_ip(request),
-        )
     except ProviderError as exc:
         await audit.record(
             session,
@@ -1494,21 +1548,31 @@ async def test_ninerouter_connection(
             ip=client_ip(request),
         )
         await session.commit()
-        code = "invalid_request" if not exc.retryable else "internal"
-        raise ApiError(code, exc.detail, retryable=exc.retryable) from exc
+        raise ApiError(
+            "internal" if exc.retryable else "invalid_request", exc.detail, retryable=exc.retryable
+        ) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise ApiError("invalid_request", str(exc)) from exc
     finally:
-        await client.close()
+        if client is not None:
+            await client.close()
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="ninerouter.connection_test",
+        payload={"provider": "ninerouter_direct", "status": "connected"},
+        ip=client_ip(request),
+    )
     return {
         "status": "connected",
-        "version": health.get("version") if isinstance(health, dict) else None,
+        "version": health.get("version"),
         "chat_models": len(chat_models),
     }
 
 
 @router.post("/settings/test-correction")
-async def test_correction_path(
-    staff: StaffDep, session: StaffSession
-) -> dict[str, Any]:
+async def test_correction_path(staff: StaffDep, session: StaffSession) -> dict[str, Any]:
     runtime = await resolve_provider_settings(session, capability="correction")
     stages: list[dict[str, str]] = []
     source = [

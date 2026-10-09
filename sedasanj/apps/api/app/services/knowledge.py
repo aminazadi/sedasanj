@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from uuid import UUID
 
 import httpx
@@ -16,7 +17,7 @@ from app.services.platform import AISERVICE_ROUTES, effective_models, resolve_pr
 
 
 def _vector_literal(values: list[float]) -> str:
-    if not values or len(values) > 4096:
+    if not values or len(values) > 4096 or any(not math.isfinite(value) for value in values):
         raise ValueError("embedding dimension is invalid")
     return "[" + ",".join(format(float(value), ".9g") for value in values) + "]"
 

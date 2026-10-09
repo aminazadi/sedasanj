@@ -24,7 +24,7 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
 ];
 type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
-  { id: "connection", label: "اتصال AISERVICE" },
+  { id: "connection", label: "اتصال سرویس‌ها" },
   { id: "models", label: "مدل‌ها و مسیرها" },
   { id: "assistant", label: "ابزارهای دستیار" },
   { id: "audio", label: "پردازش صوت" },
@@ -61,7 +61,7 @@ function ModelSelect({
   value,
   models,
   onChange,
-  required = true,
+  required = false,
   sourceLabel = "AISERVICE",
 }: {
   id: string;
@@ -154,6 +154,8 @@ export default function Settings() {
     ? requestedTab as SettingsTab
     : "connection";
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [savedSettings, setSavedSettings] = useState<PlatformSettings | null>(null);
+  const [saving, setSaving] = useState(false);
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
@@ -188,19 +190,28 @@ export default function Settings() {
     }
   }
 
-  async function loadNineRouterModels() {
+  function connectionDraft() {
+    return {
+      ninerouter_base_url: settings?.ninerouter_base_url,
+      ninerouter_connect_timeout_seconds: settings?.ninerouter_connect_timeout_seconds,
+      ninerouter_read_timeout_seconds: settings?.ninerouter_read_timeout_seconds,
+      ...(nineRouterKeyDraft.trim() ? { ninerouter_api_key: normalizeApiKey(nineRouterKeyDraft) } : {}),
+    };
+  }
+
+  async function loadNineRouterModels(useDraft = true) {
     setLoadingModels(true);
     setModelsError(null);
     try {
-      const [chat, stt, embedding] = await Promise.all([
-        request<ProviderModel[]>("/v1/admin/ninerouter/models?kind=chat"),
-        request<ProviderModel[]>("/v1/admin/ninerouter/models?kind=stt"),
-        request<ProviderModel[]>("/v1/admin/ninerouter/models?kind=embedding"),
-      ]);
-      setNineRouterModels([...chat, ...stt, ...embedding]);
-    } catch (err) {
-      setNineRouterModels([]);
-      setModelsError((err as Error).message);
+      const kinds = ["chat", "stt", "embedding"];
+      const results = await Promise.allSettled(kinds.map((kind) =>
+        request<ProviderModel[]>(`/v1/admin/ninerouter/models?kind=${kind}`, useDraft
+          ? { method: "POST", body: connectionDraft() } : undefined),
+      ));
+      setNineRouterModels(results.flatMap((result) => result.status === "fulfilled" ? result.value : []));
+      const failures = results.flatMap((result, index) => result.status === "rejected"
+        ? [`${kinds[index]}: ${(result.reason as Error).message}`] : []);
+      if (failures.length) setModelsError(failures.join("؛ "));
     } finally {
       setLoadingModels(false);
     }
@@ -210,7 +221,7 @@ export default function Settings() {
     setTestingNineRouter(true);
     setError(null);
     try {
-      await request("/v1/admin/ninerouter/test", { method: "POST" });
+      await request("/v1/admin/ninerouter/test", { method: "POST", body: connectionDraft() });
       setNotice("اتصال مستقیم 9Router با موفقیت بررسی شد.");
     } catch (err) {
       setError((err as Error).message);
@@ -223,10 +234,11 @@ export default function Settings() {
     request<PlatformSettings>("/v1/admin/settings")
       .then((data) => {
         setSettings(data);
+        setSavedSettings(data);
         if (data.api_key_configured) {
           void loadModels();
         }
-        if (data.ninerouter_api_key_configured) void loadNineRouterModels();
+        if (data.ninerouter_api_key_configured) void loadNineRouterModels(false);
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -258,47 +270,24 @@ export default function Settings() {
     }, {}),
     [models],
   );
-  async function save(event: React.FormEvent) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!settings) return;
     setError(null);
     setNotice(null);
-    const modelsNeedAiService = [
-      settings.asr_ai_provider,
-      settings.analysis_provider,
-      settings.assistant_provider,
-      settings.correction_provider,
-      settings.decision_provider,
-      settings.embedding_provider,
-    ].includes("aiservice");
-    if (
-      activeTab === "models" &&
-      modelsNeedAiService &&
-      !settings.api_key_configured &&
-      !apiKeyDraft.trim()
-    ) {
-      setError("ابتدا کلید API سرویس را در تب اتصال AISERVICE ذخیره کنید.");
+    if (saving) return;
+    // Hidden tab fields must not block the active tab's submission.
+    const invalidField = Array.from(event.currentTarget.elements).find((element) =>
+      (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)
+      && element.getClientRects().length > 0 && !element.checkValidity(),
+    ) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | undefined;
+    if (invalidField) {
+      setError(invalidField.validationMessage || "مقدار واردشده معتبر نیست.");
+      invalidField.focus();
       return;
     }
-    if (activeTab === "models" && models.length) {
-      const selections = [
-        ["مدل ASR", settings.asr_ai_provider === "ninerouter_direct" ? settings.ninerouter_asr_model : settings.asr_model, settings.asr_ai_provider === "ninerouter_direct" ? nineRouterAsrModels : asrModels],
-        ["مدل تحلیل", settings.analysis_provider === "ninerouter_direct" ? settings.ninerouter_analysis_model : settings.llm_model, settings.analysis_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels],
-        ["مدل دستیار", settings.assistant_provider === "ninerouter_direct" ? settings.ninerouter_assistant_model : settings.chat_model, settings.assistant_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels],
-        ["مدل تصمیم‌گیری", settings.decision_provider === "ninerouter_direct" ? settings.ninerouter_decision_model : settings.decision_model, settings.decision_provider === "ninerouter_direct" ? nineRouterLlmModels : decisionModels],
-        ["مدل embedding", settings.embedding_provider === "ninerouter_direct" ? settings.ninerouter_embedding_model : settings.embedding_model, settings.embedding_provider === "ninerouter_direct" ? nineRouterEmbeddingModels : embeddingModels],
-      ] as const;
-      const invalid = selections.find(([, value, options]) => {
-        if (!options.length) return false;
-        const selected = options.find((model) => model.id === value);
-        return !selected || selected.available === false;
-      });
-      if (invalid) {
-        setError(`${invalid[0]} باید از فهرست مدل‌های آماده سرویس انتخاب‌شده انتخاب شود.`);
-        return;
-      }
-    }
     try {
+      setSaving(true);
       const body: Record<string, string | boolean | number | string[]> = {};
       if (activeTab === "connection") {
         body.voicesanj_base_url = settings.voicesanj_base_url;
@@ -395,25 +384,46 @@ export default function Settings() {
         body.extract_prompt = settings.extract_prompt;
         body.assistant_instructions = settings.assistant_instructions;
       }
+      // Persist only this tab's changed fields, including explicit blank values.
+      for (const key of Object.keys(body)) {
+        if (savedSettings && JSON.stringify(body[key]) === JSON.stringify(savedSettings[key as keyof PlatformSettings])) {
+          delete body[key];
+        }
+      }
       const saved = await request<PlatformSettings>("/v1/admin/settings", {
         method: "PATCH",
         body,
       });
-      setSettings(saved);
-      setApiKeyDraft("");
-      setNineRouterKeyDraft("");
+      const baseline = savedSettings;
+      setSavedSettings(saved);
+      setSettings((current) => {
+        if (!current || !baseline) return saved;
+        const next = { ...saved };
+        for (const key of Object.keys(current) as Array<keyof PlatformSettings>) {
+          if (!(key in body) && JSON.stringify(current[key]) !== JSON.stringify(baseline[key])) {
+            Object.assign(next, { [key]: current[key] });
+          }
+        }
+        return next;
+      });
+      if (activeTab === "connection") {
+        setApiKeyDraft("");
+        setNineRouterKeyDraft("");
+      }
       setNotice("ذخیره شد.");
       if (
         saved.api_key_configured &&
         (activeTab === "connection" || activeTab === "models")
       ) {
-        await loadModels();
+        void loadModels();
       }
       if (saved.ninerouter_api_key_configured && (activeTab === "connection" || activeTab === "models")) {
-        await loadNineRouterModels();
+        void loadNineRouterModels(false);
       }
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -493,13 +503,14 @@ export default function Settings() {
       role="tabpanel"
       aria-labelledby={`settings-tab-${activeTab}`}
       className={`card space-y-5 ${activeTab === "security" ? "hidden" : ""}`}
+      noValidate
       onSubmit={save}
     >
       <ErrorBox message={error} />
       {notice ? <div className="text-sm text-emerald-700">{notice}</div> : null}
 
       <div className={activeTab === "connection" ? "" : "hidden"}>
-        <label className="label" htmlFor="llm-provider">درگاه مرکزی همه قابلیت‌های هوش مصنوعی</label>
+        <label className="label" htmlFor="llm-provider">درگاه AISERVICE</label>
         <select
           id="llm-provider"
           className="input"
@@ -513,13 +524,14 @@ export default function Settings() {
           <option value="voicesanj">AISERVICE / VoiceSanj</option>
         </select>
         <p className="mt-1 text-xs text-slate-500">
-          تمام مدل‌های برنامه فقط از طریق AISERVICE فراخوانی می‌شوند.
+          مسیر اجرای هر قابلیت در تب مدل‌ها یا تصحیح متن به‌صورت مستقل انتخاب می‌شود.
         </p>
       </div>
 
       <section className={`${activeTab === "connection" ? "" : "hidden"} space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">اتصال مستقیم 9Router</h2>
+          <ErrorBox message={settings.ninerouter_configuration_error || null} />
           <p className="mt-1 text-xs leading-6 text-slate-500">این اتصال هیچ درخواستی را از AISERVICE عبور نمی‌دهد و فقط برای قابلیت‌هایی استفاده می‌شود که مسیر مستقیم آن‌ها فعال شده باشد.</p>
         </div>
         <div>
@@ -536,8 +548,8 @@ export default function Settings() {
           <div><label className="label">مهلت پاسخ (ثانیه)</label><input className="input" type="number" min="10" max="3600" value={settings.ninerouter_read_timeout_seconds} onChange={(event) => setSettings({ ...settings, ninerouter_read_timeout_seconds: Number(event.target.value) })} /></div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn-ghost" disabled={!settings.ninerouter_api_key_configured || testingNineRouter} onClick={() => void testNineRouter()}>{testingNineRouter ? "در حال آزمایش…" : "آزمایش اتصال مستقیم"}</button>
-          <button type="button" className="btn-ghost" disabled={!settings.ninerouter_api_key_configured || loadingModels} onClick={() => void loadNineRouterModels()}>بازیابی مدل‌های 9Router</button>
+          <button type="button" className="btn-ghost" disabled={(!settings.ninerouter_api_key_configured && !nineRouterKeyDraft.trim()) || testingNineRouter} onClick={() => void testNineRouter()}>{testingNineRouter ? "در حال آزمایش…" : "آزمایش اتصال مستقیم"}</button>
+          <button type="button" className="btn-ghost" disabled={(!settings.ninerouter_api_key_configured && !nineRouterKeyDraft.trim()) || loadingModels} onClick={() => void loadNineRouterModels()}>بازیابی مدل‌های 9Router</button>
         </div>
       </section>
 
@@ -555,7 +567,7 @@ export default function Settings() {
           }
           value={apiKeyDraft}
           onChange={(event) => setApiKeyDraft(event.target.value)}
-          required={!settings.api_key_configured}
+
         />
         <p className="mt-1 text-xs text-slate-500">
           {settings.api_key_configured
@@ -983,7 +995,7 @@ export default function Settings() {
         />
       </section>
       <button className="btn">
-        ذخیره {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label}
+        {saving ? "در حال ذخیره…" : `ذخیره ${SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label}`}
       </button>
     </form>
     </div>

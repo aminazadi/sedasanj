@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -214,43 +215,44 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
                 client = CorrectionClient(runtime)
                 try:
                     if runtime.active_ai_provider == "ninerouter_direct":
-                        while True:
-                            model = current_correction_model(revision)
-                            try:
-                                result = await client.complete_direct(
-                                    segments,
-                                    runtime.correction_prompt,
-                                    model=model,
-                                )
-                                validated, uncertain = validate_result(
-                                    segments,
-                                    result,
-                                    max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
-                                )
-                            except (ProviderError, ValueError) as exc:
+                        async with asyncio.timeout(runtime.correction_timeout_seconds):
+                            while True:
+                                model = current_correction_model(revision)
                                 try:
-                                    advance_correction_model(revision, error=str(exc))
-                                except Exception:
-                                    raise exc from None
-                                continue
-                            revision.provider_model = model
-                            await activate_revision(
-                                session,
-                                transcript=transcript,
-                                revision=revision,
-                                segments=validated,
-                                uncertain_items=uncertain,
-                                result=result,
-                            )
-                            await pipeline.mark_job(
-                                session,
-                                tenant_id=tenant_id,
-                                call_id=call_id,
-                                kind="correction",
-                                status="succeeded",
-                            )
-                            dispatch_analysis = True
-                            break
+                                    result = await client.complete_direct(
+                                        segments,
+                                        runtime.correction_prompt,
+                                        model=model,
+                                    )
+                                    validated, uncertain = validate_result(
+                                        segments,
+                                        result,
+                                        max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
+                                    )
+                                except (ProviderError, ValueError) as exc:
+                                    try:
+                                        advance_correction_model(revision, error=str(exc))
+                                    except Exception:
+                                        raise exc from None
+                                    continue
+                                revision.provider_model = model
+                                await activate_revision(
+                                    session,
+                                    transcript=transcript,
+                                    revision=revision,
+                                    segments=validated,
+                                    uncertain_items=uncertain,
+                                    result=result,
+                                )
+                                await pipeline.mark_job(
+                                    session,
+                                    tenant_id=tenant_id,
+                                    call_id=call_id,
+                                    kind="correction",
+                                    status="succeeded",
+                                )
+                                dispatch_analysis = True
+                                break
                     else:
                         revision.provider_task_id = await client.submit(
                             revision,

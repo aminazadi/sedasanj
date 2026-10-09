@@ -16,6 +16,7 @@ import httpx
 
 from app.config import Settings, normalize_api_key
 from app.metrics import llm_tokens_per_second
+from app.services.ninerouter import chat_message, response_json
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
 from app.services.voicesanj import VOICESANJ_USER_AGENT
 
@@ -197,6 +198,13 @@ class LlamaClient(LlmClient):
         self._extra_prompt = settings.ninerouter_direct_prompt.strip()
         headers: dict[str, str] = {}
         api_key = normalize_api_key(settings.openai_api_key)
+        self._secret = api_key
+        if self._direct and not api_key:
+            raise ProviderError(
+                "ninerouter_configuration",
+                "کلید اتصال مستقیم 9Router تنظیم نشده است.",
+                retryable=False,
+            )
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         timeout: float | httpx.Timeout = settings.llm_timeout_seconds
@@ -239,11 +247,17 @@ class LlamaClient(LlmClient):
                     response = await self._client.post(
                         f"{base}/v1/chat/completions", json=retry_body
                     )
-                classified = classify_http(response.status_code, response.text, kind="llm")
+                classified = classify_http(
+                    response.status_code,
+                    response.text.replace(self._secret, "[redacted]")
+                    if self._secret
+                    else response.text,
+                    kind="llm",
+                )
                 if classified is not None:
                     raise classified
-                data = response.json()
-                inspect_payload(data, kind="llm")
+                data = response_json(response)
+                message = chat_message(data)
             except ProviderError as exc:
                 if not exc.retryable:
                     raise
@@ -268,7 +282,9 @@ class LlamaClient(LlmClient):
                 completion_tokens = int(data.get("usage", {}).get("completion_tokens") or 0)
                 if completion_tokens:
                     llm_tokens_per_second.observe(completion_tokens / elapsed)
-                content: str = data["choices"][0]["message"]["content"]
+                content = message.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    raise ProviderError("llm_provider_response", "مدل متن معتبری برنگرداند.")
                 return content
 
         if last_error is not None:
@@ -293,25 +309,39 @@ class LlamaClient(LlmClient):
         if json_object:
             body["response_format"] = {"type": "json_object"}
 
+        emitted = False
         last_error: Exception | None = None
         for _ in range(3 if self._direct else len(self._urls)):
             base = next(self._cycle)
             try:
-                async with self._client.stream("POST", f"{base}/v1/chat/completions", json=body) as response:
+                async with self._client.stream(
+                    "POST", f"{base}/v1/chat/completions", json=body
+                ) as response:
                     if response.status_code == 400 and json_object:
-                        retry_body = {key: value for key, value in body.items() if key != "response_format"}
-                        async with self._client.stream("POST", f"{base}/v1/chat/completions", json=retry_body) as retry_response:
+                        retry_body = {
+                            key: value for key, value in body.items() if key != "response_format"
+                        }
+                        async with self._client.stream(
+                            "POST", f"{base}/v1/chat/completions", json=retry_body
+                        ) as retry_response:
                             async for chunk in self._stream_response(retry_response):
+                                emitted = True
                                 yield chunk
                         return
                     async for chunk in self._stream_response(response):
+                        emitted = True
                         yield chunk
                     return
             except ProviderError as exc:
-                if not exc.retryable:
+                if emitted or not exc.retryable:
                     raise
                 last_error = exc
             except httpx.HTTPError as exc:
+                if emitted:
+                    raise ProviderError(
+                        "llm_provider_stream_interrupted",
+                        "جریان پاسخ مدل قطع شد؛ دوباره تلاش کنید.",
+                    ) from exc
                 last_error = ProviderError(
                     "llm_provider_unavailable",
                     "ارتباط با سرویس هوش مصنوعی موقتاً برقرار نشد.",
@@ -347,12 +377,17 @@ class LlamaClient(LlmClient):
             base = next(self._cycle)
             try:
                 response = await self._client.post(f"{base}/v1/chat/completions", json=body)
-                classified = classify_http(response.status_code, response.text, kind="llm")
+                classified = classify_http(
+                    response.status_code,
+                    response.text.replace(self._secret, "[redacted]")
+                    if self._secret
+                    else response.text,
+                    kind="llm",
+                )
                 if classified is not None:
                     raise classified
-                payload = response.json()
-                inspect_payload(payload, kind="llm")
-                message = payload.get("choices", [{}])[0].get("message")
+                payload = response_json(response)
+                message = chat_message(payload)
                 if not isinstance(message, dict):
                     raise ProviderError(
                         "llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد."
@@ -376,23 +411,47 @@ class LlamaClient(LlmClient):
 
     @staticmethod
     async def _stream_response(response: httpx.Response) -> AsyncIterator[str]:
-        if response.status_code >= 400:
-            if (classified := classify_http(response.status_code, (await response.aread()).decode(), kind="llm")) is not None:
+        if response.status_code != 200:
+            if (
+                classified := classify_http(
+                    response.status_code, (await response.aread()).decode(), kind="llm"
+                )
+            ) is not None:
                 raise classified
             raise ProviderError("llm_provider_response", "سرویس هوش مصنوعی پاسخ نامنتظره داد.")
+        emitted = False
+        finished = False
         async for line in response.aiter_lines():
             if not line.startswith("data:"):
                 continue
             payload = line[5:].strip()
             if payload == "[DONE]":
+                if not emitted:
+                    raise ProviderError("llm_provider_response", "مدل پاسخ خالی برگرداند.")
                 return
             try:
                 data = json.loads(payload)
-                delta = data["choices"][0].get("delta", {}).get("content")
-            except (IndexError, TypeError, KeyError, json.JSONDecodeError):
+            except json.JSONDecodeError as exc:
+                raise ProviderError("llm_provider_response", "جریان پاسخ مدل نامعتبر است.") from exc
+            inspect_payload(data, kind="llm")
+            choices = data.get("choices") if isinstance(data, dict) else None
+            if choices == [] and isinstance(data.get("usage"), dict):
                 continue
-            if isinstance(delta, str) and delta:
-                yield delta
+            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                raise ProviderError("llm_provider_response", "جریان پاسخ مدل نامعتبر است.")
+            choice = choices[0]
+            if choice.get("finish_reason") in {"length", "content_filter"}:
+                raise ProviderError("llm_provider_response", "پاسخ مدل ناقص است.")
+            finished = finished or choice.get("finish_reason") == "stop"
+            delta = choice.get("delta", {})
+            content = delta.get("content") if isinstance(delta, dict) else None
+            if isinstance(content, str) and content:
+                emitted = True
+                yield content
+        if not finished or not emitted:
+            raise ProviderError(
+                "llm_provider_stream_interrupted", "جریان پاسخ مدل پیش از تکمیل قطع شد."
+            )
 
     async def close(self) -> None:
         await self._client.aclose()
