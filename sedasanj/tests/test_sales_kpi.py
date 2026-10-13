@@ -5,7 +5,14 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.routers.kpi import KpiSettingsIn, _funnel_rows, _is_opportunity, _rate, _rate_with_change
+from app.routers.kpi import (
+    KpiSettingsIn,
+    _display_funnel,
+    _funnel_rows,
+    _is_opportunity,
+    _rate,
+    _rate_with_change,
+)
 from app.schemas import ExtractionResult
 
 
@@ -101,6 +108,13 @@ def test_funnel_uses_cumulative_reach_and_separate_lost_terminal() -> None:
     assert values["won"]["count"] == 1
     assert values["lost"]["count"] == 1
     assert values["lost"]["drop_rate"] is None
+
+
+def test_display_funnel_only_uses_nested_stage_denominators() -> None:
+    funnel = _display_funnel([("all_calls", 20), ("effective", 12), ("opportunities", 6)])
+    assert funnel[0]["pass_rate"] is None
+    assert funnel[1]["pass_rate"] == 60.0
+    assert funnel[2]["drop_rate"] == 50.0
 
 
 def test_kpi_settings_reject_out_of_range_thresholds() -> None:

@@ -399,6 +399,10 @@ export interface KpiDashboard {
     goal_achievement: Array<{ metric: string; actual: number | null; target: number; achievement: number | null }>;
   };
   funnel: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null; previous_count?: number; change_percent?: number | null }>;
+  funnel_views: {
+    engagement: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null }>;
+    sales: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null }>;
+  };
   breakdowns: {
     topics: Array<[string, number]>;
     objections: Array<[string, number]>;

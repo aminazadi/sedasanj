@@ -553,6 +553,24 @@ def _funnel_rows(
     return funnel
 
 
+def _display_funnel(stages: list[tuple[str, int]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    previous: int | None = None
+    for key, count in stages:
+        rows.append(
+            {
+                "key": key,
+                "count": count,
+                "pass_rate": round(count * 100 / previous, 1) if previous else None,
+                "drop_rate": (
+                    round(max(previous - count, 0) * 100 / previous, 1) if previous else None
+                ),
+            }
+        )
+        previous = count
+    return rows
+
+
 @router.get("/kpi/dashboard")
 async def dashboard(
     principal: UserDep,
@@ -859,6 +877,36 @@ async def dashboard(
         item.amount or 0 for item in crm_rows if item.outcome in {"interested", "follow_up"}
     )
     funnel = _funnel_rows(rows, list(settings["funnel_stages"]))
+    effective_opportunities = sum(
+        1
+        for call, insight, sales in rows
+        if call.duration_ms >= 15000 and _is_opportunity(insight, sales)
+    )
+    effective_wins = sum(
+        1
+        for call, _, sales in rows
+        if call.duration_ms >= 15000
+        and sales
+        and sales.outcome == "won"
+        and sales.certainty == "explicit"
+    )
+    funnel_by_key = {item["key"]: item["count"] for item in funnel}
+    funnel_views = {
+        "engagement": _display_funnel(
+            [
+                ("all_calls", len(rows)),
+                ("effective", effective),
+                ("opportunities", effective_opportunities),
+                ("won", effective_wins),
+            ]
+        ),
+        "sales": _display_funnel(
+            [
+                (key, int(funnel_by_key.get(key, 0)))
+                for key in ("qualified", "interested", "follow_up", "proposal", "won")
+            ]
+        ),
+    }
     previous_funnel = {
         item["key"]: item for item in _funnel_rows(previous_rows, list(settings["funnel_stages"]))
     }
@@ -1196,6 +1244,7 @@ async def dashboard(
         ],
         "dashboard_widgets": settings["dashboard_widgets"],
         "funnel": funnel,
+        "funnel_views": funnel_views,
         "breakdowns": {
             "topics": topics.most_common(10),
             "objections": objections.most_common(10),
