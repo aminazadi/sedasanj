@@ -162,7 +162,7 @@ body {
 }
 
 .assistant-sidebar {
-  background: #e8e5de;
+  background: #e8e5de radial-gradient(circle, rgb(75 110 72 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
   box-shadow: 0 18px 45px rgb(75 110 72 / 0.1);
 }
 
