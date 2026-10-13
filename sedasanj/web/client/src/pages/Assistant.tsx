@@ -124,14 +124,7 @@ function ChatIcon({ active, className = "h-5 w-5" }: { active: boolean; classNam
 }
 
 function ConversationProcessingIndicator({ active }: { active: boolean }) {
-  return (
-    <span className={`assistant-conversation-processing ${active ? "is-active" : ""}`} role="status" aria-label="در حال پردازش پاسخ دستیار">
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  );
+  return <span className={`assistant-conversation-processing ${active ? "is-active" : ""}`} role="status" aria-label="در حال پردازش پاسخ دستیار" />;
 }
 
 function PlusIcon() {
