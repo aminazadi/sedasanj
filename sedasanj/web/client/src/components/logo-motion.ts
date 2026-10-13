@@ -1,6 +1,6 @@
 import { gsap } from "gsap";
 
-export const LOGO_MOTION_DURATION = 1.85;
+export const LOGO_MOTION_DURATION = 1.6;
 const PEN_TIMELINE_DURATION = 3.65;
 
 export const PEN_STROKES = [
