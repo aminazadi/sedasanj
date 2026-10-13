@@ -28,71 +28,49 @@ function recognitionConstructor(): SpeechRecognitionConstructor | undefined {
   return browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
 }
 
-export default function PersianSpeechInputButton({ onTranscript, onListeningChange, stopWhen = false, className = "" }: { onTranscript: (transcript: { final: string; interim: string }) => void; onListeningChange?: (listening: boolean) => void; stopWhen?: boolean; className?: string }) {
+export default function PersianSpeechInputButton({ onTranscript, onListeningChange, className = "" }: { onTranscript: (transcript: string) => void; onListeningChange?: (listening: boolean) => void; className?: string }) {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const shouldListenRef = useRef(false);
   const [listening, setListening] = useState(false);
   const supported = typeof window !== "undefined" && Boolean(recognitionConstructor());
 
-  useEffect(() => () => { shouldListenRef.current = false; recognitionRef.current?.stop(); }, []);
-
-  useEffect(() => {
-    if (!stopWhen || !shouldListenRef.current) return;
-    shouldListenRef.current = false;
-    recognitionRef.current?.stop();
-  }, [stopWhen]);
-
-  useEffect(() => {
-    const stop = () => {
-      shouldListenRef.current = false;
-      recognitionRef.current?.stop();
-    };
-    window.addEventListener("assistant-message-sent", stop);
-    return () => window.removeEventListener("assistant-message-sent", stop);
-  }, []);
+  useEffect(() => () => recognitionRef.current?.stop(), []);
 
   function setActive(next: boolean) {
     setListening(next);
     onListeningChange?.(next);
   }
 
-  function startListening() {
+  function toggleListening() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
     const Recognition = recognitionConstructor();
-    if (!Recognition || !shouldListenRef.current) return;
+    if (!Recognition) return;
     const recognition = new Recognition();
     recognition.lang = "fa-IR";
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.interimResults = false;
     recognition.onresult = (event) => {
-      const results = Array.from(event.results);
-      onTranscript({
-        final: results.filter((result) => result.isFinal).map((result) => result[0].transcript).join(" ").trim(),
-        interim: results.filter((result) => !result.isFinal).map((result) => result[0].transcript).join(" ").trim(),
-      });
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .filter((result) => result.isFinal)
+        .map((result) => result[0].transcript)
+        .join(" ")
+        .trim();
+      if (transcript) onTranscript(transcript);
     };
     recognition.onend = () => {
       recognitionRef.current = null;
-      if (shouldListenRef.current) window.setTimeout(startListening, 150);
-      else setActive(false);
+      setActive(false);
     };
     recognition.onerror = () => {
-      shouldListenRef.current = false;
       recognitionRef.current = null;
       setActive(false);
     };
     recognitionRef.current = recognition;
-    recognition.start();
-  }
-
-  function toggleListening() {
-    if (shouldListenRef.current) {
-      shouldListenRef.current = false;
-      recognitionRef.current?.stop();
-      return;
-    }
-    shouldListenRef.current = true;
     setActive(true);
-    startListening();
+    recognition.start();
   }
 
   const label = !supported ? "تبدیل گفتار فارسی در Chrome پشتیبانی نمی‌شود" : listening ? "توقف تبدیل گفتار فارسی" : "تبدیل گفتار فارسی";

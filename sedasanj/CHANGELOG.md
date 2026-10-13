@@ -2,14 +2,19 @@
 
 ## 2026-10-14 — AMINAZADI
 
-- Standardized visible panel counts, timers, and playback rates on Persian digits while keeping machine-readable form input values intact.
+- Replaced the organization-memory panel's persistent description and filter fields with compact accessible icon controls beside its close action.
+
+## 2026-10-14 — AMINAZADI
+
+
+- Applied a lighter typography scale across the authenticated panel while preserving hierarchy for headings, labels, controls, and emphasis.
+
+- Positioned the organization-memory panel divider between the inspector and the training conversation.
 
 ## 2026-10-14 — AMINAZADI
 
 - Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
 - Added active-listening styling and an animated voice waveform to assistant prompt composers.
-- Kept Chrome speech recognition active across pauses and rendered interim Persian transcription in the composer as the user speaks.
-- Automatically stop active speech recognition as soon as an assistant message is sent.
 
 - Moved organization memories from the training transcript into a responsive side inspector with URL-persistent visibility, filters, selection, and mobile overlay behavior.
 

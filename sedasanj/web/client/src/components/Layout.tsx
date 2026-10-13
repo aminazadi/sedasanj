@@ -179,7 +179,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   return (
     <DesktopMenuToggleContext.Provider value={isAssistantPage ? { open: desktopMenuOpen, toggle: () => setDesktopMenuOpen((open) => !open) } : null}>
-      <div className={`panel-shell min-h-screen transition-[padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAssistantPage && !desktopMenuOpen ? "lg:pr-0" : "lg:pr-72"}`} lang="fa">
+      <div className={`panel-shell min-h-screen transition-[padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAssistantPage && !desktopMenuOpen ? "lg:pr-0" : "lg:pr-72"}`}>
         <aside id="client-desktop-menu" className={`fixed inset-y-0 right-0 z-40 hidden w-72 transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:block ${isAssistantPage && !desktopMenuOpen ? "pointer-events-none translate-x-full opacity-0" : "translate-x-0 opacity-100"}`}><Sidebar /></aside>
 
       <div className={`fixed inset-0 z-50 lg:hidden ${menuOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!menuOpen}>
