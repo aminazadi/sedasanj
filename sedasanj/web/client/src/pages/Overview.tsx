@@ -22,14 +22,14 @@ function delta(metric: RateMetric) { return metric.change == null ? "دورهٔ 
 function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }) { return enabled ? <>{children}</> : null; }
 
 function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  const stageHeight = 66;
-  const gap = 5;
-  const topWidth = 560;
-  const bottomWidth = 310;
+  const stageHeight = 56;
+  const gap = 4;
+  const topWidth = 530;
+  const bottomWidth = 370;
   const center = 300;
   const height = rows.length * (stageHeight + gap) + 44;
   const widthAt = (position: number) => topWidth - ((topWidth - bottomWidth) * position) / rows.length;
-  return <div className="mx-auto w-full max-w-xl py-2"><svg className="block h-auto w-full" viewBox={`0 0 600 ${height}`} role="img" aria-label="قیف مراحل فروش">{rows.map((row, index) => {
+  return <div className="mx-auto w-full max-w-lg py-2"><svg className="block h-auto w-full" viewBox={`0 0 600 ${height}`} role="img" aria-label="قیف مراحل فروش">{rows.map((row, index) => {
     const y = index * (stageHeight + gap);
     const current = widthAt(index);
     const next = widthAt(index + 1);
@@ -40,12 +40,12 @@ function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count
     const ratio = rows.length > 1 ? index / (rows.length - 1) : 0;
     const hue = 50 - ratio * 24;
     const lightness = 77 - ratio * 20;
-    return <g key={row.key}><title>{`${row.label}: ${fmt.int(row.count)}`}</title><polygon points={`${left},${y} ${right},${y} ${nextRight},${y + stageHeight} ${nextLeft},${y + stageHeight}`} fill={`hsl(${hue} 96% ${lightness}%)`} /><text x={center} y={y + 39} textAnchor="middle" direction="rtl" className="fill-[#4B2800] text-[16px] font-black">{`${row.label}  ·  ${fmt.int(row.count)}`}</text></g>;
-  })}<polygon points={`278,${rows.length * (stageHeight + gap) - gap} 322,${rows.length * (stageHeight + gap) - gap} 314,${height} 286,${height}`} fill="#d97706" /></svg></div>;
+    return <g key={row.key}><title>{`${row.label}: ${fmt.int(row.count)}`}</title><polygon points={`${left},${y} ${right},${y} ${nextRight},${y + stageHeight} ${nextLeft},${y + stageHeight}`} fill={`hsl(${hue} 96% ${lightness}%)`} /><text x={center + 32} y={y + 35} textAnchor="middle" direction="rtl" className="fill-[#4B2800] text-[16px] font-black">{row.label}</text><rect x={center - 115} y={y + 15} width="54" height="27" rx="13.5" fill="#fff8df" fillOpacity="0.9" /><text x={center - 88} y={y + 35} textAnchor="middle" className="fill-[#7c3f00] text-[14px] font-black">{fmt.int(row.count)}</text></g>;
+  })}<polygon points={`270,${rows.length * (stageHeight + gap) - gap} 330,${rows.length * (stageHeight + gap) - gap} 320,${height} 280,${height}`} fill="#d97706" /></svg></div>;
 }
 
 function FunnelPanel({ title, description, rows }: { title: string; description: string; rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  return <section className="card"><h2 className="font-bold">{title}</h2><p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>{rows.length ? <SalesFunnel rows={rows} /> : <Empty />}</section>;
+  return <section className="card"><h2 className="font-bold">{title}</h2><p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>{rows.length ? <div className="grid items-center gap-5 lg:grid-cols-[minmax(0,1fr)_11.5rem]"><SalesFunnel rows={rows} /><div className="space-y-2">{rows.map((row) => <div key={row.key} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"><div className="flex items-center justify-between gap-2 text-xs"><strong className="truncate">{row.label}</strong><span className="rounded-full bg-amber-100 px-2 py-0.5 font-black text-amber-900">{fmt.int(row.count)}</span></div><p className="mt-1 text-[11px] text-slate-500">عبور {row.pass_rate == null ? "—" : `${fmt.decimal(row.pass_rate)}٪`} · ریزش {row.drop_rate == null ? "—" : `${fmt.decimal(row.drop_rate)}٪`}</p></div>)}</div></div> : <Empty />}</section>;
 }
 
 export default function Overview() {
