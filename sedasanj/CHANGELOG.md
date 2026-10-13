@@ -2,6 +2,9 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
+- Added active-listening styling and an animated voice waveform to assistant prompt composers.
+
 - Moved organization memories from the training transcript into a responsive side inspector with URL-persistent visibility, filters, selection, and mobile overlay behavior.
 
 ## 2026-10-13 — AMINAZADI
