@@ -137,6 +137,18 @@ def test_final_response_only_retains_explicit_tool_backed_sources() -> None:
     assert call_ids == [str(selected)]
 
 
+def test_final_response_replaces_selected_call_ids_with_call_links() -> None:
+    selected = uuid4()
+
+    answer, call_ids = assistant_agent.final_response(
+        f"جزئیات تماس {selected} را بررسی کردم.\n<call-sources>[\"{selected}\"]</call-sources>",
+        {str(selected)},
+    )
+
+    assert answer == f"جزئیات تماس [مشاهده تماس](/calls/{selected}) را بررسی کردم."
+    assert call_ids == [str(selected)]
+
+
 def test_final_response_hides_invalid_or_missing_source_markers() -> None:
     answer, call_ids = assistant_agent.final_response(
         "پاسخ نهایی\n<call-sources>not-json</call-sources>", set()

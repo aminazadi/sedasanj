@@ -27,8 +27,12 @@ CALL_SOURCES_OPEN = "<call-sources>"
 CALL_SOURCES_CLOSE = "</call-sources>"
 
 
+def call_link(call_id: str) -> str:
+    return f"[مشاهده تماس](/calls/{call_id})"
+
+
 def final_response(raw: str, available_call_ids: set[str]) -> tuple[str, list[str]]:
-    """Remove the private source marker and retain only tool-backed call IDs."""
+    """Remove the private source marker and link tool-backed call references."""
     start = raw.rfind(CALL_SOURCES_OPEN)
     if start < 0:
         return raw.strip(), []
@@ -48,6 +52,8 @@ def final_response(raw: str, available_call_ids: set[str]) -> tuple[str, list[st
         call_id = str(value)
         if call_id in available_call_ids and call_id not in selected_ids:
             selected_ids.append(call_id)
+    for call_id in selected_ids:
+        answer = answer.replace(call_id, call_link(call_id))
     return answer, selected_ids
 
 
