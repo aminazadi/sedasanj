@@ -2,6 +2,7 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.
 - Replaced the active conversation's sidebar chat icon with its processing marker while a response is streaming.
 - Reworked the assistant processing marker as a smaller, shadow-free four-cell pulse aligned with the original sidebar treatment.
 - Refined the shared assistant processing marker into a shadow-free rotating multicolor square ring.

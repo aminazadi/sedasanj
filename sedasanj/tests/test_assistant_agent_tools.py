@@ -124,6 +124,40 @@ def test_tool_preview_preserves_chart_payload() -> None:
     assert result["charts"] == charts
 
 
+def test_final_response_only_retains_explicit_tool_backed_sources() -> None:
+    selected = uuid4()
+    ignored = uuid4()
+
+    answer, call_ids = assistant_agent.final_response(
+        f"پاسخ نهایی\n<call-sources>[\"{selected}\", \"{ignored}\", \"{selected}\"]</call-sources>",
+        {str(selected)},
+    )
+
+    assert answer == "پاسخ نهایی"
+    assert call_ids == [str(selected)]
+
+
+def test_final_response_hides_invalid_or_missing_source_markers() -> None:
+    answer, call_ids = assistant_agent.final_response(
+        "پاسخ نهایی\n<call-sources>not-json</call-sources>", set()
+    )
+
+    assert answer == "پاسخ نهایی"
+    assert call_ids == []
+
+
+def test_result_call_ids_excludes_non_call_items() -> None:
+    call_id = uuid4()
+    results = [
+        (
+            assistant_agent.PlannedToolCall("tool-1", "search_calls", {}),
+            {"items": [{"call_id": str(call_id)}, {"label": "not a call"}]},
+        )
+    ]
+
+    assert assistant_agent.result_call_ids(results) == {str(call_id)}
+
+
 def test_selected_context_overrides_model_tool_scope() -> None:
     operator_id = uuid4()
     start = datetime(2026, 9, 1, tzinfo=UTC)

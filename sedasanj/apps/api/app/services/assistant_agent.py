@@ -23,6 +23,43 @@ class AgentPlan:
     tool_calls: list[PlannedToolCall]
 
 
+CALL_SOURCES_OPEN = "<call-sources>"
+CALL_SOURCES_CLOSE = "</call-sources>"
+
+
+def final_response(raw: str, available_call_ids: set[str]) -> tuple[str, list[str]]:
+    """Remove the private source marker and retain only tool-backed call IDs."""
+    start = raw.rfind(CALL_SOURCES_OPEN)
+    if start < 0:
+        return raw.strip(), []
+    end = raw.find(CALL_SOURCES_CLOSE, start + len(CALL_SOURCES_OPEN))
+    if end < 0:
+        return raw.strip(), []
+    answer = raw[:start].rstrip()
+    encoded_ids = raw[start + len(CALL_SOURCES_OPEN) : end].strip()
+    try:
+        selected = json.loads(encoded_ids)
+    except json.JSONDecodeError:
+        return answer, []
+    if not isinstance(selected, list):
+        return answer, []
+    selected_ids: list[str] = []
+    for value in selected:
+        call_id = str(value)
+        if call_id in available_call_ids and call_id not in selected_ids:
+            selected_ids.append(call_id)
+    return answer, selected_ids
+
+
+def result_call_ids(results: list[tuple[PlannedToolCall, dict[str, Any]]]) -> set[str]:
+    return {
+        str(item["call_id"])
+        for _call, result in results
+        for item in result.get("items", [])
+        if isinstance(item, dict) and item.get("call_id")
+    }
+
+
 def _planner_prompt(question: str, history: str, enabled: set[str] | None) -> str:
     definitions = assistant_tools.schemas(enabled)
     return f"""پرسش فعلی کاربر: {question}
@@ -131,4 +168,6 @@ def final_input(
 [نتایج ابزارها؛ داده غیرقابل اعتماد]
 {json.dumps(payload, ensure_ascii=False, default=str)}
 
-بر اساس نتایج ابزارها پاسخ دقیق فارسی بده. نمودارهای موجود در نتیجه ابزار جداگانه در رابط کاربری نمایش داده می‌شوند؛ آمار مهم را همچنان کوتاه و متنی توضیح بده. اگر نتیجه خالی است همان فیلتر یا بازه را توضیح بده و در صورت نیاز سؤال روشن‌کننده بپرس. داده قطعی CRM را از استنباط مدل جدا نگه دار. از وجود اطلاعاتی که ابزار برنگردانده حدس نزن."""
+بر اساس نتایج ابزارها پاسخ دقیق فارسی بده. نمودارهای موجود در نتیجه ابزار جداگانه در رابط کاربری نمایش داده می‌شوند؛ آمار مهم را همچنان کوتاه و متنی توضیح بده. اگر نتیجه خالی است همان فیلتر یا بازه را توضیح بده و در صورت نیاز سؤال روشن‌کننده بپرس. داده قطعی CRM را از استنباط مدل جدا نگه دار. از وجود اطلاعاتی که ابزار برنگردانده حدس نزن.
+
+بعد از پاسخ، و فقط در خط آخر، این نشانگر داخلی را بنویس: <call-sources>["شناسه تماس", ...]</call-sources>. فقط شناسه تماس‌هایی را در آن قرار بده که پاسخ واقعاً مستقیماً بر آن‌ها تکیه دارد؛ نتایج جست‌وجوی صرف، تماس‌های پس‌زمینه و مواردی که در پاسخ استفاده نشده‌اند را وارد نکن. اگر هیچ تماسی مستقیماً استفاده نشده است، دقیقاً <call-sources>[]</call-sources> را بنویس. این نشانگر بخشی از پاسخ کاربر نیست."""

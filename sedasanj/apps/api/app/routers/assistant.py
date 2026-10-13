@@ -845,13 +845,16 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                         run.status = "failed"
                         run.error_code = "tool_failed"
                     run.completed_at = datetime.now(UTC)
-                sources = await _tool_sources(session, principal, results)
-                answer = await client.complete(
+                raw_answer = await client.complete(
                     system_prompt,
                     assistant_agent.final_input(payload.content, history, results),
                     json_object=False,
                     model=model,
                 )
+                answer, selected_call_ids = assistant_agent.final_response(
+                    raw_answer, assistant_agent.result_call_ids(results)
+                )
+                sources = await _tool_sources(session, principal, results, selected_call_ids)
             else:
                 answer = plan.answer or ""
             if conversation.title is None and answer.strip():
@@ -900,6 +903,7 @@ async def _tool_sources(
     session: AsyncSession,
     principal: Any,
     results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]],
+    selected_call_ids: list[str],
 ) -> list[dict[str, Any]]:
     sources: dict[str, dict[str, Any]] = {}
     for _call, result in results:
@@ -912,8 +916,10 @@ async def _tool_sources(
                 "started_at": item.get("started_at"),
                 "summary": item.get("summary") or item.get("snippet"),
             }
-    if not sources:
+    if not sources or not selected_call_ids:
         return []
+    selected = set(selected_call_ids)
+    sources = {call_id: source for call_id, source in sources.items() if call_id in selected}
     call_ids: list[UUID] = []
     for value in sources:
         try:
@@ -945,7 +951,7 @@ async def _tool_sources(
             }
         )
     visible_ids = {str(call.id) for call, _insight in rows}
-    return [source for call_id, source in sources.items() if call_id in visible_ids]
+    return [sources[call_id] for call_id in selected_call_ids if call_id in visible_ids]
 
 
 async def _execute_planned_tool(
@@ -1065,7 +1071,6 @@ async def stream_ephemeral_message(
                                 public_runs[-1] = failed
                                 yield _sse("tool_failed", failed)
                         yield _sse("tool_batch_completed", {"count": len(public_runs)})
-                        sources = await _tool_sources(session, principal, results)
                         yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
                         async for chunk in client.stream(
                             system_prompt,
@@ -1075,6 +1080,13 @@ async def stream_ephemeral_message(
                         ):
                             answer += chunk
                             yield _sse("delta", {"content": chunk})
+                        answer, selected_call_ids = assistant_agent.final_response(
+                            answer, assistant_agent.result_call_ids(results)
+                        )
+                        sources = await _tool_sources(
+                            session, principal, results, selected_call_ids
+                        )
+                        yield _sse("replace", {"content": answer})
                     else:
                         answer = plan.answer or ""
                         yield _sse("delta", {"content": answer})
@@ -1217,7 +1229,6 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                                 _tool_run_payload(run),
                             )
                         yield _sse("tool_batch_completed", {"count": len(stored_runs)})
-                        sources = await _tool_sources(session, principal, results)
                         yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
                         async for chunk in client.stream(
                             system_prompt,
@@ -1227,6 +1238,13 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                         ):
                             answer += chunk
                             yield _sse("delta", {"content": chunk})
+                        answer, selected_call_ids = assistant_agent.final_response(
+                            answer, assistant_agent.result_call_ids(results)
+                        )
+                        sources = await _tool_sources(
+                            session, principal, results, selected_call_ids
+                        )
+                        yield _sse("replace", {"content": answer})
                     else:
                         answer = plan.answer or ""
                         yield _sse("delta", {"content": answer})
