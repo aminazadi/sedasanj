@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
@@ -52,6 +52,17 @@ const PAGE_TITLES: Record<string, string> = {
   "/privacy": "حریم خصوصی",
   "/cancellation": "سیاست لغو اشتراک",
 };
+
+type DesktopMenuToggle = {
+  open: boolean;
+  toggle: () => void;
+};
+
+const DesktopMenuToggleContext = createContext<DesktopMenuToggle | null>(null);
+
+export function useDesktopMenuToggle() {
+  return useContext(DesktopMenuToggleContext);
+}
 
 function getPageTitle(pathname: string) {
   if (pathname.startsWith("/calls/")) return "جزئیات تماس";
@@ -143,9 +154,13 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
 export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAssistantPage = location.pathname === "/assistant";
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(() => location.pathname !== "/assistant");
   const pageTitle = getPageTitle(location.pathname);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  useEffect(() => setDesktopMenuOpen(!isAssistantPage), [isAssistantPage]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -162,8 +177,9 @@ export default function Layout({ children }: { children: ReactNode }) {
   }, [menuOpen]);
 
   return (
-    <div className="panel-shell min-h-screen lg:pr-72">
-      <aside className="fixed inset-y-0 right-0 z-40 hidden w-72 lg:block"><Sidebar /></aside>
+    <DesktopMenuToggleContext.Provider value={isAssistantPage ? { open: desktopMenuOpen, toggle: () => setDesktopMenuOpen((open) => !open) } : null}>
+      <div className={`panel-shell min-h-screen transition-[padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAssistantPage && !desktopMenuOpen ? "lg:pr-0" : "lg:pr-72"}`}>
+        <aside id="client-desktop-menu" className={`fixed inset-y-0 right-0 z-40 hidden w-72 transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:block ${isAssistantPage && !desktopMenuOpen ? "pointer-events-none translate-x-full opacity-0" : "translate-x-0 opacity-100"}`}><Sidebar /></aside>
 
       <div className={`fixed inset-0 z-50 lg:hidden ${menuOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!menuOpen}>
         <button type="button" className={`absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity duration-300 ${menuOpen ? "opacity-100" : "opacity-0"}`} onClick={() => setMenuOpen(false)} aria-label="بستن منو" tabIndex={menuOpen ? 0 : -1} />
@@ -181,7 +197,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{children}</main>
-    </div>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{children}</main>
+      </div>
+    </DesktopMenuToggleContext.Provider>
   );
 }

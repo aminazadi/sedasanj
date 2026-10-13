@@ -354,3 +354,4 @@
 - Added local re-entry and validation for exporting existing API-key configuration without storing the secret.
 - Added Python Agent credit-blocked scheduling and durable dead-letter metadata.
 - Added the standalone FreePBX module 1.1.0 release with PHP 7.4 compatibility, versioned import, atomic apply and rollback, explicit transports, durable queue states, retention cleanup, and pinned binary checks.
+- Automatically collapse the main desktop navigation on the assistant workspace, preserving the assistant conversation sidebar and placing its single motion-safe menu toggle beside the conversation and archive tabs.

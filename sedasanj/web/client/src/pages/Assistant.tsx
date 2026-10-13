@@ -8,6 +8,7 @@ import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Widgets";
+import { useDesktopMenuToggle } from "../components/Layout";
 import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 
@@ -327,6 +328,7 @@ function TypingPromptGuide() {
 
 export default function Assistant() {
   const { session } = useAuth();
+  const desktopMenuToggle = useDesktopMenuToggle();
   const [search, setSearch] = useSearchParams();
   const expandedCallId = search.get("source_call");
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -828,9 +830,12 @@ export default function Assistant() {
         <button type="button" className="inline-flex h-10 w-10 items-center justify-center text-[#4B6E48] transition hover:bg-[#F2F0EF]" onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها"><MenuIcon close /></button>
       </div>
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-3" aria-label="فهرست گفتگوها">
-        <div className="mb-5 flex border border-[#B2AC88] bg-white p-1" role="tablist" aria-label="نوع گفتگوها">
-          <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("active")}>گفتگوها</button>
-          <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("archived")}>آرشیوها</button>
+        <div className="mb-5 flex items-center gap-2">
+          {desktopMenuToggle ? <button type="button" className="assistant-panel-menu-toggle hidden h-11 w-11 shrink-0 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] shadow-[0_8px_20px_rgba(75,110,72,0.14)] transition hover:-translate-y-0.5 hover:border-[#4B6E48] hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] lg:inline-flex" onClick={desktopMenuToggle.toggle} aria-label={desktopMenuToggle.open ? "مخفی کردن منوی اصلی" : "نمایش منوی اصلی"} aria-expanded={desktopMenuToggle.open} aria-controls="client-desktop-menu"><MenuIcon close={desktopMenuToggle.open} /></button> : null}
+          <div className="flex flex-1 border border-[#B2AC88] bg-white p-1" role="tablist" aria-label="نوع گفتگوها">
+            <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("active")}>گفتگوها</button>
+            <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("archived")}>آرشیوها</button>
+          </div>
         </div>
         {conversationView === "active" ? <>{conversations.some((item) => item.pinned_at && !item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">پین‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.pinned_at && !item.archived_at).sort((first, second) => Date.parse(second.pinned_at || "") - Date.parse(first.pinned_at || "")).map(renderConversation)}</div></div> : null}<div className="mb-5">
           <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوهای فعال</p>
