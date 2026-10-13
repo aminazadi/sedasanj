@@ -2,6 +2,8 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Standardized assistant visual entry points with the AI bot icon across the sidebar, assistant workspace, and quick-chat launcher.
+
 - Replaced the quick assistant launcher glyph with a standard chat icon and refined the launcher motion into a direct border-pulse effect.
 
 - Simplified the floating assistant launcher to a standard icon-only button and moved its motion-safe pulse and float animation onto the button itself.

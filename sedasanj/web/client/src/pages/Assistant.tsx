@@ -121,8 +121,7 @@ function CopyIcon({ checked = false }: { checked?: boolean }) {
 function ChatIcon({ active, className = "h-5 w-5" }: { active: boolean; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${className} shrink-0 ${active ? "text-[#4B6E48]" : "text-[#898989] transition group-hover:text-[#4B6E48]"}`}>
-      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
-      <path d="M8 9h8M8 13h5" />
+      <path d="M12 2v4M8 3h8M5 8h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2ZM9 13h.01M15 13h.01M9 17h6" />
     </svg>
   );
 }
