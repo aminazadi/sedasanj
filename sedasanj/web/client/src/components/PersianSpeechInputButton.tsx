@@ -28,13 +28,28 @@ function recognitionConstructor(): SpeechRecognitionConstructor | undefined {
   return browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
 }
 
-export default function PersianSpeechInputButton({ onTranscript, onListeningChange, className = "" }: { onTranscript: (transcript: { final: string; interim: string }) => void; onListeningChange?: (listening: boolean) => void; className?: string }) {
+export default function PersianSpeechInputButton({ onTranscript, onListeningChange, stopWhen = false, className = "" }: { onTranscript: (transcript: { final: string; interim: string }) => void; onListeningChange?: (listening: boolean) => void; stopWhen?: boolean; className?: string }) {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const shouldListenRef = useRef(false);
   const [listening, setListening] = useState(false);
   const supported = typeof window !== "undefined" && Boolean(recognitionConstructor());
 
   useEffect(() => () => { shouldListenRef.current = false; recognitionRef.current?.stop(); }, []);
+
+  useEffect(() => {
+    if (!stopWhen || !shouldListenRef.current) return;
+    shouldListenRef.current = false;
+    recognitionRef.current?.stop();
+  }, [stopWhen]);
+
+  useEffect(() => {
+    const stop = () => {
+      shouldListenRef.current = false;
+      recognitionRef.current?.stop();
+    };
+    window.addEventListener("assistant-message-sent", stop);
+    return () => window.removeEventListener("assistant-message-sent", stop);
+  }, []);
 
   function setActive(next: boolean) {
     setListening(next);

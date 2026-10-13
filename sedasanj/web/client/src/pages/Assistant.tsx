@@ -898,6 +898,7 @@ export default function Assistant() {
     if (!completedMessages.length) return;
     const heading = ephemeral ? "چت موقت" : conversation?.title?.trim() || "گفتگوی جدید";
     const transcript = completedMessages.map((message) => {
+    window.dispatchEvent(new Event("assistant-message-sent"));
       const role = message.role === "user" ? "کاربر" : "دستیار";
       const timestamp = fmt.dateTime(message.created_at);
       return `${role} - ${timestamp}\n${message.content.trim()}`;

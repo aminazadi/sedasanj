@@ -9,6 +9,7 @@
 - Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
 - Added active-listening styling and an animated voice waveform to assistant prompt composers.
 - Kept Chrome speech recognition active across pauses and rendered interim Persian transcription in the composer as the user speaks.
+- Automatically stop active speech recognition as soon as an assistant message is sent.
 
 - Moved organization memories from the training transcript into a responsive side inspector with URL-persistent visibility, filters, selection, and mobile overlay behavior.
 
