@@ -21,7 +21,7 @@ import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
 import KpiSettings from "./pages/KpiSettings";
 import Profile from "./pages/Profile";
-import { RouteLoadingGate, RouteLoadingOverlay } from "./components/BrandLoader";
+import { RouteLoadingOverlay } from "./components/BrandLoader";
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -31,7 +31,7 @@ export default function App() {
   }
   if (!session) {
     return (
-      <RouteLoadingGate><Routes>
+      <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
@@ -41,7 +41,7 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes></RouteLoadingGate>
+        </Routes>
     );
   }
 
@@ -49,7 +49,7 @@ export default function App() {
   const orgAdmin = isOrgAdmin(session.role);
 
   return (
-    <RouteLoadingGate><Layout>
+    <Layout>
         <Routes>
         <Route path="/" element={<Overview />} />
         <Route path="/calls" element={<Calls />} />
@@ -72,6 +72,6 @@ export default function App() {
         <Route path="/api-docs" element={<ApiDocs />} />
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Layout></RouteLoadingGate>
+      </Layout>
   );
 }

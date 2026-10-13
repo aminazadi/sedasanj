@@ -10,6 +10,7 @@
 - Softened SPA route loading with a translucent backdrop, progressive blur, opacity fade, and a restrained logo entrance to prevent the loading background from flashing between pages.
 - Converted the route-loading overlay to a near-transparent glass surface with a stronger backdrop blur while retaining its fade transition.
 - Delayed mounting each target route until its loading animation completes, then revealed the target content through the overlay fade.
+- Limited the branded glass loading overlay to initial application boot so SPA navigation remains immediate.
 
 ## 2026-10-09 — AMINAZADI
 

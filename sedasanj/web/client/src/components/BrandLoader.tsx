@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { BrandLogo } from "./BrandLogo";
 import { LOGO_MOTION_DURATION } from "./logo-motion";
@@ -18,13 +18,12 @@ export function BrandLoader({ compact = false, label = "در حال بارگذا
   );
 }
 
-export function RouteLoadingOverlay({ onComplete }: { onComplete?: () => void }) {
+export function RouteLoadingOverlay() {
   const location = useLocation();
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<number | null>(null);
   const finishLoading = () => {
     setVisible(false);
-    onComplete?.();
   };
 
   useLayoutEffect(() => {
@@ -46,21 +45,5 @@ export function RouteLoadingOverlay({ onComplete }: { onComplete?: () => void })
         }, 300);
       }} />
     </div>
-  );
-}
-
-export function RouteLoadingGate({ children }: { children: ReactNode }) {
-  const location = useLocation();
-  const [contentVisible, setContentVisible] = useState(false);
-
-  useLayoutEffect(() => {
-    setContentVisible(false);
-  }, [location.key]);
-
-  return (
-    <>
-      <RouteLoadingOverlay onComplete={() => setContentVisible(true)} />
-      {contentVisible ? children : null}
-    </>
   );
 }
