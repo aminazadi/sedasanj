@@ -73,6 +73,9 @@ export function BrandLogo({ animated = false, className = "", title, color = "#1
               {PEN_STROKES.filter(stroke => groupIndex === 0 ? !("dot" in stroke) : stroke.name === (groupIndex === 1 ? "nun-dot" : "jim-dot")).map(stroke => (
                 <path key={stroke.name} data-pen-stroke={stroke.name} d={stroke.path} clipPath={`url(#${id}-${stroke.name}-clip)`} fill="none" stroke="white" strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" />
               ))}
+              {groupIndex === 0 ? PEN_STROKES.filter(stroke => "finish" in stroke).map(stroke => (
+                <path key={`${stroke.name}-finish`} data-stroke-finish={stroke.name} d={stroke.clip} fill="white" opacity="0" />
+              )) : null}
               {groupIndex === 0 ? <rect data-mask-finish width="520" height="189" fill="white" opacity="0" /> : null}
             </mask>
           ))}

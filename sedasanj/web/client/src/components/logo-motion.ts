@@ -7,7 +7,7 @@ export const PEN_STROKES = [
   { name: "sad", clip: "M340 70H482V130H340Z", path: "M405 116 C411 101 417 90 430 85 C436 82 444 83 452 83 C462 83 468 90 468 99 C468 110 462 116 451 116 C437 116 419 116 403 116 C391 116 381 115 380 103 C380 100 380 96 379 96 C378 96 379 104 375 110 C369 119 358 118 351 112 C345 107 342 101 340 95", width: 24, start: 0.06, time: 1.07, ease: "sine.inOut" },
   { name: "dal", clip: "M300 72H348V130H300Z", path: "M308 84 L323 84 C348 85 348 117 322 117 L310 117", width: 24, start: 1.03, time: 0.42 },
   { name: "alef", clip: "M273 38H299V130H273Z", path: "M286 51 L285 119", width: 27, start: 1.4, time: 0.3 },
-  { name: "sin", clip: "M155 71H273V130H155Z", path: "M258 84 L258 99 C258 123 223 124 223 91 C223 124 185 125 185 93 C185 120 160 121 153 107", width: 24, start: 1.67, time: 0.75 },
+  { name: "sin", clip: "M155 71H273V130H155Z", path: "M258 82 L258 99 C258 123 223 124 223 89 C223 124 185 125 185 90 C185 120 160 121 153 107", width: 26, start: 1.67, time: 0.75, finish: true },
   { name: "nun", clip: "M100 77H160V131H100Z", path: "M147 87 L147 98 C147 123 111 124 105 101", width: 25, start: 2.32, time: 0.35 },
   { name: "jim-head", clip: "M39 67H116V113H39Z", path: "M57 81 L86 80 C111 80 112 106 88 107 L66 107", width: 25, start: 2.62, time: 0.34 },
   { name: "jim-bowl", clip: "M39 98H105V148H39Z", path: "M84 107 L68 107 C43 108 47 138 65 138 L70 138", width: 24, start: 2.9, time: 0.31 },
@@ -41,6 +41,7 @@ export function createLogoMotion(svg: SVGSVGElement, canvas: HTMLCanvasElement, 
   let offsetY = 0;
   let ratio = 1;
   finish.style.opacity = "0";
+  svg.querySelectorAll<SVGPathElement>("[data-stroke-finish]").forEach(path => { path.style.opacity = "0"; });
 
   const resize = () => {
     const box = canvas.getBoundingClientRect();
@@ -92,6 +93,10 @@ export function createLogoMotion(svg: SVGSVGElement, canvas: HTMLCanvasElement, 
         }
       },
     }, stroke.start * speed);
+    if ("finish" in stroke) {
+      const coverage = svg.querySelector<SVGPathElement>(`[data-stroke-finish="${stroke.name}"]`);
+      if (coverage) timeline.to(coverage, { opacity: 1, duration: 0.1 * speed, ease: "sine.inOut" }, (stroke.start + stroke.time - 0.1) * speed);
+    }
   });
   timeline.to(finish, { opacity: 1, duration: 0.08 * speed }, 3.41 * speed);
   timeline.to({}, { duration: 0.16 * speed });
