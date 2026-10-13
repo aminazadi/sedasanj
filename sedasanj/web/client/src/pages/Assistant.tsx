@@ -123,6 +123,17 @@ function ChatIcon({ active, className = "h-5 w-5" }: { active: boolean; classNam
   );
 }
 
+function ConversationProcessingIndicator({ active }: { active: boolean }) {
+  return (
+    <span className={`assistant-conversation-processing ${active ? "is-active" : ""}`} role="status" aria-label="در حال پردازش پاسخ دستیار">
+      <span />
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function PlusIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="h-5 w-5">
@@ -152,7 +163,8 @@ function IconTooltip({ label, children }: { label: string; children: ReactNode }
 
 function TypingIndicator({ label = "در حال فکر کردن و دریافت نتیجه ..." }: { label?: string }) {
   return (
-    <div className="flex h-8 items-center px-1" role="status" aria-live="polite">
+    <div className="flex h-8 items-center gap-2 px-1" role="status" aria-live="polite">
+      <ConversationProcessingIndicator active />
       <span className="assistant-thinking-text">{label}</span>
     </div>
   );
@@ -338,6 +350,7 @@ export default function Assistant() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [processingConversationId, setProcessingConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -659,6 +672,7 @@ export default function Assistant() {
     const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
     try {
       const active = ephemeral ? null : conversation ?? await create();
+      setProcessingConversationId(active?.id ?? null);
       setMessages([...history, optimistic, draftReply]);
       const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history, messageAttachments);
       setAttachments(emptyAttachments());
@@ -673,6 +687,7 @@ export default function Assistant() {
       setMessages((current) => current.map((item) => item.id === draftReply.id ? { ...item, content: message || "پاسخ دستیار آماده نشد.", status: "failed" } : item));
       setError(message);
     } finally {
+      setProcessingConversationId(null);
       setSending(false);
     }
   }
@@ -810,10 +825,11 @@ export default function Assistant() {
   }
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
+    const isProcessing = processingConversationId === item.id;
     const archived = Boolean(item.archived_at);
     const pinned = Boolean(item.pinned_at);
     return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#4B6E48]"}`}>
-      {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setEditingId(null); setTitle(""); } }} aria-label="نام گفتگو" /><button type="button" className="px-2 py-1 text-xs font-bold text-[#898989] hover:bg-[#F2F0EF] hover:text-[#4B6E48]" onClick={() => { setEditingId(null); setTitle(""); }}>انصراف</button><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className={`flex min-h-11 w-full items-center gap-3 py-2.5 pr-3 pl-3 text-right text-sm transition-[padding] ${archived ? "group-hover:pl-28 group-focus-within:pl-28" : "group-hover:pl-36 group-focus-within:pl-36"}`} onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="min-w-0 flex-1 truncate">{item.title || "گفتگوی جدید"}</span></button>}
+      {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-sm text-[#4B6E48] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setEditingId(null); setTitle(""); } }} aria-label="نام گفتگو" /><button type="button" className="px-2 py-1 text-xs font-bold text-[#898989] hover:bg-[#F2F0EF] hover:text-[#4B6E48]" onClick={() => { setEditingId(null); setTitle(""); }}>انصراف</button><button type="submit" className="px-2 py-1 text-xs font-bold text-[#4B6E48] hover:bg-[#B2AC88] hover:text-white">ذخیره</button></form> : <button type="button" className={`flex min-h-11 w-full items-center gap-3 py-2.5 pr-3 pl-3 text-right text-sm transition-[padding] ${archived ? "group-hover:pl-28 group-focus-within:pl-28" : "group-hover:pl-36 group-focus-within:pl-36"}`} onClick={() => void loadMessages(item)}><ChatIcon active={isActive} /><span className="min-w-0 flex-1 truncate">{item.title || "گفتگوی جدید"}</span>{isProcessing ? <ConversationProcessingIndicator active={isActive} /> : null}</button>}
       {editingId !== item.id && <div className="pointer-events-none absolute inset-y-0 left-1 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button>{!archived ? <button type="button" className={`inline-flex h-8 w-8 items-center justify-center transition hover:bg-[#B2AC88] hover:text-[#4B6E48] ${pinned ? "text-[#4B6E48]" : "text-[#898989]"}`} aria-label={pinned ? "برداشتن پین گفتگو" : "پین کردن گفتگو"} title={pinned ? "برداشتن پین گفتگو" : "پین کردن گفتگو"} onClick={() => void setPinned(item, !pinned)}><PinIcon pinned={pinned} /></button> : null}<button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[#898989] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" aria-label={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} title={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} onClick={() => archived ? void setArchived(item, false) : setConfirmation({ action: "archive", item })}><ArchiveIcon restore={archived} /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => setConfirmation({ action: "delete", item })}><TrashIcon /></button></div>}
     </div>;
   }

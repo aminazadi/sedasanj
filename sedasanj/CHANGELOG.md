@@ -2,6 +2,8 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Added a motion-safe, palette-matched animated square processing marker to the exact assistant conversation sidebar item receiving a streamed response.
+- Reused the same processing marker in the pending assistant response inside the chat.
 - Added the dotted surface treatment to the assistant conversation sidebar for visual consistency with the main panel navigation.
 - Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
 - Rebuilt the logo motion with a coordinated 1.6-second GSAP pen timeline, isolated filled-letter and dot masks, and an independent Canvas particle emitter with outward drift, damping, and fade; autoplay runs once with hover replay, reduced-motion support, resize handling, and animation cleanup.
