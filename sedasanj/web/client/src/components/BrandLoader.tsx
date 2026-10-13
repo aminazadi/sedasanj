@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import logo from "../assets/sedasanj-refined-master.svg";
+import { BrandLogo } from "./BrandLogo";
 
 type BrandLoaderProps = {
   compact?: boolean;
@@ -11,7 +11,7 @@ export function BrandLoader({ compact = false, label = "در حال بارگذا
   return (
     <div className={`brand-loader ${compact ? "brand-loader--compact" : ""}`} role="status" aria-live="polite">
       <span className="brand-loader__halo" aria-hidden="true" />
-      <img className="brand-loader__logo" src={logo} alt="" />
+      <BrandLogo animated className="brand-loader__logo" />
       <span className="sr-only">{label}</span>
     </div>
   );

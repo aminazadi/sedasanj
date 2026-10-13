@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
-import logo from "../assets/sedasanj-refined-master.svg";
+import { BrandLogo } from "./BrandLogo";
 
 type NavigationItem = {
   to: string;
@@ -77,7 +77,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
   return (
     <div className="panel-sidebar flex h-full flex-col overflow-hidden text-white">
       <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-[#B2AC88] px-5">
-        <img className="panel-brand-logo w-36 invert mix-blend-screen" src={logo} alt="صدا سنج" />
+        <BrandLogo animated className="panel-brand-logo w-36 invert mix-blend-screen" title="صدا سنج" />
         {closeMenu && (
           <button type="button" className="absolute left-4 p-2 text-[#F2F0EF] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={closeMenu} aria-label="بستن منو">
             <MenuIcon close />
