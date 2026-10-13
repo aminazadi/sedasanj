@@ -10,6 +10,7 @@
 - Rebuilt both dashboard funnels as continuous SVG funnels with centered in-stage labels and counts, removing the detached stage-detail text.
 - Put each funnel stage label and value on a single aligned line, widened the lower funnel and outlet, and applied a progressive warm color scale.
 - Added in-stage count badges, compacted the funnel body, widened its lower outlet, and placed stage conversion details in an aligned side panel.
+- Centered both funnel diagrams at a fixed standard width to preserve balanced card spacing.
 - Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
 - Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 ## 2026-10-14 — AMINAZADI

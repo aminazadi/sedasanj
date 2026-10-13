@@ -24,12 +24,12 @@ function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }
 function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
   const stageHeight = 56;
   const gap = 4;
-  const topWidth = 530;
-  const bottomWidth = 370;
+  const topWidth = 480;
+  const bottomWidth = 340;
   const center = 300;
   const height = rows.length * (stageHeight + gap) + 44;
   const widthAt = (position: number) => topWidth - ((topWidth - bottomWidth) * position) / rows.length;
-  return <div className="mx-auto w-full max-w-lg py-2"><svg className="block h-auto w-full" viewBox={`0 0 600 ${height}`} role="img" aria-label="قیف مراحل فروش">{rows.map((row, index) => {
+  return <div className="mx-auto w-full max-w-md py-2"><svg className="block h-auto w-full" viewBox={`0 0 600 ${height}`} role="img" aria-label="قیف مراحل فروش">{rows.map((row, index) => {
     const y = index * (stageHeight + gap);
     const current = widthAt(index);
     const next = widthAt(index + 1);
