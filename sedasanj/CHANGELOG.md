@@ -1,5 +1,11 @@
 # Changelog
 
+
+## 2026-10-14 — AMINAZADI
+
+- Rebuilt the primary dashboard as a role-scoped KPI workspace with URL-persistent Jalali date ranges, daily performance trends, sales funnel, customer sentiment, operator comparison, talk balance, coaching, urgent actions, and period-scoped recent calls.
+- Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
+- Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 ## 2026-10-14 — AMINAZADI
 
 - Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.

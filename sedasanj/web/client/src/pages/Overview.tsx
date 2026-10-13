@@ -1,212 +1,71 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { chart } from "@cbi/web-shared/theme";
-import { fmt, request, SENTIMENT_LABELS, TRAJECTORY_LABELS } from "../api";
+import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
+import { fmt, query, request, SENTIMENT_LABELS } from "../api";
 import { isOperator, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, SentimentBadge, Stat, StatusBadge, SummaryCell, TrajectoryBadge } from "../components/Widgets";
-import type { AnalyticsSummary, Balance, CallPage, TaskBoard } from "../types";
+import type { CallPage, KpiDashboard, RateMetric } from "../types";
 
-const COLORS: Record<string, string> = {
-  angry: chart.danger,
-  sad: chart.secondary,
-  neutral: chart.warning,
-  satisfied: chart.cyan,
-  happy: chart.success,
-};
+const PRESETS = [{ value: "7", label: "۷ روز" }, { value: "30", label: "۳۰ روز" }, { value: "90", label: "۹۰ روز" }];
+const SENTIMENT_COLORS: Record<string, string> = { angry: chart.danger, sad: chart.secondary, neutral: chart.warning, satisfied: chart.cyan, happy: chart.success };
+const FUNNEL: Record<string, string> = { all_calls: "کل تماس‌ها", effective: "تماس مؤثر", qualified: "واجد شرایط", interested: "علاقه‌مند", follow_up: "پیگیری", proposal: "پیشنهاد", won: "فروش", lost: "ازدست‌رفته" };
 
-const TRAJECTORY_COLORS: Record<string, string> = {
-  improved: chart.success,
-  worsened: chart.danger,
-  stable: chart.violet,
-};
+function rangeDates(range: string, from: string, to: string) {
+  if (range === "custom" && from && to) return { from: new Date(`${from}T00:00:00`).toISOString(), to: new Date(`${to}T23:59:59.999`).toISOString() };
+  const end = new Date();
+  return { from: new Date(end.getTime() - (Number(range) || 30) * 86400000).toISOString(), to: end.toISOString() };
+}
+function pct(metric: RateMetric) { return metric.value == null ? "—" : `${fmt.decimal(metric.value)}٪`; }
+function delta(metric: RateMetric) { return metric.change == null ? "دورهٔ قبل داده کافی ندارد" : `${metric.change > 0 ? "+" : ""}${fmt.decimal(metric.change)} واحد نسبت به دورهٔ قبل`; }
+function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }) { return enabled ? <>{children}</> : null; }
 
 export default function Overview() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
   const operator = isOperator(session?.role);
-  const [balance, setBalance] = useState<Balance | null>(null);
-  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const range = searchParams.get("range") ?? "30";
+  const fromInput = searchParams.get("from") ?? "";
+  const toInput = searchParams.get("to") ?? "";
+  const selectedRange = useMemo(() => rangeDates(range, fromInput, toInput), [range, fromInput, toInput]);
+  const [data, setData] = useState<KpiDashboard | null>(null);
   const [recent, setRecent] = useState<CallPage | null>(null);
-  const [tasks, setTasks] = useState<TaskBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
-
+  const updateRange = (next: { range: string; from?: string; to?: string }) => {
+    const params = new URLSearchParams(searchParams); params.set("range", next.range);
+    if (next.range === "custom") { if (next.from) params.set("from", next.from); if (next.to) params.set("to", next.to); } else { params.delete("from"); params.delete("to"); }
+    setSearchParams(params);
+  };
   useEffect(() => {
-    const from = new Date(Date.now() - 30 * 86400000).toISOString();
-    const requests: Promise<unknown>[] = [
-      request<AnalyticsSummary>(`/v1/analytics/summary?from=${from}`),
-      request<CallPage>("/v1/calls?limit=10"),
-      request<TaskBoard>("/v1/tasks"),
-    ];
-    if (!operator) {
-      requests.unshift(request<Balance>("/v1/billing/balance"));
-    }
-    Promise.all(requests)
-      .then((results) => {
-        if (operator) {
-          setSummary(results[0] as AnalyticsSummary);
-          setRecent(results[1] as CallPage);
-          setTasks(results[2] as TaskBoard);
-          setBalance(null);
-        } else {
-          setBalance(results[0] as Balance);
-          setSummary(results[1] as AnalyticsSummary);
-          setRecent(results[2] as CallPage);
-          setTasks(results[3] as TaskBoard);
-        }
-      })
-      .catch((err) => setError(err.message));
-  }, [operator]);
-
+    if (range === "custom" && (!fromInput || !toInput)) return;
+    setData(null); setRecent(null); setError(null);
+    const dates = query({ from: selectedRange.from, to: selectedRange.to });
+    Promise.all([request<KpiDashboard>(`/v1/kpi/dashboard${dates}`), request<CallPage>(`/v1/calls${query({ limit: 10, from: selectedRange.from, to: selectedRange.to })}`)])
+      .then(([dashboard, calls]) => { setData(dashboard); setRecent(calls); }).catch((reason) => setError((reason as Error).message));
+  }, [fromInput, range, selectedRange.from, selectedRange.to, toInput]);
   if (error) return <ErrorBox message={error} />;
-  if (!summary || !recent || !tasks || (!operator && !balance)) return <Loading />;
-
-  const pie = summary.sentiments.map((bucket) => ({
-    name: SENTIMENT_LABELS[bucket.key] ?? bucket.key,
-    key: bucket.key,
-    value: bucket.count,
-  }));
-  const trajectoryPie = (summary.caller_trajectories ?? []).map((bucket) => ({
-    name: TRAJECTORY_LABELS[bucket.key] ?? bucket.key,
-    key: bucket.key,
-    value: bucket.count,
-  }));
-
-  return (
-    <div className="space-y-6">
-      {operator ? (
-        <p className="text-sm text-slate-500">
-          در پنل اپراتور فقط تماس‌هایی را می‌بینید که شماره موبایل یا داخلی شما یکی از طرفین آن بوده است.
-        </p>
-      ) : null}
-      <div className={`grid gap-4 ${operator ? "md:grid-cols-3" : "md:grid-cols-5"}`}>
-        {operator || !balance ? null : (
-          <>
-            <Stat title="اعتبار (ت)" value={`${fmt.int(balance.toman)} ت`} />
-            <Stat title="اعتبار (دقیقه)" value={fmt.int(balance.minutes)} />
-          </>
-        )}
-        <Stat title="تماس‌های ۳۰ روز" value={fmt.int(summary.total_calls)} />
-        <Stat
-          title="دقایق تحلیل‌شده"
-          value={fmt.int(summary.total_minutes)}
-          hint={
-            operator || !balance
-              ? undefined
-              : `نرخ: ${fmt.toman(balance.price_per_minute_toman)} بر دقیقه`
-          }
-        />
-        <Link to="/tasks" className="block transition hover:opacity-90">
-          <Stat
-            title="کارهای امروز"
-            value={fmt.int(tasks.today_count)}
-            hint={`${fmt.int(tasks.open_count)} کار باز`}
-          />
-        </Link>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="card">
-          <h2 className="mb-3 font-bold">توزیع احساس مشتری</h2>
-          {pie.length === 0 ? (
-            <Empty />
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={pie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={3} stroke="#F2F0EF" strokeWidth={2}>
-                    {pie.map((slice) => (
-                      <Cell key={slice.key} fill={COLORS[slice.key] ?? chart.primary} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => fmt.int(Number(value))} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <h2 className="mb-3 font-bold">تغییر احساس مشتری</h2>
-          {trajectoryPie.length === 0 ? (
-            <Empty />
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={trajectoryPie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={3} stroke="#F2F0EF" strokeWidth={2}>
-                    {trajectoryPie.map((slice) => (
-                      <Cell key={slice.key} fill={TRAJECTORY_COLORS[slice.key] ?? chart.primary} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => fmt.int(Number(value))} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-bold">۱۰ تماس آخر</h2>
-          <Link to="/calls" className="text-sm text-slate-700 transition hover:text-slate-900">
-            همه تماس‌ها
-          </Link>
-        </div>
-          {recent.items.length === 0 ? (
-            <Empty />
-          ) : (
-            <table className="table" dir="rtl">
-              <thead>
-                <tr>
-                  <th>زمان</th>
-                  <th>شماره</th>
-                  <th>مدت</th>
-                  <th>خلاصه</th>
-                  <th>وضعیت</th>
-                  <th>احساس</th>
-                  <th>تغییر</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.items.map((call) => (
-                  <tr
-                    key={call.id}
-                    className="table-row-link"
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => navigate(`/calls/${call.id}`)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        navigate(`/calls/${call.id}`);
-                      }
-                    }}
-                  >
-                    <td>{fmt.dateTime(call.started_at)}</td>
-                    <td dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</td>
-                    <td>{fmt.duration(call.duration_ms)}</td>
-                    <SummaryCell summary={call.summary} />
-                    <td>
-                      <StatusBadge status={call.status} />
-                    </td>
-                    <td dir="rtl">
-                      <span dir="rtl">
-                        <SentimentBadge sentiment={call.sentiment} />
-                      </span>
-                    </td>
-                    <td>
-                      <TrajectoryBadge trajectory={call.sentiment_trajectory} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-    </div>
-  );
+  if (range === "custom" && (!fromInput || !toInput)) return <RangePicker range={range} from={fromInput} to={toInput} onChange={updateRange} />;
+  if (!data || !recent) return <Loading />;
+  const c = data.cards;
+  const widgets = new Set(data.dashboard_widgets);
+  const trend = data.trend.map((item) => ({ ...item, label: fmt.calendarDate(item.date) }));
+  const funnel = data.funnel.map((item) => ({ ...item, label: FUNNEL[item.key] ?? item.key }));
+  const sentiments = data.sentiments.map((item) => ({ ...item, label: SENTIMENT_LABELS[item.key] ?? item.key }));
+  const talk = [{ name: "اپراتور", value: c.talk_balance.agent_percent ?? 0, color: chart.primary }, { name: "مشتری", value: c.talk_balance.caller_percent ?? 0, color: chart.cyan }];
+  return <div className="space-y-5" dir="rtl">
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-xl font-black">{operator ? "داشبورد عملکرد من" : "داشبورد هوشمند سازمان"}</h1><p className="mt-1 text-sm text-slate-500">{operator ? "تصمیم‌های روزانه و روند عملکرد شخصی شما" : "فروش و کیفیت مکالمه در یک نمای تصمیم‌ساز"}</p></div><RangePicker range={range} from={fromInput} to={toInput} onChange={updateRange} compact /></header>
+    {operator ? <p className="rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-800">این داشبورد فقط داده‌های مجاز و منتسب به شما را نشان می‌دهد.</p> : null}
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat title="تماس مؤثر" value={fmt.int(c.effective_calls)} hint={`${fmt.int(c.total_calls)} کل تماس`} /><Stat title="فرصت فروش" value={fmt.int(c.opportunities)} hint={`${fmt.int(c.probable_opportunities)} فرصت محتمل`} /><Stat title={operator ? "نرخ تبدیل من" : "نرخ تبدیل AI"} value={pct(c.ai_win_rate)} hint={delta(c.ai_win_rate)} /><Stat title="میانگین کیفیت" value={c.quality_score == null ? "—" : fmt.decimal(c.quality_score)} hint={c.quality_score == null ? "نمونهٔ امتیازدهی کافی نیست" : "از تماس‌های امتیازدهی‌شده"} />{!operator ? <><Stat title="تبدیل رسمی CRM" value={pct(c.crm_conversion_rate)} hint={delta(c.crm_conversion_rate)} /><Stat title="ارزش فروش" value={c.currency ? `${fmt.int(c.revenue)} ${c.currency}` : "—"} hint={c.currency ? `پایپ‌لاین: ${fmt.int(c.pipeline_value)} ${c.currency}` : "دادهٔ CRM کافی نیست"} /></> : null}<Stat title="پیگیری در SLA" value={pct(c.follow_up_sla_rate)} hint={delta(c.follow_up_sla_rate)} /><Link to="/tasks" className="block transition hover:opacity-90"><Stat title="اقدام فوری" value={fmt.int(c.hot_unassigned)} hint="فرصت داغ بدون پیگیری" tone={c.hot_unassigned ? "text-rose-700" : undefined} /></Link></div>
+    <Widget enabled={widgets.has("trend")}><section className="card"><h2 className="font-bold">روند عملکرد روزانه</h2><p className="mb-4 mt-1 text-sm text-slate-500">تماس، فرصت فروش و فروش صریح در بازهٔ انتخابی</p>{trend.length ? <div className="h-80"><ResponsiveContainer><LineChart data={trend}><CartesianGrid stroke={chart.light} strokeDasharray="3 3" /><XAxis dataKey="label" minTickGap={28} /><YAxis orientation="right" allowDecimals={false} tickFormatter={fmt.int} /><Tooltip formatter={(value: number) => fmt.int(value)} /><Legend /><Line type="monotone" dataKey="calls" name="تماس" stroke={chart.primary} strokeWidth={3} dot={false} /><Line type="monotone" dataKey="opportunities" name="فرصت" stroke={chart.warning} strokeWidth={3} dot={false} /><Line type="monotone" dataKey="wins" name="فروش" stroke={chart.success} strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></div> : <Empty />}</section></Widget>
+    <div className="grid gap-4 xl:grid-cols-2"><Widget enabled={widgets.has("funnel")}><section className="card"><h2 className="font-bold">قیف فروش</h2><p className="mb-4 mt-1 text-sm text-slate-500">عبور و ریزش در هر مرحله</p>{funnel.length ? <><div className="h-72"><ResponsiveContainer><BarChart data={funnel}><CartesianGrid stroke={chart.light} strokeDasharray="3 3" /><XAxis dataKey="label" interval={0} /><YAxis orientation="right" allowDecimals={false} tickFormatter={fmt.int} /><Tooltip formatter={(value: number) => fmt.int(value)} /><Bar dataKey="count" name="تعداد" radius={[8, 8, 0, 0]}>{funnel.map((item, index) => <Cell key={item.key} fill={chart.categorical[index % chart.categorical.length]} />)}</Bar></BarChart></ResponsiveContainer></div><div className="grid gap-2 sm:grid-cols-2">{funnel.map((item) => <div key={item.key} className="rounded-xl bg-slate-50 p-3 text-xs"><strong>{item.label}</strong><p className="mt-1 text-slate-500">عبور {item.pass_rate == null ? "—" : `${fmt.decimal(item.pass_rate)}٪`} · ریزش {item.drop_rate == null ? "—" : `${fmt.decimal(item.drop_rate)}٪`}</p></div>)}</div></> : <Empty />}</section></Widget><Widget enabled={widgets.has("sentiment")}><section className="card"><h2 className="font-bold">احساس مشتری</h2><p className="mb-4 mt-1 text-sm text-slate-500">توزیع تحلیل‌های تکمیل‌شده در بازه</p>{sentiments.length ? <div className="h-[22rem]"><ResponsiveContainer><PieChart><Pie data={sentiments} dataKey="count" nameKey="label" innerRadius={60} outerRadius={100} paddingAngle={3} stroke="#F2F0EF" strokeWidth={2}>{sentiments.map((item) => <Cell key={item.key} fill={SENTIMENT_COLORS[item.key] ?? chart.primary} />)}</Pie><Tooltip formatter={(value: number) => fmt.int(value)} /><Legend /></PieChart></ResponsiveContainer></div> : <Empty />}</section></Widget></div>
+    <div className="grid gap-4 xl:grid-cols-2"><Widget enabled={widgets.has("operator_comparison")}><section className="card"><h2 className="font-bold">{operator ? "عملکرد من" : "مقایسهٔ اپراتورها"}</h2><p className="mb-4 mt-1 text-sm text-slate-500">نرخ تبدیل و کیفیت فقط با نمونهٔ کافی قابل اتکاست.</p>{data.operators.length ? <div className="h-80"><ResponsiveContainer><BarChart data={data.operators} layout="vertical" margin={{ right: 20, left: 24 }}><CartesianGrid stroke={chart.light} strokeDasharray="3 3" /><XAxis type="number" domain={[0, 100]} tickFormatter={(value) => fmt.percent(value)} /><YAxis type="category" dataKey="operator_label" width={92} /><Tooltip formatter={(value: number) => `${fmt.decimal(value)}٪`} /><Legend /><Bar dataKey={(item) => item.conversion.value ?? 0} name="تبدیل" fill={chart.success} radius={[0, 8, 8, 0]} /><Bar dataKey={(item) => item.quality_score ?? 0} name="کیفیت" fill={chart.primary} radius={[0, 8, 8, 0]} /></BarChart></ResponsiveContainer></div> : <Empty />}</section></Widget><Widget enabled={widgets.has("talk_balance")}><section className="card"><h2 className="font-bold">تعادل گفت‌وگو</h2><p className="mb-4 mt-1 text-sm text-slate-500">سهم زمانی صحبت اپراتور و مشتری</p>{c.talk_balance.agent_percent == null ? <Empty /> : <div className="grid items-center gap-4 sm:grid-cols-2"><div className="h-64"><ResponsiveContainer><PieChart><Pie data={talk} dataKey="value" nameKey="name" innerRadius={52} outerRadius={88} paddingAngle={3}>{talk.map((item) => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value: number) => `${fmt.decimal(value)}٪`} /><Legend /></PieChart></ResponsiveContainer></div><div className="space-y-3">{talk.map((item) => <div key={item.name} className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">{item.name}</p><strong className="mt-1 block text-2xl">{fmt.decimal(item.value)}٪</strong></div>)}</div></div>}</section></Widget></div>
+    <Widget enabled={widgets.has("coaching")}><div className="grid gap-4 xl:grid-cols-2"><section className="card"><h2 className="mb-4 font-bold text-emerald-700">نقاط قوت</h2><Coaching rows={data.coaching.strengths} tone="emerald" /></section><section className="card"><h2 className="mb-4 font-bold text-amber-700">اولویت‌های بهبود</h2><Coaching rows={data.coaching.improvements} tone="amber" /></section></div></Widget>
+    <Widget enabled={widgets.has("actions")}><section className="card"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-bold">مرکز اقدام</h2><p className="mt-1 text-sm text-slate-500">موارد نیازمند پیگیری یا بازبینی</p></div><span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">{fmt.int(data.actions.length)} مورد</span></div>{data.actions.length ? <div className="grid gap-3 md:grid-cols-2">{data.actions.slice(0, 8).map((item, index) => { const content = <><div className="flex justify-between gap-3"><strong>{item.type === "hot_opportunity" ? "فرصت داغ بدون پیگیری" : item.type === "overdue_follow_up" ? "پیگیری عقب‌افتاده" : item.type === "kpi_decline" ? "افت شاخص عملکرد" : "نیازمند بازبینی"}</strong><span className={item.severity === "high" ? "text-xs text-rose-700" : "text-xs text-amber-700"}>{item.severity === "high" ? "فوری" : "بازبینی"}</span></div><p className="mt-2 line-clamp-2 text-sm text-slate-600">{item.title}</p></>; return item.call_id ? <Link key={`${item.call_id}-${index}`} to={`/calls/${item.call_id}`} className="rounded-xl border border-slate-200 p-4 transition hover:border-brand-300 hover:bg-brand-50">{content}</Link> : <div key={`${item.type}-${index}`} className="rounded-xl border border-slate-200 p-4">{content}</div>; })}</div> : <p className="text-sm text-emerald-700">اقدام فوری باقی نمانده است.</p>}</section></Widget>
+    <section className="card overflow-x-auto"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-bold">تماس‌های اخیر بازه</h2><p className="mt-1 text-sm text-slate-500">برای بررسی کامل، روی هر ردیف کلیک کنید.</p></div><Link to={`/calls${query({ from: selectedRange.from, to: selectedRange.to })}`} className="text-sm text-brand-700">همه تماس‌ها</Link></div>{recent.items.length ? <table className="table min-w-[780px]"><thead><tr><th>زمان</th><th>شماره</th><th>مدت</th><th>خلاصه</th><th>وضعیت</th><th>احساس</th><th>تغییر</th></tr></thead><tbody>{recent.items.map((call) => <tr key={call.id} className="table-row-link" role="link" tabIndex={0} onClick={() => navigate(`/calls/${call.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/calls/${call.id}`); } }}><td>{fmt.dateTime(call.started_at)}</td><td dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</td><td>{fmt.duration(call.duration_ms)}</td><SummaryCell summary={call.summary} /><td><StatusBadge status={call.status} /></td><td><SentimentBadge sentiment={call.sentiment} /></td><td><TrajectoryBadge trajectory={call.sentiment_trajectory} /></td></tr>)}</tbody></table> : <Empty />}</section>
+  </div>;
 }
+
+function Coaching({ rows, tone }: { rows: KpiDashboard["coaching"]["strengths"]; tone: "emerald" | "amber" }) { if (!rows.length) return <Empty />; return <div className="space-y-3">{rows.map((item) => <Link key={`${item.call_id}-${item.title}`} to={`/calls/${item.call_id}`} className={`block rounded-xl p-4 ${tone === "emerald" ? "bg-emerald-50" : "bg-amber-50"}`}><div className="flex justify-between gap-4"><strong>{item.title}</strong><span>{fmt.decimal(item.average)}</span></div>{item.evidence ? <p className="mt-2 text-xs text-slate-600">{item.evidence}</p> : null}</Link>)}</div>; }
+function RangePicker({ range, from, to, onChange, compact = false }: { range: string; from: string; to: string; onChange: (value: { range: string; from?: string; to?: string }) => void; compact?: boolean }) { return <div className={`flex flex-wrap items-center gap-2 ${compact ? "justify-end" : "p-5"}`}><div className="flex rounded-xl bg-slate-100 p-1">{PRESETS.map((item) => <button key={item.value} type="button" className={`rounded-lg px-3 py-2 text-sm transition ${range === item.value ? "bg-white font-bold text-brand-700 shadow-sm" : "text-slate-600"}`} onClick={() => onChange({ range: item.value })}>{item.label}</button>)}<button type="button" className={`rounded-lg px-3 py-2 text-sm transition ${range === "custom" ? "bg-white font-bold text-brand-700 shadow-sm" : "text-slate-600"}`} onClick={() => onChange({ range: "custom", from, to })}>بازه دلخواه</button></div>{range === "custom" ? <div className="grid w-full gap-2 sm:grid-cols-2"><JalaliDatePicker value={from} onChange={(value) => onChange({ range: "custom", from: value, to })} placeholder="تاریخ شروع" /><JalaliDatePicker value={to} onChange={(value) => onChange({ range: "custom", from, to: value })} placeholder="تاریخ پایان" /></div> : null}</div>; }

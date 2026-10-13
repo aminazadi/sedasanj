@@ -37,6 +37,15 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "probable_confidence_threshold": 0.65,
     "hot_opportunity_threshold": 0.8,
     "operator_team_comparison_visible": True,
+    "dashboard_widgets": [
+        "trend",
+        "funnel",
+        "sentiment",
+        "operator_comparison",
+        "talk_balance",
+        "coaching",
+        "actions",
+    ],
     "taxonomy_version": 1,
     "funnel_stages": [
         "effective",
@@ -50,6 +59,16 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "objection_taxonomy": ["price", "trust", "timing", "competitor", "no_need", "other"],
 }
 
+DASHBOARD_WIDGETS = {
+    "trend",
+    "funnel",
+    "sentiment",
+    "operator_comparison",
+    "talk_balance",
+    "coaching",
+    "actions",
+}
+
 
 class KpiSettingsIn(BaseModel):
     follow_up_sla_hours: int = Field(ge=1, le=720)
@@ -57,6 +76,9 @@ class KpiSettingsIn(BaseModel):
     probable_confidence_threshold: float = Field(ge=0, le=1)
     hot_opportunity_threshold: float = Field(ge=0, le=1)
     operator_team_comparison_visible: bool = True
+    dashboard_widgets: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_SETTINGS["dashboard_widgets"])
+    )
     taxonomy_version: int = Field(ge=1)
     funnel_stages: list[str] = Field(min_length=1, max_length=20)
     objection_taxonomy: list[str] = Field(min_length=1, max_length=50)
@@ -75,6 +97,10 @@ class KpiSettingsIn(BaseModel):
         if any(not value for value in normalized) or len(normalized) != len(set(normalized)):
             raise ValueError("objection_taxonomy must contain unique non-empty values")
         self.objection_taxonomy = normalized
+        widgets = [value.strip().lower() for value in self.dashboard_widgets]
+        if len(widgets) != len(set(widgets)) or not set(widgets).issubset(DASHBOARD_WIDGETS):
+            raise ValueError("dashboard_widgets contains unsupported or duplicate values")
+        self.dashboard_widgets = widgets
         return self
 
 
@@ -932,6 +958,25 @@ async def dashboard(
         )
     for item in campaign_counter.values():
         item["conversion"] = _rate(item["wins"], item["opportunities"])
+    daily: dict[str, dict[str, int | str]] = {}
+    sentiment_counter: Counter[str] = Counter()
+    for call, insight, sales in rows:
+        day = call.started_at.astimezone(UTC).date().isoformat()
+        point = daily.setdefault(
+            day,
+            {"date": day, "calls": 0, "effective_calls": 0, "opportunities": 0, "wins": 0},
+        )
+        point["calls"] = int(point["calls"]) + 1
+        point["effective_calls"] = int(point["effective_calls"]) + int(call.duration_ms >= 15000)
+        point["opportunities"] = int(point["opportunities"]) + int(_is_opportunity(insight, sales))
+        point["wins"] = int(point["wins"]) + int(
+            bool(sales and sales.outcome == "won" and sales.certainty == "explicit")
+        )
+        if insight and insight.sentiment:
+            sentiment_counter[insight.sentiment] += 1
+    total_agent_talk = sum(channels.get(1, 0) for channels in talk.values())
+    total_caller_talk = sum(channels.get(0, 0) for channels in talk.values())
+    total_talk = total_agent_talk + total_caller_talk
     goal_team_id = team_id
     if principal.role == "operator":
         goal_team_id = (
@@ -1115,7 +1160,21 @@ async def dashboard(
             "sentiment_improvement": sentiment_rate,
             "hot_unassigned": len(hot),
             "goal_achievement": achievements,
+            "talk_balance": {
+                "agent_percent": (
+                    round(total_agent_talk * 100 / total_talk, 1) if total_talk else None
+                ),
+                "caller_percent": (
+                    round(total_caller_talk * 100 / total_talk, 1) if total_talk else None
+                ),
+            },
         },
+        "trend": [daily[key] for key in sorted(daily)],
+        "sentiments": [
+            {"key": key, "count": count}
+            for key, count in sentiment_counter.most_common()
+        ],
+        "dashboard_widgets": settings["dashboard_widgets"],
         "funnel": funnel,
         "breakdowns": {
             "topics": topics.most_common(10),
@@ -1132,7 +1191,9 @@ async def dashboard(
             if principal.role != "operator"
             else operators[:1]
         ),
-        "operators_total": len(operators) if principal.role != "operator" else min(1, len(operators)),
+        "operators_total": (
+            len(operators) if principal.role != "operator" else min(1, len(operators))
+        ),
         "actions": (hot + overdue + review)[:100],
         "coaching": {
             "strengths": coaching_rows[:3],

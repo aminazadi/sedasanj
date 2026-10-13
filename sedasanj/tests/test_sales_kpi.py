@@ -137,3 +137,21 @@ def test_kpi_settings_reject_unknown_or_duplicate_taxonomy_values() -> None:
             funnel_stages=["effective", "qualified", "won", "lost"],
             objection_taxonomy=["price", "price"],
         )
+
+
+def test_kpi_settings_accepts_known_dashboard_widgets_and_rejects_unknown_ones() -> None:
+    payload = {
+        "follow_up_sla_hours": 24,
+        "minimum_sample_size": 5,
+        "probable_confidence_threshold": 0.65,
+        "hot_opportunity_threshold": 0.8,
+        "taxonomy_version": 2,
+        "funnel_stages": ["effective", "qualified", "won", "lost"],
+        "objection_taxonomy": ["price"],
+    }
+    assert KpiSettingsIn(**payload, dashboard_widgets=["trend", "sentiment"]).dashboard_widgets == [
+        "trend",
+        "sentiment",
+    ]
+    with pytest.raises(ValidationError):
+        KpiSettingsIn(**payload, dashboard_widgets=["trend", "unknown"])

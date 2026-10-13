@@ -359,6 +359,15 @@ export interface KpiDashboard {
     minimum_sample_size: number;
     operator_team_comparison_visible: boolean;
   };
+  dashboard_widgets: string[];
+  trend: Array<{
+    date: string;
+    calls: number;
+    effective_calls: number;
+    opportunities: number;
+    wins: number;
+  }>;
+  sentiments: AnalyticsBucket[];
   cards: {
     total_calls: number;
     effective_calls: number;
@@ -377,6 +386,10 @@ export interface KpiDashboard {
     follow_up_sla_rate: RateMetric;
     sentiment_improvement: RateMetric;
     hot_unassigned: number;
+    talk_balance: {
+      agent_percent: number | null;
+      caller_percent: number | null;
+    };
     goal_achievement: Array<{ metric: string; actual: number | null; target: number; achievement: number | null }>;
   };
   funnel: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null; previous_count?: number; change_percent?: number | null }>;
