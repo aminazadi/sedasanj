@@ -43,6 +43,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "sentiment",
         "operator_comparison",
         "talk_balance",
+        "tasks",
         "coaching",
         "actions",
     ],
@@ -65,6 +66,7 @@ DASHBOARD_WIDGETS = {
     "sentiment",
     "operator_comparison",
     "talk_balance",
+    "tasks",
     "coaching",
     "actions",
 }
@@ -803,6 +805,12 @@ async def dashboard(
         and item.completed_at <= previous_to
         and item.completed_at <= item.created_at + timedelta(hours=sla_hours)
     ]
+    open_tasks = [item for item in tasks if item.status == "open"]
+    done_tasks = [item for item in tasks if item.status == "done"]
+    overdue_tasks = [
+        item for item in open_tasks if item.due_date is not None and item.due_date < now.date()
+    ]
+    previous_done_tasks = [item for item in previous_tasks if item.status == "done"]
     improved = sum(
         1
         for _, insight, _ in rows
@@ -1037,6 +1045,12 @@ async def dashboard(
     follow_up_rate = _rate_with_change(
         len(on_time), len(due_tasks), len(previous_on_time), len(previous_due_tasks)
     )
+    task_completion_rate = _rate_with_change(
+        len(done_tasks),
+        len(tasks),
+        len(previous_done_tasks),
+        len(previous_tasks),
+    )
     sentiment_rate = _rate_with_change(
         improved,
         sentiment_known,
@@ -1167,6 +1181,12 @@ async def dashboard(
                 "caller_percent": (
                     round(total_caller_talk * 100 / total_talk, 1) if total_talk else None
                 ),
+            },
+            "task_summary": {
+                "open": len(open_tasks),
+                "done": len(done_tasks),
+                "overdue": len(overdue_tasks),
+                "completion_rate": task_completion_rate,
             },
         },
         "trend": [daily[key] for key in sorted(daily)],

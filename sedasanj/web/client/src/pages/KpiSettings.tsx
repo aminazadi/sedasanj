@@ -11,6 +11,7 @@ const DASHBOARD_WIDGETS = [
   ["sentiment", "احساس مشتری"],
   ["operator_comparison", "مقایسه اپراتورها"],
   ["talk_balance", "تعادل گفت‌وگو"],
+  ["tasks", "وضعیت کارها"],
   ["coaching", "بازخورد عملکرد"],
   ["actions", "اقدام‌های ضروری"],
 ] as const;

@@ -153,5 +153,6 @@ def test_kpi_settings_accepts_known_dashboard_widgets_and_rejects_unknown_ones()
         "trend",
         "sentiment",
     ]
+    assert "tasks" in KpiSettingsIn(**payload).dashboard_widgets
     with pytest.raises(ValidationError):
         KpiSettingsIn(**payload, dashboard_widgets=["trend", "unknown"])

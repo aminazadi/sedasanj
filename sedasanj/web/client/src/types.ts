@@ -390,6 +390,12 @@ export interface KpiDashboard {
       agent_percent: number | null;
       caller_percent: number | null;
     };
+    task_summary: {
+      open: number;
+      done: number;
+      overdue: number;
+      completion_rate: RateMetric;
+    };
     goal_achievement: Array<{ metric: string; actual: number | null; target: number; achievement: number | null }>;
   };
   funnel: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null; previous_count?: number; change_percent?: number | null }>;
