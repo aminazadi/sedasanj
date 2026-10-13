@@ -2,6 +2,10 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Applied the pending assistant chat migrations through `0042_chat_message_ordinal`, restoring streamed-message persistence for databases that were still at revision `0040_asr_transcript_revisions`.
+
+## 2026-10-13 — AMINAZADI
+
 - Moved assistant error alerts into the chat header opposite the temporary-chat and transcript-download controls, making server errors immediately visible without displacing the composer.
 
 ## 2026-10-13 — AMINAZADI
