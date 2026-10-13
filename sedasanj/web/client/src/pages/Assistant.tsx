@@ -99,7 +99,7 @@ function InfoIcon() {
 }
 
 function FilterIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4"><path d="M4 6h16M7 12h10m-7 6h4" /><circle cx="8" cy="6" r="1" fill="currentColor" /><circle cx="15" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="18" r="1" fill="currentColor" /></svg>;
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4"><path d="M3 5h18l-7 8v5l-4 2v-7Z" /></svg>;
 }
 
 function ScrollDownIcon() {
@@ -361,6 +361,7 @@ export default function Assistant() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
+  const speechPrefixRef = useRef("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [processingConversationId, setProcessingConversationId] = useState<string | null>(null);
@@ -386,6 +387,7 @@ export default function Assistant() {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [phases, setPhases] = useState<Record<string, string>>({});
   const messagesScrollerRef = useRef<HTMLDivElement>(null);
+  const memoryPanelControlsRef = useRef<HTMLDivElement>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
   const streamingRepliesRef = useRef(new Map<string, ChatMessage>());
   const userNearBottomRef = useRef(true);
@@ -655,6 +657,25 @@ export default function Assistant() {
     void loadMemories().catch((err) => setError(assistantErrorMessage(err)));
   }, [training, memoryStatus, memoryCategory]);
   useEffect(() => {
+    if (!memoryInfoOpen && !memoryFiltersOpen) return;
+    const closeControls = (event: MouseEvent) => {
+      if (memoryPanelControlsRef.current?.contains(event.target as Node)) return;
+      setMemoryInfoOpen(false);
+      setMemoryFiltersOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMemoryInfoOpen(false);
+      setMemoryFiltersOpen(false);
+    };
+    document.addEventListener("mousedown", closeControls);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeControls);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [memoryInfoOpen, memoryFiltersOpen]);
+  useEffect(() => {
     void request<AssistantContextOptions>("/v1/assistant/context-options")
       .then(setContextOptions)
       .catch((err) => setError(assistantErrorMessage(err)));
@@ -897,6 +918,7 @@ export default function Assistant() {
       return;
     }
     const content = text.trim();
+    window.dispatchEvent(new Event("assistant-message-sent"));
     const history = messages.filter((item) => item.status !== "running");
     setText("");
     requestAnimationFrame(resizeInput);
@@ -979,7 +1001,7 @@ export default function Assistant() {
   }
   function renderMemoryPanel() {
     return <div className="flex h-full flex-col bg-white">
-      <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-[#B2AC88] p-4">
+      <div ref={memoryPanelControlsRef} className="relative flex shrink-0 items-center justify-between gap-3 border-b border-[#B2AC88] p-4">
         <h2 className="font-bold text-[#4B6E48]">مموری سازمانی</h2>
         <div className="flex items-center gap-1">
           <IconTooltip label="توضیحات مموری سازمانی"><button type="button" className={`inline-flex h-9 w-9 items-center justify-center transition hover:bg-[#F2F0EF] ${memoryInfoOpen ? "bg-[#F2F0EF] text-[#4B6E48]" : "text-[#898989]"}`} onClick={() => { setMemoryInfoOpen((current) => !current); setMemoryFiltersOpen(false); }} aria-label="نمایش توضیحات مموری سازمانی" aria-expanded={memoryInfoOpen} aria-controls="organization-memory-info"><InfoIcon /></button></IconTooltip>
@@ -1093,10 +1115,10 @@ export default function Assistant() {
           {attachments.from_date && attachments.to_date ? <button type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)}<CloseIcon /></button> : null}
           {attachments.tool_names.map((name) => <button key={name} type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("tool", name)}>ابزار: {contextOptions?.tools.find((item) => item.name === name)?.title || name}<CloseIcon /></button>)}
         </div> : null}
-        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]">{listening ? "در حال دریافت گفتار فارسی…" : <TypingPromptGuide />}</p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={(transcript) => { setText((current) => `${current}${current ? " " : ""}${transcript}`); requestAnimationFrame(resizeInput); inputRef.current?.focus(); }} onListeningChange={setListening} /><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></div></div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></div>
+        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]">{listening ? "در حال دریافت گفتار فارسی…" : <TypingPromptGuide />}</p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); requestAnimationFrame(resizeInput); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} />{!training ? <><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></> : null}</div></div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></div>
       </form>
     </section>
-    {memoryPanelOpen ? <><button type="button" className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm lg:hidden" onClick={() => setMemoryPanelOpen(false)} aria-label="بستن پنل مموری" /><aside id="organization-memory-panel" className="fixed inset-y-0 left-0 z-50 w-[min(92vw,24rem)] border-r border-[#B2AC88] shadow-2xl lg:sticky lg:top-8 lg:z-auto lg:h-[calc(100vh-4rem)] lg:w-auto lg:border-r-0 lg:border-l lg:shadow-none" aria-label="مموری سازمانی">{renderMemoryPanel()}</aside></> : null}
+    {memoryPanelOpen ? <><button type="button" className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm lg:hidden" onClick={() => setMemoryPanelOpen(false)} aria-label="بستن پنل مموری" /><aside id="organization-memory-panel" className="fixed inset-y-0 left-0 z-50 w-[min(92vw,24rem)] border-r border-[#B2AC88] shadow-2xl lg:sticky lg:top-8 lg:z-auto lg:h-[calc(100vh-4rem)] lg:w-auto lg:shadow-none" aria-label="مموری سازمانی">{renderMemoryPanel()}</aside></> : null}
     <ConfirmDialog
       open={Boolean(confirmation)}
       title={confirmation?.action === "delete" ? "حذف گفتگو" : "آرشیو گفتگو"}

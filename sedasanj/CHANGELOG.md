@@ -2,12 +2,23 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Replaced the memory filter control with the primary funnel icon and closed memory popovers on outside click or Escape.
+
+## 2026-10-14 — AMINAZADI
+
 - Replaced the organization-memory panel's persistent description and filter fields with compact accessible icon controls beside its close action.
 
 ## 2026-10-14 — AMINAZADI
 
+- Standardized visible panel counts, timers, and playback rates on Persian digits while keeping machine-readable form input values intact.
 
 - Applied a lighter typography scale across the authenticated panel while preserving hierarchy for headings, labels, controls, and emphasis.
+
+## 2026-10-14 — AMINAZADI
+
+- Hid call-tool and date-range controls from the organization-memory training composer.
+
+## 2026-10-14 — AMINAZADI
 
 - Positioned the organization-memory panel divider between the inspector and the training conversation.
 
@@ -15,6 +26,10 @@
 
 - Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
 - Added active-listening styling and an animated voice waveform to assistant prompt composers.
+- Kept Chrome speech recognition active across pauses and rendered interim Persian transcription in the composer as the user speaks.
+- Automatically stop active speech recognition as soon as an assistant message is sent.
+
+## 2026-10-14 — AMINAZADI
 
 - Moved organization memories from the training transcript into a responsive side inspector with URL-persistent visibility, filters, selection, and mobile overlay behavior.
 
@@ -22,13 +37,19 @@
 
 - Ensured the launcher’s square border pulse remains visible when reduced-motion browser preferences are enabled.
 
+## 2026-10-13 — AMINAZADI
+
 - Changed the quick assistant launcher animation to an expanding, fading square border pulse.
+
+## 2026-10-13 — AMINAZADI
 
 - Consolidated the assistant sidebar navigation into URL-persistent Chats, Archives, and manager-only Training tabs.
 
 ## 2026-10-13 — AMINAZADI
 
 - Standardized assistant visual entry points with the AI bot icon across the sidebar, assistant workspace, and quick-chat launcher.
+
+## 2026-10-13 — AMINAZADI
 
 - Replaced the quick assistant launcher glyph with a standard chat icon and refined the launcher motion into a direct border-pulse effect.
 
@@ -38,6 +59,8 @@
 - Applied approved organization memory to manager/operator assistant chats, transcript correction, single- and multi-stage call analysis, and operator scoring with immutable per-run snapshots.
 - Added organization-memory administration, exports, audit events, optimistic concurrency, idempotent publishing, URL-persistent training views, filters, and conversation selection.
 - Added migration `0043_organization_memory`, tenant provisioning coverage, role/RLS protections, regression tests, and manager-only analysis snapshot visibility.
+
+## 2026-10-13 — AMINAZADI
 
 - Simplified the floating assistant launcher to a standard icon-only button and moved its motion-safe pulse and float animation onto the button itself.
 
@@ -66,10 +89,10 @@
 - Added a role-scoped floating assistant widget for organization managers and operators outside the full assistant workspace.
 - Added URL-persistent quick-chat visibility, accessible close behavior, new-conversation startup, shared assistant response rendering, context selection, message actions, citations, charts, and tool progress.
 - Closed assistant context popovers when users click outside the composer in both the full workspace and quick-chat widget.
-
 - Moved quick-chat range and tool controls into the composer surface and matched the send action height to the text area.
 - Replaced the quick-chat trigger with the large outlined conversation icon, removed the duplicate header icon, and animated the panel from the trigger on open and close.
 - Restored the existing quick-chat trigger layout while retaining the larger outlined conversation icon.
+
 ## 2026-10-13 — AMINAZADI
 
 - Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.
@@ -78,8 +101,8 @@
 - Refined the shared assistant processing marker into a shadow-free rotating multicolor square ring.
 - Removed the assistant response-loading state from the message bubble so it renders without a border, padding, avatar, or bubble tail.
 - Added a motion-safe, palette-matched animated square processing marker to the exact assistant conversation sidebar item receiving a streamed response.
-- Reused the same processing marker in the pending assistant response inside the chat.
 - Added the dotted surface treatment to the assistant conversation sidebar for visual consistency with the main panel navigation.
+- Automatically collapse the main desktop navigation on the assistant workspace, preserving the assistant conversation sidebar and placing its single motion-safe menu toggle beside the conversation and archive tabs.
 - Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
 - Rebuilt the logo motion with a coordinated 1.6-second GSAP pen timeline, isolated filled-letter and dot masks, and an independent Canvas particle emitter with outward drift, damping, and fade; autoplay runs once with hover replay, reduced-motion support, resize handling, and animation cleanup.
 - Refined the "ص" glyph with an eased continuous bowl gesture and a synchronized connected tail, keeping particles on the drawing path.
@@ -119,15 +142,19 @@
 
 - Made per-minute analysis pricing tenant-specific across admin creation, active subscriptions, tenant settings, and billing consumption.
 - Added tenant-scoped manual transcription recovery for terminal ASR failures, including fresh auditable jobs, durable dispatch, retry-safe credit holds, and a call-detail recovery action.
+- Displayed calls semantically from caller to recipient with a directional arrow and translated call-direction values into Persian.
 - Preserved timestamped conversational turns for 9Router OpenAI-compatible transcription responses and repaired invalid zero-length segment timestamps before transcript correction.
 - Added timestamp-safe VAD and two-speaker diarization across ASR providers, immutable transcript revision history with no-charge retranscription and rollback, version-aware conversation metrics and exports, and warning-only correction uncertainty with structural model failover.
 - Added a safe text-format fallback and compatible response normalization for empty 9Router transcription JSON responses, while preventing deterministic empty transcripts from entering the retry loop.
 - Recovered empty remote ASR responses through VAD window decoding and allowed a silent stereo channel to be skipped without discarding the speaking channel.
 - Accepted correction JSON embedded in prose or Markdown and safely resegmented monolithic correction text against immutable source segment identities with explicit uncertainty provenance.
+- Normalized caller and dialed numbers from Asterisk and manual uploads to English digits and the canonical Iranian local format while preserving internal extensions.
 - Added distinct, accessible color badges for call processing statuses, sentiments, and sales outcomes across call lists and details.
 - Highlighted a newly selected Jalali date with the primary color before confirming date-time values.
 - Changed transcript-correction model priority to submit one AISERVICE task at a time and advance to the next text model only after the current model ends in technical failure.
 - Fixed route-aware AI model settings so inactive optional 9Router prompts no longer block saving, and exposed safe rejected-model details for ASR failures.
+- Installed backend runtime and emotion dependencies directly from `pyproject.toml` without building the local project package, preserving binary-only installation for core services while allowing FunASR's source-only transitive dependencies to use an explicitly bootstrapped build backend.
+- Removed the privileged PostgreSQL settings lookup from Apache AGE readiness checks so the backend can start with its restricted runtime role while still verifying extensions, graph initialization, and live Cypher execution.
 - Unified operator scoring with canonical call assignments, allowed previously ineligible calls to recover after an operator mapping is added, prevented AMI destination extensions from being misidentified as answering operators, and added database support for scores requiring manual review.
 
 ## 2026-10-02 — AMINAZADI
@@ -432,4 +459,3 @@
 - Added local re-entry and validation for exporting existing API-key configuration without storing the secret.
 - Added Python Agent credit-blocked scheduling and durable dead-letter metadata.
 - Added the standalone FreePBX module 1.1.0 release with PHP 7.4 compatibility, versioned import, atomic apply and rollback, explicit transports, durable queue states, retention cleanup, and pinned binary checks.
-- Automatically collapse the main desktop navigation on the assistant workspace, preserving the assistant conversation sidebar and placing its single motion-safe menu toggle beside the conversation and archive tabs.
