@@ -163,7 +163,11 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     start, end = _window(args)
     operator_id = await _validate_operator(ctx, args.operator_id)
     stmt = _apply_window(
-        _base_calls(ctx).outerjoin(CallInsight, CallInsight.call_id == Call.id), start, end
+        _base_calls(ctx)
+        .outerjoin(CallInsight, CallInsight.call_id == Call.id)
+        .outerjoin(Transcript, Transcript.call_id == Call.id),
+        start,
+        end,
     )
     if operator_id is not None and not operator_scope.is_operator(ctx.principal):
         stmt = stmt.where(
@@ -191,7 +195,7 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         stmt = stmt.where(CallInsight.topics.any(args.topic))
     rows = (
         await ctx.session.execute(
-            stmt.add_columns(CallInsight.summary)
+            stmt.add_columns(CallInsight, Transcript)
             .order_by(Call.started_at.desc())
             .offset(args.offset)
             .limit(args.limit)
@@ -204,12 +208,29 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
             {
                 "call_id": str(call.id),
                 "started_at": call.started_at.isoformat(),
+                "ended_at": call.ended_at.isoformat(),
                 "duration_seconds": round(call.duration_ms / 1000),
                 "status": call.status,
                 "direction": call.direction,
-                "summary": summary,
+                "caller_number": call.caller_number,
+                "dialed_number": call.dialed_number,
+                "agent_extension": call.agent_extension,
+                "campaign_id": call.campaign_id,
+                "external_reference": call.external_reference,
+                "summary": insight.summary if insight else None,
+                "intent": insight.intent if insight else None,
+                "topics": insight.topics if insight else [],
+                "keywords": insight.keywords if insight else [],
+                "sentiment": insight.sentiment if insight else None,
+                "sentiment_profile": insight.sentiment_profile if insight else None,
+                "entities": insight.ner if insight else None,
+                "action_items": insight.action_items if insight else None,
+                "transcript": (
+                    (transcript.corrected_text or transcript.full_text)
+                    if transcript else None
+                ),
             }
-            for call, summary in rows
+            for call, insight, transcript in rows
         ],
     }
 
@@ -233,6 +254,14 @@ async def _call_details(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         )
     ).scalars().all()
     insights = {row.call_id: row for row in insight_rows}
+    transcripts = {
+        row.call_id: row
+        for row in (
+            await ctx.session.execute(
+                select(Transcript).where(Transcript.call_id.in_([row.id for row in rows]))
+            )
+        ).scalars()
+    }
     return {
         "version": 1,
         "count": len(rows),
@@ -248,6 +277,10 @@ async def _call_details(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "dialed_number": call.dialed_number,
                 "agent_extension": call.agent_extension,
                 "summary": insights.get(call.id).summary if insights.get(call.id) else None,
+                "transcript": (
+                    transcripts[call.id].corrected_text or transcripts[call.id].full_text
+                    if call.id in transcripts else None
+                ),
             }
             for call in rows
         ],

@@ -253,21 +253,23 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
       <span className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-[11px] font-bold text-[#4B6E48]">{fmt.int(sources.length)} تماس</span>
     </div>
     <div className="max-h-[30rem] overflow-auto border border-[#B2AC88] bg-white">
-      <table className="w-full min-w-[42rem] border-collapse text-xs">
+      <table className="w-full min-w-[58rem] border-collapse text-xs">
         <thead className="sticky top-0 z-10 bg-[#F2F0EF] text-[#4B6E48]">
           <tr className="border-b border-[#B2AC88]">
             <th className="w-10 px-3 py-2 text-right" aria-label="نمایش جزئیات" />
             <th className="px-3 py-2 text-right">تاریخ و زمان</th>
-            <th className="px-3 py-2 text-right">شماره تماس</th>
+            <th className="px-3 py-2 text-right">طرفین تماس</th>
+            <th className="px-3 py-2 text-right">اپراتور</th>
             <th className="px-3 py-2 text-right">جهت</th>
             <th className="px-3 py-2 text-right">مدت</th>
             <th className="px-3 py-2 text-right">وضعیت</th>
+            <th className="px-3 py-2 text-right">خلاصه</th>
           </tr>
         </thead>
         {sources.map((source) => {
           const open = expandedCallId === source.call_id;
-          const primaryNumber = source.direction === "outbound" ? source.dialed_number : source.caller_number;
-          const secondaryNumber = source.direction === "outbound" ? source.caller_number : source.dialed_number;
+          const callerNumber = source.caller_number ? fmt.digits(source.caller_number) : "شماره نامشخص";
+          const dialedNumber = source.dialed_number ? fmt.digits(source.dialed_number) : "شماره نامشخص";
           const detailsId = `assistant-call-source-${source.call_id}`;
           return <tbody key={source.call_id} className="border-b border-[#E3E0D4] last:border-b-0">
             <tr className={`transition hover:bg-[#F2F0EF] ${open ? "bg-[#F2F0EF]" : "bg-white"}`}>
@@ -275,19 +277,21 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
                 <button type="button" className="flex h-11 w-full items-center justify-center text-[#4B6E48]" onClick={() => onToggle(source.call_id)} aria-expanded={open} aria-controls={detailsId} aria-label={open ? "بستن جزئیات تماس" : "نمایش جزئیات تماس"}><ChevronIcon open={open} /></button>
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-[#555555]">{source.started_at ? fmt.dateTime(source.started_at) : "زمان نامشخص"}</td>
-              <td className="whitespace-nowrap px-3 py-2 font-bold text-[#4B6E48]" dir="ltr">{primaryNumber ? fmt.digits(primaryNumber) : "شماره نامشخص"}</td>
+              <td className="whitespace-nowrap px-3 py-2 font-bold text-[#4B6E48]" dir="ltr"><span>{callerNumber}</span><span className="px-2 text-[#898989]" dir="rtl">←</span><span>{dialedNumber}</span></td>
+              <td className="whitespace-nowrap px-3 py-2" dir="ltr">{source.agent_extension ? fmt.digits(source.agent_extension) : "—"}</td>
               <td className="px-3 py-2">{source.direction === "inbound" ? "ورودی" : source.direction === "outbound" ? "خروجی" : source.direction || "—"}</td>
               <td className="whitespace-nowrap px-3 py-2">{source.duration_ms == null ? "—" : fmt.duration(source.duration_ms)}</td>
               <td className="px-3 py-2">{source.status ? <StatusBadge status={source.status} /> : "—"}</td>
+              <td className="min-w-64 px-3 py-2 leading-5 text-[#555555]">{source.summary || "—"}</td>
             </tr>
             {open ? <tr id={detailsId}>
-              <td colSpan={6} className="bg-[#FCFBF8] px-4 py-4">
+              <td colSpan={8} className="bg-[#FCFBF8] px-4 py-4">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="min-w-0">
                     <dl className="mb-3 grid grid-cols-2 gap-3 text-[11px] sm:grid-cols-3">
-                      <div><dt className="text-[#898989]">شماره مقابل</dt><dd className="mt-1 font-bold" dir="ltr">{secondaryNumber ? fmt.digits(secondaryNumber) : "—"}</dd></div>
+                      <div><dt className="text-[#898989]">شماره تماس‌گیرنده</dt><dd className="mt-1 font-bold" dir="ltr">{callerNumber}</dd></div>
+                      <div><dt className="text-[#898989]">شماره مقصد</dt><dd className="mt-1 font-bold" dir="ltr">{dialedNumber}</dd></div>
                       <div><dt className="text-[#898989]">داخلی اپراتور</dt><dd className="mt-1 font-bold" dir="ltr">{source.agent_extension ? fmt.digits(source.agent_extension) : "—"}</dd></div>
-                      <div><dt className="text-[#898989]">شناسه تماس</dt><dd className="mt-1 truncate font-mono text-[10px]" dir="ltr" title={source.call_id}>{source.call_id}</dd></div>
                     </dl>
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       {source.intent ? <span className="border border-[#D8D3B9] bg-[#F2F0EF] px-2 py-1 text-[11px] text-[#4B6E48]">{INTENT_LABELS[source.intent] ?? source.intent}</span> : null}

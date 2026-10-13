@@ -2,6 +2,11 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Removed internal call identifiers from assistant source cards and expanded their ordered table with caller and recipient numbers, operator extension, direction, duration, status, and summary.
+- Supplied the assistant call-search and call-detail tools with complete permitted call metadata, analysis fields, and the latest available transcript.
+
+## 2026-10-14 — AMINAZADI
+
 - Enforced Persian digits for all visible panel text, including asynchronously rendered content, while preserving editable and machine-readable fields.
 
 ## 2026-10-14 — AMINAZADI
