@@ -2,6 +2,10 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.
+
+## 2026-10-14 — AMINAZADI
+
 - Removed internal call identifiers from assistant source cards and expanded their ordered table with caller and recipient numbers, operator extension, direction, duration, status, and summary.
 - Supplied the assistant call-search and call-detail tools with complete permitted call metadata, analysis fields, and the latest available transcript.
 

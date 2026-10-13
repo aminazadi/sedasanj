@@ -253,17 +253,16 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
       <span className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-[11px] font-bold text-[#4B6E48]">{fmt.int(sources.length)} تماس</span>
     </div>
     <div className="max-h-[30rem] overflow-auto border border-[#B2AC88] bg-white">
-      <table className="w-full min-w-[58rem] border-collapse text-xs">
+      <table className="w-full min-w-[48rem] table-fixed border-collapse text-[11px]">
         <thead className="sticky top-0 z-10 bg-[#F2F0EF] text-[#4B6E48]">
           <tr className="border-b border-[#B2AC88]">
-            <th className="w-10 px-3 py-2 text-right" aria-label="نمایش جزئیات" />
-            <th className="px-3 py-2 text-right">تاریخ و زمان</th>
-            <th className="px-3 py-2 text-right">طرفین تماس</th>
-            <th className="px-3 py-2 text-right">اپراتور</th>
-            <th className="px-3 py-2 text-right">جهت</th>
-            <th className="px-3 py-2 text-right">مدت</th>
-            <th className="px-3 py-2 text-right">وضعیت</th>
-            <th className="px-3 py-2 text-right">خلاصه</th>
+            <th className="w-9 p-0" aria-label="نمایش جزئیات" />
+            <th className="w-36 px-2 py-2 text-center">تاریخ و زمان</th>
+            <th className="w-56 px-2 py-2 text-center">طرفین تماس</th>
+            <th className="w-16 px-2 py-2 text-center">اپراتور</th>
+            <th className="w-14 px-2 py-2 text-center">جهت</th>
+            <th className="w-14 px-2 py-2 text-center">مدت</th>
+            <th className="w-20 px-2 py-2 text-center">وضعیت</th>
           </tr>
         </thead>
         {sources.map((source) => {
@@ -274,18 +273,17 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
           return <tbody key={source.call_id} className="border-b border-[#E3E0D4] last:border-b-0">
             <tr className={`transition hover:bg-[#F2F0EF] ${open ? "bg-[#F2F0EF]" : "bg-white"}`}>
               <td className="p-0">
-                <button type="button" className="flex h-11 w-full items-center justify-center text-[#4B6E48]" onClick={() => onToggle(source.call_id)} aria-expanded={open} aria-controls={detailsId} aria-label={open ? "بستن جزئیات تماس" : "نمایش جزئیات تماس"}><ChevronIcon open={open} /></button>
+                <button type="button" className="flex h-9 w-full items-center justify-center text-[#4B6E48]" onClick={() => onToggle(source.call_id)} aria-expanded={open} aria-controls={detailsId} aria-label={open ? "بستن جزئیات تماس" : "نمایش جزئیات تماس"}><ChevronIcon open={open} /></button>
               </td>
-              <td className="whitespace-nowrap px-3 py-2 text-[#555555]">{source.started_at ? fmt.dateTime(source.started_at) : "زمان نامشخص"}</td>
-              <td className="whitespace-nowrap px-3 py-2 font-bold text-[#4B6E48]" dir="ltr"><span>{callerNumber}</span><span className="px-2 text-[#898989]" dir="rtl">←</span><span>{dialedNumber}</span></td>
-              <td className="whitespace-nowrap px-3 py-2" dir="ltr">{source.agent_extension ? fmt.digits(source.agent_extension) : "—"}</td>
-              <td className="px-3 py-2">{source.direction === "inbound" ? "ورودی" : source.direction === "outbound" ? "خروجی" : source.direction || "—"}</td>
-              <td className="whitespace-nowrap px-3 py-2">{source.duration_ms == null ? "—" : fmt.duration(source.duration_ms)}</td>
-              <td className="px-3 py-2">{source.status ? <StatusBadge status={source.status} /> : "—"}</td>
-              <td className="min-w-64 px-3 py-2 leading-5 text-[#555555]">{source.summary || "—"}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-center text-[#555555]">{source.started_at ? fmt.dateTime(source.started_at) : "زمان نامشخص"}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-center font-bold text-[#4B6E48]" dir="ltr"><span>{callerNumber}</span><span className="px-1.5 text-[#898989]" dir="rtl">←</span><span>{dialedNumber}</span></td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-center" dir="ltr">{source.agent_extension ? fmt.digits(source.agent_extension) : "—"}</td>
+              <td className="px-2 py-1.5 text-center">{source.direction === "inbound" ? "ورودی" : source.direction === "outbound" ? "خروجی" : source.direction || "—"}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-center">{source.duration_ms == null ? "—" : fmt.duration(source.duration_ms)}</td>
+              <td className="px-2 py-1.5 text-center">{source.status ? <StatusBadge status={source.status} /> : "—"}</td>
             </tr>
             {open ? <tr id={detailsId}>
-              <td colSpan={8} className="bg-[#FCFBF8] px-4 py-4">
+              <td colSpan={7} className="bg-[#FCFBF8] px-4 py-4">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="min-w-0">
                     <dl className="mb-3 grid grid-cols-2 gap-3 text-[11px] sm:grid-cols-3">
