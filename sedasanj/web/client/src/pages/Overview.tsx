@@ -22,16 +22,15 @@ function delta(metric: RateMetric) { return metric.change == null ? "دورهٔ 
 function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }) { return enabled ? <>{children}</> : null; }
 
 function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  const max = Math.max(1, ...rows.map((row) => row.count));
   return <div className="mx-auto max-w-xl space-y-1.5 py-3">{rows.map((row, index) => {
-    const width = Math.round((row.count / max) * 100);
-    return <div key={row.key} className="relative mx-auto h-14" style={{ width: `${width}%` }}><div className="h-full shadow-sm transition hover:brightness-105" style={{ background: `linear-gradient(90deg, #f59e0b ${Math.max(28, 92 - index * 9)}%, #fbbf24)`, clipPath: "polygon(0 0, 100% 0, 87% 100%, 13% 100%)" }} /><div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between px-5 text-sm font-black text-[#4B2800]"><span>{row.label}</span><span>{fmt.int(row.count)}</span></div></div>;
+    const width = rows.length === 1 ? 100 : 100 - (index * 64) / (rows.length - 1);
+    const empty = row.count === 0;
+    return <div key={row.key} className="relative mx-auto h-14" style={{ width: `${width}%` }}><div className="h-full shadow-sm transition hover:brightness-105" style={{ background: empty ? "#fde68a" : `linear-gradient(90deg, #f59e0b ${Math.max(28, 92 - index * 9)}%, #fbbf24)`, clipPath: "polygon(0 0, 100% 0, 87% 100%, 13% 100%)" }} /><div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between px-5 text-sm font-black text-[#4B2800]"><span>{row.label}</span><span>{fmt.int(row.count)}</span></div></div>;
   })}<div className="mx-auto h-7 w-5 bg-amber-500" style={{ clipPath: "polygon(28% 0, 72% 0, 72% 100%, 28% 100%)" }} /></div>;
 }
 
 function FunnelPanel({ title, description, rows }: { title: string; description: string; rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  const visibleRows = rows.filter((row) => row.count > 0);
-  return <section className="card overflow-hidden"><div className="rounded-t-xl bg-[#fff7e6] px-5 py-4"><h2 className="font-bold text-[#8a4b00]">{title}</h2><p className="mt-1 text-sm text-[#9a6b2f]">{description}</p></div>{visibleRows.length ? <><SalesFunnel rows={visibleRows} /><div className="grid gap-2 border-t border-amber-100 p-4 sm:grid-cols-2">{visibleRows.map((row) => <div key={row.key} className="rounded-xl bg-amber-50 p-3 text-xs"><strong>{row.label}</strong><p className="mt-1 text-amber-900/70">عبور {row.pass_rate == null ? "—" : `${fmt.decimal(row.pass_rate)}٪`} · ریزش {row.drop_rate == null ? "—" : `${fmt.decimal(row.drop_rate)}٪`}</p></div>)}</div></> : <Empty />}</section>;
+  return <section className="card"><h2 className="font-bold">{title}</h2><p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>{rows.length ? <><SalesFunnel rows={rows} /><div className="grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-2">{rows.map((row) => <div key={row.key} className="rounded-xl bg-slate-50 p-3 text-xs"><strong>{row.label}</strong><p className="mt-1 text-slate-500">عبور {row.pass_rate == null ? "—" : `${fmt.decimal(row.pass_rate)}٪`} · ریزش {row.drop_rate == null ? "—" : `${fmt.decimal(row.drop_rate)}٪`}</p></div>)}</div></> : <Empty />}</section>;
 }
 
 export default function Overview() {
