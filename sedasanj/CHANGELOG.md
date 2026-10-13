@@ -2,6 +2,10 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Enforced Persian digits for all visible panel text, including asynchronously rendered content, while preserving editable and machine-readable fields.
+
+## 2026-10-14 — AMINAZADI
+
 - Replaced the memory filter control with the primary funnel icon and closed memory popovers on outside click or Escape.
 
 ## 2026-10-14 — AMINAZADI

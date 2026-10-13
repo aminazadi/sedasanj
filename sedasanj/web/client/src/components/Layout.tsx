@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
@@ -60,9 +60,28 @@ type DesktopMenuToggle = {
 };
 
 const DesktopMenuToggleContext = createContext<DesktopMenuToggle | null>(null);
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const LATIN_DIGIT_PATTERN = /[0-9]/g;
+const LATIN_DIGIT_EXCLUSIONS = "input, textarea, select, option, code, pre, kbd, samp, [contenteditable='true'], [data-keep-latin-digits]";
 
 export function useDesktopMenuToggle() {
   return useContext(DesktopMenuToggleContext);
+}
+
+function localizePanelDigits(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let node = walker.nextNode();
+  while (node) {
+    nodes.push(node as Text);
+    node = walker.nextNode();
+  }
+  for (const textNode of nodes) {
+    if (textNode.parentElement?.closest(LATIN_DIGIT_EXCLUSIONS)) continue;
+    const text = textNode.data;
+    if (!/[0-9]/.test(text)) continue;
+    textNode.data = text.replace(LATIN_DIGIT_PATTERN, (digit) => PERSIAN_DIGITS[Number(digit)]);
+  }
 }
 
 function getPageTitle(pathname: string) {
@@ -154,6 +173,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
 
 export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const panelRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const isAssistantPage = location.pathname === "/assistant";
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(() => location.pathname !== "/assistant");
@@ -177,9 +197,19 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const localize = () => localizePanelDigits(panel);
+    localize();
+    const observer = new MutationObserver(localize);
+    observer.observe(panel, { childList: true, characterData: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <DesktopMenuToggleContext.Provider value={isAssistantPage ? { open: desktopMenuOpen, toggle: () => setDesktopMenuOpen((open) => !open) } : null}>
-      <div className={`panel-shell min-h-screen transition-[padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAssistantPage && !desktopMenuOpen ? "lg:pr-0" : "lg:pr-72"}`}>
+      <div ref={panelRef} className={`panel-shell min-h-screen transition-[padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAssistantPage && !desktopMenuOpen ? "lg:pr-0" : "lg:pr-72"}`} lang="fa">
         <aside id="client-desktop-menu" className={`fixed inset-y-0 right-0 z-40 hidden w-72 transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:block ${isAssistantPage && !desktopMenuOpen ? "pointer-events-none translate-x-full opacity-0" : "translate-x-0 opacity-100"}`}><Sidebar /></aside>
 
       <div className={`fixed inset-0 z-50 lg:hidden ${menuOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!menuOpen}>
