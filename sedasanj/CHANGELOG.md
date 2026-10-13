@@ -4,6 +4,7 @@
 
 - Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
 - Rebuilt the logo motion with a coordinated 1.6-second GSAP pen timeline, isolated filled-letter and dot masks, and an independent Canvas particle emitter with outward drift, damping, and fade; autoplay runs once with hover replay, reduced-motion support, resize handling, and animation cleanup.
+- Refined the right-to-left pen path for the "ص" glyph so its bowl and connected tail now draw as a continuous calligraphic gesture.
 
 ## 2026-10-09 — AMINAZADI
 

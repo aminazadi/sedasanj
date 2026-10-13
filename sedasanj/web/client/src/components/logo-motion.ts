@@ -4,8 +4,8 @@ export const LOGO_MOTION_DURATION = 1.6;
 const PEN_TIMELINE_DURATION = 3.65;
 
 export const PEN_STROKES = [
-  { name: "sad-bowl", clip: "M397 70H482V130H397Z", path: "M451 83 C473 81 476 111 454 116 L405 116 C416 84 431 83 451 83", width: 24, start: 0.12, time: 0.65 },
-  { name: "sad-join", clip: "M340 74H406V130H340Z", path: "M403 116 C384 118 380 111 380 96 C379 118 365 122 355 116 C344 113 342 104 340 94", width: 24, start: 0.65, time: 0.48 },
+  { name: "sad-bowl", clip: "M397 70H482V130H397Z", path: "M454 99 C449 96 443 96 437 96 C427 96 420 100 417 106 C418 113 425 116 434 116 L405 116", width: 25, start: 0.1, time: 0.58 },
+  { name: "sad-join", clip: "M340 74H406V130H340Z", path: "M405 116 C395 117 387 113 382 103 C381 116 373 120 364 117 C354 114 347 106 340 95", width: 25, start: 0.62, time: 0.5 },
   { name: "dal", clip: "M300 72H348V130H300Z", path: "M308 84 L323 84 C348 85 348 117 322 117 L310 117", width: 24, start: 1.03, time: 0.42 },
   { name: "alef", clip: "M273 38H299V130H273Z", path: "M286 51 L285 119", width: 27, start: 1.4, time: 0.3 },
   { name: "sin", clip: "M155 71H273V130H155Z", path: "M258 84 L258 99 C258 123 223 124 223 91 C223 124 185 125 185 93 C185 120 160 121 153 107", width: 24, start: 1.67, time: 0.75 },
