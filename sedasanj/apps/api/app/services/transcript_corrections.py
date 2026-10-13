@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.services import outbox, processing_events, progress
 from app.services.ninerouter import NineRouterClient, retry_json_chat
+from app.services.organization_memory import build_context
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
 from app.services.voicesanj import VOICESANJ_USER_AGENT
 
@@ -126,7 +127,8 @@ async def create_revision(
 
     source_hash = hashlib.sha256(transcript.full_text.encode()).hexdigest()
     version = profile_version(runtime)
-    identity = f"{call.id}:{source_hash}:{version}"
+    memory = await build_context(session, call.tenant_id, "correction")
+    identity = f"{call.id}:{source_hash}:{version}:{memory.sha256}"
     if trigger == "manual":
         identity = f"{identity}:{uuid4()}"
     idempotency_key = "correction-" + hashlib.sha256(identity.encode()).hexdigest()
@@ -145,6 +147,9 @@ async def create_revision(
         text_models=list(runtime.correction_text_models),
         ai_provider=runtime.active_ai_provider,
         raw_text=transcript.full_text,
+        memory_snapshot=memory.snapshot,
+        memory_context=memory.text,
+        memory_sha256=memory.sha256,
         metrics={"previous_status": previous_status} if trigger == "manual" else {},
     )
     session.add(revision)

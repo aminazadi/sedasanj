@@ -170,6 +170,8 @@ export interface CallDetail extends CallSummary {
   analysis_run_id: string | null;
   prompt_version: string | null;
   llm_model: string | null;
+  memory_sha256: string | null;
+  memory_versions: Array<{ id: string; logical_key: string; version: number; category: string }>;
   error_detail: string | null;
   processing_events: ProcessingEvent[];
 }
@@ -211,6 +213,7 @@ export interface OperatorScoreReport {
 export interface ChatConversation {
   id: string;
   call_id: string | null;
+  mode: "normal" | "training";
   title: string | null;
   archived_at: string | null;
   pinned_at: string | null;
@@ -227,7 +230,27 @@ export interface ChatMessage {
   sources: AssistantCallSource[] | null;
   attachments?: AssistantMessageAttachments | null;
   tool_runs: AssistantToolRun[];
+  memory_drafts?: OrganizationMemory[];
   created_at: string;
+}
+
+export interface OrganizationMemory {
+  id: string;
+  logical_key: string;
+  version: number;
+  supersedes_id: string | null;
+  category: "organization_profile" | "products_services" | "terminology" | "policies" | "analysis_rules" | "freeform";
+  title: string;
+  content: string;
+  structured_payload: Record<string, unknown>;
+  tags: string[];
+  applies_to: Array<"assistant" | "correction" | "analysis" | "scoring">;
+  status: "draft" | "active" | "rejected" | "superseded" | "archived";
+  lock_version: number;
+  conflicts: string[];
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
 }
 
 export interface AssistantContextOptions {

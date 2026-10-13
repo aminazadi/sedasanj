@@ -85,6 +85,7 @@ from app.security import (
     verify_totp,
 )
 from app.services import (
+    analysis_runs,
     audit,
     billing,
     knowledge,
@@ -98,8 +99,6 @@ from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
 from app.services.ninerouter import NineRouterClient
 from app.services.platform import (
     EXTRACT_PROMPT_KEY,
-    capability_model,
-    effective_extract_prompt,
     effective_models,
     normalize_provider_base_url,
     resolve_provider_settings,
@@ -977,19 +976,11 @@ async def _ensure_analysis_run(session: AsyncSession, tenant_id: UUID, call_id: 
         )
     ).scalar_one_or_none()
     if run is not None and run.status in {"pending", "queued", "running"}:
+        await analysis_runs.ensure_snapshot(session, run)
         run.status = "queued"
         return run.id
-    models = await effective_models(session)
-    new_run = AnalysisRun(
-        call_id=call_id,
-        tenant_id=tenant_id,
-        llm_model=capability_model(models, "analysis"),
-        ai_provider=models.get("analysis_provider", "aiservice"),
-        decision_provider=models.get("decision_provider", "aiservice"),
-        decision_model=capability_model(models, "decision"),
-        prompt_version=models["prompt_version"],
-        system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
-        status="queued",
+    new_run = await analysis_runs.create(
+        session, tenant_id=tenant_id, call_id=call_id, status="queued"
     )
     session.add(new_run)
     await session.flush()

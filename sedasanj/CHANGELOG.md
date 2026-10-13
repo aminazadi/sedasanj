@@ -6,6 +6,13 @@
 
 - Replaced the quick assistant launcher glyph with a standard chat icon and refined the launcher motion into a direct border-pulse effect.
 
+## 2026-10-13 — AMINAZADI
+
+- Added manager-only interactive assistant training with tenant-isolated, reviewable, versioned organization memories and conflict-aware approval workflows.
+- Applied approved organization memory to manager/operator assistant chats, transcript correction, single- and multi-stage call analysis, and operator scoring with immutable per-run snapshots.
+- Added organization-memory administration, exports, audit events, optimistic concurrency, idempotent publishing, URL-persistent training views, filters, and conversation selection.
+- Added migration `0043_organization_memory`, tenant provisioning coverage, role/RLS protections, regression tests, and manager-only analysis snapshot visibility.
+
 - Simplified the floating assistant launcher to a standard icon-only button and moved its motion-safe pulse and float animation onto the button itself.
 
 ## 2026-10-13 — AMINAZADI

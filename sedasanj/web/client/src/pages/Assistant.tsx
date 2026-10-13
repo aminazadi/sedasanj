@@ -9,7 +9,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Widgets";
 import { useDesktopMenuToggle } from "../components/Layout";
-import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage } from "../types";
+import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage, OrganizationMemory } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 
 function TrashIcon() {
@@ -344,6 +344,7 @@ export default function Assistant() {
   const { session } = useAuth();
   const desktopMenuToggle = useDesktopMenuToggle();
   const [search, setSearch] = useSearchParams();
+  const training = search.get("mode") === "train" && isOrgAdmin(session?.role);
   const expandedCallId = search.get("source_call");
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
@@ -357,7 +358,13 @@ export default function Assistant() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [conversationsOpen, setConversationsOpen] = useState(false);
-  const [conversationView, setConversationView] = useState<"active" | "archived">("active");
+  const [conversationView, setConversationView] = useState<"active" | "archived">(() => search.get("conversation_view") === "archived" ? "archived" : "active");
+  const [memories, setMemories] = useState<OrganizationMemory[]>([]);
+  const [memoryStatus, setMemoryStatus] = useState(() => search.get("memory_status") || "draft");
+  const [memoryCategory, setMemoryCategory] = useState(() => search.get("memory_category") || "");
+  const [editingMemory, setEditingMemory] = useState<OrganizationMemory | null>(null);
+  const [memoryEditTitle, setMemoryEditTitle] = useState("");
+  const [memoryEditContent, setMemoryEditContent] = useState("");
   const [confirmation, setConfirmation] = useState<{ action: "archive" | "delete"; item: ChatConversation } | null>(null);
   const [messageEdit, setMessageEdit] = useState<{ message: ChatMessage; value: string } | null>(null);
   const [pendingMessageEdit, setPendingMessageEdit] = useState<{ message: ChatMessage; value: string } | null>(null);
@@ -442,6 +449,9 @@ export default function Assistant() {
       const index = current.findIndex((item) => item.id === draftId);
       return index < 0 ? [...current, message] : current.map((item) => item.id === draftId ? message : item);
     });
+    if (message.memory_drafts?.length) {
+      setMemories((current) => [...message.memory_drafts!, ...current.filter((item) => !message.memory_drafts!.some((draft) => draft.id === item.id))]);
+    }
   }
 
   async function loadMessages(item: ChatConversation) {
@@ -452,6 +462,7 @@ export default function Assistant() {
       if (selectedConversationIdRef.current !== item.id) return;
       const streamingReply = streamingRepliesRef.current.get(item.id);
       setConversation(item);
+      setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); return next; }, { replace: true });
       setEphemeral(false);
       setMessages(streamingReply ? [...rows, streamingReply] : rows);
       userNearBottomRef.current = true;
@@ -462,7 +473,7 @@ export default function Assistant() {
     }
   }
   async function create(callId: string | null = null) {
-    const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: callId } });
+    const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: training ? null : callId, mode: training ? "training" : "normal" } });
     setConversations((current) => [item, ...current]);
     selectedConversationIdRef.current = item.id;
     setConversation(item);
@@ -470,6 +481,7 @@ export default function Assistant() {
     setMessages([]);
     setConversationsOpen(false);
     setConversationView("active");
+    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); return next; }, { replace: true });
     return item;
   }
   function createEphemeral() {
@@ -543,13 +555,61 @@ export default function Assistant() {
       setError(assistantErrorMessage(err));
     }
   }
+  async function loadMemories() {
+    if (!training) { setMemories([]); return; }
+    const params = new URLSearchParams();
+    if (memoryStatus) params.set("status", memoryStatus);
+    if (memoryCategory) params.set("category", memoryCategory);
+    setMemories(await request<OrganizationMemory[]>(`/v1/assistant/memories?${params}`));
+  }
+  async function memoryAction(item: OrganizationMemory, action: "approve" | "reject" | "replace" | "archive") {
+    try {
+      setError(null);
+      await request<OrganizationMemory>(`/v1/assistant/memories/${item.id}/${action}`, {
+        method: "POST",
+        body: { lock_version: item.lock_version, idempotency_key: crypto.randomUUID() },
+      });
+      await loadMemories();
+    } catch (err) { setError(assistantErrorMessage(err)); }
+  }
+  async function saveMemoryDraft() {
+    if (!editingMemory || !memoryEditTitle.trim() || !memoryEditContent.trim()) return;
+    try {
+      const updated = await request<OrganizationMemory>(`/v1/assistant/memories/${editingMemory.id}/draft`, {
+        method: "PATCH",
+        body: { lock_version: editingMemory.lock_version, title: memoryEditTitle.trim(), content: memoryEditContent.trim() },
+      });
+      setMemories((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setEditingMemory(null);
+    } catch (err) { setError(assistantErrorMessage(err)); }
+  }
+  function setMemoryFilter(key: "memory_status" | "memory_category", value: string) {
+    if (key === "memory_status") setMemoryStatus(value);
+    else setMemoryCategory(value);
+    setSearch((current) => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); return next; }, { replace: true });
+  }
+  function switchMode(nextMode: "chat" | "train") {
+    setSearch((current) => {
+      const next = new URLSearchParams(current);
+      next.set("mode", nextMode);
+      next.delete("conversation");
+      return next;
+    });
+  }
+  function changeConversationView(value: "active" | "archived") {
+    setConversationView(value);
+    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation_view", value); return next; }, { replace: true });
+  }
   useEffect(() => {
     void (async () => {
       try {
-        const rows = await request<ChatConversation[]>("/v1/assistant/conversations");
+        setLoading(true);
+        const rows = await request<ChatConversation[]>(`/v1/assistant/conversations?mode=${training ? "training" : "normal"}`);
         setConversations(rows);
-        const callId = search.get("call_id");
+        const selected = rows.find((item) => item.id === search.get("conversation"));
+        const callId = training ? null : search.get("call_id");
         if (callId) await create(callId);
+        else if (selected) await loadMessages(selected);
         else {
           const active = rows.find((item) => !item.archived_at);
           if (active) await loadMessages(active);
@@ -558,7 +618,10 @@ export default function Assistant() {
       } catch (err) { setError(assistantErrorMessage(err)); }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [training]);
+  useEffect(() => {
+    void loadMemories().catch((err) => setError(assistantErrorMessage(err)));
+  }, [training, memoryStatus, memoryCategory]);
   useEffect(() => {
     void request<AssistantContextOptions>("/v1/assistant/context-options")
       .then(setContextOptions)
@@ -795,7 +858,7 @@ export default function Assistant() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!text.trim() || sending) return;
-    if (Boolean(attachments.from_date) !== Boolean(attachments.to_date)) {
+    if (!training && Boolean(attachments.from_date) !== Boolean(attachments.to_date)) {
       setError("برای بازه زمانی، تاریخ شروع و پایان را کامل انتخاب کنید.");
       setMentionOpen(true);
       selectMentionTab("dates");
@@ -895,11 +958,12 @@ export default function Assistant() {
         <button type="button" className="inline-flex h-10 w-10 items-center justify-center text-[#4B6E48] transition hover:bg-[#F2F0EF]" onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها"><MenuIcon close /></button>
       </div>
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-3" aria-label="فهرست گفتگوها">
+        {isOrgAdmin(session?.role) ? <div className="mb-3 grid grid-cols-2 border border-[#B2AC88] bg-white p-1"><button type="button" className={`min-h-9 text-xs font-bold ${!training ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => switchMode("chat")}>گفت‌وگو</button><button type="button" className={`min-h-9 text-xs font-bold ${training ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => switchMode("train")}>آموزش دستیار</button></div> : null}
         <div className="mb-5 flex items-center gap-2">
           {desktopMenuToggle ? <button type="button" className="assistant-panel-menu-toggle hidden h-11 w-11 shrink-0 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] shadow-[0_8px_20px_rgba(75,110,72,0.14)] transition hover:-translate-y-0.5 hover:border-[#4B6E48] hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] lg:inline-flex" onClick={desktopMenuToggle.toggle} aria-label={desktopMenuToggle.open ? "مخفی کردن منوی اصلی" : "نمایش منوی اصلی"} aria-expanded={desktopMenuToggle.open} aria-controls="client-desktop-menu"><MenuIcon close={desktopMenuToggle.open} /></button> : null}
           <div className="flex flex-1 border border-[#B2AC88] bg-white p-1" role="tablist" aria-label="نوع گفتگوها">
-            <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("active")}>گفتگوها</button>
-            <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setConversationView("archived")}>آرشیوها</button>
+            <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => changeConversationView("active")}>گفتگوها</button>
+            <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => changeConversationView("archived")}>آرشیوها</button>
           </div>
         </div>
         {conversationView === "active" ? <>{conversations.some((item) => item.pinned_at && !item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">پین‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.pinned_at && !item.archived_at).sort((first, second) => Date.parse(second.pinned_at || "") - Date.parse(first.pinned_at || "")).map(renderConversation)}</div></div> : null}<div className="mb-5">
@@ -915,17 +979,26 @@ export default function Assistant() {
       <div className="absolute inset-x-3 top-3 z-20 md:inset-x-4 md:top-4">
         <ErrorBox message={error} className="absolute right-0 top-0 mb-0 max-w-[calc(100%-6rem)] shadow-sm" />
         <div className="absolute left-0 top-0 flex gap-2">
-          <IconTooltip label="چت موقت بدون ذخیره‌سازی">
+          {!training ? <IconTooltip label="چت موقت بدون ذخیره‌سازی">
             <button type="button" className={`inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
-          </IconTooltip>
+          </IconTooltip> : null}
           <IconTooltip label="خروجی متن پیام‌ها">
             <button type="button" className="inline-flex h-11 w-11 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50" onClick={exportMessages} aria-label="خروجی متن پیام‌ها" disabled={!messages.some((message) => message.status !== "running" && message.content.trim())}><DownloadIcon /></button>
           </IconTooltip>
         </div>
       </div>
       <div ref={messagesScrollerRef} className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7" onScroll={handleMessagesScroll}>
+        {training ? <section className="mx-auto w-full max-w-4xl border border-[#B2AC88] bg-white p-4" aria-label="مموری سازمانی">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#4B6E48]">مموری سازمانی</h2><p className="text-xs text-[#898989]">فقط موارد تأییدشده در پاسخ‌ها و تحلیل‌های جدید استفاده می‌شوند.</p></div><div className="flex gap-2"><select className="input h-9 py-1 text-xs" value={memoryStatus} onChange={(event) => setMemoryFilter("memory_status", event.target.value)}><option value="draft">پیش‌نویس‌ها</option><option value="active">فعال</option><option value="archived">آرشیوشده</option><option value="rejected">ردشده</option></select><select className="input h-9 py-1 text-xs" value={memoryCategory} onChange={(event) => setMemoryFilter("memory_category", event.target.value)}><option value="">همه دسته‌ها</option><option value="organization_profile">معرفی سازمان</option><option value="products_services">محصولات و خدمات</option><option value="terminology">اصطلاحات</option><option value="policies">سیاست‌ها</option><option value="analysis_rules">قواعد تحلیل</option><option value="freeform">سایر</option></select></div></div>
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            {memories.map((item) => <article key={item.id} className="border border-[#D8D3B9] bg-[#F2F0EF] p-3 text-sm">
+              {editingMemory?.id === item.id ? <div className="space-y-2"><input className="input" value={memoryEditTitle} onChange={(event) => setMemoryEditTitle(event.target.value)} /><textarea className="input min-h-28" value={memoryEditContent} onChange={(event) => setMemoryEditContent(event.target.value)} /><div className="flex justify-end gap-2"><button type="button" className="px-3 py-1 text-xs" onClick={() => setEditingMemory(null)}>انصراف</button><button type="button" className="bg-[#4B6E48] px-3 py-1 text-xs font-bold text-white" onClick={() => void saveMemoryDraft()}>ذخیره پیش‌نویس</button></div></div> : <><div className="flex items-start justify-between gap-3"><div><strong className="text-[#4B6E48]">{item.title}</strong><p className="mt-1 whitespace-pre-wrap leading-6">{item.content}</p></div><span className="shrink-0 border border-[#B2AC88] bg-white px-2 py-1 text-[10px]">نسخه {fmt.int(item.version)}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[#898989]"><span>{item.category}</span><span>{item.applies_to.join(" · ")}</span>{item.conflicts.length ? <span className="font-bold text-amber-700">دارای تعارض</span> : null}</div><div className="mt-3 flex flex-wrap justify-end gap-2">{item.status === "draft" ? <><button type="button" className="border border-[#B2AC88] px-2 py-1 text-xs" onClick={() => { setEditingMemory(item); setMemoryEditTitle(item.title); setMemoryEditContent(item.content); }}>ویرایش</button><button type="button" className="border border-rose-300 px-2 py-1 text-xs text-rose-700" onClick={() => void memoryAction(item, "reject")}>رد</button><button type="button" className="bg-[#4B6E48] px-2 py-1 text-xs font-bold text-white" onClick={() => void memoryAction(item, item.conflicts.length ? "replace" : "approve")}>{item.conflicts.length ? "جایگزینی" : "تأیید"}</button></> : null}{item.status === "active" ? <><button type="button" className="border border-[#B2AC88] px-2 py-1 text-xs" onClick={() => { setEditingMemory(item); setMemoryEditTitle(item.title); setMemoryEditContent(item.content); }}>نسخه جدید</button><button type="button" className="border border-[#B2AC88] px-2 py-1 text-xs" onClick={() => void memoryAction(item, "archive")}>آرشیو</button></> : null}</div></>}
+            </article>)}
+            {!memories.length ? <p className="py-6 text-center text-xs text-[#898989]">موردی در این بخش وجود ندارد.</p> : null}
+          </div>
+        </section> : null}
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
-        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
+        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
           const attachedLabels = messageAttachmentLabels(message);
@@ -958,7 +1031,7 @@ export default function Assistant() {
       </div>
       {showScrollToEnd ? <button type="button" className="absolute bottom-[7rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
       <form ref={composerRef} className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
-        {mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
+        {!training && mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-3 py-2"><strong className="text-xs text-[#4B6E48]">{mentionTab === "mentions" ? `نتایج برای @${mentionQuery}` : mentionTab === "dates" ? "انتخاب بازه زمانی" : "انتخاب ابزارها"}</strong><button type="button" className="px-2 py-1 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button></div>
           <div className="space-y-1 p-2">
             {mentionTab === "mentions" ? <>
@@ -970,7 +1043,7 @@ export default function Assistant() {
             {mentionTab === "tools" ? contextOptions?.tools.map((item) => <button key={item.name} type="button" className={`w-full px-3 py-2 text-right text-sm font-bold ${attachments.tool_names.includes(item.name) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => toggleListAttachment("tool_names", item.name)}>{item.title}</button>) : null}
           </div>
         </div> : null}
-        {attachmentCount ? <div className="mb-2 flex flex-wrap gap-1.5">
+        {!training && attachmentCount ? <div className="mb-2 flex flex-wrap gap-1.5">
           {selectedOperator ? <button type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("operator")}>@ {selectedOperator.label}<CloseIcon /></button> : null}
           {attachments.conversation_ids.map((id) => <button key={id} type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("conversation", id)}>گفتگو: {contextOptions?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده"}<CloseIcon /></button>)}
           {attachments.from_date && attachments.to_date ? <button type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)}<CloseIcon /></button> : null}

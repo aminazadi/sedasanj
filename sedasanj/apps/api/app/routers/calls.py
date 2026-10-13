@@ -58,6 +58,7 @@ from app.schemas import (
 )
 from app.sentiment import SENTIMENT_SET, caller_trajectory, normalize_sentiment
 from app.services import (
+    analysis_runs,
     audit,
     billing,
     follow_up_tasks,
@@ -71,7 +72,6 @@ from app.services.asr_revisions import activate_existing
 from app.services.ingest import accept_upload
 from app.services.platform import (
     capability_model,
-    effective_extract_prompt,
     effective_models,
     resolve_provider_settings,
 )
@@ -628,6 +628,10 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         analysis_run_id=run.id if run else None,
         prompt_version=run.prompt_version if run else None,
         llm_model=run.llm_model if run else None,
+        memory_sha256=run.memory_sha256 if run and principal.role == "org_admin" else None,
+        memory_versions=(run.memory_snapshot or {}).get("items", [])
+        if run and principal.role == "org_admin"
+        else [],
         error_detail=processing_events.sanitize_detail(
             latest_failed_job.error_detail if latest_failed_job else None
         ),
@@ -1025,17 +1029,8 @@ async def activate_transcript_version(
                 trigger="automatic",
             )
         else:
-            models = await effective_models(session)
-            run = AnalysisRun(
-                call_id=call_id,
-                tenant_id=tenant_id,
-                llm_model=capability_model(models, "analysis"),
-                ai_provider=models.get("analysis_provider", "aiservice"),
-                decision_provider=models.get("decision_provider", "aiservice"),
-                decision_model=capability_model(models, "decision"),
-                prompt_version=models["prompt_version"],
-                system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
-                status="queued",
+            run = await analysis_runs.create(
+                session, tenant_id=tenant_id, call_id=call_id, status="queued"
             )
             session.add(run)
             job = Job(
@@ -1044,7 +1039,7 @@ async def activate_transcript_version(
                 kind="llm",
                 status="queued",
                 attempt=0,
-                ai_provider=models["analysis_provider"],
+                ai_provider=run.ai_provider,
             )
             session.add(job)
             call.status = "transcribed"
@@ -1285,15 +1280,10 @@ async def reanalyze_call(call_id: UUID, request: Request, principal: OperatorDep
         call.updated_at = datetime.now(UTC)
 
         models = await effective_models(session)
-        run = AnalysisRun(
-            call_id=call.id,
+        run = await analysis_runs.create(
+            session,
             tenant_id=call.tenant_id,
-            llm_model=capability_model(models, "analysis"),
-            ai_provider=models.get("analysis_provider", "aiservice"),
-            decision_provider=models.get("decision_provider", "aiservice"),
-            decision_model=capability_model(models, "decision"),
-            prompt_version=models["prompt_version"],
-            system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
+            call_id=call.id,
             status="queued",
             result={"_reanalysis": True, "_previous_status": previous_status},
         )

@@ -27,6 +27,7 @@ from app.routers import (
     health,
     ingest,
     kpi,
+    organization_memories,
     tasks,
     webhooks,
 )
@@ -141,6 +142,7 @@ def create_app() -> FastAPI:
         webhooks,
         account,
         assistant,
+        organization_memories,
         kpi,
         admin,
     ):

@@ -30,7 +30,7 @@ from app.models import (
     Job,
     Tenant,
 )
-from app.services import outbox, pipeline, processing_events, progress, queue
+from app.services import analysis_runs, outbox, pipeline, processing_events, progress, queue
 from app.services.asr_revisions import activate_new
 from app.services.audio import (
     AudioPreprocessingConfig,
@@ -39,12 +39,7 @@ from app.services.audio import (
     resample_to_16k,
     split_channels,
 )
-from app.services.platform import (
-    capability_model,
-    effective_extract_prompt,
-    effective_models,
-    resolve_provider_settings,
-)
+from app.services.platform import resolve_provider_settings
 from app.services.provider_errors import classify_failure
 from app.services.storage import get_storage
 from app.services.transcript_corrections import create_revision
@@ -165,19 +160,11 @@ async def _load_or_create_analysis_run(
         )
     ).scalar_one_or_none()
     if run is not None:
+        await analysis_runs.ensure_snapshot(session, run)
         run.status = "queued"
         return run
-    models = await effective_models(session)
-    run = AnalysisRun(
-        call_id=call_id,
-        tenant_id=tenant_id,
-        llm_model=capability_model(models, "analysis"),
-        ai_provider=models.get("analysis_provider", "aiservice"),
-        decision_provider=models.get("decision_provider", "aiservice"),
-        decision_model=capability_model(models, "decision"),
-        prompt_version=models["prompt_version"],
-        system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
-        status="queued",
+    run = await analysis_runs.create(
+        session, tenant_id=tenant_id, call_id=call_id, status="queued"
     )
     session.add(run)
     return run

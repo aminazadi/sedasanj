@@ -50,8 +50,15 @@ async def test_asr_fallback_run_uses_persisted_platform_settings(
     session = AsyncSession()
     execute = AsyncMock(return_value=_Result())
     add = Mock()
-    monkeypatch.setattr(asr_main, "effective_models", persisted_models)
-    monkeypatch.setattr(asr_main, "effective_extract_prompt", persisted_prompt)
+    monkeypatch.setattr(asr_main.analysis_runs, "effective_models", persisted_models)
+    monkeypatch.setattr(asr_main.analysis_runs, "effective_extract_prompt", persisted_prompt)
+
+    async def empty_memory(*args: object, **kwargs: object) -> object:
+        from app.services.organization_memory import MemoryContext
+
+        return MemoryContext(text="", snapshot={"items": []}, sha256="empty")
+
+    monkeypatch.setattr(asr_main.analysis_runs, "build_context", empty_memory)
     monkeypatch.setattr(session, "execute", execute)
     monkeypatch.setattr(session, "add", add)
     try:

@@ -9,6 +9,7 @@ from app.routers import (
     health,
     ingest,
     kpi,
+    organization_memories,
     tasks,
     webhooks,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "health",
     "ingest",
     "kpi",
+    "organization_memories",
     "tasks",
     "webhooks",
 ]

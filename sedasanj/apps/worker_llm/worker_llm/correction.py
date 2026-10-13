@@ -10,13 +10,9 @@ from sqlalchemy import select
 
 from app.db import resolve_tenant_for_call, session_scope
 from app.models import AnalysisRun, Call, Job, Transcript, TranscriptRevision, Utterance
-from app.services import outbox, pipeline, processing_events, progress
-from app.services.platform import (
-    capability_model,
-    effective_extract_prompt,
-    effective_models,
-    resolve_provider_settings,
-)
+from app.services import analysis_runs, outbox, pipeline, processing_events, progress
+from app.services.organization_memory import append_untrusted_context
+from app.services.platform import resolve_provider_settings
 from app.services.provider_errors import ProviderError, classify_failure
 from app.services.transcript_corrections import (
     CorrectionClient,
@@ -29,6 +25,12 @@ from app.services.transcript_corrections import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _correction_prompt(runtime: Any, revision: TranscriptRevision) -> str:
+    return append_untrusted_context(
+        runtime.correction_prompt, revision.memory_context or "", "correction"
+    )
 
 
 async def _stage_analysis(
@@ -49,20 +51,12 @@ async def _stage_analysis(
             )
         ).scalar_one_or_none()
         if run is None or revision.trigger == "manual":
-            models = await effective_models(session)
-            run = AnalysisRun(
-                call_id=call_id,
-                tenant_id=tenant_id,
-                llm_model=capability_model(models, "analysis"),
-                ai_provider=models.get("analysis_provider", "aiservice"),
-                decision_provider=models.get("decision_provider", "aiservice"),
-                decision_model=capability_model(models, "decision"),
-                prompt_version=models["prompt_version"],
-                system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
-                status="queued",
+            run = await analysis_runs.create(
+                session, tenant_id=tenant_id, call_id=call_id, status="queued"
             )
             session.add(run)
         else:
+            await analysis_runs.ensure_snapshot(session, run)
             run.status = "queued"
         job = Job(
             tenant_id=tenant_id,
@@ -221,7 +215,7 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
                                 try:
                                     result = await client.complete_direct(
                                         segments,
-                                        runtime.correction_prompt,
+                                        _correction_prompt(runtime, revision),
                                         model=model,
                                     )
                                     validated, uncertain = validate_result(
@@ -257,7 +251,7 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
                         revision.provider_task_id = await client.submit(
                             revision,
                             segments,
-                            runtime.correction_prompt,
+                            _correction_prompt(runtime, revision),
                             model=current_correction_model(revision),
                         )
                         revision.provider_submitted_at = datetime.now(UTC)
@@ -347,7 +341,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                         revision.provider_task_id = await client.submit(
                             revision,
                             segments,
-                            runtime.correction_prompt,
+                            _correction_prompt(runtime, revision),
                             model=model,
                         )
                         revision.provider_submitted_at = datetime.now(UTC)
@@ -394,7 +388,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                     revision.provider_task_id = await client.submit(
                         revision,
                         segments,
-                        runtime.correction_prompt,
+                        _correction_prompt(runtime, revision),
                         model=model,
                     )
                     revision.provider_submitted_at = datetime.now(UTC)

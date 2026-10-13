@@ -1518,6 +1518,7 @@ export default function CallDetailPage() {
               {call.analysis_run_id ? (
                 <div>شناسه اجرا: {fmt.digits(call.analysis_run_id.slice(0, 12))}</div>
               ) : null}
+              {call.memory_sha256 ? <div>نسخه مموری: {call.memory_sha256.slice(0, 12)} · {fmt.int(call.memory_versions.length)} مورد</div> : null}
             </div>
           ) : null}
         </aside>

@@ -84,6 +84,18 @@ def _repair_at_decode_error(text: str, exc: json.JSONDecodeError) -> str | None:
     current = text[position] if position < len(text) else ""
     previous = _previous_non_whitespace(text, position)
 
+    if (
+        "trailing comma" in exc.msg.lower()
+        and (
+            current == ","
+            or (current in {"}", "]"} and previous is not None and text[previous] == ",")
+        )
+    ):
+        if current == ",":
+            return f"{text[:position]}{text[position + 1:]}"
+        assert previous is not None
+        return f"{text[:previous]}{text[previous + 1:]}"
+
     if exc.msg == "Expecting ',' delimiter":
         if current and (current in {'"', "{", "[", "-"} or current.isdigit()):
             return f"{text[:position]},{text[position:]}"

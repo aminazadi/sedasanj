@@ -399,6 +399,9 @@ class TranscriptRevision(Base):
     provider_model: Mapped[str | None] = mapped_column(Text)
     uncertain_items: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    memory_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    memory_context: Mapped[str | None] = mapped_column(Text)
+    memory_sha256: Mapped[str | None] = mapped_column(String(64))
     error_code: Mapped[str | None] = mapped_column(Text)
     error_detail: Mapped[str | None] = mapped_column(Text)
     queued_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -551,6 +554,9 @@ class AnalysisRun(Base):
     decision_model: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
     prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
     system_prompt: Mapped[str | None] = mapped_column(Text)
+    memory_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    memory_context: Mapped[str | None] = mapped_column(Text)
+    memory_sha256: Mapped[str | None] = mapped_column(String(64))
     raw_output: Mapped[str | None] = mapped_column(Text)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(Text, nullable=False)
@@ -891,12 +897,14 @@ class ChatConversation(Base):
         PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="SET NULL")
     )
     title: Mapped[str | None] = mapped_column(Text)
+    mode: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'normal'"))
     archived_at: Mapped[datetime | None] = mapped_column(TSTZ)
     pinned_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
+        CheckConstraint("mode IN ('normal','training')", name="chat_conversations_mode_check"),
         Index("idx_chat_conversations_owner", "tenant_id", "owner_id", text("updated_at DESC")),
     )
 
@@ -929,6 +937,67 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "ordinal"),)
+
+
+class OrganizationMemory(Base):
+    __tablename__ = "organization_memories"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    logical_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    supersedes_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("organization_memories.id", ondelete="SET NULL")
+    )
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    structured_payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    applies_to: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'draft'"))
+    source_conversation_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_conversations.id", ondelete="SET NULL")
+    )
+    source_message_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="SET NULL")
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    approved_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    lock_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    archived_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('organization_profile','products_services','terminology','policies','analysis_rules','freeform')",
+            name="organization_memories_category_check",
+        ),
+        CheckConstraint(
+            "status IN ('draft','active','rejected','superseded','archived')",
+            name="organization_memories_status_check",
+        ),
+        CheckConstraint("version > 0", name="organization_memories_version_check"),
+        CheckConstraint("lock_version > 0", name="organization_memories_lock_version_check"),
+        UniqueConstraint("tenant_id", "logical_key", "version", name="organization_memories_version_key"),
+        UniqueConstraint("tenant_id", "idempotency_key", name="organization_memories_idempotency_key"),
+        Index("idx_organization_memories_tenant_status", "tenant_id", "status", "category"),
+    )
 
 
 class AssistantToolRun(Base):
@@ -1943,6 +2012,7 @@ TENANT_TABLES: tuple[str, ...] = (
     "operator_call_scores",
     "chat_conversations",
     "chat_messages",
+    "organization_memories",
     "assistant_tool_runs",
     "transcript_chunks",
     "call_knowledge",

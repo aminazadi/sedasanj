@@ -29,6 +29,7 @@ from app.models import (
 from app.schemas import ExtractionResult
 from app.sentiment import merge_sentiment_profile
 from app.services import (
+    analysis_runs,
     billing,
     follow_up_tasks,
     knowledge,
@@ -40,12 +41,8 @@ from app.services import (
     sales_insights,
 )
 from app.services.operator_scoring import score_call
-from app.services.platform import (
-    capability_model,
-    effective_extract_prompt,
-    effective_models,
-    resolve_provider_settings,
-)
+from app.services.organization_memory import append_untrusted_context
+from app.services.platform import resolve_provider_settings
 from app.services.provider_errors import classify_failure
 from worker_llm.chunking import plan_chunks
 from worker_llm.client import LlmClient, build_client, extract_json, load_run_prompt
@@ -147,6 +144,7 @@ async def _run_model_analysis(
     text: str,
     prompt_version: str,
     system_prompt: str | None,
+    memory_context: str | None,
     model: str,
     run_id: UUID,
 ) -> tuple[ExtractionResult, str]:
@@ -159,7 +157,9 @@ async def _run_model_analysis(
     try:
         await _report(tenant_id, call_id, 62, "در حال آماده‌سازی متن مکالمه")
         await _report(tenant_id, call_id, 68, "متن آماده شد؛ در حال برنامه‌ریزی تحلیل")
-        system = load_run_prompt(prompt_version, system_prompt)
+        system = append_untrusted_context(
+            load_run_prompt(prompt_version, system_prompt), memory_context or "", "analysis"
+        )
         plan = plan_chunks(text)
         body = (
             plan.chunks[0]
@@ -276,24 +276,17 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 ).scalar_one_or_none()
             )
             if run is None:
-                models = await effective_models(session)
-                run = AnalysisRun(
-                    call_id=call_id,
-                    tenant_id=tenant_id,
-                    llm_model=capability_model(models, "analysis"),
-                    ai_provider=models.get("analysis_provider", "aiservice"),
-                    decision_provider=models.get("decision_provider", "aiservice"),
-                    decision_model=capability_model(models, "decision"),
-                    prompt_version=models["prompt_version"],
-                    system_prompt=await effective_extract_prompt(session, models["prompt_version"]),
-                    status="pending",
+                run = await analysis_runs.create(
+                    session, tenant_id=tenant_id, call_id=call_id, status="pending"
                 )
                 session.add(run)
                 await session.flush()
+            await analysis_runs.ensure_snapshot(session, run)
             run.status = "running"
             run_id = run.id
             prompt_version = run.prompt_version
             run_system_prompt = run.system_prompt
+            run_memory_context = run.memory_context
             run_llm_model = run.llm_model
             await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="llm", status="running"
@@ -327,6 +320,7 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 text=text,
                 prompt_version=prompt_version,
                 system_prompt=run_system_prompt,
+                memory_context=run_memory_context,
                 model=run_llm_model,
                 run_id=run_id,
             )

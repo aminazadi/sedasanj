@@ -504,6 +504,7 @@ class RankingVisibilityUpdate(BaseModel):
 
 class ChatConversationCreate(BaseModel):
     call_id: UUID | None = None
+    mode: Literal["normal", "training"] = "normal"
 
 
 class ChatConversationUpdate(BaseModel):
@@ -524,11 +525,65 @@ class ChatConversationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     call_id: UUID | None
+    mode: Literal["normal", "training"]
     title: str | None
     archived_at: datetime | None
     pinned_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class OrganizationMemoryUpdate(BaseModel):
+    lock_version: int = Field(ge=1)
+    category: Literal["organization_profile", "products_services", "terminology", "policies", "analysis_rules", "freeform"] | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    content: str | None = Field(default=None, min_length=1, max_length=12_000)
+    structured_payload: dict[str, Any] | None = None
+    tags: list[str] | None = Field(default=None, max_length=30)
+    applies_to: list[Literal["assistant", "correction", "analysis", "scoring"]] | None = Field(default=None, min_length=1, max_length=4)
+
+
+class OrganizationMemoryAction(BaseModel):
+    lock_version: int = Field(ge=1)
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+
+class OrganizationMemoryMerge(BaseModel):
+    memory_ids: list[UUID] = Field(min_length=2, max_length=10)
+    lock_versions: dict[UUID, int]
+    logical_key: str = Field(min_length=1, max_length=120)
+    category: Literal["organization_profile", "products_services", "terminology", "policies", "analysis_rules", "freeform"]
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=12_000)
+    structured_payload: dict[str, Any] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list, max_length=30)
+    applies_to: list[Literal["assistant", "correction", "analysis", "scoring"]] = Field(min_length=1, max_length=4)
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+
+class OrganizationMemoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    logical_key: str
+    version: int
+    supersedes_id: UUID | None
+    category: str
+    title: str
+    content: str
+    structured_payload: dict[str, Any]
+    tags: list[str]
+    applies_to: list[str]
+    status: str
+    source_conversation_id: UUID | None
+    source_message_id: UUID | None
+    created_by: UUID | None
+    approved_by: UUID | None
+    lock_version: int
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None
+    archived_at: datetime | None
+    conflicts: list[UUID] = Field(default_factory=list)
 
 
 class AssistantMessageAttachments(BaseModel):
@@ -576,6 +631,7 @@ class ChatMessageOut(BaseModel):
     sources: list[dict[str, Any]] | None = None
     attachments: AssistantMessageAttachments | None = None
     tool_runs: list[dict[str, Any]] = Field(default_factory=list)
+    memory_drafts: list[OrganizationMemoryOut] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -703,6 +759,8 @@ class CallDetail(CallSummary):
     analysis_run_id: UUID | None = None
     prompt_version: str | None = None
     llm_model: str | None = None
+    memory_sha256: str | None = None
+    memory_versions: list[dict[str, Any]] = Field(default_factory=list)
     error_detail: str | None = None
     processing_events: list[ProcessingEventOut] = Field(default_factory=list)
 

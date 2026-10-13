@@ -26,6 +26,7 @@ from app.services import (
     queue,
     sales_insights,
 )
+from app.services.organization_memory import append_untrusted_context
 from app.services.platform import resolve_provider_settings
 from app.services.provider_errors import ProviderError, classify_failure
 from worker_llm.chunking import plan_chunks
@@ -108,7 +109,11 @@ async def _stage_analysis_plan(session: Any, run: AnalysisRun, text: str) -> lis
             run=run,
             kind="extract",
             ordinal=0,
-            system_prompt=load_run_prompt(run.prompt_version, run.system_prompt),
+            system_prompt=append_untrusted_context(
+                load_run_prompt(run.prompt_version, run.system_prompt),
+                run.memory_context or "",
+                "analysis",
+            ),
             input_text=plan.chunks[0],
         )
         outbox_ids.append(outbox_id)
@@ -119,7 +124,9 @@ async def _stage_analysis_plan(session: Any, run: AnalysisRun, text: str) -> lis
             run=run,
             kind="map",
             ordinal=ordinal,
-            system_prompt=MAP_INSTRUCTION,
+            system_prompt=append_untrusted_context(
+                MAP_INSTRUCTION, run.memory_context or "", "analysis"
+            ),
             input_text=chunk,
         )
         outbox_ids.append(outbox_id)
@@ -363,7 +370,9 @@ async def _advance(tenant_id: UUID, run_id: UUID, completed_step_id: UUID) -> No
                     run=run,
                     kind="reduce",
                     ordinal=0,
-                    system_prompt=MAP_INSTRUCTION,
+                    system_prompt=append_untrusted_context(
+                        MAP_INSTRUCTION, run.memory_context or "", "analysis"
+                    ),
                     input_text=joined,
                 )
             else:
@@ -372,7 +381,11 @@ async def _advance(tenant_id: UUID, run_id: UUID, completed_step_id: UUID) -> No
                     run=run,
                     kind="extract",
                     ordinal=0,
-                    system_prompt=load_run_prompt(run.prompt_version, run.system_prompt),
+                    system_prompt=append_untrusted_context(
+                        load_run_prompt(run.prompt_version, run.system_prompt),
+                        run.memory_context or "",
+                        "analysis",
+                    ),
                     input_text=joined,
                 )
         elif completed.kind == "reduce":
@@ -382,7 +395,11 @@ async def _advance(tenant_id: UUID, run_id: UUID, completed_step_id: UUID) -> No
                 run=run,
                 kind="extract",
                 ordinal=0,
-                system_prompt=load_run_prompt(run.prompt_version, run.system_prompt),
+                system_prompt=append_untrusted_context(
+                    load_run_prompt(run.prompt_version, run.system_prompt),
+                    run.memory_context or "",
+                    "analysis",
+                ),
                 input_text=body,
             )
         elif completed.kind in {"extract", "repair"}:
