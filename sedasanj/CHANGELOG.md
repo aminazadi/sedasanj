@@ -2,6 +2,7 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Reworked the assistant processing marker as a smaller, shadow-free four-cell pulse aligned with the original sidebar treatment.
 - Refined the shared assistant processing marker into a shadow-free rotating multicolor square ring.
 - Removed the assistant response-loading state from the message bubble so it renders without a border, padding, avatar, or bubble tail.
 - Added a motion-safe, palette-matched animated square processing marker to the exact assistant conversation sidebar item receiving a streamed response.
