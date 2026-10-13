@@ -154,7 +154,7 @@ function IconTooltip({ label, children }: { label: string; children: ReactNode }
   );
 }
 
-function TypingIndicator({ label = "در حال فکر کردن و دریافت نتیجه ..." }: { label?: string }) {
+export function TypingIndicator({ label = "در حال فکر کردن و دریافت نتیجه ..." }: { label?: string }) {
   return (
     <div className="flex h-8 items-center gap-2" role="status" aria-live="polite">
       <ConversationProcessingIndicator active />
@@ -163,7 +163,7 @@ function TypingIndicator({ label = "در حال فکر کردن و دریافت 
   );
 }
 
-function ToolTimeline({ runs, active }: { runs: AssistantToolRun[]; active: boolean }) {
+export function ToolTimeline({ runs, active }: { runs: AssistantToolRun[]; active: boolean }) {
   const [open, setOpen] = useState(active);
   useEffect(() => { if (active) setOpen(true); }, [active]);
   if (!runs.length) return null;
@@ -184,7 +184,7 @@ function ToolTimeline({ runs, active }: { runs: AssistantToolRun[]; active: bool
 
 const assistantChartColors = ["#4B6E48", "#B2AC88", "#7A8B73", "#898989", "#D8D3B9"];
 
-function AssistantCharts({ charts }: { charts: AssistantChart[] }) {
+export function AssistantCharts({ charts }: { charts: AssistantChart[] }) {
   const visible = charts.filter((chart) => chart.data.some((item) => Number.isFinite(item.value)));
   if (!visible.length) return null;
   return <section className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="نمودارهای آماری پاسخ">
@@ -228,7 +228,7 @@ function ChevronIcon({ open }: { open: boolean }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>;
 }
 
-function CallSources({ sources, expandedCallId, onToggle }: { sources: AssistantCallSource[]; expandedCallId: string | null; onToggle: (callId: string) => void }) {
+export function CallSources({ sources, expandedCallId, onToggle }: { sources: AssistantCallSource[]; expandedCallId: string | null; onToggle: (callId: string) => void }) {
   return <section className="mt-4 border-t border-[#B2AC88] pt-3" aria-label="تماس‌های استفاده‌شده در پاسخ">
     <div className="mb-3 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 text-[#4B6E48]"><PhoneIcon /><h3 className="text-sm font-bold">تماس‌های بررسی‌شده</h3></div>

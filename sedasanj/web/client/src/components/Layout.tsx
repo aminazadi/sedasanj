@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
+import QuickAssistantWidget from "./QuickAssistantWidget";
 
 type NavigationItem = {
   to: string;
@@ -198,6 +199,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       </header>
 
         <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{children}</main>
+        {!isAssistantPage ? <QuickAssistantWidget /> : null}
       </div>
     </DesktopMenuToggleContext.Provider>
   );

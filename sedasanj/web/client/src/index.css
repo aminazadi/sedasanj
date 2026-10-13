@@ -231,6 +231,21 @@ body {
   animation: assistant-panel-menu-toggle-ring 2.4s ease-out infinite;
 }
 
+.quick-assistant-trigger-pulse {
+  position: absolute;
+  inset: -0.35rem;
+  border: 1px solid rgb(242 240 239 / 0.7);
+  content: "";
+  pointer-events: none;
+  animation: quick-assistant-pulse 2.7s ease-out infinite;
+}
+
+@keyframes quick-assistant-pulse {
+  0%, 55% { opacity: 0; transform: scale(0.82); }
+  70% { opacity: 0.8; }
+  100% { opacity: 0; transform: scale(1.32); }
+}
+
 @keyframes assistant-panel-menu-toggle-in {
   from { opacity: 0; transform: translateX(1rem) scale(0.82) rotate(-8deg); }
   to { opacity: 1; transform: translateX(0) scale(1) rotate(0); }
@@ -411,6 +426,10 @@ body {
 
   .assistant-panel-menu-toggle,
   .assistant-panel-menu-toggle::after {
+    animation: none;
+  }
+
+  .quick-assistant-trigger-pulse {
     animation: none;
   }
 

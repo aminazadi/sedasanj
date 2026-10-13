@@ -2,6 +2,11 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Added a role-scoped floating assistant widget for organization managers and operators outside the full assistant workspace.
+- Added URL-persistent quick-chat visibility, accessible close behavior, new-conversation startup, shared assistant response rendering, context selection, message actions, citations, charts, and tool progress.
+
+## 2026-10-13 — AMINAZADI
+
 - Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.
 - Replaced the active conversation's sidebar chat icon with its processing marker while a response is streaming.
 - Reworked the assistant processing marker as a smaller, shadow-free four-cell pulse aligned with the original sidebar treatment.
