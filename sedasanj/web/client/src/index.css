@@ -231,11 +231,16 @@ body {
   animation: assistant-panel-menu-toggle-ring 2.4s ease-out infinite;
 }
 
-.quick-assistant-trigger-pulse {
+.quick-assistant-trigger {
+  animation: quick-assistant-trigger-float 2.7s ease-in-out infinite;
+}
+
+.quick-assistant-trigger::after {
   position: absolute;
-  inset: -0.35rem;
+  inset: -0.25rem;
   border: 1px solid rgb(242 240 239 / 0.7);
   content: "";
+  opacity: 0;
   pointer-events: none;
   animation: quick-assistant-pulse 2.7s ease-out infinite;
 }
@@ -244,6 +249,11 @@ body {
   0%, 55% { opacity: 0; transform: scale(0.82); }
   70% { opacity: 0.8; }
   100% { opacity: 0; transform: scale(1.32); }
+}
+
+@keyframes quick-assistant-trigger-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-0.25rem); }
 }
 
 @keyframes assistant-panel-menu-toggle-in {
@@ -429,7 +439,8 @@ body {
     animation: none;
   }
 
-  .quick-assistant-trigger-pulse {
+  .quick-assistant-trigger,
+  .quick-assistant-trigger::after {
     animation: none;
   }
 

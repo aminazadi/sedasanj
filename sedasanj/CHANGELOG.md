@@ -2,6 +2,10 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Simplified the floating assistant launcher to a standard icon-only button and moved its motion-safe pulse and float animation onto the button itself.
+
+## 2026-10-13 — AMINAZADI
+
 - Reduced dashboard statistic-card height by tightening their vertical spacing and scaling their icons to match the compact layout.
 
 ## 2026-10-13 — AMINAZADI
