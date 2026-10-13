@@ -316,7 +316,7 @@ async def update_conversation(conversation_id: UUID, payload: ChatConversationUp
 async def list_messages(conversation_id: UUID, principal: OperatorDep, session: TenantSession) -> list[ChatMessageOut]:
     assert principal.tenant_id is not None
     await _conversation(session, conversation_id, principal.tenant_id, principal.id)
-    rows = (await session.execute(select(ChatMessage).where(ChatMessage.conversation_id == conversation_id, ChatMessage.tenant_id == principal.tenant_id).order_by(ChatMessage.created_at))).scalars().all()
+    rows = (await session.execute(select(ChatMessage).where(ChatMessage.conversation_id == conversation_id, ChatMessage.tenant_id == principal.tenant_id).order_by(ChatMessage.ordinal))).scalars().all()
     message_ids = [row.id for row in rows if row.role == "assistant"]
     tool_rows = (
         await session.execute(
@@ -368,14 +368,14 @@ async def delete_message_tail(
             ChatMessage.conversation_id == conversation.id,
             ChatMessage.tenant_id == principal.tenant_id,
             ChatMessage.role == "user",
-            ChatMessage.created_at < message.created_at,
+            ChatMessage.ordinal < message.ordinal,
         )
     )
     await session.execute(
         delete(ChatMessage).where(
             ChatMessage.conversation_id == conversation.id,
             ChatMessage.tenant_id == principal.tenant_id,
-            ChatMessage.created_at >= message.created_at,
+            ChatMessage.ordinal >= message.ordinal,
         )
     )
     if not earlier_user_messages:
@@ -473,7 +473,7 @@ async def _chat_history(
                     ),
                 )
                 .group_by(ChatMessage.conversation_id)
-                .order_by(func.max(ChatMessage.created_at).desc())
+                .order_by(func.max(ChatMessage.ordinal).desc())
                 .limit(OTHER_CONVERSATIONS)
             )
         ).scalars().all()
@@ -496,8 +496,9 @@ async def _chat_history(
             ChatMessage.role,
             ChatMessage.content,
             ChatMessage.created_at,
+            ChatMessage.ordinal,
             func.row_number()
-            .over(partition_by=ChatMessage.conversation_id, order_by=ChatMessage.created_at.desc())
+            .over(partition_by=ChatMessage.conversation_id, order_by=ChatMessage.ordinal.desc())
             .label("position"),
         )
         .where(ChatMessage.tenant_id == tenant_id, ChatMessage.conversation_id.in_(titles))
@@ -518,7 +519,7 @@ async def _chat_history(
                     ranked.c.position <= ACTIVE_HISTORY_MESSAGES,
                 )
             )
-            .order_by(ranked.c.conversation_id, ranked.c.created_at)
+            .order_by(ranked.c.conversation_id, ranked.c.ordinal)
         )
     ).mappings().all()
     history: list[str] = []
@@ -583,10 +584,11 @@ async def _attachment_context(
                 ChatMessage.role,
                 ChatMessage.content,
                 ChatMessage.created_at,
+                ChatMessage.ordinal,
                 func.row_number()
                 .over(
                     partition_by=ChatMessage.conversation_id,
-                    order_by=ChatMessage.created_at.desc(),
+                    order_by=ChatMessage.ordinal.desc(),
                 )
                 .label("position"),
             )
@@ -600,7 +602,7 @@ async def _attachment_context(
             await session.execute(
                 select(ranked)
                 .where(ranked.c.position <= 8)
-                .order_by(ranked.c.conversation_id, ranked.c.created_at)
+                .order_by(ranked.c.conversation_id, ranked.c.ordinal)
             )
         ).mappings().all()
         current_id: UUID | None = None

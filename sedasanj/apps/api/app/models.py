@@ -921,9 +921,14 @@ class ChatMessage(Base):
     model: Mapped[str | None] = mapped_column(Text)
     sources: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     attachments: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    ordinal: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=text("nextval('chat_messages_ordinal_seq')"),
+    )
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
-    __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "created_at"),)
+    __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "ordinal"),)
 
 
 class AssistantToolRun(Base):

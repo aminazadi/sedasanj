@@ -23,6 +23,23 @@ class _Session:
         self.deleted = statement
 
 
+class _EmptyRows:
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
+
+class _MessageListSession:
+    def __init__(self) -> None:
+        self.statement = None
+
+    async def execute(self, statement):
+        self.statement = statement
+        return _EmptyRows()
+
+
 @pytest.mark.asyncio
 async def test_delete_message_tail_is_owner_scoped_and_resets_first_title(
     monkeypatch,
@@ -44,6 +61,7 @@ async def test_delete_message_tail_is_owner_scoped_and_resets_first_title(
         tenant_id=tenant_id,
         role="user",
         created_at=object(),
+        ordinal=2,
     )
     session = _Session(message, earlier_user_messages=0)
     recorded = {}
@@ -70,6 +88,7 @@ async def test_delete_message_tail_is_owner_scoped_and_resets_first_title(
     assert conversation.updated_at is not None
     assert session.deleted is not None
     assert "DELETE FROM chat_messages" in str(session.deleted)
+    assert "chat_messages.ordinal >=" in str(session.deleted)
     assert recorded["action"] == "assistant.message_tail_delete"
 
 
@@ -84,6 +103,7 @@ async def test_delete_message_tail_rejects_assistant_message(monkeypatch) -> Non
         tenant_id=tenant_id,
         role="assistant",
         created_at=object(),
+        ordinal=2,
     )
     session = _Session(message)
 
@@ -102,3 +122,28 @@ async def test_delete_message_tail_rejects_assistant_message(monkeypatch) -> Non
         )
 
     assert session.deleted is None
+
+
+@pytest.mark.asyncio
+async def test_list_messages_uses_persisted_ordinal_for_conversation_order(
+    monkeypatch,
+) -> None:
+    tenant_id = uuid4()
+    owner_id = uuid4()
+    conversation_id = uuid4()
+    session = _MessageListSession()
+
+    async def fake_conversation(*args):
+        return SimpleNamespace(id=conversation_id)
+
+    monkeypatch.setattr(assistant, "_conversation", fake_conversation)
+
+    result = await assistant.list_messages(
+        conversation_id,
+        SimpleNamespace(id=owner_id, tenant_id=tenant_id),
+        session,
+    )
+
+    assert result == []
+    assert session.statement is not None
+    assert "ORDER BY chat_messages.ordinal" in str(session.statement)
