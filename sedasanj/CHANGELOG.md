@@ -2,6 +2,8 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Applied a lighter typography scale across the authenticated panel while preserving hierarchy for headings, labels, controls, and emphasis.
+
 - Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
 - Added active-listening styling and an animated voice waveform to assistant prompt composers.
 
