@@ -4,6 +4,7 @@
 
 - Added a role-scoped floating assistant widget for organization managers and operators outside the full assistant workspace.
 - Added URL-persistent quick-chat visibility, accessible close behavior, new-conversation startup, shared assistant response rendering, context selection, message actions, citations, charts, and tool progress.
+- Closed assistant context popovers when users click outside the composer in both the full workspace and quick-chat widget.
 
 ## 2026-10-13 — AMINAZADI
 

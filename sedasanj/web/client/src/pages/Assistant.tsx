@@ -358,6 +358,7 @@ export default function Assistant() {
   const messagesScrollerRef = useRef<HTMLDivElement>(null);
   const userNearBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const [showScrollToEnd, setShowScrollToEnd] = useState(false);
   const [contextOptions, setContextOptions] = useState<AssistantContextOptions | null>(null);
   const [attachments, setAttachments] = useState<AssistantMessageAttachments>(emptyAttachments);
@@ -551,6 +552,14 @@ export default function Assistant() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [confirmation]);
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!composerRef.current?.contains(event.target as Node)) setMentionOpen(false);
+    };
+    document.addEventListener("click", closeOnOutsideClick);
+    return () => document.removeEventListener("click", closeOnOutsideClick);
+  }, [mentionOpen]);
 
   async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[], messageAttachments: AssistantMessageAttachments): Promise<{ message: ChatMessage; conversationTitle: string | null }> {
     const url = conversationId ? `/v1/assistant/conversations/${conversationId}/messages/stream` : "/v1/assistant/ephemeral/messages/stream";
@@ -898,7 +907,7 @@ export default function Assistant() {
         })}
       </div>
       {showScrollToEnd ? <button type="button" className="absolute bottom-[7rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
-      <form className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
+      <form ref={composerRef} className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
         {mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-3 py-2"><strong className="text-xs text-[#4B6E48]">{mentionTab === "mentions" ? `نتایج برای @${mentionQuery}` : mentionTab === "dates" ? "انتخاب بازه زمانی" : "انتخاب ابزارها"}</strong><button type="button" className="px-2 py-1 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button></div>
           <div className="space-y-1 p-2">

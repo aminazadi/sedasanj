@@ -60,6 +60,7 @@ export default function QuickAssistantWidget() {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
 
   const close = () => setSearch((current) => {
     const next = new URLSearchParams(current);
@@ -96,6 +97,15 @@ export default function QuickAssistantWidget() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, mentionOpen]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!composerRef.current?.contains(event.target as Node)) setMentionOpen(false);
+    };
+    document.addEventListener("click", closeOnOutsideClick);
+    return () => document.removeEventListener("click", closeOnOutsideClick);
+  }, [mentionOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -230,7 +240,7 @@ export default function QuickAssistantWidget() {
         })}
       </div>
       {error ? <p className="shrink-0 border-t border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : null}
-      <form className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={(event) => void submit(event)}>
+      <form ref={composerRef} className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={(event) => void submit(event)}>
         {mentionOpen ? <div className="absolute inset-x-3 bottom-full z-20 mb-2 max-h-64 overflow-y-auto border border-[#B2AC88] bg-white shadow-xl"><div className="flex border-b border-[#B2AC88] bg-[#F2F0EF] text-xs font-bold text-[#4B6E48]"><button type="button" className={`flex-1 p-2 ${mentionTab === "mentions" ? "bg-[#4B6E48] text-white" : ""}`} onClick={() => setMentionTab("mentions")}>زمینه‌ها</button><button type="button" className={`flex-1 p-2 ${mentionTab === "dates" ? "bg-[#4B6E48] text-white" : ""}`} onClick={() => setMentionTab("dates")}>بازه زمانی</button><button type="button" className={`flex-1 p-2 ${mentionTab === "tools" ? "bg-[#4B6E48] text-white" : ""}`} onClick={() => setMentionTab("tools")}>ابزارها</button></div><div className="p-2">{mentionTab === "mentions" ? <>{matchingOperators.map((item) => <button key={item.id} type="button" className="block w-full px-2 py-2 text-right text-sm hover:bg-[#F2F0EF]" onClick={() => { setAttachments((current) => ({ ...current, operator_id: item.id })); setMentionOpen(false); setText((current) => current.slice(0, mentionStart).trimEnd()); }}>{item.label}</button>)}{matchingConversations.map((item) => <button key={item.id} type="button" className="block w-full px-2 py-2 text-right text-sm hover:bg-[#F2F0EF]" onClick={() => { setAttachments((current) => ({ ...current, conversation_ids: current.conversation_ids.includes(item.id) ? current.conversation_ids : [...current.conversation_ids, item.id] })); setMentionOpen(false); setText((current) => current.slice(0, mentionStart).trimEnd()); }}>{item.label}</button>)}</> : null}{mentionTab === "dates" ? <div className="grid gap-2"><JalaliDatePicker includeTime value={attachments.from_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, from_date: value || null }))} placeholder="شروع بازه" /><JalaliDatePicker includeTime value={attachments.to_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, to_date: value || null }))} placeholder="پایان بازه" /></div> : null}{mentionTab === "tools" ? contextOptions?.tools.map((item) => <button key={item.name} type="button" className={`block w-full px-2 py-2 text-right text-sm ${attachments.tool_names.includes(item.name) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => setAttachments((current) => ({ ...current, tool_names: current.tool_names.includes(item.name) ? current.tool_names.filter((name) => name !== item.name) : [...current.tool_names, item.name] }))}>{item.title}</button>) : null}</div></div> : null}
         {attachmentCount ? <div className="mb-2 flex flex-wrap gap-1"><button type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-[10px] text-[#4B6E48]" onClick={() => setAttachments(emptyAttachments())}>{attachmentCount} زمینه انتخاب شده ×</button></div> : null}
         <div className="flex items-end gap-2"><textarea ref={inputRef} rows={2} className="input min-h-16 flex-1 resize-none border-[#B2AC88] bg-[#F2F0EF] text-sm text-slate-900" value={text} onChange={(event) => { const value = event.target.value; setText(value); const anchor = value.lastIndexOf("@"); if (anchor >= 0 && anchor === value.length - 1) { setMentionAnchor(anchor); setMentionTab("mentions"); setMentionOpen(true); } }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") event.currentTarget.form?.requestSubmit(); }} placeholder="سؤال خود را بنویسید…" aria-label="پیام به دستیار" /><div className="flex flex-col gap-1"><button type="button" className="border border-[#B2AC88] px-2 py-1 text-[10px] font-bold text-[#4B6E48]" onClick={() => { setMentionTab("dates"); setMentionOpen(true); }}>بازه</button><button type="button" className="border border-[#B2AC88] px-2 py-1 text-[10px] font-bold text-[#4B6E48]" onClick={() => { setMentionTab("tools"); setMentionOpen(true); }}>ابزار</button></div><button type="submit" className="flex h-12 w-12 items-center justify-center bg-[#4B6E48] text-[#F2F0EF] disabled:bg-[#898989]" disabled={sending || !text.trim()} aria-label="ارسال پیام"><SendIcon /></button></div>
