@@ -22,12 +22,12 @@ function delta(metric: RateMetric) { return metric.change == null ? "دورهٔ 
 function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }) { return enabled ? <>{children}</> : null; }
 
 function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  const stageHeight = 70;
+  const stageHeight = 66;
   const gap = 5;
   const topWidth = 560;
-  const bottomWidth = 230;
+  const bottomWidth = 310;
   const center = 300;
-  const height = rows.length * (stageHeight + gap) + 34;
+  const height = rows.length * (stageHeight + gap) + 44;
   const widthAt = (position: number) => topWidth - ((topWidth - bottomWidth) * position) / rows.length;
   return <div className="mx-auto w-full max-w-xl py-2"><svg className="block h-auto w-full" viewBox={`0 0 600 ${height}`} role="img" aria-label="قیف مراحل فروش">{rows.map((row, index) => {
     const y = index * (stageHeight + gap);
@@ -37,9 +37,11 @@ function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count
     const right = center + current / 2;
     const nextLeft = center - next / 2;
     const nextRight = center + next / 2;
-    const empty = row.count === 0;
-    return <g key={row.key}><title>{`${row.label}: ${fmt.int(row.count)}`}</title><polygon points={`${left},${y} ${right},${y} ${nextRight},${y + stageHeight} ${nextLeft},${y + stageHeight}`} fill={empty ? "#fde68a" : index % 2 ? "#f59e0b" : "#fbbf24"} /><text x={center} y={y + 29} textAnchor="middle" className="fill-[#4B2800] text-[16px] font-black">{row.label}</text><text x={center} y={y + 52} textAnchor="middle" className="fill-[#4B2800] text-[14px] font-bold">{fmt.int(row.count)}</text></g>;
-  })}<rect x="294" y={rows.length * (stageHeight + gap) - gap} width="12" height="28" fill="#b8ad7c" /></svg></div>;
+    const ratio = rows.length > 1 ? index / (rows.length - 1) : 0;
+    const hue = 50 - ratio * 24;
+    const lightness = 77 - ratio * 20;
+    return <g key={row.key}><title>{`${row.label}: ${fmt.int(row.count)}`}</title><polygon points={`${left},${y} ${right},${y} ${nextRight},${y + stageHeight} ${nextLeft},${y + stageHeight}`} fill={`hsl(${hue} 96% ${lightness}%)`} /><text x={center} y={y + 39} textAnchor="middle" direction="rtl" className="fill-[#4B2800] text-[16px] font-black">{`${row.label}  ·  ${fmt.int(row.count)}`}</text></g>;
+  })}<polygon points={`278,${rows.length * (stageHeight + gap) - gap} 322,${rows.length * (stageHeight + gap) - gap} 314,${height} 286,${height}`} fill="#d97706" /></svg></div>;
 }
 
 function FunnelPanel({ title, description, rows }: { title: string; description: string; rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
