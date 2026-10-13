@@ -2,6 +2,7 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Removed the assistant response-loading state from the message bubble so it renders without a border, padding, avatar, or bubble tail.
 - Added a motion-safe, palette-matched animated square processing marker to the exact assistant conversation sidebar item receiving a streamed response.
 - Reused the same processing marker in the pending assistant response inside the chat.
 - Added the dotted surface treatment to the assistant conversation sidebar for visual consistency with the main panel navigation.

@@ -163,7 +163,7 @@ function IconTooltip({ label, children }: { label: string; children: ReactNode }
 
 function TypingIndicator({ label = "در حال فکر کردن و دریافت نتیجه ..." }: { label?: string }) {
   return (
-    <div className="flex h-8 items-center gap-2 px-1" role="status" aria-live="polite">
+    <div className="flex h-8 items-center gap-2" role="status" aria-live="polite">
       <ConversationProcessingIndicator active />
       <span className="assistant-thinking-text">{label}</span>
     </div>
@@ -879,6 +879,9 @@ export default function Assistant() {
           const attachedLabels = messageAttachmentLabels(message);
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);
           const actionClass = "inline-flex h-7 w-7 items-center justify-center text-[#898989] transition hover:bg-white hover:text-[#4B6E48] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48] disabled:opacity-50";
+          if (!user && message.status === "running" && !message.content) {
+            return <div key={message.id} className="flex w-full justify-start" dir="ltr"><TypingIndicator label={phases[message.id]} /></div>;
+          }
           const actions = <>
             <span className="flex items-center gap-0.5" dir="rtl">
               {user && message.status !== "running" ? <button type="button" className={actionClass} disabled={sending} onClick={() => setMessageEdit({ message, value: message.content })} aria-label="ویرایش پیام" title="ویرایش پیام"><EditIcon /></button> : null}
