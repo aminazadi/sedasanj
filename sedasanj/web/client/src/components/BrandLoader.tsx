@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { BrandLogo } from "./BrandLogo";
 import { LOGO_MOTION_DURATION } from "./logo-motion";
@@ -23,7 +23,7 @@ export function RouteLoadingOverlay() {
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setVisible(true);
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => setVisible(false), (LOGO_MOTION_DURATION + 0.8) * 1000);

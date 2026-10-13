@@ -7,6 +7,7 @@
 - Refined the "ص" glyph with an eased continuous bowl gesture and a synchronized connected tail, keeping particles on the drawing path.
 - Unified the "ص" bowl and tail into one uninterrupted pen path and timeline to eliminate the stop and acceleration jump at their join; selected dot masks by stroke identity.
 - Corrected the "س" pen coverage and completed its exact silhouette within its own drawing interval instead of the final logo reveal.
+- Softened SPA route loading with a translucent backdrop, progressive blur, opacity fade, and a restrained logo entrance to prevent the loading background from flashing between pages.
 
 ## 2026-10-09 — AMINAZADI
 
