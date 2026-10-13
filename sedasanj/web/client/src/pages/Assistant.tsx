@@ -865,13 +865,16 @@ export default function Assistant() {
       </button>
     </aside>
     <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0">
-      <div className="absolute left-3 top-3 z-20 flex gap-2 md:left-4 md:top-4">
-        <IconTooltip label="چت موقت بدون ذخیره‌سازی">
-          <button type="button" className={`inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
-        </IconTooltip>
-        <IconTooltip label="خروجی متن پیام‌ها">
-          <button type="button" className="inline-flex h-11 w-11 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50" onClick={exportMessages} aria-label="خروجی متن پیام‌ها" disabled={!messages.some((message) => message.status !== "running" && message.content.trim())}><DownloadIcon /></button>
-        </IconTooltip>
+      <div className="absolute inset-x-3 top-3 z-20 md:inset-x-4 md:top-4">
+        <ErrorBox message={error} className="absolute right-0 top-0 mb-0 max-w-[calc(100%-6rem)] shadow-sm" />
+        <div className="absolute left-0 top-0 flex gap-2">
+          <IconTooltip label="چت موقت بدون ذخیره‌سازی">
+            <button type="button" className={`inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
+          </IconTooltip>
+          <IconTooltip label="خروجی متن پیام‌ها">
+            <button type="button" className="inline-flex h-11 w-11 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50" onClick={exportMessages} aria-label="خروجی متن پیام‌ها" disabled={!messages.some((message) => message.status !== "running" && message.content.trim())}><DownloadIcon /></button>
+          </IconTooltip>
+        </div>
       </div>
       <div ref={messagesScrollerRef} className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7" onScroll={handleMessagesScroll}>
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
@@ -929,7 +932,6 @@ export default function Assistant() {
         <div className="flex items-start gap-2"><div className="relative min-w-0 flex-1 bg-[#F2F0EF]"><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="سؤال خود را بنویسید…" /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]"><TypingPromptGuide /></p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></div></div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></div>
       </form>
     </section>
-    <ErrorBox message={error} />
     <ConfirmDialog
       open={Boolean(confirmation)}
       title={confirmation?.action === "delete" ? "حذف گفتگو" : "آرشیو گفتگو"}

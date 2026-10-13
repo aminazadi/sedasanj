@@ -2,6 +2,10 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Moved assistant error alerts into the chat header opposite the temporary-chat and transcript-download controls, making server errors immediately visible without displacing the composer.
+
+## 2026-10-13 — AMINAZADI
+
 - Made assistant chat message order deterministic with a persisted database ordinal, covering message display, context construction, retries, edits, and tail deletion even when PostgreSQL assigns identical transaction timestamps.
 
 ## 2026-10-13 — AMINAZADI
@@ -12,6 +16,7 @@
 
 - Moved quick-chat range and tool controls into the composer surface and matched the send action height to the text area.
 - Replaced the quick-chat trigger with the large outlined conversation icon, removed the duplicate header icon, and animated the panel from the trigger on open and close.
+- Restored the existing quick-chat trigger layout while retaining the larger outlined conversation icon.
 ## 2026-10-13 — AMINAZADI
 
 - Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.

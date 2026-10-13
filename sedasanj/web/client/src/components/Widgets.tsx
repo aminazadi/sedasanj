@@ -327,10 +327,10 @@ export function PartySentimentCard({
   );
 }
 
-export function ErrorBox({ message }: { message: string | null }) {
+export function ErrorBox({ message, className = "" }: { message: string | null; className?: string }) {
   if (!message) return null;
   return (
-    <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
+    <div className={`mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 ${className}`} role="alert">
       {message}
     </div>
   );
