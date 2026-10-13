@@ -2,6 +2,8 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Replaced the quick assistant launcher glyph with a standard chat icon and refined the launcher motion into a direct border-pulse effect.
+
 - Simplified the floating assistant launcher to a standard icon-only button and moved its motion-safe pulse and float animation onto the button itself.
 
 ## 2026-10-13 — AMINAZADI
