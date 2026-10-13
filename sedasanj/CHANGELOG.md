@@ -3,7 +3,7 @@
 ## 2026-10-13 — AMINAZADI
 
 - Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
-- Changed the loading and panel treatment to reveal the supplied logo as a solid mark from right to left, without a separate outline-drawing phase, guided by a trailing gold light sweep.
+- Rebuilt the logo motion with a coordinated 1.85-second GSAP pen timeline, isolated filled-letter and dot masks, and an independent Canvas particle emitter with outward drift, damping, and fade; autoplay runs once with hover replay, reduced-motion support, resize handling, and animation cleanup.
 
 ## 2026-10-09 — AMINAZADI
 

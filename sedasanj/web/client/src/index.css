@@ -45,7 +45,7 @@ body {
   z-index: 100;
   display: grid;
   place-items: center;
-  background: rgb(242 240 239 / 0.96);
+  background: #f2f0ef;
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
@@ -59,17 +59,8 @@ body {
 .brand-loader {
   position: relative;
   display: grid;
-  width: min(17rem, 72vw);
+  width: min(20rem, 76vw);
   place-items: center;
-}
-
-.brand-loader__halo {
-  position: absolute;
-  width: 62%;
-  aspect-ratio: 1;
-  border: 1px solid rgb(178 172 136 / 0.58);
-  border-radius: 999px;
-  animation: brand-loader-halo 1.4s ease-out infinite;
 }
 
 .brand-loader__logo {
@@ -83,50 +74,26 @@ body {
   width: min(9rem, 52vw);
 }
 
-.panel-brand-logo {
-  animation: panel-brand-logo 4.8s ease-in-out infinite;
-  transform-origin: center;
+.brand-logo {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  overflow: visible;
 }
 
-.brand-logo__path {
-  fill: #101113;
+.brand-logo > svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
-.brand-logo--animated .brand-logo__reveal {
-  transform-box: fill-box;
-  transform-origin: right center;
-  animation: brand-logo-reveal 1.45s cubic-bezier(.65, 0, .35, 1) infinite;
-}
-
-.panel-brand-logo .brand-logo__reveal {
-  animation-duration: 4.8s;
-}
-
-.brand-logo__cursor {
-  stroke: #b2ac88;
-  stroke-linecap: round;
-  stroke-width: 1.4;
-  filter: drop-shadow(0 0 5px rgb(178 172 136 / 0.9));
-}
-
-.brand-logo__cursor-dot {
-  fill: #f2f0ef;
-  filter: drop-shadow(0 0 8px rgb(178 172 136 / 1));
-}
-
-@keyframes brand-logo-reveal {
-  0% { transform: scaleX(0); }
-  76%, 100% { transform: scaleX(1); }
-}
-
-@keyframes brand-loader-halo {
-  0% { opacity: 0.8; transform: scale(0.76); }
-  75%, 100% { opacity: 0; transform: scale(1.24); }
-}
-
-@keyframes panel-brand-logo {
-  0%, 100% { opacity: 0.84; transform: translateY(0); }
-  50% { opacity: 1; transform: translateY(-3px); }
+.brand-logo__canvas {
+  position: absolute;
+  top: -3rem;
+  left: -3rem;
+  width: calc(100% + 6rem);
+  height: calc(100% + 6rem);
+  pointer-events: none;
 }
 
 .recharts-default-legend .recharts-legend-item {
@@ -323,25 +290,12 @@ body {
     background-position: 50% 0;
   }
 
-  .route-loading-overlay,
-  .brand-loader__halo,
-  .panel-brand-logo {
-    animation: none;
+  .route-loading-overlay {
     transition: none;
   }
 
-  .brand-logo--animated .brand-logo__reveal {
-    animation: none;
-    transform: scaleX(1);
-  }
-
-  .brand-logo__cursor,
-  .brand-logo__cursor-dot {
+  .brand-logo__canvas {
     display: none;
-  }
-
-  .brand-loader__halo {
-    opacity: 0;
   }
 }
 
