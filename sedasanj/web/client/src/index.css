@@ -545,6 +545,53 @@ body {
   border-radius: 0 !important;
 }
 
+.panel-shell {
+  font-weight: 350;
+}
+
+.panel-shell h1,
+.panel-shell h2,
+.panel-shell h3,
+.panel-shell h4,
+.panel-shell h5,
+.panel-shell h6,
+.panel-shell strong,
+.panel-shell b {
+  font-weight: 500;
+}
+
+.panel-shell .font-thin {
+  font-weight: 250;
+}
+
+.panel-shell .font-light {
+  font-weight: 300;
+}
+
+.panel-shell .font-normal {
+  font-weight: 350;
+}
+
+.panel-shell .font-medium {
+  font-weight: 400;
+}
+
+.panel-shell .font-semibold {
+  font-weight: 450;
+}
+
+.panel-shell .font-bold {
+  font-weight: 500;
+}
+
+.panel-shell .font-extrabold {
+  font-weight: 550;
+}
+
+.panel-shell .font-black {
+  font-weight: 600;
+}
+
 .sidebar-scroll {
   scrollbar-color: rgb(137 137 137 / 0.7) transparent;
   scrollbar-width: thin;
