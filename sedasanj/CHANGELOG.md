@@ -6,6 +6,7 @@
 - Added URL-persistent quick-chat visibility, accessible close behavior, new-conversation startup, shared assistant response rendering, context selection, message actions, citations, charts, and tool progress.
 - Closed assistant context popovers when users click outside the composer in both the full workspace and quick-chat widget.
 
+- Moved quick-chat range and tool controls into the composer surface and matched the send action height to the text area.
 ## 2026-10-13 — AMINAZADI
 
 - Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.
