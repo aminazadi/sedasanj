@@ -2,6 +2,10 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Consolidated the assistant sidebar navigation into URL-persistent Chats, Archives, and manager-only Training tabs.
+
+## 2026-10-13 — AMINAZADI
+
 - Standardized assistant visual entry points with the AI bot icon across the sidebar, assistant workspace, and quick-chat launcher.
 
 - Replaced the quick assistant launcher glyph with a standard chat icon and refined the launcher motion into a direct border-pulse effect.

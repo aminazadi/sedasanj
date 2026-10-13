@@ -588,18 +588,22 @@ export default function Assistant() {
     else setMemoryCategory(value);
     setSearch((current) => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); return next; }, { replace: true });
   }
-  function switchMode(nextMode: "chat" | "train") {
+  function selectAssistantTab(tab: "chat" | "archived" | "train") {
+    const nextMode = tab === "train" ? "train" : "chat";
+    const nextView = tab === "archived" ? "archived" : "active";
+    setConversationView(nextView);
     setSearch((current) => {
       const next = new URLSearchParams(current);
       next.set("mode", nextMode);
+      next.set("conversation_view", nextView);
       next.delete("conversation");
       return next;
     });
   }
-  function changeConversationView(value: "active" | "archived") {
-    setConversationView(value);
-    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation_view", value); return next; }, { replace: true });
-  }
+  useEffect(() => {
+    const nextView = search.get("conversation_view") === "archived" ? "archived" : "active";
+    setConversationView((current) => current === nextView ? current : nextView);
+  }, [search]);
   useEffect(() => {
     void (async () => {
       try {
@@ -958,12 +962,12 @@ export default function Assistant() {
         <button type="button" className="inline-flex h-10 w-10 items-center justify-center text-[#4B6E48] transition hover:bg-[#F2F0EF]" onClick={() => setConversationsOpen(false)} aria-label="بستن فهرست گفتگوها"><MenuIcon close /></button>
       </div>
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-3" aria-label="فهرست گفتگوها">
-        {isOrgAdmin(session?.role) ? <div className="mb-3 grid grid-cols-2 border border-[#B2AC88] bg-white p-1"><button type="button" className={`min-h-9 text-xs font-bold ${!training ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => switchMode("chat")}>گفت‌وگو</button><button type="button" className={`min-h-9 text-xs font-bold ${training ? "bg-[#4B6E48] text-white" : "text-[#4B6E48]"}`} onClick={() => switchMode("train")}>آموزش دستیار</button></div> : null}
         <div className="mb-5 flex items-center gap-2">
           {desktopMenuToggle ? <button type="button" className="assistant-panel-menu-toggle hidden h-11 w-11 shrink-0 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] shadow-[0_8px_20px_rgba(75,110,72,0.14)] transition hover:-translate-y-0.5 hover:border-[#4B6E48] hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] lg:inline-flex" onClick={desktopMenuToggle.toggle} aria-label={desktopMenuToggle.open ? "مخفی کردن منوی اصلی" : "نمایش منوی اصلی"} aria-expanded={desktopMenuToggle.open} aria-controls="client-desktop-menu"><MenuIcon close={desktopMenuToggle.open} /></button> : null}
           <div className="flex flex-1 border border-[#B2AC88] bg-white p-1" role="tablist" aria-label="نوع گفتگوها">
-            <button type="button" role="tab" aria-selected={conversationView === "active"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => changeConversationView("active")}>گفتگوها</button>
-            <button type="button" role="tab" aria-selected={conversationView === "archived"} className={`min-h-9 flex-1 px-3 text-xs font-bold transition ${conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => changeConversationView("archived")}>آرشیوها</button>
+            <button type="button" role="tab" aria-selected={!training && conversationView === "active"} className={`min-h-9 flex-1 px-2 text-xs font-bold transition ${!training && conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => selectAssistantTab("chat")}>چت‌ها</button>
+            <button type="button" role="tab" aria-selected={!training && conversationView === "archived"} className={`min-h-9 flex-1 px-2 text-xs font-bold transition ${!training && conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => selectAssistantTab("archived")}>آرشیوها</button>
+            {isOrgAdmin(session?.role) ? <button type="button" role="tab" aria-selected={training} className={`min-h-9 flex-1 px-2 text-xs font-bold transition ${training ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => selectAssistantTab("train")}>آموزش</button> : null}
           </div>
         </div>
         {conversationView === "active" ? <>{conversations.some((item) => item.pinned_at && !item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">پین‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.pinned_at && !item.archived_at).sort((first, second) => Date.parse(second.pinned_at || "") - Date.parse(first.pinned_at || "")).map(renderConversation)}</div></div> : null}<div className="mb-5">
