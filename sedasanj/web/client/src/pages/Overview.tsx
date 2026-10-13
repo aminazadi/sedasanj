@@ -22,15 +22,28 @@ function delta(metric: RateMetric) { return metric.change == null ? "دورهٔ 
 function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }) { return enabled ? <>{children}</> : null; }
 
 function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  return <div className="mx-auto max-w-xl space-y-1.5 py-3">{rows.map((row, index) => {
-    const width = rows.length === 1 ? 100 : 100 - (index * 64) / (rows.length - 1);
+  const stageHeight = 70;
+  const gap = 5;
+  const topWidth = 560;
+  const bottomWidth = 230;
+  const center = 300;
+  const height = rows.length * (stageHeight + gap) + 34;
+  const widthAt = (position: number) => topWidth - ((topWidth - bottomWidth) * position) / rows.length;
+  return <div className="mx-auto w-full max-w-xl py-2"><svg className="block h-auto w-full" viewBox={`0 0 600 ${height}`} role="img" aria-label="قیف مراحل فروش">{rows.map((row, index) => {
+    const y = index * (stageHeight + gap);
+    const current = widthAt(index);
+    const next = widthAt(index + 1);
+    const left = center - current / 2;
+    const right = center + current / 2;
+    const nextLeft = center - next / 2;
+    const nextRight = center + next / 2;
     const empty = row.count === 0;
-    return <div key={row.key} className="relative mx-auto h-14" style={{ width: `${width}%` }}><div className="h-full shadow-sm transition hover:brightness-105" style={{ background: empty ? "#fde68a" : `linear-gradient(90deg, #f59e0b ${Math.max(28, 92 - index * 9)}%, #fbbf24)`, clipPath: "polygon(0 0, 100% 0, 87% 100%, 13% 100%)" }} /><div className="pointer-events-none absolute inset-y-0 left-0 right-0 flex items-center justify-between px-5 text-sm font-black text-[#4B2800]"><span>{row.label}</span><span>{fmt.int(row.count)}</span></div></div>;
-  })}<div className="mx-auto h-7 w-5 bg-amber-500" style={{ clipPath: "polygon(28% 0, 72% 0, 72% 100%, 28% 100%)" }} /></div>;
+    return <g key={row.key}><title>{`${row.label}: ${fmt.int(row.count)}`}</title><polygon points={`${left},${y} ${right},${y} ${nextRight},${y + stageHeight} ${nextLeft},${y + stageHeight}`} fill={empty ? "#fde68a" : index % 2 ? "#f59e0b" : "#fbbf24"} /><text x={center} y={y + 29} textAnchor="middle" className="fill-[#4B2800] text-[16px] font-black">{row.label}</text><text x={center} y={y + 52} textAnchor="middle" className="fill-[#4B2800] text-[14px] font-bold">{fmt.int(row.count)}</text></g>;
+  })}<rect x="294" y={rows.length * (stageHeight + gap) - gap} width="12" height="28" fill="#b8ad7c" /></svg></div>;
 }
 
 function FunnelPanel({ title, description, rows }: { title: string; description: string; rows: Array<{ key: string; label: string; count: number; pass_rate: number | null; drop_rate: number | null }> }) {
-  return <section className="card"><h2 className="font-bold">{title}</h2><p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>{rows.length ? <><SalesFunnel rows={rows} /><div className="grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-2">{rows.map((row) => <div key={row.key} className="rounded-xl bg-slate-50 p-3 text-xs"><strong>{row.label}</strong><p className="mt-1 text-slate-500">عبور {row.pass_rate == null ? "—" : `${fmt.decimal(row.pass_rate)}٪`} · ریزش {row.drop_rate == null ? "—" : `${fmt.decimal(row.drop_rate)}٪`}</p></div>)}</div></> : <Empty />}</section>;
+  return <section className="card"><h2 className="font-bold">{title}</h2><p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>{rows.length ? <SalesFunnel rows={rows} /> : <Empty />}</section>;
 }
 
 export default function Overview() {

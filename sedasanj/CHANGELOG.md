@@ -7,6 +7,7 @@
 - Replaced the sales-funnel bars with a stage-shaped visual funnel and added task completion, open-task, and overdue-task dashboard charts.
 - Split dashboard funnel reporting into nested contact-to-opportunity and sales-progression funnels, excluding losses from both funnel bodies and removing artificial widths for empty stages.
 - Standardized both funnel cards with the dashboard card heading style and made every stage render in a fixed wide-to-narrow sequence, including zero-value stages.
+- Rebuilt both dashboard funnels as continuous SVG funnels with centered in-stage labels and counts, removing the detached stage-detail text.
 - Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
 - Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 ## 2026-10-14 — AMINAZADI
