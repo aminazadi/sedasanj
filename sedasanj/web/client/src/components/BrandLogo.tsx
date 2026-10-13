@@ -70,7 +70,7 @@ export function BrandLogo({ animated = false, className = "", title, color = "#1
           {PEN_STROKES.map(stroke => <clipPath id={`${id}-${stroke.name}-clip`} key={stroke.name}><path d={stroke.clip} /></clipPath>)}
           {["body", "top", "bottom"].map((part, groupIndex) => (
             <mask id={`${id}-${part}`} key={part} x="0" y="0" width="520" height="189" maskUnits="userSpaceOnUse" style={{ maskType: "luminance" }}>
-              {PEN_STROKES.filter((_, index) => groupIndex === 0 ? index < 8 : index === groupIndex + 7).map(stroke => (
+              {PEN_STROKES.filter(stroke => groupIndex === 0 ? !("dot" in stroke) : stroke.name === (groupIndex === 1 ? "nun-dot" : "jim-dot")).map(stroke => (
                 <path key={stroke.name} data-pen-stroke={stroke.name} d={stroke.path} clipPath={`url(#${id}-${stroke.name}-clip)`} fill="none" stroke="white" strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" />
               ))}
               {groupIndex === 0 ? <rect data-mask-finish width="520" height="189" fill="white" opacity="0" /> : null}
