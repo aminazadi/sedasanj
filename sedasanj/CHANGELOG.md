@@ -7,6 +7,7 @@
 - Closed assistant context popovers when users click outside the composer in both the full workspace and quick-chat widget.
 
 - Moved quick-chat range and tool controls into the composer surface and matched the send action height to the text area.
+- Replaced the quick-chat trigger with the large outlined conversation icon, removed the duplicate header icon, and animated the panel from the trigger on open and close.
 ## 2026-10-13 — AMINAZADI
 
 - Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.
