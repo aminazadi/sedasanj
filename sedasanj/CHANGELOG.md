@@ -9,6 +9,7 @@
 - Corrected the "س" pen coverage and completed its exact silhouette within its own drawing interval instead of the final logo reveal.
 - Softened SPA route loading with a translucent backdrop, progressive blur, opacity fade, and a restrained logo entrance to prevent the loading background from flashing between pages.
 - Converted the route-loading overlay to a near-transparent glass surface with a stronger backdrop blur while retaining its fade transition.
+- Delayed mounting each target route until its loading animation completes, then revealed the target content through the overlay fade.
 
 ## 2026-10-09 — AMINAZADI
 

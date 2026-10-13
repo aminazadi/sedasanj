@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { BrandLogo } from "./BrandLogo";
 import { LOGO_MOTION_DURATION } from "./logo-motion";
@@ -18,15 +18,19 @@ export function BrandLoader({ compact = false, label = "در حال بارگذا
   );
 }
 
-export function RouteLoadingOverlay() {
+export function RouteLoadingOverlay({ onComplete }: { onComplete?: () => void }) {
   const location = useLocation();
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<number | null>(null);
+  const finishLoading = () => {
+    setVisible(false);
+    onComplete?.();
+  };
 
   useLayoutEffect(() => {
     setVisible(true);
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => setVisible(false), (LOGO_MOTION_DURATION + 0.8) * 1000);
+    timerRef.current = window.setTimeout(finishLoading, (LOGO_MOTION_DURATION + 0.8) * 1000);
 
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -37,8 +41,26 @@ export function RouteLoadingOverlay() {
     <div className={`route-loading-overlay ${visible ? "route-loading-overlay--visible" : ""}`} aria-hidden={!visible}>
       <BrandLoader key={location.key} onComplete={() => {
         if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-        timerRef.current = window.setTimeout(() => setVisible(false), 300);
+        timerRef.current = window.setTimeout(() => {
+          finishLoading();
+        }, 300);
       }} />
     </div>
+  );
+}
+
+export function RouteLoadingGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const [contentVisible, setContentVisible] = useState(false);
+
+  useLayoutEffect(() => {
+    setContentVisible(false);
+  }, [location.key]);
+
+  return (
+    <>
+      <RouteLoadingOverlay onComplete={() => setContentVisible(true)} />
+      {contentVisible ? children : null}
+    </>
   );
 }
