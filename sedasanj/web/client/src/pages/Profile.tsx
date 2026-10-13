@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { request } from "../api";
+import { fmt, request } from "../api";
 import { ROLE_LABELS } from "../auth";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { AccountInfo, User } from "../types";
@@ -105,7 +105,7 @@ export default function Profile() {
               maxLength={2000}
               placeholder="درباره مسئولیت‌ها، حوزه کاری، علایق حرفه‌ای و لحنی که ترجیح می‌دهید دستیار با شما صحبت کند بنویسید."
             />
-            <span className="mt-1 block text-left text-xs text-slate-400" dir="ltr">{form.profile_context.length} / 2000</span>
+            <span className="mt-1 block text-left text-xs text-slate-400">{fmt.int(form.profile_context.length)} / {fmt.int(2000)}</span>
           </label>
           {account.user.role === "operator" ? <p className="text-xs text-slate-500">برای اپراتور ثبت حداقل یکی از شماره موبایل یا شماره داخلی الزامی است.</p> : null}
           <div className="flex items-center gap-3">

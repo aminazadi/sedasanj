@@ -2,6 +2,10 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Standardized visible panel counts, timers, and playback rates on Persian digits while keeping machine-readable form input values intact.
+
+## 2026-10-14 — AMINAZADI
+
 - Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
 - Added active-listening styling and an animated voice waveform to assistant prompt composers.
 - Kept Chrome speech recognition active across pauses and rendered interim Persian transcription in the composer as the user speaks.
