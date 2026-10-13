@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
-import logo from "../assets/logo-small-fa.png";
+import logo from "../assets/sedasanj-refined-master.svg";
 import pattern from "../assets/pattern.png";
 
 export default function Login() {

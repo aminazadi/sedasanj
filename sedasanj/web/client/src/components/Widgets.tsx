@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BrandLoader } from "./BrandLoader";
 import { Icon } from "@iconify/react";
 import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
 import barChartIcon from "@iconify-icons/lucide/chart-no-axes-column";
@@ -336,7 +337,7 @@ export function ErrorBox({ message }: { message: string | null }) {
 }
 
 export function Loading({ children = "در حال بارگذاری…" }: { children?: ReactNode }) {
-  return <div className="py-10 text-center text-slate-400">{children}</div>;
+  return <div className="flex min-h-40 items-center justify-center py-10"><BrandLoader compact label={typeof children === "string" ? children : "در حال بارگذاری"} /></div>;
 }
 
 export function Empty({ children = "موردی یافت نشد." }: { children?: ReactNode }) {

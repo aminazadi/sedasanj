@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import logo from "../assets/logo-small-fa.png";
+import logo from "../assets/sedasanj-refined-master.svg";
 import pattern from "../assets/pattern.png";
 import { fmt, request } from "../api";
 import type { PublicPlan } from "../types";

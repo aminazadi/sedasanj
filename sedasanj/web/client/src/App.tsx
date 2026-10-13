@@ -21,26 +21,27 @@ import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
 import KpiSettings from "./pages/KpiSettings";
 import Profile from "./pages/Profile";
+import { BrandLoader, RouteLoadingOverlay } from "./components/BrandLoader";
 
 export default function App() {
   const { session, loading } = useAuth();
 
   if (loading) {
-    return <div className="p-10 text-center text-slate-500">در حال بارگذاری…</div>;
+    return <><RouteLoadingOverlay /><div className="flex min-h-screen items-center justify-center"><BrandLoader /></div></>;
   }
   if (!session) {
     return (
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/terms" element={<Legal title="قوانین استفاده" />} />
-        <Route path="/privacy" element={<Legal title="حریم خصوصی" />} />
-        <Route path="/cancellation" element={<Legal title="سیاست لغو اشتراک" />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <><RouteLoadingOverlay /><Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/terms" element={<Legal title="قوانین استفاده" />} />
+          <Route path="/privacy" element={<Legal title="حریم خصوصی" />} />
+          <Route path="/cancellation" element={<Legal title="سیاست لغو اشتراک" />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes></>
     );
   }
 
@@ -48,8 +49,8 @@ export default function App() {
   const orgAdmin = isOrgAdmin(session.role);
 
   return (
-    <Layout>
-      <Routes>
+    <><RouteLoadingOverlay /><Layout>
+        <Routes>
         <Route path="/" element={<Overview />} />
         <Route path="/calls" element={<Calls />} />
         <Route path="/calls/:callId" element={<CallDetailPage />} />
@@ -70,7 +71,7 @@ export default function App() {
         <Route path="/cancellation" element={<Legal title="سیاست لغو اشتراک" />} />
         <Route path="/api-docs" element={<ApiDocs />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
+        </Routes>
+      </Layout></>
   );
 }

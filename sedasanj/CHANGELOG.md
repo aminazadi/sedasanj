@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-13 — AMINAZADI
+
+- Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
+
 ## 2026-10-09 — AMINAZADI
 
 - Enabled upstream streaming exclusively for direct 9Router chat calls; normalized Chat Completions and Responses text/tool streams, retained JSON compatibility, and excluded reasoning from displayed answers.

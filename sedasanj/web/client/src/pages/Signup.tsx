@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
-import logo from "../assets/logo-small-fa.png";
+import logo from "../assets/sedasanj-refined-master.svg";
 
 type Step = "identity" | "code" | "account";
 
