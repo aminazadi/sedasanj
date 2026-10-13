@@ -2,6 +2,8 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Ensured the launcher’s square border pulse remains visible when reduced-motion browser preferences are enabled.
+
 - Changed the quick assistant launcher animation to an expanding, fading square border pulse.
 
 - Consolidated the assistant sidebar navigation into URL-persistent Chats, Archives, and manager-only Training tabs.

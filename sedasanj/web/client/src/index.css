@@ -233,17 +233,17 @@ body {
 
 .quick-assistant-trigger::after {
   position: absolute;
-  inset: -1px;
+  inset: -2px;
   border: 1px solid rgb(242 240 239 / 0.82);
   content: "";
   opacity: 0;
   pointer-events: none;
-  animation: quick-assistant-border-pulse 2.2s ease-out infinite;
+  animation: quick-assistant-border-pulse 1.9s ease-out infinite;
 }
 
 @keyframes quick-assistant-border-pulse {
-  0% { opacity: 0.8; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.55); }
+  0% { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.7); }
 }
 
 @keyframes assistant-panel-menu-toggle-in {
@@ -426,10 +426,6 @@ body {
 
   .assistant-panel-menu-toggle,
   .assistant-panel-menu-toggle::after {
-    animation: none;
-  }
-
-  .quick-assistant-trigger::after {
     animation: none;
   }
 
