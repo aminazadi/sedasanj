@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-14 — AMINAZADI
+
+- Moved organization memories from the training transcript into a responsive side inspector with URL-persistent visibility, filters, selection, and mobile overlay behavior.
+
 ## 2026-10-13 — AMINAZADI
 
 - Ensured the launcher’s square border pulse remains visible when reduced-motion browser preferences are enabled.
