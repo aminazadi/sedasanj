@@ -158,6 +158,12 @@ function IconTooltip({ label, children }: { label: string; children: ReactNode }
   );
 }
 
+function assistantErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (/^internal server error$/i.test(message)) return "خطای داخلی سرور";
+  return message || "خطایی در دستیار رخ داد.";
+}
+
 export function TypingIndicator({ label = "در حال فکر کردن و دریافت نتیجه ..." }: { label?: string }) {
   return (
     <div className="flex h-8 items-center gap-2" role="status" aria-live="polite">
@@ -427,7 +433,7 @@ export default function Assistant() {
       setShowScrollToEnd(false);
       setConversationsOpen(false);
     } catch (err) {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
     }
   }
   async function create(callId: string | null = null) {
@@ -463,7 +469,7 @@ export default function Assistant() {
         else createEphemeral();
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
     }
   }
   async function setArchived(item: ChatConversation, archived: boolean) {
@@ -477,7 +483,7 @@ export default function Assistant() {
         else createEphemeral();
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
     }
   }
   async function setPinned(item: ChatConversation, pinned: boolean) {
@@ -487,7 +493,7 @@ export default function Assistant() {
       setConversations((current) => current.map((currentItem) => currentItem.id === updated.id ? updated : currentItem));
       setConversation((current) => current?.id === updated.id ? updated : current);
     } catch (err) {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
     }
   }
   async function confirmConversationAction() {
@@ -507,7 +513,7 @@ export default function Assistant() {
       setConversation((current) => current?.id === updated.id ? updated : current);
       setEditingId(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
     }
   }
   useEffect(() => {
@@ -522,14 +528,14 @@ export default function Assistant() {
           if (active) await loadMessages(active);
           else await create();
         }
-      } catch (err) { setError((err as Error).message); }
+      } catch (err) { setError(assistantErrorMessage(err)); }
       finally { setLoading(false); }
     })();
   }, []);
   useEffect(() => {
     void request<AssistantContextOptions>("/v1/assistant/context-options")
       .then(setContextOptions)
-      .catch((err) => setError((err as Error).message));
+      .catch((err) => setError(assistantErrorMessage(err)));
   }, []);
   useEffect(() => {
     if (userNearBottomRef.current) scrollToEnd();
@@ -689,7 +695,7 @@ export default function Assistant() {
         if (reply.conversationTitle) setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
       }
     } catch (err) {
-      const message = (err as Error).message;
+      const message = assistantErrorMessage(err);
       setMessages((current) => current.map((item) => item.id === draftReply.id ? { ...item, content: message || "پاسخ دستیار آماده نشد.", status: "failed" } : item));
       setError(message);
     } finally {
@@ -719,7 +725,7 @@ export default function Assistant() {
     try {
       await replaceMessageBranch(userMessage, userMessage.content);
     } catch (err) {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
       setSending(false);
     }
   }
@@ -744,7 +750,7 @@ export default function Assistant() {
       return;
     }
     void replaceMessageBranch(messageEdit.message, messageEdit.value).catch((err) => {
-      setError((err as Error).message);
+      setError(assistantErrorMessage(err));
       setSending(false);
     });
   }
@@ -955,7 +961,7 @@ export default function Assistant() {
       onConfirm={() => {
         if (!pendingMessageEdit) return;
         void replaceMessageBranch(pendingMessageEdit.message, pendingMessageEdit.value).catch((err) => {
-          setError((err as Error).message);
+          setError(assistantErrorMessage(err));
           setSending(false);
         });
       }}

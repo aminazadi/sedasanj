@@ -2,6 +2,7 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Localized the assistant's `Internal Server Error` alert to Persian.
 - Applied the pending assistant chat migrations through `0042_chat_message_ordinal`, restoring streamed-message persistence for databases that were still at revision `0040_asr_transcript_revisions`.
 - Enlarged the assistant context-tag removal controls and used a consistent close icon for operator, conversation, date-range, and tool attachments.
 
