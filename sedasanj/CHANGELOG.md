@@ -3,7 +3,7 @@
 ## 2026-10-13 — AMINAZADI
 
 - Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
-- Changed the loading and panel treatment to trace the supplied logo path before its final fill, instead of applying only transform-based motion.
+- Changed the loading and panel treatment to reveal the supplied logo as a solid mark from right to left, without a separate outline-drawing phase, guided by a trailing gold light sweep.
 
 ## 2026-10-09 — AMINAZADI
 

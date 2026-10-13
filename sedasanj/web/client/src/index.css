@@ -90,26 +90,33 @@ body {
 
 .brand-logo__path {
   fill: #101113;
-  stroke: #101113;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.4;
 }
 
-.brand-logo--animated .brand-logo__path {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: brand-logo-draw 2.1s cubic-bezier(.65, 0, .35, 1) infinite;
+.brand-logo--animated .brand-logo__reveal {
+  transform-box: fill-box;
+  transform-origin: right center;
+  animation: brand-logo-reveal 1.45s cubic-bezier(.65, 0, .35, 1) infinite;
 }
 
-.panel-brand-logo .brand-logo__path {
+.panel-brand-logo .brand-logo__reveal {
   animation-duration: 4.8s;
 }
 
-@keyframes brand-logo-draw {
-  0% { fill-opacity: 0; stroke-dashoffset: 1; }
-  68% { fill-opacity: 0; stroke-dashoffset: 0; }
-  84%, 100% { fill-opacity: 1; stroke-dashoffset: 0; }
+.brand-logo__cursor {
+  stroke: #b2ac88;
+  stroke-linecap: round;
+  stroke-width: 1.4;
+  filter: drop-shadow(0 0 5px rgb(178 172 136 / 0.9));
+}
+
+.brand-logo__cursor-dot {
+  fill: #f2f0ef;
+  filter: drop-shadow(0 0 8px rgb(178 172 136 / 1));
+}
+
+@keyframes brand-logo-reveal {
+  0% { transform: scaleX(0); }
+  76%, 100% { transform: scaleX(1); }
 }
 
 @keyframes brand-loader-halo {
@@ -323,10 +330,14 @@ body {
     transition: none;
   }
 
-  .brand-logo--animated .brand-logo__path {
+  .brand-logo--animated .brand-logo__reveal {
     animation: none;
-    fill-opacity: 1;
-    stroke-dashoffset: 0;
+    transform: scaleX(1);
+  }
+
+  .brand-logo__cursor,
+  .brand-logo__cursor-dot {
+    display: none;
   }
 
   .brand-loader__halo {

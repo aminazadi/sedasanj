@@ -25,7 +25,7 @@ export function RouteLoadingOverlay() {
   useEffect(() => {
     setVisible(true);
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => setVisible(false), 620);
+    timerRef.current = window.setTimeout(() => setVisible(false), 1480);
 
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
