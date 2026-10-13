@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { isOperator, isOrgAdmin, useAuth } from "./auth";
@@ -25,9 +26,10 @@ import { RouteLoadingOverlay } from "./components/BrandLoader";
 
 export default function App() {
   const { session, loading } = useAuth();
+  const [initialLoaderComplete, setInitialLoaderComplete] = useState(false);
 
-  if (loading) {
-    return <RouteLoadingOverlay />;
+  if (loading || !initialLoaderComplete) {
+    return <RouteLoadingOverlay persist={loading} onComplete={() => setInitialLoaderComplete(true)} />;
   }
   if (!session) {
     return (

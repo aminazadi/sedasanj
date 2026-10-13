@@ -18,12 +18,18 @@ export function BrandLoader({ compact = false, label = "در حال بارگذا
   );
 }
 
-export function RouteLoadingOverlay() {
+type RouteLoadingOverlayProps = {
+  onComplete?: () => void;
+  persist?: boolean;
+};
+
+export function RouteLoadingOverlay({ onComplete, persist = false }: RouteLoadingOverlayProps) {
   const location = useLocation();
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<number | null>(null);
   const finishLoading = () => {
-    setVisible(false);
+    if (!persist) setVisible(false);
+    onComplete?.();
   };
 
   useLayoutEffect(() => {

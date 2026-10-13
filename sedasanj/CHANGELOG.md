@@ -11,6 +11,7 @@
 - Converted the route-loading overlay to a near-transparent glass surface with a stronger backdrop blur while retaining its fade transition.
 - Delayed mounting each target route until its loading animation completes, then revealed the target content through the overlay fade.
 - Limited the branded glass loading overlay to initial application boot so SPA navigation remains immediate.
+- Kept the initial loader mounted until its full animation completes, even when authentication resolves sooner.
 
 ## 2026-10-09 — AMINAZADI
 
