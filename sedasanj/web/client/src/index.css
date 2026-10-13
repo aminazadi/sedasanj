@@ -58,11 +58,27 @@ body {
     -webkit-backdrop-filter 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.route-loading-overlay::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(75 110 72 / 0.2) 0 1px, transparent 1.15px) 0 0 / 8px 8px;
+  opacity: 0;
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0 min(10rem, 30vw), rgb(0 0 0 / 0.08) min(15rem, 44vw), #000 max(20rem, 58vw));
+  mask-image: radial-gradient(circle at center, transparent 0 min(10rem, 30vw), rgb(0 0 0 / 0.08) min(15rem, 44vw), #000 max(20rem, 58vw));
+}
+
 .route-loading-overlay--visible {
   opacity: 1;
   pointer-events: auto;
   backdrop-filter: blur(24px) saturate(0.9);
   -webkit-backdrop-filter: blur(24px) saturate(0.9);
+}
+
+.route-loading-overlay--visible::before {
+  animation: route-loader-dots-reveal 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .route-loading-overlay--visible .brand-loader {
@@ -72,6 +88,18 @@ body {
 @keyframes route-loader-enter {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes route-loader-dots-reveal {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-overlay--visible::before {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .brand-loader {

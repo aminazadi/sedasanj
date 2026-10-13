@@ -12,6 +12,7 @@
 - Delayed mounting each target route until its loading animation completes, then revealed the target content through the overlay fade.
 - Limited the branded glass loading overlay to initial application boot so SPA navigation remains immediate.
 - Kept the initial loader mounted until its full animation completes, even when authentication resolves sooner.
+- Added a center-cleared, radially faded dot pattern behind the initial loading logo.
 
 ## 2026-10-09 — AMINAZADI
 
