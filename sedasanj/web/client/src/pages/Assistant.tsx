@@ -366,6 +366,8 @@ export default function Assistant() {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [phases, setPhases] = useState<Record<string, string>>({});
   const messagesScrollerRef = useRef<HTMLDivElement>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
+  const streamingRepliesRef = useRef(new Map<string, ChatMessage>());
   const userNearBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
@@ -422,13 +424,37 @@ export default function Assistant() {
     input.style.overflowY = input.scrollHeight > maxHeight ? "auto" : "hidden";
   }
 
+  function updateStreamingReply(conversationId: string, draftId: string, update: (message: ChatMessage) => ChatMessage) {
+    const draft = streamingRepliesRef.current.get(conversationId);
+    if (!draft || draft.id !== draftId) return;
+    const nextDraft = update(draft);
+    streamingRepliesRef.current.set(conversationId, nextDraft);
+    if (selectedConversationIdRef.current !== conversationId) return;
+    setMessages((current) => {
+      const index = current.findIndex((item) => item.id === draftId);
+      return index < 0 ? [...current, nextDraft] : current.map((item) => item.id === draftId ? nextDraft : item);
+    });
+  }
+
+  function finishStreamingReply(conversationId: string, draftId: string, message: ChatMessage) {
+    streamingRepliesRef.current.delete(conversationId);
+    if (selectedConversationIdRef.current !== conversationId) return;
+    setMessages((current) => {
+      const index = current.findIndex((item) => item.id === draftId);
+      return index < 0 ? [...current, message] : current.map((item) => item.id === draftId ? message : item);
+    });
+  }
+
   async function loadMessages(item: ChatConversation) {
     try {
       setError(null);
+      selectedConversationIdRef.current = item.id;
       const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${item.id}/messages`);
+      if (selectedConversationIdRef.current !== item.id) return;
+      const streamingReply = streamingRepliesRef.current.get(item.id);
       setConversation(item);
       setEphemeral(false);
-      setMessages(rows);
+      setMessages(streamingReply ? [...rows, streamingReply] : rows);
       userNearBottomRef.current = true;
       setShowScrollToEnd(false);
       setConversationsOpen(false);
@@ -439,6 +465,7 @@ export default function Assistant() {
   async function create(callId: string | null = null) {
     const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: callId } });
     setConversations((current) => [item, ...current]);
+    selectedConversationIdRef.current = item.id;
     setConversation(item);
     setEphemeral(false);
     setMessages([]);
@@ -448,6 +475,7 @@ export default function Assistant() {
   }
   function createEphemeral() {
     if (ephemeral) return;
+    selectedConversationIdRef.current = null;
     setConversation(null);
     setEphemeral(true);
     setMessages([]);
@@ -610,7 +638,8 @@ export default function Assistant() {
       pendingText = characters.join("");
       if (batch) {
         renderedText += batch;
-        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: renderedText } : item));
+        if (conversationId) updateStreamingReply(conversationId, draftId, (item) => ({ ...item, content: renderedText }));
+        else setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: renderedText } : item));
       }
       if (pendingText) typingTimer = window.setTimeout(renderTypingBatch, 14);
       else finishTyping();
@@ -632,7 +661,9 @@ export default function Assistant() {
       if (event === "phase" && payload.label) setPhases((current) => ({ ...current, [draftId]: payload.label as string }));
       if ((event === "tool_started" || event === "tool_completed" || event === "tool_failed") && payload.tool_call_id && payload.name && payload.title) {
         const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title, status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"), duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null, error_code: payload.error_code ?? null, charts: payload.charts || [] };
-        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, tool_runs: [...(item.tool_runs || []).filter((existing) => existing.tool_call_id !== run.tool_call_id), run] } : item));
+        const update = (item: ChatMessage) => ({ ...item, tool_runs: [...(item.tool_runs || []).filter((existing) => existing.tool_call_id !== run.tool_call_id), run] });
+        if (conversationId) updateStreamingReply(conversationId, draftId, update);
+        else setMessages((current) => current.map((item) => item.id === draftId ? update(item) : item));
       }
       if (event === "delta" && content) {
         pendingText += content;
@@ -643,7 +674,8 @@ export default function Assistant() {
         typingTimer = null;
         pendingText = "";
         renderedText = content;
-        setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content } : item));
+        if (conversationId) updateStreamingReply(conversationId, draftId, (item) => ({ ...item, content }));
+        else setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content } : item));
         finishTyping();
       }
       if (event === "done" && payload.message) {
@@ -665,7 +697,8 @@ export default function Assistant() {
       }
       if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
       await waitForTyping();
-      setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
+      if (conversationId) finishStreamingReply(conversationId, draftId, completed as ChatMessage);
+      else setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
       return { message: completed as ChatMessage, conversationTitle };
     } finally {
       if (typingTimer !== null) window.clearTimeout(typingTimer);
@@ -682,21 +715,26 @@ export default function Assistant() {
     const messageAttachments = branchAttachments;
     const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
     const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+    let activeConversationId: string | null = null;
     try {
       const active = ephemeral ? null : conversation ?? await create();
+      activeConversationId = active?.id ?? null;
       setProcessingConversationId(active?.id ?? null);
       setMessages([...history, optimistic, draftReply]);
+      if (active) streamingRepliesRef.current.set(active.id, draftReply);
       const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history, messageAttachments);
       setAttachments(emptyAttachments());
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
-        setMessages(rows);
+        if (selectedConversationIdRef.current === active.id) setMessages(rows);
         setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: reply.conversationTitle || item.title, updated_at: reply.message.created_at } : item));
         if (reply.conversationTitle) setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
       }
     } catch (err) {
       const message = assistantErrorMessage(err);
-      setMessages((current) => current.map((item) => item.id === draftReply.id ? { ...item, content: message || "پاسخ دستیار آماده نشد.", status: "failed" } : item));
+      const failedReply = (item: ChatMessage) => ({ ...item, content: message || "پاسخ دستیار آماده نشد.", status: "failed" as const });
+      if (activeConversationId) updateStreamingReply(activeConversationId, draftReply.id, failedReply);
+      else setMessages((current) => current.map((item) => item.id === draftReply.id ? failedReply(item) : item));
       setError(message);
     } finally {
       setProcessingConversationId(null);

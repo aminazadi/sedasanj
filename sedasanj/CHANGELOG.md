@@ -2,6 +2,7 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Preserved each in-flight assistant reply independently while switching conversations, so returning to a conversation restores its live typing and tool-progress indicator instead of appearing idle.
 - Replaced tool-backed call IDs in assistant responses with clean internal call links that navigate within the panel.
 - Localized the assistant's `Internal Server Error` alert to Persian.
 - Applied the pending assistant chat migrations through `0042_chat_message_ordinal`, restoring streamed-message persistence for databases that were still at revision `0040_asr_transcript_revisions`.
