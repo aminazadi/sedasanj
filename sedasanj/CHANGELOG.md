@@ -2,6 +2,10 @@
 
 ## 2026-10-13 — AMINAZADI
 
+- Reduced dashboard statistic-card height by tightening their vertical spacing and scaling their icons to match the compact layout.
+
+## 2026-10-13 — AMINAZADI
+
 - Preserved each in-flight assistant reply independently while switching conversations, so returning to a conversation restores its live typing and tool-progress indicator instead of appearing idle.
 - Replaced tool-backed call IDs in assistant responses with clean internal call links that navigate within the panel.
 - Localized the assistant's `Internal Server Error` alert to Persian.

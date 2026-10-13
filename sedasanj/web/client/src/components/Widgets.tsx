@@ -48,11 +48,11 @@ export function Stat({ title, value, hint, tone }: { title: string; value: strin
                       ? trophyIcon
                       : alarmClockIcon;
   return (
-    <div className="panel-stat-card card">
-      <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
+    <div className="panel-stat-card card py-3">
+      <div className="relative z-10 mb-1 flex items-start justify-between gap-3">
         <div className="text-sm font-medium text-slate-600">{title}</div>
-        <span className="flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
-          <Icon icon={icon} className="h-9 w-9 text-[#4B6E48]" />
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center" aria-hidden="true">
+          <Icon icon={icon} className="h-7 w-7 text-[#4B6E48]" />
         </span>
       </div>
       <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>
