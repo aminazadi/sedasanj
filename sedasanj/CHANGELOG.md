@@ -2,6 +2,10 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Aligned Persian speech input callbacks across both assistant composers so the client TypeScript and Docker builds complete successfully.
+
+## 2026-10-14 — AMINAZADI
+
 - Fixed assistant archive-tab navigation by deriving the selected conversation view from the URL and preventing stale conversation loads from restoring the chat view.
 - Replaced the dashboard's frequent-topic bars with a responsive word cloud that scales labels by frequency and shows each count in a badge.
 
