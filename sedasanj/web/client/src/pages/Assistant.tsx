@@ -371,7 +371,7 @@ export default function Assistant() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [conversationsOpen, setConversationsOpen] = useState(false);
-  const [conversationView, setConversationView] = useState<"active" | "archived">(() => search.get("conversation_view") === "archived" ? "archived" : "active");
+  const conversationView = search.get("conversation_view") === "archived" ? "archived" : "active";
   const [memories, setMemories] = useState<OrganizationMemory[]>([]);
   const [memoryStatus, setMemoryStatus] = useState(() => search.get("memory_status") || "draft");
   const [memoryCategory, setMemoryCategory] = useState(() => search.get("memory_category") || "");
@@ -490,16 +490,16 @@ export default function Assistant() {
       setError(assistantErrorMessage(err));
     }
   }
-  async function create(callId: string | null = null) {
+  async function create(callId: string | null = null, isCurrent: () => boolean = () => true) {
     const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: training ? null : callId, mode: training ? "training" : "normal" } });
+    if (!isCurrent()) return item;
     setConversations((current) => [item, ...current]);
     selectedConversationIdRef.current = item.id;
     setConversation(item);
     setEphemeral(false);
     setMessages([]);
     setConversationsOpen(false);
-    setConversationView("active");
-    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.set("conversation_view", "active"); return next; }, { replace: true });
     return item;
   }
   function createEphemeral() {
@@ -623,7 +623,7 @@ export default function Assistant() {
   function selectAssistantTab(tab: "chat" | "archived" | "train") {
     const nextMode = tab === "train" ? "train" : "chat";
     const nextView = tab === "archived" ? "archived" : "active";
-    setConversationView(nextView);
+    selectedConversationIdRef.current = null;
     setSearch((current) => {
       const next = new URLSearchParams(current);
       next.set("mode", nextMode);
@@ -633,28 +633,32 @@ export default function Assistant() {
     });
   }
   useEffect(() => {
-    const nextView = search.get("conversation_view") === "archived" ? "archived" : "active";
-    setConversationView((current) => current === nextView ? current : nextView);
-  }, [search]);
-  useEffect(() => {
+    let active = true;
     void (async () => {
       try {
         setLoading(true);
         const rows = await request<ChatConversation[]>(`/v1/assistant/conversations?mode=${training ? "training" : "normal"}`);
+        if (!active) return;
         setConversations(rows);
         const selected = rows.find((item) => item.id === search.get("conversation"));
         const callId = training ? null : search.get("call_id");
-        if (callId) await create(callId);
+        if (callId) await create(callId, () => active);
         else if (selected) await loadMessages(selected);
-        else {
-          const active = rows.find((item) => !item.archived_at);
-          if (active) await loadMessages(active);
-          else await create();
+        else if (conversationView === "archived") {
+          setConversation(null);
+          setMessages([]);
+          setEphemeral(false);
         }
-      } catch (err) { setError(assistantErrorMessage(err)); }
-      finally { setLoading(false); }
+        else {
+          const activeConversation = rows.find((item) => !item.archived_at);
+          if (activeConversation) await loadMessages(activeConversation);
+          else await create(null, () => active);
+        }
+      } catch (err) { if (active) setError(assistantErrorMessage(err)); }
+      finally { if (active) setLoading(false); }
     })();
-  }, [training]);
+    return () => { active = false; };
+  }, [training, conversationView, session?.role]);
   useEffect(() => {
     void loadMemories().catch((err) => setError(assistantErrorMessage(err)));
   }, [training, memoryStatus, memoryCategory]);
