@@ -28,7 +28,6 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "گزارش و ارزیابی",
     items: [
-      { to: "/analytics", label: "تحلیل‌ها", icon: "M3 3v18h18M7 16l4-5 4 3 5-7M17 7h3v3" },
       { to: "/operator-scores", label: "امتیازها", icon: "m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2Z" },
       { to: "/kpi-settings", label: "تنظیمات KPI", icon: "M4 19V9M10 19V5M16 19v-7M22 19V2", orgAdminOnly: true },
     ],

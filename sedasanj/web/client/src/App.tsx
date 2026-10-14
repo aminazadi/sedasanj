@@ -5,7 +5,6 @@ import { isOperator, isOrgAdmin, useAuth } from "./auth";
 import Account from "./pages/Account";
 import About from "./pages/About";
 import ApiDocs from "./pages/ApiDocs";
-import Analytics from "./pages/Analytics";
 import CallDetailPage from "./pages/CallDetail";
 import Calls from "./pages/Calls";
 import Contact from "./pages/Contact";
@@ -57,7 +56,6 @@ export default function App() {
         <Route path="/calls" element={<Calls />} />
         <Route path="/calls/:callId" element={<CallDetailPage />} />
         <Route path="/tasks" element={<Tasks />} />
-        <Route path="/analytics" element={<Analytics />} />
         <Route path="/assistant" element={<Assistant />} />
         <Route path="/operator-scores" element={<OperatorScores />} />
         <Route path="/profile" element={<Profile />} />

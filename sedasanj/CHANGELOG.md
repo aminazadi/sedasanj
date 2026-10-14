@@ -16,6 +16,7 @@
 - Centered dashboard empty states with bordered contextual icons and replaced range-selector shadows with clear border-based states.
 - Refined the responsive RTL daily performance chart and added detailed customer-sentiment donut, distribution, counts, and share visualizations.
 - Strengthened empty-state icon containers with explicit two-pixel borders for clear visual separation.
+- Moved detailed analytics filters, breakdowns, operator performance, and campaign reports into the dashboard and removed the standalone analytics page.
 ## 2026-10-14 — AMINAZADI
 
 - Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.
