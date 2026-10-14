@@ -245,7 +245,7 @@ body {
 .quick-assistant-trigger::after {
   position: absolute;
   inset: -2px;
-  border: 1px solid rgb(242 240 239 / 0.82);
+  border: 1px solid var(--color-primary);
   content: "";
   opacity: 0;
   pointer-events: none;

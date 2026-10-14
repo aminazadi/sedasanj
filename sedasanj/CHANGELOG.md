@@ -2,6 +2,10 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Changed the quick assistant button's fading outline animation to the primary color.
+
+## 2026-10-14 — AMINAZADI
+
 - Reorganized the client navigation with a dedicated account settings workspace for operator scoring, KPI configuration, users, integrations, and organization data.
 - Matched the operator-score page heading and empty result state to the KPI dashboard, while keeping the selected period and pagination in the URL.
 - Moved two-factor authentication into the redesigned personal profile and kept billing and subscription activity on a focused account page.
