@@ -637,7 +637,11 @@ export default function Assistant() {
     void (async () => {
       try {
         setLoading(true);
-        const rows = await request<ChatConversation[]>(`/v1/assistant/conversations?mode=${training ? "training" : "normal"}`);
+        const primaryRows = await request<ChatConversation[]>(`/v1/assistant/conversations?mode=${training ? "training" : "normal"}`);
+        if (!active) return;
+        const rows = !training && conversationView === "archived" && isOrgAdmin(session?.role)
+          ? [...primaryRows, ...(await request<ChatConversation[]>("/v1/assistant/conversations?mode=training"))].sort((first, second) => Date.parse(second.updated_at) - Date.parse(first.updated_at))
+          : primaryRows;
         if (!active) return;
         setConversations(rows);
         const selected = rows.find((item) => item.id === search.get("conversation"));
