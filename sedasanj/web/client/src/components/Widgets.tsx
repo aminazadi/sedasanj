@@ -342,7 +342,7 @@ export function Loading({ children = "در حال بارگذاری…" }: { chil
 }
 
 export function Empty({ children = "موردی یافت نشد." }: { children?: ReactNode }) {
-  return <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center"><span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-brand-300 bg-brand-50 text-brand-700"><Icon icon={inboxIcon} className="h-7 w-7" /></span><strong className="text-sm text-slate-700">{children}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.</p></div>;
+  return <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center"><span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-current bg-brand-50 text-brand-700"><Icon icon={inboxIcon} className="h-7 w-7" /></span><strong className="text-sm text-slate-700">{children}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.</p></div>;
 }
 
 export function SummaryCell({ summary }: { summary: string | null }) {
