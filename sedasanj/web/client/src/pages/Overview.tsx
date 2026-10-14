@@ -26,8 +26,8 @@ function Widget({ enabled, children }: { enabled: boolean; children: ReactNode }
 
 function DashboardEmpty({ title = "موردی یافت نشد.", description = "با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.", success = false }: { title?: string; description?: string; success?: boolean }) {
   const icon = success ? checkMarkButtonIcon : inboxIcon;
-  const palette = success ? "border-emerald-100 bg-emerald-50 text-emerald-600" : "border-brand-100 bg-brand-50 text-brand-600";
-  return <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center"><span className={`mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border ${palette}`}><Icon icon={icon} className="h-7 w-7" /></span><strong className={success ? "text-sm text-emerald-800" : "text-sm text-slate-700"}>{title}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">{description}</p></div>;
+  const palette = success ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-brand-300 bg-brand-50 text-brand-700";
+  return <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center"><span className={`mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border-2 ${palette}`}><Icon icon={icon} className="h-7 w-7" /></span><strong className={success ? "text-sm text-emerald-800" : "text-sm text-slate-700"}>{title}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">{description}</p></div>;
 }
 
 function ChartKey({ color, label }: { color: string; label: string }) {

@@ -15,6 +15,7 @@
 - Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 - Centered dashboard empty states with bordered contextual icons and replaced range-selector shadows with clear border-based states.
 - Refined the responsive RTL daily performance chart and added detailed customer-sentiment donut, distribution, counts, and share visualizations.
+- Strengthened empty-state icon containers with explicit two-pixel borders for clear visual separation.
 ## 2026-10-14 — AMINAZADI
 
 - Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.
