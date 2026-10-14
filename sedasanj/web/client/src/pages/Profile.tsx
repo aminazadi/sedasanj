@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { request } from "../api";
+import { Link } from "react-router-dom";
+import { fmt, request } from "../api";
 import { ROLE_LABELS } from "../auth";
+import TwoFactorSettings from "../components/TwoFactorSettings";
 import { ErrorBox, Loading } from "../components/Widgets";
 import type { AccountInfo, User } from "../types";
 
@@ -66,14 +68,28 @@ export default function Profile() {
   if (!account && !error) return <Loading />;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <div>
+    <div className="mx-auto max-w-5xl space-y-5" dir="rtl">
+      <header>
         <h1 className="text-2xl font-bold text-[#4B6E48]">پروفایل من</h1>
-        <p className="mt-1 text-sm text-slate-500">اطلاعاتی که دستیار برای شناخت و ارتباط بهتر با شما استفاده می‌کند.</p>
-      </div>
+        <p className="mt-1 text-sm text-slate-500">مشخصات فردی، راه‌های تماس و امنیت ورود شما</p>
+      </header>
       <ErrorBox message={error} />
       {account ? (
+        <>
+        <section className="card grid gap-5 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7ECDD] text-2xl font-bold text-[#4B6E48]" aria-hidden="true">{(account.user.display_name || account.user.email).slice(0, 1)}</div>
+          <div className="min-w-0">
+            <h2 className="truncate text-xl font-bold text-slate-800">{account.user.display_name || account.user.email}</h2>
+            <p className="mt-1 break-all text-sm text-slate-500" dir="ltr">{account.user.email}</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-[#E7ECDD] px-3 py-1 text-[#4B6E48]">{ROLE_LABELS[account.user.role] || account.user.role}</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{account.tenant.name}</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">عضویت از {fmt.date(account.user.created_at)}</span>
+            </div>
+          </div>
+        </section>
         <form className="card space-y-5" onSubmit={submit}>
+          <div><h2 className="font-bold text-slate-800">اطلاعات فردی</h2><p className="mt-1 text-sm text-slate-500">این اطلاعات برای شناسایی شما و شخصی‌سازی دستیار استفاده می‌شود.</p></div>
           <div className="grid gap-4 md:grid-cols-2">
             <label>
               <span className="label">نام و نام خانوادگی</span>
@@ -92,11 +108,7 @@ export default function Profile() {
               <input className="input" value={form.extension} onChange={(event) => setForm({ ...form, extension: event.target.value })} dir="ltr" inputMode="numeric" />
             </label>
           </div>
-          <div className="grid gap-4 border-y border-[#D8D3B9] py-4 text-sm md:grid-cols-2">
-            <div><span className="text-slate-500">سازمان</span><strong className="mt-1 block text-[#4B6E48]">{account.tenant.name}</strong></div>
-            <div><span className="text-slate-500">نقش</span><strong className="mt-1 block text-[#4B6E48]">{ROLE_LABELS[account.user.role] || account.user.role}</strong></div>
-          </div>
-          <label>
+          <label className="block border-t border-[#D8D3B9] pt-5">
             <span className="label">درباره من و شیوه ارتباط دلخواه</span>
             <textarea
               className="input min-h-40 resize-y leading-7"
@@ -105,7 +117,7 @@ export default function Profile() {
               maxLength={2000}
               placeholder="درباره مسئولیت‌ها، حوزه کاری، علایق حرفه‌ای و لحنی که ترجیح می‌دهید دستیار با شما صحبت کند بنویسید."
             />
-            <span className="mt-1 block text-left text-xs text-slate-400" dir="ltr">{form.profile_context.length} / 2000</span>
+            <span className="mt-1 block text-left text-xs text-slate-400">{form.profile_context.length} / 2000</span>
           </label>
           {account.user.role === "operator" ? <p className="text-xs text-slate-500">برای اپراتور ثبت حداقل یکی از شماره موبایل یا شماره داخلی الزامی است.</p> : null}
           <div className="flex items-center gap-3">
@@ -113,6 +125,9 @@ export default function Profile() {
             {saved ? <span className="text-sm font-medium text-[#4B6E48]">پروفایل ذخیره شد.</span> : null}
           </div>
         </form>
+        {account.user.role === "org_admin" ? <TwoFactorSettings /> : null}
+        {account.user.role !== "operator" ? <nav className="card flex flex-wrap items-center gap-3" aria-label="بخش‌های مرتبط حساب"><Link className="btn-ghost" to="/account">اعتبار و اشتراک</Link>{account.user.role === "org_admin" ? <Link className="btn-ghost" to="/account-settings">تنظیمات حساب</Link> : null}</nav> : null}
+        </>
       ) : null}
     </div>
   );

@@ -29,14 +29,14 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
     label: "گزارش و ارزیابی",
     items: [
       { to: "/operator-scores", label: "امتیازها", icon: "m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2Z" },
-      { to: "/kpi-settings", label: "تنظیمات KPI", icon: "M4 19V9M10 19V5M16 19v-7M22 19V2", orgAdminOnly: true },
     ],
   },
   {
-    label: "حساب و سامانه",
+    label: "حساب و تنظیمات",
     items: [
       { to: "/profile", label: "پروفایل من", icon: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" },
-      { to: "/account", label: "حساب کاربری", icon: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z", hideForOperator: true },
+      { to: "/account", label: "اعتبار و اشتراک", icon: "M12 2v20M17 6H9a3 3 0 0 0 0 6h6a3 3 0 0 1 0 6H6", hideForOperator: true },
+      { to: "/account-settings", label: "تنظیمات حساب", icon: "M12 2v2M12 20v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z", orgAdminOnly: true },
       { to: "/install", label: "راه‌اندازی", icon: "M14.7 6.3a4 4 0 0 0-5-5L7.4 3.6l3 3 2.3-2.3M5.5 8.5l-3.8 3.8a2.4 2.4 0 0 0 0 3.4l6.6 6.6a2.4 2.4 0 0 0 3.4 0l3.8-3.8M14 12l6.3 6.3a2.4 2.4 0 0 1-3.4 3.4l-6.3-6.3", hideForOperator: true },
       { to: "/api-docs", label: "مستندات API", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6" },
     ],

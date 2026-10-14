@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { isOperator, isOrgAdmin, useAuth } from "./auth";
 import Account from "./pages/Account";
+import AccountSettings from "./pages/AccountSettings";
 import About from "./pages/About";
 import ApiDocs from "./pages/ApiDocs";
 import CallDetailPage from "./pages/CallDetail";
@@ -19,7 +20,6 @@ import Assistant from "./pages/Assistant";
 import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
-import KpiSettings from "./pages/KpiSettings";
 import Profile from "./pages/Profile";
 import { RouteLoadingOverlay } from "./components/BrandLoader";
 
@@ -61,7 +61,8 @@ export default function App() {
         <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
-        {orgAdmin ? <Route path="/kpi-settings" element={<KpiSettings />} /> : null}
+        {orgAdmin ? <Route path="/account-settings" element={<AccountSettings />} /> : null}
+        {orgAdmin ? <Route path="/kpi-settings" element={<Navigate to="/account-settings?tab=kpi" replace />} /> : null}
         {orgAdmin ? <Route path="/payment-result" element={<PaymentResult />} /> : null}
         {operator ? null : <Route path="/install" element={<Install />} />}
         <Route path="/about" element={<About />} />

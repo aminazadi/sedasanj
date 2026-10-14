@@ -1,4 +1,3 @@
-import TwoFactorSettings from "../components/TwoFactorSettings";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
@@ -46,7 +45,9 @@ const EMPTY_USER = {
   extension: "",
 };
 
-export default function Account() {
+export type AccountSection = "billing" | "users" | "integrations" | "data";
+
+export default function Account({ section = "billing" }: { section?: AccountSection }) {
   const limit = 10;
   const { session } = useAuth();
   const isAdmin = session?.role === "org_admin";
@@ -59,6 +60,7 @@ export default function Account() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [hooks, setHooks] = useState<Webhook[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [hookSecret, setHookSecret] = useState<string | null>(null);
   const [dataDeletionOpen, setDataDeletionOpen] = useState(false);
   const [dataDeleting, setDataDeleting] = useState(false);
@@ -93,44 +95,55 @@ export default function Account() {
   }
 
   async function reload() {
+    setError(null);
     try {
-      const [balanceData, ledgerData, packagesData] = await Promise.all([
-        request<Balance>("/v1/billing/balance"),
-        request<Page<LedgerEntry>>(`/v1/billing/ledger?limit=${limit}&offset=${ledgerOffset}`),
-        request<Package[]>("/v1/billing/packages"),
-      ]);
-      setBalance(balanceData);
-      setLedger(ledgerData.items);
-      setLedgerTotal(ledgerData.total);
-      setPackages(packagesData);
-      if (isAdmin) {
-        const [keysData, hooksData, usersData, account, subscriptionData, orderData] = await Promise.all([
-          request<Page<ApiKey>>(`/v1/auth/api-keys?limit=${limit}&offset=${keyOffset}`),
-          request<Page<Webhook>>(`/v1/webhooks?limit=${limit}&offset=${hookOffset}`),
+      if (section === "billing") {
+        const [balanceData, ledgerData, packagesData] = await Promise.all([
+          request<Balance>("/v1/billing/balance"),
+          request<Page<LedgerEntry>>(`/v1/billing/ledger?limit=${limit}&offset=${ledgerOffset}`),
+          request<Package[]>("/v1/billing/packages"),
+        ]);
+        setBalance(balanceData);
+        setLedger(ledgerData.items);
+        setLedgerTotal(ledgerData.total);
+        setPackages(packagesData);
+        if (isAdmin) {
+          const [subscriptionData, orderData] = await Promise.all([
+            request<{ status: string; max_operators: number; assistant_monthly_messages: number; period_end: string | null }>("/v1/subscription"),
+            request<Page<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>(`/v1/orders?limit=${limit}&offset=${orderOffset}`),
+          ]);
+          setSubscription(subscriptionData);
+          setOrders(orderData.items);
+          setOrderTotal(orderData.total);
+        }
+      } else if (section === "users") {
+        const [usersData, account] = await Promise.all([
           request<Page<User>>(`/v1/auth/users?limit=${limit}&offset=${userOffset}`),
           request<AccountInfo>("/v1/account"),
-          request<{ status: string; max_operators: number; assistant_monthly_messages: number; period_end: string | null }>("/v1/subscription"),
-          request<Page<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>(`/v1/orders?limit=${limit}&offset=${orderOffset}`),
+        ]);
+        setUsers(usersData.items);
+        setUserTotal(usersData.total);
+        setMaxOperators(account.tenant.max_operators);
+      } else if (section === "integrations") {
+        const [keysData, hooksData] = await Promise.all([
+          request<Page<ApiKey>>(`/v1/auth/api-keys?limit=${limit}&offset=${keyOffset}`),
+          request<Page<Webhook>>(`/v1/webhooks?limit=${limit}&offset=${hookOffset}`),
         ]);
         setKeys(keysData.items);
         setKeyTotal(keysData.total);
         setHooks(hooksData.items);
         setHookTotal(hooksData.total);
-        setUsers(usersData.items);
-        setUserTotal(usersData.total);
-        setMaxOperators(account.tenant.max_operators);
-        setSubscription(subscriptionData);
-        setOrders(orderData.items);
-        setOrderTotal(orderData.total);
       }
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     void reload();
-  }, [hookOffset, isAdmin, keyOffset, ledgerOffset, orderOffset, userOffset]);
+  }, [hookOffset, isAdmin, keyOffset, ledgerOffset, orderOffset, section, userOffset]);
 
   async function createUser(event: React.FormEvent) {
     event.preventDefault();
@@ -198,13 +211,14 @@ export default function Account() {
     }
   }
 
-  if (!balance) return <Loading />;
+  if (loading || (section === "billing" && !balance && !error)) return <Loading />;
+  if (section === "billing" && !balance) return <ErrorBox message={error} />;
 
   return (
     <div className="space-y-4">
-      {isAdmin && <TwoFactorSettings />}
       <ErrorBox message={error} />
 
+      {section === "billing" && balance ? <>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card">
           <h2 className="mb-2 font-bold">اعتبار</h2>
@@ -288,12 +302,16 @@ export default function Account() {
         )}
         <Pagination page={Math.floor(ledgerOffset/limit)+1} hasPrevious={ledgerOffset>0} hasNext={ledgerOffset+limit<ledgerTotal} total={ledgerTotal} onPrevious={()=>setLedgerOffset(Math.max(0,ledgerOffset-limit))} onNext={()=>setLedgerOffset(ledgerOffset+limit)}/>
       </div>
+      </> : null}
 
-      {isAdmin ? (
+      {isAdmin && section !== "billing" ? (
         <>
+          {section === "integrations" ? <>
           <ApiKeyManager keys={keys} reload={reload} />
           <Pagination page={Math.floor(keyOffset/limit)+1} hasPrevious={keyOffset>0} hasNext={keyOffset+limit<keyTotal} total={keyTotal} onPrevious={()=>setKeyOffset(Math.max(0,keyOffset-limit))} onNext={()=>setKeyOffset(keyOffset+limit)}/>
+          </> : null}
 
+          {section === "users" ? <>
           <div className="card">
             <div className="mb-2 flex items-center justify-between gap-3">
               <h2 className="font-bold">کاربران</h2>
@@ -401,7 +419,9 @@ export default function Account() {
               ) : null}
             </form>
           </div>
+          </> : null}
 
+          {section === "integrations" ? <>
           <div className="card">
             <h2 className="mb-2 font-bold">وب‌هوک‌ها</h2>
             {hookSecret ? (
@@ -476,7 +496,9 @@ export default function Account() {
               </div>
             </form>
           </div>
+          </> : null}
 
+          {section === "data" ? <>
           <div className="card">
             <h2 className="mb-2 font-bold">داده‌های سازمان</h2>
             <div className="flex flex-wrap gap-2">
@@ -494,6 +516,7 @@ export default function Account() {
               </button>
             </div>
           </div>
+          </> : null}
         </>
       ) : null}
       <ConfirmDialog
