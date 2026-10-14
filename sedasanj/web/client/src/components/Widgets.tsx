@@ -5,6 +5,7 @@ import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
 import barChartIcon from "@iconify-icons/lucide/chart-no-axes-column";
 import bullseyeIcon from "@iconify-icons/lucide/target";
 import checkMarkButtonIcon from "@iconify-icons/lucide/circle-check";
+import inboxIcon from "@iconify-icons/lucide/inbox";
 import clipboardIcon from "@iconify-icons/lucide/clipboard-list";
 import creditCardIcon from "@iconify-icons/lucide/credit-card";
 import fireIcon from "@iconify-icons/lucide/flame";
@@ -197,7 +198,7 @@ export function ProcessingCard({
                     : active
                       ? failed
                         ? "border-rose-500 bg-rose-50 text-rose-600"
-                        : "border-[#4B6E48] bg-[#4B6E48] text-white shadow-[0_0_0_5px_rgb(75_110_72_/_0.10)]"
+                        : "border-[#4B6E48] bg-[#4B6E48] text-white"
                       : "border-slate-200 bg-white text-slate-400"
                 }`}
               >
@@ -341,7 +342,7 @@ export function Loading({ children = "در حال بارگذاری…" }: { chil
 }
 
 export function Empty({ children = "موردی یافت نشد." }: { children?: ReactNode }) {
-  return <div className="py-10 text-center text-slate-400">{children}</div>;
+  return <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center"><span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-brand-100 bg-brand-50 text-brand-600"><Icon icon={inboxIcon} className="h-7 w-7" /></span><strong className="text-sm text-slate-700">{children}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.</p></div>;
 }
 
 export function SummaryCell({ summary }: { summary: string | null }) {
