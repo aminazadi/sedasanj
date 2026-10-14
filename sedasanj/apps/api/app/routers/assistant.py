@@ -223,6 +223,8 @@ async def operator_scores(
     principal: OperatorDep,
     session: TenantSession,
     days: Annotated[int | None, Query(ge=1, le=3650)] = 30,
+    from_date: Annotated[datetime | None, Query(alias="from")] = None,
+    to_date: Annotated[datetime | None, Query(alias="to")] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> OperatorScoreReport:
@@ -231,7 +233,12 @@ async def operator_scores(
     if tenant is None:
         raise ApiError("not_found", "tenant not found")
     allowed = [principal.id] if principal.role == "operator" else None
-    from_date = datetime.now(UTC) - timedelta(days=days) if days else None
+    if (from_date is None) != (to_date is None):
+        raise ApiError("validation_error", "from and to must be provided together")
+    if from_date and to_date and to_date < from_date:
+        raise ApiError("validation_error", "to must be greater than or equal to from")
+    report_from = from_date or (datetime.now(UTC) - timedelta(days=days) if days else None)
+    report_to = to_date or datetime.now(UTC)
     ranked_scores = (
         select(
             OperatorCallScore.id,
@@ -244,8 +251,10 @@ async def operator_scores(
         .subquery()
     )
     stmt = select(OperatorCallScore.operator_id, OperatorCallScore.operator_label, func.avg(OperatorCallScore.total_score), func.count(OperatorCallScore.id)).join(ranked_scores, ranked_scores.c.id == OperatorCallScore.id).where(ranked_scores.c.position == 1)
-    if from_date:
-        stmt = stmt.where(OperatorCallScore.created_at >= from_date)
+    if report_from:
+        stmt = stmt.where(OperatorCallScore.created_at >= report_from)
+    if to_date:
+        stmt = stmt.where(OperatorCallScore.created_at <= to_date)
     if allowed is not None:
         stmt = stmt.where(OperatorCallScore.operator_id.in_(allowed))
     rows = (await session.execute(stmt.group_by(OperatorCallScore.operator_id, OperatorCallScore.operator_label).order_by(func.avg(OperatorCallScore.total_score).desc()))).all()
@@ -257,8 +266,8 @@ async def operator_scores(
             rank += 1
         items.append(OperatorScoreSummary(operator_id=operator_id, operator_label=label, average_score=round(float(average), 1), scored_calls=int(count), rank=rank if eligible else None))
     return OperatorScoreReport(
-        from_date=from_date,
-        to_date=datetime.now(UTC),
+        from_date=report_from,
+        to_date=report_to,
         ranking_visible=tenant.operator_ranking_visible if principal.role != "operator" else False,
         items=items[offset : offset + limit],
         total=len(items),

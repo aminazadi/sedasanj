@@ -8,6 +8,7 @@ import TableFilters from "@cbi/web-shared/components/TableFilters";
 import type { CallPage, CallSummary } from "../types";
 import CallUploadForm from "./CallUploadForm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import { PageHeader } from "../components/PageHeader";
 
 interface Filters {
   from: string;
@@ -159,17 +160,7 @@ export default function Calls() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold">تماس‌ها</h1>
-          {operator ? (
-            <p className="mt-1 text-xs text-slate-400">
-              فقط تماس‌هایی که شماره موبایل یا داخلی شما یک سمت آن باشد.
-            </p>
-          ) : null}
-        </div>
-        <CallUploadForm onUploaded={() => void load(applied, pageIndex)} />
-      </div>
+      <PageHeader title="تماس‌ها" description={operator ? "فقط تماس‌هایی که شماره موبایل یا داخلی شما یک سمت آن باشد." : "فهرست و جست‌وجوی مکالمات سازمان"} actions={<CallUploadForm onUploaded={() => void load(applied, pageIndex)} />} />
       <TableFilters>
       <form
         className="calls-filters-form grid gap-3 md:grid-cols-4 xl:grid-cols-10 xl:gap-2"

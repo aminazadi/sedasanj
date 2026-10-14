@@ -3,6 +3,7 @@ import { request } from "../api";
 import { CAN_EDIT_TASKS, isOperator, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
 import { Empty, ErrorBox, Loading } from "../components/Widgets";
+import { PageHeader } from "../components/PageHeader";
 import type { TaskBoard } from "../types";
 
 type View = "today" | "upcoming" | "open" | "done" | "all";
@@ -73,15 +74,7 @@ export default function Tasks() {
 
   return (
     <div className="space-y-4 text-[#000000]">
-      <div>
-        <h1 className="text-lg font-bold">کارهای قابل پیگیری</h1>
-        <p className="mt-1 text-xs text-slate-400">
-          کارهای استخراج‌شده از مکالمات تا وقتی انجام نشوند هر روز به فهرست امروز منتقل می‌شوند.
-          {operator
-            ? " فقط کارهای تماس‌هایی را می‌بینید که شماره موبایل یا داخلی شما یکی از طرفین آن باشد."
-            : null}
-        </p>
-      </div>
+      <PageHeader title="کارهای قابل پیگیری" description={`کارهای استخراج‌شده از مکالمات تا وقتی انجام نشوند هر روز به فهرست امروز منتقل می‌شوند.${operator ? " فقط کارهای تماس‌هایی را می‌بینید که شماره موبایل یا داخلی شما یکی از طرفین آن باشد." : ""}`} />
 
       <div className="flex flex-wrap gap-2">
         {VIEWS.map((item) => (

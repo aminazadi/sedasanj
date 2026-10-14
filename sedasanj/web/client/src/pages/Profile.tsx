@@ -4,6 +4,7 @@ import { fmt, request } from "../api";
 import { ROLE_LABELS } from "../auth";
 import TwoFactorSettings from "../components/TwoFactorSettings";
 import { ErrorBox, Loading } from "../components/Widgets";
+import { PageHeader } from "../components/PageHeader";
 import type { AccountInfo, User } from "../types";
 
 type ProfileForm = {
@@ -69,10 +70,7 @@ export default function Profile() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5" dir="rtl">
-      <header>
-        <h1 className="text-2xl font-bold text-[#4B6E48]">پروفایل من</h1>
-        <p className="mt-1 text-sm text-slate-500">مشخصات فردی، راه‌های تماس و امنیت ورود شما</p>
-      </header>
+      <PageHeader title="پروفایل من" description="مشخصات فردی، راه‌های تماس و امنیت ورود شما" />
       <ErrorBox message={error} />
       {account ? (
         <>
@@ -117,7 +115,7 @@ export default function Profile() {
               maxLength={2000}
               placeholder="درباره مسئولیت‌ها، حوزه کاری، علایق حرفه‌ای و لحنی که ترجیح می‌دهید دستیار با شما صحبت کند بنویسید."
             />
-            <span className="mt-1 block text-left text-xs text-slate-400">{form.profile_context.length} / 2000</span>
+            <span className="mt-1 block text-left text-xs text-slate-400">{fmt.int(form.profile_context.length)} / {fmt.int(2000)}</span>
           </label>
           {account.user.role === "operator" ? <p className="text-xs text-slate-500">برای اپراتور ثبت حداقل یکی از شماره موبایل یا شماره داخلی الزامی است.</p> : null}
           <div className="flex items-center gap-3">

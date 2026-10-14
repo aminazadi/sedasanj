@@ -2,20 +2,26 @@
 
 ## 2026-10-14 — AMINAZADI
 
+- Replaced the dashboard's frequent-topic bars with a responsive word cloud that scales labels by frequency and shows each count in a badge.
+
+## 2026-10-14 — AMINAZADI
+
 - Changed the quick assistant button's fading outline animation to the primary color.
 
 ## 2026-10-14 — AMINAZADI
 
 - Reorganized the client navigation with a dedicated account settings workspace for operator scoring, KPI configuration, users, integrations, and organization data.
 - Matched the operator-score page heading and empty result state to the KPI dashboard, while keeping the selected period and pagination in the URL.
+- Reused the dashboard’s date-range control for operator scores, including its URL-persistent custom Jalali range.
+- Standardized customer-panel page headers for dashboards, calls, tasks, profile, account settings, KPI settings, and API documentation.
 - Moved two-factor authentication into the redesigned personal profile and kept billing and subscription activity on a focused account page.
 - Preserved account settings tabs, KPI goal pagination, and operator score date filters in URL query parameters; redirected the former KPI settings route.
-
-
 
 ## 2026-10-14 — AMINAZADI
 
 - Rebuilt the primary dashboard as a role-scoped KPI workspace with URL-persistent Jalali date ranges, daily performance trends, sales funnel, customer sentiment, operator comparison, talk balance, coaching, urgent actions, and period-scoped recent calls.
+- Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
+- Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 - Replaced the sales-funnel bars with a stage-shaped visual funnel and added task completion, open-task, and overdue-task dashboard charts.
 - Split dashboard funnel reporting into nested contact-to-opportunity and sales-progression funnels, excluding losses from both funnel bodies and removing artificial widths for empty stages.
 - Standardized both funnel cards with the dashboard card heading style and made every stage render in a fixed wide-to-narrow sequence, including zero-value stages.
@@ -23,8 +29,6 @@
 - Put each funnel stage label and value on a single aligned line, widened the lower funnel and outlet, and applied a progressive warm color scale.
 - Added in-stage count badges, compacted the funnel body, widened its lower outlet, and placed stage conversion details in an aligned side panel.
 - Centered both funnel diagrams at a fixed standard width to preserve balanced card spacing.
-- Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
-- Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 - Centered dashboard empty states with bordered contextual icons and replaced range-selector shadows with clear border-based states.
 - Refined the responsive RTL daily performance chart and added detailed customer-sentiment donut, distribution, counts, and share visualizations.
 - Strengthened empty-state icon containers with explicit two-pixel borders for clear visual separation.
@@ -33,9 +37,14 @@
 - Fixed responsive RTL chart sizing and axis layout, removed card shadows, and separated detailed analytics sections with divider lines.
 - Replaced overlapping sentiment chart labels with spaced distribution meters, added full dividers between analytics panels, and widened funnel lower stages and outlets.
 - Increased the taper of both dashboard funnels while keeping their stage labels and counts centered.
+
 ## 2026-10-14 — AMINAZADI
 
 - Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.
+
+## 2026-10-14 — AMINAZADI
+
+- Included archived assistant-training conversations in the manager archive tab.
 
 ## 2026-10-14 — AMINAZADI
 
