@@ -14,6 +14,7 @@
 - Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
 - Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
 - Centered dashboard empty states with bordered contextual icons and replaced range-selector shadows with clear border-based states.
+- Refined the responsive RTL daily performance chart and added detailed customer-sentiment donut, distribution, counts, and share visualizations.
 ## 2026-10-14 — AMINAZADI
 
 - Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.
