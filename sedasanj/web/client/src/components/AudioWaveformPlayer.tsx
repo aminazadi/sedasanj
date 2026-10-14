@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent, type RefObject } from "react";
+import { fmt } from "../api";
 
 const BAR_COUNT = 84;
 const PLAYBACK_RATES = [1, 1.25, 1.5, 2] as const;
@@ -9,9 +10,7 @@ const EMPTY_WAVEFORM = Array.from({ length: BAR_COUNT }, (_, index) =>
 
 function formatTime(value: number): string {
   const safeValue = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
-  const minutes = Math.floor(safeValue / 60);
-  const seconds = safeValue % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  return fmt.duration(safeValue * 1000);
 }
 
 function readPlaybackRate(): (typeof PLAYBACK_RATES)[number] {
@@ -157,7 +156,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
           <p className="text-sm font-extrabold text-[#000000]">فایل صوتی تماس</p>
           <p className="mt-0.5 text-[11px] text-[#898989]">برای جابه‌جایی روی موج کلیک کنید</p>
         </div>
-        <span className="shrink-0 text-xs font-medium tabular-nums text-[#898989]" dir="ltr">
+        <span className="shrink-0 text-xs font-medium tabular-nums text-[#898989]">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>
@@ -222,9 +221,8 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
             onClick={increasePlaybackRate}
             aria-label={`سرعت پخش ${playbackRate} برابر؛ برای افزایش کلیک کنید`}
             title="افزایش سرعت پخش"
-            dir="ltr"
           >
-            {playbackRate}×
+            {fmt.decimal(playbackRate, 2)}×
           </button>
           <a
             className={controlClassName}
