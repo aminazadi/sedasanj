@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { request } from "../api";
 import { freePbxModuleConfig } from "../agentConfig";
 import { ErrorBox, Pagination } from "../components/Widgets";
+import { PageHeader } from "../components/PageHeader";
 import type { Page } from "../types";
 
 const DIALPLAN = `[from-internal]
@@ -124,12 +125,12 @@ export default function Install() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 [&>div:first-of-type>h1]:sr-only"><PageHeader title="درخواست نصب و استقرار" description="نصب اولیه عادی یک‌بار رایگان است؛ نصب مجدد ۳ میلیون و نصب اختصاصی ۲۰ میلیون تومان است." />
       <div className="card"><h1 className="mb-2 text-xl font-bold">درخواست نصب و استقرار</h1><p className="mb-4 text-sm text-slate-500">نصب اولیه عادی یک‌بار رایگان است؛ نصب مجدد ۳ میلیون و نصب اختصاصی ۲۰ میلیون تومان است.</p><form className="grid gap-3 md:grid-cols-2" onSubmit={createInstallation}><select className="input" value={installForm.kind} onChange={(event) => setInstallForm({ ...installForm, kind: event.target.value })}><option value="initial">نصب اولیه رایگان</option><option value="reinstall">نصب مجدد عادی</option><option value="dedicated">نصب اختصاصی</option></select><input className="input" required placeholder="نوع PBX" value={installForm.pbx_type} onChange={(event) => setInstallForm({ ...installForm, pbx_type: event.target.value })}/><input className="input" placeholder="نسخه PBX" value={installForm.pbx_version} onChange={(event) => setInstallForm({ ...installForm, pbx_version: event.target.value })}/><input className="input" type="number" min={1} required placeholder="تعداد داخلی" value={installForm.extension_count} onChange={(event) => setInstallForm({ ...installForm, extension_count: Number(event.target.value) })}/><input className="input" required placeholder="روش اتصال" value={installForm.connection_method} onChange={(event) => setInstallForm({ ...installForm, connection_method: event.target.value })}/><input className="input" required placeholder="نام و تماس مسئول فنی" value={installForm.technical_contact} onChange={(event) => setInstallForm({ ...installForm, technical_contact: event.target.value })}/><JalaliDatePicker includeTime value={installForm.preferred_time} onChange={(value) => setInstallForm({ ...installForm, preferred_time: value })} placeholder="زمان ترجیحی نصب"/><input className="input" placeholder="توضیحات غیرمحرمانه" value={installForm.notes} onChange={(event) => setInstallForm({ ...installForm, notes: event.target.value })}/><button className="btn md:col-span-2">ثبت درخواست</button></form>{installations.length ? <div className="mt-5 overflow-x-auto"><table className="table"><thead><tr><th>نوع</th><th>PBX</th><th>وضعیت</th></tr></thead><tbody>{installations.map((item) => <tr key={item.id}><td>{item.kind}</td><td>{item.pbx_type}</td><td>{item.status}</td></tr>)}</tbody></table><Pagination page={Math.floor(installationOffset/limit)+1} hasPrevious={installationOffset>0} hasNext={installationOffset+limit<installationTotal} total={installationTotal} onPrevious={()=>setInstallationOffset(Math.max(0,installationOffset-limit))} onNext={()=>setInstallationOffset(installationOffset+limit)}/></div> : null}</div>
       <div className="card bg-gradient-to-l from-brand-50 to-white">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="mb-3 text-xl font-bold">راه‌اندازی امن روی سرور Asterisk</h1>
+            <h2 className="mb-3 text-xl font-bold">راه‌اندازی امن روی سرور Asterisk</h2>
             <p className="text-sm leading-6 text-slate-600">
               از ضبط تماس تا ارسال فشرده، صف retry و شروع پردازش را مرحله‌به‌مرحله تنظیم کنید.
             </p>

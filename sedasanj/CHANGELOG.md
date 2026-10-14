@@ -13,7 +13,7 @@
 - Reorganized the client navigation with a dedicated account settings workspace for operator scoring, KPI configuration, users, integrations, and organization data.
 - Matched the operator-score page heading and empty result state to the KPI dashboard, while keeping the selected period and pagination in the URL.
 - Reused the dashboard’s date-range control for operator scores, including its URL-persistent custom Jalali range.
-- Standardized customer-panel page headers for dashboards, calls, tasks, profile, account settings, KPI settings, and API documentation.
+- Standardized customer-panel page headers for dashboards, calls, tasks, profile, account settings, KPI settings, API documentation, and installation requests.
 - Moved two-factor authentication into the redesigned personal profile and kept billing and subscription activity on a focused account page.
 - Preserved account settings tabs, KPI goal pagination, and operator score date filters in URL query parameters; redirected the former KPI settings route.
 
