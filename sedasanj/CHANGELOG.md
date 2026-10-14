@@ -20,6 +20,7 @@
 - Updated empty-state icon borders to a thin line that inherits the primary icon color.
 - Fixed responsive RTL chart sizing and axis layout, removed card shadows, and separated detailed analytics sections with divider lines.
 - Replaced overlapping sentiment chart labels with spaced distribution meters, added full dividers between analytics panels, and widened funnel lower stages and outlets.
+- Increased the taper of both dashboard funnels while keeping their stage labels and counts centered.
 ## 2026-10-14 — AMINAZADI
 
 - Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.

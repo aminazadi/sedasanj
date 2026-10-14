@@ -49,7 +49,7 @@ function SalesFunnel({ rows }: { rows: Array<{ key: string; label: string; count
   const stageHeight = 56;
   const gap = 4;
   const topWidth = 480;
-  const bottomWidth = 390;
+  const bottomWidth = 340;
   const center = 300;
   const height = rows.length * (stageHeight + gap) + 52;
   const widthAt = (position: number) => topWidth - ((topWidth - bottomWidth) * position) / rows.length;
