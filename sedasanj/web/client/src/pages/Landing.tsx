@@ -91,12 +91,8 @@ export default function Landing() {
           <div className="workflow-timeline" aria-label="مسیر تبدیل تماس به اقدام مدیریتی">
             <div className="timeline-track" aria-hidden="true"><i/></div>
             <ol className="site-steps">
-              {steps.map((item, index) => <li key={item.title}><span className="timeline-node"><Icon name={item.icon} size={21}/></span><div><small>گام {fmt.int(index + 1)}</small><h3>{item.title}</h3><p>{item.body}</p></div></li>)}
+              {steps.map((item) => <li key={item.title}><span className="timeline-node"><Icon name={item.icon} size={21}/></span><div><h3>{item.title}</h3><p>{item.body}</p></div></li>)}
             </ol>
-          </div>
-          <div className="site-report" aria-label="نمونه گزارش تماس‌ها">
-            <div className="site-report-head"><div><strong>تماس‌های اخیر</strong><span>خروجی تحلیل مکالمات سازمان</span></div><Link to="/login">مشاهده گزارش‌ها <Icon name="arrow" size={16}/></Link></div>
-            <div className="site-table-scroll"><table><thead><tr><th>اپراتور</th><th>موضوع تماس</th><th>مدت</th><th>اقدام بعدی</th><th>وضعیت</th></tr></thead><tbody>{[["علی محمدی", "پیگیری سفارش", "۰۳:۱۸", "—", "حل‌شده"], ["سارا رضایی", "مشکل پرداخت", "۰۴:۲۶", "تماس مجدد با مشتری", "نیازمند پیگیری"], ["رضا کریمی", "استعلام قیمت", "۰۲:۴۰", "ارسال پیش‌فاکتور", "اقدام ثبت شد"]].map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={index}>{index === 4 ? <span className="site-result">{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div>
           </div>
         </div>
       </section>

@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Removed the workflow sample report and step labels, enlarged stage titles, and clarified timeline direction with animated arrow markers.
+
+## 2026-10-16 — AMINAZADI
+
 - Reworked the landing workflow into an animated five-stage timeline with a responsive path and detailed organization call report preview.
 
 ## 2026-10-16 — AMINAZADI
