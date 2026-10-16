@@ -156,8 +156,6 @@ export default function DemoRecorder() {
   const audioActive = phase === "prompt" || phase === "beep" || phase === "recording";
   const recordingAction = phase === "recording" ? stop : undefined;
   return <main className="demo-page demo-recorder-page" dir="rtl"><section className="demo-card">
-    <span className="demo-kicker">تجربه صوتی صداسنج</span><h1>{phase === "done" ? "صدای شما رسید!" : "یک پیام برای سازمانتان"}</h1>
-    {info && <p>{info.organization_name}</p>}
     {!supported && <p className="demo-error" role="alert">برای ضبط، لینک را با Safari یا Chrome به‌روز و اتصال HTTPS باز کنید.</p>}
     {error && <p className="demo-error" role="alert">{error}</p>}
     {info?.prompt_url && phase !== "done" && <audio ref={audio} src={info.prompt_url} preload="auto" playsInline onEnded={() => void playBeeps()} onError={() => { releaseMicrophone(); setPhase("idle"); setError("صدای راهنما بارگذاری نشد؛ اتصال را بررسی و دوباره شروع کنید."); }}/>} 
