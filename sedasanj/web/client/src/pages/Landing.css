@@ -119,6 +119,7 @@
 .site-footer-trust { display: flex; flex-direction: column; gap: 10px; }
 .site-footer-trust-slots { display: flex; gap: 10px; }
 .site-footer-trust-slots span { display: grid; place-items: center; width: 76px; height: 76px; border: 1px dashed #b2ac88; background: rgb(255 255 255 / 45%); color: var(--site-muted); font-size: 10px; text-align: center; }
+.site-footer-trust-frame { display: block; width: 100%; min-width: 180px; height: 120px; border: 0; background: transparent; }
 .site-footer-bottom { padding-block: 14px; border-top: 1px solid var(--site-border); color: var(--site-muted); text-align: center; }
 .site-footer small { color: var(--site-muted); font-size: 11px; }
 @media (max-width: 1000px) {

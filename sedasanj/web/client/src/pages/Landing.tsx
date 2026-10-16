@@ -102,12 +102,18 @@ export default function Landing() {
   const [, setParams] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
   const [plans, setPlans] = useState<PublicPlan[]>([]);
+  const [siteContact, setSiteContact] = useState({ phone: "09399093062", trust_html: "" });
   const [plansState, setPlansState] = useState<"loading" | "ready" | "error">("loading");
   function loadPlans() {
     setPlansState("loading");
     request<PublicPlan[]>("/v1/plans").then((items) => { setPlans(items); setPlansState("ready"); }).catch(() => setPlansState("error"));
   }
   useEffect(loadPlans, []);
+  useEffect(() => {
+    request<{ phone: string; trust_html: string }>("/v1/site/contact-settings")
+      .then(setSiteContact)
+      .catch(() => undefined);
+  }, []);
   useEffect(() => {
     if (!menuOpen) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") setMenuOpen(false); };
@@ -165,14 +171,14 @@ export default function Landing() {
       <section className="site-footer-contact" aria-labelledby="site-footer-contact-title">
         <div className="site-container site-footer-contact-inner">
           <div><h2 id="site-footer-contact-title">با ما تماس بگیرید</h2><p>پذیرای صدای گرم شما خواهیم بود</p></div>
-          <a className="site-footer-phone" href="tel:09399093062" dir="rtl">{new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(9399093062)}</a>
+          <a className="site-footer-phone" href={`tel:${siteContact.phone}`} dir="rtl">{siteContact.phone.replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)])}</a>
         </div>
       </section>
       <div className="site-container site-footer-main">
         <div className="site-footer-brand"><strong>درباره صداسنج</strong><Link to="/" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></Link><p>سامانه هوشمند تحلیل مکالمات فارسی</p></div>
         <nav className="site-footer-links" aria-label="لینک‌های پرکاربرد"><strong>لینک‌های پرکاربرد</strong><Link to="/#features">امکانات</Link><Link to="/#pricing">پلن‌ها</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link><Link to="/login">ورود به پنل</Link></nav>
         <nav className="site-footer-legal" aria-label="قوانین و حریم خصوصی"><Link to="/terms">قوانین استفاده</Link><Link to="/privacy">حریم خصوصی</Link><Link to="/cancellation">لغو اشتراک</Link></nav>
-        <div className="site-footer-trust" aria-label="جایگاه نمادهای اعتماد"><strong>نمادهای اعتماد</strong><div className="site-footer-trust-slots"><span aria-hidden="true">جایگاه نماد</span><span aria-hidden="true">جایگاه نماد</span></div></div>
+        <div className="site-footer-trust" aria-label="نمادهای اعتماد"><strong>نمادهای اعتماد</strong>{siteContact.trust_html ? <iframe className="site-footer-trust-frame" title="نمادهای اعتماد صداسنج" sandbox="allow-scripts" srcDoc={siteContact.trust_html}/> : <div className="site-footer-trust-slots"><span aria-hidden="true">جایگاه نماد</span><span aria-hidden="true">جایگاه نماد</span></div>}</div>
       </div>
       <div className="site-container site-footer-bottom"><small>© ۱۴۰۵ صداسنج</small></div>
     </footer>

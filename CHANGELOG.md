@@ -13,6 +13,7 @@
 - Increased the footer phone number size.
 - Added a subtle dotted pattern to the footer background.
 - Added an «درباره صداسنج» heading to the footer brand section.
+- Added admin settings for the footer phone number and trust badge HTML, displayed in an isolated frame.
 
 ## 2026-10-16 — AMINAZADI
 

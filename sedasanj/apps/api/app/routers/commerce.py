@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
 
 from app.config import get_settings
@@ -28,6 +28,7 @@ from app.models import (
     OrderItem,
     Package,
     PaymentAttempt,
+    PlatformSetting,
     Plan,
     PlanVersion,
     Refund,
@@ -51,6 +52,22 @@ from app.services.phone_identity import normalize_mobile as _mobile
 from app.services.signup import create_account
 
 router = APIRouter(prefix="/v1", tags=["commerce"])
+SITE_CONTACT_PHONE_KEY = "site_contact_phone"
+DEFAULT_SITE_CONTACT_PHONE = "09399093062"
+
+
+class SiteContactSettingsUpdate(BaseModel):
+    phone: str = Field(min_length=10, max_length=15)
+    trust_html: str = Field(default="", max_length=20_000)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value: str) -> str:
+        digits = value.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+        digits = "".join(character for character in digits if character.isdigit())
+        if not 10 <= len(digits) <= 15:
+            raise ValueError("phone must contain 10 to 15 digits")
+        return digits
 
 
 class ContactLeadCreate(BaseModel):
@@ -229,6 +246,52 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
 @router.get("/plans")
 async def list_plans(session: PublicSession) -> list[dict[str, Any]]:
     return [_plan_out(plan, version) for plan, version in await commerce.public_plans(session)]
+
+
+@router.get("/site/contact-settings")
+async def public_site_contact_settings(session: PublicSession) -> dict[str, str]:
+    phone_row = await session.get(PlatformSetting, SITE_CONTACT_PHONE_KEY)
+    trust_row = await session.get(PlatformSetting, "site_trust_html")
+    return {
+        "phone": phone_row.value if phone_row else DEFAULT_SITE_CONTACT_PHONE,
+        "trust_html": trust_row.value if trust_row else "",
+    }
+
+
+@router.get("/admin/site-contact-settings")
+async def admin_site_contact_settings(staff: StaffDep, session: StaffSession) -> dict[str, str]:
+    phone_row = await session.get(PlatformSetting, SITE_CONTACT_PHONE_KEY)
+    trust_row = await session.get(PlatformSetting, "site_trust_html")
+    return {
+        "phone": phone_row.value if phone_row else DEFAULT_SITE_CONTACT_PHONE,
+        "trust_html": trust_row.value if trust_row else "",
+    }
+
+
+@router.patch("/admin/site-contact-settings")
+async def update_site_contact_settings(
+    payload: SiteContactSettingsUpdate,
+    request: Request,
+    staff: StaffDep,
+    session: StaffSession,
+) -> dict[str, str]:
+    values = {SITE_CONTACT_PHONE_KEY: payload.phone, "site_trust_html": payload.trust_html}
+    for key, value in values.items():
+        row = await session.get(PlatformSetting, key)
+        if row is None:
+            session.add(PlatformSetting(key=key, value=value))
+        else:
+            row.value = value
+            row.updated_at = datetime.now(UTC)
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="site_contact.settings_update",
+        payload={"phone": payload.phone, "trust_html_updated": bool(payload.trust_html)},
+        ip=client_ip(request),
+    )
+    return {"phone": payload.phone, "trust_html": payload.trust_html}
 
 
 @router.post("/contact-leads", status_code=status.HTTP_201_CREATED)
