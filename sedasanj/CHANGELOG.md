@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Rewrote the landing hero headline and supporting copy to make the organizational cost of unobserved customer calls clear and motivate action.
+
+## 2026-10-16 — AMINAZADI
+
 - Added thin dividers between the six landing features, adapting to horizontal separators on mobile.
 - Expanded the landing page features to six manager-focused capabilities: reporting, operator evaluation, searchable transcripts, conversation analysis, follow-up management, and the organization assistant.
 
