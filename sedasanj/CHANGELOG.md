@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Increased Markazi Text heading sizes by approximately 20% and tightened their line heights on the landing page.
+
+## 2026-10-16 — AMINAZADI
+
 - Added the locally hosted Google Fonts Markazi Text Arabic subset for all landing page headings while keeping body text in Vazirmatn.
 
 ## 2026-10-16 — AMINAZADI

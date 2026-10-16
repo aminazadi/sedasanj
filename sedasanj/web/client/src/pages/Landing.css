@@ -39,7 +39,7 @@
 .site-split { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 80px; }
 .marketing-site h1, .marketing-site h2, .marketing-site h3, .marketing-site p { margin: 0; }
 .marketing-site :is(h1, h2, h3) { font-family: var(--site-heading-font); font-synthesis: none; }
-.marketing-site h1 { font-size: clamp(32px, 3.5vw, 50px); line-height: 1.65; font-weight: 800; letter-spacing: -.8px; }
+.marketing-site h1 { font-size: clamp(38px, 4.2vw, 60px); line-height: 1.35; font-weight: 800; letter-spacing: -.8px; }
 .site-hero p { margin-top: 24px; max-width: 470px; color: var(--site-muted); font-size: 16px; line-height: 2.1; }
 .site-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
 .site-call { min-width: 0; padding: 28px; border: 1px solid var(--site-border); background: var(--site-canvas); }
@@ -56,8 +56,8 @@
 .site-transcript b { min-width: 48px; }
 .site-transcript span { color: var(--site-muted); }
 .site-section { padding: 100px 0; scroll-margin-top: 24px; }
-.marketing-site h2 { font-size: clamp(25px, 2.7vw, 34px); line-height: 1.7; text-align: center; font-weight: 750; }
-.marketing-site h3 { font-size: 18px; font-weight: 700; }
+.marketing-site h2 { font-size: clamp(30px, 3.24vw, 41px); line-height: 1.4; text-align: center; font-weight: 750; }
+.marketing-site h3 { font-size: 22px; line-height: 1.5; font-weight: 700; }
 .site-benefits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 80px; margin-top: 64px; text-align: center; }
 #features .site-benefits { gap: 0; }
 #features .site-benefits article { padding: 40px 32px; }
