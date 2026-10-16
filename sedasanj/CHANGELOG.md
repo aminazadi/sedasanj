@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Changed mobile separators in the landing feature list to single horizontal rules beneath each feature, with no extra gaps.
+
+## 2026-10-16 — AMINAZADI
+
 - Added single-line separators beneath timeline stages on mobile layouts.
 
 ## 2026-10-16 — AMINAZADI
