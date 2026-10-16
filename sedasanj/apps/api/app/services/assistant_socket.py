@@ -193,6 +193,7 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                         AssistantRun.conversation_id == conversation_id,
                         AssistantRun.owner_id == owner_id,
                         AssistantRun.status.in_(("queued", "running")),
+                        AssistantRun.assistant_message_id.is_(None),
                     )
                     .order_by(AssistantRun.created_at)
                 )

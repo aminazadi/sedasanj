@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Prevented completed assistant runs with a persisted reply from being restored as active, clearing stale chat processing indicators and allowing follow-up messages.
+
+## 2026-10-16 — AMINAZADI
+
 - Added opt-in FreePBX voicemail scanning and a dedicated upload endpoint with idempotent, zero-credit audio transcription and analysis.
 - Added voicemail call metadata, playback and transcript visibility, separate dashboard metrics, and tenant-scoped assistant search and statistics.
 
