@@ -2,6 +2,8 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Removed the square recorder button shell, reduced the centered equalizer to 20 bars, and kept each bar square-cornered.
+
 - Moved the square recorder equalizer into the button center, replacing the speaker and stop icons with a shared waveform component.
 
 - Increased the recorder equalizer to 120 bars and removed bar corner rounding.
