@@ -35,15 +35,13 @@
 .marketing-site .site-button-outline { background: transparent; color: var(--site-primary); border-color: #b2ac88; }
 .marketing-site .site-button-outline:hover { background: #e8e5de; color: var(--site-primary); }
 .site-menu { display: none; background: transparent; color: var(--site-primary); border: 1px solid var(--site-border); padding: 10px; }
-.site-hero { padding: 100px 0 120px; background-image: radial-gradient(circle, rgb(178 172 136 / .45) .8px, transparent 1px); background-size: 20px 20px; }
+.site-hero { padding: 100px 0 120px; background-color: var(--site-canvas); background-image: linear-gradient(to left, rgb(242 240 239 / .97) 0%, rgb(242 240 239 / .87) 35%, rgb(242 240 239 / .28) 100%), var(--site-hero-art); background-position: center; background-size: cover; }
 .site-split { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 80px; }
 .marketing-site h1, .marketing-site h2, .marketing-site h3, .marketing-site p { margin: 0; }
 .marketing-site :is(h1, h2, h3) { font-family: var(--site-heading-font); font-synthesis: none; }
 .marketing-site h1 { font-size: clamp(38px, 4.2vw, 60px); line-height: 1.35; font-weight: 800; letter-spacing: -.8px; }
 .site-hero p { margin-top: 24px; max-width: 470px; color: var(--site-muted); font-size: 16px; line-height: 2.1; }
 .site-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
-.site-hero > .site-container > div:first-child { position: relative; z-index: 2; }
-.site-hero-image { position: relative; z-index: 1; display: block; width: 132%; max-width: none; height: auto; margin-right: -22%; object-fit: contain; }
 .site-section { padding: 100px 0; scroll-margin-top: 24px; }
 .marketing-site h2 { font-size: clamp(30px, 3.24vw, 41px); line-height: 1.4; text-align: center; font-weight: 750; }
 .marketing-site h3 { font-size: 22px; line-height: 1.5; font-weight: 700; }
@@ -110,7 +108,7 @@
   .site-links.is-open { display: flex; flex-direction: column; align-items: stretch; gap: 20px; }
   .site-split, .site-workflow { grid-template-columns: 1fr; gap: 48px; }
   .site-hero { padding: 64px 0 80px; }
-  .site-hero-image { width: 100%; margin-right: 0; }
+  .site-hero { background-image: linear-gradient(to left, rgb(242 240 239 / .94), rgb(242 240 239 / .75)), var(--site-hero-art); background-position: center; }
   .site-section { padding: 72px 0; }
   .site-hero p { font-size: 14px; }
   .site-benefits { grid-template-columns: 1fr; gap: 48px; margin-top: 48px; }

@@ -2,7 +2,7 @@
 
 ## 2026-10-16 — AMINAZADI
 
-- Replaced the landing page hero preview with the provided manager analytics image, enlarged it to overlap the adjacent copy, and kept the layout responsive.
+- Replaced the dotted landing hero background with the provided transparent office illustration and removed the separate hero photo.
 
 ## 2026-10-16 — AMINAZADI
 

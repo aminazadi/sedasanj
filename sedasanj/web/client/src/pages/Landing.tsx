@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
-import managerInsights from "../assets/manager-call-insights.png";
+import heroBackdrop from "../assets/manager-office-line-art.png";
 import "./Landing.css";
 import { fmt, request } from "../api";
 import type { PublicPlan } from "../types";
@@ -79,9 +79,8 @@ export default function Landing() {
       <div className="site-nav-actions"><Link className="site-button" to="/login">ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
     <main id="top">
-      <section className="site-hero"><div className="site-container site-split">
+      <section className="site-hero" style={{ "--site-hero-art": `url(${heroBackdrop})` } as CSSProperties}><div className="site-container site-split">
         <div><h1>بدون صداسنج،<br/>هیچ تماسی واقعاً دیده نمی‌شود</h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><Link className="site-button" to="/signup?plan=demo">شروع رایگان</Link><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
-        <img className="site-hero-image" src={managerInsights} alt="مدیر سازمان در حال بررسی شاخص‌های عملکرد و تحلیل تماس‌های صداسنج" />
       </div></section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="workflow"><div className="site-container"><h2>از مکالمه تا اقدام</h2><div className="site-split site-workflow"><div className="site-report" aria-label="نمونه گزارش تماس‌ها"><div className="site-report-head"><strong>تماس‌های اخیر</strong><span>کیفیت مکالمات</span></div><div className="site-table-scroll"><table><thead><tr><th>اپراتور</th><th>موضوع</th><th>مدت</th><th>نتیجه</th></tr></thead><tbody>{[["علی محمدی", "پیگیری سفارش", "۰۳:۱۸", "حل‌شده"], ["سارا رضایی", "مشکل پرداخت", "۰۴:۲۶", "نیاز به پیگیری"], ["رضا کریمی", "استعلام قیمت", "۰۲:۴۰", "اطلاعات ارائه شد"]].map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={index}>{index === 3 ? <span className="site-result">{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div><Link to="/login">مشاهده در پنل <Icon name="arrow" size={16}/></Link></div><ol className="site-steps">{steps.map((item, index) => <li key={item.title}><span>{fmt.int(index + 1)}</span><div><h3>{item.title}</h3><p>{item.body}</p></div></li>)}</ol></div></div></section>
