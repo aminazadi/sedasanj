@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Added single-line separators beneath timeline stages on mobile layouts.
+
+## 2026-10-16 — AMINAZADI
+
 - Updated the workflow section heading to «از مکالمه تا اقدام همه زیر ذره‌بین».
 
 ## 2026-10-16 — AMINAZADI
