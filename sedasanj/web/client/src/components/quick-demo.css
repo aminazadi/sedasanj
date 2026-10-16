@@ -97,7 +97,7 @@
 .demo-audio-stop-icon{width:26px;height:26px;background:#9f1239}
 .demo-audio-control.is-recording .demo-audio-control-core{color:#9f1239;border-color:#f5c3cc;background:#fff7f8}
 .demo-equalizer{position:absolute;top:12px;left:50%;width:calc(clamp(168px,52vw,204px) + 32px);height:calc(clamp(168px,52vw,204px) + 32px);transform:translateX(-50%);pointer-events:none}
-.demo-equalizer i{position:absolute;display:block;width:3px;height:8px;background:#b3c6ad;border-radius:2px;opacity:.78;transform:translate(-50%,-50%)}
+.demo-equalizer i{position:absolute;display:block;width:2px;height:8px;background:#b3c6ad;border-radius:0;opacity:.78;transform:translate(-50%,-50%)}
 .demo-equalizer i[data-side="0"]{top:0;left:var(--position)}
 .demo-equalizer i[data-side="1"]{top:var(--position);left:100%;transform:translate(-50%,-50%) rotate(90deg)}
 .demo-equalizer i[data-side="2"]{top:100%;left:var(--position)}

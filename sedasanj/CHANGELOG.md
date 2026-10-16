@@ -2,6 +2,8 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Increased the recorder equalizer to 120 bars and removed bar corner rounding.
+
 - Replaced the radial recorder rays with compact equalizer bars along the square edges and extended each of the three start tones to 600 ms.
 
 - Removed the quick demo recorder header copy, enlarged its square audio button, and positioned the animated equalizer around its edge.
