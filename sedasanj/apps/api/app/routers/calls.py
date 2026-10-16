@@ -26,6 +26,7 @@ from app.models import (
     AsrTranscriptRevisionSegment,
     AudioObject,
     Call,
+    CALL_TYPES,
     CallInsight,
     CreditReservation,
     Job,
@@ -195,7 +196,7 @@ async def list_calls(
     if status_filter:
         stmt = stmt.where(
             Call.call_type == status_filter
-            if status_filter in {"answered", "missed"}
+            if status_filter in CALL_TYPES
             else Call.status == status_filter
         )
     if direction:
@@ -375,7 +376,7 @@ async def _load_call(
 async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) -> CallDetail:
     assert principal.tenant_id is not None
     call = await _load_call(session, call_id, principal.tenant_id, principal)
-    if call.call_type == "missed":
+    if call.call_type != "answered":
         return CallDetail(
             **_summary(call, None, hide_billing=operator_scope.is_operator(principal)).model_dump(),
             audio_available=False,
@@ -560,7 +561,6 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
     )
     return CallDetail(
         **summary_payload,
-        call_type=call.call_type,
         audio_available=audio_available,
         can_retry_transcription=(
             transcript is None
@@ -1382,7 +1382,7 @@ async def analytics_summary(
             select(
                 func.count(Call.id).filter(Call.call_type == "answered"),
                 func.coalesce(func.sum(Call.duration_ms).filter(Call.call_type == "answered"), 0),
-                func.count(Call.id).filter(Call.call_type == "missed"),
+                func.count(Call.id).filter(Call.call_type != "answered"),
             ).where(window)
         )
     ).one()
@@ -1460,12 +1460,12 @@ async def analytics_summary(
             select(Call.call_type, func.count()).where(type_window).group_by(Call.call_type)
         )
     ).all()
-    missed_trend_rows = (
+    outcome_trend_rows = (
         await session.execute(
-            select(day_key, func.count())
-            .where(type_window, Call.call_type == "missed")
-            .group_by(day_key)
-            .order_by(day_key)
+            select(day_key, Call.call_type, func.count())
+            .where(type_window, Call.call_type != "answered")
+            .group_by(day_key, Call.call_type)
+            .order_by(day_key, Call.call_type)
         )
     ).all()
 
@@ -1483,13 +1483,16 @@ async def analytics_summary(
         elif sentiment_value == "happy":
             point.happy = count
 
-    for day, count in missed_trend_rows:
-        trend.setdefault(day, AnalyticsTrendPoint(date=day)).missed_calls = int(count)
+    for day, call_type, count in outcome_trend_rows:
+        point = trend.setdefault(day, AnalyticsTrendPoint(date=day))
+        point.missed_calls += int(count)
+        point.call_types[call_type] = int(count)
 
     return AnalyticsSummary(
         from_date=from_date,
         to_date=to_date,
-        total_calls=int(totals[0]),
+        total_calls=int(totals[0] + totals[2]),
+        answered_calls=int(totals[0]),
         missed_calls=int(totals[2]),
         call_types=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in type_rows],
         total_minutes=round(int(totals[1]) / 60000, 1),
