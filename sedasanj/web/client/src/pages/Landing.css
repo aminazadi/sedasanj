@@ -53,16 +53,19 @@
 .site-benefits svg { color: #a09b7c; margin: 0 auto 22px; }
 .site-benefits p { color: var(--site-muted); font-size: 14px; margin-top: 12px; }
 .workflow-timeline { position: relative; margin: 76px 0 64px; }
+.timeline-art { position: absolute; top: 0; right: 0; width: 100%; height: 180px; overflow: visible; pointer-events: none; color: var(--site-primary); }
+.timeline-art.mobile-art { display: none; }
+.timeline-path { stroke: #b2ac88; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.timeline-art marker path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.timeline-progress { stroke: var(--site-primary); stroke-width: 4; stroke-dasharray: 42 1300; animation: timeline-flow 8s linear infinite; }
+@keyframes timeline-flow { to { stroke-dashoffset: -1342; } }
 .site-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .site-steps li { position: relative; z-index: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 0 18px; text-align: center; }
-.timeline-track { position: absolute; z-index: 0; top: 23px; right: 10%; left: 10%; height: 1px; background: var(--site-border); }
-.timeline-track i { position: absolute; top: -1px; right: 0; width: 30%; height: 3px; background: var(--site-primary); animation: workflow-travel 6s linear infinite; }
-.timeline-track i::after { position: absolute; top: -4px; left: -7px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid var(--site-primary); content: ""; }
-.timeline-node { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 22px; border: 1px solid #b2ac88; background: var(--site-canvas); color: var(--site-primary); transition: background-color 180ms ease, color 180ms ease; }
+.site-steps li:nth-child(even) { padding-top: 96px; }
+.timeline-node { display: grid; place-items: center; width: 60px; height: 60px; margin-bottom: 22px; border: 1px solid #b2ac88; background: var(--site-canvas); color: var(--site-primary); transition: background-color 180ms ease, color 180ms ease; }
 .site-steps li:hover .timeline-node { background: var(--site-primary); color: var(--site-canvas); }
-.site-steps h3 { margin-top: 8px; font-size: 21px; }
+.site-steps h3 { margin-top: 8px; font-size: 22px; }
 .site-steps p { margin-top: 10px; color: var(--site-muted); font-size: 12px; line-height: 1.9; }
-@keyframes workflow-travel { from { right: 0; } to { right: 70%; } }
 .site-intro { text-align: center; color: var(--site-muted); margin-top: 16px !important; font-size: 14px; }
 .site-billing { display: flex; justify-content: center; margin: 32px 0 48px; }
 .site-billing button { border: 1px solid #b2ac88; padding: 9px 26px; background: transparent; color: var(--site-primary); }
@@ -110,23 +113,23 @@
   .site-hero p { font-size: 14px; }
   .site-benefits { grid-template-columns: 1fr; gap: 48px; margin-top: 48px; }
   .site-benefits article { max-width: 360px; margin-inline: auto; }
-  .workflow-timeline { margin: 44px 0; }
+  .workflow-timeline { margin: 44px 0; padding-right: 0; }
+  .timeline-art.desktop-art { display: none; }
+  .timeline-art.mobile-art { display: block; top: 0; right: 0; width: 60px; height: calc(100% - 24px); }
+  .timeline-progress { stroke-dasharray: 36 1300; animation-name: timeline-flow-mobile; }
+  @keyframes timeline-flow-mobile { to { stroke-dashoffset: -1336; } }
   .site-steps { grid-template-columns: 1fr; gap: 0; }
-  .site-steps li { min-height: 118px; display: grid; grid-template-columns: 48px 1fr; align-items: start; gap: 18px; padding: 18px 0; text-align: right; }
-  .timeline-track { top: 22px; bottom: 22px; right: 23px; left: auto; width: 1px; height: auto; }
-  .timeline-track i { top: 0; right: -1px; width: 3px; height: 24%; animation-name: workflow-travel-mobile; }
-  .timeline-node { grid-column: 1; grid-row: 1 / span 2; margin: 0; }
-  .site-steps li > div { grid-column: 2; }
-  .site-steps h3 { margin-top: 2px; font-size: 20px; }
-  @keyframes workflow-travel-mobile { from { top: 0; } to { top: 76%; } }
-  .timeline-track i::after { top: auto; right: -4px; bottom: -7px; left: auto; border: 0; border-right: 5px solid transparent; border-left: 5px solid transparent; border-top: 7px solid var(--site-primary); }
+  .site-steps li, .site-steps li:nth-child(even) { min-height: 156px; display: grid; grid-template-columns: 60px 1fr; align-items: start; gap: 20px; padding: 18px 0; text-align: right; }
+  .timeline-node { grid-column: 1; grid-row: 1; width: 60px; height: 60px; margin: 0; }
+  .site-steps li > div { grid-column: 2; padding-top: 2px; }
+  .site-steps h3 { margin-top: 0; font-size: 21px; }
   .site-footer .site-container { flex-direction: column; gap: 24px; }
   .site-footer nav { justify-content: center; gap: 16px; }
   .site-cta { padding: 56px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .timeline-track i { animation: none; }
+  .timeline-progress { animation: none; stroke-dasharray: none; }
 }
 
 @media (max-width: 760px) {
