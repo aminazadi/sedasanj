@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Added the locally hosted Google Fonts Markazi Text Arabic subset for all landing page headings while keeping body text in Vazirmatn.
+
+## 2026-10-16 — AMINAZADI
+
 - Explicitly applied the locally bundled Vazirmatn font to landing page headings and verified the client uses no remote font imports.
 
 ## 2026-10-16 — AMINAZADI

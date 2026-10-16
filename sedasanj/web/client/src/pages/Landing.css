@@ -1,4 +1,14 @@
 .marketing-site {
+  --site-heading-font: "Markazi Text", Vazirmatn, sans-serif;
+}
+@font-face {
+  font-family: "Markazi Text";
+  src: url("../fonts/MarkaziText-Arabic.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+.marketing-site {
   --site-primary: #4b6e48;
   --site-canvas: #f2f0ef;
   --site-border: #d8d3c4;
@@ -28,7 +38,7 @@
 .site-hero { padding: 100px 0 120px; background-image: radial-gradient(circle, rgb(178 172 136 / .45) .8px, transparent 1px); background-size: 20px 20px; }
 .site-split { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 80px; }
 .marketing-site h1, .marketing-site h2, .marketing-site h3, .marketing-site p { margin: 0; }
-.marketing-site :is(h1, h2, h3) { font-family: Vazirmatn, sans-serif; font-synthesis: none; }
+.marketing-site :is(h1, h2, h3) { font-family: var(--site-heading-font); font-synthesis: none; }
 .marketing-site h1 { font-size: clamp(32px, 3.5vw, 50px); line-height: 1.65; font-weight: 800; letter-spacing: -.8px; }
 .site-hero p { margin-top: 24px; max-width: 470px; color: var(--site-muted); font-size: 16px; line-height: 2.1; }
 .site-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
