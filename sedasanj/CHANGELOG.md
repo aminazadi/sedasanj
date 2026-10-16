@@ -2,6 +2,11 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Added thin dividers between the six landing features, adapting to horizontal separators on mobile.
+- Expanded the landing page features to six manager-focused capabilities: reporting, operator evaluation, searchable transcripts, conversation analysis, follow-up management, and the organization assistant.
+
+## 2026-10-16 — AMINAZADI
+
 - Redesigned the public landing page with the panel’s forest-green and warm neutral palette, square corners, flat surfaces, and spacious responsive sections.
 - Removed heading overlines and promotional decorations, simplified feature and workflow previews, and retained live administrator-managed pricing.
 - Persisted the billing period in the URL and added pricing loading, empty, error, and retry states.
