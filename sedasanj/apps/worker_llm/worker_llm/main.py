@@ -405,45 +405,52 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                     call.progress_detail = str(restored_progress["progress_detail"])
                     call.updated_at = datetime.now(UTC)
             else:
-                billed = await billing.settle(
-                    session, tenant_id=tenant_id, call_id=call_id, actual_duration_ms=duration_ms
-                )
                 if call is not None:
-                    call.billed_seconds = billed
-                    call.status = "billed"
+                    if call.call_type == "voicemail":
+                        call.status = "complete"
+                        finished_progress = progress.values_for_status("complete")
+                        call.progress_pct = int(finished_progress["progress_pct"])
+                        call.progress_detail = str(finished_progress["progress_detail"])
+                    else:
+                        billed = await billing.settle(
+                            session, tenant_id=tenant_id, call_id=call_id, actual_duration_ms=duration_ms
+                        )
+                        call.billed_seconds = billed
+                        call.status = "billed"
+                        billed_progress = progress.values_for_status("billed")
+                        call.progress_pct = int(billed_progress["progress_pct"])
+                        call.progress_detail = str(billed_progress["progress_detail"])
                     call.error_code = None
-                    billed_progress = progress.values_for_status("billed")
-                    call.progress_pct = int(billed_progress["progress_pct"])
-                    call.progress_detail = str(billed_progress["progress_detail"])
                     call.updated_at = datetime.now(UTC)
-                notify_job = Job(
-                    tenant_id=tenant_id,
-                    call_id=call_id,
-                    kind="notify",
-                    status="queued",
-                    attempt=0,
-                )
-                session.add(notify_job)
-                await session.flush()
-                await processing_events.record(
-                    session,
-                    tenant_id=tenant_id,
-                    call_id=call_id,
-                    kind="notify",
-                    status="queued",
-                    progress_pct=90,
-                    message="اطلاع‌رسانی در صف پردازش قرار گرفت",
-                    step_key=f"{notify_job.id}:queued:0",
-                )
-                notify_outbox_id = await outbox.stage_job(
-                    session,
-                    job_id=notify_job.id,
-                    tenant_id=tenant_id,
-                    call_id=call_id,
-                    kind="notify",
-                    event="call.complete",
-                    available_at=datetime.now(UTC) + timedelta(hours=1),
-                )
+                if call is None or call.call_type != "voicemail":
+                    notify_job = Job(
+                        tenant_id=tenant_id,
+                        call_id=call_id,
+                        kind="notify",
+                        status="queued",
+                        attempt=0,
+                    )
+                    session.add(notify_job)
+                    await session.flush()
+                    await processing_events.record(
+                        session,
+                        tenant_id=tenant_id,
+                        call_id=call_id,
+                        kind="notify",
+                        status="queued",
+                        progress_pct=90,
+                        message="اطلاع‌رسانی در صف پردازش قرار گرفت",
+                        step_key=f"{notify_job.id}:queued:0",
+                    )
+                    notify_outbox_id = await outbox.stage_job(
+                        session,
+                        job_id=notify_job.id,
+                        tenant_id=tenant_id,
+                        call_id=call_id,
+                        kind="notify",
+                        event="call.complete",
+                        available_at=datetime.now(UTC) + timedelta(hours=1),
+                    )
 
         if reanalysis:
             try:

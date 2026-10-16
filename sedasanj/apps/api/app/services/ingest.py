@@ -61,7 +61,7 @@ async def accept_upload(
     tenant_id: UUID,
     payload: bytes | Path,
     asterisk_uniqueid: str,
-    caller_number: str,
+    caller_number: str | None,
     dialed_number: str,
     started_at: datetime | None,
     ended_at: datetime | None,
@@ -71,13 +71,18 @@ async def accept_upload(
     source: str | None = None,
     external_reference: str | None = None,
     idempotency_key: str | None = None,
+    call_type: str = "answered",
+    billable: bool = True,
+    voicemail_context: str | None = None,
+    voicemail_folder: str | None = None,
+    voicemail_message_id: str | None = None,
 ) -> IngestResult:
     """§4.3 upload contract: validate, reserve credit, store, queue ASR."""
     settings = get_settings()
     unique_id = resolve_uniqueid(asterisk_uniqueid)
-    caller_number = normalize_call_number(caller_number)
+    caller_number = normalize_call_number(caller_number or "") or None
     dialed_number = normalize_call_number(dialed_number)
-    if not caller_number or not dialed_number:
+    if (not caller_number and call_type != "voicemail") or not dialed_number:
         raise ApiError("invalid_request", "caller_number and dialed_number are required")
     if direction is not None and direction not in DIRECTIONS:
         raise ApiError("invalid_request", f"direction must be one of {', '.join(DIRECTIONS)}")
@@ -128,13 +133,14 @@ async def accept_upload(
             tenant = await session.get(Tenant, tenant_id)
             if tenant is None:
                 raise ApiError("unauthorized", "tenant not found")
-            entitlement = await entitlements.require_upload_consumption(
-                session,
-                tenant_id,
-                price_per_minute_toman=tenant.price_per_minute_toman,
-            )
-            tenant.price_per_minute_toman = entitlement.price_per_minute_toman
-            await _assert_quota(session, tenant, probe.duration_ms)
+            if billable:
+                entitlement = await entitlements.require_upload_consumption(
+                    session,
+                    tenant_id,
+                    price_per_minute_toman=tenant.price_per_minute_toman,
+                )
+                tenant.price_per_minute_toman = entitlement.price_per_minute_toman
+                await _assert_quota(session, tenant, probe.duration_ms)
 
             call = Call(
                 tenant_id=tenant_id,
@@ -146,6 +152,10 @@ async def accept_upload(
                 campaign_id=(campaign_id or "").strip() or None,
                 source=(source or "").strip() or None,
                 external_reference=(external_reference or "").strip() or None,
+                call_type=call_type,
+                voicemail_context=voicemail_context,
+                voicemail_folder=voicemail_folder,
+                voicemail_message_id=voicemail_message_id,
                 started_at=started_at,
                 ended_at=ended_at,
                 duration_ms=probe.duration_ms,
@@ -189,31 +199,33 @@ async def accept_upload(
                 message=str(received["progress_detail"]),
             )
 
-            try:
-                reservation = await billing.reserve(
-                    session, tenant=tenant, call_id=call.id, duration_ms=probe.duration_ms
-                )
-            except ApiError as exc:
-                if exc.code == "insufficient_credit":
-                    credit_rejects_total.labels(tenant=str(tenant_id)).inc()
-                    ingest_total.labels(tenant=str(tenant_id), result="insufficient_credit").inc()
-                raise
+            reservation = None
+            if billable:
+                try:
+                    reservation = await billing.reserve(
+                        session, tenant=tenant, call_id=call.id, duration_ms=probe.duration_ms
+                    )
+                except ApiError as exc:
+                    if exc.code == "insufficient_credit":
+                        credit_rejects_total.labels(tenant=str(tenant_id)).inc()
+                        ingest_total.labels(tenant=str(tenant_id), result="insufficient_credit").inc()
+                    raise
 
-            call.status = "reserved"
-            reserved = progress.values_for_status("reserved")
-            call.progress_pct = int(reserved["progress_pct"])
-            call.progress_detail = str(reserved["progress_detail"])
-            await processing_events.record(
-                session,
-                tenant_id=tenant_id,
-                call_id=call.id,
-                kind="pipeline",
-                status="reserved",
-                progress_pct=int(reserved["progress_pct"]),
-                message=str(reserved["progress_detail"]),
-            )
+                call.status = "reserved"
+                reserved = progress.values_for_status("reserved")
+                call.progress_pct = int(reserved["progress_pct"])
+                call.progress_detail = str(reserved["progress_detail"])
+                await processing_events.record(
+                    session,
+                    tenant_id=tenant_id,
+                    call_id=call.id,
+                    kind="pipeline",
+                    status="reserved",
+                    progress_pct=int(reserved["progress_pct"]),
+                    message=str(reserved["progress_detail"]),
+                )
             call_id = call.id
-            reservation_id = reservation.id
+            reservation_id = reservation.id if reservation is not None else None
             retention_days = tenant.audio_retention_days
     except IntegrityError:
         replay = await _replay(tenant_id, unique_id)
@@ -231,7 +243,8 @@ async def accept_upload(
             await storage.put(object_key, payload)
     except Exception as exc:
         async with session_scope(tenant_id) as session:
-            await billing.release(session, tenant_id=tenant_id, call_id=call_id)
+            if billable:
+                await billing.release(session, tenant_id=tenant_id, call_id=call_id)
             await session.execute(
                 update(Call)
                 .where(Call.id == call_id)
@@ -276,7 +289,7 @@ async def accept_upload(
             await session.flush()
             await session.execute(
                 update(Call)
-                .where(Call.id == call_id, Call.status == "reserved")
+                .where(Call.id == call_id, Call.status == ("reserved" if billable else "received"))
                 .values(
                     audio_id=audio.id,
                     status="stored",
@@ -326,7 +339,8 @@ async def accept_upload(
     except Exception as exc:
         await storage.delete(object_key)
         async with session_scope(tenant_id) as session:
-            await billing.release(session, tenant_id=tenant_id, call_id=call_id)
+            if billable:
+                await billing.release(session, tenant_id=tenant_id, call_id=call_id)
             await session.execute(
                 update(Call)
                 .where(Call.id == call_id)

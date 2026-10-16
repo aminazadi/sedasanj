@@ -29,6 +29,7 @@ router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
 async def ingest_missed_call(
     principal: ApiKeyDep, session: ApiKeySession, payload: MissedCallIngest
 ) -> dict[str, object]:
+    """Accept an idempotent metadata-only no-answer, busy, congestion, failed, or canceled call event."""
     tenant_id = principal.tenant_id
     assert tenant_id is not None
     unique_id = payload.asterisk_uniqueid.strip()
@@ -51,7 +52,7 @@ async def ingest_missed_call(
         "duration_ms": duration_ms,
         "billed_seconds": None,
         "status": "missed",
-        "call_type": "missed",
+        "call_type": payload.call_type,
     }
     statement = pg_insert(Call).values(**values).on_conflict_do_nothing(
         constraint="calls_tenant_uniqueid_key"
@@ -214,6 +215,67 @@ async def ingest_call(
             source=source,
             external_reference=external_reference,
             idempotency_key=idempotency_key,
+        )
+    if result.replayed:
+        response.status_code = status.HTTP_200_OK
+    return result.accepted
+
+
+@router.post("/voicemails", response_model=IngestAccepted, status_code=status.HTTP_201_CREATED)
+async def ingest_voicemail(
+    principal: ApiKeyDep,
+    response: Response,
+    session: ApiKeySession,
+    file: Annotated[UploadFile, File()],
+    asterisk_uniqueid: Annotated[str, Form()],
+    mailbox: Annotated[str, Form()],
+    started_at: Annotated[datetime, Form()],
+    context: Annotated[str, Form()] = "default",
+    folder: Annotated[str, Form()] = "INBOX",
+    message_id: Annotated[str | None, Form()] = None,
+    caller_number: Annotated[str | None, Form()] = None,
+    archive_password: Annotated[str | None, Header(alias="X-CBI-Archive-Password")] = None,
+) -> IngestAccepted:
+    tenant_id = principal.tenant_id
+    assert tenant_id is not None
+    unique_id = asterisk_uniqueid.strip()
+    mailbox_value = mailbox.strip()
+    context_value = context.strip()
+    folder_value = folder.strip()
+    if not unique_id or not mailbox_value or not context_value or not folder_value:
+        raise ApiError("invalid_request", "voicemail identity and mailbox metadata are required")
+    if folder_value.lower() == "tmp":
+        raise ApiError("invalid_request", "temporary voicemail folders cannot be ingested")
+
+    api_key = await _control_api_key(principal.id)
+    password_configured = api_key.archive_password_hash is not None
+    await _validate_archive_password(api_key, archive_password)
+    with tempfile.TemporaryDirectory(prefix="cbi-voicemail-") as tmp:
+        audio_path = await prepare_agent_audio(
+            file,
+            api_key.archive_format,
+            archive_password,
+            password_configured,
+            Path(tmp),
+            get_settings(),
+        )
+        result = await accept_upload(
+            tenant_id=tenant_id,
+            payload=audio_path,
+            asterisk_uniqueid=unique_id,
+            caller_number=caller_number,
+            dialed_number=mailbox_value,
+            started_at=started_at,
+            ended_at=None,
+            direction="inbound",
+            source="freepbx_voicemail",
+            external_reference=unique_id,
+            idempotency_key=unique_id,
+            call_type="voicemail",
+            billable=False,
+            voicemail_context=context_value,
+            voicemail_folder=folder_value,
+            voicemail_message_id=message_id.strip() if message_id else None,
         )
     if result.replayed:
         response.status_code = status.HTTP_200_OK

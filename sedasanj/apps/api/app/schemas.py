@@ -28,6 +28,8 @@ Intent = Literal[
     "other",
 ]
 WebhookEvent = Literal["call.complete", "call.failed", "balance.low", "sales.insight"]
+CallType = Literal["answered", "no_answer", "busy", "congestion", "failed", "canceled", "voicemail"]
+UnansweredCallType = Literal["no_answer", "busy", "congestion", "failed", "canceled"]
 
 
 def _normalize_sentiment(value: object) -> object:
@@ -125,10 +127,23 @@ class IngestAccepted(BaseModel):
     reservation_id: UUID | None
 
 
+class VoicemailIngestMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asterisk_uniqueid: str = Field(min_length=1, max_length=255)
+    mailbox: str = Field(min_length=1, max_length=80)
+    context: str = Field(default="default", min_length=1, max_length=120)
+    folder: str = Field(min_length=1, max_length=80)
+    message_id: str | None = Field(default=None, max_length=255)
+    caller_number: str | None = Field(default=None, max_length=80)
+    started_at: datetime
+
+
 class MissedCallIngest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     asterisk_uniqueid: str = Field(min_length=1, max_length=255)
+    call_type: UnansweredCallType = "no_answer"
     caller_number: str = Field(min_length=1, max_length=80)
     dialed_number: str = Field(min_length=1, max_length=80)
     started_at: datetime
@@ -669,7 +684,10 @@ class CallSummary(BaseModel):
     ended_at: datetime
     updated_at: datetime
     duration_ms: int
-    call_type: Literal["answered", "missed"] = "answered"
+    call_type: CallType = "answered"
+    voicemail_context: str | None = None
+    voicemail_folder: str | None = None
+    voicemail_message_id: str | None = None
     billed_seconds: int | None
     status: str
     error_code: str | None
@@ -795,6 +813,8 @@ class AnalyticsBucket(BaseModel):
 class AnalyticsTrendPoint(BaseModel):
     date: str
     missed_calls: int = 0
+    voicemail_calls: int = 0
+    call_types: dict[str, int] = Field(default_factory=dict)
     angry: int = 0
     sad: int = 0
     neutral: int = 0
@@ -806,7 +826,12 @@ class AnalyticsSummary(BaseModel):
     from_date: datetime
     to_date: datetime
     total_calls: int
+    answered_calls: int = 0
     missed_calls: int = 0
+    voicemail_calls: int = 0
+    voicemail_duration_ms: int = 0
+    voicemail_transcribed: int = 0
+    voicemail_transcription_rate: float = 0
     call_types: list[AnalyticsBucket] = Field(default_factory=list)
     total_minutes: float
     intents: list[AnalyticsBucket]

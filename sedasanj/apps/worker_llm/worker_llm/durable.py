@@ -497,6 +497,14 @@ async def _finalize(tenant_id: UUID, run_id: UUID, result: ExtractionResult, raw
             call.progress_detail = str(values["progress_detail"])
             call.updated_at = datetime.now(UTC)
             return
+        if call.call_type == "voicemail":
+            call.status = "complete"
+            values = progress.values_for_status("complete")
+            call.progress_pct = int(values["progress_pct"])
+            call.progress_detail = str(values["progress_detail"])
+            call.error_code = None
+            call.updated_at = datetime.now(UTC)
+            return
         billed = await billing.settle(
             session,
             tenant_id=tenant_id,

@@ -736,7 +736,12 @@ export default function Assistant() {
         });
       } else if (event === "message:completed" || event === "done") {
         const rawMessage = payload.message;
-        if (!rawMessage) return;
+        if (!rawMessage) {
+          setSending(false);
+          setProcessingConversationId(null);
+          setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
+          return;
+        }
         const message = rawMessage as ChatMessage;
         const result = { message, conversationTitle: payload.conversation_title || null };
         setMessages((current) => current.map((item) => item.id === draftId ? message : item));
@@ -751,9 +756,12 @@ export default function Assistant() {
         completedRunsRef.current.set(runId, result);
         completionWaitersRef.current.get(runId)?.(result);
         completionWaitersRef.current.delete(runId);
+        window.setTimeout(() => completedRunsRef.current.delete(runId), 30000);
       } else if (event === "cancelled") {
         setSending(false);
         setProcessingConversationId(null);
+        const draftId = messageForRun(runId);
+        setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
       }
     };
     socket.on("connect", () => {
@@ -787,6 +795,9 @@ export default function Assistant() {
         setSending(true);
         setProcessingConversationId(String(state.conversation_id));
         for (const run of state.active_runs) for (const event of run.events || []) applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
+      } else {
+        setSending(false);
+        setProcessingConversationId(null);
       }
     });
     for (const event of ["delta", "replace", "phase", "tool_started", "tool_completed", "tool_failed", "message:completed", "done", "cancelled"]) {
@@ -892,6 +903,10 @@ export default function Assistant() {
           resolve(cached);
         } else completionWaitersRef.current.set(String(acknowledged.run_id), resolve);
       });
+      if (active && reply.conversationTitle) {
+        setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
+        setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: reply.conversationTitle } : item));
+      }
       setAttachments(emptyAttachments());
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
@@ -1110,7 +1125,8 @@ export default function Assistant() {
     <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0">
       <div className="absolute inset-x-3 top-3 z-20 md:inset-x-4 md:top-4">
         <ErrorBox message={error} className="absolute right-0 top-0 mb-0 max-w-[calc(100%-6rem)] shadow-sm" />
-        <div className="absolute left-0 top-0 flex gap-2">
+        <div className="absolute left-0 top-0 flex items-center gap-2">
+          {!socketConnected ? <span className="inline-flex h-11 items-center gap-2 border border-[#B2AC88] bg-white px-3 text-xs font-bold text-[#898989]" role="status"><span className="h-3 w-3 animate-spin rounded-full border-2 border-[#B2AC88] border-t-[#4B6E48]" />در حال اتصال</span> : null}
           {training ? <button type="button" className={`inline-flex h-11 items-center gap-2 border px-3 text-xs font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${memoryPanelOpen ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => setMemoryPanelOpen(!memoryPanelOpen)} aria-expanded={memoryPanelOpen} aria-controls="organization-memory-panel"><span>مموری‌ها</span>{memories.length ? <span className={`inline-flex min-w-5 items-center justify-center px-1 text-[10px] ${memoryPanelOpen ? "bg-white text-[#4B6E48]" : "bg-[#F2F0EF] text-[#4B6E48]"}`}>{fmt.int(memories.length)}</span> : null}</button> : null}
           {!training ? <IconTooltip label="چت موقت بدون ذخیره‌سازی">
             <button type="button" className={`inline-flex h-11 w-11 items-center justify-center border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${ephemeral ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:border-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={createEphemeral} aria-label="شروع چت موقت بدون ذخیره‌سازی" aria-pressed={ephemeral}><TemporaryChatIcon /></button>
@@ -1155,7 +1171,6 @@ export default function Assistant() {
       </div>
       {showScrollToEnd ? <button type="button" className="absolute bottom-[7rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
       <form ref={composerRef} className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
-        <div className={`mb-2 flex items-center gap-2 text-[11px] ${socketConnected ? "text-[#4B6E48]" : "text-rose-700"}`} role="status"><span className={`inline-block h-2 w-2 rounded-full ${socketConnected ? "bg-emerald-600" : "bg-rose-600"}`} />{socketConnected ? "اتصال زنده برقرار است" : "در حال اتصال به دستیار…"}</div>
         {!training && mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-3 py-2"><strong className="text-xs text-[#4B6E48]">{mentionTab === "mentions" ? `نتایج برای @${mentionQuery}` : mentionTab === "dates" ? "انتخاب بازه زمانی" : "انتخاب ابزارها"}</strong><button type="button" className="px-2 py-1 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button></div>
           <div className="space-y-1 p-2">

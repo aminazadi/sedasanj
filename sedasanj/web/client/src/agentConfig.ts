@@ -61,6 +61,7 @@ export function freePbxModuleConfig(
           retention_days: 90,
         },
         logging: { log_level: "INFO" },
+        missed_calls: { enabled: true, poll_interval_seconds: 30 },
       },
     },
     null,

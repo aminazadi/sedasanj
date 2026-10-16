@@ -19,7 +19,10 @@ export interface CallSummary {
   ended_at: string;
   updated_at: string;
   duration_ms: number;
-  call_type: "answered" | "missed";
+  call_type: "answered" | "no_answer" | "busy" | "congestion" | "failed" | "canceled" | "voicemail";
+  voicemail_context: string | null;
+  voicemail_folder: string | null;
+  voicemail_message_id: string | null;
   billed_seconds: number | null;
   status: string;
   error_code: string | null;
@@ -325,6 +328,8 @@ export interface AnalyticsBucket {
 export interface AnalyticsTrendPoint {
   date: string;
   missed_calls: number;
+  voicemail_calls: number;
+  call_types: Record<string, number>;
   angry: number;
   sad: number;
   neutral: number;
@@ -336,7 +341,12 @@ export interface AnalyticsSummary {
   from_date: string;
   to_date: string;
   total_calls: number;
+  answered_calls: number;
   missed_calls: number;
+  voicemail_calls: number;
+  voicemail_duration_ms: number;
+  voicemail_transcribed: number;
+  voicemail_transcription_rate: number;
   call_types: AnalyticsBucket[];
   total_minutes: number;
   intents: AnalyticsBucket[];
@@ -369,6 +379,8 @@ export interface KpiDashboard {
     calls: number;
     answered_calls: number;
     missed_calls: number;
+    voicemail_calls: number;
+    call_types: Record<string, number>;
     effective_calls: number;
     opportunities: number;
     wins: number;
@@ -377,6 +389,12 @@ export interface KpiDashboard {
   cards: {
     total_calls: number;
     missed_calls: number;
+    voicemail_calls: number;
+    previous_voicemail_calls: number;
+    voicemail_total_duration_ms: number;
+    voicemail_average_duration_ms: number;
+    voicemail_transcribed_calls: number;
+    voicemail_transcription_rate: number;
     previous_total_calls: number;
     previous_missed_calls: number;
     effective_calls: number;
@@ -407,6 +425,8 @@ export interface KpiDashboard {
     };
     goal_achievement: Array<{ metric: string; actual: number | null; target: number; achievement: number | null }>;
   };
+  call_types: AnalyticsBucket[];
+  voicemail_mailboxes: Array<{ mailbox: string; count: number }>;
   funnel: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null; previous_count?: number; change_percent?: number | null }>;
   funnel_views: {
     engagement: Array<{ key: string; count: number; pass_rate: number | null; drop_rate: number | null }>;
@@ -424,6 +444,7 @@ export interface KpiDashboard {
     operator_id: string;
     operator_label: string;
     calls: number;
+    missed_calls: number;
     wins: number;
     opportunities: number;
     conversion: RateMetric;

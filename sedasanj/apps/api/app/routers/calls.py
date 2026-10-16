@@ -318,6 +318,9 @@ def _summary(call: Call, insight: CallInsight | None, *, hide_billing: bool = Fa
         updated_at=updated_at,
         duration_ms=call.duration_ms,
         call_type=call.call_type,
+        voicemail_context=call.voicemail_context,
+        voicemail_folder=call.voicemail_folder,
+        voicemail_message_id=call.voicemail_message_id,
         billed_seconds=None if hide_billing else call.billed_seconds,
         status=call.status,
         error_code=None,
@@ -376,7 +379,7 @@ async def _load_call(
 async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) -> CallDetail:
     assert principal.tenant_id is not None
     call = await _load_call(session, call_id, principal.tenant_id, principal)
-    if call.call_type != "answered":
+    if call.call_type not in {"answered", "voicemail"}:
         return CallDetail(
             **_summary(call, None, hide_billing=operator_scope.is_operator(principal)).model_dump(),
             audio_available=False,
@@ -717,12 +720,13 @@ async def retry_transcription(
         tenant = await session.get(Tenant, tenant_id)
         if tenant is None:
             raise ApiError("not_found", "tenant not found")
-        await billing.reserve_retry(
-            session,
-            tenant=tenant,
-            call_id=call_id,
-            duration_ms=audio.duration_ms,
-        )
+        if call.call_type != "voicemail":
+            await billing.reserve_retry(
+                session,
+                tenant=tenant,
+                call_id=call_id,
+                duration_ms=audio.duration_ms,
+            )
 
         models = await effective_models(session)
         job = Job(
@@ -1382,7 +1386,9 @@ async def analytics_summary(
             select(
                 func.count(Call.id).filter(Call.call_type == "answered"),
                 func.coalesce(func.sum(Call.duration_ms).filter(Call.call_type == "answered"), 0),
-                func.count(Call.id).filter(Call.call_type != "answered"),
+                func.count(Call.id).filter(Call.call_type.in_(UNANSWERED_CALL_TYPES)),
+                func.count(Call.id).filter(Call.call_type == "voicemail"),
+                func.coalesce(func.sum(Call.duration_ms).filter(Call.call_type == "voicemail"), 0),
             ).where(window)
         )
     ).one()
@@ -1463,11 +1469,34 @@ async def analytics_summary(
     outcome_trend_rows = (
         await session.execute(
             select(day_key, Call.call_type, func.count())
-            .where(type_window, Call.call_type != "answered")
+            .where(type_window, Call.call_type.in_(UNANSWERED_CALL_TYPES))
             .group_by(day_key, Call.call_type)
             .order_by(day_key, Call.call_type)
         )
     ).all()
+    voicemail_trend_rows = (
+        await session.execute(
+            select(day_key, func.count())
+            .where(type_window, Call.call_type == "voicemail")
+            .group_by(day_key)
+            .order_by(day_key)
+        )
+    ).all()
+    voicemail_ids = (
+        await session.execute(
+            select(Call.id).where(type_window, Call.call_type == "voicemail")
+        )
+    ).scalars().all()
+    voicemail_transcribed = 0
+    if voicemail_ids:
+        voicemail_transcribed = int(
+            await session.scalar(
+                select(func.count(func.distinct(Transcript.call_id))).where(
+                    Transcript.tenant_id == principal.tenant_id,
+                    Transcript.call_id.in_(voicemail_ids),
+                )
+            ) or 0
+        )
 
     trend: dict[str, AnalyticsTrendPoint] = {}
     for day, sentiment_value, count in trend_rows:
@@ -1488,12 +1517,19 @@ async def analytics_summary(
         point.missed_calls += int(count)
         point.call_types[call_type] = int(count)
 
+    for day, count in voicemail_trend_rows:
+        trend.setdefault(day, AnalyticsTrendPoint(date=day)).voicemail_calls = int(count)
+
     return AnalyticsSummary(
         from_date=from_date,
         to_date=to_date,
         total_calls=int(totals[0] + totals[2]),
         answered_calls=int(totals[0]),
         missed_calls=int(totals[2]),
+        voicemail_calls=int(totals[3]),
+        voicemail_duration_ms=int(totals[4]),
+        voicemail_transcribed=voicemail_transcribed,
+        voicemail_transcription_rate=round(voicemail_transcribed * 100 / totals[3], 1) if totals[3] else 0,
         call_types=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in type_rows],
         total_minutes=round(int(totals[1]) / 60000, 1),
         intents=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in intents],

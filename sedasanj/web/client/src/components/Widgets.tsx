@@ -94,6 +94,11 @@ export function Pagination({
 export function StatusBadge({ status }: { status: string }) {
   const tones: Record<string, string> = {
     missed: "border-rose-200 bg-rose-50 text-rose-700",
+    no_answer: "border-rose-200 bg-rose-50 text-rose-700",
+    busy: "border-amber-200 bg-amber-50 text-amber-700",
+    congestion: "border-orange-200 bg-orange-50 text-orange-700",
+    failed: "border-red-200 bg-red-50 text-red-700",
+    canceled: "border-slate-300 bg-slate-100 text-slate-600",
     received: "border-sky-200 bg-sky-50 text-sky-700",
     reserved: "border-violet-200 bg-violet-50 text-violet-700",
     stored: "border-indigo-200 bg-indigo-50 text-indigo-700",
@@ -109,7 +114,6 @@ export function StatusBadge({ status }: { status: string }) {
     complete: "border-emerald-200 bg-emerald-50 text-emerald-700",
     failed_retryable: "border-orange-200 bg-orange-50 text-orange-700",
     failed_terminal: "border-rose-200 bg-rose-50 text-rose-700",
-    canceled: "border-slate-300 bg-slate-100 text-slate-600",
   };
   const tone = tones[status] ?? "border-slate-200 bg-slate-50 text-slate-600";
   return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{STATUS_LABELS[status] ?? status}</span>;

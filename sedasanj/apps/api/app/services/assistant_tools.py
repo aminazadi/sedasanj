@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ApiError
 from app.metrics import assistant_tool_calls_total, assistant_tool_seconds
 from app.models import (
+    CALL_TYPES,
+    UNANSWERED_CALL_TYPES,
     Call,
     CallInsight,
     CallOperatorAssignment,
@@ -70,7 +72,7 @@ class AnalyticsArguments(WindowArguments):
     direction: str | None = Field(default=None, max_length=30)
     sentiment: str | None = Field(default=None, max_length=30)
     topic: str | None = Field(default=None, max_length=120)
-    call_type: Literal["answered", "missed"] | None = None
+    call_type: Literal["answered", "no_answer", "busy", "congestion", "failed", "canceled", "voicemail"] | None = None
 
 
 class OperatorPerformanceArguments(WindowArguments):
@@ -185,7 +187,7 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         stmt = stmt.where(or_(Call.caller_number.ilike(pattern), Call.dialed_number.ilike(pattern)))
     for column, value in (
         (Call.agent_extension, args.extension),
-        (Call.call_type if args.status in {"answered", "missed"} else Call.status, args.status),
+        (Call.call_type if args.status in CALL_TYPES else Call.status, args.status),
         (Call.direction, args.direction),
         (Call.campaign_id, args.campaign_id),
         (CallInsight.sentiment, args.sentiment),
@@ -208,6 +210,8 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         "items": [
             {
                 "call_id": str(call.id),
+                "call_type": call.call_type,
+                "record_type": "voicemail" if call.call_type == "voicemail" else "conversation" if call.call_type == "answered" else "metadata_only",
                 "started_at": call.started_at.isoformat(),
                 "ended_at": call.ended_at.isoformat(),
                 "duration_seconds": round(call.duration_ms / 1000),
@@ -219,6 +223,9 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "agent_extension": call.agent_extension,
                 "campaign_id": call.campaign_id,
                 "external_reference": call.external_reference,
+                "voicemail_context": call.voicemail_context,
+                "voicemail_folder": call.voicemail_folder,
+                "voicemail_message_id": call.voicemail_message_id,
                 "summary": insight.summary if insight else None,
                 "intent": insight.intent if insight else None,
                 "topics": insight.topics if insight else [],
@@ -279,6 +286,9 @@ async def _call_details(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "caller_number": call.caller_number,
                 "dialed_number": call.dialed_number,
                 "agent_extension": call.agent_extension,
+                "voicemail_context": call.voicemail_context,
+                "voicemail_folder": call.voicemail_folder,
+                "voicemail_message_id": call.voicemail_message_id,
                 "summary": insights.get(call.id).summary if insights.get(call.id) else None,
                 "transcript": (
                     transcripts[call.id].corrected_text or transcripts[call.id].full_text
@@ -418,7 +428,7 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         ).exists())
     for column, value in (
         (Call.campaign_id, args.campaign_id),
-        (Call.call_type if args.status in {"answered", "missed"} else Call.status, args.status),
+        (Call.call_type if args.status in CALL_TYPES else Call.status, args.status),
         (Call.direction, args.direction),
     ):
         if value:
@@ -434,22 +444,37 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     filtered = stmt.subquery()
     query = select(
         func.count(filtered.c.id),
-        func.coalesce(func.sum(filtered.c.duration_ms), 0),
-        func.coalesce(func.avg(filtered.c.duration_ms), 0),
+        func.coalesce(func.sum(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"), 0),
+        func.coalesce(func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"), 0),
+        func.count(filtered.c.id).filter(filtered.c.call_type == "voicemail"),
+        func.coalesce(func.sum(filtered.c.duration_ms).filter(filtered.c.call_type == "voicemail"), 0),
+        func.coalesce(func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "voicemail"), 0),
     )
-    total, duration, average = (await ctx.session.execute(query)).one()
+    total, duration, average, voicemail_total, voicemail_duration, voicemail_average = (await ctx.session.execute(query)).one()
     status_rows = (await ctx.session.execute(
         select(filtered.c.status, func.count()).where(filtered.c.call_type == "answered").group_by(filtered.c.status)
     )).all()
     call_type_rows = (await ctx.session.execute(
         select(filtered.c.call_type, func.count()).group_by(filtered.c.call_type)
     )).all()
+    voicemail_transcribed = int(
+        await ctx.session.scalar(
+            select(func.count(func.distinct(Transcript.call_id)))
+            .join(filtered, filtered.c.id == Transcript.call_id)
+            .where(filtered.c.call_type == "voicemail")
+        ) or 0
+    )
     return {
         "version": 1,
         "from_date": start.isoformat(),
         "to_date": end.isoformat(),
         "total_calls": int(total),
-        "missed_calls": sum(int(value) for key, value in call_type_rows if key == "missed"),
+        "missed_calls": sum(int(value) for key, value in call_type_rows if key in UNANSWERED_CALL_TYPES),
+        "voicemail_calls": int(voicemail_total),
+        "voicemail_duration_minutes": round(int(voicemail_duration) / 60000, 1),
+        "voicemail_average_duration_seconds": round(float(voicemail_average) / 1000, 1),
+        "voicemail_transcribed_calls": voicemail_transcribed,
+        "voicemail_transcription_rate": round(voicemail_transcribed * 100 / int(voicemail_total), 1) if voicemail_total else 0,
         "call_types": {str(key): int(value) for key, value in call_type_rows},
         "statuses": {str(key): int(value) for key, value in status_rows},
         "total_minutes": round(int(duration) / 60000, 1),
@@ -559,7 +584,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             ).exists())
         for column, value in (
             (Call.campaign_id, args.campaign_id),
-            (Call.call_type if args.status in {"answered", "missed"} else Call.status, args.status),
+            (Call.call_type if args.status in CALL_TYPES else Call.status, args.status),
             (Call.direction, args.direction),
         ):
             if value:
@@ -575,7 +600,14 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         filtered = trend_stmt.subquery()
         day = func.date_trunc("day", filtered.c.started_at).label("day")
         rows = (await ctx.session.execute(
-            select(day, func.count(), func.coalesce(func.avg(filtered.c.duration_ms), 0))
+            select(
+                day,
+                func.count(),
+                func.coalesce(
+                    func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"),
+                    0,
+                ),
+            )
             .group_by(day)
             .order_by(day)
         )).all()
@@ -589,7 +621,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         ]
         if args.call_type is None:
             missed_stmt = _apply_window(_base_calls(ctx), start, end).where(
-                Call.call_type == "missed"
+                Call.call_type.in_(UNANSWERED_CALL_TYPES)
             )
             missed_operator_id = await _validate_operator(ctx, args.operator_id)
             if missed_operator_id is not None and not operator_scope.is_operator(ctx.principal):
@@ -610,17 +642,39 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             missed_filtered = missed_stmt.subquery()
             missed_rows = (
                 await ctx.session.execute(
-                    select(func.date_trunc("day", missed_filtered.c.started_at), func.count())
-                    .group_by(func.date_trunc("day", missed_filtered.c.started_at))
-                    .order_by(func.date_trunc("day", missed_filtered.c.started_at))
+                    select(
+                        func.date_trunc("day", missed_filtered.c.started_at),
+                        missed_filtered.c.call_type,
+                        func.count(),
+                    )
+                    .group_by(
+                        func.date_trunc("day", missed_filtered.c.started_at),
+                        missed_filtered.c.call_type,
+                    )
+                    .order_by(
+                        func.date_trunc("day", missed_filtered.c.started_at),
+                        missed_filtered.c.call_type,
+                    )
                 )
             ).all()
-            missed_by_day = {row[0].date().isoformat(): int(row[1]) for row in missed_rows}
+            missed_by_day: dict[str, int] = {}
+            missed_by_type: dict[str, dict[str, int]] = {}
+            for day_value, call_type, count in missed_rows:
+                day_label = day_value.date().isoformat()
+                missed_by_day[day_label] = missed_by_day.get(day_label, 0) + int(count)
+                missed_by_type.setdefault(day_label, {})[call_type] = int(count)
             for item in data:
                 item["missed_calls"] = missed_by_day.get(item["label"], 0)
+                item["call_types"] = missed_by_type.get(item["label"], {})
             existing_days = {item["label"] for item in data}
             data.extend(
-                {"label": day, "value": 0, "secondary_value": 0, "missed_calls": count}
+                {
+                    "label": day,
+                    "value": 0,
+                    "secondary_value": 0,
+                    "missed_calls": count,
+                    "call_types": missed_by_type.get(day, {}),
+                }
                 for day, count in missed_by_day.items()
                 if day not in existing_days
             )
@@ -633,9 +687,9 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             for label, value in result["statuses"].items()
         ]
         data.extend(
-            {"label": "بی‌پاسخ", "value": value}
+            {"label": key, "value": value}
             for key, value in result["call_types"].items()
-            if key == "missed"
+            if key in UNANSWERED_CALL_TYPES
         )
         chart_types = args.chart_types or ["donut"]
         title = "توزیع وضعیت و نوع تماس"

@@ -2,7 +2,23 @@
 
 ## 2026-10-16 — AMINAZADI
 
-- Expanded metadata-only missed-call events with precise Asterisk dispositions and added the FreePBX module 1.1.8 CDR poller.
+- Added opt-in FreePBX voicemail scanning and a dedicated upload endpoint with idempotent, zero-credit audio transcription and analysis.
+- Added voicemail call metadata, playback and transcript visibility, separate dashboard metrics, and tenant-scoped assistant search and statistics.
+
+## 2026-10-16 — AMINAZADI
+
+- Expanded metadata-only call ingestion to distinguish no-answer, busy, congestion, failed, and canceled Asterisk dispositions and added the matching FreePBX module release.
+- Added linkedid-based read-only CDR polling, persistent cursor and retry spool, admin configuration and CDR readiness guidance, and backward-compatible module profiles.
+- Added call-type visibility to assistant search results and updated the calls filter and dashboard distribution.
+
+## 2026-10-16 — AMINAZADI
+
+- Fixed call detail requests failing when `call_type` was passed twice to the response schema.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved assistant socket connection status from the composer to the chat toolbar, showing a loading indicator only while connecting.
+- Released the assistant composer when completion, cancellation, or restored conversation state has no active run, and synchronized generated conversation titles after replies.
 
 ## 2026-10-16 — AMINAZADI
 

@@ -23,7 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { fmt, INTENT_LABELS, refreshSession, request, tokens } from "../api";
+import { fmt, INTENT_LABELS, refreshSession, request, STATUS_LABELS, tokens } from "../api";
 import { CAN_EDIT_TASKS, CAN_HEAR_AUDIO, isOrgAdmin, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
@@ -610,13 +610,14 @@ export default function CallDetailPage() {
         if (cancelled) return;
         hasCall = true;
         setCall(data);
-        const versions = data.call_type === "missed" ? [] : await request<AsrTranscriptRevision[]>(`/v1/calls/${callId}/transcript-versions`).catch(() => []);
+        const hasAudioAnalysis = data.call_type === "answered" || data.call_type === "voicemail";
+        const versions = !hasAudioAnalysis ? [] : await request<AsrTranscriptRevision[]>(`/v1/calls/${callId}/transcript-versions`).catch(() => []);
         if (cancelled) return;
         setTranscriptVersions(versions);
-        if (data.call_type === "missed") setOperatorScore(null);
+        if (data.call_type !== "answered") setOperatorScore(null);
         else void request<OperatorScore | null>(`/v1/calls/${callId}/operator-score`).then(setOperatorScore).catch(() => setOperatorScore(null));
         setError(null);
-        processing = data.call_type !== "missed" && (data.processing
+        processing = hasAudioAnalysis && (data.processing
           || ["queued", "running", "validating"].includes(data.correction?.status ?? "")
           || versions.some((item) => ["queued", "running"].includes(item.status)));
       } catch (err) {
@@ -887,6 +888,7 @@ export default function CallDetailPage() {
       : (insights?.sentiment_profile?.text ?? insights?.sentiment_profile?.voice);
   const sentimentData = sentimentChartData(activeSentimentProfile);
   const sentimentScore = insights?.sentiment_score;
+  const hasAudioAnalysis = call.call_type === "answered" || call.call_type === "voicemail";
 
   const exportTranscript = () => {
     if (!conversationTurns.length) return;
@@ -924,7 +926,7 @@ export default function CallDetailPage() {
               <span className="font-medium text-[#000000]">جزئیات و تحلیل تماس</span>
             </div>
             <div className="call-header-status flex flex-wrap items-center gap-2">
-              <StatusBadge status={call.call_type === "missed" ? "missed" : call.status} />
+              <StatusBadge status={hasAudioAnalysis ? call.status : call.call_type} />
               <span className="bg-[#B2AC88] px-2.5 py-1 text-[11px] text-[#000000]">
                 شناسه {fmt.digits(call.id.slice(0, 8))}
               </span>
@@ -954,6 +956,8 @@ export default function CallDetailPage() {
                 <span>مدت: {fmt.duration(call.duration_ms)}</span>
                 {call.direction ? <span>جهت: {DIRECTION_LABELS[call.direction] ?? call.direction}</span> : null}
                 {call.agent_extension ? <span>داخلی: {fmt.digits(call.agent_extension)}</span> : null}
+                {call.call_type === "voicemail" && call.voicemail_folder ? <span>پوشهٔ صندوق: {call.voicemail_folder}</span> : null}
+                {call.call_type === "voicemail" && call.voicemail_context ? <span>بافت صندوق: {call.voicemail_context}</span> : null}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -984,7 +988,7 @@ export default function CallDetailPage() {
                   </button>
                 </ActionTooltip>
               ) : null}
-              {call.call_type !== "missed" && (session?.role === "org_admin" || session?.role === "operator") ? (
+              {(call.call_type === "answered" && (session?.role === "org_admin" || session?.role === "operator") || call.call_type === "voicemail" && session?.role === "org_admin") ? (
                 <ActionTooltip label="پرسش درباره این تماس">
                   <Link className={CALL_ACTION_CLASS} to={`/assistant?call_id=${call.id}`} aria-label="پرسش درباره این تماس">
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
@@ -1047,7 +1051,7 @@ export default function CallDetailPage() {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
       ) : null}
 
-      {call.call_type === "missed" ? <section className="card border-rose-100 bg-rose-50/50"><h2 className="font-bold text-rose-800">این تماس بی‌پاسخ بوده است</h2><p className="mt-1 text-sm text-slate-600">برای این رخداد فایل صوتی یا تحلیل مکالمه ثبت نشده است.</p></section> : <ProcessingCard status={call.status} progressPct={call.progress_pct} detail={call.progress_detail} />}
+      {!hasAudioAnalysis ? <section className="card border-rose-100 bg-rose-50/50"><h2 className="font-bold text-rose-800">نوع تماس: {STATUS_LABELS[call.call_type] ?? call.call_type}</h2><p className="mt-1 text-sm text-slate-600">برای این رخداد فایل صوتی یا تحلیل مکالمه ثبت نشده است.</p></section> : <ProcessingCard status={call.status} progressPct={call.progress_pct} detail={call.progress_detail} />}
 
       {call.status.startsWith("failed") && (call.error_code || call.error_detail) ? (
         <section className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-800">
@@ -1057,7 +1061,7 @@ export default function CallDetailPage() {
         </section>
       ) : null}
 
-      {call.call_type !== "missed" ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
+      {hasAudioAnalysis ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
 
       <section className="card overflow-visible">
         <SectionTitle
@@ -1289,7 +1293,7 @@ export default function CallDetailPage() {
         </section>
       ) : null}
 
-      {call.call_type !== "missed" ? <section className="grid items-stretch gap-4 lg:grid-cols-3">
+      {hasAudioAnalysis ? <section className="grid items-stretch gap-4 lg:grid-cols-3">
         <div className="relative min-h-0 lg:col-span-2">
           <div className="card flex min-h-0 flex-col lg:absolute lg:inset-0">
           <SectionTitle

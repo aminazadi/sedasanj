@@ -46,6 +46,9 @@ CALL_STATUSES = (
     "missed",
 )
 
+CALL_TYPES = ("answered", "no_answer", "busy", "congestion", "failed", "canceled", "voicemail")
+UNANSWERED_CALL_TYPES = ("no_answer", "busy", "congestion", "failed", "canceled")
+
 
 class Base(DeclarativeBase):
     pass
@@ -254,6 +257,9 @@ class Call(Base):
     campaign_id: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(Text)
     external_reference: Mapped[str | None] = mapped_column(Text)
+    voicemail_context: Mapped[str | None] = mapped_column(Text)
+    voicemail_folder: Mapped[str | None] = mapped_column(Text)
+    voicemail_message_id: Mapped[str | None] = mapped_column(Text)
     call_type: Mapped[str] = mapped_column(Text, nullable=False, default="answered", server_default=text("'answered'"))
     started_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     ended_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
@@ -268,13 +274,22 @@ class Call(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "asterisk_uniqueid", name="calls_tenant_uniqueid_key"),
-        CheckConstraint("call_type IN ('answered','missed')", name="calls_call_type_check"),
+        CheckConstraint(
+            "call_type IN ('answered','no_answer','busy','congestion','failed','canceled','voicemail')",
+            name="calls_call_type_check",
+        ),
         CheckConstraint(
             "progress_pct IS NULL OR (progress_pct >= 0 AND progress_pct <= 100)",
             name="calls_progress_pct_check",
         ),
         Index("idx_calls_tenant_started", "tenant_id", text("started_at DESC")),
         Index("idx_calls_tenant_status", "tenant_id", "status"),
+        Index(
+            "idx_calls_tenant_call_type_started",
+            "tenant_id",
+            "call_type",
+            text("started_at DESC"),
+        ),
         Index("idx_calls_tenant_campaign", "tenant_id", "campaign_id", "started_at"),
         Index("idx_calls_tenant_external_reference", "tenant_id", "external_reference"),
         Index(

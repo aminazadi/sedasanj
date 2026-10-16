@@ -163,6 +163,12 @@ export const fmt = {
 
 export const STATUS_LABELS: Record<string, string> = {
   missed: "بی‌پاسخ",
+  no_answer: "بی‌پاسخ (بدون پاسخ)",
+  busy: "مشغول",
+  congestion: "اختلال / اشغال مسیر",
+  failed: "ناموفق",
+  canceled: "لغوشده",
+  voicemail: "پیام‌گیر صوتی",
   received: "دریافت‌شده",
   reserved: "رزرو اعتبار",
   stored: "ذخیره‌شده",
@@ -178,7 +184,6 @@ export const STATUS_LABELS: Record<string, string> = {
   complete: "کامل",
   failed_retryable: "خطای موقت",
   failed_terminal: "خطای نهایی",
-  canceled: "لغو شده",
 };
 
 export const SENTIMENT_LABELS: Record<string, string> = {

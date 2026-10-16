@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.deps import ApiKeyDep, ApiKeySession, OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
+    UNANSWERED_CALL_TYPES,
     Call,
     CallInsight,
     CallOperatorAssignment,
@@ -24,6 +25,7 @@ from app.models import (
     SalesInsight,
     Team,
     TeamMembership,
+    Transcript,
     User,
     Utterance,
 )
@@ -651,7 +653,7 @@ async def dashboard(
     ]
     missed_stmt = select(Call).where(
         Call.tenant_id == tenant_id,
-        Call.call_type == "missed",
+        Call.call_type.in_(UNANSWERED_CALL_TYPES),
         Call.started_at >= from_date,
         Call.started_at <= to_date,
         *missed_filters,
@@ -680,6 +682,17 @@ async def dashboard(
         missed_stmt = missed_stmt.where(false())
     missed_stmt = operator_scope.apply_operator_scope(missed_stmt, principal)
     missed_rows = (await session.execute(missed_stmt)).scalars().all()
+    voicemail_stmt = select(Call).where(
+        Call.tenant_id == tenant_id,
+        Call.call_type == "voicemail",
+        Call.started_at >= from_date,
+        Call.started_at <= to_date,
+        *missed_filters,
+    )
+    if intent is not None or certainty is not None:
+        voicemail_stmt = voicemail_stmt.where(false())
+    voicemail_stmt = operator_scope.apply_operator_scope(voicemail_stmt, principal)
+    voicemail_rows = (await session.execute(voicemail_stmt)).scalars().all()
     period = to_date - from_date
     previous_to = from_date
     previous_from = previous_to - period
@@ -700,7 +713,7 @@ async def dashboard(
     previous_rows = (await session.execute(previous_stmt)).all()
     previous_missed_stmt = select(Call).where(
         Call.tenant_id == tenant_id,
-        Call.call_type == "missed",
+        Call.call_type.in_(UNANSWERED_CALL_TYPES),
         Call.started_at >= previous_from,
         Call.started_at < previous_to,
         *missed_filters,
@@ -729,7 +742,28 @@ async def dashboard(
         previous_missed_stmt = previous_missed_stmt.where(false())
     previous_missed_stmt = operator_scope.apply_operator_scope(previous_missed_stmt, principal)
     previous_missed_rows = (await session.execute(previous_missed_stmt)).scalars().all()
+    previous_voicemail_stmt = select(Call).where(
+        Call.tenant_id == tenant_id,
+        Call.call_type == "voicemail",
+        Call.started_at >= previous_from,
+        Call.started_at < previous_to,
+        *missed_filters,
+    )
+    if intent is not None or certainty is not None:
+        previous_voicemail_stmt = previous_voicemail_stmt.where(false())
+    previous_voicemail_stmt = operator_scope.apply_operator_scope(previous_voicemail_stmt, principal)
+    previous_voicemail_rows = (await session.execute(previous_voicemail_stmt)).scalars().all()
+    voicemail_ids = [call.id for call in voicemail_rows]
+    voicemail_transcribed = int(
+        await session.scalar(
+            select(func.count(func.distinct(Transcript.call_id))).where(
+                Transcript.tenant_id == tenant_id,
+                Transcript.call_id.in_(voicemail_ids),
+            )
+        ) or 0
+    ) if voicemail_ids else 0
     call_ids = [call.id for call, _, _ in rows]
+    missed_call_ids = [call.id for call in missed_rows]
     previous_call_ids = [call.id for call, _, _ in previous_rows]
     assignments = (
         (
@@ -737,7 +771,7 @@ async def dashboard(
                 select(CallOperatorAssignment, User)
                 .join(User, User.id == CallOperatorAssignment.operator_id)
                 .where(
-                    CallOperatorAssignment.call_id.in_(call_ids),
+                    CallOperatorAssignment.call_id.in_(call_ids + missed_call_ids),
                     CallOperatorAssignment.superseded_at.is_(None),
                 )
             )
@@ -1047,6 +1081,7 @@ async def dashboard(
                 "operator_id": key,
                 "operator_label": user.display_name or user.email,
                 "calls": 0,
+                "missed_calls": 0,
                 "wins": 0,
                 "opportunities": 0,
                 "scores": [],
@@ -1063,6 +1098,26 @@ async def dashboard(
             stat["scores"].append(latest_score[call.id].total_score)
         stat["talk_caller_ms"] += talk[call.id].get(0, 0)
         stat["talk_agent_ms"] += talk[call.id].get(1, 0)
+    for call in missed_rows:
+        user = assignment_by_call.get(call.id)
+        if not user:
+            continue
+        key = str(user.id)
+        stat = operator_stats.setdefault(
+            key,
+            {
+                "operator_id": key,
+                "operator_label": user.display_name or user.email,
+                "calls": 0,
+                "missed_calls": 0,
+                "wins": 0,
+                "opportunities": 0,
+                "scores": [],
+                "talk_agent_ms": 0,
+                "talk_caller_ms": 0,
+            },
+        )
+        stat["missed_calls"] += 1
     operators = []
     for stat in operator_stats.values():
         agent_talk = stat.pop("talk_agent_ms")
@@ -1087,13 +1142,13 @@ async def dashboard(
         )
     for item in campaign_counter.values():
         item["conversion"] = _rate(item["wins"], item["opportunities"])
-    daily: dict[str, dict[str, int | str]] = {}
+    daily: dict[str, dict[str, Any]] = {}
     sentiment_counter: Counter[str] = Counter()
     for call, insight, sales in rows:
         day = call.started_at.astimezone(UTC).date().isoformat()
         point = daily.setdefault(
             day,
-            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "opportunities": 0, "wins": 0},
+            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "voicemail_calls": 0, "call_types": {}, "opportunities": 0, "wins": 0},
         )
         point["calls"] = int(point["calls"]) + 1
         point["answered_calls"] = int(point["answered_calls"]) + 1
@@ -1108,10 +1163,21 @@ async def dashboard(
         day = call.started_at.astimezone(UTC).date().isoformat()
         point = daily.setdefault(
             day,
-            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "opportunities": 0, "wins": 0},
+            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "voicemail_calls": 0, "call_types": {}, "opportunities": 0, "wins": 0},
         )
         point["missed_calls"] = int(point.get("missed_calls", 0)) + 1
         point["calls"] = int(point["calls"]) + 1
+        call_types = point.setdefault("call_types", {})
+        call_types[call.call_type] = int(call_types.get(call.call_type, 0)) + 1
+    for call in voicemail_rows:
+        day = call.started_at.astimezone(UTC).date().isoformat()
+        point = daily.setdefault(
+            day,
+            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "voicemail_calls": 0, "call_types": {}, "opportunities": 0, "wins": 0},
+        )
+        point["voicemail_calls"] = int(point.get("voicemail_calls", 0)) + 1
+    voicemail_duration_ms = sum(call.duration_ms for call in voicemail_rows)
+    mailbox_counts = Counter(call.dialed_number or "unknown" for call in voicemail_rows)
     total_agent_talk = sum(channels.get(1, 0) for channels in talk.values())
     total_caller_talk = sum(channels.get(0, 0) for channels in talk.values())
     total_talk = total_agent_talk + total_caller_talk
@@ -1290,6 +1356,12 @@ async def dashboard(
             "missed_calls": len(missed_rows),
             "previous_total_calls": len(previous_rows) + len(previous_missed_rows),
             "previous_missed_calls": len(previous_missed_rows),
+            "voicemail_calls": len(voicemail_rows),
+            "previous_voicemail_calls": len(previous_voicemail_rows),
+            "voicemail_total_duration_ms": voicemail_duration_ms,
+            "voicemail_average_duration_ms": round(voicemail_duration_ms / len(voicemail_rows)) if voicemail_rows else 0,
+            "voicemail_transcribed_calls": voicemail_transcribed,
+            "voicemail_transcription_rate": round(voicemail_transcribed * 100 / len(voicemail_rows), 1) if voicemail_rows else 0,
             "effective_calls": effective,
             "opportunities": opportunities,
             "explicit_wins": explicit_won,
@@ -1322,6 +1394,14 @@ async def dashboard(
                 "completion_rate": task_completion_rate,
             },
         },
+        "call_types": [
+            {"key": call_type, "count": sum(1 for call in missed_rows if call.call_type == call_type)}
+            for call_type in UNANSWERED_CALL_TYPES
+        ],
+        "voicemail_mailboxes": [
+            {"mailbox": mailbox, "count": count}
+            for mailbox, count in sorted(mailbox_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
         "trend": [daily[key] for key in sorted(daily)],
         "sentiments": [
             {"key": key, "count": count}

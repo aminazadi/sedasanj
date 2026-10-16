@@ -141,6 +141,7 @@ export default function Install() {
           <li>ffmpeg و پایتون ۳٫۱۲ را روی سرور تلفنی نصب کنید.</li>
           <li>یک API key با فرمت GZIP یا ZIP بسازید و خروجی مخصوص روش اتصال خود را دانلود کنید.</li>
           <li>برای FreePBX، ماژول Seda Sanj را نصب و JSON را در تب Import Configuration بارگذاری و تأیید کنید.</li>
+          <li>برای ثبت تماس‌های بی‌پاسخ FreePBX، تب Missed Calls ماژول را بررسی کنید؛ CDR backend باید فعال باشد و راهنمای فقط‌خواندنی ماژول تنظیمات `unanswered=yes` و `congestion=yes` در بخش `[general]` فایل `cdr.conf` را بررسی می‌کند. ماژول تنظیمات سراسری Asterisk را تغییر نمی‌دهد.</li>
           <li>برای Python Agent، TOML را در /etc/cbi-agent قرار دهید و AMI read-only را تنظیم کنید.</li>
           <li>در FreePBX ضبط دوکاناله توسط ماژول مدیریت می‌شود؛ dialplan زیر فقط برای Python Agent است.</li>
           <li>پس از نصب، اعتبارسنجی تنظیمات و یک تماس آزمایشی ورودی و خروجی انجام دهید.</li>
