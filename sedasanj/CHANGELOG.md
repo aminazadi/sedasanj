@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Reduced desktop and mobile landing header heights and adjusted logo and action sizing to match.
+
+## 2026-10-16 — AMINAZADI
+
 - Fixed mobile feature separators by overriding the more specific desktop column borders and row rules.
 
 ## 2026-10-16 — AMINAZADI

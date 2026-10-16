@@ -25,8 +25,8 @@
 .marketing-site :is(a, button):focus-visible { outline: 2px solid var(--site-primary); outline-offset: 5px; }
 .site-container { width: min(1180px, calc(100% - 64px)); margin-inline: auto; }
 .site-header { border-bottom: 1px solid var(--site-border); }
-.site-nav { min-height: 96px; display: flex; align-items: center; justify-content: space-between; gap: 32px; position: relative; }
-.site-logo { display: block; width: 116px; height: auto; }
+.site-nav { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 32px; position: relative; }
+.site-logo { display: block; width: 104px; height: auto; }
 .site-links, .site-nav-actions { display: flex; align-items: center; gap: 32px; }
 .site-links { font-size: 14px; }
 .marketing-site a:hover { color: var(--site-primary); }
@@ -99,11 +99,11 @@
 }
 @media (max-width: 760px) {
   .site-container { width: calc(100% - 40px); }
-  .site-nav { min-height: 80px; gap: 16px; }
+  .site-nav { min-height: 64px; gap: 16px; }
   .site-nav-actions { gap: 12px; }
-  .site-nav-actions .site-button { padding-inline: 16px; min-height: 44px; font-size: 12px; }
-  .site-logo { width: 96px; }
-  .site-menu { display: flex; }
+  .site-nav-actions .site-button { padding: 6px 14px; min-height: 38px; font-size: 12px; }
+  .site-logo { width: 86px; }
+  .site-menu { display: flex; padding: 7px; }
   .site-links { display: none; position: absolute; top: 100%; inset-inline: -20px; z-index: 10; padding: 24px; border-bottom: 1px solid var(--site-border); background: var(--site-canvas); }
   .site-links.is-open { display: flex; flex-direction: column; align-items: stretch; gap: 20px; }
   .site-split { grid-template-columns: 1fr; gap: 48px; }
