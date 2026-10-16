@@ -45,9 +45,11 @@ const benefits: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "headset", title: "دستیار هوشمند سازمان", body: "درباره تماس‌ها، تحلیل‌ها و عملکرد اپراتورها سؤال بپرسید و پاسخ مستند به داده‌های سازمان را همراه با ارجاع به مکالمات مرتبط دریافت کنید." },
 ];
 const steps = [
-  { title: "تماس‌ها را دریافت کنید", body: "مکالمات از مرکز تماس دریافت و برای پردازش آماده می‌شوند." },
-  { title: "اطلاعات را استخراج کنید", body: "متن، خلاصه، موضوع و کیفیت مکالمه در یک نما قرار می‌گیرند." },
-  { title: "به اقدام تبدیل کنید", body: "کارهای بعدی را پیگیری و برای بهبود عملکرد تیم تصمیم بگیرید." },
+  { icon: "phone" as const, title: "دریافت امن تماس", body: "تماس‌های مرکز تلفن به‌صورت خودکار و همراه با اطلاعات لازم وارد جریان تحلیل می‌شوند." },
+  { icon: "message" as const, title: "تبدیل گفتار به متن", body: "گفت‌وگوی مشتری و اپراتور تفکیک می‌شود تا محتوای تماس دقیق و قابل جست‌وجو باشد." },
+  { icon: "brain" as const, title: "استخراج بینش", body: "موضوع، لحن، نتیجه و نکات مهم هر مکالمه برای بررسی مدیر آماده می‌شود." },
+  { icon: "chart" as const, title: "سنجش کیفیت", body: "شاخص‌های ارزیابی، روند تیم و تماس‌های نیازمند توجه کنار هم قرار می‌گیرند." },
+  { icon: "tasks" as const, title: "تعریف اقدام بعدی", body: "پیگیری‌های لازم ثبت می‌شوند تا بینش حاصل از تماس به بهبود قابل سنجش برسد." },
 ];
 
 export default function Landing() {
@@ -83,7 +85,21 @@ export default function Landing() {
         <div><h1>بدون صداسنج،<br/>هیچ تماسی واقعاً دیده نمی‌شود</h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><Link className="site-button" to="/signup?plan=demo">شروع رایگان</Link><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
       </div></section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
-      <section className="site-section" id="workflow"><div className="site-container"><h2>از مکالمه تا اقدام</h2><div className="site-split site-workflow"><div className="site-report" aria-label="نمونه گزارش تماس‌ها"><div className="site-report-head"><strong>تماس‌های اخیر</strong><span>کیفیت مکالمات</span></div><div className="site-table-scroll"><table><thead><tr><th>اپراتور</th><th>موضوع</th><th>مدت</th><th>نتیجه</th></tr></thead><tbody>{[["علی محمدی", "پیگیری سفارش", "۰۳:۱۸", "حل‌شده"], ["سارا رضایی", "مشکل پرداخت", "۰۴:۲۶", "نیاز به پیگیری"], ["رضا کریمی", "استعلام قیمت", "۰۲:۴۰", "اطلاعات ارائه شد"]].map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={index}>{index === 3 ? <span className="site-result">{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div><Link to="/login">مشاهده در پنل <Icon name="arrow" size={16}/></Link></div><ol className="site-steps">{steps.map((item, index) => <li key={item.title}><span>{fmt.int(index + 1)}</span><div><h3>{item.title}</h3><p>{item.body}</p></div></li>)}</ol></div></div></section>
+      <section className="site-section" id="workflow">
+        <div className="site-container">
+          <h2>از مکالمه تا اقدام</h2>
+          <div className="workflow-timeline" aria-label="مسیر تبدیل تماس به اقدام مدیریتی">
+            <div className="timeline-track" aria-hidden="true"><i/></div>
+            <ol className="site-steps">
+              {steps.map((item, index) => <li key={item.title}><span className="timeline-node"><Icon name={item.icon} size={21}/></span><div><small>گام {fmt.int(index + 1)}</small><h3>{item.title}</h3><p>{item.body}</p></div></li>)}
+            </ol>
+          </div>
+          <div className="site-report" aria-label="نمونه گزارش تماس‌ها">
+            <div className="site-report-head"><div><strong>تماس‌های اخیر</strong><span>خروجی تحلیل مکالمات سازمان</span></div><Link to="/login">مشاهده گزارش‌ها <Icon name="arrow" size={16}/></Link></div>
+            <div className="site-table-scroll"><table><thead><tr><th>اپراتور</th><th>موضوع تماس</th><th>مدت</th><th>اقدام بعدی</th><th>وضعیت</th></tr></thead><tbody>{[["علی محمدی", "پیگیری سفارش", "۰۳:۱۸", "—", "حل‌شده"], ["سارا رضایی", "مشکل پرداخت", "۰۴:۲۶", "تماس مجدد با مشتری", "نیازمند پیگیری"], ["رضا کریمی", "استعلام قیمت", "۰۲:۴۰", "ارسال پیش‌فاکتور", "اقدام ثبت شد"]].map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={index}>{index === 4 ? <span className="site-result">{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div>
+          </div>
+        </div>
+      </section>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن مناسب تیم شما</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما.</p><div className="site-billing" role="group" aria-label="دوره پرداخت"><button aria-pressed={!annual} onClick={() => setBilling("monthly")}>ماهانه</button><button aria-pressed={annual} onClick={() => setBilling("annual")}>سالانه</button></div>
         {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}>تلاش دوباره</button></div>}

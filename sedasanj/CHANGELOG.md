@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Reworked the landing workflow into an animated five-stage timeline with a responsive path and detailed organization call report preview.
+
+## 2026-10-16 — AMINAZADI
+
 - Replaced the dotted landing hero background with the provided transparent office illustration and removed the separate hero photo.
 
 ## 2026-10-16 — AMINAZADI
