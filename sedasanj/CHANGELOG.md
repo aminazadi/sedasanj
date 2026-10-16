@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Expanded metadata-only missed-call events with precise Asterisk dispositions and added the FreePBX module 1.1.8 CDR poller.
+
+## 2026-10-16 — AMINAZADI
+
 - Added metadata-only missed-call ingestion, tenant-scoped listing and details, assistant statistics, and dashboard trends without entering audio processing or billing.
 
 ## 2026-10-14 — AMINAZADI
