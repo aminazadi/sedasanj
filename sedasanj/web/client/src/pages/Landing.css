@@ -42,19 +42,8 @@
 .marketing-site h1 { font-size: clamp(38px, 4.2vw, 60px); line-height: 1.35; font-weight: 800; letter-spacing: -.8px; }
 .site-hero p { margin-top: 24px; max-width: 470px; color: var(--site-muted); font-size: 16px; line-height: 2.1; }
 .site-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
-.site-call { min-width: 0; padding: 28px; border: 1px solid var(--site-border); background: var(--site-canvas); }
-.site-wave { display: flex; align-items: center; gap: 20px; padding: 16px 0 28px; color: var(--site-primary); }
-.site-wave > div { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 52px; flex: 1; }
-.site-wave i { width: 4px; background: #7a8b73; }
-.site-wave > span { font-size: 12px; direction: ltr; }
-.site-metrics { display: grid; grid-template-columns: 1fr 1fr; border-block: 1px solid var(--site-border); padding: 24px 0; text-align: center; }
-.site-metrics > div + div { border-right: 1px solid var(--site-border); }
-.site-metrics strong { display: block; font-size: 26px; color: var(--site-primary); }
-.site-metrics span { font-size: 12px; color: var(--site-muted); }
-.site-transcript { padding-top: 24px; display: grid; gap: 20px; }
-.site-transcript p { display: flex; align-items: baseline; gap: 16px; font-size: 12px; }
-.site-transcript b { min-width: 48px; }
-.site-transcript span { color: var(--site-muted); }
+.site-hero > .site-container > div:first-child { position: relative; z-index: 2; }
+.site-hero-image { position: relative; z-index: 1; display: block; width: 132%; max-width: none; height: auto; margin-right: -22%; object-fit: contain; }
 .site-section { padding: 100px 0; scroll-margin-top: 24px; }
 .marketing-site h2 { font-size: clamp(30px, 3.24vw, 41px); line-height: 1.4; text-align: center; font-weight: 750; }
 .marketing-site h3 { font-size: 22px; line-height: 1.5; font-weight: 700; }
@@ -121,16 +110,14 @@
   .site-links.is-open { display: flex; flex-direction: column; align-items: stretch; gap: 20px; }
   .site-split, .site-workflow { grid-template-columns: 1fr; gap: 48px; }
   .site-hero { padding: 64px 0 80px; }
+  .site-hero-image { width: 100%; margin-right: 0; }
   .site-section { padding: 72px 0; }
   .site-hero p { font-size: 14px; }
   .site-benefits { grid-template-columns: 1fr; gap: 48px; margin-top: 48px; }
   .site-benefits article { max-width: 360px; margin-inline: auto; }
   .site-workflow { margin-top: 48px; }
   .site-workflow .site-report { order: 2; }
-  .site-report, .site-call { padding: 20px; }
-  .site-transcript p { font-size: 11px; }
-  .site-wave { gap: 12px; }
-  .site-wave > div { gap: 3px; }
+  .site-report { padding: 20px; }
   .site-footer .site-container { flex-direction: column; gap: 24px; }
   .site-footer nav { justify-content: center; gap: 16px; }
   .site-cta { padding: 56px 0; }

@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Replaced the landing page hero preview with the provided manager analytics image, enlarged it to overlap the adjacent copy, and kept the layout responsive.
+
+## 2026-10-16 — AMINAZADI
+
 - Increased Markazi Text heading sizes by approximately 20% and tightened their line heights on the landing page.
 
 ## 2026-10-16 — AMINAZADI

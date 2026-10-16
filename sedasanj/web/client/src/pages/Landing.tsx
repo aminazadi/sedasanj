@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
+import managerInsights from "../assets/manager-call-insights.png";
 import "./Landing.css";
 import { fmt, request } from "../api";
 import type { PublicPlan } from "../types";
@@ -33,16 +34,6 @@ const paths: Record<IconName, ReactNode> = {
 
 function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
-}
-
-const wave = [20, 34, 48, 28, 62, 86, 44, 72, 36, 54, 96, 68, 42, 80, 58, 32, 74, 92, 48, 26, 60, 38, 76, 52, 30, 66, 44, 22];
-
-function CallPreview() {
-  return <div className="site-call" aria-label="نمونه نمای تحلیل تماس">
-    <div className="site-wave"><Icon name="phone"/><div aria-hidden="true">{wave.map((height, index) => <i key={index} style={{ height: `${height}%` }}/>)}</div><span>۰۳:۱۸</span></div>
-    <div className="site-metrics"><div><strong>۸۹</strong><span>امتیاز کیفیت مکالمه</span></div><div><strong>مثبت</strong><span>لحن غالب مشتری</span></div></div>
-    <div className="site-transcript"><p><b>مشتری</b><span>سلام، برای پیگیری سفارش تماس گرفتم.</span></p><p><b>اپراتور</b><span>سلام، وضعیت ارسال را برای شما بررسی می‌کنم.</span></p></div>
-  </div>;
 }
 
 const benefits: Array<{ icon: IconName; title: string; body: string }> = [
@@ -90,7 +81,7 @@ export default function Landing() {
     <main id="top">
       <section className="site-hero"><div className="site-container site-split">
         <div><h1>بدون صداسنج،<br/>هیچ تماسی واقعاً دیده نمی‌شود</h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><Link className="site-button" to="/signup?plan=demo">شروع رایگان</Link><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
-        <CallPreview/>
+        <img className="site-hero-image" src={managerInsights} alt="مدیر سازمان در حال بررسی شاخص‌های عملکرد و تحلیل تماس‌های صداسنج" />
       </div></section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="workflow"><div className="site-container"><h2>از مکالمه تا اقدام</h2><div className="site-split site-workflow"><div className="site-report" aria-label="نمونه گزارش تماس‌ها"><div className="site-report-head"><strong>تماس‌های اخیر</strong><span>کیفیت مکالمات</span></div><div className="site-table-scroll"><table><thead><tr><th>اپراتور</th><th>موضوع</th><th>مدت</th><th>نتیجه</th></tr></thead><tbody>{[["علی محمدی", "پیگیری سفارش", "۰۳:۱۸", "حل‌شده"], ["سارا رضایی", "مشکل پرداخت", "۰۴:۲۶", "نیاز به پیگیری"], ["رضا کریمی", "استعلام قیمت", "۰۲:۴۰", "اطلاعات ارائه شد"]].map((row) => <tr key={row[0]}>{row.map((cell, index) => <td key={index}>{index === 3 ? <span className="site-result">{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div><Link to="/login">مشاهده در پنل <Icon name="arrow" size={16}/></Link></div><ol className="site-steps">{steps.map((item, index) => <li key={item.title}><span>{fmt.int(index + 1)}</span><div><h3>{item.title}</h3><p>{item.body}</p></div></li>)}</ol></div></div></section>
