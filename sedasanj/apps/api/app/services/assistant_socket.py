@@ -27,6 +27,7 @@ _manager: socketio.AsyncRedisManager | None = None
 _publisher: socketio.AsyncRedisManager | None = None
 _dispatcher_task: asyncio.Task[None] | None = None
 _expiry_tasks: dict[str, asyncio.Task[None]] = {}
+_ephemeral_tasks: dict[str, tuple[str, UUID, asyncio.Task[None]]] = {}
 
 
 def room_for(tenant_id: UUID, owner_id: UUID, conversation_id: UUID) -> str:
@@ -415,7 +416,13 @@ async def cancel_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "code": "invalid_request"}
     async with session_scope(identity["tenant_id"]) as session:
         run = await session.get(AssistantRun, run_id)
-        if run is None or run.owner_id != identity["owner_id"]:
+        if run is None:
+            ephemeral = _ephemeral_tasks.get(str(run_id))
+            if ephemeral is None or ephemeral[0] != sid or ephemeral[1] != identity["owner_id"]:
+                return {"ok": False, "code": "not_found"}
+            ephemeral[2].cancel()
+            return {"ok": True, "run_id": str(run_id)}
+        if run.owner_id != identity["owner_id"]:
             return {"ok": False, "code": "not_found"}
         if run.status in {"queued", "running"}:
             run.status = "cancelled"
@@ -509,13 +516,24 @@ async def send_ephemeral(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                             "payload": json.loads(raw),
                         }
                         await sio.emit(f"assistant:{event}", envelope, to=sid)
+        except asyncio.CancelledError:
+            sequence += 1
+            await sio.emit(
+                "assistant:cancelled",
+                {"conversation_id": None, "run_id": str(ephemeral_id), "sequence": sequence, "event": "cancelled", "payload": {"status": "cancelled"}},
+                to=sid,
+            )
+            raise
         except Exception:
             logger.exception("ephemeral assistant socket run failed")
             await sio.emit(
                 "assistant:error", {"run_id": str(ephemeral_id), "code": "assistant_failed"}, to=sid
             )
+        finally:
+            _ephemeral_tasks.pop(str(ephemeral_id), None)
 
-    asyncio.create_task(run(), name=f"assistant-ephemeral-{ephemeral_id}")
+    task = asyncio.create_task(run(), name=f"assistant-ephemeral-{ephemeral_id}")
+    _ephemeral_tasks[str(ephemeral_id)] = (sid, identity["owner_id"], task)
     return ack
 
 
@@ -577,7 +595,13 @@ async def _dispatch_pending() -> None:
 async def close() -> None:
     global _dispatcher_task, _manager, _publisher
     tasks = [
-        task for task in (_dispatcher_task, *tuple(_expiry_tasks.values())) if task is not None
+        task
+        for task in (
+            _dispatcher_task,
+            *tuple(_expiry_tasks.values()),
+            *(entry[2] for entry in _ephemeral_tasks.values()),
+        )
+        if task is not None
     ]
     for task in tasks:
         task.cancel()
@@ -585,6 +609,7 @@ async def close() -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
     _dispatcher_task = None
     _expiry_tasks.clear()
+    _ephemeral_tasks.clear()
     for instance in (_manager, _publisher):
         if instance is None:
             continue

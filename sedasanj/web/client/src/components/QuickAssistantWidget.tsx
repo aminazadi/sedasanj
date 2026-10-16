@@ -29,6 +29,10 @@ function SendIcon() {
   return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>;
 }
 
+function StopIcon() {
+  return <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1" /></svg>;
+}
+
 function CopyIcon({ checked }: { checked: boolean }) {
   return <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">{checked ? <path d="m5 12 4 4L19 6" /> : <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></>}</svg>;
 }
@@ -64,6 +68,7 @@ export default function QuickAssistantWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
+  const requestControllerRef = useRef<AbortController | null>(null);
 
   const close = () => setSearch((current) => {
     const next = new URLSearchParams(current);
@@ -121,11 +126,12 @@ export default function QuickAssistantWidget() {
     return item;
   }
 
-  async function streamReply(conversationId: string, content: string, draftId: string, messageAttachments: AssistantMessageAttachments) {
+  async function streamReply(conversationId: string, content: string, draftId: string, messageAttachments: AssistantMessageAttachments, signal: AbortSignal) {
     const makeRequest = () => fetch(`/v1/assistant/conversations/${conversationId}/messages/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(tokens.access() ? { Authorization: `Bearer ${tokens.access()}` } : {}) },
       body: JSON.stringify({ content, attachments: messageAttachments }),
+      signal,
     });
     let response = await makeRequest();
     if (response.status === 401 && await refreshSession()) response = await makeRequest();
@@ -175,20 +181,31 @@ export default function QuickAssistantWidget() {
   async function send(content: string, history: ChatMessage[], messageAttachments: AssistantMessageAttachments) {
     setSending(true);
     setError(null);
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     const optimistic: ChatMessage = { id: `widget-user-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
     const draft: ChatMessage = { id: `widget-assistant-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
     try {
       const active = conversation ?? await createConversation();
       setMessages([...history, optimistic, draft]);
-      await streamReply(active.id, content, draft.id, messageAttachments);
+      await streamReply(active.id, content, draft.id, messageAttachments, controller.signal);
       setAttachments(emptyAttachments());
     } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        setMessages((current) => current.map((item) => item.id === draft.id ? { ...item, content: "پاسخ متوقف شد.", status: "cancelled" } : item));
+        return;
+      }
       const message = (err as Error).message || "پاسخ دستیار آماده نشد.";
       setMessages((current) => current.map((item) => item.id === draft.id ? { ...item, content: message, status: "failed" } : item));
       setError(message);
     } finally {
+      if (requestControllerRef.current === controller) requestControllerRef.current = null;
       setSending(false);
     }
+  }
+
+  function interruptMessage() {
+    requestControllerRef.current?.abort();
   }
 
   async function submit(event: FormEvent) {
@@ -247,7 +264,7 @@ export default function QuickAssistantWidget() {
       <form ref={composerRef} className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={(event) => void submit(event)}>
         {mentionOpen ? <div className="absolute inset-x-3 bottom-full z-20 mb-2 max-h-64 overflow-y-auto border border-[#B2AC88] bg-white shadow-xl"><div className="flex border-b border-[#B2AC88] bg-[#F2F0EF] text-xs font-bold text-[#4B6E48]"><button type="button" className={`flex-1 p-2 ${mentionTab === "mentions" ? "bg-[#4B6E48] text-white" : ""}`} onClick={() => setMentionTab("mentions")}>زمینه‌ها</button><button type="button" className={`flex-1 p-2 ${mentionTab === "dates" ? "bg-[#4B6E48] text-white" : ""}`} onClick={() => setMentionTab("dates")}>بازه زمانی</button><button type="button" className={`flex-1 p-2 ${mentionTab === "tools" ? "bg-[#4B6E48] text-white" : ""}`} onClick={() => setMentionTab("tools")}>ابزارها</button></div><div className="p-2">{mentionTab === "mentions" ? <>{matchingOperators.map((item) => <button key={item.id} type="button" className="block w-full px-2 py-2 text-right text-sm hover:bg-[#F2F0EF]" onClick={() => { setAttachments((current) => ({ ...current, operator_id: item.id })); setMentionOpen(false); setText((current) => current.slice(0, mentionStart).trimEnd()); }}>{item.label}</button>)}{matchingConversations.map((item) => <button key={item.id} type="button" className="block w-full px-2 py-2 text-right text-sm hover:bg-[#F2F0EF]" onClick={() => { setAttachments((current) => ({ ...current, conversation_ids: current.conversation_ids.includes(item.id) ? current.conversation_ids : [...current.conversation_ids, item.id] })); setMentionOpen(false); setText((current) => current.slice(0, mentionStart).trimEnd()); }}>{item.label}</button>)}</> : null}{mentionTab === "dates" ? <div className="grid gap-2"><JalaliDatePicker includeTime value={attachments.from_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, from_date: value || null }))} placeholder="شروع بازه" /><JalaliDatePicker includeTime value={attachments.to_date || ""} onChange={(value) => setAttachments((current) => ({ ...current, to_date: value || null }))} placeholder="پایان بازه" /></div> : null}{mentionTab === "tools" ? contextOptions?.tools.map((item) => <button key={item.name} type="button" className={`block w-full px-2 py-2 text-right text-sm ${attachments.tool_names.includes(item.name) ? "bg-[#4B6E48] text-white" : "hover:bg-[#F2F0EF]"}`} onClick={() => setAttachments((current) => ({ ...current, tool_names: current.tool_names.includes(item.name) ? current.tool_names.filter((name) => name !== item.name) : [...current.tool_names, item.name] }))}>{item.title}</button>) : null}</div></div> : null}
         {attachmentCount ? <div className="mb-2 flex flex-wrap gap-1"><button type="button" className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-[10px] text-[#4B6E48]" onClick={() => setAttachments(emptyAttachments())}>{attachmentCount} زمینه انتخاب شده ×</button></div> : null}
-        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none border-0 bg-transparent pb-8 text-sm text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const anchor = value.lastIndexOf("@"); if (anchor >= 0 && anchor === value.length - 1) { setMentionAnchor(anchor); setMentionTab("mentions"); setMentionOpen(true); } }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") event.currentTarget.form?.requestSubmit(); }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} aria-label="پیام به دستیار" /><div className="absolute inset-x-3 bottom-1 flex items-center justify-end gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border border-[#B2AC88] px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} stopWhen={sending} /><button type="button" className="inline-flex h-6 items-center border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionTab("dates"); setMentionOpen(true); }}>بازه زمانی</button><button type="button" className="inline-flex h-6 items-center border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionTab("tools"); setMentionOpen(true); }}>ابزارها</button></div></div><button type="submit" className="inline-flex min-h-[4.25rem] w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] disabled:bg-[#898989]" disabled={sending || !text.trim()} aria-label="ارسال پیام"><SendIcon /></button></div>
+        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none border-0 bg-transparent pb-8 text-sm text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const anchor = value.lastIndexOf("@"); if (anchor >= 0 && anchor === value.length - 1) { setMentionAnchor(anchor); setMentionTab("mentions"); setMentionOpen(true); } }} onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") event.currentTarget.form?.requestSubmit(); }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} aria-label="پیام به دستیار" /><div className="absolute inset-x-3 bottom-1 flex items-center justify-end gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border border-[#B2AC88] px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} stopWhen={sending} /><button type="button" className="inline-flex h-6 items-center border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionTab("dates"); setMentionOpen(true); }}>بازه زمانی</button><button type="button" className="inline-flex h-6 items-center border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionTab("tools"); setMentionOpen(true); }}>ابزارها</button></div></div><button type={sending ? "button" : "submit"} onClick={sending ? interruptMessage : undefined} className="inline-flex min-h-[4.25rem] w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] disabled:bg-[#898989]" disabled={!sending && !text.trim()} aria-label={sending ? "قطع پاسخ" : "ارسال پیام"} title={sending ? "قطع پاسخ" : "ارسال پیام"}>{sending ? <StopIcon /> : <SendIcon />}</button></div>
       </form>
     </section>
     <button type="button" className={`quick-assistant-trigger fixed bottom-5 left-5 z-[65] inline-flex h-12 w-12 items-center justify-center border border-[#B2AC88] bg-[#4B6E48] text-[#F2F0EF] shadow-[0_12px_30px_rgba(75,110,72,0.34)] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${open ? "pointer-events-none scale-90 opacity-0" : ""}`} onClick={show} aria-label="باز کردن چت سریع دستیار"><AssistantIcon /></button>

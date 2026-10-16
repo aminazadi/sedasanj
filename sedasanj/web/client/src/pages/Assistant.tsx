@@ -83,6 +83,10 @@ function SendIcon() {
   );
 }
 
+function StopIcon() {
+  return <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="h-4 w-4"><rect x="5" y="5" width="14" height="14" rx="1" /></svg>;
+}
+
 function CalendarIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-3.5 w-3.5"><path d="M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" /></svg>;
 }
@@ -369,6 +373,8 @@ export default function Assistant() {
   const [sending, setSending] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [processingConversationId, setProcessingConversationId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const cancelRequestedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -698,6 +704,16 @@ export default function Assistant() {
       runDraftsRef.current.set(runId, id);
       return id;
     };
+    const resolveCancelledRun = (runId: string, draftId: string) => {
+      const result = {
+        message: { id: draftId, role: "assistant" as const, content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() },
+        conversationTitle: null,
+      };
+      completedRunsRef.current.set(runId, result);
+      completionWaitersRef.current.get(runId)?.(result);
+      completionWaitersRef.current.delete(runId);
+      window.setTimeout(() => completedRunsRef.current.delete(runId), 30000);
+    };
     const applyEnvelope = (envelope: any) => {
       const runId = String(envelope?.run_id || "");
       const conversationId = envelope?.conversation_id ? String(envelope.conversation_id) : null;
@@ -706,7 +722,9 @@ export default function Assistant() {
       if (runId && Number(envelope.sequence || 0) <= (sequenceRef.current.get(runId) || 0)) return;
       if (runId) sequenceRef.current.set(runId, Number(envelope.sequence || 0));
       if (conversationId && selectedConversationIdRef.current !== conversationId) {
-        if ((event === "message:completed" || event === "done") && payload.message) {
+        if (event === "cancelled") {
+          resolveCancelledRun(runId, messageForRun(runId));
+        } else if ((event === "message:completed" || event === "done") && payload.message) {
           const result = {
             message: payload.message as ChatMessage,
             conversationTitle: payload.conversation_title || null,
@@ -759,6 +777,7 @@ export default function Assistant() {
         setMessages((current) => current.map((item) => item.id === draftId ? message : item));
         setSending(false);
         setProcessingConversationId(null);
+        setActiveRunId(null);
         setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
         if (message.memory_drafts?.length) setMemories((current) => [...message.memory_drafts!, ...current.filter((item) => !message.memory_drafts!.some((draft) => draft.id === item.id))]);
         if (conversationId && payload.conversation_title) {
@@ -773,6 +792,10 @@ export default function Assistant() {
         setSending(false);
         setProcessingConversationId(null);
         const draftId = messageForRun(runId);
+        const cancelledMessage: ChatMessage = { id: draftId, role: "assistant", content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+        setMessages((current) => current.map((item) => item.id === draftId ? cancelledMessage : item));
+        setActiveRunId(null);
+        resolveCancelledRun(runId, draftId);
         setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
       }
     };
@@ -791,6 +814,7 @@ export default function Assistant() {
     });
     socket.on("assistant:message:accepted", (accepted: any) => {
       if (accepted?.run_id && accepted?.request_id) runDraftsRef.current.set(String(accepted.run_id), `draft-reply-${accepted.request_id}`);
+      if (accepted?.run_id) setActiveRunId(String(accepted.run_id));
       if (accepted?.conversation_id) setProcessingConversationId(String(accepted.conversation_id));
     });
     socket.on("assistant:conversation:state", (state: any) => {
@@ -799,6 +823,7 @@ export default function Assistant() {
       for (const run of state.active_runs || []) {
         const draftId = `draft-reply-${run.id}`;
         runDraftsRef.current.set(String(run.id), draftId);
+        setActiveRunId(String(run.id));
         sequenceRef.current.set(String(run.id), 0);
         restored.push({ id: draftId, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() });
       }
@@ -810,6 +835,7 @@ export default function Assistant() {
       } else {
         setSending(false);
         setProcessingConversationId(null);
+        setActiveRunId(null);
       }
     });
     for (const event of ["delta", "replace", "phase", "tool_started", "tool_completed", "tool_failed", "message:completed", "done", "cancelled"]) {
@@ -819,6 +845,7 @@ export default function Assistant() {
       setError(payload?.message || "اتصال دستیار با خطا روبه‌رو شد.");
       setSending(false);
       setProcessingConversationId(null);
+      setActiveRunId(null);
     });
     socket.connect();
     return () => {
@@ -876,8 +903,22 @@ export default function Assistant() {
     return () => document.removeEventListener("click", closeOnOutsideClick);
   }, [mentionOpen]);
 
+  async function interruptMessage() {
+    if (!sending) return;
+    cancelRequestedRef.current = true;
+    if (!activeRunId) return;
+    try {
+      const acknowledged = await socketRef.current?.emitWithAck("assistant:message:cancel", { run_id: activeRunId });
+      if (!acknowledged?.ok) setError(acknowledged?.code || "توقف پاسخ انجام نشد.");
+    } catch (err) {
+      setError(assistantErrorMessage(err));
+    }
+  }
+
   async function sendBranch(content: string, history: ChatMessage[], branchAttachments: AssistantMessageAttachments = attachments) {
     setSending(true);
+    cancelRequestedRef.current = false;
+    setActiveRunId(null);
     setError(null);
     const messageAttachments = branchAttachments;
     const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
@@ -907,13 +948,19 @@ export default function Assistant() {
             history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })),
           });
       if (!acknowledged?.ok || !acknowledged?.run_id) throw new Error(acknowledged?.code || "ارسال پیام انجام نشد.");
-      runDraftsRef.current.set(String(acknowledged.run_id), draftReply.id);
+      const runId = String(acknowledged.run_id);
+      runDraftsRef.current.set(runId, draftReply.id);
+      setActiveRunId(runId);
+      if (cancelRequestedRef.current) {
+        const cancelAck = await socket.emitWithAck("assistant:message:cancel", { run_id: runId });
+        if (!cancelAck?.ok) throw new Error(cancelAck?.code || "توقف پاسخ انجام نشد.");
+      }
       const reply = await new Promise<{ message: ChatMessage; conversationTitle: string | null }>((resolve) => {
-        const cached = completedRunsRef.current.get(String(acknowledged.run_id));
+        const cached = completedRunsRef.current.get(runId);
         if (cached) {
-          completedRunsRef.current.delete(String(acknowledged.run_id));
+          completedRunsRef.current.delete(runId);
           resolve(cached);
-        } else completionWaitersRef.current.set(String(acknowledged.run_id), resolve);
+        } else completionWaitersRef.current.set(runId, resolve);
       });
       if (active && reply.conversationTitle) {
         setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
@@ -922,7 +969,7 @@ export default function Assistant() {
       setAttachments(emptyAttachments());
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
-        if (selectedConversationIdRef.current === active.id) setMessages(rows);
+        if (selectedConversationIdRef.current === active.id) setMessages(reply.message.status === "cancelled" ? [...rows, reply.message] : rows);
         setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: reply.conversationTitle || item.title, updated_at: reply.message.created_at } : item));
         if (reply.conversationTitle) setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
       }
@@ -933,6 +980,8 @@ export default function Assistant() {
       else setMessages((current) => current.map((item) => item.id === draftReply.id ? failedReply(item) : item));
       setError(message);
     } finally {
+      cancelRequestedRef.current = false;
+      setActiveRunId(null);
       setProcessingConversationId(null);
       setSending(false);
     }
@@ -1201,7 +1250,7 @@ export default function Assistant() {
           {attachments.from_date && attachments.to_date ? <button type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)}<CloseIcon /></button> : null}
           {attachments.tool_names.map((name) => <button key={name} type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("tool", name)}>ابزار: {contextOptions?.tools.find((item) => item.name === name)?.title || name}<CloseIcon /></button>)}
         </div> : null}
-        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]">{listening ? "در حال دریافت گفتار فارسی…" : <TypingPromptGuide />}</p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); requestAnimationFrame(resizeInput); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} />{!training ? <><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></> : null}</div></div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title={socketConnected ? "ارسال پیام" : "در انتظار اتصال زنده"} disabled={sending || !text.trim() || !socketConnected}><SendIcon /></button></div>
+        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]">{listening ? "در حال دریافت گفتار فارسی…" : <TypingPromptGuide />}</p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); requestAnimationFrame(resizeInput); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} />{!training ? <><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></> : null}</div></div></div><button type={sending ? "button" : "submit"} onClick={sending ? () => void interruptMessage() : undefined} className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label={sending ? "قطع پاسخ" : "ارسال پیام"} title={sending ? "قطع پاسخ" : socketConnected ? "ارسال پیام" : "در انتظار اتصال زنده"} disabled={sending ? false : !text.trim() || !socketConnected}>{sending ? <StopIcon /> : <SendIcon />}</button></div>
       </form>
     </section>
     {memoryPanelOpen ? <><button type="button" className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm lg:hidden" onClick={() => setMemoryPanelOpen(false)} aria-label="بستن پنل مموری" /><aside id="organization-memory-panel" className="fixed inset-y-0 left-0 z-50 w-[min(92vw,24rem)] border-r border-[#B2AC88] shadow-2xl lg:sticky lg:top-8 lg:z-auto lg:h-[calc(100vh-4rem)] lg:w-auto lg:shadow-none" aria-label="مموری سازمانی">{renderMemoryPanel()}</aside></> : null}

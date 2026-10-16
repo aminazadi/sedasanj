@@ -2,6 +2,7 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Added interrupt controls to the assistant composer and quick-chat widget, with socket cancellation for persistent and ephemeral replies.
 - Resolved assistant stream completions after navigating to another conversation so training and other chat requests do not remain stuck waiting for a completion event.
 - Prevented completed assistant runs with a persisted reply from being restored as active, clearing stale chat processing indicators and allowing follow-up messages.
 
