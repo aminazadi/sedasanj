@@ -2,6 +2,8 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Added the dotted brand background to the quick demo recording page.
+
 - Added the supplied welcome audio to the quick demo, followed it with three beeps and automatic recording, and added a square equalizer control with send and rerecord actions.
 
 - Added subtle dotted backgrounds to pricing plan cards and primary-colored dots to the featured plan.

@@ -83,7 +83,7 @@
 .quick-demo-qr-steps i{width:24px;height:1px;background:#d6e1d2}
 .quick-demo-qr-spinner{margin:20px auto}
 .demo-card .demo-secondary{display:block;margin:20px auto;font-size:.85rem}
-.demo-recorder-page{min-height:100dvh}
+.demo-recorder-page{min-height:100dvh;background-color:#f5f7f4;background-image:radial-gradient(circle,rgb(75 110 72 / .18) 0 1px,transparent 1.15px);background-position:0 0;background-size:8px 8px}
 .demo-recording{padding:24px 0}
 .demo-recording-dot{display:inline-block;width:12px;height:12px;background:#e11d48;border-radius:50%;margin-left:10px}
 .demo-recording strong{font-size:2.5rem;font-variant-numeric:tabular-nums}
