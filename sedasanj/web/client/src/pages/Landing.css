@@ -72,8 +72,8 @@
 .site-billing button + button { border-right: 0; }
 .site-billing button[aria-pressed="true"] { background: var(--site-primary); color: var(--site-canvas); }
 .site-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 24px; }
-.site-plan { padding: 32px 24px; border: 1px solid var(--site-border); display: flex; flex-direction: column; text-align: center; }
-.site-plan-featured { border-color: var(--site-primary); }
+.site-plan { padding: 32px 24px; border: 1px solid var(--site-border); background-color: var(--site-canvas); background-image: radial-gradient(circle, rgb(160 155 124 / 24%) .8px, transparent .9px); background-size: 16px 16px; display: flex; flex-direction: column; text-align: center; }
+.site-plan-featured { border-color: var(--site-primary); background-image: radial-gradient(circle, rgb(75 110 72 / 24%) .8px, transparent .9px); }
 .site-plan > p { color: var(--site-muted); margin-top: 8px; font-size: 12px; }
 .site-price { min-height: 110px; display: flex; flex-direction: column; justify-content: center; padding-block: 24px; }
 .site-price strong { font-size: 26px; }

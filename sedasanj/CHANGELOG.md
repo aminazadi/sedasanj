@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Added subtle dotted backgrounds to pricing plan cards and primary-colored dots to the featured plan.
+
+## 2026-10-16 — AMINAZADI
+
 - Reduced desktop and mobile landing header heights and adjusted logo and action sizing to match.
 
 ## 2026-10-16 — AMINAZADI
