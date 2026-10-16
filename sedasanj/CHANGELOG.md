@@ -2,6 +2,8 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Moved the square recorder equalizer into the button center, replacing the speaker and stop icons with a shared waveform component.
+
 - Increased the recorder equalizer to 120 bars and removed bar corner rounding.
 
 - Replaced the radial recorder rays with compact equalizer bars along the square edges and extended each of the three start tones to 600 ms.
