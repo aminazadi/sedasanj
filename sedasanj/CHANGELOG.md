@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Explicitly applied the locally bundled Vazirmatn font to landing page headings and verified the client uses no remote font imports.
+
+## 2026-10-16 — AMINAZADI
+
 - Rewrote the landing hero headline and supporting copy to make the organizational cost of unobserved customer calls clear and motivate action.
 
 ## 2026-10-16 — AMINAZADI
