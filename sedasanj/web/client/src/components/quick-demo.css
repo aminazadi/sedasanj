@@ -89,15 +89,19 @@
 .demo-recording strong{font-size:2.5rem;font-variant-numeric:tabular-nums}
 .demo-stop{background:#9f1239}
 .demo-audio-stage{display:grid;justify-items:center;gap:16px;padding:20px 0}
-.demo-audio-control{position:relative;isolation:isolate;display:grid;place-items:center;gap:14px;width:min(100%,360px);aspect-ratio:1;padding:0;border:0;background:transparent;color:#294c2b;cursor:pointer}
+.demo-audio-control{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;gap:36px;width:100%;padding:28px 0 0;border:0;background:transparent;color:#294c2b;cursor:pointer}
 .demo-audio-control:disabled{opacity:1;cursor:default}
 .demo-audio-control-core{position:relative;z-index:1;display:grid;place-items:center;width:clamp(168px,52vw,204px);height:clamp(168px,52vw,204px);border:1px solid #dce7d8;background:linear-gradient(145deg,#fff,#f0f6ed);box-shadow:0 12px 32px #294c2b1c}
 .demo-audio-control-core svg{width:48px;height:48px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .demo-audio-control strong{position:relative;z-index:1;font-size:.9rem}
 .demo-audio-stop-icon{width:26px;height:26px;background:#9f1239}
 .demo-audio-control.is-recording .demo-audio-control-core{color:#9f1239;border-color:#f5c3cc;background:#fff7f8}
-.demo-equalizer{--eq-radius:132px;position:absolute;inset:0;display:block;pointer-events:none}
-.demo-equalizer i{position:absolute;left:calc(50% - 2px);top:calc(50% - 14px);display:block;width:4px;height:28px;background:#b3c6ad;transform:rotate(calc(var(--bar)*15deg)) translateY(calc(var(--eq-radius)*-1));transform-origin:center;border-radius:4px;opacity:.78}
+.demo-equalizer{position:absolute;top:12px;left:50%;width:calc(clamp(168px,52vw,204px) + 32px);height:calc(clamp(168px,52vw,204px) + 32px);transform:translateX(-50%);pointer-events:none}
+.demo-equalizer i{position:absolute;display:block;width:3px;height:8px;background:#b3c6ad;border-radius:2px;opacity:.78;transform:translate(-50%,-50%)}
+.demo-equalizer i[data-side="0"]{top:0;left:var(--position)}
+.demo-equalizer i[data-side="1"]{top:var(--position);left:100%;transform:translate(-50%,-50%) rotate(90deg)}
+.demo-equalizer i[data-side="2"]{top:100%;left:var(--position)}
+.demo-equalizer i[data-side="3"]{top:var(--position);left:0;transform:translate(-50%,-50%) rotate(90deg)}
 .demo-equalizer.is-active i{background:#4b6e48;animation:demo-equalize 850ms ease-in-out infinite alternate;animation-delay:calc(var(--bar)*-37ms)}
 .demo-equalizer.is-active i:nth-child(3n){animation-duration:570ms}.demo-equalizer.is-active i:nth-child(4n){animation-duration:1.05s}
 .demo-recording{padding:8px 0 0}
@@ -106,8 +110,7 @@
 .demo-review p{margin:0 0 6px}
 .demo-retake{border:1px solid #b8cbb2;background:#f5f8f3;color:#365c38}
 .demo-retake:hover{background:#eaf2e6}
-@keyframes demo-equalize{0%{transform:rotate(calc(var(--bar)*15deg)) translateY(calc(var(--eq-radius)*-1)) scaleY(.35);opacity:.55}100%{transform:rotate(calc(var(--bar)*15deg)) translateY(calc(var(--eq-radius)*-1)) scaleY(2.8);opacity:1}}
-@media(max-width:420px){.demo-equalizer{--eq-radius:114px}.demo-audio-control-core{width:164px;height:164px}}
+@keyframes demo-equalize{0%{height:5px;opacity:.5}100%{height:15px;opacity:1}}
 @media(max-width:1000px){.demo-landing-section{min-height:420px;background-position:left 88%;background-size:cover,110% auto}.demo-landing-grid{min-height:350px}.demo-landing-copy{width:min(48%,460px)}}
 @media(max-width:700px){.demo-landing-section{min-height:560px;padding:32px 0 24px;background-image:linear-gradient(to bottom,rgb(242 240 239 / .94) 0%,rgb(242 240 239 / .76) 22%,rgb(242 240 239 / .32) 39%,transparent 57%),url('../assets/quick-demo-agent.png');background-position:center,62% 28%;background-size:cover,auto 125%}.demo-landing-grid{min-height:490px;align-items:start}.demo-landing-copy{align-self:start;width:min(100%,460px);margin:0 auto;padding:0 16px 20px;text-align:center}.demo-landing-copy h2{text-align:center!important;font-size:clamp(28px,8vw,36px)}.demo-landing-grid p{font-size:14px;margin-inline:auto}.demo-landing-grid .site-button{width:auto;padding-inline:20px}.demo-card{padding:24px 18px}.demo-card h1{font-size:1.4rem}}
 @media(max-width:420px){.demo-landing-section{min-height:540px;background-position:center,64% 28%;background-size:cover,auto 125%}.demo-landing-grid{min-height:470px}.demo-landing-copy{width:100%;padding:0 12px 16px}.demo-landing-copy h2{font-size:28px}.demo-landing-grid p{font-size:13px;margin-bottom:16px}.demo-landing-grid .site-button{min-height:44px;font-size:13px}}
