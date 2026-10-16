@@ -2,6 +2,7 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Resolved assistant stream completions after navigating to another conversation so training and other chat requests do not remain stuck waiting for a completion event.
 - Prevented completed assistant runs with a persisted reply from being restored as active, clearing stale chat processing indicators and allowing follow-up messages.
 
 ## 2026-10-16 — AMINAZADI

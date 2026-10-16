@@ -703,9 +703,21 @@ export default function Assistant() {
       const conversationId = envelope?.conversation_id ? String(envelope.conversation_id) : null;
       const event = String(envelope?.event || "");
       const payload = envelope?.payload || {};
-      if (conversationId && selectedConversationIdRef.current !== conversationId) return;
       if (runId && Number(envelope.sequence || 0) <= (sequenceRef.current.get(runId) || 0)) return;
       if (runId) sequenceRef.current.set(runId, Number(envelope.sequence || 0));
+      if (conversationId && selectedConversationIdRef.current !== conversationId) {
+        if ((event === "message:completed" || event === "done") && payload.message) {
+          const result = {
+            message: payload.message as ChatMessage,
+            conversationTitle: payload.conversation_title || null,
+          };
+          completedRunsRef.current.set(runId, result);
+          completionWaitersRef.current.get(runId)?.(result);
+          completionWaitersRef.current.delete(runId);
+          window.setTimeout(() => completedRunsRef.current.delete(runId), 30000);
+        }
+        return;
+      }
       const draftId = messageForRun(runId);
       if (event === "delta" && payload.content) {
         setMessages((current) => {
