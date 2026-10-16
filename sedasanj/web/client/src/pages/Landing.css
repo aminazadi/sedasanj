@@ -134,6 +134,8 @@
 
 @media (max-width: 760px) {
   #features .site-benefits { gap: 0; }
+  #features .site-benefits article:not(:nth-child(3n)) { border-inline-end: 0; }
+  #features .site-benefits article:nth-child(n + 4) { border-top: 0; }
   #features .site-benefits article { width: 100%; max-width: none; padding: 32px 16px; border: 0; border-bottom: 1px solid var(--site-border); }
   #features .site-benefits article:last-child { border-bottom: 0; }
 }

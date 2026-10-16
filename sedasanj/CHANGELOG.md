@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Fixed mobile feature separators by overriding the more specific desktop column borders and row rules.
+
+## 2026-10-16 — AMINAZADI
+
 - Changed mobile separators in the landing feature list to single horizontal rules beneath each feature, with no extra gaps.
 
 ## 2026-10-16 — AMINAZADI
