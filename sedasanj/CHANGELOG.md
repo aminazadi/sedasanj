@@ -2,6 +2,8 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Replaced the three start tones with one 1.5-second beep and added a square pause or resume control during recording with the equalizer hidden.
+
 - Removed the square recorder button shell, reduced the centered equalizer to 20 bars, and kept each bar square-cornered.
 
 - Moved the square recorder equalizer into the button center, replacing the speaker and stop icons with a shared waveform component.

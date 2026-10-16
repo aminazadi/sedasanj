@@ -6,7 +6,7 @@ import type { TokenPair } from "../types";
 import "../components/quick-demo.css";
 
 interface RecordingInfo { session_id: string; user_id: string; call_id: string | null; organization_name: string; expires_at: string; completed: boolean; max_duration_seconds: number; prompt_url: string | null }
-type Phase = "idle" | "permission" | "prompt" | "beep" | "recording" | "review" | "uploading" | "retry" | "done";
+type Phase = "idle" | "permission" | "prompt" | "beep" | "recording" | "paused" | "review" | "uploading" | "retry" | "done";
 
 function RecorderEqualizer({ active }: { active: boolean }) {
   return <span className={`demo-equalizer${active ? " is-active" : ""}`} aria-hidden="true">{Array.from({ length: 20 }, (_, index) => <i key={index} style={{ "--bar": index } as CSSProperties}/>)}</span>;
@@ -94,6 +94,15 @@ export default function DemoRecorder() {
       clearTimers(); recorder.current.stop(); setPhase("uploading");
     }
   }
+  function togglePause() {
+    if (recorder.current?.state === "recording") {
+      recorder.current.pause(); clearInterval(timer.current); setPhase("paused");
+    } else if (recorder.current?.state === "paused") {
+      recorder.current.resume(); startedAt.current = Date.now() - elapsed * 1000;
+      timer.current = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)), 250);
+      setPhase("recording");
+    }
+  }
   function startRecording() {
     if (!stream.current || !info || !mounted.current) return;
     try {
@@ -121,14 +130,13 @@ export default function DemoRecorder() {
     setPhase("beep");
     try {
       await context.current.resume();
-      for (let index = 0; index < 3; index += 1) {
-        if (!mounted.current || !context.current) return;
-        const oscillator = context.current.createOscillator(); const gain = context.current.createGain();
-        oscillator.frequency.value = 880; gain.gain.value = 0.12; oscillator.connect(gain); gain.connect(context.current.destination);
-        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
-        oscillator.start(); oscillator.stop(context.current.currentTime + 0.6);
-        await new Promise((resolve) => window.setTimeout(resolve, 850));
-      }
+      const oscillator = context.current.createOscillator(); const gain = context.current.createGain();
+      oscillator.frequency.value = 880; gain.gain.setValueAtTime(0.001, context.current.currentTime); gain.gain.linearRampToValueAtTime(0.12, context.current.currentTime + 0.04); gain.gain.linearRampToValueAtTime(0.001, context.current.currentTime + 1.5); oscillator.connect(gain); gain.connect(context.current.destination);
+      await new Promise<void>((resolve) => {
+        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); resolve(); };
+        oscillator.start(); oscillator.stop(context.current!.currentTime + 1.55);
+      });
+      if (!mounted.current) return;
       startRecording();
     } catch { releaseMicrophone(); setError("پخش بوق انجام نشد؛ دوباره شروع کنید."); setPhase("idle"); }
   }
@@ -158,14 +166,13 @@ export default function DemoRecorder() {
     if (info) void start(info);
   }
   const audioActive = phase === "prompt" || phase === "beep" || phase === "recording";
-  const recordingAction = phase === "recording" ? stop : undefined;
   return <main className="demo-page demo-recorder-page" dir="rtl"><section className="demo-card">
     {!supported && <p className="demo-error" role="alert">برای ضبط، لینک را با Safari یا Chrome به‌روز و اتصال HTTPS باز کنید.</p>}
     {error && <p className="demo-error" role="alert">{error}</p>}
     {info?.prompt_url && phase !== "done" && <audio ref={audio} src={info.prompt_url} preload="auto" playsInline onEnded={() => void playBeeps()} onError={() => { releaseMicrophone(); setPhase("idle"); setError("صدای راهنما بارگذاری نشد؛ اتصال را بررسی و دوباره شروع کنید."); }}/>} 
-    {phase === "idle" && info && <><p>راهنما پخش می‌شود؛ پس از سه بوق پیام خود را بگویید.</p><p className="demo-note">حداکثر {fmt.int(info.max_duration_seconds)} ثانیه</p><button className="demo-audio-control" disabled={!supported} onClick={() => void start(info)} aria-label="شروع پخش راهنما و ضبط"><RecorderEqualizer active={audioActive}/><strong>شروع پخش و ضبط</strong></button></>}
+    {phase === "idle" && info && <><p>راهنما پخش می‌شود؛ پس از یک بوق کشیده پیام خود را بگویید.</p><p className="demo-note">حداکثر {fmt.int(info.max_duration_seconds)} ثانیه</p><button className="demo-audio-control" disabled={!supported} onClick={() => void start(info)} aria-label="شروع پخش راهنما و ضبط"><RecorderEqualizer active={audioActive}/><strong>شروع پخش و ضبط</strong></button></>}
     {phase === "permission" && <p role="status">در انتظار دسترسی به میکروفون…</p>}
-    {(phase === "prompt" || phase === "beep" || phase === "recording") && <div className="demo-audio-stage" role="status"><button className={`demo-audio-control is-active${phase === "recording" ? " is-recording" : ""}`} onClick={recordingAction} aria-label={phase === "recording" ? "پایان ضبط" : "پخش خودکار راهنما و بوق"} disabled={!recordingAction}><RecorderEqualizer active/><strong>{phase === "prompt" ? "در حال پخش پیام راهنما" : phase === "beep" ? "سه بوق تا شروع ضبط" : "در حال ضبط"}</strong></button>{phase === "recording" && <div className="demo-recording"><strong role="timer">{fmt.duration(elapsed * 1000)}</strong><p>برای پایان ضبط، این بخش را لمس کنید</p></div>}</div>}
+    {(phase === "prompt" || phase === "beep" || phase === "recording" || phase === "paused") && <div className="demo-audio-stage" role="status">{(phase === "prompt" || phase === "beep") ? <div className="demo-audio-control is-active"><RecorderEqualizer active/><strong>{phase === "prompt" ? "در حال پخش پیام راهنما" : "یک بوق کشیده تا شروع ضبط"}</strong></div> : <><div className="demo-recording-control"><button className="demo-recording-pause" onClick={togglePause} aria-label={phase === "recording" ? "مکث ضبط" : "ادامه ضبط"}>{phase === "recording" ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM15 5h4v14h-4z"/></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 12 7-12 7z"/></svg>}</button><strong>{phase === "recording" ? "در حال ضبط" : "ضبط مکث شده"}</strong></div><div className="demo-recording"><strong role="timer">{fmt.duration(elapsed * 1000)}</strong><button className="demo-button demo-stop" onClick={stop}>پایان ضبط</button></div></>}</div>}
     {phase === "review" && <div className="demo-review" role="group" aria-label="بازبینی صدای ضبط‌شده"><p>ضبط پیام به پایان رسید. می‌توانید ارسال کنید یا دوباره ضبط کنید.</p><button className="demo-button" onClick={() => recording.current && void upload(recording.current)}>ارسال پیام صوتی</button><button className="demo-button demo-retake" onClick={retryRecording}>ضبط دوباره</button></div>}
     {phase === "uploading" && <div className="demo-progress" role="status"><span className="demo-spinner"/><p>در حال ارسال پیام صوتی… این صفحه را نبندید.</p></div>}
     {phase === "retry" && <><p>فایل ضبط‌شده در همین صفحه نگه داشته شده است.</p><button className="demo-button" onClick={() => recording.current && void upload(recording.current)}>تلاش دوباره برای ارسال</button><button className="demo-button demo-retake" onClick={retryRecording}>ضبط دوباره</button></>}

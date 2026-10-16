@@ -92,8 +92,12 @@
 .demo-audio-control{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;gap:18px;width:100%;min-height:110px;padding:0;border:0;background:transparent;color:#294c2b;cursor:pointer}
 .demo-audio-control:disabled{opacity:1;cursor:default}
 .demo-audio-control strong{position:relative;z-index:1;font-size:.9rem}
-.demo-audio-stop-icon{width:26px;height:26px;background:#9f1239}
 .demo-audio-control.is-recording{color:#9f1239}
+.demo-recording-control{display:grid;justify-items:center;gap:12px;color:#294c2b}
+.demo-recording-pause{display:grid;place-items:center;width:124px;height:124px;border:1px solid #b9cdb4;border-radius:0;background:#edf4e9;color:#365c38;cursor:pointer;box-shadow:0 10px 28px #294c2b18}
+.demo-recording-pause svg{width:48px;height:48px;fill:currentColor}
+.demo-recording-control strong{font-weight:700}
+.demo-recording .demo-stop{margin-top:12px}
 .demo-equalizer{display:flex;align-items:center;justify-content:center;gap:5px;width:min(80%,280px);height:72px;pointer-events:none}
 .demo-equalizer i{display:block;flex:1;min-width:0;height:8px;background:currentColor;border-radius:0;opacity:.78}
 .demo-equalizer.is-active i{animation:demo-equalize 850ms ease-in-out infinite alternate;animation-delay:calc(var(--bar)*-37ms)}
