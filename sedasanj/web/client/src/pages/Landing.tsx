@@ -87,7 +87,7 @@ export default function Landing() {
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="workflow">
         <div className="site-container">
-          <h2>از مکالمه تا اقدام</h2>
+          <h2>از مکالمه تا اقدام همه زیر ذره‌بین</h2>
           <div className="workflow-timeline" aria-label="مسیر تبدیل تماس به اقدام مدیریتی">
             <svg className="timeline-art desktop-art" viewBox="0 0 1000 180" preserveAspectRatio="none" fill="none" aria-hidden="true">
               <defs><marker id="timeline-arrow-desktop" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M7 1 1 4l6 3"/></marker></defs>

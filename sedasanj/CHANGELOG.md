@@ -2,6 +2,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Updated the workflow section heading to «از مکالمه تا اقدام همه زیر ذره‌بین».
+
+## 2026-10-16 — AMINAZADI
+
 - Removed the workflow report table and step labels, enlarged timeline icons and titles, and clarified the right-to-left animated curved path for desktop and mobile layouts.
 
 ## 2026-10-16 — AMINAZADI
