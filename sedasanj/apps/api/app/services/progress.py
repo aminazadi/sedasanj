@@ -12,6 +12,7 @@ from app.services import processing_events
 # Discrete call.status → baseline percent + Persian label. Workers overwrite these
 # with finer values (per channel / chunk) while a stage is running.
 STAGE_DEFAULTS: dict[str, tuple[int | None, str]] = {
+    "missed": (100, "تماس بی‌پاسخ"),
     "received": (5, "فایل دریافت شد"),
     "reserved": (10, "اعتبار رزرو شد"),
     "stored": (15, "در صف پیاده‌سازی گفتار"),

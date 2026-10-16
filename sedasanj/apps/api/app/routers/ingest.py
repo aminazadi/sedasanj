@@ -8,19 +8,85 @@ from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Header, Response, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.config import get_settings
 from app.db import control_session_scope
 from app.deps import ApiKeyDep, ApiKeySession
 from app.errors import ApiError
-from app.models import ApiKey, Tenant
-from app.schemas import IngestAccepted, IngestConfigValidation
+from app.models import ApiKey, Call, CallOperatorAssignment, Tenant, User
+from app.schemas import IngestAccepted, IngestConfigValidation, MissedCallIngest
 from app.security import verify_password
 from app.services import billing
 from app.services.archives import prepare_agent_audio
-from app.services.ingest import accept_upload
+from app.services.ingest import DIRECTIONS, accept_upload
 
 router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
+
+
+@router.post("/missed-calls", status_code=status.HTTP_201_CREATED)
+async def ingest_missed_call(
+    principal: ApiKeyDep, session: ApiKeySession, payload: MissedCallIngest
+) -> dict[str, object]:
+    tenant_id = principal.tenant_id
+    assert tenant_id is not None
+    unique_id = payload.asterisk_uniqueid.strip()
+    if not unique_id:
+        raise ApiError("invalid_request", "asterisk_uniqueid is required")
+    duration_ms = max(0, int((payload.ended_at - payload.started_at).total_seconds() * 1000))
+    values = {
+        "tenant_id": tenant_id,
+        "audio_id": None,
+        "asterisk_uniqueid": unique_id,
+        "caller_number": payload.caller_number.strip(),
+        "dialed_number": payload.dialed_number.strip(),
+        "direction": payload.direction if payload.direction in DIRECTIONS else None,
+        "agent_extension": (payload.agent_extension or "").strip() or None,
+        "campaign_id": (payload.campaign_id or "").strip() or None,
+        "source": (payload.source or "").strip() or None,
+        "external_reference": (payload.external_reference or "").strip() or None,
+        "started_at": payload.started_at,
+        "ended_at": payload.ended_at,
+        "duration_ms": duration_ms,
+        "billed_seconds": None,
+        "status": "missed",
+        "call_type": "missed",
+    }
+    statement = pg_insert(Call).values(**values).on_conflict_do_nothing(
+        constraint="calls_tenant_uniqueid_key"
+    ).returning(Call)
+    call = (await session.execute(statement)).scalar_one_or_none()
+    if call is None:
+        existing = (
+            await session.execute(
+                select(Call).where(Call.tenant_id == tenant_id, Call.asterisk_uniqueid == unique_id)
+            )
+        ).scalar_one()
+        return {"call_id": existing.id, "call_type": existing.call_type, "replayed": True}
+    if call.agent_extension:
+        operator = (
+            await session.execute(
+                select(User).where(
+                    User.tenant_id == tenant_id,
+                    User.role == "operator",
+                    User.extension == call.agent_extension,
+                )
+            )
+        ).scalar_one_or_none()
+        if operator is not None:
+            session.add(
+                CallOperatorAssignment(
+                    tenant_id=tenant_id,
+                    call_id=call.id,
+                    operator_id=operator.id,
+                    agent_extension=call.agent_extension,
+                    assignment_source="missed_call_ingest_exact_extension",
+                    confidence=1,
+                )
+            )
+    await session.flush()
+    return {"call_id": call.id, "call_type": call.call_type, "replayed": False}
 
 
 async def _control_api_key(key_id: UUID) -> ApiKey:

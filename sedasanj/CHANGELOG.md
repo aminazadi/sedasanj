@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-16 — AMINAZADI
+
+- Added metadata-only missed-call ingestion, tenant-scoped listing and details, assistant statistics, and dashboard trends without entering audio processing or billing.
+
 ## 2026-10-14 — AMINAZADI
 
 - Aligned Persian speech input callbacks across both assistant composers so the client TypeScript and Docker builds complete successfully.

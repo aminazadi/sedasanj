@@ -193,7 +193,11 @@ async def list_calls(
         number=number,
     )
     if status_filter:
-        stmt = stmt.where(Call.status == status_filter)
+        stmt = stmt.where(
+            Call.call_type == status_filter
+            if status_filter in {"answered", "missed"}
+            else Call.status == status_filter
+        )
     if direction:
         stmt = stmt.where(Call.direction == direction)
     total = int(
@@ -312,6 +316,7 @@ def _summary(call: Call, insight: CallInsight | None, *, hide_billing: bool = Fa
         ended_at=call.ended_at,
         updated_at=updated_at,
         duration_ms=call.duration_ms,
+        call_type=call.call_type,
         billed_seconds=None if hide_billing else call.billed_seconds,
         status=call.status,
         error_code=None,
@@ -370,6 +375,19 @@ async def _load_call(
 async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) -> CallDetail:
     assert principal.tenant_id is not None
     call = await _load_call(session, call_id, principal.tenant_id, principal)
+    if call.call_type == "missed":
+        return CallDetail(
+            **_summary(call, None, hide_billing=operator_scope.is_operator(principal)).model_dump(),
+            audio_available=False,
+            transcript=None,
+            corrected_transcript=None,
+            utterances=[],
+            raw_utterances=[],
+            insights=None,
+            sales=None,
+            tasks=[],
+            processing_events=[],
+        )
     transcript = (
         await session.execute(
             select(Transcript).where(
@@ -542,6 +560,7 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
     )
     return CallDetail(
         **summary_payload,
+        call_type=call.call_type,
         audio_available=audio_available,
         can_retry_transcription=(
             transcript is None
@@ -1360,10 +1379,15 @@ async def analytics_summary(
 
     totals = (
         await session.execute(
-            select(func.count(Call.id), func.coalesce(func.sum(Call.duration_ms), 0)).where(window)
+            select(
+                func.count(Call.id).filter(Call.call_type == "answered"),
+                func.coalesce(func.sum(Call.duration_ms).filter(Call.call_type == "answered"), 0),
+                func.count(Call.id).filter(Call.call_type == "missed"),
+            ).where(window)
         )
     ).one()
 
+    answered_window = and_(window, Call.call_type == "answered")
     # literal() so SELECT and GROUP BY compile to the same SQL; a bound
     # "unknown" becomes $1 vs $6 and Postgres rejects the grouping.
     unknown = literal("unknown")
@@ -1375,7 +1399,7 @@ async def analytics_summary(
         await session.execute(
             select(intent_key, func.count())
             .join(Call, Call.id == CallInsight.call_id)
-            .where(CallInsight.tenant_id == principal.tenant_id, window)
+            .where(CallInsight.tenant_id == principal.tenant_id, answered_window)
             .group_by(intent_key)
             .order_by(func.count().desc())
         )
@@ -1385,7 +1409,7 @@ async def analytics_summary(
         await session.execute(
             select(sentiment_key, func.count())
             .join(Call, Call.id == CallInsight.call_id)
-            .where(CallInsight.tenant_id == principal.tenant_id, window)
+            .where(CallInsight.tenant_id == principal.tenant_id, answered_window)
             .group_by(sentiment_key)
             .order_by(func.count().desc())
         )
@@ -1394,21 +1418,21 @@ async def analytics_summary(
     caller_trajectories = await _profile_buckets(
         session,
         tenant_id=principal.tenant_id,
-        window=window,
+        window=answered_window,
         path=("text", "caller", "trajectory"),
         unknown=unknown,
     )
     agent_sentiments = await _profile_buckets(
         session,
         tenant_id=principal.tenant_id,
-        window=window,
+        window=answered_window,
         path=("text", "agent", "overall", "label"),
         unknown=unknown,
     )
     agent_trajectories = await _profile_buckets(
         session,
         tenant_id=principal.tenant_id,
-        window=window,
+        window=answered_window,
         path=("text", "agent", "trajectory"),
         unknown=unknown,
     )
@@ -1417,8 +1441,30 @@ async def analytics_summary(
         await session.execute(
             select(day_key, sentiment_key, func.count())
             .join(CallInsight, CallInsight.call_id == Call.id)
-            .where(CallInsight.tenant_id == principal.tenant_id, window)
+            .where(CallInsight.tenant_id == principal.tenant_id, answered_window)
             .group_by(day_key, sentiment_key)
+            .order_by(day_key)
+        )
+    ).all()
+
+    type_window = operator_scope.operator_window(
+        principal,
+        and_(
+            Call.tenant_id == principal.tenant_id,
+            Call.started_at >= from_date,
+            Call.started_at <= to_date,
+        ),
+    )
+    type_rows = (
+        await session.execute(
+            select(Call.call_type, func.count()).where(type_window).group_by(Call.call_type)
+        )
+    ).all()
+    missed_trend_rows = (
+        await session.execute(
+            select(day_key, func.count())
+            .where(type_window, Call.call_type == "missed")
+            .group_by(day_key)
             .order_by(day_key)
         )
     ).all()
@@ -1437,10 +1483,15 @@ async def analytics_summary(
         elif sentiment_value == "happy":
             point.happy = count
 
+    for day, count in missed_trend_rows:
+        trend.setdefault(day, AnalyticsTrendPoint(date=day)).missed_calls = int(count)
+
     return AnalyticsSummary(
         from_date=from_date,
         to_date=to_date,
         total_calls=int(totals[0]),
+        missed_calls=int(totals[2]),
+        call_types=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in type_rows],
         total_minutes=round(int(totals[1]) / 60000, 1),
         intents=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in intents],
         sentiments=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in sentiments],

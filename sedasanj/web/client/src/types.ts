@@ -19,6 +19,7 @@ export interface CallSummary {
   ended_at: string;
   updated_at: string;
   duration_ms: number;
+  call_type: "answered" | "missed";
   billed_seconds: number | null;
   status: string;
   error_code: string | null;
@@ -323,6 +324,7 @@ export interface AnalyticsBucket {
 
 export interface AnalyticsTrendPoint {
   date: string;
+  missed_calls: number;
   angry: number;
   sad: number;
   neutral: number;
@@ -334,6 +336,8 @@ export interface AnalyticsSummary {
   from_date: string;
   to_date: string;
   total_calls: number;
+  missed_calls: number;
+  call_types: AnalyticsBucket[];
   total_minutes: number;
   intents: AnalyticsBucket[];
   sentiments: AnalyticsBucket[];
@@ -363,6 +367,8 @@ export interface KpiDashboard {
   trend: Array<{
     date: string;
     calls: number;
+    answered_calls: number;
+    missed_calls: number;
     effective_calls: number;
     opportunities: number;
     wins: number;
@@ -370,6 +376,9 @@ export interface KpiDashboard {
   sentiments: AnalyticsBucket[];
   cards: {
     total_calls: number;
+    missed_calls: number;
+    previous_total_calls: number;
+    previous_missed_calls: number;
     effective_calls: number;
     opportunities: number;
     explicit_wins: number;

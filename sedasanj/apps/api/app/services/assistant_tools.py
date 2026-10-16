@@ -11,7 +11,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
@@ -70,6 +70,7 @@ class AnalyticsArguments(WindowArguments):
     direction: str | None = Field(default=None, max_length=30)
     sentiment: str | None = Field(default=None, max_length=30)
     topic: str | None = Field(default=None, max_length=120)
+    call_type: Literal["answered", "missed"] | None = None
 
 
 class OperatorPerformanceArguments(WindowArguments):
@@ -184,7 +185,7 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         stmt = stmt.where(or_(Call.caller_number.ilike(pattern), Call.dialed_number.ilike(pattern)))
     for column, value in (
         (Call.agent_extension, args.extension),
-        (Call.status, args.status),
+        (Call.call_type if args.status in {"answered", "missed"} else Call.status, args.status),
         (Call.direction, args.direction),
         (Call.campaign_id, args.campaign_id),
         (CallInsight.sentiment, args.sentiment),
@@ -211,6 +212,7 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "ended_at": call.ended_at.isoformat(),
                 "duration_seconds": round(call.duration_ms / 1000),
                 "status": call.status,
+                "call_type": call.call_type,
                 "direction": call.direction,
                 "caller_number": call.caller_number,
                 "dialed_number": call.dialed_number,
@@ -272,6 +274,7 @@ async def _call_details(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "ended_at": call.ended_at.isoformat(),
                 "duration_seconds": round(call.duration_ms / 1000),
                 "status": call.status,
+                "call_type": call.call_type,
                 "direction": call.direction,
                 "caller_number": call.caller_number,
                 "dialed_number": call.dialed_number,
@@ -415,11 +418,13 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         ).exists())
     for column, value in (
         (Call.campaign_id, args.campaign_id),
-        (Call.status, args.status),
+        (Call.call_type if args.status in {"answered", "missed"} else Call.status, args.status),
         (Call.direction, args.direction),
     ):
         if value:
             stmt = stmt.where(column == value)
+    if args.call_type:
+        stmt = stmt.where(Call.call_type == args.call_type)
     if args.sentiment or args.topic:
         stmt = stmt.join(CallInsight, CallInsight.call_id == Call.id)
         if args.sentiment:
@@ -434,16 +439,21 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     )
     total, duration, average = (await ctx.session.execute(query)).one()
     status_rows = (await ctx.session.execute(
-        select(filtered.c.status, func.count()).group_by(filtered.c.status)
+        select(filtered.c.status, func.count()).where(filtered.c.call_type == "answered").group_by(filtered.c.status)
+    )).all()
+    call_type_rows = (await ctx.session.execute(
+        select(filtered.c.call_type, func.count()).group_by(filtered.c.call_type)
     )).all()
     return {
         "version": 1,
         "from_date": start.isoformat(),
         "to_date": end.isoformat(),
         "total_calls": int(total),
+        "missed_calls": sum(int(value) for key, value in call_type_rows if key == "missed"),
+        "call_types": {str(key): int(value) for key, value in call_type_rows},
+        "statuses": {str(key): int(value) for key, value in status_rows},
         "total_minutes": round(int(duration) / 60000, 1),
         "average_minutes": round(float(average) / 60000, 1),
-        "statuses": {str(key): int(value) for key, value in status_rows},
     }
 
 
@@ -534,6 +544,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             direction=args.direction,
             sentiment=args.sentiment,
             topic=args.topic,
+            call_type=args.call_type,
         ),
     )
     if args.view == "call_trend":
@@ -548,11 +559,13 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             ).exists())
         for column, value in (
             (Call.campaign_id, args.campaign_id),
-            (Call.status, args.status),
+            (Call.call_type if args.status in {"answered", "missed"} else Call.status, args.status),
             (Call.direction, args.direction),
         ):
             if value:
                 trend_stmt = trend_stmt.where(column == value)
+        if args.call_type:
+            trend_stmt = trend_stmt.where(Call.call_type == args.call_type)
         if args.sentiment or args.topic:
             trend_stmt = trend_stmt.join(CallInsight, CallInsight.call_id == Call.id)
             if args.sentiment:
@@ -574,9 +587,59 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             }
             for row in rows
         ]
+        if args.call_type is None:
+            missed_stmt = _apply_window(_base_calls(ctx), start, end).where(
+                Call.call_type == "missed"
+            )
+            missed_operator_id = await _validate_operator(ctx, args.operator_id)
+            if missed_operator_id is not None and not operator_scope.is_operator(ctx.principal):
+                missed_stmt = missed_stmt.where(
+                    select(CallOperatorAssignment.id)
+                    .where(
+                        CallOperatorAssignment.call_id == Call.id,
+                        CallOperatorAssignment.operator_id == missed_operator_id,
+                        CallOperatorAssignment.superseded_at.is_(None),
+                    )
+                    .exists()
+                )
+            for column, value in ((Call.campaign_id, args.campaign_id), (Call.direction, args.direction)):
+                if value:
+                    missed_stmt = missed_stmt.where(column == value)
+            if args.sentiment or args.topic:
+                missed_stmt = missed_stmt.where(false())
+            missed_filtered = missed_stmt.subquery()
+            missed_rows = (
+                await ctx.session.execute(
+                    select(func.date_trunc("day", missed_filtered.c.started_at), func.count())
+                    .group_by(func.date_trunc("day", missed_filtered.c.started_at))
+                    .order_by(func.date_trunc("day", missed_filtered.c.started_at))
+                )
+            ).all()
+            missed_by_day = {row[0].date().isoformat(): int(row[1]) for row in missed_rows}
+            for item in data:
+                item["missed_calls"] = missed_by_day.get(item["label"], 0)
+            existing_days = {item["label"] for item in data}
+            data.extend(
+                {"label": day, "value": 0, "secondary_value": 0, "missed_calls": count}
+                for day, count in missed_by_day.items()
+                if day not in existing_days
+            )
         chart_types = args.chart_types or ["line", "area"]
         title = "روند تماس‌ها"
         secondary_label = "میانگین مدت (دقیقه)"
+    elif args.view == "call_status":
+        data = [
+            {"label": str(label), "value": value}
+            for label, value in result["statuses"].items()
+        ]
+        data.extend(
+            {"label": "بی‌پاسخ", "value": value}
+            for key, value in result["call_types"].items()
+            if key == "missed"
+        )
+        chart_types = args.chart_types or ["donut"]
+        title = "توزیع وضعیت و نوع تماس"
+        secondary_label = None
     else:
         data = [
             {"label": str(label), "value": value}

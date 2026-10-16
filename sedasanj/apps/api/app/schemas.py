@@ -125,6 +125,27 @@ class IngestAccepted(BaseModel):
     reservation_id: UUID | None
 
 
+class MissedCallIngest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asterisk_uniqueid: str = Field(min_length=1, max_length=255)
+    caller_number: str = Field(min_length=1, max_length=80)
+    dialed_number: str = Field(min_length=1, max_length=80)
+    started_at: datetime
+    ended_at: datetime
+    direction: Literal["inbound", "outbound", "internal"] | None = None
+    agent_extension: str | None = Field(default=None, max_length=80)
+    campaign_id: str | None = Field(default=None, max_length=120)
+    source: str | None = Field(default=None, max_length=120)
+    external_reference: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> MissedCallIngest:
+        if self.ended_at < self.started_at:
+            raise ValueError("ended_at must not be earlier than started_at")
+        return self
+
+
 class IngestConfigValidation(BaseModel):
     status: Literal["ok"] = "ok"
     tenant: str | None
@@ -648,6 +669,7 @@ class CallSummary(BaseModel):
     ended_at: datetime
     updated_at: datetime
     duration_ms: int
+    call_type: Literal["answered", "missed"] = "answered"
     billed_seconds: int | None
     status: str
     error_code: str | None
@@ -772,6 +794,7 @@ class AnalyticsBucket(BaseModel):
 
 class AnalyticsTrendPoint(BaseModel):
     date: str
+    missed_calls: int = 0
     angry: int = 0
     sad: int = 0
     neutral: int = 0
@@ -783,6 +806,8 @@ class AnalyticsSummary(BaseModel):
     from_date: datetime
     to_date: datetime
     total_calls: int
+    missed_calls: int = 0
+    call_types: list[AnalyticsBucket] = Field(default_factory=list)
     total_minutes: float
     intents: list[AnalyticsBucket]
     sentiments: list[AnalyticsBucket]

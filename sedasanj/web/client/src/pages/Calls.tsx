@@ -240,7 +240,9 @@ export default function Calls() {
             onChange={(event) => setFilters({ ...filters, status: event.target.value })}
           >
             <option value="">همه</option>
-            {Object.entries(STATUS_LABELS).map(([key, label]) => (
+            <option value="missed">بی‌پاسخ</option>
+            <option value="answered">پاسخ‌داده‌شده</option>
+            {Object.entries(STATUS_LABELS).filter(([key]) => key !== "missed").map(([key, label]) => (
               <option key={key} value={key}>{label}</option>
             ))}
           </select>
@@ -324,7 +326,7 @@ export default function Calls() {
                     </span>
                   </td>
                   <td>
-                    <StatusBadge status={call.status} />
+                    <StatusBadge status={call.call_type === "missed" ? "missed" : call.status} />
                   </td>
                   {canDelete ? (
                     <td>

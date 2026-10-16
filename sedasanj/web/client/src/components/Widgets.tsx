@@ -93,6 +93,7 @@ export function Pagination({
 
 export function StatusBadge({ status }: { status: string }) {
   const tones: Record<string, string> = {
+    missed: "border-rose-200 bg-rose-50 text-rose-700",
     received: "border-sky-200 bg-sky-50 text-sky-700",
     reserved: "border-violet-200 bg-violet-50 text-violet-700",
     stored: "border-indigo-200 bg-indigo-50 text-indigo-700",

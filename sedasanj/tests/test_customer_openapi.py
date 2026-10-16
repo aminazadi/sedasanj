@@ -17,6 +17,7 @@ async def test_customer_openapi_excludes_admin_and_declares_security() -> None:
     assert schema["info"]["title"] == "sedasanj (voicesanj)"
     paths = schema["paths"]
     assert "/v1/ingest/calls" in paths
+    assert "/v1/ingest/missed-calls" in paths
     assert "/v1/ingest/config/validate" in paths
     assert "/v1/auth/api-keys" in paths
     assert not any(path.startswith("/v1/admin") for path in paths)

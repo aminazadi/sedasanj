@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, false, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.deps import ApiKeyDep, ApiKeySession, OrgAdminDep, TenantSession, UserDep, client_ip
@@ -597,6 +597,7 @@ async def dashboard(
         team_id = None
     conditions = [
         Call.tenant_id == tenant_id,
+        Call.call_type == "answered",
         Call.started_at >= from_date,
         Call.started_at <= to_date,
     ]
@@ -639,11 +640,52 @@ async def dashboard(
     )
     stmt = operator_scope.apply_operator_scope(stmt, principal)
     rows = (await session.execute(stmt.order_by(Call.started_at.desc()))).all()
+    missed_filters = [
+        column == value
+        for column, value in (
+            (Call.direction, direction),
+            (Call.campaign_id, campaign_id),
+            (Call.source, source),
+        )
+        if value
+    ]
+    missed_stmt = select(Call).where(
+        Call.tenant_id == tenant_id,
+        Call.call_type == "missed",
+        Call.started_at >= from_date,
+        Call.started_at <= to_date,
+        *missed_filters,
+    )
+    if operator_id:
+        missed_stmt = missed_stmt.where(
+            select(CallOperatorAssignment.id).where(
+                CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.operator_id == operator_id,
+                CallOperatorAssignment.superseded_at.is_(None),
+            ).exists()
+        )
+    if team_id:
+        missed_stmt = missed_stmt.where(
+            select(CallOperatorAssignment.id)
+            .join(TeamMembership, TeamMembership.operator_id == CallOperatorAssignment.operator_id)
+            .where(
+                CallOperatorAssignment.call_id == Call.id,
+                TeamMembership.team_id == team_id,
+                TeamMembership.valid_from <= Call.started_at,
+                or_(TeamMembership.valid_to.is_(None), TeamMembership.valid_to > Call.started_at),
+            )
+            .exists()
+        )
+    if intent is not None or certainty is not None:
+        missed_stmt = missed_stmt.where(false())
+    missed_stmt = operator_scope.apply_operator_scope(missed_stmt, principal)
+    missed_rows = (await session.execute(missed_stmt)).scalars().all()
     period = to_date - from_date
     previous_to = from_date
     previous_from = previous_to - period
     previous_conditions = [
         Call.tenant_id == tenant_id,
+        Call.call_type == "answered",
         Call.started_at >= previous_from,
         Call.started_at < previous_to,
         *conditions[3:],
@@ -656,6 +698,37 @@ async def dashboard(
     )
     previous_stmt = operator_scope.apply_operator_scope(previous_stmt, principal)
     previous_rows = (await session.execute(previous_stmt)).all()
+    previous_missed_stmt = select(Call).where(
+        Call.tenant_id == tenant_id,
+        Call.call_type == "missed",
+        Call.started_at >= previous_from,
+        Call.started_at < previous_to,
+        *missed_filters,
+    )
+    if operator_id:
+        previous_missed_stmt = previous_missed_stmt.where(
+            select(CallOperatorAssignment.id).where(
+                CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.operator_id == operator_id,
+                CallOperatorAssignment.superseded_at.is_(None),
+            ).exists()
+        )
+    if team_id:
+        previous_missed_stmt = previous_missed_stmt.where(
+            select(CallOperatorAssignment.id)
+            .join(TeamMembership, TeamMembership.operator_id == CallOperatorAssignment.operator_id)
+            .where(
+                CallOperatorAssignment.call_id == Call.id,
+                TeamMembership.team_id == team_id,
+                TeamMembership.valid_from <= Call.started_at,
+                or_(TeamMembership.valid_to.is_(None), TeamMembership.valid_to > Call.started_at),
+            )
+            .exists()
+        )
+    if intent is not None or certainty is not None:
+        previous_missed_stmt = previous_missed_stmt.where(false())
+    previous_missed_stmt = operator_scope.apply_operator_scope(previous_missed_stmt, principal)
+    previous_missed_rows = (await session.execute(previous_missed_stmt)).scalars().all()
     call_ids = [call.id for call, _, _ in rows]
     previous_call_ids = [call.id for call, _, _ in previous_rows]
     assignments = (
@@ -1020,9 +1093,10 @@ async def dashboard(
         day = call.started_at.astimezone(UTC).date().isoformat()
         point = daily.setdefault(
             day,
-            {"date": day, "calls": 0, "effective_calls": 0, "opportunities": 0, "wins": 0},
+            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "opportunities": 0, "wins": 0},
         )
         point["calls"] = int(point["calls"]) + 1
+        point["answered_calls"] = int(point["answered_calls"]) + 1
         point["effective_calls"] = int(point["effective_calls"]) + int(call.duration_ms >= 15000)
         point["opportunities"] = int(point["opportunities"]) + int(_is_opportunity(insight, sales))
         point["wins"] = int(point["wins"]) + int(
@@ -1030,6 +1104,14 @@ async def dashboard(
         )
         if insight and insight.sentiment:
             sentiment_counter[insight.sentiment] += 1
+    for call in missed_rows:
+        day = call.started_at.astimezone(UTC).date().isoformat()
+        point = daily.setdefault(
+            day,
+            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "opportunities": 0, "wins": 0},
+        )
+        point["missed_calls"] = int(point.get("missed_calls", 0)) + 1
+        point["calls"] = int(point["calls"]) + 1
     total_agent_talk = sum(channels.get(1, 0) for channels in talk.values())
     total_caller_talk = sum(channels.get(0, 0) for channels in talk.values())
     total_talk = total_agent_talk + total_caller_talk
@@ -1204,7 +1286,10 @@ async def dashboard(
         "role": principal.role,
         "settings": settings,
         "cards": {
-            "total_calls": len(rows),
+            "total_calls": len(rows) + len(missed_rows),
+            "missed_calls": len(missed_rows),
+            "previous_total_calls": len(previous_rows) + len(previous_missed_rows),
+            "previous_missed_calls": len(previous_missed_rows),
             "effective_calls": effective,
             "opportunities": opportunities,
             "explicit_wins": explicit_won,

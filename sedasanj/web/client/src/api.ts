@@ -162,6 +162,7 @@ export const fmt = {
 };
 
 export const STATUS_LABELS: Record<string, string> = {
+  missed: "بی‌پاسخ",
   received: "دریافت‌شده",
   reserved: "رزرو اعتبار",
   stored: "ذخیره‌شده",
