@@ -92,7 +92,10 @@ async def publish(
         envelope = {
             "conversation_id": str(run.conversation_id),
             "run_id": str(run.id),
-            "message_id": str(run.user_message_id),
+            "message_id": str(
+                payload.get("message", {}).get("id") or run.user_message_id
+            ),
+            "user_message_id": str(run.user_message_id),
             "sequence": sequence,
             "event": event,
             "payload": payload,
