@@ -53,6 +53,7 @@ from app.services.operator_scoring import score_call
 from app.services.organization_memory import append_untrusted_context
 from app.services.platform import resolve_provider_settings
 from app.services.provider_errors import classify_failure
+from app.services.scheduled_reports import generate_scheduled_report
 from worker_llm.chunking import plan_chunks
 from worker_llm.client import LlmClient, build_client, extract_json, load_run_prompt
 from worker_llm.correction import poll_transcript_correction, start_transcript_correction
@@ -760,6 +761,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 class WorkerSettings:
     functions = [
+        generate_scheduled_report,
         run_assistant_chat,
         analyze_call,
         start_transcript_correction,

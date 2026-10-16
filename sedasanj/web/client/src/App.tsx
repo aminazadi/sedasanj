@@ -17,6 +17,7 @@ import Legal from "./pages/Legal";
 import Overview from "./pages/Overview";
 import Tasks from "./pages/Tasks";
 import Assistant from "./pages/Assistant";
+import ScheduledReports from "./pages/ScheduledReports";
 import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="/calls/:callId" element={<CallDetailPage />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/assistant" element={<Assistant />} />
+        {orgAdmin ? <Route path="/scheduled-reports" element={<ScheduledReports />} /> : null}
         <Route path="/operator-scores" element={<OperatorScores />} />
         <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}

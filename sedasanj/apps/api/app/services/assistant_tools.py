@@ -344,6 +344,8 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
                 args.limit,
                 ctx.principal.id if operator_scope.is_operator(ctx.principal) else None,
                 args.call_id or ctx.bound_call_id,
+                from_date=start,
+                to_date=end + timedelta(microseconds=1),
             )
         except Exception:
             semantic = []

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-17 — AMINAZADI
+
+- Added shared organization-manager scheduled assistant reports with hourly intervals, local fixed hours, pause/resume, manual execution, and immutable report archives.
+- Added durable tenant-scoped scheduling and worker execution with RLS, outbox delivery, duplicate prevention, quota accounting, memory snapshots, and visible failures without automatic generation retries.
+- Combined all active organization memories, time-bounded vector evidence, and exact analytics; reports disclose incomplete indexing and sampled evidence coverage.
+- Added an independent reports page and settings entry with URL-backed archive filters, pagination, and direct report links.
+
+
 ## 2026-10-16 — AMINAZADI
 
 - Replaced the three start tones with one 1.5-second beep and added a square pause or resume control during recording with the equalizer hidden.

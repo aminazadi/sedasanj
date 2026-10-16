@@ -12,6 +12,7 @@ from app.logging import configure_logging
 from app.metrics import start_metrics_server
 from app.services import outbox, queue
 from app.services.maintenance import refresh_failure_gauge, refresh_queue_depth
+from app.services.scheduled_reports import schedule_due_reports
 
 
 async def dispatch_tick(ctx: dict[str, Any]) -> str:
@@ -19,6 +20,9 @@ async def dispatch_tick(ctx: dict[str, Any]) -> str:
     interval = get_settings().outbox_dispatch_interval_seconds
     if now - float(ctx.get("last_dispatch", 0.0)) < interval:
         return "dispatch_skipped"
+    if now - float(ctx.get("last_reports", 0.0)) >= 60:
+        await schedule_due_reports()
+        ctx["last_reports"] = now
     delivered = await outbox.dispatch_pending()
     ctx["last_dispatch"] = now
     if now - float(ctx.get("last_metrics", 0.0)) >= 15.0:

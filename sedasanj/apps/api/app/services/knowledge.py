@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from datetime import datetime
 from uuid import UUID
 
 import httpx
@@ -367,10 +368,18 @@ async def vector_call_context(
     limit: int,
     operator_id: UUID | None,
     call_id: UUID | None = None,
+    *,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
 ) -> list[dict[str, object]]:
     vector, model = await embed(question)
     operator_clause = "AND k.operator_id = :operator_id" if operator_id else ""
     call_clause = "AND k.call_id = :call_id" if call_id else ""
+    window_clause = ""
+    if from_date is not None:
+        window_clause += " AND c.started_at >= :from_date"
+    if to_date is not None:
+        window_clause += " AND c.started_at < :to_date"
     rows = await session.execute(
         text(
             "SELECT k.call_id, c.started_at, k.summary "
@@ -379,10 +388,12 @@ async def vector_call_context(
             "WHERE k.tenant_id = :tenant_id "
             "AND k.vector_status = 'ready' AND k.embedding IS NOT NULL "
             "AND k.embedding_model = :model AND k.embedding_provider = :provider "
-            f"{operator_clause} {call_clause} "
+            f"{operator_clause} {call_clause} {window_clause} "
             "ORDER BY k.embedding <=> CAST(:embedding AS vector) LIMIT :limit"
         ),
         {
+            "from_date": from_date,
+            "to_date": to_date,
             "tenant_id": tenant_id,
             "operator_id": operator_id,
             "call_id": call_id,
@@ -409,6 +420,9 @@ async def vector_transcript_context(
     limit: int,
     operator_id: UUID | None,
     call_id: UUID | None = None,
+    *,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
 ) -> list[dict[str, object]]:
     vector, model = await embed(question)
     operator_join = ""
@@ -420,6 +434,11 @@ async def vector_transcript_context(
         )
         operator_clause = "AND a.operator_id = :operator_id"
     call_clause = "AND t.call_id = :call_id" if call_id else ""
+    window_clause = ""
+    if from_date is not None:
+        window_clause += " AND c.started_at >= :from_date"
+    if to_date is not None:
+        window_clause += " AND c.started_at < :to_date"
     rows = await session.execute(
         text(
             "SELECT t.call_id, c.started_at, t.ordinal, t.content, "
@@ -430,10 +449,12 @@ async def vector_transcript_context(
             "WHERE t.tenant_id = :tenant_id AND t.vector_status = 'ready' "
             "AND t.embedding IS NOT NULL AND t.embedding_model = :model "
             "AND t.embedding_provider = :provider "
-            f"{operator_clause} {call_clause} "
+            f"{operator_clause} {call_clause} {window_clause} "
             "ORDER BY t.embedding <=> CAST(:embedding AS vector) LIMIT :limit"
         ),
         {
+            "from_date": from_date,
+            "to_date": to_date,
             "tenant_id": tenant_id,
             "operator_id": operator_id,
             "call_id": call_id,

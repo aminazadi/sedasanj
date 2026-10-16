@@ -2057,6 +2057,119 @@ class IdentityProjectionState(Base):
     applied_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
+class ScheduledReport(Base):
+    __tablename__ = "scheduled_reports"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    schedule_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    interval_hours: Mapped[int | None] = mapped_column(Integer)
+    fixed_hours: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), nullable=False, default=list
+    )
+    window_start: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    next_run_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    archived_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(
+        TSTZ, nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TSTZ, nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "schedule_mode IN ('interval','fixed')", name="scheduled_reports_mode_check"
+        ),
+        CheckConstraint(
+            "(schedule_mode = 'interval' AND interval_hours IS NOT NULL AND interval_hours BETWEEN 1 AND 8760 AND cardinality(fixed_hours) = 0) OR (schedule_mode = 'fixed' AND interval_hours IS NULL AND cardinality(fixed_hours) BETWEEN 1 AND 24 AND 0 <= ALL(fixed_hours) AND 23 >= ALL(fixed_hours))",
+            name="scheduled_reports_schedule_check",
+        ),
+        Index("idx_scheduled_reports_due", "tenant_id", "next_run_at"),
+    )
+
+
+class ScheduledReportRun(Base):
+    __tablename__ = "scheduled_report_runs"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    report_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("scheduled_reports.id"), nullable=False
+    )
+    requested_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    usage_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("assistant_usage.id", ondelete="SET NULL")
+    )
+    trigger: Mapped[str] = mapped_column(String(16), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    from_date: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    to_date: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    timezone: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
+    memory_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    content: Mapped[str | None] = mapped_column(Text)
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    coverage: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    model: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        TSTZ, nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "report_id",
+            "idempotency_key",
+            name="scheduled_report_runs_idempotency_key",
+        ),
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed')",
+            name="scheduled_report_runs_status_check",
+        ),
+        CheckConstraint(
+            "trigger IN ('scheduled','manual')",
+            name="scheduled_report_runs_trigger_check",
+        ),
+        CheckConstraint(
+            "from_date < to_date", name="scheduled_report_runs_window_check"
+        ),
+        Index("idx_scheduled_report_runs_archive", "tenant_id", "created_at"),
+        Index(
+            "idx_scheduled_report_runs_active",
+            "report_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued','running')"),
+        ),
+    )
+
+
 TENANT_TABLES: tuple[str, ...] = (
     "users",
     "api_keys",
@@ -2081,6 +2194,8 @@ TENANT_TABLES: tuple[str, ...] = (
     "assistant_runs",
     "assistant_run_events",
     "organization_memories",
+    "scheduled_reports",
+    "scheduled_report_runs",
     "assistant_tool_runs",
     "transcript_chunks",
     "call_knowledge",

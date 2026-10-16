@@ -28,6 +28,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "گزارش و ارزیابی",
     items: [
+      { to: "/scheduled-reports", label: "گزارش‌های زمان‌بندی‌شده", icon: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM8 14h3M8 17h6", orgAdminOnly: true },
       { to: "/operator-scores", label: "امتیازها", icon: "m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2Z" },
     ],
   },

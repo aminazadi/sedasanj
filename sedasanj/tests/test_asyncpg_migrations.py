@@ -17,6 +17,7 @@ MIGRATIONS = (
     "0024_hybrid_knowledge.py",
     "0025_sales_kpi_center.py",
     "0026_balance_cache_integrity.py",
+    "0050_scheduled_reports.py",
 )
 
 
