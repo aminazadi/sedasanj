@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import { isOperator, isOrgAdmin, useAuth } from "./auth";
 import Account from "./pages/Account";
@@ -22,15 +22,20 @@ import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
 import Profile from "./pages/Profile";
+import QuickDemo from "./pages/QuickDemo";
+import DemoRecorder from "./pages/DemoRecorder";
 import { RouteLoadingOverlay } from "./components/BrandLoader";
 
 export default function App() {
   const { session, loading } = useAuth();
+  const location = useLocation();
   const [initialLoaderComplete, setInitialLoaderComplete] = useState(false);
 
+  if (location.pathname === "/demo/record") return <DemoRecorder />;
   if (loading || !initialLoaderComplete) {
     return <RouteLoadingOverlay persist={loading} onComplete={() => setInitialLoaderComplete(true)} />;
   }
+  if (location.pathname === "/quick-demo") return <QuickDemo />;
   if (!session) {
     return (
       <Routes>
@@ -42,6 +47,7 @@ export default function App() {
           <Route path="/cancellation" element={<Legal title="سیاست لغو اشتراک" />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/quick-demo" element={<QuickDemo />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );
@@ -55,6 +61,7 @@ export default function App() {
         <Routes>
         <Route path="/" element={<Overview />} />
         <Route path="/calls" element={<Calls />} />
+        <Route path="/quick-demo" element={<QuickDemo />} />
         <Route path="/calls/:callId" element={<CallDetailPage />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/assistant" element={<Assistant />} />

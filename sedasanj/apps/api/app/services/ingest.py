@@ -11,11 +11,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import session_scope
+from app.db import control_session_scope, session_scope
 from app.errors import ApiError
 from app.logging import log_context
 from app.metrics import credit_rejects_total, ingest_total
-from app.models import AudioObject, Call, CreditReservation, Job, Tenant
+from app.models import (
+    AudioObject,
+    Call,
+    CreditGrant,
+    CreditReservation,
+    Job,
+    LedgerEntry,
+    Plan,
+    PlanVersion,
+    Subscription,
+    Tenant,
+    TenantBalanceCache,
+)
 from app.schemas import IngestAccepted
 from app.services import billing, entitlements, outbox, processing_events, progress
 from app.services.audio import probe_wav_bytes, probe_wav_file
@@ -26,6 +38,110 @@ from app.services.storage import get_storage
 logger = logging.getLogger(__name__)
 
 DIRECTIONS = ("inbound", "outbound", "internal")
+
+
+async def _ensure_monthly_plan_credit(session: AsyncSession, tenant_id: UUID, now: datetime) -> int:
+    async with control_session_scope() as control:
+        row = (
+            await control.execute(
+                select(
+                    Subscription.id,
+                    Subscription.plan_version_id,
+                    Subscription.period_start,
+                    Subscription.period_end,
+                    PlanVersion.intro_minutes,
+                    PlanVersion.overage_price_per_minute_toman,
+                    Plan.code,
+                )
+                .join(PlanVersion, PlanVersion.id == Subscription.plan_version_id)
+                .join(Plan, Plan.id == PlanVersion.plan_id)
+                .where(
+                    Subscription.tenant_id == tenant_id,
+                    Subscription.status.in_(("active", "trialing")),
+                    Subscription.period_end > now,
+                )
+                .order_by(Subscription.created_at.desc())
+                .limit(1)
+            )
+        ).one_or_none()
+    if row is None:
+        return 0
+    (
+        subscription_id,
+        plan_version_id,
+        period_start,
+        period_end,
+        intro_minutes,
+        price_per_minute,
+        plan_code,
+    ) = row
+    from app.services.quotas import monthly_period_end, monthly_period_start
+
+    start = monthly_period_start(period_start, now)
+    end = monthly_period_end(start, period_end)
+    key = f"plan-credit:{subscription_id}:{start.isoformat()}"
+    cache = await billing._lock_cache(session, tenant_id)
+    await billing._ensure_legacy_grant(session, tenant_id, cache)
+    exists = (
+        await session.execute(
+            select(LedgerEntry.id).where(
+                LedgerEntry.tenant_id == tenant_id,
+                LedgerEntry.idempotency_key == key,
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        old_grants = (
+            await session.execute(
+                select(CreditGrant)
+                .where(
+                    CreditGrant.tenant_id == tenant_id,
+                    CreditGrant.source == "monthly_plan",
+                    CreditGrant.remaining_seconds > 0,
+                    CreditGrant.expires_at.is_not(None),
+                    CreditGrant.expires_at <= now,
+                )
+                .with_for_update()
+            )
+        ).scalars().all()
+        for grant in old_grants:
+            cache.seconds -= grant.remaining_seconds
+            amount = grant.remaining_seconds
+            grant.remaining_seconds = 0
+            session.add(
+                LedgerEntry(
+                    tenant_id=tenant_id,
+                    call_id=None,
+                    kind="expiration",
+                    seconds_delta=-amount,
+                    toman_delta=0,
+                    idempotency_key=f"expire-monthly-plan:{grant.id}",
+                )
+            )
+        seconds = intro_minutes * 60
+        if seconds > 0:
+            session.add(
+                CreditGrant(
+                    tenant_id=tenant_id,
+                    source="monthly_plan",
+                    source_id=subscription_id,
+                    total_seconds=seconds,
+                    remaining_seconds=seconds,
+                    expires_at=end,
+                )
+            )
+            cache.seconds += seconds
+        session.add(
+            LedgerEntry(
+                tenant_id=tenant_id,
+                call_id=None,
+                kind="subscription_credit",
+                seconds_delta=seconds,
+                toman_delta=0,
+                idempotency_key=key,
+            )
+        )
+    return 7_000 if plan_code == "demo" else price_per_minute
 
 
 @dataclass(frozen=True)
@@ -134,13 +250,19 @@ async def accept_upload(
             if tenant is None:
                 raise ApiError("unauthorized", "tenant not found")
             if billable:
+                plan_price = await _ensure_monthly_plan_credit(
+                    session, tenant_id, datetime.now(UTC)
+                )
+                entitlement = await entitlements.effective(session, tenant_id)
                 entitlement = await entitlements.require_upload_consumption(
                     session,
                     tenant_id,
-                    price_per_minute_toman=tenant.price_per_minute_toman,
+                    price_per_minute_toman=(
+                        plan_price
+                        if plan_price > 0
+                        else entitlement.price_per_minute_toman
+                    ),
                 )
-                tenant.price_per_minute_toman = entitlement.price_per_minute_toman
-                await _assert_quota(session, tenant, probe.duration_ms)
 
             call = Call(
                 tenant_id=tenant_id,
@@ -203,7 +325,11 @@ async def accept_upload(
             if billable:
                 try:
                     reservation = await billing.reserve(
-                        session, tenant=tenant, call_id=call.id, duration_ms=probe.duration_ms
+                        session,
+                        tenant=tenant,
+                        call_id=call.id,
+                        duration_ms=probe.duration_ms,
+                        price_per_minute_toman=entitlement.price_per_minute_toman,
                     )
                 except ApiError as exc:
                     if exc.code == "insufficient_credit":
@@ -399,28 +525,4 @@ async def _replay(tenant_id: UUID, unique_id: str) -> IngestAccepted | None:
             call_id=existing.id,
             status=existing.status,
             reservation_id=await _reservation_id(session, existing.id),
-        )
-
-
-async def _assert_quota(session: AsyncSession, tenant: Tenant, duration_ms: int) -> None:
-    """§7.1 `monthly_minute_quota`: refuse once this calendar month is exhausted."""
-    if tenant.monthly_minute_quota is None:
-        return
-    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    used_ms = int(
-        (
-            await session.execute(
-                select(func.coalesce(func.sum(Call.duration_ms), 0)).where(
-                    Call.tenant_id == tenant.id,
-                    Call.created_at >= month_start,
-                    Call.status != "failed_terminal",
-                )
-            )
-        ).scalar_one()
-    )
-    if (used_ms + duration_ms) / 60000 > tenant.monthly_minute_quota:
-        ingest_total.labels(tenant=str(tenant.id), result="quota_exceeded").inc()
-        raise ApiError(
-            "quota_exceeded",
-            f"monthly quota of {tenant.monthly_minute_quota} minutes is exhausted",
         )

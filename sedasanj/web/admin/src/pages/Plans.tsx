@@ -5,17 +5,15 @@ import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { Page, PlanVersion } from "../types";
 
 const EMPTY_VERSION = {
-  monthly_price_toman: 0,
   annual_price_toman: 0,
   base_operators: 1,
   intro_minutes: 0,
-  overage_price_per_minute_toman: 2000,
+  overage_price_per_minute_toman: 7000,
   assistant_tier: "simple",
   assistant_monthly_messages: 50,
   assistant_source_limit: 8,
   assistant_model: "",
   allows_extra_operators: false,
-  extra_operator_monthly_toman: 0,
   extra_operator_annual_toman: 0,
   trial_days: 7,
 };
@@ -53,9 +51,8 @@ export default function Plans() {
         method: "POST",
         body: {
           ...form,
-          annual_price_toman: form.annual_price_toman || null,
+          annual_price_toman: form.annual_price_toman,
           assistant_model: form.assistant_model || null,
-          extra_operator_monthly_toman: form.allows_extra_operators ? form.extra_operator_monthly_toman : null,
           extra_operator_annual_toman: form.allows_extra_operators ? form.extra_operator_annual_toman : null,
           trial_days: form.trial_days || null,
         },
@@ -100,14 +97,14 @@ export default function Plans() {
     <form className="card space-y-4" onSubmit={createVersion}>
       <div className="flex flex-wrap items-end gap-3"><div><label className="label">پلن</label><select className="input min-w-40" value={selected} onChange={(event) => setSelected(event.target.value)}>{codes.map((code) => <option key={code}>{code}</option>)}</select></div><button className="btn" disabled={!selected}>ساخت نسخه پیش‌نویس</button></div>
       <div className="grid gap-3 md:grid-cols-4">
-        {([['monthly_price_toman','قیمت ماهانه'],['annual_price_toman','قیمت سالانه'],['base_operators','اپراتور پایه'],['intro_minutes','دقیقه هدیه'],['overage_price_per_minute_toman','نرخ دقیقه اضافه'],['assistant_monthly_messages','پیام دستیار'],['assistant_source_limit','حد منابع'],['trial_days','روز آزمایشی']] as const).map(([key, label]) => <div key={key}><label className="label">{label}</label><input className="input" inputMode="numeric" value={fmt.digits(form[key])} onChange={(event) => setForm({...form, [key]: Number(fmt.latinDigits(event.target.value))})}/></div>)}
+        {([['annual_price_toman','قیمت سالانه'],['base_operators','اپراتور پایه'],['intro_minutes','دقیقه رایگان ماهانه'],['overage_price_per_minute_toman','تعرفه هر دقیقه'],['assistant_monthly_messages','پیام دستیار ماهانه'],['assistant_source_limit','حد منابع'],['trial_days','روز آزمایشی']] as const).map(([key, label]) => <div key={key}><label className="label">{label}</label><input className="input" inputMode="numeric" value={fmt.digits(form[key])} onChange={(event) => setForm({...form, [key]: Number(fmt.latinDigits(event.target.value))})}/></div>)}
         <div><label className="label">سطح دستیار</label><input className="input" dir="ltr" value={form.assistant_tier} onChange={(event) => setForm({...form, assistant_tier: event.target.value})}/></div>
         <div><label className="label">مدل اختصاصی دستیار</label><input className="input" dir="ltr" value={form.assistant_model} onChange={(event) => setForm({...form, assistant_model: event.target.value})}/></div>
         <ToggleSwitch checked={form.allows_extra_operators} onChange={(checked) => setForm({...form, allows_extra_operators: checked})} label="اپراتور اضافه مجاز است" labelClassName="text-sm" />
-        {form.allows_extra_operators ? <><div><label className="label">اپراتور اضافه ماهانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_monthly_toman)} onChange={(event) => setForm({...form, extra_operator_monthly_toman: Number(fmt.latinDigits(event.target.value))})}/></div><div><label className="label">اپراتور اضافه سالانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_annual_toman)} onChange={(event) => setForm({...form, extra_operator_annual_toman: Number(fmt.latinDigits(event.target.value))})}/></div></> : null}
+        {form.allows_extra_operators ? <div><label className="label">اپراتور اضافه سالانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_annual_toman)} onChange={(event) => setForm({...form, extra_operator_annual_toman: Number(fmt.latinDigits(event.target.value))})}/></div> : null}
       </div>
     </form>
-    <div className="card overflow-x-auto">{versions.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>پلن</th><th>نسخه</th><th>وضعیت</th><th>ماهانه</th><th>سالانه</th><th>اپراتور</th><th>اشتراک</th><th>عملیات</th></tr></thead><tbody>{versions.map((item) => <tr key={item.id}><td>{item.name}<small className="block text-slate-400" dir="ltr">{item.code}</small></td><td>{fmt.int(item.version)}</td><td>{item.status === 'draft' ? 'پیش‌نویس' : item.status === 'published' ? 'منتشرشده' : 'بازنشسته'}</td><td>{fmt.toman(item.monthly_price_toman)}</td><td>{item.annual_price_toman == null ? '—' : fmt.toman(item.annual_price_toman)}</td><td>{fmt.int(item.base_operators)}</td><td>{fmt.int(item.subscription_count)}</td><td className="space-x-2 space-x-reverse">{item.status === 'draft' ? <button className="btn-ghost text-xs" onClick={async () => { const reason = window.prompt('دلیل انتشار را وارد کنید'); if (!reason) return; await request(`/v1/admin/commerce/plan-versions/${item.id}/publish`, {method:'POST', body:{reason}}); await reload(); }}>انتشار</button> : null}{item.status === 'published' ? <button className="btn-ghost text-xs text-rose-700" onClick={async () => { const reason = window.prompt('دلیل بازنشستگی را وارد کنید'); if (!reason) return; await request(`/v1/admin/commerce/plan-versions/${item.id}/retire`, {method:'POST', body:{reason}}); await reload(); }}>بازنشسته</button> : null}<button className="btn-ghost text-xs" onClick={() => void updatePlan(item, {public: !item.public})}>{item.public ? 'خصوصی‌کردن' : 'عمومی‌کردن'}</button><button className="btn-ghost text-xs" onClick={() => void updatePlan(item, {active: !item.active})}>{item.active ? 'توقف فروش' : 'فعال‌سازی فروش'}</button></td></tr>)}</tbody></table>}</div>
+    <div className="card overflow-x-auto">{versions.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>پلن</th><th>نسخه</th><th>وضعیت</th><th>سالانه</th><th>دقیقه رایگان / ماه</th><th>تعرفه دقیقه</th><th>پیام دستیار / ماه</th><th>اپراتور</th><th>اشتراک</th><th>عملیات</th></tr></thead><tbody>{versions.map((item) => <tr key={item.id}><td>{item.name}<small className="block text-slate-400" dir="ltr">{item.code}</small></td><td>{fmt.int(item.version)}</td><td>{item.status === 'draft' ? 'پیش‌نویس' : item.status === 'published' ? 'منتشرشده' : 'بازنشسته'}</td><td>{fmt.toman(item.annual_price_toman ?? 0)}</td><td>{fmt.int(item.intro_minutes)}</td><td>{fmt.toman(item.overage_price_per_minute_toman)}</td><td>{fmt.int(item.assistant_monthly_messages)}</td><td>{fmt.int(item.base_operators)}</td><td>{fmt.int(item.subscription_count)}</td><td className="space-x-2 space-x-reverse">{item.status === 'draft' ? <button className="btn-ghost text-xs" onClick={async () => { const reason = window.prompt('دلیل انتشار را وارد کنید'); if (!reason) return; await request(`/v1/admin/commerce/plan-versions/${item.id}/publish`, {method:'POST', body:{reason}}); await reload(); }}>انتشار</button> : null}{item.status === 'published' ? <button className="btn-ghost text-xs text-rose-700" onClick={async () => { const reason = window.prompt('دلیل بازنشستگی را وارد کنید'); if (!reason) return; await request(`/v1/admin/commerce/plan-versions/${item.id}/retire`, {method:'POST', body:{reason}}); await reload(); }}>بازنشسته</button> : null}<button className="btn-ghost text-xs" onClick={() => void updatePlan(item, {public: !item.public})}>{item.public ? 'خصوصی‌کردن' : 'عمومی‌کردن'}</button><button className="btn-ghost text-xs" onClick={() => void updatePlan(item, {active: !item.active})}>{item.active ? 'توقف فروش' : 'فعال‌سازی فروش'}</button></td></tr>)}</tbody></table>}</div>
     <Pagination offset={offset} limit={limit} total={total} onChange={setOffset} />
   </div>;
 }

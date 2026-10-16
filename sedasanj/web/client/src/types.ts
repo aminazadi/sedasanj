@@ -483,7 +483,6 @@ export interface PublicPlan {
   code: "demo" | "bronze" | "silver" | "gold";
   name: string;
   version: number;
-  monthly_price_toman: number;
   annual_price_toman: number | null;
   base_operators: number;
   intro_minutes: number;
@@ -492,7 +491,6 @@ export interface PublicPlan {
   assistant_monthly_messages: number;
   assistant_source_limit: number;
   allows_extra_operators: boolean;
-  extra_operator_monthly_toman: number | null;
   extra_operator_annual_toman: number | null;
   trial_days: number | null;
 }

@@ -88,6 +88,7 @@ from app.services import (
     analysis_runs,
     audit,
     billing,
+    entitlements,
     knowledge,
     outbox,
     processing_events,
@@ -351,7 +352,15 @@ async def list_tenants(
             base.order_by(Tenant.created_at.desc()).offset(offset).limit(limit)
         )
     ).scalars().all()
-    return {"items": [TenantOut.model_validate(row) for row in rows], "total": total, "next_cursor": str(offset + limit) if offset + len(rows) < total else None}
+    items: list[TenantOut] = []
+    for row in rows:
+        output = TenantOut.model_validate(row)
+        async with session_scope(row.id) as tenant_session:
+            value = await entitlements.effective(tenant_session, row.id)
+            output.price_per_minute_toman = value.price_per_minute_toman
+        items.append(output)
+    next_cursor = str(offset + len(rows)) if offset + len(rows) < total else None
+    return {"items": items, "total": total, "next_cursor": next_cursor}
 
 
 @router.get("/tenant-databases")
@@ -493,10 +502,9 @@ async def create_tenant(
 ) -> TenantOut:
     tenant = Tenant(
         name=payload.name,
-        price_per_minute_toman=payload.price_per_minute_toman,
+        price_per_minute_toman=7_000,
         timezone=payload.timezone,
         audio_retention_days=payload.audio_retention_days,
-        monthly_minute_quota=payload.monthly_minute_quota,
         max_concurrent_jobs=payload.max_concurrent_jobs,
         max_operators=payload.max_operators,
         status="provisioning" if get_settings().tenant_databases_enabled else "active",
@@ -524,9 +532,13 @@ async def create_tenant(
     if payload.billing_period == "legacy":
         period_end = datetime(9999, 12, 31, tzinfo=UTC)
     else:
-        days = payload.subscription_days or (365 if payload.billing_period == "annual" else 30)
-        period_end = period_start + timedelta(days=days)
+        period_end = period_start + timedelta(days=payload.subscription_days or 365)
     tenant.max_operators = plan_version.base_operators
+    tenant.price_per_minute_toman = (
+        7_000
+        if payload.plan_code == "demo"
+        else plan_version.overage_price_per_minute_toman
+    )
     session.add(
         Subscription(
             tenant_id=tenant.id,
@@ -537,7 +549,7 @@ async def create_tenant(
             period_end=period_end,
             base_operators=plan_version.base_operators,
             extra_operators=0,
-            price_per_minute_toman=payload.price_per_minute_toman,
+            price_per_minute_toman=tenant.price_per_minute_toman,
             assistant_tier=plan_version.assistant_tier,
             assistant_monthly_messages=plan_version.assistant_monthly_messages,
             assistant_source_limit=plan_version.assistant_source_limit,
@@ -564,7 +576,9 @@ async def create_tenant(
         payload={"name": payload.name, "plan_code": payload.plan_code},
         ip=client_ip(request),
     )
-    return TenantOut.model_validate(tenant)
+    output = TenantOut.model_validate(tenant)
+    output.price_per_minute_toman = tenant.price_per_minute_toman
+    return output
 
 
 @router.get("/tenants/{tenant_id}", response_model=TenantDetail)
@@ -585,6 +599,16 @@ async def get_tenant(tenant_id: UUID, staff: StaffDep, session: StaffSession) ->
         await session.execute(select(User).where(User.tenant_id == tenant_id))
     ).scalars().all()
     detail = TenantDetail.model_validate(tenant)
+    async with session_scope(tenant_id) as tenant_session:
+        value = await entitlements.effective(tenant_session, tenant_id)
+        detail.price_per_minute_toman = value.price_per_minute_toman
+        active = (
+            await tenant_session.get(Subscription, value.subscription_id)
+            if value.subscription_id
+            else None
+        )
+        version = await tenant_session.get(PlanVersion, active.plan_version_id) if active else None
+        detail.plan_monthly_minutes = version.intro_minutes if version else 0
     detail.balance_seconds = balance.seconds
     detail.balance_toman = balance.toman
     detail.calls_total = calls_total
@@ -620,7 +644,7 @@ async def update_tenant(
                 raise ApiError("not_found", "tenant database identity is missing")
             for field, value in changes.items():
                 setattr(projection, field, value)
-            if "max_operators" in changes or "price_per_minute_toman" in changes:
+            if "max_operators" in changes:
                 subscription = (
                     await tenant_session.execute(
                         select(Subscription)
@@ -637,11 +661,7 @@ async def update_tenant(
                     if "max_operators" in changes:
                         subscription.base_operators = int(changes["max_operators"])
                         subscription.extra_operators = 0
-                    if "price_per_minute_toman" in changes:
-                        subscription.price_per_minute_toman = int(
-                            changes["price_per_minute_toman"]
-                        )
-    elif "max_operators" in changes or "price_per_minute_toman" in changes:
+    elif "max_operators" in changes:
         subscription = (
             await session.execute(
                 select(Subscription)
@@ -658,8 +678,6 @@ async def update_tenant(
             if "max_operators" in changes:
                 subscription.base_operators = int(changes["max_operators"])
                 subscription.extra_operators = 0
-            if "price_per_minute_toman" in changes:
-                subscription.price_per_minute_toman = int(changes["price_per_minute_toman"])
     await audit.record(
         session,
         actor_type="staff",
@@ -669,7 +687,11 @@ async def update_tenant(
         payload=changes,
         ip=client_ip(request),
     )
-    return TenantOut.model_validate(tenant)
+    output = TenantOut.model_validate(tenant)
+    async with session_scope(tenant_id) as tenant_session:
+        value = await entitlements.effective(tenant_session, tenant_id)
+        output.price_per_minute_toman = value.price_per_minute_toman
+    return output
 
 
 @router.get("/tenants/{tenant_id}/users")

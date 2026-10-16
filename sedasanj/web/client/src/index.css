@@ -26,6 +26,13 @@
 @tailwind components;
 @tailwind utilities;
 
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
 :root {
   color-scheme: light;
   --color-canvas: #f2f0ef;

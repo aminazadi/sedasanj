@@ -7,6 +7,8 @@
 .demo-landing-grid .site-button{max-width:100%;gap:10px;white-space:normal;text-align:center}
 .demo-landing-arrow{display:inline-block;line-height:1;flex:0 0 auto}
 .demo-dialog{width:min(94vw,460px);padding:36px 28px 28px;border:1px solid #dae3d7;color:#1e293b;background:#fff;max-height:90dvh;overflow:auto}
+.demo-dialog-artwork{display:block;position:relative;width:min(100%,500px);height:auto;aspect-ratio:3 / 2;margin:-22px auto -36px;background-position:center;background-repeat:no-repeat;background-size:contain;opacity:.65;pointer-events:none}.demo-dialog-artwork.is-otp{width:min(100%,500px);aspect-ratio:1717 / 916;margin:-18px auto 0;opacity:.72}.demo-dialog .demo-phone-form{position:relative;z-index:1;margin-top:0}.demo-dialog .demo-phone-form.has-otp-artwork{gap:14px}
+.demo-dialog-artwork.is-organization{width:min(100%,500px);aspect-ratio:3 / 2;margin:-22px auto -36px;opacity:.65}
 .demo-dialog::backdrop{background:rgb(14 25 17 / .55);backdrop-filter:blur(4px)}
 .marketing-site .demo-dialog-close{position:absolute;top:8px;left:12px;border:0;background:transparent;font-size:36px;font-weight:300;line-height:1;color:#64748b;cursor:pointer}
 .demo-phone-form{display:grid;gap:18px}
@@ -58,6 +60,8 @@
 .quick-demo-path-option strong{color:#263a27;font-size:.95rem}
 .quick-demo-path-option small{color:#748174;font-size:.77rem;line-height:1.6}
 .quick-demo-content-stage{min-height:320px;text-align:right}
+.quick-demo-voip-content{display:grid;gap:4px;margin-top:-40px;margin-bottom:0}.quick-demo-voip-artwork{display:block;width:min(100%,480px);height:auto;margin:-24px auto -52px;object-fit:contain}
+.quick-demo-voip-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;align-items:stretch}.quick-demo-voip-actions>.btn,.quick-demo-voip-actions>.btn-ghost{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin:0;text-align:center}
 .quick-demo-stage-heading{display:flex;align-items:center;justify-content:flex-start;gap:10px;margin:0 0 16px}
 .quick-demo-stage-heading h2{margin:0;color:#203522;font-size:1.15rem;font-weight:800}
 .quick-demo-back{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid #dce6d9;border-radius:10px;background:#f5f8f3;color:#557352;cursor:pointer}
@@ -105,6 +109,7 @@
 .demo-recording{padding:8px 0 0}
 .demo-recording strong{color:#294c2b}
 .demo-review{display:grid;gap:12px;margin-top:20px}
+.demo-review-artwork{display:block;width:min(100%,480px);height:200px;margin:-20px auto -24px;object-fit:cover;object-position:center}
 .demo-review p{margin:0 0 6px}
 .demo-retake{border:1px solid #b8cbb2;background:#f5f8f3;color:#365c38}
 .demo-retake:hover{background:#eaf2e6}

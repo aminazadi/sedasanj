@@ -38,6 +38,8 @@ from app.services.tenant_secrets import encrypt_dsn
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 _CONTROL_ONLY = {
+    "phone_otps",
+    "quick_demo_sessions",
     "staff_users",
     "staff_refresh_tokens",
     "platform_settings",

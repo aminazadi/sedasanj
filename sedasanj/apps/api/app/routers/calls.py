@@ -62,6 +62,7 @@ from app.services import (
     analysis_runs,
     audit,
     billing,
+    entitlements,
     follow_up_tasks,
     operator_scope,
     outbox,
@@ -726,6 +727,7 @@ async def retry_transcription(
                 tenant=tenant,
                 call_id=call_id,
                 duration_ms=audio.duration_ms,
+                price_per_minute_toman=(await entitlements.effective(session, tenant_id)).price_per_minute_toman,
             )
 
         models = await effective_models(session)

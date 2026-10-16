@@ -90,12 +90,13 @@ export async function request<T>(
   const headers: Record<string, string> = { ...(options.headers ?? {}) };
   const access = tokens.access();
   if (access) headers.Authorization = `Bearer ${access}`;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
 
   const response = await fetch(path, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm ? body as FormData : JSON.stringify(body),
   });
   if (response.status === 401 && retry && (await refreshSession())) {
     return request<T>(path, { ...options, retry: false });

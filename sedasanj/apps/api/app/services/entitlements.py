@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
-from app.models import Subscription
+from app.models import Plan, PlanVersion, Subscription
 from app.services import billing
 
 
@@ -34,29 +34,36 @@ class Entitlements:
 
 async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = False) -> Entitlements:
     stmt = (
-        select(Subscription)
+        select(Subscription, Plan.code, PlanVersion.overage_price_per_minute_toman)
+        .join(PlanVersion, PlanVersion.id == Subscription.plan_version_id)
+        .join(Plan, Plan.id == PlanVersion.plan_id)
         .where(
             Subscription.tenant_id == tenant_id,
-            Subscription.status.in_(("active", "trialing", "pending_payment", "expired")),
+            Subscription.status.in_(
+                ("active", "trialing", "pending_payment", "expired", "canceled")
+            ),
         )
         .order_by(Subscription.created_at.desc())
         .limit(1)
     )
     if lock:
         stmt = stmt.with_for_update()
-    row = (await session.execute(stmt)).scalar_one_or_none()
-    if row is None:
-        return Entitlements(None, "missing", 0, 2000, "none", 0, 0, None, None, None)
+    result = (await session.execute(stmt)).one_or_none()
+    if result is None:
+        price = 7_000
+        return Entitlements(None, "missing", 0, price, "none", 0, 0, None, None, None)
+    row, plan_code, plan_price = result
     status = row.status
     if status in {"active", "trialing"} and row.period_end <= datetime.now(UTC):
         row.status = "expired"
         row.updated_at = datetime.now(UTC)
         status = "expired"
+    price = 7_000 if plan_code == "demo" else int(plan_price)
     return Entitlements(
         row.id,
         status,
         row.base_operators + row.extra_operators,
-        row.price_per_minute_toman,
+        price,
         row.assistant_tier,
         row.assistant_monthly_messages,
         row.assistant_source_limit,

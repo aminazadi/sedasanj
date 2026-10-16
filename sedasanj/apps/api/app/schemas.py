@@ -960,23 +960,19 @@ class ProfileUpdate(BaseModel):
 
 class TenantCreate(BaseModel):
     name: str
-    price_per_minute_toman: int = Field(gt=0)
     admin_email: EmailStr
     admin_password: str = Field(min_length=8)
     timezone: str = "Asia/Tehran"
     audio_retention_days: int = 30
-    monthly_minute_quota: int | None = None
     max_concurrent_jobs: int = 10
     max_operators: int = Field(default=5, ge=0)
     plan_code: str = Field(default="legacy_custom", pattern=r"^[a-z0-9_]{2,32}$")
-    billing_period: Literal["monthly", "annual", "legacy"] = "legacy"
+    billing_period: Literal["annual", "legacy"] = "annual"
     subscription_days: int | None = Field(default=None, ge=1, le=3660)
 
 
 class TenantUpdate(BaseModel):
     name: str | None = None
-    price_per_minute_toman: int | None = Field(default=None, gt=0)
-    monthly_minute_quota: int | None = None
     max_concurrent_jobs: int | None = None
     audio_retention_days: int | None = None
     timezone: str | None = None
@@ -990,12 +986,11 @@ class TenantOut(BaseModel):
     name: str
     status: str
     timezone: str
-    price_per_minute_toman: int
-    monthly_minute_quota: int | None
     max_concurrent_jobs: int
     audio_retention_days: int
     max_operators: int
     created_at: datetime
+    price_per_minute_toman: int = 0
 
 
 class TenantDetail(TenantOut):
@@ -1003,6 +998,7 @@ class TenantDetail(TenantOut):
     balance_toman: int = 0
     calls_total: int = 0
     users: list[UserOut] = Field(default_factory=list)
+    plan_monthly_minutes: int = 0
 
 
 class TopupCreate(BaseModel):
@@ -1101,6 +1097,7 @@ class SettingsUpdate(BaseModel):
     assistant_parallel_tools: int | None = Field(default=None, ge=1, le=2)
     assistant_enabled_tools: list[
         Literal[
+            "get_current_time",
             "search_calls",
             "get_call_details",
             "search_transcripts",
@@ -1109,7 +1106,7 @@ class SettingsUpdate(BaseModel):
             "get_operator_performance",
             "visualize_statistics",
         ]
-    ] | None = Field(default=None, min_length=1, max_length=7)
+    ] | None = Field(default=None, min_length=1, max_length=8)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
     correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)

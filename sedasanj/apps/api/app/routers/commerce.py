@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
-import httpx
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, model_validator
@@ -36,13 +35,11 @@ from app.models import (
     Subscription,
     SubscriptionChange,
     Tenant,
-    TenantBalanceCache,
     TenantDatabaseRegistry,
-    TrialClaim,
     User,
 )
 from app.security import hash_password
-from app.services import audit, commerce, entitlements, payments, ratelimit
+from app.services import audit, commerce, demo_settings, entitlements, payments, ratelimit, smsir
 from app.services.commerce_settings import (
     get_commerce_settings,
     update_commerce_settings,
@@ -50,6 +47,8 @@ from app.services.commerce_settings import (
 from app.services.commerce_settings import (
     public_view as commerce_settings_public_view,
 )
+from app.services.phone_identity import normalize_mobile as _mobile
+from app.services.signup import create_account
 
 router = APIRouter(prefix="/v1", tags=["commerce"])
 
@@ -86,7 +85,7 @@ class SignupComplete(BaseModel):
 
 class CheckoutCreate(BaseModel):
     plan_code: str = Field(pattern=r"^(bronze|silver|gold)$")
-    billing_period: Literal["monthly", "annual"]
+    billing_period: Literal["annual"]
     extra_operators: int = Field(default=0, ge=0, le=500)
     customer_name: str = Field(min_length=2, max_length=120)
     customer_email: EmailStr
@@ -129,28 +128,25 @@ class InstallationUpdate(BaseModel):
 
 
 class PlanVersionCreate(BaseModel):
-    monthly_price_toman: int = Field(ge=0)
-    annual_price_toman: int | None = Field(default=None, ge=0)
+    model_config = {"extra": "forbid"}
+    annual_price_toman: int = Field(ge=0)
     base_operators: int = Field(ge=0)
     intro_minutes: int = Field(ge=0)
-    overage_price_per_minute_toman: int = Field(default=2000, ge=0)
+    overage_price_per_minute_toman: int = Field(ge=0)
     assistant_tier: str = Field(min_length=2, max_length=32)
     assistant_monthly_messages: int = Field(ge=0)
     assistant_source_limit: int = Field(ge=1, le=200)
     assistant_model: str | None = None
     allows_extra_operators: bool = False
-    extra_operator_monthly_toman: int | None = Field(default=None, ge=0)
     extra_operator_annual_toman: int | None = Field(default=None, ge=0)
     trial_days: int | None = Field(default=None, ge=1, le=90)
 
     @model_validator(mode="after")
     def validate_pricing(self) -> PlanVersionCreate:
         if self.allows_extra_operators:
-            if self.extra_operator_monthly_toman is None:
-                raise ValueError("monthly extra-operator price is required")
-            if self.annual_price_toman is not None and self.extra_operator_annual_toman is None:
+            if self.extra_operator_annual_toman is None:
                 raise ValueError("annual extra-operator price is required")
-        elif self.extra_operator_monthly_toman is not None or self.extra_operator_annual_toman is not None:
+        elif self.extra_operator_annual_toman is not None:
             raise ValueError("extra-operator prices require allows_extra_operators")
         return self
 
@@ -191,10 +187,10 @@ class RefundCreate(ReasonAction):
 
 
 class CommerceSettingsUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
     gateway_enabled: bool | None = None
     zarinpal_merchant_id: str | None = Field(default=None, min_length=36, max_length=64)
     zarinpal_sandbox: bool | None = None
-    custom_credit_price_per_minute_toman: int | None = Field(default=None, ge=0)
     installation_initial_toman: int | None = Field(default=None, ge=0)
     installation_reinstall_toman: int | None = Field(default=None, ge=0)
     installation_dedicated_toman: int | None = Field(default=None, ge=0)
@@ -203,15 +199,6 @@ class CommerceSettingsUpdate(BaseModel):
     terms_url: str | None = Field(default=None, max_length=500)
     tax_percent: int | None = Field(default=None, ge=0, le=100)
     automatic_discounts_enabled: bool | None = None
-
-
-def _mobile(value: str) -> str:
-    normalized = value.strip().replace(" ", "").replace("-", "")
-    if normalized.startswith("+98"):
-        normalized = "0" + normalized[3:]
-    if not re.fullmatch(r"09\d{9}", normalized):
-        raise ApiError("invalid_request", "mobile number is invalid")
-    return normalized
 
 
 def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
@@ -225,7 +212,6 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
         "effective_at": version.effective_at,
         "published_at": version.published_at,
         "retired_at": version.retired_at,
-        "monthly_price_toman": version.monthly_price_toman,
         "annual_price_toman": version.annual_price_toman,
         "base_operators": version.base_operators,
         "intro_minutes": version.intro_minutes,
@@ -235,7 +221,6 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
         "assistant_source_limit": version.assistant_source_limit,
         "assistant_model": version.assistant_model,
         "allows_extra_operators": version.allows_extra_operators,
-        "extra_operator_monthly_toman": version.extra_operator_monthly_toman,
         "extra_operator_annual_toman": version.extra_operator_annual_toman,
         "trial_days": version.trial_days,
     }
@@ -260,17 +245,7 @@ async def create_contact_lead(payload: ContactLeadCreate, request: Request, sess
 
 
 async def _send_otp(mobile: str, code: str) -> None:
-    settings = get_settings()
-    if not settings.smsir_api_key or not settings.smsir_verify_template_id:
-        if settings.environment == "production":
-            raise ApiError("internal", "SMS provider is not configured")
-        return
-    headers = {"X-API-KEY": settings.smsir_api_key, "Content-Type": "application/json"}
-    body = {"mobile": mobile, "templateId": settings.smsir_verify_template_id, "parameters": [{"name": "CODE", "value": code}]}
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(f"{settings.smsir_base_url.rstrip('/')}/send/verify", headers=headers, json=body)
-    if not response.is_success:
-        raise ApiError("internal", "SMS provider rejected the verification request", retryable=True)
+    await smsir.send_verification(mobile, code)
 
 
 @router.post("/signup/otp/request", status_code=status.HTTP_201_CREATED)
@@ -288,10 +263,13 @@ async def request_signup_otp(payload: OtpRequest, request: Request, session: Pub
     row = SignupOtp(mobile=mobile, email=email, code_hash=hash_password(code), expires_at=now + timedelta(minutes=2))
     session.add(row)
     await session.flush()
-    await _send_otp(mobile, code)
+    sms_settings = await demo_settings.load(session)
+    development_code = get_settings().environment != "production" and not sms_settings.smsir_api_key
+    if not development_code:
+        await smsir.send_verification(mobile, code, sms_settings)
     await audit.record(session, actor_type="public", action="signup.otp_requested", payload={"otp_id": str(row.id)}, ip=ip)
     result: dict[str, Any] = {"otp_id": str(row.id), "expires_in": 120}
-    if get_settings().environment != "production" and not get_settings().smsir_api_key:
+    if development_code:
         result["development_code"] = code
     return result
 
@@ -319,30 +297,12 @@ async def complete_signup(payload: SignupComplete, request: Request, session: Pu
     otp = await session.get(SignupOtp, payload.otp_id, with_for_update=True)
     if otp is None or otp.verified_at is None or otp.expires_at <= datetime.now(UTC) or otp.mobile != mobile or str(otp.email).lower() != email:
         raise ApiError("unauthorized", "verified signup session is required")
-    if (await session.execute(select(User).where(func.lower(User.email) == email))).scalar_one_or_none() is not None:
-        raise ApiError("conflict_idempotency", "email is already registered")
-    if payload.plan_code == "demo":
-        used = (await session.execute(select(TrialClaim).where((func.lower(TrialClaim.email) == email) | (TrialClaim.mobile == mobile)))).scalar_one_or_none()
-        if used is not None:
-            raise ApiError("conflict_idempotency", "demo has already been used")
-    _, version = await commerce.plan_version_by_code(session, payload.plan_code)
-    now = datetime.now(UTC)
-    is_demo = payload.plan_code == "demo"
-    tenant = Tenant(name=payload.organization_name.strip(), status="active", timezone="Asia/Tehran", locale="fa", price_per_minute_toman=version.overage_price_per_minute_toman, monthly_minute_quota=None, max_concurrent_jobs=10, audio_retention_days=30, max_operators=version.base_operators)
-    session.add(tenant)
-    await session.flush()
-    user = User(tenant_id=tenant.id, email=email, password_hash=hash_password(payload.password), role="org_admin", mobile_number=mobile, display_name=payload.manager_name.strip())
-    session.add(user)
-    session.add(TenantBalanceCache(tenant_id=tenant.id, seconds=0, toman=0))
-    subscription = Subscription(tenant_id=tenant.id, plan_version_id=version.id, status="trialing" if is_demo else "pending_payment", billing_period="trial" if is_demo else "monthly", period_start=now, period_end=now + timedelta(days=version.trial_days or 7) if is_demo else commerce.add_months(now, 1), base_operators=version.base_operators, extra_operators=0, price_per_minute_toman=version.overage_price_per_minute_toman, assistant_tier=version.assistant_tier, assistant_monthly_messages=version.assistant_monthly_messages, assistant_source_limit=version.assistant_source_limit, assistant_model=version.assistant_model)
-    session.add(subscription)
-    await session.flush()
-    if is_demo:
-        session.add(TrialClaim(tenant_id=tenant.id, email=email, mobile=mobile))
-        await payments.grant_credit(session, tenant_id=tenant.id, seconds=version.intro_minutes * 60, source="intro_bonus", source_id=subscription.id, expires_at=subscription.period_end, toman=0, idem=f"trial:{subscription.id}")
-        subscription.intro_credit_issued_at = now
-    await audit.record(session, actor_type="user", actor_id=user.id, tenant_id=tenant.id, action="signup.complete", payload={"plan": payload.plan_code}, ip=client_ip(request))
-    return {"tenant_id": str(tenant.id), "requires_payment": not is_demo, "plan_code": payload.plan_code}
+    tenant, _ = await create_account(
+        session, mobile=mobile, email=email, organization_name=payload.organization_name,
+        manager_name=payload.manager_name, password=payload.password, plan_code=payload.plan_code,
+        ip=client_ip(request),
+    )
+    return {"tenant_id": str(tenant.id), "requires_payment": payload.plan_code != "demo", "plan_code": payload.plan_code}
 
 
 @router.post("/checkout/quote")
@@ -440,10 +400,49 @@ async def get_subscription(principal: OrgAdminDep, session: TenantSession) -> di
         ).one_or_none()
         if result:
             row, plan, version = result
+    quota_start = None
     used = 0
     if value.period_start:
-        used = int((await session.execute(select(func.count(AssistantUsage.id)).where(AssistantUsage.tenant_id == principal.tenant_id, AssistantUsage.period_start >= value.period_start, AssistantUsage.status == "succeeded"))).scalar_one())
-    return {"id": str(value.subscription_id) if value.subscription_id else None, "status": value.status, "plan_code": plan.code if plan else None, "plan_name": plan.name if plan else None, "plan_version": version.version if version else None, "billing_period": row.billing_period if row else None, "cancel_at_period_end": row.cancel_at_period_end if row else False, "next_plan_version_id": str(row.next_plan_version_id) if row and row.next_plan_version_id else None, "base_operators": row.base_operators if row else 0, "extra_operators": row.extra_operators if row else 0, "max_operators": value.max_operators, "price_per_minute_toman": value.price_per_minute_toman, "assistant_tier": value.assistant_tier, "assistant_monthly_messages": value.assistant_monthly_messages, "assistant_messages_used": used, "assistant_messages_remaining": max(0, value.assistant_monthly_messages - used), "assistant_source_limit": value.assistant_source_limit, "assistant_model": value.assistant_model, "period_start": value.period_start, "period_end": value.period_end}
+        from app.services.quotas import calendar_month_start
+
+        quota_start = calendar_month_start(datetime.now(UTC))
+        used = int(
+            (
+                await session.execute(
+                    select(func.count(AssistantUsage.id)).where(
+                        AssistantUsage.tenant_id == principal.tenant_id,
+                        AssistantUsage.period_start == quota_start,
+                        AssistantUsage.status.in_(("reserved", "succeeded")),
+                    )
+                )
+            ).scalar_one()
+        )
+    return {
+        "id": str(value.subscription_id) if value.subscription_id else None,
+        "status": value.status,
+        "plan_code": plan.code if plan else None,
+        "plan_name": plan.name if plan else None,
+        "plan_version": version.version if version else None,
+        "billing_period": row.billing_period if row else None,
+        "cancel_at_period_end": row.cancel_at_period_end if row else False,
+        "next_plan_version_id": str(row.next_plan_version_id)
+        if row and row.next_plan_version_id
+        else None,
+        "base_operators": row.base_operators if row else 0,
+        "extra_operators": row.extra_operators if row else 0,
+        "max_operators": value.max_operators,
+        "price_per_minute_toman": value.price_per_minute_toman,
+        "assistant_tier": value.assistant_tier,
+        "assistant_monthly_messages": value.assistant_monthly_messages,
+        "assistant_messages_used": used,
+        "assistant_messages_remaining": max(0, value.assistant_monthly_messages - used),
+        "assistant_quota_period_start": quota_start if value.period_start else None,
+        "assistant_source_limit": value.assistant_source_limit,
+        "assistant_model": value.assistant_model,
+        "period_start": value.period_start,
+        "period_end": value.period_end,
+        "plan_monthly_minutes": version.intro_minutes if version else 0,
+    }
 
 
 @router.post("/subscription/cancel-at-period-end")
@@ -481,7 +480,7 @@ async def change_subscription(payload: SubscriptionChangeCreate, request: Reques
     current_version = await session.get(PlanVersion, current.plan_version_id)
     if current_version is None:
         raise ApiError("internal", "current plan version is missing")
-    period = "annual" if current.billing_period == "annual" else "monthly"
+    period = "annual"
     current_total, _ = commerce.subscription_amount(current_version, period, current.extra_operators)
     target_total, _ = commerce.subscription_amount(target, period, payload.extra_operators)
     if target_total <= current_total:
@@ -547,8 +546,12 @@ async def create_credit_order(payload: CreditOrderCreate, request: Request, prin
         minutes, amount = package.minutes, package.price_toman
     else:
         minutes = int(payload.minutes or 0)
-        commerce_config = await get_commerce_settings(session)
-        amount = minutes * commerce_config.custom_credit_price_per_minute_toman
+        price_per_minute = await billing.effective_price_per_minute(
+            session, principal.tenant_id, include_pending=True
+        )
+        amount = minutes * price_per_minute
+        if amount < 0:
+            raise ApiError("invalid_request", "credit amount is invalid")
     admin = await session.get(User, principal.id)
     assert admin is not None
     existing = (await session.execute(select(Order).where(Order.tenant_id == principal.tenant_id, Order.idempotency_key == idempotency_key))).scalar_one_or_none()
@@ -667,7 +670,8 @@ async def _locate_tenant_record(model: Any, record_id: UUID) -> UUID:
 @router.get("/admin/commerce/overview")
 async def admin_commerce_overview(staff: StaffDep, session: StaffSession) -> dict[str, Any]:
     now = datetime.now(UTC)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    from zoneinfo import ZoneInfo
+    month_start = now.astimezone(ZoneInfo("Asia/Tehran")).replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
     revenue_month = 0
     pending_orders = 0
     payment_attention = 0
@@ -787,12 +791,14 @@ async def publish_plan_version(version_id: UUID, payload: PlanPublish, request: 
         raise ApiError("not_found", "plan version not found")
     if version.status != "draft":
         raise ApiError("invalid_request", "only draft versions can be published")
+    plan = await session.get(Plan, version.plan_id)
+    assert plan is not None
+    if plan.code == "legacy_custom":
+        raise ApiError("invalid_request", "legacy custom plan versions cannot be published")
     now = datetime.now(UTC)
     version.status = "published"
     version.published_at = now
     version.effective_at = payload.effective_at or now
-    plan = await session.get(Plan, version.plan_id)
-    assert plan is not None
     await audit.record(session, actor_type="staff", actor_id=staff.id, action="plan_version.published", payload={"plan": plan.code, "version": version.version, "effective_at": version.effective_at.isoformat(), "reason": payload.reason}, ip=client_ip(request))
     return _plan_out(plan, version)
 
@@ -837,7 +843,7 @@ async def admin_subscriptions(staff: StaffDep, session: StaffSession, q: str | N
                     f"{tenant_name} {plan.name}".lower()
                 ):
                     continue
-                items.append({"id": str(sub.id), "tenant_id": str(sub.tenant_id), "tenant_name": tenant_name, "plan_code": plan.code, "plan_name": plan.name, "plan_version": version.version, "status": sub.status, "billing_period": sub.billing_period, "period_start": sub.period_start, "period_end": sub.period_end, "cancel_at_period_end": sub.cancel_at_period_end, "base_operators": sub.base_operators, "extra_operators": sub.extra_operators, "assistant_monthly_messages": sub.assistant_monthly_messages, "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None, "created_at": sub.created_at})
+        items.append({"id": str(sub.id), "tenant_id": str(sub.tenant_id), "tenant_name": tenant_name, "plan_code": plan.code, "plan_name": plan.name, "plan_version": version.version, "status": sub.status, "billing_period": "legacy_monthly" if sub.billing_period == "monthly" else sub.billing_period, "period_start": sub.period_start, "period_end": sub.period_end, "cancel_at_period_end": sub.cancel_at_period_end, "base_operators": sub.base_operators, "extra_operators": sub.extra_operators, "assistant_monthly_messages": sub.assistant_monthly_messages, "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None, "created_at": sub.created_at})
     items.sort(key=lambda item: item["created_at"], reverse=True)
     total = len(items)
     for item in items:
@@ -857,7 +863,20 @@ async def admin_tenant_commerce(tenant_id: UUID, staff: StaffDep, session: Staff
         reservations = (await tenant_session.execute(select(CreditReservation).where(CreditReservation.tenant_id == tenant_id).order_by(CreditReservation.created_at.desc()).limit(100))).scalars().all()
         ledger = (await tenant_session.execute(select(LedgerEntry).where(LedgerEntry.tenant_id == tenant_id).order_by(LedgerEntry.created_at.desc()).limit(100))).scalars().all()
         audit_rows = (await tenant_session.execute(select(AuditEvent).where(AuditEvent.tenant_id == tenant_id).order_by(AuditEvent.created_at.desc()).limit(100))).scalars().all()
-        assistant_used = int((await tenant_session.execute(select(func.count(AssistantUsage.id)).where(AssistantUsage.tenant_id == tenant_id, AssistantUsage.status == "succeeded"))).scalar_one())
+        from app.services.quotas import calendar_month_start
+
+        quota_start = calendar_month_start(datetime.now(UTC))
+        assistant_used = int(
+            (
+                await tenant_session.execute(
+                    select(func.count(AssistantUsage.id)).where(
+                        AssistantUsage.tenant_id == tenant_id,
+                        AssistantUsage.period_start == quota_start,
+                        AssistantUsage.status == "succeeded",
+                    )
+                )
+            ).scalar_one()
+        )
     return {
         "subscriptions": [{"id": str(row.id), "plan_version_id": str(row.plan_version_id), "status": row.status, "billing_period": row.billing_period, "period_start": row.period_start, "period_end": row.period_end, "cancel_at_period_end": row.cancel_at_period_end, "base_operators": row.base_operators, "extra_operators": row.extra_operators, "price_per_minute_toman": row.price_per_minute_toman, "assistant_monthly_messages": row.assistant_monthly_messages} for row in subscriptions],
         "orders": [_order_summary(row) for row in orders],

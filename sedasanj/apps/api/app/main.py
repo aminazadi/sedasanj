@@ -29,6 +29,8 @@ from app.routers import (
     ingest,
     kpi,
     organization_memories,
+    phone_auth,
+    quick_demo,
     scheduled_reports,
     tasks,
     webhooks,
@@ -139,6 +141,8 @@ def create_app() -> FastAPI:
     for module in (
         health,
         auth,
+        phone_auth,
+        quick_demo,
         ingest,
         calls,
         tasks,

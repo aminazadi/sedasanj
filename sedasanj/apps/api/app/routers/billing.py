@@ -11,6 +11,7 @@ from app.errors import ApiError
 from app.models import CreditGrant, LedgerEntry, Package, Tenant
 from app.schemas import BalanceOut, LedgerEntryOut, PackageOut
 from app.services import billing
+from app.services import entitlements
 
 router = APIRouter(prefix="/v1/billing", tags=["billing"])
 
@@ -32,6 +33,7 @@ async def get_balance(principal: UserDep, session: TenantSession) -> BalanceOut:
             await session.execute(
                 select(func.coalesce(func.sum(CreditGrant.remaining_seconds), 0)).where(
                     CreditGrant.tenant_id == principal.tenant_id,
+                    CreditGrant.source == "monthly_plan",
                     CreditGrant.remaining_seconds > 0,
                     CreditGrant.expires_at > now,
                 )
@@ -53,16 +55,18 @@ async def get_balance(principal: UserDep, session: TenantSession) -> BalanceOut:
         await session.execute(
             select(func.min(CreditGrant.expires_at)).where(
                 CreditGrant.tenant_id == principal.tenant_id,
+                CreditGrant.source != "monthly_plan",
                 CreditGrant.remaining_seconds > 0,
                 CreditGrant.expires_at > now,
             )
         )
     ).scalar_one()
+    effective = await entitlements.effective(session, principal.tenant_id)
     return BalanceOut(
         seconds=balance.seconds,
         minutes=round(balance.seconds / 60, 1),
         toman=balance.toman,
-        price_per_minute_toman=tenant.price_per_minute_toman,
+        price_per_minute_toman=effective.price_per_minute_toman,
         expiring_seconds=expiring_seconds,
         purchased_seconds=purchased_seconds,
         next_expiration_at=next_expiration_at,

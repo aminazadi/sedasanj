@@ -17,7 +17,6 @@ class CommerceSettings:
     gateway_enabled: bool
     zarinpal_merchant_id: str
     zarinpal_sandbox: bool
-    custom_credit_price_per_minute_toman: int
     installation_initial_toman: int
     installation_reinstall_toman: int
     installation_dedicated_toman: int
@@ -38,7 +37,6 @@ async def get_commerce_settings(session: AsyncSession) -> CommerceSettings:
         "gateway_enabled": bool(base.zarinpal_merchant_id),
         "zarinpal_merchant_id": base.zarinpal_merchant_id or "",
         "zarinpal_sandbox": base.zarinpal_sandbox,
-        "custom_credit_price_per_minute_toman": 2_000,
         "installation_initial_toman": 0,
         "installation_reinstall_toman": 3_000_000,
         "installation_dedicated_toman": 20_000_000,
@@ -56,7 +54,6 @@ async def get_commerce_settings(session: AsyncSession) -> CommerceSettings:
     values = {row.key.removeprefix(PREFIX): row.value for row in rows}
     bool_keys = {"gateway_enabled", "zarinpal_sandbox", "automatic_discounts_enabled"}
     int_keys = {
-        "custom_credit_price_per_minute_toman",
         "installation_initial_toman",
         "installation_reinstall_toman",
         "installation_dedicated_toman",

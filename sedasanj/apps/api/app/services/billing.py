@@ -35,6 +35,33 @@ def seconds_to_toman(seconds: int, price_per_minute_toman: int) -> int:
     return math.ceil(seconds * price_per_minute_toman / 60)
 
 
+async def effective_price_per_minute(
+    session: AsyncSession, tenant_id: UUID, *, include_pending: bool = False
+) -> int:
+    from app.models import Plan, PlanVersion, Subscription
+
+    plan_price = (
+        await session.execute(
+            select(Plan.code, PlanVersion.overage_price_per_minute_toman)
+            .join(PlanVersion, PlanVersion.plan_id == Plan.id)
+            .join(Subscription, Subscription.plan_version_id == PlanVersion.id)
+            .where(
+                Subscription.tenant_id == tenant_id,
+                Subscription.status.in_(
+                    ("active", "trialing", "pending_payment", "expired", "canceled")
+                    if include_pending
+                    else ("active", "trialing", "expired", "canceled")
+                ),
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    if plan_price is None or plan_price[0] == "demo":
+        return 7_000
+    return int(plan_price[1])
+
+
 async def get_balance(session: AsyncSession, tenant_id: UUID) -> Balance:
     row = (
         await session.execute(
@@ -224,7 +251,12 @@ async def _apply(
 
 
 async def reserve(
-    session: AsyncSession, *, tenant: Tenant, call_id: UUID, duration_ms: int
+    session: AsyncSession,
+    *,
+    tenant: Tenant,
+    call_id: UUID,
+    duration_ms: int,
+    price_per_minute_toman: int | None = None,
 ) -> CreditReservation:
     """§10 reserve: lock the cache, refuse when short, then hold seconds and toman."""
     key = f"reserve:{call_id}"
@@ -241,26 +273,67 @@ async def reserve(
         if reservation is not None:
             return reservation
 
-    seconds = billable_seconds(duration_ms)
-    toman = seconds_to_toman(seconds, tenant.price_per_minute_toman)
     cache = await _lock_cache(session, tenant.id)
+    seconds = billable_seconds(duration_ms)
+    price = (
+        await effective_price_per_minute(session, tenant.id)
+        if price_per_minute_toman is None
+        else price_per_minute_toman
+    )
     if cache.seconds < seconds:
         raise ApiError(
             "insufficient_credit",
             f"Reservation requires {seconds} seconds; available {cache.seconds}",
         )
     await _ensure_legacy_grant(session, tenant.id, cache)
+    grants = (
+        await session.execute(
+            select(CreditGrant)
+            .where(
+                CreditGrant.tenant_id == tenant.id,
+                CreditGrant.source == "monthly_plan",
+                CreditGrant.remaining_seconds > 0,
+                CreditGrant.expires_at > datetime.now(UTC),
+            )
+            .order_by(CreditGrant.expires_at.asc(), CreditGrant.created_at)
+            .with_for_update()
+        )
+    ).scalars().all()
+    free_seconds = min(seconds, sum(grant.remaining_seconds for grant in grants))
+    paid_seconds = seconds - free_seconds
+    toman = seconds_to_toman(paid_seconds, price)
 
     reservation = CreditReservation(
-        tenant_id=tenant.id, call_id=call_id, seconds=seconds, toman=toman, status="held"
+        tenant_id=tenant.id,
+        call_id=call_id,
+        seconds=seconds,
+        toman=toman,
+        price_per_minute_toman=price,
+        free_seconds=free_seconds,
+        status="held",
     )
     session.add(reservation)
     await session.flush()
+    remaining_free = free_seconds
+    for grant in grants:
+        if remaining_free <= 0:
+            break
+        used = min(remaining_free, grant.remaining_seconds)
+        grant.remaining_seconds -= used
+        session.add(
+            ReservationAllocation(
+                tenant_id=tenant.id,
+                reservation_id=reservation.id,
+                grant_id=grant.id,
+                seconds=used,
+            )
+        )
+        remaining_free -= used
     await _allocate_grants(
         session,
         tenant_id=tenant.id,
         reservation_id=reservation.id,
-        seconds=seconds,
+        seconds=paid_seconds,
     )
     await _apply(
         session,
@@ -276,7 +349,12 @@ async def reserve(
 
 
 async def reserve_retry(
-    session: AsyncSession, *, tenant: Tenant, call_id: UUID, duration_ms: int
+    session: AsyncSession,
+    *,
+    tenant: Tenant,
+    call_id: UUID,
+    duration_ms: int,
+    price_per_minute_toman: int | None = None,
 ) -> CreditReservation:
     """Create a fresh hold for a manually retried call."""
     held = (
@@ -296,7 +374,12 @@ async def reserve_retry(
         return held
 
     seconds = billable_seconds(duration_ms)
-    toman = seconds_to_toman(seconds, tenant.price_per_minute_toman)
+    price = (
+        await effective_price_per_minute(session, tenant.id)
+        if price_per_minute_toman is None
+        else price_per_minute_toman
+    )
+    toman = seconds_to_toman(seconds, price)
     cache = await _lock_cache(session, tenant.id)
     if cache.seconds < seconds:
         raise ApiError(
@@ -310,6 +393,8 @@ async def reserve_retry(
         call_id=call_id,
         seconds=seconds,
         toman=toman,
+        price_per_minute_toman=price,
+        free_seconds=0,
         status="held",
     )
     session.add(reservation)
@@ -372,8 +457,13 @@ async def settle(
     if tenant is None:
         raise ApiError("not_found", f"tenant {tenant_id} not found")
 
+    plan_price = int(reservation.price_per_minute_toman or 0)
+    if plan_price == 0:
+        plan_price = await effective_price_per_minute(session, tenant_id)
     actual_seconds = billable_seconds(actual_duration_ms)
-    actual_toman = seconds_to_toman(actual_seconds, tenant.price_per_minute_toman)
+    reserved_free = int(reservation.free_seconds or 0)
+    paid_actual = max(0, actual_seconds - reserved_free)
+    actual_toman = seconds_to_toman(paid_actual, plan_price)
 
     settled = (
         await session.execute(
@@ -492,7 +582,12 @@ async def topup(
         return existing
     seconds = minutes * 60
     amount = (
-        toman if toman is not None else seconds_to_toman(seconds, tenant.price_per_minute_toman)
+        toman
+        if toman is not None
+        else seconds_to_toman(
+            seconds,
+            await effective_price_per_minute(session, tenant.id, include_pending=True),
+        )
     )
     session.add(
         CreditGrant(

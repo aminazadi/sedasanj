@@ -64,7 +64,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [hookSecret, setHookSecret] = useState<string | null>(null);
   const [dataDeletionOpen, setDataDeletionOpen] = useState(false);
   const [dataDeleting, setDataDeleting] = useState(false);
-  const [subscription, setSubscription] = useState<{ status: string; max_operators: number; assistant_monthly_messages: number; period_end: string | null } | null>(null);
+  const [subscription, setSubscription] = useState<{ status: string; max_operators: number; assistant_monthly_messages: number; assistant_messages_used: number; assistant_messages_remaining: number; plan_monthly_minutes: number; period_end: string | null } | null>(null);
   const [orders, setOrders] = useState<Array<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>([]);
   const [ledgerOffset, setLedgerOffset] = useState(0);
   const [ledgerTotal, setLedgerTotal] = useState(0);
@@ -109,7 +109,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
         setPackages(packagesData);
         if (isAdmin) {
           const [subscriptionData, orderData] = await Promise.all([
-            request<{ status: string; max_operators: number; assistant_monthly_messages: number; period_end: string | null }>("/v1/subscription"),
+            request<{ status: string; max_operators: number; assistant_monthly_messages: number; assistant_messages_used: number; assistant_messages_remaining: number; plan_monthly_minutes: number; period_end: string | null }>("/v1/subscription"),
             request<Page<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>(`/v1/orders?limit=${limit}&offset=${orderOffset}`),
           ]);
           setSubscription(subscriptionData);
@@ -225,8 +225,8 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           <div className="text-2xl font-bold">{fmt.toman(balance.toman)}</div>
           <div className="text-sm text-slate-500">{fmt.int(balance.minutes)} دقیقه باقی‌مانده</div>
           <div className="mt-2 grid gap-1 text-xs text-slate-500">
-            <span>هدیه زمان‌دار: {fmt.minutes(balance.expiring_seconds)}</span>
-            <span>اعتبار دائمی: {fmt.minutes(balance.purchased_seconds)}</span>
+            <span>دقیقه رایگان پلن: {fmt.minutes(balance.expiring_seconds)}</span>
+            <span>اعتبار پیش‌خریدی: {fmt.minutes(balance.purchased_seconds)}</span>
           </div>
           <div className="mt-2 text-xs text-slate-400">
             نرخ: {fmt.toman(balance.price_per_minute_toman)} بر دقیقه
@@ -264,7 +264,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
       {isAdmin && subscription ? (
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-bold">اشتراک سازمان</h2><p className="mt-1 text-sm text-slate-500">وضعیت: {subscription.status} · ظرفیت {fmt.int(subscription.max_operators)} اپراتور · {fmt.int(subscription.assistant_monthly_messages)} پیام دستیار در ماه</p>{subscription.period_end ? <p className="mt-1 text-xs text-slate-400">سررسید: {fmt.date(subscription.period_end)}</p> : null}</div>
+            <div><h2 className="font-bold">اشتراک سازمان</h2><p className="mt-1 text-sm text-slate-500">وضعیت: {subscription.status} · ظرفیت {fmt.int(subscription.max_operators)} اپراتور · {fmt.int(subscription.plan_monthly_minutes)} دقیقه رایگان در ماه · پیام دستیار: {fmt.int(subscription.assistant_messages_used)} از {fmt.int(subscription.assistant_monthly_messages)} (باقی‌مانده {fmt.int(subscription.assistant_messages_remaining)})</p>{subscription.period_end ? <p className="mt-1 text-xs text-slate-400">سررسید: {fmt.date(subscription.period_end)}</p> : null}</div>
             <a className="btn" href="/#pricing">تغییر پلن</a>
           </div>
         </div>

@@ -3,12 +3,16 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
-import logo from "../assets/sedasanj-refined-master.svg";
+import { BrandLogo } from "../components/BrandLogo";
+import PhoneAuth from "../components/PhoneAuth";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, acceptSession } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const method = params.get("method") === "password" ? "password" : "phone";
+  const next = params.get("next");
+  const destination = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
@@ -26,7 +30,7 @@ export default function Login() {
         if (result.requires_totp) { setStep("totp"); return; }
       }
       await login(email, password, totp);
-      navigate(params.get("next") || "/");
+      navigate(destination);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "ورود ناموفق بود");
     } finally {
@@ -39,11 +43,16 @@ export default function Login() {
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-8"
       style={{ backgroundImage: "radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}
     >
-      <section className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/80 bg-white/90 p-6 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-10">
+      <div className="relative w-full max-w-md">
+        <div className="mb-5 flex w-full justify-center">
+          <Link to="/" aria-label="صفحه اصلی">
+            <BrandLogo animated className="block w-48 sm:w-56" title="صدا سنج" />
+          </Link>
+        </div>
+        <section className="relative w-full overflow-hidden border border-brand-200 bg-white/90 p-4 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-6">
           <div className="mx-auto max-w-sm">
-            <img className="mx-auto mb-7 h-12 w-auto" src={logo} alt="صدا سنج" />
-            <h2 className="text-center text-2xl font-bold text-slate-900">خوش آمدید</h2>
-            <p className="mt-2 mb-8 text-center text-sm text-slate-500">برای ورود به پنل، اطلاعات خود را وارد کنید.</p>
+            <div className="demo-device-tabs login-method-tabs" role="group" aria-label="روش ورود">{([['phone', 'شماره موبایل'], ['password', 'ایمیل و رمز']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={method === value} onClick={() => setParams((current) => { const changed = new URLSearchParams(current); changed.set("method", value); return changed; }, { replace: true })}>{label}</button>)}</div>
+            {method === "phone" ? <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate(destination); }}/> : <>
             <form onSubmit={submit}>
               <ErrorBox message={error} />
               {step === "password" ? (<>
@@ -93,8 +102,10 @@ export default function Login() {
               </button>
               <p className="mt-5 text-center text-sm text-slate-500">حساب ندارید؟ <Link className="font-bold text-brand-600" to="/signup?plan=demo">دموی رایگان را شروع کنید</Link></p>
             </form>
+            </>}
           </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

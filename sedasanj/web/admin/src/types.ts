@@ -13,7 +13,7 @@ export interface Tenant {
   status: string;
   timezone: string;
   price_per_minute_toman: number;
-  monthly_minute_quota: number | null;
+  plan_monthly_minutes?: number;
   max_concurrent_jobs: number;
   audio_retention_days: number;
   max_operators: number;
@@ -224,7 +224,6 @@ export interface PlanVersion {
   version: number;
   status: "draft" | "published" | "retired";
   effective_at: string | null;
-  monthly_price_toman: number;
   annual_price_toman: number | null;
   base_operators: number;
   intro_minutes: number;
@@ -234,7 +233,6 @@ export interface PlanVersion {
   assistant_source_limit: number;
   assistant_model: string | null;
   allows_extra_operators: boolean;
-  extra_operator_monthly_toman: number | null;
   extra_operator_annual_toman: number | null;
   trial_days: number | null;
   subscription_count: number;
@@ -248,7 +246,7 @@ export interface SubscriptionAdmin {
   plan_name: string;
   plan_version: number;
   status: string;
-  billing_period: string;
+  billing_period: "annual" | "legacy_monthly" | "trial" | "legacy";
   period_start: string;
   period_end: string;
   cancel_at_period_end: boolean;

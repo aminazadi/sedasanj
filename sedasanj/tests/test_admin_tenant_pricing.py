@@ -11,11 +11,12 @@ from starlette.requests import Request
 from app.models import Subscription, Tenant
 from app.routers import admin
 from app.schemas import TenantCreate
+from app.services import billing
 from app.services.payments import _organization_price_per_minute
 
 
 @pytest.mark.asyncio
-async def test_create_tenant_preserves_organization_specific_price(
+async def test_create_tenant_uses_plan_price(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tenant_id = uuid4()
@@ -47,7 +48,6 @@ async def test_create_tenant_preserves_organization_specific_price(
 
     payload = TenantCreate(
         name="Organization",
-        price_per_minute_toman=7_500,
         admin_email="admin@example.com",
         admin_password="password123",
         plan_code="legacy_custom",
@@ -60,15 +60,25 @@ async def test_create_tenant_preserves_organization_specific_price(
 
     tenant = next(item for item in created if isinstance(item, Tenant))
     subscription = next(item for item in created if isinstance(item, Subscription))
-    assert output.price_per_minute_toman == 7_500
-    assert tenant.price_per_minute_toman == 7_500
-    assert subscription.price_per_minute_toman == 7_500
-    assert subscription.price_per_minute_toman != plan_version.overage_price_per_minute_toman
+    assert output.price_per_minute_toman == 2_000
+    assert tenant.price_per_minute_toman == 2_000
+    assert subscription.price_per_minute_toman == 2_000
 
 
-def test_plan_changes_preserve_organization_specific_price() -> None:
+def test_plan_price_is_used_instead_of_tenant_price() -> None:
     tenant = SimpleNamespace(price_per_minute_toman=7_500)
     subscription = SimpleNamespace(price_per_minute_toman=6_000)
     version = SimpleNamespace(overage_price_per_minute_toman=2_000)
 
-    assert _organization_price_per_minute(tenant, subscription, version) == 7_500
+    assert _organization_price_per_minute(tenant, subscription, version) == 2_000
+
+
+@pytest.mark.asyncio
+async def test_effective_price_uses_demo_rate_when_no_subscription() -> None:
+    class Result:
+        def one_or_none(self) -> None:
+            return None
+
+    session = SimpleNamespace(execute=AsyncMock(return_value=Result()))
+
+    assert await billing.effective_price_per_minute(session, uuid4()) == 7_000

@@ -2,11 +2,144 @@
 
 ## 2026-10-17 — AMINAZADI
 
+- محدودیت خرید اشتراک به دوره سالانه تغییر کرد و قیمت پلن‌های برنز، نقره‌ای و طلایی و تعرفه پردازش هر دقیقه به‌روزرسانی شد.
+- سهمیه دقیقه رایگان بر اساس پلن، در دوره‌های ماهانه اشتراک تخصیص می‌یابد و پیام‌های دستیار نیز ماهانه بر مبنای تقویم تهران محاسبه می‌شوند.
+- تعرفه و سهمیه دقیقه قابل تنظیم سازمانی از پنل و API حذف شد و قیمت تماس هنگام رزرو برای تسویه ثابت می‌ماند.
+
+## 2026-10-17 — AMINAZADI
+
 - Added shared organization-manager scheduled assistant reports with hourly intervals, local fixed hours, pause/resume, manual execution, and immutable report archives.
 - Added durable tenant-scoped scheduling and worker execution with RLS, outbox delivery, duplicate prevention, quota accounting, memory snapshots, and visible failures without automatic generation retries.
 - Combined all active organization memories, time-bounded vector evidence, and exact analytics; reports disclose incomplete indexing and sampled evidence coverage.
 - Added an independent reports page and settings entry with URL-backed archive filters, pagination, and direct report links.
 
+## 2026-10-17 — AMINAZADI
+
+- Added a module download link to the VoIP configuration files panel after API key creation.
+
+## 2026-10-17 — AMINAZADI
+
+- Made the VoIP setup and module download buttons equal in size and shortened the API key button label.
+
+## 2026-10-17 — AMINAZADI
+
+- Added a GitHub module download button to the quick demo VoIP setup screen.
+
+## 2026-10-17 — AMINAZADI
+
+- Overlapped the cloud phone integration copy with the artwork and added a soft fading halo behind the text.
+
+## 2026-10-17 — AMINAZADI
+
+- Added cloud phone integration copy and a GitHub module download link below the landing page integration artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied recording review illustration and cropped its transparent margins to tighten spacing above the review text.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied FreePBX and Issabel integration illustration, shortened the VoIP setup description, fixed the clipped card bottom, and tightened the gap below the artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied organization profile illustration to the organization name entry step in the quick demo dialog.
+
+## 2026-10-17 — AMINAZADI
+
+- Sized the quick demo phone entry illustration using its full aspect ratio and tightened the gap before the phone field again.
+
+## 2026-10-17 — AMINAZADI
+
+- Added one-click API key creation to the VoIP quick demo with copyable credentials and downloadable FreePBX and Python Agent configuration files.
+
+## 2026-10-17 — AMINAZADI
+
+- Balanced mobile integration banner spacing by reducing its upward shift and applying a smaller negative bottom margin.
+
+## 2026-10-17 — AMINAZADI
+
+- Restored spacing below the mobile integration banner while keeping its top whitespace reduced.
+
+## 2026-10-17 — AMINAZADI
+
+- Removed excess top whitespace from the mobile integration banner artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Replaced the mobile integration banner with the latest supplied portrait artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Increased the vertical spacing above and below the integration banner.
+
+## 2026-10-17 — AMINAZADI
+
+- Increased the top and bottom padding of the security section on desktop and mobile.
+
+## 2026-10-17 — AMINAZADI
+
+- Matched the security items to the feature cards with desktop dividers and mobile separators.
+
+## 2026-10-17 — AMINAZADI
+
+- Increased the integration banner image transparency slightly.
+
+## 2026-10-17 — AMINAZADI
+
+- Slightly reduced the desktop and tablet integration banner width.
+
+## 2026-10-17 — AMINAZADI
+
+- Replaced the desktop and tablet integration banner with the latest supplied artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Removed the workflow timeline's bottom margin to bring the integration banner closer to the content above it.
+
+## 2026-10-17 — AMINAZADI
+
+- Expanded the integration banner width and minimized surrounding vertical spacing.
+
+## 2026-10-17 — AMINAZADI
+
+- Reduced top and bottom spacing around the integration banner on desktop and mobile.
+
+## 2026-10-17 — AMINAZADI
+
+- Removed excess vertical spacing around the integration banner and increased its transparency.
+
+## 2026-10-17 — AMINAZADI
+
+- Reduced the centered integration banner width and increased its transparency.
+
+## 2026-10-17 — AMINAZADI
+
+- Centered the integration banner at its natural aspect ratio and applied slight transparency.
+
+## 2026-10-17 — AMINAZADI
+
+- Replaced the desktop and tablet telephony integration banner with the supplied wide artwork while preserving the mobile portrait image.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied portrait integration artwork as the mobile version of the landing page banner.
+
+## 2026-10-16 — AMINAZADI
+
+- Added a full-width telephony integration banner section above the pricing plans.
+
+## 2026-10-16 — AMINAZADI
+
+- Tightened oversized landing page spacing in the feature grid, workflow, and security section.
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced vertical padding between landing page sections on desktop and mobile.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed the landing hero action to «تست رایگان» and wired it to open the quick demo dialog.
 
 ## 2026-10-16 — AMINAZADI
 
@@ -25,6 +158,144 @@
 - Added the dotted brand background to the quick demo recording page.
 
 - Added the supplied welcome audio to the quick demo, followed it with three beeps and automatic recording, and added a square equalizer control with send and rerecord actions.
+
+- Applied the quick demo QR login migration to the local database to resolve the server error during phone QR login.
+
+- Replaced the route selection prompt with the selected route title after advancing to the next stage.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved the quick demo back icon beside «آماده‌اید؟» in the route selection header.
+
+## 2026-10-16 — AMINAZADI
+
+- Right-aligned the quick demo flow, moved back navigation into an icon button beside the stage title, and replaced the path symbols with phone and VoIP handset icons.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed the VoIP path description to «اتصال به صداسنج از طریق سامانه تلفنی».
+
+## 2026-10-16 — AMINAZADI
+
+- Rotated quick demo QR sessions after a test completes or its call is deleted, preserving plan-based usage for repeated tests.
+
+## 2026-10-16 — AMINAZADI
+
+- Enabled one-time QR login on the recording device and navigated to call details as soon as upload acceptance returns the call ID.
+
+## 2026-10-16 — AMINAZADI
+
+- Reordered the quick demo choices and renamed the VoIP option to «نصب در VOIP».
+
+## 2026-10-16 — AMINAZADI
+
+- Added a same-device recording route that opens the recorder with a temporary session link and reminds users to check their microphone.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved the phone scan instruction below the QR and refined the QR frame with brand colors and scan-safe contrast.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the numbered scan and recording steps beneath the quick demo QR.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the trailing radio indicator and enlarged the mobile and VoIP icons on the quick demo path choices.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced quick demo tabs with a URL-persisted route question and radio choices, with a back action from either route.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved «آماده‌اید؟» above the quick demo tabs and added the route selection prompt beneath it.
+
+## 2026-10-16 — AMINAZADI
+
+- Added URL-persisted «تست موبایل» and «نصب VoIP» tabs to the quick demo page, keeping the QR flow in the first tab and the second panel empty.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the QR center logo and the «تست سریع صداسنج» heading from the quick demo screen.
+
+## 2026-10-16 — AMINAZADI
+
+- Styled the automatically generated demo QR with a branded frame, centered logo, and concise scan instructions.
+
+## 2026-10-16 — AMINAZADI
+
+- Automatically creates and displays the quick demo QR after login without requiring a button click, including when reopening with a stale session query.
+
+## 2026-10-16 — AMINAZADI
+
+- Simplified the quick demo connection screen to a QR code and made its short-lived recording link work without a configured audio prompt.
+
+## 2026-10-16 — AMINAZADI
+
+- Rendered quick demo as a standalone page outside the authenticated dashboard layout and matched its connection state to the main login shell.
+
+## 2026-10-16 — AMINAZADI
+
+- Matched the quick demo phone login screen to the main login page layout.
+
+## 2026-10-16 — AMINAZADI
+
+- Updated the pricing section heading to «پلن مناسب سازمان شما».
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced the billing period controls and animated plan prices when switching between monthly and annual billing.
+
+## 2026-10-16 — AMINAZADI
+
+- Lowered the ingot silhouettes and increased spacing between the gold ingot and its star.
+
+## 2026-10-16 — AMINAZADI
+
+- Added a small gold star beside the gold plan ingot.
+
+## 2026-10-16 — AMINAZADI
+
+- Updated the bronze, silver, and gold icons to match the reference ingot silhouette with a beveled rectangular body.
+
+## 2026-10-16 — AMINAZADI
+
+- Reshaped the bronze, silver, and gold icons into ingots with a broad top face and tapered sides.
+
+## 2026-10-16 — AMINAZADI
+
+- Unified bronze, silver, and gold plan artwork as matching ingot icons in tier-specific colors.
+
+## 2026-10-16 — AMINAZADI
+
+- Refined the bronze and silver plan artwork with clearer trophy and faceted-gem silhouettes.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the bronze and silver pricing icons with distinct tier-specific symbols.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the extra bottom strokes from the gold and silver pricing icons.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed the silver plan icon to a silver-gray color and removed the highlight strokes from plan artwork.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed shadows from pricing plan artwork.
+
+## 2026-10-16 — AMINAZADI
+
+- Matched pricing artwork colors to each plan tier and aligned the offset shadow and highlight strokes with each icon's paths.
+
+## 2026-10-16 — AMINAZADI
+
+- Added editable layered 3D-style SVG artwork above each pricing plan title and removed the plan subtitle text.
+
+## 2026-10-16 — AMINAZADI
 
 - Added subtle dotted backgrounds to pricing plan cards and primary-colored dots to the featured plan.
 
@@ -46,6 +317,10 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Updated the homepage hero headline to «بدون صداسنج هیچ مرکز تماسی موثر نیست».
+
+## 2026-10-16 — AMINAZADI
+
 - Updated the workflow section heading to «از مکالمه تا اقدام همه زیر ذره‌بین».
 
 ## 2026-10-16 — AMINAZADI
@@ -59,6 +334,10 @@
 ## 2026-10-16 — AMINAZADI
 
 - Reworked the landing workflow into an animated five-stage timeline with a responsive path and detailed organization call report preview.
+
+## 2026-10-16 — AMINAZADI
+
+- Redesigned the landing workflow as a responsive three-step process above a wider, action-oriented call report preview.
 
 ## 2026-10-16 — AMINAZADI
 
@@ -84,6 +363,26 @@
 
 - Added thin dividers between the six landing features, adapting to horizontal separators on mobile.
 - Expanded the landing page features to six manager-focused capabilities: reporting, operator evaluation, searchable transcripts, conversation analysis, follow-up management, and the organization assistant.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed rounded corners and box shadows across all client and admin interface elements.
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced login card padding, added a visible border, and removed its rounded corners.
+
+## 2026-10-16 — AMINAZADI
+
+- Linked the centered client login logo to the home page.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved the client login logo above the form card, increased its size, and limited its animation to a single autoplay.
+
+## 2026-10-16 — AMINAZADI
+
+- Added an assistant tool that returns the current UTC date, time, ISO datetime, and Unix timestamp, and made it available by default and configurable in admin assistant settings.
 
 ## 2026-10-16 — AMINAZADI
 
@@ -647,4 +946,30 @@
 - Added the standalone FreePBX module 1.1.0 release with PHP 7.4 compatibility, versioned import, atomic apply and rollback, explicit transports, durable queue states, retention cleanup, and pinned binary checks.
 # Unreleased
 
+- AMINAZADI: Display OTP destination numbers in local Iranian format without the +98 country prefix.
+- AMINAZADI: Log phone OTP codes only in development when SMS.ir credentials or its verification template are not configured; production still rejects the request.
+- AMINAZADI: Centered the OTP delivery hint showing the destination mobile number.
+- AMINAZADI: Moved the OTP expiry countdown into a clock button, revealed resend after expiry, and removed link underlines in phone auth.
+- AMINAZADI: Replaced single OTP fields with six digit inputs supporting paste and keyboard navigation, and disabled browser validation tooltips in phone authentication.
+- AMINAZADI: Slightly reduced the close icon size and weight.
+- AMINAZADI: Fixed close icon sizing by increasing selector specificity so inherited button typography no longer overrides it.
+- AMINAZADI: Increased only the quick demo dialog close icon size while keeping its button dimensions unchanged.
+- AMINAZADI: Enlarged the quick demo dialog close control and removed the SMS delivery helper text from phone entry.
+- AMINAZADI: Restored a stronger top-only mobile glow, increased section height, and positioned copy above the agent's head.
+- AMINAZADI: Limited the mobile hero-style gradient to the top edge, moved the copy higher, and cleared the image around the agent.
+- AMINAZADI: Raised the mobile quick demo content, sized its button to fit, and spaced the arrow icon from its label.
+- AMINAZADI: Centered the mobile quick demo copy at the top of the section.
+- AMINAZADI: Applied the hero's canvas-tinted gradient treatment to the quick demo background, mirrored behind the left-side copy.
+- AMINAZADI: Removed the section-wide tint and confined a subtle transparent glow to the copy area.
+- AMINAZADI: Reframed the quick demo background to show more of the lower image area across screen sizes.
+- AMINAZADI: Reduced the quick demo section height and copy side glow, and shifted the desktop background image to move the agent away from the text.
+- AMINAZADI: Matched the quick demo section's translucent halo to the hero and reduced excess top space by reframing the background.
+- AMINAZADI: Removed the solid light background from the quick demo section and limited the white glow to the copy area.
+- AMINAZADI: Changed the quick demo section heading to «همین حالا امتحان کنید».
+- AMINAZADI: Placed the quick demo heading directly above its copy and removed the copy panel background.
+- AMINAZADI: Refined quick demo section layout, image framing, white glow, and copy placement across desktop, tablet, and mobile widths.
+- AMINAZADI: Removed the kicker text above the quick demo heading.
+- AMINAZADI: Centered the quick demo heading above the background image and moved its supporting copy and action to the left.
+- AMINAZADI: Set the quick demo section image as its full-width background and added responsive white glow treatment behind the copy.
+- AMINAZADI: Removed the quick demo section background and added the provided call center image.
 - AMINAZADI: Added authenticated Socket.IO assistant delivery with durable queued conversation runs, ordered resumable event storage, Redis fan-out, ephemeral live socket replies, and WebSocket proxy support.

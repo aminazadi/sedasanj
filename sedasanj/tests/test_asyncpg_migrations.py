@@ -17,7 +17,9 @@ MIGRATIONS = (
     "0024_hybrid_knowledge.py",
     "0025_sales_kpi_center.py",
     "0026_balance_cache_integrity.py",
+    "0048_quick_demo.py",
     "0050_scheduled_reports.py",
+    "0051_annual_plan_monthly_quotas.py",
 )
 
 
@@ -42,6 +44,24 @@ def test_asyncpg_migrations_execute_one_command_at_a_time(
 
     assert statements
     assert all(";" not in statement for statement in statements)
+
+
+def test_annual_plan_migration_publishes_expected_tariffs_and_keeps_live_legacy() -> None:
+    migration = _load_migration("0051_annual_plan_monthly_quotas.py")
+    statements: list[str] = []
+    migration.op.execute = statements.append
+
+    migration.upgrade()
+
+    sql = "\n".join(statements)
+    assert "9900000" in sql
+    assert "29900000" in sql
+    assert "59900000" in sql
+    assert "WHEN 'demo' THEN 7000" in sql
+    assert "WHEN 'bronze' THEN 6000" in sql
+    assert "WHEN 'silver' THEN 5000" in sql
+    assert "WHEN 'gold' THEN 4000" in sql
+    assert "s.period_end <= now()" in sql
 
 
 class _ScalarResult:

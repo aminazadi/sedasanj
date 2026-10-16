@@ -1,10 +1,17 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
 import heroBackdrop from "../assets/manager-office-line-art.png";
+import integrationBanner from "../assets/telephony-integration-banner-desktop.png";
+import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.png";
+import planDemoImage from "../assets/plan-demo.png";
+import planBronzeImage from "../assets/plan-bronze.png";
+import planSilverImage from "../assets/plan-silver.png";
+import planGoldImage from "../assets/plan-gold.png";
 import "./Landing.css";
 import { fmt, request } from "../api";
 import type { PublicPlan } from "../types";
+import QuickDemoEntry from "../components/QuickDemoEntry";
 
 type IconName = "arrow" | "brain" | "chart" | "check" | "chevron" | "clock" | "headset" | "layers" | "lock" | "menu" | "message" | "phone" | "pulse" | "quote" | "shield" | "spark" | "target" | "tasks" | "trend" | "users" | "x";
 
@@ -52,9 +59,47 @@ const steps = [
   { icon: "tasks" as const, title: "تعریف اقدام بعدی", body: "پیگیری‌های لازم ثبت می‌شوند تا بینش حاصل از تماس به بهبود قابل سنجش برسد." },
 ];
 
+const planArt: Record<string, { className: string; image: string }> = {
+  demo: { className: "plan-art-demo", image: planDemoImage },
+  bronze: { className: "plan-art-bronze", image: planBronzeImage },
+  silver: { className: "plan-art-silver", image: planSilverImage },
+  gold: { className: "plan-art-gold", image: planGoldImage },
+};
+
+function PlanArtwork({ code, name }: { code: string; name: string }) {
+  const art = planArt[code] ?? planArt.bronze;
+  return <img className={`site-plan-art ${art.className}`} src={art.image} alt={`تصویر پلن ${name}`} />;
+}
+
+function AnimatedPrice({ value, formatted }: { value: number | null; formatted: string }) {
+  const [display, setDisplay] = useState(formatted);
+  const currentValue = useRef<number | null>(value);
+  useEffect(() => {
+    if (value == null || currentValue.current == null || value === currentValue.current) {
+      currentValue.current = value;
+      setDisplay(formatted);
+      return;
+    }
+    const from = currentValue.current;
+    const to = value;
+    const duration = 650;
+    const start = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - (1 - progress) ** 3;
+      setDisplay(fmt.int(Math.round(from + (to - from) * eased)));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+      else { currentValue.current = to; setDisplay(formatted); }
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value, formatted]);
+  return <strong aria-live="polite">{display}</strong>;
+}
+
 export default function Landing() {
-  const [params, setParams] = useSearchParams();
-  const annual = params.get("billing") === "annual";
+  const [, setParams] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [plansState, setPlansState] = useState<"loading" | "ready" | "error">("loading");
@@ -69,8 +114,8 @@ export default function Landing() {
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [menuOpen]);
-  function setBilling(value: string) {
-    setParams((current) => { const next = new URLSearchParams(current); next.set("billing", value); return next; }, { replace: true });
+  function openQuickDemo() {
+    setParams((current) => { const next = new URLSearchParams(current); next.set("quickDemo", "1"); return next; });
   }
   return <div className="marketing-site" dir="rtl">
     <header className="site-header"><div className="site-container site-nav">
@@ -82,7 +127,7 @@ export default function Landing() {
     </div></header>
     <main id="top">
       <section className="site-hero" style={{ "--site-hero-art": `url(${heroBackdrop})` } as CSSProperties}><div className="site-container site-split">
-        <div><h1>بدون صداسنج،<br/>هیچ تماسی واقعاً دیده نمی‌شود</h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><Link className="site-button" to="/signup?plan=demo">شروع رایگان</Link><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
+        <div><h1>بدون صداسنج،<br/>هیچ مرکز تماسی موثر نیست</h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}>تست رایگان</button><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
       </div></section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="workflow">
@@ -105,16 +150,31 @@ export default function Landing() {
           </div>
         </div>
       </section>
-      <section className="site-section" id="pricing"><div className="site-container"><h2>پلن مناسب تیم شما</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما.</p><div className="site-billing" role="group" aria-label="دوره پرداخت"><button aria-pressed={!annual} onClick={() => setBilling("monthly")}>ماهانه</button><button aria-pressed={annual} onClick={() => setBilling("annual")}>سالانه</button></div>
+      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div></section>
+      <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
         {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}>تلاش دوباره</button></div>}
         {plansState === "ready" && !plans.length && <p className="site-status">در حال حاضر پلنی برای نمایش وجود ندارد.</p>}
-        <div className="site-plans">{plans.map((plan) => { const demo = plan.code === "demo"; const price = annual ? plan.annual_price_toman : plan.monthly_price_toman; const extra = annual ? plan.extra_operator_annual_toman : plan.extra_operator_monthly_toman; return <article className={`site-plan${plan.code === "silver" ? " site-plan-featured" : ""}`} key={plan.code}><h3>{plan.name}</h3><p>{demo ? `${fmt.int(plan.trial_days ?? 7)} روز تجربه سامانه` : "همه امکانات اصلی صداسنج"}</p><div className="site-price"><strong>{demo ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}</strong>{!demo && price != null && <span>تومان / {annual ? "سال" : "ماه"}</span>}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.intro_minutes)} دقیقه اعتبار {demo ? "تا پایان دمو" : "شروع، معتبر تا ۳۰ روز"}</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / {annual ? "سال" : "ماه"}</li>}</ul><Link className={`site-button${plan.code === "silver" ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}</Link></article>; })}</div>
+        <div className="site-plans">{plans.map((plan) => { const demo = plan.code === "demo"; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; return <article className={`site-plan${plan.code === "silver" ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={demo ? null : price} formatted={demo ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!demo && price != null && <span>تومان / سال</span>}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.intro_minutes)} دقیقه رایگان در ماه</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul><Link className={`site-button${plan.code === "silver" ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}</Link></article>; })}</div>
         <p className="site-pricing-note">نصب اولیه رایگان است. برای استقرار اختصاصی <Link to="/contact">با ما تماس بگیرید.</Link></p>
       </div></section>
-      <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "فضای مستقل برای هر سازمان" }, { icon: "lock", title: "کنترل دسترسی", body: "دسترسی کاربران بر اساس نقش" }, { icon: "layers", title: "استقرار منعطف", body: "امکان استقرار اختصاصی سازمان" }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
-      <section className="site-cta"><div className="site-container"><h2>صدای مشتری را به تصمیم تبدیل کنید</h2><Link className="site-button" to="/signup?plan=demo">شروع رایگان</Link></div></section>
+      <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
+      <QuickDemoEntry />
     </main>
-    <footer className="site-footer"><div className="site-container"><img className="site-logo" src={logo} alt="صداسنج"/><nav aria-label="پیوندهای پایانی"><Link to="/contact">تماس با ما</Link><Link to="/terms">قوانین استفاده</Link><Link to="/privacy">حریم خصوصی</Link><Link to="/cancellation">لغو اشتراک</Link></nav><small>© ۱۴۰۵ صداسنج</small></div></footer>
+    <footer className="site-footer">
+      <section className="site-footer-contact" aria-labelledby="site-footer-contact-title">
+        <div className="site-container site-footer-contact-inner">
+          <div><h2 id="site-footer-contact-title">با ما تماس بگیرید</h2><p>پذیرای صدای گرم شما خواهیم بود</p></div>
+          <a className="site-footer-phone" href="tel:09399093062" dir="rtl">{new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(9399093062)}</a>
+        </div>
+      </section>
+      <div className="site-container site-footer-main">
+        <div className="site-footer-brand"><strong>درباره صداسنج</strong><Link to="/" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></Link><p>سامانه هوشمند تحلیل مکالمات فارسی</p></div>
+        <nav className="site-footer-links" aria-label="لینک‌های پرکاربرد"><strong>لینک‌های پرکاربرد</strong><Link to="/#features">امکانات</Link><Link to="/#pricing">پلن‌ها</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link><Link to="/login">ورود به پنل</Link></nav>
+        <nav className="site-footer-legal" aria-label="قوانین و حریم خصوصی"><Link to="/terms">قوانین استفاده</Link><Link to="/privacy">حریم خصوصی</Link><Link to="/cancellation">لغو اشتراک</Link></nav>
+        <div className="site-footer-trust" aria-label="جایگاه نمادهای اعتماد"><strong>نمادهای اعتماد</strong><div className="site-footer-trust-slots"><span aria-hidden="true">جایگاه نماد</span><span aria-hidden="true">جایگاه نماد</span></div></div>
+      </div>
+      <div className="site-container site-footer-bottom"><small>© ۱۴۰۵ صداسنج</small></div>
+    </footer>
   </div>;
 }

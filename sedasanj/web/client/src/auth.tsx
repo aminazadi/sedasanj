@@ -13,6 +13,7 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   login: (email: string, password: string, totp?: string) => Promise<void>;
+  acceptSession: (pair: TokenPair) => void;
   logout: () => Promise<void>;
 }
 
@@ -63,6 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       loading,
+      acceptSession(pair) {
+        tokens.save(pair);
+        setSession(decode(pair.access_token));
+      },
       async login(email, password, totp) {
         const pair = await request<TokenPair>("/v1/auth/login", {
           method: "POST",

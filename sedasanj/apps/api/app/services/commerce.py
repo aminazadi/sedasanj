@@ -67,19 +67,16 @@ async def plan_version_by_code(session: AsyncSession, code: str) -> tuple[Plan, 
 
 
 def subscription_amount(version: PlanVersion, period: str, extra_operators: int) -> tuple[int, int]:
-    if period not in {"monthly", "annual"}:
+    if period != "annual":
         raise ApiError("invalid_request", "billing period is invalid")
     if extra_operators < 0 or (extra_operators and not version.allows_extra_operators):
         raise ApiError("invalid_request", "extra operators are not available for this plan")
-    base = version.monthly_price_toman if period == "monthly" else version.annual_price_toman
-    extra_unit = (
-        version.extra_operator_monthly_toman
-        if period == "monthly"
-        else version.extra_operator_annual_toman
-    )
+    base = version.annual_price_toman
+    extra_unit = version.extra_operator_annual_toman
     if base is None or (extra_operators and extra_unit is None):
         raise ApiError("invalid_request", "selected billing period is unavailable")
-    return base + extra_operators * (extra_unit or 0), extra_unit or 0
+    effective_extra_unit = (extra_unit or 0) if version.allows_extra_operators else 0
+    return base + extra_operators * effective_extra_unit, effective_extra_unit
 
 
 async def create_subscription_order(
@@ -128,7 +125,7 @@ async def create_subscription_order(
             order_id=order.id,
             tenant_id=tenant.id,
             kind="subscription",
-            description=f"اشتراک {plan.name} - {'سالانه' if period == 'annual' else 'ماهانه'}",
+            description=f"اشتراک {plan.name} - سالانه",
             quantity=1,
             unit_price_toman=total - extra_operators * extra_unit,
             total_toman=total - extra_operators * extra_unit,

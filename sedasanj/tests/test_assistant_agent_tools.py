@@ -1,4 +1,5 @@
 import json
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
@@ -97,11 +98,12 @@ async def test_agent_rejects_disabled_tool() -> None:
 
 def test_tool_schemas_never_expose_security_scope() -> None:
     schemas = assistant_tools.schemas()
-    assert len(schemas) == 7
+    assert len(schemas) == 8
     serialized = json.dumps(schemas)
     assert "tenant_id" not in serialized
     assert "user_id" not in serialized
     assert all(item["type"] == "function" for item in schemas)
+    assert "get_current_time" in {item["function"]["name"] for item in schemas}
     chart_schema = next(
         item for item in schemas if item["function"]["name"] == "visualize_statistics"
     )
@@ -115,6 +117,27 @@ def test_tool_schemas_never_expose_security_scope() -> None:
     assert set(chart_types["items"]["enum"]) == {
         "bar", "horizontal_bar", "line", "area", "pie", "donut", "radar",
         "radial_bar", "scatter", "composed", "treemap", "funnel",
+    }
+
+
+def test_current_time_tool_returns_utc_date_and_time() -> None:
+    tool = assistant_tools.TOOL_BY_NAME["get_current_time"]
+    result = asyncio.run(
+        tool.executor(None, assistant_tools.CurrentTimeArguments())
+    )
+    instant = datetime.fromisoformat(result["datetime"])
+    assert result["timezone"] == "UTC"
+    assert instant.tzinfo == UTC
+    assert result["date"] == instant.date().isoformat()
+    assert result["time"] == instant.time().replace(microsecond=0).isoformat()
+    assert result["unix_timestamp"] == int(instant.timestamp())
+
+
+def test_current_time_is_available_with_legacy_explicit_tool_settings() -> None:
+    settings = {"assistant_enabled_tools": json.dumps(["get_call_analytics"])}
+    assert assistant._enabled_assistant_tools(settings) == {
+        "get_current_time",
+        "get_call_analytics",
     }
 
 

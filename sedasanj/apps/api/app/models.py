@@ -1354,6 +1354,8 @@ class CreditReservation(Base):
     )
     seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_per_minute_toman: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    free_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
@@ -1437,7 +1439,11 @@ class PlanVersion(Base):
     __table_args__ = (
         UniqueConstraint("plan_id", "version", name="plan_versions_plan_version_key"),
         CheckConstraint(
-            "monthly_price_toman >= 0 AND base_operators >= 0 AND intro_minutes >= 0",
+            "annual_price_toman IS NULL OR annual_price_toman >= 0",
+            name="plan_versions_annual_price_nonnegative_check",
+        ),
+        CheckConstraint(
+            "base_operators >= 0 AND intro_minutes >= 0",
             name="plan_versions_nonnegative_check",
         ),
         CheckConstraint(
@@ -1823,6 +1829,38 @@ class SignupOtp(Base):
     expires_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class PhoneOtp(Base):
+    __tablename__ = "phone_otps"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    mobile: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    expires_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    grant_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    grant_expires_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    consumed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=func.now())
+
+
+class QuickDemoSession(Base):
+    __tablename__ = "quick_demo_sessions"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    mobile: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    max_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    call_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    upload_attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    auth_exchanged_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=func.now())
 
 
 class TrialClaim(Base):

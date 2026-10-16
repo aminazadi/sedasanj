@@ -37,6 +37,10 @@ class ToolArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CurrentTimeArguments(ToolArguments):
+    pass
+
+
 class WindowArguments(ToolArguments):
     from_date: datetime | None = None
     to_date: datetime | None = None
@@ -133,6 +137,18 @@ def _window(args: WindowArguments) -> tuple[datetime, datetime]:
     if start >= end:
         raise ApiError("invalid_request", "from_date must be earlier than to_date")
     return start, end
+
+
+async def _get_current_time(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    return {
+        "version": 1,
+        "timezone": "UTC",
+        "datetime": now.isoformat(),
+        "date": now.date().isoformat(),
+        "time": now.time().replace(microsecond=0).isoformat(),
+        "unix_timestamp": int(now.timestamp()),
+    }
 
 
 async def _validate_operator(ctx: ToolContext, operator_id: UUID | None) -> UUID | None:
@@ -740,6 +756,7 @@ def _chart_payload(
 
 
 TOOLS = (
+    ToolDefinition("get_current_time", "دریافت زمان فعلی", "Get the current server date and time in UTC.", CurrentTimeArguments, _get_current_time),
     ToolDefinition("search_calls", "جست‌وجوی تماس‌ها", "Find calls using safe filters.", SearchCallsArguments, _search_calls),
     ToolDefinition("get_call_details", "دریافت جزئیات تماس", "Get metadata for specific visible calls.", CallIdsArguments, _call_details),
     ToolDefinition("search_transcripts", "جست‌وجوی متن مکالمات", "Search visible call transcripts and semantic summaries.", SearchTranscriptsArguments, _search_transcripts, 120),

@@ -6,14 +6,12 @@ import type { Page, Tenant } from "../types";
 
 const EMPTY_FORM = {
   name: "",
-  price_per_minute_toman: 10000,
   admin_email: "",
   admin_password: "",
   audio_retention_days: 30,
   max_concurrent_jobs: 10,
   max_operators: 5,
-  plan_code: "legacy_custom",
-  billing_period: "legacy",
+  plan_code: "bronze",
 };
 
 export default function Tenants() {
@@ -42,7 +40,7 @@ export default function Tenants() {
     event.preventDefault();
     setError(null);
     try {
-      await request<Tenant>("/v1/admin/tenants", { method: "POST", body: form });
+      await request<Tenant>("/v1/admin/tenants", { method: "POST", body: {...form, billing_period: "annual"} });
       setForm(EMPTY_FORM);
       setOpen(false);
       await reload();
@@ -76,23 +74,6 @@ export default function Tenants() {
             />
           </div>
           <div><label className="label">پلن اولیه</label><select className="input" value={form.plan_code} onChange={(event) => setForm({...form, plan_code: event.target.value})}>{planCodes.map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</select></div>
-          <div><label className="label">دوره اشتراک</label><select className="input" value={form.billing_period} onChange={(event) => setForm({...form, billing_period: event.target.value})}><option value="legacy">نامحدود سفارشی</option><option value="monthly">ماهانه</option><option value="annual">سالانه</option></select></div>
-          <div>
-            <label className="label">نرخ هر دقیقه (تومان)</label>
-            <input
-              className="input"
-              type="text"
-              inputMode="numeric"
-              value={fmt.digits(form.price_per_minute_toman)}
-              onChange={(event) =>
-                setForm({
-                  ...form,
-                  price_per_minute_toman: Number(fmt.latinDigits(event.target.value)),
-                })
-              }
-              required
-            />
-          </div>
           <div>
             <label className="label">نگهداشت صوت (روز)</label>
             <input
@@ -161,8 +142,6 @@ export default function Tenants() {
               <tr>
                 <th>نام</th>
                 <th>وضعیت</th>
-                <th>نرخ دقیقه</th>
-                <th>سهمیه ماهانه</th>
                 <th>اپراتور</th>
                 <th>نگهداشت</th>
                 <th>ایجاد</th>
@@ -187,8 +166,6 @@ export default function Tenants() {
                       {tenant.status === "active" ? "فعال" : "معلق"}
                     </span>
                   </td>
-                  <td>{fmt.toman(tenant.price_per_minute_toman)}</td>
-                  <td>{tenant.monthly_minute_quota ? fmt.int(tenant.monthly_minute_quota) : "—"}</td>
                   <td>{fmt.int(tenant.max_operators)}</td>
                   <td>{fmt.int(tenant.audio_retention_days)} روز</td>
                   <td>{fmt.date(tenant.created_at)}</td>

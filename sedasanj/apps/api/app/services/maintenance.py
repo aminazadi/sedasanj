@@ -19,6 +19,7 @@ from app.models import (
     LedgerEntry,
     Order,
     OrderItem,
+    Plan,
     PlanVersion,
     Subscription,
     SubscriptionChange,
@@ -147,6 +148,9 @@ async def prepare_renewal_orders() -> int:
                 version = await session.get(PlanVersion, version_id)
                 if version is None:
                     continue
+                plan = await session.get(Plan, version.plan_id)
+                if plan is None or plan.code == "demo":
+                    continue
                 extra = subscription.extra_operators
                 scheduled = (
                     await session.execute(
@@ -162,7 +166,7 @@ async def prepare_renewal_orders() -> int:
                 if scheduled is not None and scheduled.requested_extra_operators is not None:
                     extra = scheduled.requested_extra_operators
                 amount, extra_unit = commerce.subscription_amount(
-                    version, subscription.billing_period, extra
+                    version, "annual", extra
                 )
                 admin = (
                     await session.execute(
@@ -204,7 +208,7 @@ async def prepare_renewal_orders() -> int:
                         total_toman=base_amount,
                         metadata_json={
                             "plan_version_id": str(version.id),
-                            "billing_period": subscription.billing_period,
+                            "billing_period": "annual",
                         },
                     )
                 )

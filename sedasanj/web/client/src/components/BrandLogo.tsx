@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef } from "react";
 import logoSource from "../assets/sedasanj-refined-master.svg?raw";
 import { createLogoMotion, LOGO_MOTION_DURATION, PEN_STROKES } from "./logo-motion";
 
@@ -24,7 +24,6 @@ export function BrandLogo({ animated = false, className = "", title, color = "#1
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const completeRef = useRef(onComplete);
   const finishedRef = useRef(false);
-  const [replay, setReplay] = useState(0);
   completeRef.current = onComplete;
 
   useLayoutEffect(() => {
@@ -32,8 +31,11 @@ export function BrandLogo({ animated = false, className = "", title, color = "#1
     const svg = svgRef.current;
     const canvas = canvasRef.current;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let hasStarted = false;
     let dispose: (() => void) | undefined;
     const start = () => {
+      if (hasStarted) return;
+      hasStarted = true;
       dispose?.();
       finishedRef.current = false;
       if (media.matches) {
@@ -52,18 +54,12 @@ export function BrandLogo({ animated = false, className = "", title, color = "#1
       }
     };
     start();
-    media.addEventListener("change", start);
-    return () => { dispose?.(); media.removeEventListener("change", start); };
-  }, [animated, duration, replay]);
+    return () => { dispose?.(); };
+  }, [animated, duration]);
 
   const mask = (name: string) => animated ? `url(#${id}-${name})` : undefined;
   return (
-    <span className={`brand-logo ${className}`.trim()} style={{ color }} onPointerEnter={event => {
-      if (animated && event.pointerType === "mouse" && finishedRef.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        finishedRef.current = false;
-        setReplay(value => value + 1);
-      }
-    }}>
+    <span className={`brand-logo ${className}`.trim()} style={{ color }}>
       <svg ref={svgRef} viewBox="0 0 520 189" role="img" aria-hidden={title ? undefined : true} aria-label={title}>
         {title ? <title>{title}</title> : null}
         {animated ? <defs>

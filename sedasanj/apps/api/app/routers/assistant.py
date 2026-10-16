@@ -869,6 +869,8 @@ def _enabled_assistant_tools(settings: dict[str, str]) -> set[str]:
     except json.JSONDecodeError:
         values = []
     enabled = {str(value) for value in values if str(value) in assistant_tools.TOOL_BY_NAME}
+    if values and "get_current_time" not in enabled:
+        enabled.add("get_current_time")
     return enabled or set(assistant_tools.TOOL_BY_NAME)
 
 
@@ -880,10 +882,10 @@ async def _reserve_assistant_usage(
         raise ApiError("quota_exceeded", "assistant is unavailable without an active subscription")
     if entitlement.period_start is None:
         raise ApiError("quota_exceeded", "assistant quota period is unavailable")
-    period_start = entitlement.period_start
     now = datetime.now(UTC)
-    while commerce.add_months(period_start, 1) <= now:
-        period_start = commerce.add_months(period_start, 1)
+    from app.services.quotas import calendar_month_start
+
+    period_start = calendar_month_start(now)
     used = int(
         (
             await session.execute(

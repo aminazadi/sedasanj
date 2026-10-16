@@ -1,0 +1,39 @@
+- AMINAZADI: Updated the homepage hero headline to «بدون صداسنج هیچ مرکز تماسی موثر نیست».
+- AMINAZADI: Replaced the landing page's customer voice call to action with the quick demo section shown in the reference.
+
+## 2026-10-16 — AMINAZADI
+
+- Corrected the bronze and gold plan artwork assignment on the homepage.
+- Reassigned the supplied bronze and gold illustrations to match their colors and plan names.
+- Changed the homepage pricing heading to «پلن‌های مقرون بصرفه».
+- Expanded the homepage privacy and deployment descriptions with organization-specific database and self-hosting details.
+- Expanded the homepage access-control description with role-based permissions for relevant sections and data.
+- Redesigned the homepage footer with a contact callout, phone link, trust badge placeholders, and grouped quick links.
+- Displayed the footer phone number in Persian digits outside a button.
+- Increased the footer phone number size.
+- Added a subtle dotted pattern to the footer background.
+- Added an «درباره صداسنج» heading to the footer brand section.
+
+## 2026-10-16 — AMINAZADI
+
+- Tightened plan card spacing and enabled horizontal mobile scrolling with the next card partially visible.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the homepage plan card symbols with the supplied demo, bronze, silver, and gold illustrations.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the «خوش آمدید» heading from the login page.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the login helper text «برای ورود به پنل، اطلاعات خود را وارد کنید.».
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the «با شماره موبایل شروع کنید» prompt from phone login.
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced the vertical spacing and padding of the login method tabs.

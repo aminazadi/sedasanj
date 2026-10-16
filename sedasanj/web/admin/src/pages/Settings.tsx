@@ -1,4 +1,5 @@
 import TwoFactorSettings from "../components/TwoFactorSettings";
+import QuickDemoSettings from "../components/QuickDemoSettings";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -14,6 +15,7 @@ const KIND_LABELS: Record<string, string> = {
   embedding: "Embedding",
 };
 const ASSISTANT_TOOLS: Array<[string, string]> = [
+  ["get_current_time", "تاریخ و زمان فعلی"],
   ["search_calls", "جست‌وجوی تماس‌ها"],
   ["get_call_details", "جزئیات تماس"],
   ["search_transcripts", "جست‌وجوی متن مکالمات"],
@@ -22,7 +24,7 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
   ["get_operator_performance", "عملکرد اپراتورها"],
   ["visualize_statistics", "نمودارهای آماری"],
 ];
-type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security";
+type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security" | "quick-demo";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "اتصال سرویس‌ها" },
   { id: "models", label: "مدل‌ها و مسیرها" },
@@ -31,6 +33,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "correction", label: "تصحیح متن" },
   { id: "prompts", label: "پرامپت‌ها" },
   { id: "security", label: "امنیت" },
+  { id: "quick-demo", label: "تست سریع و پیامک" },
 ];
 function normalizeApiKey(value: string): string {
   let secret = value.trim();
@@ -498,11 +501,12 @@ export default function Settings() {
           <TwoFactorSettings />
         </div>
       ) : null}
+    {activeTab === "quick-demo" ? <QuickDemoSettings /> : null}
     <form
       id={activeTab === "security" ? undefined : `settings-panel-${activeTab}`}
       role="tabpanel"
       aria-labelledby={`settings-tab-${activeTab}`}
-      className={`card space-y-5 ${activeTab === "security" ? "hidden" : ""}`}
+      className={`card space-y-5 ${activeTab === "security" || activeTab === "quick-demo" ? "hidden" : ""}`}
       noValidate
       onSubmit={save}
     >

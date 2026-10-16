@@ -150,10 +150,6 @@ def _organization_price_per_minute(
     subscription: Subscription | None,
     version: PlanVersion,
 ) -> int:
-    if tenant is not None:
-        return tenant.price_per_minute_toman
-    if subscription is not None:
-        return subscription.price_per_minute_toman
     return version.overage_price_per_minute_toman
 
 
@@ -208,7 +204,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
         tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
         organization_price = _organization_price_per_minute(tenant, current, version)
         start = current.period_end if current and current.status == "active" and current.period_end > now else now
-        end = add_months(start, 12 if period == "annual" else 1)
+        end = add_months(start, 12)
         # A bonus belongs only to the first paid activation.  In particular,
         # migrated legacy subscriptions have no historical bonus timestamp but
         # must never receive one on their first renewal.
@@ -253,7 +249,6 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
         if extra:
             session.add(SubscriptionExtra(tenant_id=order.tenant_id, subscription_id=current.id, kind="extra_operator", quantity=extra, unit_price_toman=next(item.unit_price_toman for item in items if item.kind == "extra_operator"), effective_at=start, ends_at=end))
         if first_paid and version.intro_minutes:
-            await grant_credit(session, tenant_id=order.tenant_id, seconds=version.intro_minutes * 60, source="intro_bonus", source_id=current.id, expires_at=now + timedelta(days=30), toman=0, idem=f"intro:{current.id}")
             current.intro_credit_issued_at = now
     credit_item = next((item for item in items if item.kind == "credit"), None)
     if credit_item is not None:
