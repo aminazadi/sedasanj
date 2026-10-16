@@ -2,6 +2,17 @@
 
 ## 2026-10-16 — AMINAZADI
 
+- Redesigned the public landing page with the panel’s forest-green and warm neutral palette, square corners, flat surfaces, and spacious responsive sections.
+- Removed heading overlines and promotional decorations, simplified feature and workflow previews, and retained live administrator-managed pricing.
+- Persisted the billing period in the URL and added pricing loading, empty, error, and retry states.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the client login screen background image and overlay with a full-screen dotted background.
+- Simplified the client login page by removing the promotional panel and centering the logo above the form.
+
+## 2026-10-16 — AMINAZADI
+
 - Added interrupt controls to the assistant composer and quick-chat widget, with socket cancellation for persistent and ephemeral replies.
 - Resolved assistant stream completions after navigating to another conversation so training and other chat requests do not remain stuck waiting for a completion event.
 - Prevented completed assistant runs with a persisted reply from being restored as active, clearing stale chat processing indicators and allowing follow-up messages.

@@ -4,7 +4,6 @@ import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
 import logo from "../assets/sedasanj-refined-master.svg";
-import pattern from "../assets/pattern.png";
 
 export default function Login() {
   const { login } = useAuth();
@@ -38,25 +37,13 @@ export default function Login() {
   return (
     <main
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-8"
-      style={{ backgroundImage: `url(${pattern})`, backgroundPosition: "center", backgroundSize: "cover" }}
+      style={{ backgroundImage: "radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}
     >
-      <div className="absolute inset-0 bg-white/45" />
-      <section className="relative grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/80 bg-white/90 shadow-2xl shadow-brand-950/10 backdrop-blur-sm lg:grid-cols-[1fr_1.1fr]">
-        <div className="hidden flex-col justify-between bg-brand-600 p-10 text-white lg:flex">
-          <div>
-            <img className="h-14 w-auto rounded-xl bg-white px-3 py-2" src={logo} alt="صدا سنج" />
-            <h1 className="mt-12 text-3xl font-bold leading-relaxed">تحلیل هوشمند مکالمات، در یک نگاه</h1>
-            <p className="mt-4 max-w-sm text-sm leading-7 text-brand-100">
-              به پنل سازمان یا پنل اپراتور وارد شوید و کیفیت، روند و نتیجه تماس‌ها را دنبال کنید.
-            </p>
-          </div>
-          <p className="text-xs text-brand-100">سامانه تحلیل مکالمات صدا سنج</p>
-        </div>
-        <div className="p-6 sm:p-10">
+      <section className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/80 bg-white/90 p-6 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-10">
           <div className="mx-auto max-w-sm">
-            <img className="mb-8 h-12 w-auto lg:hidden" src={logo} alt="صدا سنج" />
-            <h2 className="text-2xl font-bold text-slate-900">خوش آمدید</h2>
-            <p className="mt-2 mb-8 text-sm text-slate-500">برای ورود به پنل، اطلاعات خود را وارد کنید.</p>
+            <img className="mx-auto mb-7 h-12 w-auto" src={logo} alt="صدا سنج" />
+            <h2 className="text-center text-2xl font-bold text-slate-900">خوش آمدید</h2>
+            <p className="mt-2 mb-8 text-center text-sm text-slate-500">برای ورود به پنل، اطلاعات خود را وارد کنید.</p>
             <form onSubmit={submit}>
               <ErrorBox message={error} />
               {step === "password" ? (<>
@@ -107,7 +94,6 @@ export default function Login() {
               <p className="mt-5 text-center text-sm text-slate-500">حساب ندارید؟ <Link className="font-bold text-brand-600" to="/signup?plan=demo">دموی رایگان را شروع کنید</Link></p>
             </form>
           </div>
-        </div>
       </section>
     </main>
   );
