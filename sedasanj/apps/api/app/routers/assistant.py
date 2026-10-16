@@ -1298,9 +1298,12 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
     conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(conversation, getattr(principal, "role", "operator"))
     _assert_training_attachments(conversation, payload.attachments)
-    user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content, attachments=payload.attachments.model_dump(mode="json"))
-    session.add(user_message)
-    await session.flush()
+    existing_message_id = getattr(request.state, "assistant_user_message_id", None)
+    user_message = await session.get(ChatMessage, existing_message_id) if existing_message_id else None
+    if user_message is None:
+        user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content, attachments=payload.attachments.model_dump(mode="json"))
+        session.add(user_message)
+        await session.flush()
     refused = assistant_policy.must_refuse(payload.content, principal.role)
     system_prompt = await _assistant_system_prompt(session, principal, conversation.mode)
     chat_history = await _chat_history(
@@ -1432,6 +1435,15 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
         conversation.updated_at = datetime.now(UTC)
         session.add(assistant_message)
         await session.flush()
+        assistant_run_id = getattr(request.state, "assistant_run_id", None)
+        if assistant_run_id is not None:
+            from app.models import AssistantRun
+
+            assistant_run = await session.get(AssistantRun, assistant_run_id)
+            if assistant_run is not None:
+                assistant_run.assistant_message_id = assistant_message.id
+                assistant_run.status = "succeeded" if status_value != "failed" else "failed"
+                assistant_run.updated_at = datetime.now(UTC)
         for run in stored_runs:
             run.assistant_message_id = assistant_message.id
         usage.status = "failed" if status_value == "failed" else "succeeded"

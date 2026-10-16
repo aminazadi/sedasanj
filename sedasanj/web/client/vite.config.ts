@@ -8,7 +8,10 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
-    proxy: { "/v1": { target: process.env.API_URL ?? "http://127.0.0.1:8000", changeOrigin: true } },
+    proxy: {
+      "/v1": { target: process.env.API_URL ?? "http://127.0.0.1:8000", changeOrigin: true },
+      "/socket.io": { target: process.env.API_URL ?? "http://127.0.0.1:8000", changeOrigin: true, ws: true },
+    },
   },
   build: {
     outDir: "dist",

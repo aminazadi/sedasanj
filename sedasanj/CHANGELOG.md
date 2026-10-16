@@ -519,3 +519,6 @@
 - Added local re-entry and validation for exporting existing API-key configuration without storing the secret.
 - Added Python Agent credit-blocked scheduling and durable dead-letter metadata.
 - Added the standalone FreePBX module 1.1.0 release with PHP 7.4 compatibility, versioned import, atomic apply and rollback, explicit transports, durable queue states, retention cleanup, and pinned binary checks.
+# Unreleased
+
+- AMINAZADI: Added authenticated Socket.IO assistant delivery with durable queued conversation runs, ordered resumable event storage, Redis fan-out, ephemeral live socket replies, and WebSocket proxy support.

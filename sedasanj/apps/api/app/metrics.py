@@ -53,6 +53,12 @@ assistant_tool_seconds = Histogram(
 assistant_agent_turns_total = Counter(
     "cbi_assistant_agent_turns_total", "Assistant planning turns", ["mode", "result"]
 )
+assistant_socket_connections_total = Counter(
+    "cbi_assistant_socket_connections_total", "Assistant Socket.IO connection outcomes", ["result"]
+)
+assistant_socket_events_total = Counter(
+    "cbi_assistant_socket_events_total", "Assistant Socket.IO events", ["event"]
+)
 
 
 def start_metrics_server(settings: Settings) -> None:

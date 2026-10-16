@@ -77,10 +77,10 @@ async function serveStatic(request, response, pathname) {
   else createReadStream(selectedPath).pipe(response);
 }
 
-http.createServer(async (request, response) => {
+const server = http.createServer(async (request, response) => {
   try {
     const pathname = new URL(request.url, "http://localhost").pathname;
-    if (pathname.startsWith("/v1/")) {
+    if (pathname.startsWith("/v1/") || pathname === "/socket.io" || pathname.startsWith("/socket.io/")) {
       proxyApi(request, response);
     } else if (request.method === "GET" || request.method === "HEAD") {
       await serveStatic(request, response, decodeURIComponent(pathname));
@@ -91,4 +91,36 @@ http.createServer(async (request, response) => {
     if (!response.headersSent) response.writeHead(500);
     response.end();
   }
-}).listen(Number(process.env.PORT || 80), "0.0.0.0");
+});
+
+server.on("upgrade", (request, clientSocket, head) => {
+  if (!new URL(request.url, "http://localhost").pathname.startsWith("/socket.io/")) {
+    clientSocket.destroy();
+    return;
+  }
+  const upstream = http.request({
+    hostname: "api",
+    port: 8000,
+    path: request.url,
+    headers: request.headers,
+  });
+  upstream.on("upgrade", (response, upstreamSocket, upstreamHead) => {
+    const lines = [`HTTP/${response.httpVersion} ${response.statusCode} ${response.statusMessage}`];
+    for (const [name, value] of Object.entries(response.headers)) {
+      if (Array.isArray(value)) value.forEach((entry) => lines.push(`${name}: ${entry}`));
+      else if (value !== undefined) lines.push(`${name}: ${value}`);
+    }
+    clientSocket.write(`${lines.join("\r\n")}\r\n\r\n`);
+    if (head.length) upstreamSocket.write(head);
+    if (upstreamHead.length) clientSocket.write(upstreamHead);
+    upstreamSocket.pipe(clientSocket);
+    clientSocket.pipe(upstreamSocket);
+    clientSocket.on("error", () => upstreamSocket.destroy());
+    upstreamSocket.on("error", () => clientSocket.destroy());
+  });
+  upstream.on("error", () => clientSocket.destroy());
+  clientSocket.on("error", () => upstream.destroy());
+  upstream.end();
+});
+
+server.listen(Number(process.env.PORT || 80), "0.0.0.0");

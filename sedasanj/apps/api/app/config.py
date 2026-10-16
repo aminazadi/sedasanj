@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     tenant_backup_interval_hours: int = Field(default=24, ge=1, le=168)
     tenant_backup_retention_days: int = Field(default=30, ge=1, le=3650)
     redis_url: str = "redis://127.0.0.1:6379/0"
+    assistant_event_retention_days: int = Field(default=7, ge=1, le=90)
 
     environment: Literal["development", "production"] = "development"
 

@@ -11,25 +11,34 @@ from arq.connections import RedisSettings
 from pydantic import ValidationError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.config import Settings, get_settings
 from app.db import dispose_engine, resolve_tenant_for_call, session_scope
+from app.deps import Principal
 from app.logging import configure_logging, log_context
 from app.metrics import llm_json_failures_total, start_metrics_server
 from app.models import (
     AnalysisRun,
+    AssistantRun,
+    AssistantToolRun,
     Call,
     CallInsight,
+    ChatConversation,
+    ChatMessage,
     Job,
     JobOutbox,
     Tenant,
     TenantBalanceCache,
     Transcript,
+    User,
 )
-from app.schemas import ExtractionResult
+from app.routers.assistant import _tool_run_payload, stream_message
+from app.schemas import ChatMessageCreate, ChatMessageOut, ExtractionResult
 from app.sentiment import merge_sentiment_profile
 from app.services import (
     analysis_runs,
+    assistant_socket,
     billing,
     follow_up_tasks,
     knowledge,
@@ -584,6 +593,142 @@ async def score_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str
     return result
 
 
+async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
+    run_id = UUID(payload["run_id"])
+    tenant_id = UUID(payload["tenant_id"])
+    terminal_completion: dict[str, Any] | None = None
+    async with session_scope(tenant_id) as session:
+        run = await session.get(AssistantRun, run_id)
+        if run is None or run.status == "cancelled":
+            return "already finished"
+        if run.status in {"succeeded", "failed"} and run.assistant_message_id:
+            assistant_message = await session.get(ChatMessage, run.assistant_message_id)
+            conversation = await session.get(ChatConversation, run.conversation_id)
+            tool_runs = (
+                await session.execute(
+                    select(AssistantToolRun).where(
+                        AssistantToolRun.user_message_id == run.user_message_id
+                    )
+                )
+            ).scalars().all()
+            if assistant_message is not None:
+                message = ChatMessageOut.model_validate(assistant_message).model_copy(
+                    update={"tool_runs": [_tool_run_payload(item) for item in tool_runs]}
+                )
+                terminal_completion = {
+                    "message": message.model_dump(mode="json"),
+                    "conversation_title": conversation.title if conversation else None,
+                }
+            owner_id = run.owner_id
+            conversation_id, user_message_id = run.conversation_id, run.user_message_id
+            status = run.status
+        else:
+            owner_id = run.owner_id
+            conversation_id, user_message_id = run.conversation_id, run.user_message_id
+            status = "running"
+            run.status = status
+            run.updated_at = datetime.now(UTC)
+    if status in {"succeeded", "failed"}:
+        if terminal_completion is not None:
+            await assistant_socket.publish(
+                tenant_id, run_id, "message:completed", terminal_completion
+            )
+        return "already finished"
+    async with session_scope(tenant_id) as session:
+        user = await session.get(User, owner_id)
+        user_message = await session.get(ChatMessage, user_message_id)
+        if user is None or user_message is None:
+            raise RuntimeError("assistant owner no longer exists")
+        content = payload.get("content") or user_message.content
+        attachments = payload.get("attachments") or user_message.attachments or {}
+        principal = Principal(
+            kind="user",
+            id=owner_id,
+            tenant_id=tenant_id,
+            role=user.role,
+            mobile_number=user.mobile_number,
+            extension=user.extension,
+        )
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/v1/assistant/socket-worker",
+            "raw_path": b"/v1/assistant/socket-worker",
+            "query_string": b"",
+            "headers": [(b"x-forwarded-for", b"127.0.0.1")],
+            "server": ("localhost", 8000),
+            "client": ("127.0.0.1", 0),
+            "root_path": "",
+        }
+        request = Request(scope)
+        request.state.assistant_user_message_id = user_message_id
+        request.state.assistant_run_id = run_id
+        response = await stream_message(
+            conversation_id,
+            ChatMessageCreate(
+                content=content,
+                attachments=attachments,
+            ),
+            request,
+            principal,
+            session,
+        )
+        buffer = ""
+        completion: dict[str, Any] | None = None
+        cancelled = False
+        async for chunk in response.body_iterator:
+            if await ctx["redis"].get(f"assistant:cancel:{run_id}"):
+                cancelled = True
+                close_iterator = getattr(response.body_iterator, "aclose", None)
+                if close_iterator is not None:
+                    await close_iterator()
+                await session.rollback()
+                break
+            buffer += chunk.decode() if isinstance(chunk, bytes) else str(chunk)
+            frames = buffer.split("\n\n")
+            buffer = frames.pop()
+            for frame in frames:
+                lines = frame.splitlines()
+                event = next(
+                    (line[6:].strip() for line in lines if line.startswith("event:")),
+                    None,
+                )
+                raw = "\n".join(line[5:].lstrip() for line in lines if line.startswith("data:"))
+                if event and raw:
+                    data = json.loads(raw)
+                    if event == "done":
+                        completion = data
+                    else:
+                        await assistant_socket.publish(tenant_id, run_id, event, data)
+        if buffer.strip():
+            lines = buffer.splitlines()
+            event = next(
+                (line[6:].strip() for line in lines if line.startswith("event:")),
+                None,
+            )
+            raw = "\n".join(line[5:].lstrip() for line in lines if line.startswith("data:"))
+            if event == "done" and raw:
+                completion = json.loads(raw)
+            elif event and raw:
+                await assistant_socket.publish(tenant_id, run_id, event, json.loads(raw))
+        if cancelled:
+            return "cancelled"
+        if completion is None:
+            raise RuntimeError("assistant stream ended without completion")
+        message = completion["message"]
+        async with session_scope(tenant_id) as control:
+            run = await control.get(AssistantRun, run_id)
+            if run is not None:
+                run.assistant_message_id = UUID(message["id"])
+                run.status = "succeeded" if message.get("status") != "failed" else "failed"
+                run.updated_at = datetime.now(UTC)
+        await assistant_socket.publish(tenant_id, run_id, "message:completed", completion)
+        return str(message.get("status", "succeeded"))
+
+
 async def startup(ctx: dict[str, Any]) -> None:
     settings = get_settings()
     configure_logging("worker-llm", settings.log_level)
@@ -601,12 +746,14 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     client: LlmClient | None = ctx.get("client")
     if client is not None:
         await client.close()
+    await assistant_socket.close()
     await queue.get_queue().close()
     await dispose_engine()
 
 
 class WorkerSettings:
     functions = [
+        run_assistant_chat,
         analyze_call,
         start_transcript_correction,
         poll_transcript_correction,

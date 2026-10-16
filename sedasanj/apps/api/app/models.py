@@ -939,6 +939,54 @@ class ChatMessage(Base):
     __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "ordinal"),)
 
 
+class AssistantRun(Base):
+    __tablename__ = "assistant_runs"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    owner_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_message_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    assistant_message_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="SET NULL")
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'queued'"))
+    next_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("1"))
+    last_event_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    last_event_type: Mapped[str | None] = mapped_column(String(64))
+    last_event_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "owner_id", "idempotency_key", name="assistant_runs_idempotency_key"),
+        Index("idx_assistant_runs_conversation_status", "conversation_id", "status"),
+    )
+
+
+class AssistantRunEvent(Base):
+    __tablename__ = "assistant_run_events"
+
+    run_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("assistant_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    event: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
 class OrganizationMemory(Base):
     __tablename__ = "organization_memories"
 
@@ -2012,6 +2060,8 @@ TENANT_TABLES: tuple[str, ...] = (
     "operator_call_scores",
     "chat_conversations",
     "chat_messages",
+    "assistant_runs",
+    "assistant_run_events",
     "organization_memories",
     "assistant_tool_runs",
     "transcript_chunks",

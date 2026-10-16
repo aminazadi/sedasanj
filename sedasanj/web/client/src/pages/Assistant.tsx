@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { Link, useSearchParams } from "react-router-dom";
+import { io, type Socket } from "socket.io-client";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Funnel, FunnelChart, LabelList, Legend, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, RadialBar, RadialBarChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis } from "recharts";
 import { fmt, INTENT_LABELS, refreshSession, request, STATUS_LABELS, tokens } from "../api";
 import { isOrgAdmin, useAuth } from "../auth";
@@ -366,6 +367,7 @@ export default function Assistant() {
   const speechPrefixRef = useRef("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [processingConversationId, setProcessingConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -392,6 +394,13 @@ export default function Assistant() {
   const memoryPanelControlsRef = useRef<HTMLDivElement>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
   const streamingRepliesRef = useRef(new Map<string, ChatMessage>());
+  const socketRef = useRef<Socket | null>(null);
+  const runDraftsRef = useRef(new Map<string, string>());
+  const completionWaitersRef = useRef(new Map<string, (value: { message: ChatMessage; conversationTitle: string | null }) => void>());
+  const completedRunsRef = useRef(new Map<string, { message: ChatMessage; conversationTitle: string | null }>());
+  const sequenceRef = useRef(new Map<string, number>());
+  const draftKey = `cbi.assistant.draft:${ephemeral ? "ephemeral" : conversation?.id || "new"}`;
+  const loadedDraftKeyRef = useRef<string | null>(null);
   const userNearBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
@@ -458,18 +467,6 @@ export default function Assistant() {
       const index = current.findIndex((item) => item.id === draftId);
       return index < 0 ? [...current, nextDraft] : current.map((item) => item.id === draftId ? nextDraft : item);
     });
-  }
-
-  function finishStreamingReply(conversationId: string, draftId: string, message: ChatMessage) {
-    streamingRepliesRef.current.delete(conversationId);
-    if (selectedConversationIdRef.current !== conversationId) return;
-    setMessages((current) => {
-      const index = current.findIndex((item) => item.id === draftId);
-      return index < 0 ? [...current, message] : current.map((item) => item.id === draftId ? message : item);
-    });
-    if (message.memory_drafts?.length) {
-      setMemories((current) => [...message.memory_drafts!, ...current.filter((item) => !message.memory_drafts!.some((draft) => draft.id === item.id))]);
-    }
   }
 
   async function loadMessages(item: ChatConversation) {
@@ -691,6 +688,138 @@ export default function Assistant() {
       .catch((err) => setError(assistantErrorMessage(err)));
   }, []);
   useEffect(() => {
+    const socket = io({ path: "/socket.io", autoConnect: false, auth: { token: tokens.access() },
+      reconnection: true, reconnectionAttempts: Infinity, timeout: 10000 });
+    socketRef.current = socket;
+    const messageForRun = (runId: string): string => {
+      const known = runDraftsRef.current.get(runId);
+      if (known) return known;
+      const id = `draft-reply-${runId}`;
+      runDraftsRef.current.set(runId, id);
+      return id;
+    };
+    const applyEnvelope = (envelope: any) => {
+      const runId = String(envelope?.run_id || "");
+      const conversationId = envelope?.conversation_id ? String(envelope.conversation_id) : null;
+      const event = String(envelope?.event || "");
+      const payload = envelope?.payload || {};
+      if (conversationId && selectedConversationIdRef.current !== conversationId) return;
+      if (runId && Number(envelope.sequence || 0) <= (sequenceRef.current.get(runId) || 0)) return;
+      if (runId) sequenceRef.current.set(runId, Number(envelope.sequence || 0));
+      const draftId = messageForRun(runId);
+      if (event === "delta" && payload.content) {
+        setMessages((current) => {
+          const existing = current.find((item) => item.id === draftId);
+          const draft = existing || { id: draftId, role: "assistant" as const, content: "", status: "running" as const, model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+          const next = { ...draft, content: `${draft.content}${payload.content}` };
+          return existing ? current.map((item) => item.id === draftId ? next : item) : [...current, next];
+        });
+      } else if (event === "replace" && payload.content !== undefined) {
+        setMessages((current) => {
+          const existing = current.find((item) => item.id === draftId);
+          const draft = existing || { id: draftId, role: "assistant" as const, content: "", status: "running" as const, model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+          const next = { ...draft, content: payload.content };
+          return existing ? current.map((item) => item.id === draftId ? next : item) : [...current, next];
+        });
+      } else if (event === "phase" && payload.label) {
+        setPhases((current) => ({ ...current, [draftId]: payload.label }));
+      } else if (["tool_started", "tool_completed", "tool_failed"].includes(event) && payload.tool_call_id) {
+        const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title,
+          status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"),
+          duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null,
+          error_code: payload.error_code ?? null, charts: payload.charts || [] };
+        setMessages((current) => {
+          const existing = current.find((item) => item.id === draftId);
+          const draft = existing || { id: draftId, role: "assistant" as const, content: "", status: "running" as const, model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+          const next = { ...draft, tool_runs: [...(draft.tool_runs || []).filter((item) => item.tool_call_id !== run.tool_call_id), run] };
+          return existing ? current.map((item) => item.id === draftId ? next : item) : [...current, next];
+        });
+      } else if (event === "message:completed" || event === "done") {
+        const rawMessage = payload.message;
+        if (!rawMessage) return;
+        const message = rawMessage as ChatMessage;
+        const result = { message, conversationTitle: payload.conversation_title || null };
+        setMessages((current) => current.map((item) => item.id === draftId ? message : item));
+        setSending(false);
+        setProcessingConversationId(null);
+        setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
+        if (message.memory_drafts?.length) setMemories((current) => [...message.memory_drafts!, ...current.filter((item) => !message.memory_drafts!.some((draft) => draft.id === item.id))]);
+        if (conversationId && payload.conversation_title) {
+          setConversation((current) => current?.id === conversationId ? { ...current, title: payload.conversation_title } : current);
+          setConversations((current) => current.map((item) => item.id === conversationId ? { ...item, title: payload.conversation_title } : item));
+        }
+        completedRunsRef.current.set(runId, result);
+        completionWaitersRef.current.get(runId)?.(result);
+        completionWaitersRef.current.delete(runId);
+      } else if (event === "cancelled") {
+        setSending(false);
+        setProcessingConversationId(null);
+      }
+    };
+    socket.on("connect", () => {
+      setSocketConnected(true);
+      const conversationId = selectedConversationIdRef.current;
+      if (conversationId) socket.emit("assistant:conversation:join", { conversation_id: conversationId, after_sequence: 0 });
+    });
+    socket.on("disconnect", () => setSocketConnected(false));
+    socket.on("connect_error", async () => {
+      setSocketConnected(false);
+      if (await refreshSession()) {
+        socket.auth = { token: tokens.access() };
+        socket.connect();
+      }
+    });
+    socket.on("assistant:message:accepted", (accepted: any) => {
+      if (accepted?.run_id && accepted?.request_id) runDraftsRef.current.set(String(accepted.run_id), `draft-reply-${accepted.request_id}`);
+      if (accepted?.conversation_id) setProcessingConversationId(String(accepted.conversation_id));
+    });
+    socket.on("assistant:conversation:state", (state: any) => {
+      if (String(state?.conversation_id) !== selectedConversationIdRef.current) return;
+      const restored: ChatMessage[] = (state.messages || []).map((item: any) => ({ ...item, tool_runs: [], memory_drafts: [] }));
+      for (const run of state.active_runs || []) {
+        const draftId = `draft-reply-${run.id}`;
+        runDraftsRef.current.set(String(run.id), draftId);
+        sequenceRef.current.set(String(run.id), 0);
+        restored.push({ id: draftId, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() });
+      }
+      setMessages(restored);
+      if (state.active_runs?.length) {
+        setSending(true);
+        setProcessingConversationId(String(state.conversation_id));
+        for (const run of state.active_runs) for (const event of run.events || []) applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
+      }
+    });
+    for (const event of ["delta", "replace", "phase", "tool_started", "tool_completed", "tool_failed", "message:completed", "done", "cancelled"]) {
+      socket.on(`assistant:${event}`, applyEnvelope);
+    }
+    socket.on("assistant:error", (payload: any) => {
+      setError(payload?.message || "اتصال دستیار با خطا روبه‌رو شد.");
+      setSending(false);
+      setProcessingConversationId(null);
+    });
+    socket.connect();
+    return () => {
+      socket.removeAllListeners();
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected || !conversation?.id || ephemeral) return;
+    socket.emit("assistant:conversation:join", { conversation_id: conversation.id, after_sequence: 0 });
+    return () => { socket.emit("assistant:conversation:leave", { conversation_id: conversation.id }); };
+  }, [conversation?.id, ephemeral, socketConnected]);
+  useEffect(() => {
+    if (loadedDraftKeyRef.current !== draftKey) {
+      setText(localStorage.getItem(draftKey) || "");
+      loadedDraftKeyRef.current = draftKey;
+      return;
+    }
+    if (text) localStorage.setItem(draftKey, text);
+    else localStorage.removeItem(draftKey);
+  }, [draftKey, text]);
+  useEffect(() => {
     if (userNearBottomRef.current) scrollToEnd();
     else setShowScrollToEnd(sending);
   }, [messages, sending]);
@@ -724,116 +853,6 @@ export default function Assistant() {
     return () => document.removeEventListener("click", closeOnOutsideClick);
   }, [mentionOpen]);
 
-  async function streamReply(conversationId: string | null, content: string, draftId: string, history: ChatMessage[], messageAttachments: AssistantMessageAttachments): Promise<{ message: ChatMessage; conversationTitle: string | null }> {
-    const url = conversationId ? `/v1/assistant/conversations/${conversationId}/messages/stream` : "/v1/assistant/ephemeral/messages/stream";
-    const body = conversationId
-      ? { content, attachments: messageAttachments }
-      : { content, attachments: messageAttachments, history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })) };
-    const makeRequest = () => fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(tokens.access() ? { Authorization: `Bearer ${tokens.access()}` } : {}) },
-      body: JSON.stringify(body),
-    });
-    let response = await makeRequest();
-    if (response.status === 401 && await refreshSession()) response = await makeRequest();
-    if (!response.ok || !response.body) {
-      let message = response.statusText;
-      try { message = (await response.json())?.error?.message ?? message; } catch { /* non-JSON error body */ }
-      throw new Error(message);
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let completed: ChatMessage | null = null;
-    let conversationTitle: string | null = null;
-    let pendingText = "";
-    let renderedText = "";
-    let typingTimer: number | null = null;
-    let resolveTyping: (() => void) | null = null;
-    const finishTyping = () => {
-      if (!resolveTyping) return;
-      const resolve = resolveTyping;
-      resolveTyping = null;
-      resolve();
-    };
-    const renderTypingBatch = () => {
-      typingTimer = null;
-      const characters = Array.from(pendingText);
-      const batch = characters.splice(0, 3).join("");
-      pendingText = characters.join("");
-      if (batch) {
-        renderedText += batch;
-        if (conversationId) updateStreamingReply(conversationId, draftId, (item) => ({ ...item, content: renderedText }));
-        else setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: renderedText } : item));
-      }
-      if (pendingText) typingTimer = window.setTimeout(renderTypingBatch, 14);
-      else finishTyping();
-    };
-    const scheduleTyping = () => {
-      if (typingTimer === null && pendingText) typingTimer = window.setTimeout(renderTypingBatch, 14);
-    };
-    const waitForTyping = () => {
-      if (!pendingText && typingTimer === null) return Promise.resolve();
-      return new Promise<void>((resolve) => { resolveTyping = resolve; });
-    };
-    const handleEvent = (frame: string) => {
-      const lines = frame.split(/\r?\n/);
-      const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
-      const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
-      if (!event || !data) return;
-      const payload = JSON.parse(data) as { content?: string; message?: ChatMessage; conversation_title?: string | null; phase?: string; label?: string; tool_call_id?: string; name?: string; title?: string; status?: AssistantToolRun["status"]; duration_ms?: number; summary?: string; error_code?: string; charts?: AssistantChart[] };
-      const content = payload.content;
-      if (event === "phase" && payload.label) setPhases((current) => ({ ...current, [draftId]: payload.label as string }));
-      if ((event === "tool_started" || event === "tool_completed" || event === "tool_failed") && payload.tool_call_id && payload.name && payload.title) {
-        const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title, status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"), duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null, error_code: payload.error_code ?? null, charts: payload.charts || [] };
-        const update = (item: ChatMessage) => ({ ...item, tool_runs: [...(item.tool_runs || []).filter((existing) => existing.tool_call_id !== run.tool_call_id), run] });
-        if (conversationId) updateStreamingReply(conversationId, draftId, update);
-        else setMessages((current) => current.map((item) => item.id === draftId ? update(item) : item));
-      }
-      if (event === "delta" && content) {
-        pendingText += content;
-        scheduleTyping();
-      }
-      if (event === "replace" && content) {
-        if (typingTimer !== null) window.clearTimeout(typingTimer);
-        typingTimer = null;
-        pendingText = "";
-        renderedText = content;
-        if (conversationId) updateStreamingReply(conversationId, draftId, (item) => ({ ...item, content }));
-        else setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content } : item));
-        finishTyping();
-      }
-      if (event === "done" && payload.message) {
-        completed = payload.message;
-        conversationTitle = payload.conversation_title || null;
-      }
-    };
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done });
-        const frames = buffer.split(/\r?\n\r?\n/);
-        buffer = frames.pop() ?? "";
-        frames.forEach(handleEvent);
-        if (done) {
-          if (buffer.trim()) handleEvent(buffer);
-          break;
-        }
-      }
-      if (!completed) throw new Error("پاسخ دستیار کامل نشد.");
-      await waitForTyping();
-      if (conversationId) finishStreamingReply(conversationId, draftId, completed as ChatMessage);
-      else setMessages((current) => current.map((item) => item.id === draftId ? completed as ChatMessage : item));
-      return { message: completed as ChatMessage, conversationTitle };
-    } finally {
-      if (typingTimer !== null) window.clearTimeout(typingTimer);
-      pendingText = "";
-      finishTyping();
-      await reader.cancel().catch(() => undefined);
-      reader.releaseLock();
-    }
-  }
-
   async function sendBranch(content: string, history: ChatMessage[], branchAttachments: AssistantMessageAttachments = attachments) {
     setSending(true);
     setError(null);
@@ -847,7 +866,32 @@ export default function Assistant() {
       setProcessingConversationId(active?.id ?? null);
       setMessages([...history, optimistic, draftReply]);
       if (active) streamingRepliesRef.current.set(active.id, draftReply);
-      const reply = await streamReply(active?.id ?? null, optimistic.content, draftReply.id, history, messageAttachments);
+      const socket = socketRef.current;
+      if (!socket?.connected) throw new Error("اتصال زنده دستیار برقرار نیست. پس از اتصال دوباره ارسال کنید.");
+      const requestId = draftReply.id.replace("draft-reply-", "");
+      const requestPayload = {
+        request_id: requestId,
+        conversation_id: active?.id ?? null,
+        idempotency_key: crypto.randomUUID(),
+        content: optimistic.content,
+        attachments: messageAttachments,
+      };
+      const acknowledged = active
+        ? await socket.emitWithAck("assistant:message:send", requestPayload)
+        : await socket.emitWithAck("assistant:ephemeral:send", {
+            ...requestPayload,
+            call_id: null,
+            history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })),
+          });
+      if (!acknowledged?.ok || !acknowledged?.run_id) throw new Error(acknowledged?.code || "ارسال پیام انجام نشد.");
+      runDraftsRef.current.set(String(acknowledged.run_id), draftReply.id);
+      const reply = await new Promise<{ message: ChatMessage; conversationTitle: string | null }>((resolve) => {
+        const cached = completedRunsRef.current.get(String(acknowledged.run_id));
+        if (cached) {
+          completedRunsRef.current.delete(String(acknowledged.run_id));
+          resolve(cached);
+        } else completionWaitersRef.current.set(String(acknowledged.run_id), resolve);
+      });
       setAttachments(emptyAttachments());
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
@@ -921,6 +965,10 @@ export default function Assistant() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!text.trim() || sending) return;
+    if (!socketConnected) {
+      setError("اتصال زنده دستیار برقرار نیست. ارسال پیام تا برقراری اتصال متوقف شد.");
+      return;
+    }
     if (!training && Boolean(attachments.from_date) !== Boolean(attachments.to_date)) {
       setError("برای بازه زمانی، تاریخ شروع و پایان را کامل انتخاب کنید.");
       setMentionOpen(true);
@@ -1107,6 +1155,7 @@ export default function Assistant() {
       </div>
       {showScrollToEnd ? <button type="button" className="absolute bottom-[7rem] left-1/2 z-20 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-[#B2AC88] bg-white text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" onClick={() => scrollToEnd()} aria-label="رفتن به انتهای گفتگو" title="رفتن به انتهای گفتگو"><ScrollDownIcon /></button> : null}
       <form ref={composerRef} className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3" onSubmit={submit}>
+        <div className={`mb-2 flex items-center gap-2 text-[11px] ${socketConnected ? "text-[#4B6E48]" : "text-rose-700"}`} role="status"><span className={`inline-block h-2 w-2 rounded-full ${socketConnected ? "bg-emerald-600" : "bg-rose-600"}`} />{socketConnected ? "اتصال زنده برقرار است" : "در حال اتصال به دستیار…"}</div>
         {!training && mentionOpen ? <div className="absolute bottom-full inset-x-3 z-30 mb-2 max-h-[22rem] overflow-y-auto border border-[#B2AC88] bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-3 py-2"><strong className="text-xs text-[#4B6E48]">{mentionTab === "mentions" ? `نتایج برای @${mentionQuery}` : mentionTab === "dates" ? "انتخاب بازه زمانی" : "انتخاب ابزارها"}</strong><button type="button" className="px-2 py-1 text-xs text-[#898989]" onClick={() => setMentionOpen(false)}>بستن</button></div>
           <div className="space-y-1 p-2">
@@ -1125,7 +1174,7 @@ export default function Assistant() {
           {attachments.from_date && attachments.to_date ? <button type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("dates")}>بازه: {fmt.date(attachments.from_date)} تا {fmt.date(attachments.to_date)}<CloseIcon /></button> : null}
           {attachments.tool_names.map((name) => <button key={name} type="button" className="inline-flex items-center gap-1 border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-xs text-[#4B6E48]" onClick={() => removeAttachment("tool", name)}>ابزار: {contextOptions?.tools.find((item) => item.name === name)?.title || name}<CloseIcon /></button>)}
         </div> : null}
-        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]">{listening ? "در حال دریافت گفتار فارسی…" : <TypingPromptGuide />}</p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); requestAnimationFrame(resizeInput); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} />{!training ? <><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></> : null}</div></div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title="ارسال پیام" disabled={sending || !text.trim()}><SendIcon /></button></div>
+        <div className="flex items-start gap-2"><div className={`relative min-w-0 flex-1 transition ${listening ? "bg-[#E8F0E5] ring-1 ring-[#4B6E48]" : "bg-[#F2F0EF]"}`}><textarea ref={inputRef} rows={1} className="input h-[4.25rem] min-h-[4.25rem] resize-none overflow-y-hidden border-0 bg-transparent pb-8 pt-3 text-slate-900 focus:!border-[#4B6E48]" value={text} onChange={(event) => { const value = event.target.value; setText(value); const newAt = value.lastIndexOf("@"); let activeAnchor = mentionAnchor; if (newAt >= 0 && newAt === value.length - 1 && newAt !== mentionAnchor) { activeAnchor = newAt; setMentionAnchor(newAt); } const active = activeAnchor !== null && value[activeAnchor] === "@" && value.slice(activeAnchor + 1).length <= 80 && !value.slice(activeAnchor + 1).includes("\n"); if (active) { setMentionOpen(true); selectMentionTab("mentions"); } else if (mentionTab === "mentions") { setMentionAnchor(null); setMentionOpen(false); } requestAnimationFrame(resizeInput); }} onKeyDown={(event) => { if (event.key === "Escape" && mentionOpen) { event.preventDefault(); setMentionAnchor(null); setMentionOpen(false); } else if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={listening ? "در حال شنیدن گفتار فارسی…" : "سؤال خود را بنویسید…"} /><div className="absolute inset-x-3 bottom-1 flex min-w-0 items-center justify-between gap-3">{!text ? <p className="pointer-events-none min-w-0 flex-1 truncate text-[11px] text-[#898989]">{listening ? "در حال دریافت گفتار فارسی…" : <TypingPromptGuide />}</p> : <span className="flex-1" />}<div className="flex shrink-0 items-center gap-1"><PersianSpeechInputButton className={`inline-flex h-6 items-center gap-1 border px-1.5 text-[10px] font-bold transition hover:border-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${listening ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#B2AC88] bg-white text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onTranscript={({ final, interim }) => { setText(`${speechPrefixRef.current}${speechPrefixRef.current && (final || interim) ? " " : ""}${final}${final && interim ? " " : ""}${interim}`); requestAnimationFrame(resizeInput); inputRef.current?.focus(); }} onListeningChange={(active) => { if (active) speechPrefixRef.current = text; setListening(active); }} />{!training ? <><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("dates"); }}><CalendarIcon />بازه زمانی</button><button type="button" className="inline-flex h-6 items-center gap-1 border border-[#B2AC88] bg-white px-1.5 text-[10px] font-bold text-[#4B6E48] transition hover:border-[#4B6E48] hover:bg-[#F2F0EF]" onClick={() => { setMentionAnchor(null); setMentionOpen(true); selectMentionTab("tools"); }}><ToolsIcon />ابزارها</button></> : null}</div></div></div><button type="submit" className="inline-flex min-h-12 w-12 shrink-0 self-stretch items-center justify-center bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3F5D3D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:bg-[#898989] disabled:opacity-60" aria-label="ارسال پیام" title={socketConnected ? "ارسال پیام" : "در انتظار اتصال زنده"} disabled={sending || !text.trim() || !socketConnected}><SendIcon /></button></div>
       </form>
     </section>
     {memoryPanelOpen ? <><button type="button" className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm lg:hidden" onClick={() => setMemoryPanelOpen(false)} aria-label="بستن پنل مموری" /><aside id="organization-memory-panel" className="fixed inset-y-0 left-0 z-50 w-[min(92vw,24rem)] border-r border-[#B2AC88] shadow-2xl lg:sticky lg:top-8 lg:z-auto lg:h-[calc(100vh-4rem)] lg:w-auto lg:shadow-none" aria-label="مموری سازمانی">{renderMemoryPanel()}</aside></> : null}

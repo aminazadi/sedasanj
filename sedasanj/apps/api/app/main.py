@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
 
+import socketio
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
@@ -31,6 +32,7 @@ from app.routers import (
     tasks,
     webhooks,
 )
+from app.services import assistant_socket
 from app.services.queue import get_queue
 from app.services.ratelimit import close_redis
 from app.services.storage import get_storage
@@ -81,7 +83,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await assert_rls_enforced()
     await assert_database_runtime_ready()
     await get_storage().ensure_bucket()
+    await assistant_socket.start()
     yield
+    await assistant_socket.close()
     await get_queue().close()
     await close_redis()
     await dispose_engine()
@@ -259,4 +263,4 @@ The extracted file must pass the PCM, sample-rate, channel, and duration checks.
     return app
 
 
-app = create_app()
+app = socketio.ASGIApp(assistant_socket.sio, other_asgi_app=create_app(), socketio_path="socket.io")
