@@ -1046,6 +1046,45 @@ html {
 .commerce-auth form, .commerce-form { display: grid; gap: 15px; }.commerce-auth label, .commerce-form label { display: grid; gap: 7px; color: #536377; font-size: 11px; font-weight: 700; }.commerce-auth input, .commerce-form input { width: 100%; min-height: 46px; padding: 0 13px; border: 1px solid #dce4ec; border-radius: 11px; background: #fbfcfd; font: inherit; outline: none; }.commerce-auth input:focus, .commerce-form input:focus { border-color: #4d82e6; box-shadow: 0 0 0 4px rgba(47,111,235,.08); }.commerce-auth button { min-height: 49px; border: 0; border-radius: 11px; background: #2f6feb; color: white; font: inherit; font-weight: 750; cursor: pointer; }.commerce-auth-foot { margin: 20px 0 0; color: #788698; text-align: center; font-size: 11px; }.commerce-auth-foot a { color: #2f6feb; font-weight: 750; }
 .commerce-error { margin: 12px 0; padding: 12px 14px; border: 1px solid #f2c5c5; border-radius: 10px; background: #fff3f3; color: #a23838; font-size: 11px; line-height: 1.8; }
 .commerce-page { display: grid; gap: 22px; }.commerce-heading span { color: #2f6feb; font-size: 12px; font-weight: 750; }.commerce-heading h1 { margin: 8px 0; font-size: 30px; }.commerce-heading p { color: #718095; font-size: 12px; }.commerce-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 18px; align-items: start; }.commerce-form { padding: 26px; }.period-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 5px; border-radius: 11px; background: #f1f5f9; }.period-switch button { min-height: 42px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 11px; cursor: pointer; }.period-switch button.active { background: white; color: #245fd1; box-shadow: 0 3px 10px rgba(20,42,68,.09); }.terms-check { display: flex !important; grid-template-columns: 18px 1fr; align-items: center; font-weight: 500 !important; }.terms-check input { width: 18px; min-height: 18px; }.order-summary { display: grid; gap: 16px; padding: 26px; }.order-summary h2 { font-size: 17px; }.order-summary > div { display: flex; justify-content: space-between; gap: 15px; color: #677589; font-size: 11px; }.order-summary strong { color: #13243a; }.order-summary hr { width: 100%; border: 0; border-top: 1px solid #e2e8ef; }.order-summary .summary-total { font-size: 14px; }.order-summary .summary-total strong { color: #245fd1; font-size: 18px; }
+.checkout-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 32px 16px; background-color: #f8fafc; background-image: radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px); background-position: 0 0; background-size: 8px 8px; }
+.checkout-page { width: min(100%, 448px); }
+.checkout-brand { display: flex; justify-content: center; margin-bottom: 20px; }
+.checkout-brand a { display: block; width: 224px; }
+.checkout-panel { overflow: hidden; padding: 24px; border: 1px solid #cfe0d0; background: rgb(255 255 255 / .9); box-shadow: 0 25px 50px -12px rgb(20 42 68 / .12); backdrop-filter: blur(4px); }
+.checkout-plan-intro { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 16px; margin-bottom: 20px; }
+.checkout-plan-art { width: 112px; height: 112px; object-fit: contain; }
+.checkout-heading { text-align: right; }
+.checkout-heading > span { color: #2f6feb; font-size: 11px; font-weight: 750; }
+.checkout-heading h1 { margin: 7px 0; color: #4d704d; font-size: 24px; }
+.checkout-heading p { margin: 0; color: #8796a9; font-size: 11px; }
+.checkout-summary { display: grid; gap: 9px; margin-bottom: 18px; padding: 14px; background: #f8fafc; }
+.checkout-summary > div { display: flex; justify-content: space-between; gap: 12px; color: #718095; font-size: 11px; }
+.checkout-summary strong { color: #17283c; }
+.checkout-summary .checkout-total { margin-top: 3px; padding-top: 10px; border-top: 1px solid #e2e8ef; color: #26384d; font-size: 13px; font-weight: 700; }
+.checkout-summary .checkout-total strong { color: #2f6feb; font-size: 17px; }
+.checkout-form { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.checkout-form > p { margin: 0 0 2px; }
+.checkout-form .btn { width: 100%; min-height: 48px; }
+.checkout-loading { margin: 0; color: #718095; text-align: center; font-size: 12px; }
+.checkout-back { margin: 20px 0 0; text-align: center; font-size: 11px; }
+.checkout-back a { color: #2f6feb; font-weight: 700; }
+.plan-selection-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px 16px; background-color: #f8fafc; background-image: radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px); background-position: 0 0; background-size: 8px 8px; }
+.plan-selection-page { width: min(100%, 980px); }
+.plan-selection-panel { padding: 28px; border: 1px solid #cfe0d0; background: rgb(255 255 255 / .9); box-shadow: 0 25px 50px -12px rgb(20 42 68 / .12); backdrop-filter: blur(4px); }
+.plan-selection-heading { margin: 0 auto 24px; text-align: center; }
+.plan-selection-heading span { color: #2f6feb; font-size: 11px; font-weight: 750; }
+.plan-selection-heading h1 { margin: 8px 0; color: #4d704d; font-size: clamp(24px, 3vw, 32px); }
+.plan-selection-heading p { margin: 0; color: #8796a9; font-size: 12px; line-height: 2; }
+.upgrade-plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.upgrade-plan { display: flex; flex-direction: column; padding: 18px; border: 1px solid #dfe7ef; background-color: #fff; background-image: radial-gradient(circle, rgb(75 110 72 / .12) 0 1px, transparent 1.15px); background-size: 12px 12px; text-align: center; }
+.upgrade-plan.is-featured { border-color: #789478; box-shadow: 0 14px 30px rgb(75 110 72 / .12); }
+.upgrade-plan > img { width: 138px; height: 138px; margin: -8px auto -4px; object-fit: contain; }
+.upgrade-plan h2 { margin: 0; font-size: 20px; }
+.upgrade-plan-price { min-height: 66px; display: flex; flex-direction: column; justify-content: center; padding: 10px 0; }
+.upgrade-plan-price strong { color: #17283c; font-size: 22px; }
+.upgrade-plan-price span { color: #8796a9; font-size: 10px; }
+.upgrade-plan ul { list-style: none; display: grid; gap: 7px; margin: 0 0 18px; padding: 0; color: #718095; font-size: 11px; }
+.upgrade-plan .btn { margin-top: auto; }
 
 @media (max-width: 1050px) {
   .landing-nav { gap: 28px; }.landing-links { gap: 22px; }.hero-grid { grid-template-columns: .9fr 1.1fr; gap: 35px; }.hero-copy h1 { font-size: 53px; }.floating-sentiment { right: -20px; }.floating-insight { left: -20px; }.problem-grid, .workflow-grid, .security-grid { gap: 60px; }.feature-grid, .pricing-grid { grid-template-columns: repeat(2, 1fr); }.public-hero-grid, .about-story { gap: 55px; }.contact-aside { padding: 34px; }.contact-form-card { padding: 38px 34px; }
@@ -1069,6 +1108,9 @@ html {
 }
 
 @media (max-width: 600px) {
+  .commerce-auth { padding: 14px; }
+  .checkout-shell { align-items: flex-start; padding: 20px 12px; }.checkout-brand { margin-bottom: 12px; }.checkout-brand a { width: 192px; }.checkout-panel { padding: 20px 18px; }.checkout-plan-intro { grid-template-columns: 84px 1fr; gap: 12px; }.checkout-plan-art { width: 84px; height: 84px; }.checkout-heading h1 { font-size: 21px; }
+  .plan-selection-shell { align-items: flex-start; padding: 20px 12px; }.plan-selection-panel { padding: 20px 14px; }.upgrade-plans { grid-template-columns: 1fr; }.upgrade-plan { display: grid; grid-template-columns: 90px 1fr; align-items: center; text-align: right; }.upgrade-plan > img { grid-row: span 3; width: 90px; height: 90px; margin: 0; }.upgrade-plan h2 { font-size: 18px; }.upgrade-plan-price { min-height: auto; padding: 4px 0; }.upgrade-plan ul, .upgrade-plan .btn { grid-column: 1 / -1; }.upgrade-plan .btn { text-align: center; }
   .landing-container { width: calc(100% - 28px); }
   .landing-brand img { width: 104px; }.landing-nav { height: 64px; }.landing-links { inset: 64px 14px auto; }.landing-header::after { inset-block-start: 64px; }
   .landing-hero { padding-top: 110px; }.hero-grid { min-height: auto; gap: 60px; padding-bottom: 58px; }.hero-eyebrow { font-size: 11px; }.hero-copy h1 { margin-top: 20px; font-size: clamp(39px, 12.2vw, 55px); line-height: 1.3; letter-spacing: -2.2px; }.hero-copy > p { font-size: 14px; line-height: 2; }.hero-actions { flex-direction: column; align-items: stretch; }.landing-primary, .landing-secondary { width: 100%; }.hero-trust { gap: 10px 14px; margin-top: 24px; font-size: 10px; }

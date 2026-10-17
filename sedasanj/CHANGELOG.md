@@ -951,6 +951,7 @@
 - Added the standalone FreePBX module 1.1.0 release with PHP 7.4 compatibility, versioned import, atomic apply and rollback, explicit transports, durable queue states, retention cleanup, and pinned binary checks.
 # Unreleased
 
+- AMINAZADI: Added full-screen plan upgrade and purchase pages matching the login page style, using the official plan artwork and a direct upgrade flow from the account page.
 - AMINAZADI: Display OTP destination numbers in local Iranian format without the +98 country prefix.
 - AMINAZADI: Log phone OTP codes only in development when SMS.ir credentials or its verification template are not configured; production still rejects the request.
 - AMINAZADI: Centered the OTP delivery hint showing the destination mobile number.
