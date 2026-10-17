@@ -889,6 +889,10 @@ export default function CallDetailPage() {
   const sentimentData = sentimentChartData(activeSentimentProfile);
   const sentimentScore = insights?.sentiment_score;
   const hasAudioAnalysis = call.call_type === "answered" || call.call_type === "voicemail";
+  const isAnsweredCall = call.call_type === "answered";
+  const isVoicemail = call.call_type === "voicemail";
+  const isQuickDemo = isVoicemail && call.voicemail_context === "quick_demo";
+  const isMissedCall = ["missed", "no_answer", "busy", "congestion", "failed", "canceled"].includes(call.call_type);
 
   const exportTranscript = () => {
     if (!conversationTurns.length) return;
@@ -940,7 +944,7 @@ export default function CallDetailPage() {
                   <Icon icon={telephoneIcon} className="h-8 w-8" />
                 </span>
                 <div>
-                  <p className="text-xs text-[#000000]">مکالمه تلفنی</p>
+                  <p className="text-xs text-[#000000]">{isQuickDemo ? "تست سریع صداسنج" : isVoicemail ? "پیام‌گیر صوتی" : isMissedCall ? "تماس ناموفق" : "مکالمه تلفنی"}</p>
                   <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="rtl">
                     <bdi dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</bdi>
                     <span className="px-1 text-[#B2AC88]">
@@ -1051,7 +1055,17 @@ export default function CallDetailPage() {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
       ) : null}
 
-      {!hasAudioAnalysis ? <section className="card border-rose-100 bg-rose-50/50"><h2 className="font-bold text-rose-800">نوع تماس: {STATUS_LABELS[call.call_type] ?? call.call_type}</h2><p className="mt-1 text-sm text-slate-600">برای این رخداد فایل صوتی یا تحلیل مکالمه ثبت نشده است.</p></section> : <ProcessingCard status={call.status} progressPct={call.progress_pct} detail={call.progress_detail} />}
+      {!hasAudioAnalysis ? isMissedCall ? null : <section className="card border-rose-100 bg-rose-50/50"><h2 className="font-bold text-rose-800">نوع تماس: {STATUS_LABELS[call.call_type] ?? call.call_type}</h2><p className="mt-1 text-sm text-slate-600">برای این رخداد فایل صوتی یا تحلیل مکالمه ثبت نشده است.</p></section> : <ProcessingCard status={call.status} progressPct={call.progress_pct} detail={call.progress_detail} />}
+
+      {isMissedCall ? (
+        <section className="card border-amber-200 bg-amber-50/60">
+          <h2 className="font-bold text-amber-900">جزئیات تماس ناموفق</h2>
+          <p className="mt-1 text-sm leading-6 text-amber-800">
+            {STATUS_LABELS[call.call_type] ?? call.call_type} — این تماس پاسخ داده نشده و فایل صوتی یا گفت‌وگویی برای تحلیل ندارد.
+          </p>
+          {call.error_code || call.error_detail ? <div className="mt-3 border-t border-amber-200 pt-3 text-xs leading-6 text-amber-900">{call.error_code ? <strong dir="ltr">{call.error_code}</strong> : null}{call.error_code && call.error_detail ? " — " : ""}{call.error_detail}</div> : null}
+        </section>
+      ) : null}
 
       {call.status.startsWith("failed") && (call.error_code || call.error_detail) ? (
         <section className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-800">
@@ -1063,7 +1077,7 @@ export default function CallDetailPage() {
 
       {hasAudioAnalysis ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
 
-      <section className="card overflow-visible">
+      {hasAudioAnalysis ? <section className="card overflow-visible">
         <SectionTitle
           title="کارهای قابل پیگیری"
           description="موارد عملیاتی استخراج‌شده از تماس؛ می‌توانید آن‌ها را ویرایش یا انجام‌شده کنید"
@@ -1097,9 +1111,9 @@ export default function CallDetailPage() {
             ))}
           </ul>
         )}
-      </section>
+      </section> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
         <MetricCard
           label="نوبت‌های گفت‌وگو"
@@ -1120,11 +1134,14 @@ export default function CallDetailPage() {
           icon={<Icon icon={bullseyeIcon} className="h-9 w-9 text-[#4B6E48]" />}
         />
         <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starIcon} className="h-9 w-9 text-[#4B6E48]" />} />
-      </section>
+      </section> : isVoicemail ? <section className="grid gap-3 sm:grid-cols-2">
+        <MetricCard label="مدت پیام" value={fmt.duration(call.duration_ms)} hint="مدت فایل پیام‌گیر صوتی" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+        <MetricCard label="بخش‌های پیاده‌سازی‌شده" value={fmt.int(conversationTurns.length)} hint="تعداد بخش‌های متن پیام" icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+      </section> : null}
 
-      {operatorScore?.criteria_scores?.length ? <section className="card"><SectionTitle title="ارزیابی عملکرد اپراتور" description={operatorScore.operator_label} /><div className="grid gap-3 md:grid-cols-2">{operatorScore.criteria_scores.map((criterion) => <div key={criterion.title} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between"><strong>{criterion.title}</strong><span>{fmt.decimal(criterion.score)}</span></div>{criterion.evidence ? <p className="mt-2 text-sm text-slate-600">{criterion.evidence}</p> : null}</div>)}</div></section> : null}
+      {isAnsweredCall && operatorScore?.criteria_scores?.length ? <section className="card"><SectionTitle title="ارزیابی عملکرد اپراتور" description={operatorScore.operator_label} /><div className="grid gap-3 md:grid-cols-2">{operatorScore.criteria_scores.map((criterion) => <div key={criterion.title} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between"><strong>{criterion.title}</strong><span>{fmt.decimal(criterion.score)}</span></div>{criterion.evidence ? <p className="mt-2 text-sm text-slate-600">{criterion.evidence}</p> : null}</div>)}</div></section> : null}
 
-      <section className="grid gap-4 xl:grid-cols-5">
+      {isAnsweredCall ? <section className="grid gap-4 xl:grid-cols-5">
         <div className="card xl:col-span-3">
           <SectionTitle
             title="روند احساس مکالمه"
@@ -1242,9 +1259,9 @@ export default function CallDetailPage() {
             <EmptyState icon="conversation" message="داده گفتاری برای این تماس ثبت نشده است." className="h-64" />
           )}
         </div>
-      </section>
+      </section> : null}
 
-      {conversationTurns.length ? (
+      {isAnsweredCall && conversationTurns.length ? (
         <section className="card">
           <SectionTitle title="ریتم مکالمه" description="مدت هر نوبت گفت‌وگو در ترتیب زمانی تماس" />
           <div className="h-52" dir="ltr">
@@ -1297,8 +1314,8 @@ export default function CallDetailPage() {
         <div className="relative min-h-0 lg:col-span-2">
           <div className="card flex min-h-0 flex-col lg:absolute lg:inset-0">
           <SectionTitle
-            title="متن مکالمه"
-            description={`${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
+            title={isVoicemail ? isQuickDemo ? "متن تست سریع" : "متن پیام صوتی" : "متن مکالمه"}
+            description={isVoicemail ? `${fmt.int(conversationTurns.length)} بخش از پیام صوتی` : `${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
             action={
               <div className="flex items-center gap-2">
                 {transcriptVersions.length ? (
