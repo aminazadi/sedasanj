@@ -1,6 +1,5 @@
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
 import { ROLE_LABELS, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
@@ -266,7 +265,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="font-bold">اشتراک سازمان</h2><p className="mt-1 text-sm text-slate-500">وضعیت: {subscription.status} · ظرفیت {fmt.int(subscription.max_operators)} اپراتور · {fmt.int(subscription.plan_monthly_minutes)} دقیقه رایگان در ماه · پیام دستیار: {fmt.int(subscription.assistant_messages_used)} از {fmt.int(subscription.assistant_monthly_messages)} (باقی‌مانده {fmt.int(subscription.assistant_messages_remaining)})</p>{subscription.period_end ? <p className="mt-1 text-xs text-slate-400">سررسید: {fmt.date(subscription.period_end)}</p> : null}</div>
-            <Link className="btn" to="/plans">تغییر پلن</Link>
+            <a className="btn" href="/#pricing">تغییر پلن</a>
           </div>
         </div>
       ) : null}

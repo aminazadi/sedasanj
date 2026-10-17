@@ -1,15 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
 import type { PublicPlan } from "../types";
-import { BrandLogo } from "../components/BrandLogo";
-import planDemoImage from "../assets/plan-demo.png";
-import planBronzeImage from "../assets/plan-bronze.png";
-import planSilverImage from "../assets/plan-silver.png";
-import planGoldImage from "../assets/plan-gold.png";
-
-const planImages: Record<string, string> = { demo: planDemoImage, bronze: planBronzeImage, silver: planSilverImage, gold: planGoldImage };
 
 export default function Checkout() {
   const [params] = useSearchParams();
@@ -65,10 +58,10 @@ export default function Checkout() {
     }
   }
 
-  if (!plan) return <main className="checkout-shell" dir="rtl"><div className="checkout-page"><div className="checkout-brand"><Link to="/" aria-label="صفحه اصلی"><BrandLogo animated className="block w-48 sm:w-56" title="صداسنج" /></Link></div><section className="checkout-panel"><p className={error ? "commerce-error" : "checkout-loading"}>{error || "در حال دریافت اطلاعات پلن…"}</p></section></div></main>;
-  return <main className="checkout-shell" dir="rtl"><div className="checkout-page"><div className="checkout-brand"><Link to="/" aria-label="صفحه اصلی"><BrandLogo animated className="block w-48 sm:w-56" title="صداسنج" /></Link></div><section className="checkout-panel"><div className="checkout-plan-intro"><img className="checkout-plan-art" src={planImages[plan.code] ?? planImages.bronze} alt={`تصویر پلن ${plan.name}`} /><header className="checkout-heading"><span>خرید و ارتقای پلن {plan.name}</span><h1>پلن خود را فعال کنید</h1><p>اطلاعات پرداخت را تکمیل کنید.</p></header></div>
+  if (!plan) return <div className="card">{error || "در حال دریافت اطلاعات پلن…"}</div>;
+  return <div className="commerce-page"><div className="commerce-heading"><span>خرید اشتراک</span><h1>پلن {plan.name}</h1><p>مبلغ نهایی در سرور محاسبه می‌شود و قیمت نمایش‌داده‌شده شامل مالیات است.</p></div>
     {error ? <div className="commerce-error">{error}</div> : null}
-    <div className="checkout-summary"><div><span>اشتراک سالانه</span><strong>{fmt.toman(plan.annual_price_toman ?? 0)}</strong></div>{extra ? <div><span>{fmt.int(extra)} اپراتور اضافه</span><strong>{fmt.toman(total - (plan.annual_price_toman ?? 0))}</strong></div> : null}<div className="checkout-total"><span>مبلغ نهایی</span><strong>{fmt.toman(total)}</strong></div></div><form className="commerce-form checkout-form" onSubmit={submit}>
+    <div className="commerce-grid"><form className="card commerce-form" onSubmit={submit}>
       <p className="text-sm text-slate-500">دوره پرداخت اشتراک: سالانه</p>
       {plan.allows_extra_operators ? <label>اپراتور اضافه<input type="number" min={0} max={500} value={extra} onChange={(event) => setExtra(Number(event.target.value))} /></label> : null}
       <label>نام خریدار<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
@@ -76,5 +69,6 @@ export default function Checkout() {
       <label>موبایل<input type="tel" dir="ltr" required value={form.mobile} onChange={(event) => setForm({ ...form, mobile: fmt.latinDigits(event.target.value) })} /></label>
       <ToggleSwitch className="terms-check" checked={termsAccepted} onChange={setTermsAccepted} label="قوانین، حریم خصوصی و سیاست لغو را می‌پذیرم." />
       <button className="btn" disabled={busy}>{busy ? "در حال انتقال…" : "پرداخت امن"}</button>
-    </form><p className="checkout-back"><Link to="/plans">بازگشت به پلن‌ها</Link></p></section></div></main>;
+    </form><aside className="card order-summary"><h2>خلاصه سفارش</h2><div><span>اشتراک سالانه</span><strong>{fmt.toman(plan.annual_price_toman ?? 0)}</strong></div>{extra ? <div><span>{fmt.int(extra)} اپراتور اضافه</span><strong>{fmt.toman(total - (plan.annual_price_toman ?? 0))}</strong></div> : null}<hr/><div className="summary-total"><span>مبلغ نهایی</span><strong>{fmt.toman(total)}</strong></div></aside></div>
+  </div>;
 }

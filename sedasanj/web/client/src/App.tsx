@@ -20,7 +20,6 @@ import Assistant from "./pages/Assistant";
 import ScheduledReports from "./pages/ScheduledReports";
 import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
-import PlanSelection from "./pages/PlanSelection";
 import Signup from "./pages/Signup";
 import Profile from "./pages/Profile";
 import QuickDemo from "./pages/QuickDemo";
@@ -57,11 +56,6 @@ export default function App() {
   const operator = isOperator(session.role);
   const orgAdmin = isOrgAdmin(session.role);
 
-  if (location.pathname === "/plans" || location.pathname === "/checkout") {
-    if (!orgAdmin) return <Navigate to="/" replace />;
-    return location.pathname === "/plans" ? <PlanSelection /> : <Checkout />;
-  }
-
   return (
     <Layout>
         <Routes>
@@ -75,6 +69,7 @@ export default function App() {
         <Route path="/operator-scores" element={<OperatorScores />} />
         <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}
+        {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
         {orgAdmin ? <Route path="/account-settings" element={<AccountSettings />} /> : null}
         {orgAdmin ? <Route path="/kpi-settings" element={<Navigate to="/account-settings?tab=kpi" replace />} /> : null}
         {orgAdmin ? <Route path="/payment-result" element={<PaymentResult />} /> : null}
