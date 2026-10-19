@@ -162,6 +162,7 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
     except (ValueError, TypeError):
         return {"ok": False, "code": "invalid_request"}
     tenant_id, owner_id = identity["tenant_id"], identity["owner_id"]
+    room = room_for(tenant_id, owner_id, conversation_id)
     async with session_scope(tenant_id) as session:
         conversation = await session.get(ChatConversation, conversation_id)
         if (
@@ -172,6 +173,7 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
             return {"ok": False, "code": "not_found"}
         if conversation.mode == "training" and identity["role"] != "org_admin":
             return {"ok": False, "code": "forbidden"}
+        await sio.enter_room(sid, room)
         messages = (
             (
                 await session.execute(
@@ -223,8 +225,6 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                 for row in events
             ]
         latest = max((run.last_event_sequence for run in active_runs), default=0)
-    room = room_for(tenant_id, owner_id, conversation_id)
-    await sio.enter_room(sid, room)
     state = {
         "ok": True,
         "conversation_id": str(conversation_id),

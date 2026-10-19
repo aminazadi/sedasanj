@@ -404,6 +404,7 @@ export default function Assistant() {
   const runDraftsRef = useRef(new Map<string, string>());
   const completionWaitersRef = useRef(new Map<string, (value: { message: ChatMessage; conversationTitle: string | null }) => void>());
   const completedRunsRef = useRef(new Map<string, { message: ChatMessage; conversationTitle: string | null }>());
+  const terminalRunsRef = useRef(new Set<string>());
   const sequenceRef = useRef(new Map<string, number>());
   const draftKey = `cbi.assistant.draft:${ephemeral ? "ephemeral" : conversation?.id || "new"}`;
   const loadedDraftKeyRef = useRef<string | null>(null);
@@ -704,7 +705,12 @@ export default function Assistant() {
       runDraftsRef.current.set(runId, id);
       return id;
     };
+    const markTerminalRun = (runId: string) => {
+      terminalRunsRef.current.add(runId);
+      window.setTimeout(() => terminalRunsRef.current.delete(runId), 30000);
+    };
     const resolveCancelledRun = (runId: string, draftId: string) => {
+      markTerminalRun(runId);
       const result = {
         message: { id: draftId, role: "assistant" as const, content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() },
         conversationTitle: null,
@@ -721,6 +727,7 @@ export default function Assistant() {
       const payload = envelope?.payload || {};
       if (runId && Number(envelope.sequence || 0) <= (sequenceRef.current.get(runId) || 0)) return;
       if (runId) sequenceRef.current.set(runId, Number(envelope.sequence || 0));
+      if (runId && (event === "message:completed" || event === "done" || event === "cancelled")) markTerminalRun(runId);
       if (conversationId && selectedConversationIdRef.current !== conversationId) {
         if (event === "cancelled") {
           resolveCancelledRun(runId, messageForRun(runId));
@@ -821,6 +828,7 @@ export default function Assistant() {
       if (String(state?.conversation_id) !== selectedConversationIdRef.current) return;
       const restored: ChatMessage[] = (state.messages || []).map((item: any) => ({ ...item, tool_runs: [], memory_drafts: [] }));
       for (const run of state.active_runs || []) {
+        if (terminalRunsRef.current.has(String(run.id))) continue;
         const draftId = `draft-reply-${run.id}`;
         runDraftsRef.current.set(String(run.id), draftId);
         setActiveRunId(String(run.id));
@@ -828,10 +836,11 @@ export default function Assistant() {
         restored.push({ id: draftId, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() });
       }
       setMessages(restored);
-      if (state.active_runs?.length) {
+      const activeRuns = (state.active_runs || []).filter((run: any) => !terminalRunsRef.current.has(String(run.id)));
+      if (activeRuns.length) {
         setSending(true);
         setProcessingConversationId(String(state.conversation_id));
-        for (const run of state.active_runs) for (const event of run.events || []) applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
+        for (const run of activeRuns) for (const event of run.events || []) applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
       } else {
         setSending(false);
         setProcessingConversationId(null);

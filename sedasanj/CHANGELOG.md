@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-19 — AMINAZADI
+
+- Fixed a Socket.IO conversation-join race that could miss a completed reply and restore stale processing state in existing chats.
+
 ## 2026-10-17 — AMINAZADI
 
 - تماس‌های پیام‌گیر صوتی و تست سریع را با متن و شاخص‌های مخصوص پیام نمایش می‌دهد و نمودارها و امتیازهای دوطرفه را فقط برای تماس پاسخ‌داده‌شده نگه می‌دارد.
