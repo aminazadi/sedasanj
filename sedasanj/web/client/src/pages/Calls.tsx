@@ -174,7 +174,7 @@ export default function Calls() {
           <JalaliDatePicker
             value={filters.from}
             onChange={(from) => setFilters({ ...filters, from })}
-            placeholder="تاریخ شروع"
+            placeholder="انتخاب تاریخ"
           />
         </div>
         <div>
@@ -182,7 +182,7 @@ export default function Calls() {
           <JalaliDatePicker
             value={filters.to}
             onChange={(to) => setFilters({ ...filters, to })}
-            placeholder="تاریخ پایان"
+            placeholder="انتخاب تاریخ"
           />
         </div>
         <div>

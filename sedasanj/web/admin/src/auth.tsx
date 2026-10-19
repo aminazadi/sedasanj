@@ -11,7 +11,7 @@ interface StaffSession {
 interface AuthState {
   session: StaffSession | null;
   loading: boolean;
-  login: (email: string, password: string, totp?: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -62,10 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       loading,
-      async login(email, password, totp) {
+      async login(username, password) {
         const pair = await request<TokenPair>("/v1/admin/auth/login", {
           method: "POST",
-          body: { email, password, totp_code: totp || null },
+          body: { email: username, password },
           retry: false,
         });
         tokens.save(pair);
