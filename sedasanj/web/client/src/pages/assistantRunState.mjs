@@ -22,3 +22,23 @@ export function orderUniqueRunEvents(replayed, buffered) {
     .sort(([first], [second]) => first - second)
     .map(([, event]) => event);
 }
+
+export function mergeSnapshotMessages(current, restored, completedDraftIds) {
+  const restoredIds = new Set(restored.map((message) => message.id));
+  return [
+    ...restored,
+    ...current.filter(
+      (message) => message.id.startsWith("draft-")
+        && !completedDraftIds.has(message.id)
+        && !restoredIds.has(message.id),
+    ),
+  ];
+}
+
+export function reconcileAcceptedMessage(current, requestId, messageId) {
+  const draftId = `draft-user-${requestId}`;
+  if (current.some((message) => message.id === messageId)) {
+    return current.filter((message) => message.id !== draftId);
+  }
+  return current.map((message) => message.id === draftId ? { ...message, id: messageId } : message);
+}

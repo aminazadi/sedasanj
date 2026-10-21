@@ -13,7 +13,7 @@ import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Wi
 import { useDesktopMenuToggle } from "../components/Layout";
 import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage, OrganizationMemory } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
-import { isFreshRunSequence, orderUniqueRunEvents, withConversationRunState } from "./assistantRunState.mjs";
+import { isFreshRunSequence, mergeSnapshotMessages, orderUniqueRunEvents, reconcileAcceptedMessage, withConversationRunState } from "./assistantRunState.mjs";
 
 function TrashIcon() {
   return (
@@ -364,6 +364,7 @@ export default function Assistant() {
   const training = search.get("mode") === "train" && isOrgAdmin(session?.role);
   const requestedConversationId = search.get("conversation");
   const requestedCallId = search.get("call_id");
+  const temporaryRequested = search.get("temporary") === "true";
   const expandedCallId = search.get("source_call");
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
@@ -439,6 +440,11 @@ export default function Assistant() {
     setSendingRuns((current) => withConversationRunState(current, key, runId));
   }
 
+  function reconcileAcceptedUserMessage(accepted: any) {
+    if (!accepted?.request_id || !accepted?.message_id || accepted.conversation_id !== selectedConversationIdRef.current) return;
+    setMessages((current) => reconcileAcceptedMessage(current, String(accepted.request_id), String(accepted.message_id)));
+  }
+
   function scrollToEnd() {
     const scroller = messagesScrollerRef.current;
     if (!scroller) return;
@@ -502,7 +508,7 @@ export default function Assistant() {
       if (selectedConversationIdRef.current !== item.id) return;
       const streamingReply = streamingRepliesRef.current.get(item.id);
       setConversation(item);
-      setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.delete("call_id"); return next; }, { replace: true });
+      setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.delete("call_id"); next.delete("temporary"); return next; }, { replace: true });
       setEphemeral(false);
       setMessages(streamingReply ? [...rows, streamingReply] : rows);
       userNearBottomRef.current = true;
@@ -514,14 +520,17 @@ export default function Assistant() {
   }
   async function create(callId: string | null = null, isCurrent: () => boolean = () => true) {
     const item = await request<ChatConversation>("/v1/assistant/conversations", { method: "POST", body: { call_id: training ? null : callId, mode: training ? "training" : "normal" } });
-    if (!isCurrent()) return item;
+    if (!isCurrent()) {
+      await request(`/v1/assistant/conversations/${item.id}`, { method: "DELETE" });
+      throw new Error("انتخاب گفتگو پیش از ساخت آن تغییر کرد.");
+    }
     setConversations((current) => [item, ...current]);
     selectedConversationIdRef.current = item.id;
     setConversation(item);
     setEphemeral(false);
     setMessages([]);
     setConversationsOpen(false);
-    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.set("conversation_view", "active"); next.delete("call_id"); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.set("conversation_view", "active"); next.delete("call_id"); next.delete("temporary"); return next; }, { replace: true });
     return item;
   }
   function createEphemeral() {
@@ -535,7 +544,7 @@ export default function Assistant() {
     setEditingId(null);
     setConversationsOpen(false);
     setError(null);
-    setSearch((current) => { const next = new URLSearchParams(current); next.delete("conversation"); next.delete("call_id"); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete("conversation"); next.delete("call_id"); next.set("temporary", "true"); return next; }, { replace: true });
   }
   async function remove(item: ChatConversation) {
     try {
@@ -653,6 +662,7 @@ export default function Assistant() {
       next.set("conversation_view", nextView);
       next.delete("conversation");
       next.delete("call_id");
+      next.delete("temporary");
       return next;
     });
   }
@@ -671,7 +681,20 @@ export default function Assistant() {
         const selected = rows.find((item) => item.id === requestedConversationId);
         const callId = training ? null : requestedCallId;
         if (callId) await create(callId, () => active);
+        else if (temporaryRequested) {
+          selectedConversationIdRef.current = null;
+          setConversation(null);
+          setMessages([]);
+          setEphemeral(true);
+        }
         else if (selected) await loadMessages(selected);
+        else if (requestedConversationId) {
+          selectedConversationIdRef.current = null;
+          setConversation(null);
+          setMessages([]);
+          setEphemeral(false);
+          setError("گفتگوی درخواستی پیدا نشد.");
+        }
         else if (conversationView === "archived") {
           setConversation(null);
           setMessages([]);
@@ -686,7 +709,7 @@ export default function Assistant() {
       finally { if (active) setLoading(false); }
     })();
     return () => { active = false; };
-  }, [training, conversationView, session?.role, requestedConversationId, requestedCallId]);
+  }, [training, conversationView, session?.role, requestedConversationId, requestedCallId, temporaryRequested]);
   useEffect(() => { setMemoryStatus(search.get("memory_status") || "draft"); }, [search.get("memory_status")]);
   useEffect(() => { setMemoryCategory(search.get("memory_category") || ""); }, [search.get("memory_category")]);
   useEffect(() => {
@@ -871,8 +894,13 @@ export default function Assistant() {
       setSocketConnected(false);
       if (sendingRunsRef.current.ephemeral !== undefined) {
         setRunState("ephemeral", null);
-        if (ephemeralPendingContentRef.current) setText(ephemeralPendingContentRef.current);
-        setError("اتصال چت موقت قطع شد. متن پیام حفظ شده؛ پس از اتصال دوباره آن را ارسال کنید.");
+        if (ephemeralPendingContentRef.current) {
+          localStorage.setItem("cbi.assistant.draft:ephemeral", ephemeralPendingContentRef.current);
+          if (conversationRunKeyRef.current === "ephemeral") setText(ephemeralPendingContentRef.current);
+        }
+        if (conversationRunKeyRef.current === "ephemeral") {
+          setError("اتصال چت موقت قطع شد. متن پیام حفظ شده؛ پس از اتصال دوباره آن را ارسال کنید.");
+        }
         for (const [runId, key] of runConversationKeysRef.current) {
           if (key !== "ephemeral") continue;
           completionWaitersRef.current.delete(runId);
@@ -890,6 +918,7 @@ export default function Assistant() {
       }
     });
     socket.on("assistant:message:accepted", (accepted: any) => {
+      reconcileAcceptedUserMessage(accepted);
       if (accepted?.run_id && accepted?.request_id) {
         const runId = String(accepted.run_id);
         runDraftsRef.current.set(runId, `draft-reply-${accepted.request_id}`);
@@ -902,19 +931,23 @@ export default function Assistant() {
       const stateConversationId = String(state?.conversation_id || "");
       if (stateConversationId !== selectedConversationIdRef.current) return;
       const restored: ChatMessage[] = (state.messages || []).map((item: any) => ({ ...item, tool_runs: [], memory_drafts: [] }));
+      const completedDraftIds = new Set<string>(
+        (state.completed_runs || []).map((run: any) => runDraftsRef.current.get(String(run.id))).filter(Boolean),
+      );
       for (const run of state.active_runs || []) {
         if (terminalRunsRef.current.has(String(run.id))) continue;
-        const draftId = `draft-reply-${run.id}`;
-        runDraftsRef.current.set(String(run.id), draftId);
+        const draftId = messageForRun(String(run.id));
         runConversationKeysRef.current.set(String(run.id), String(state.conversation_id));
         setRunState(String(state.conversation_id), String(run.id));
         sequenceRef.current.set(String(run.id), 0);
         restored.push({ id: draftId, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() });
       }
-      setMessages(restored);
+      setMessages((current) => mergeSnapshotMessages(current, restored, completedDraftIds));
       joiningConversationIdsRef.current.delete(stateConversationId);
+      const completedRunIds = new Set<string>();
       for (const completed of state.completed_runs || []) {
         const runId = String(completed.id);
+        completedRunIds.add(runId);
         const result = {
           message: completed.message as ChatMessage,
           conversationTitle: completed.conversation_title || null,
@@ -934,25 +967,21 @@ export default function Assistant() {
         });
       }
       const activeRuns = (state.active_runs || []).filter((run: any) => !terminalRunsRef.current.has(String(run.id)));
-      if (activeRuns.length) {
-        const activeRunIds = new Set(activeRuns.map((run: any) => String(run.id)));
-        for (const run of activeRuns) {
-          for (const event of orderUniqueRunEvents(run.events || [], bufferedRunEventsRef.current.get(String(run.id)) || [])) {
-            applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
-          }
-          bufferedRunEventsRef.current.delete(String(run.id));
+      const activeRunIds = new Set(activeRuns.map((run: any) => String(run.id)));
+      for (const run of activeRuns) {
+        for (const event of orderUniqueRunEvents(run.events || [], bufferedRunEventsRef.current.get(String(run.id)) || [])) {
+          applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
         }
-        for (const [runId, buffered] of bufferedRunEventsRef.current) {
-          if (activeRunIds.has(runId)) continue;
-          sequenceRef.current.set(runId, 0);
-          runConversationKeysRef.current.set(runId, stateConversationId);
-          for (const event of orderUniqueRunEvents([], buffered)) {
-            applyEnvelope({ ...event, run_id: runId, conversation_id: stateConversationId });
-          }
-          bufferedRunEventsRef.current.delete(runId);
+        bufferedRunEventsRef.current.delete(String(run.id));
+      }
+      for (const [runId, buffered] of bufferedRunEventsRef.current) {
+        if (activeRunIds.has(runId) || completedRunIds.has(runId)) continue;
+        sequenceRef.current.set(runId, 0);
+        runConversationKeysRef.current.set(runId, stateConversationId);
+        for (const event of orderUniqueRunEvents([], buffered)) {
+          applyEnvelope({ ...event, run_id: runId, conversation_id: stateConversationId });
         }
-      } else {
-        setRunState(String(state.conversation_id), null);
+        bufferedRunEventsRef.current.delete(runId);
       }
     });
     for (const event of ["delta", "replace", "phase", "tool_started", "tool_completed", "tool_failed", "message:completed", "done", "cancelled"]) {
@@ -1051,12 +1080,13 @@ export default function Assistant() {
     setRunState(runKey, "pending");
     setError(null);
     const messageAttachments = branchAttachments;
-    const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
-    const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+    const requestId = crypto.randomUUID();
+    const optimistic: ChatMessage = { id: `draft-user-${requestId}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
+    const draftReply: ChatMessage = { id: `draft-reply-${requestId}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
     if (ephemeral) ephemeralPendingContentRef.current = content;
     let activeConversationId: string | null = null;
     try {
-      const active = ephemeral ? null : conversation ?? await create();
+      const active = ephemeral ? null : conversation ?? await create(null, () => conversationRunKeyRef.current === runKey);
       activeConversationId = active?.id ?? null;
       const nextRunKey = active?.id || "ephemeral";
       if (nextRunKey !== runKey) {
@@ -1068,7 +1098,6 @@ export default function Assistant() {
       if (active) streamingRepliesRef.current.set(active.id, draftReply);
       const socket = socketRef.current;
       if (!socket?.connected) throw new Error("اتصال زنده دستیار برقرار نیست. پس از اتصال دوباره ارسال کنید.");
-      const requestId = draftReply.id.replace("draft-reply-", "");
       requestConversationKeysRef.current.set(requestId, runKey);
       const requestPayload = {
         request_id: requestId,
@@ -1085,6 +1114,7 @@ export default function Assistant() {
             history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })),
           });
       if (!acknowledged?.ok || !acknowledged?.run_id) throw new Error(acknowledged?.code || "ارسال پیام انجام نشد.");
+      reconcileAcceptedUserMessage(acknowledged);
       const runId = String(acknowledged.run_id);
       runDraftsRef.current.set(runId, draftReply.id);
       runConversationKeysRef.current.set(runId, runKey);

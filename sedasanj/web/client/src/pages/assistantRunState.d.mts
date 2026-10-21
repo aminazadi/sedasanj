@@ -13,3 +13,13 @@ export function orderUniqueRunEvents<T extends SequencedRunEvent>(
   replayed: T[],
   buffered: T[],
 ): T[];
+export function mergeSnapshotMessages<T extends { id: string }>(
+  current: T[],
+  restored: T[],
+  completedDraftIds: Set<string>,
+): T[];
+export function reconcileAcceptedMessage<T extends { id: string }>(
+  current: T[],
+  requestId: string,
+  messageId: string,
+): T[];

@@ -1452,14 +1452,6 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             answer = _assistant_error(exc)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
-        memory_drafts: list[OrganizationMemory] = []
-        if status_value == "succeeded" and conversation.mode == "training":
-            answer, memory_drafts = await _persist_training_drafts(
-                session, conversation, user_message, principal, answer
-            )
-            yield _sse("replace", {"content": answer})
-        assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
-        conversation.updated_at = datetime.now(UTC)
         assistant_run_id = getattr(request.state, "assistant_run_id", None)
         assistant_run = None
         if assistant_run_id is not None:
@@ -1470,17 +1462,29 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                 .where(AssistantRun.id == assistant_run_id)
                 .with_for_update()
             )
-            if assistant_run is not None and assistant_run.status == "cancelled":
-                cancelled_message = await session.get(ChatMessage, assistant_run.assistant_message_id)
-                if cancelled_message is not None:
+            if assistant_run is not None and assistant_run.status in {"cancelled", "failed"}:
+                terminal_message = await session.get(
+                    ChatMessage, assistant_run.assistant_message_id
+                )
+                if terminal_message is not None:
+                    usage.status = "failed"
                     yield _sse(
                         "done",
                         {
-                            "message": ChatMessageOut.model_validate(cancelled_message).model_dump(mode="json"),
+                            "message": ChatMessageOut.model_validate(
+                                terminal_message
+                            ).model_dump(mode="json"),
                             "conversation_title": conversation.title,
                         },
                     )
                     return
+        memory_drafts: list[OrganizationMemory] = []
+        if status_value == "succeeded" and conversation.mode == "training":
+            answer, memory_drafts = await _persist_training_drafts(
+                session, conversation, user_message, principal, answer
+            )
+        assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
+        conversation.updated_at = datetime.now(UTC)
         session.add(assistant_message)
         await session.flush()
         if assistant_run is not None:

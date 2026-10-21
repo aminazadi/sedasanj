@@ -61,8 +61,10 @@ def next_run_at(report: Any, after: datetime, timezone: str) -> datetime:
             # Round-trip validation skips nonexistent local hours at DST transitions.
             for fold in (0, 1):
                 candidate = naive.replace(tzinfo=zone, fold=fold).astimezone(UTC)
-                if candidate > after and candidate.astimezone(zone).replace(tzinfo=None) == naive:
-                    candidates.append(candidate)
+                if candidate.astimezone(zone).replace(tzinfo=None) == naive:
+                    if candidate > after:
+                        candidates.append(candidate)
+                    break
     if not candidates:
         raise ValueError("no valid fixed schedule hour")
     return min(candidates)
@@ -265,6 +267,8 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
     usage_id = None
     client = None
     retry_scheduled = False
+    superseded = False
+    attempt_number = None
     try:
         async with session_scope(tenant_id) as session:
             row = (
@@ -282,6 +286,7 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
                 return "not due"
             row.status, row.started_at = "running", datetime.now(UTC)
             row.attempt_count = int(getattr(row, "attempt_count", 0) or 0) + 1
+            attempt_number = row.attempt_count
             row.next_attempt_at = None
             scheduled_report_attempts_total.labels(result="started").inc()
             snapshot = {
@@ -520,7 +525,7 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
                     .with_for_update()
                 )
             ).scalar_one()
-            if row.status == "running":
+            if row.status == "running" and row.attempt_count == attempt_number:
                 row.content, row.sources, row.coverage, row.model = (
                     answer + notice,
                     sources,
@@ -545,6 +550,8 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
                     if report is not None and report.window_start < row.to_date:
                         report.window_start = row.to_date
                         report.updated_at = datetime.now(UTC)
+        if row.status != "succeeded" or row.attempt_count != attempt_number:
+            return "superseded"
         scheduled_report_attempts_total.labels(result="succeeded").inc()
         return "succeeded"
     except (Exception, asyncio.CancelledError) as exc:
@@ -562,15 +569,18 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
                     .with_for_update()
                 )
             ).scalar_one_or_none()
-            if row and row.status in ACTIVE:
+            if row and row.status == "running" and row.attempt_count == attempt_number:
                 retry_scheduled = await _record_failure(session, row, exc, datetime.now(UTC))
             elif usage_id:
                 usage = await session.get(AssistantUsage, usage_id)
                 if usage and usage.status == "reserved":
                     usage.status = "failed"
+            superseded = row is not None and row.attempt_count != attempt_number
         scheduled_report_attempts_total.labels(result="failed").inc()
         if isinstance(exc, asyncio.CancelledError):
             raise
+        if superseded:
+            return "superseded"
         return "queued" if retry_scheduled else "failed"
     finally:
         if client:

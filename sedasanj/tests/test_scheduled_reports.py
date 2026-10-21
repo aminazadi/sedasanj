@@ -60,6 +60,13 @@ def test_interval_and_dst_missing_hour():
     ) == datetime(2026, 3, 9, 6, tzinfo=UTC)
 
 
+def test_fixed_hour_runs_once_when_dst_repeats_local_hour():
+    report = SimpleNamespace(schedule_mode="fixed", fixed_hours=[1])
+    assert reports.next_run_at(
+        report, datetime(2026, 11, 1, 5, 30, tzinfo=UTC), "America/New_York"
+    ) == datetime(2026, 11, 2, 6, tzinfo=UTC)
+
+
 @pytest.mark.parametrize(
     "changes",
     [
@@ -411,6 +418,40 @@ async def test_permanent_quota_failure_is_not_retried(monkeypatch):
     )
     assert run.status == "failed"
     assert run.error_code == "quota_exceeded"
+    staged.assert_not_awaited()
+
+
+async def test_failure_from_old_attempt_cannot_replace_new_attempt(monkeypatch):
+    tenant_id, run_id = uuid4(), uuid4()
+    run = ScheduledReportRun(
+        id=run_id,
+        tenant_id=tenant_id,
+        status="queued",
+        attempt_count=0,
+        max_retries=3,
+        retry_base_minutes=5,
+    )
+
+    class Session:
+        async def execute(self, statement):
+            return Result(run)
+
+        async def get(self, model, key):
+            run.attempt_count = 2
+            raise RuntimeError("old worker failed after a new attempt started")
+
+    @asynccontextmanager
+    async def scope(_tenant_id):
+        yield Session()
+
+    staged = AsyncMock()
+    monkeypatch.setattr(reports, "session_scope", scope)
+    monkeypatch.setattr(reports.outbox, "stage", staged)
+    assert await reports.generate_scheduled_report(
+        {}, {"tenant_id": str(tenant_id), "run_id": str(run_id)}
+    ) == "superseded"
+    assert run.status == "running"
+    assert run.attempt_count == 2
     staged.assert_not_awaited()
 
 

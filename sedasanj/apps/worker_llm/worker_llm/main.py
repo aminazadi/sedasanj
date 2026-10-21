@@ -606,8 +606,10 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
     tenant_id = UUID(payload["tenant_id"])
     terminal_completion: dict[str, Any] | None = None
     async with session_scope(tenant_id) as session:
-        run = await session.get(AssistantRun, run_id)
-        if run is None or run.status == "cancelled":
+        run = await session.scalar(
+            select(AssistantRun).where(AssistantRun.id == run_id).with_for_update()
+        )
+        if run is None or run.status in {"cancelled", "running"}:
             return "already finished"
         if run.status in {"succeeded", "failed"} and run.assistant_message_id:
             assistant_message = await session.get(ChatMessage, run.assistant_message_id)
@@ -630,12 +632,14 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
             owner_id = run.owner_id
             conversation_id, user_message_id = run.conversation_id, run.user_message_id
             status = run.status
-        else:
+        elif run.status == "queued":
             owner_id = run.owner_id
             conversation_id, user_message_id = run.conversation_id, run.user_message_id
             status = "running"
             run.status = status
             run.updated_at = datetime.now(UTC)
+        else:
+            return "already finished"
     if status in {"succeeded", "failed"}:
         if terminal_completion is not None:
             await assistant_socket.publish(
@@ -729,6 +733,8 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
         message = completion["message"]
         async with session_scope(tenant_id) as control:
             run = await control.get(AssistantRun, run_id)
+            if run is not None and run.status == "cancelled":
+                return "cancelled"
             if (
                 run is not None
                 and run.status in {"failed", "cancelled"}

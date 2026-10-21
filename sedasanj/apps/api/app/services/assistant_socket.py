@@ -85,6 +85,10 @@ async def publish(
         )
         if run is None:
             raise ApiError("not_found", "assistant run not found")
+        if run.status in {"succeeded", "failed", "cancelled"} and event not in {
+            "message:completed", "cancelled"
+        }:
+            return {}
         sequence = run.next_sequence
         run.next_sequence += 1
         run.last_event_sequence = sequence

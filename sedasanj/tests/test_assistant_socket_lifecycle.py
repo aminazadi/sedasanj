@@ -67,3 +67,42 @@ async def test_join_subscribes_before_reading_conversation_snapshot(monkeypatch)
 
     assert result == {"ok": True, "sequence": 0}
     assert events == ["room-joined", "snapshot-query", "snapshot-query", "snapshot-query", "state-emitted"]
+
+
+@pytest.mark.asyncio
+async def test_terminal_run_does_not_publish_late_stream_events(monkeypatch) -> None:
+    tenant_id, run_id = uuid4(), uuid4()
+    run = SimpleNamespace(id=run_id, status="failed")
+
+    class _Session:
+        async def scalar(self, statement):
+            assert "FOR UPDATE" in str(statement)
+            return run
+
+    @asynccontextmanager
+    async def fake_session_scope(_tenant_id):
+        yield _Session()
+
+    monkeypatch.setattr(assistant_socket, "session_scope", fake_session_scope)
+    assert await assistant_socket.publish(tenant_id, run_id, "delta", {"content": "late"}) == {}
+
+
+@pytest.mark.asyncio
+async def test_running_assistant_job_cannot_start_twice(monkeypatch) -> None:
+    from worker_llm.main import run_assistant_chat
+
+    tenant_id, run_id = uuid4(), uuid4()
+
+    class _Session:
+        async def scalar(self, statement):
+            assert "FOR UPDATE" in str(statement)
+            return SimpleNamespace(status="running")
+
+    @asynccontextmanager
+    async def fake_session_scope(_tenant_id):
+        yield _Session()
+
+    monkeypatch.setattr("worker_llm.main.session_scope", fake_session_scope)
+    assert await run_assistant_chat(
+        {}, {"tenant_id": str(tenant_id), "run_id": str(run_id)}
+    ) == "already finished"
