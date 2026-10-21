@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS task_runs(
  status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,max_attempts INTEGER NOT NULL DEFAULT 1,
  available_at TEXT NOT NULL,started_at TEXT,finished_at TEXT,updated_at TEXT NOT NULL,worker_id TEXT,heartbeat_at TEXT,
  duration_seconds REAL,duration_after_vad REAL,processing_seconds REAL,result_json TEXT,error TEXT,
+ device_id TEXT,device_type TEXT,
  UNIQUE(task_id,position),UNIQUE(task_id,model_id),FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE SET NULL,FOREIGN KEY(usage_id) REFERENCES usage(id));
 CREATE INDEX IF NOT EXISTS task_runs_dispatch_idx ON task_runs(task_id,status,position);
 CREATE INDEX IF NOT EXISTS task_runs_model_idx ON task_runs(model_id,status);
@@ -120,6 +121,10 @@ CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied
         run_columns = {x[1] for x in db.execute("PRAGMA table_info(task_runs)")}
         if "attempt_started_at" not in run_columns:
             db.execute("ALTER TABLE task_runs ADD COLUMN attempt_started_at TEXT")
+        if "device_id" not in run_columns:
+            db.execute("ALTER TABLE task_runs ADD COLUMN device_id TEXT")
+        if "device_type" not in run_columns:
+            db.execute("ALTER TABLE task_runs ADD COLUMN device_type TEXT")
         upload_columns = {x[1] for x in db.execute("PRAGMA table_info(uploads)")}
         if "audio_encoding" not in upload_columns:
             db.execute("ALTER TABLE uploads ADD COLUMN audio_encoding TEXT NOT NULL DEFAULT 'identity'")

@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
 from .resources import DECISION_CPU_THREADS, DECISION_MAX_CONCURRENT
+from . import gpu_runtime
 
 
 CAPABILITIES = {
@@ -32,9 +33,10 @@ class DecisionRuntimeRegistry:
 
     def evict(self, model_id):
         with self._lock:
-            self._items.pop(model_id, None)
+            for key in [key for key in self._items if key[0] == model_id]:
+                self._items.pop(key, None)
 
-    def _load(self, model_id):
+    def _load(self, model_id, device_index=None):
         spec = CATALOG.get(model_id)
         if not spec or spec.kind != "decision" or not spec.engine:
             raise HTTPException(422, "The selected model is not a decision model")
@@ -51,7 +53,7 @@ class DecisionRuntimeRegistry:
                 return GLiNER2.from_pretrained(str(root))
             if spec.engine == "laya_multilingual":
                 import laya
-                return laya.load(str(root), device="cpu")
+                return laya.load(str(root), device=f"cuda:{device_index}" if device_index is not None else "cpu")
         except ImportError as error:
             raise HTTPException(503, f"Decision runtime dependency is unavailable: {error.name}") from error
         except Exception as error:
@@ -60,11 +62,13 @@ class DecisionRuntimeRegistry:
 
     @contextmanager
     def lease(self, model_id):
+        device_index = gpu_runtime.current_device_index()
+        cache_key = (model_id, device_index)
         with self._lock:
-            item = self._items.get(model_id)
+            item = self._items.get(cache_key)
             if item is None:
-                item = {"model": self._load(model_id), "active": 0}
-                self._items[model_id] = item
+                item = {"model": self._load(model_id, device_index), "active": 0}
+                self._items[cache_key] = item
             while item["active"] >= DECISION_MAX_CONCURRENT:
                 self._lock.wait()
             item["active"] += 1

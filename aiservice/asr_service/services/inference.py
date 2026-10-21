@@ -3,6 +3,7 @@ from functools import lru_cache
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
 from .resources import ASR_CPU_THREADS,INFERENCE_SLOTS
+from . import gpu_runtime
 THREADS = ASR_CPU_THREADS
 COMPUTE = os.getenv("ASR_COMPUTE_TYPE", "int8")
 DEVICE = os.getenv("ASR_DEVICE", "cpu")
@@ -28,7 +29,8 @@ def _float_env(name,default):
 WHISPER_TEMPERATURE=min(1.0,max(0.0,_float_env("ASR_WHISPER_TEMPERATURE","0")))
 _locks_guard=threading.Lock();_engine_locks={}
 def _engine_lock(mid):
- with _locks_guard:return _engine_locks.setdefault(mid,threading.Lock())
+ key=(mid,gpu_runtime.current_device_index())
+ with _locks_guard:return _engine_locks.setdefault(key,threading.Lock())
 def normalize(t):return " ".join(t.replace("ي","ی").replace("ك","ک").split())
 def _whisper_audio(audio,sample_rate):
  import soundfile as sf
@@ -41,15 +43,19 @@ def _whisper_audio(audio,sample_rate):
 def denoiser():
  import sherpa_onnx
  p=MODEL_DIR/"gtcrn-denoiser"/"gtcrn_simple.onnx";cfg=sherpa_onnx.OfflineSpeechDenoiserConfig(model=sherpa_onnx.OfflineSpeechDenoiserModelConfig(gtcrn=sherpa_onnx.OfflineSpeechDenoiserGtcrnModelConfig(model=str(p)),debug=False,num_threads=1,provider="cpu"));return sherpa_onnx.OfflineSpeechDenoiser(cfg)
-@lru_cache(maxsize=2)
-def load(mid):
+@lru_cache(maxsize=4)
+def _load(mid, device_index):
  spec=CATALOG[mid];root=MODEL_DIR/mid
  if spec.architecture=="fasterWhisper":
   from faster_whisper import WhisperModel
-  return WhisperModel(str(root),device=DEVICE,compute_type=COMPUTE,cpu_threads=THREADS,num_workers=1)
+  device="cuda" if device_index is not None else DEVICE
+  options={"device":device,"compute_type":COMPUTE,"cpu_threads":THREADS,"num_workers":1}
+  if device_index is not None:options["device_index"]=device_index
+  return WhisperModel(str(root),**options)
  import sherpa_onnx
  if spec.architecture=="nemoCtc":return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(model=str(root/"model.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS)
  return sherpa_onnx.OfflineRecognizer.from_transducer(encoder=str(root/"encoder.int8.onnx"),decoder=str(root/"decoder.int8.onnx"),joiner=str(root/"joiner.int8.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS,model_type="nemo_transducer")
+def load(mid):return _load(mid,gpu_runtime.current_device_index())
 def _decode_whisper(engine, source, options):
  """Materialize the lazy segment iterator while its input stream is still alive."""
  iterator, info = engine.transcribe(source, **options)

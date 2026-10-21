@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
+from . import gpu_runtime
 
 
 class EmbeddingRegistry:
@@ -22,7 +23,8 @@ class EmbeddingRegistry:
 
     def evict(self, model_id: str) -> None:
         with self._lock:
-            self._models.pop(model_id, None)
+            for key in [key for key in self._models if key[0] == model_id]:
+                self._models.pop(key, None)
 
     def get(self, model_id: str) -> tuple[Any, Any]:
         spec = CATALOG.get(model_id)
@@ -31,8 +33,10 @@ class EmbeddingRegistry:
         root = MODEL_DIR / model_id
         if not (root / ".complete").is_file():
             raise HTTPException(503, "The selected embedding model is not installed")
+        device_index = gpu_runtime.current_device_index()
+        cache_key = (model_id, device_index)
         with self._lock:
-            cached = self._models.get(model_id)
+            cached = self._models.get(cache_key)
             if cached is not None:
                 return cached
             from transformers import AutoModel, AutoTokenizer
@@ -48,8 +52,10 @@ class EmbeddingRegistry:
                 trust_remote_code=False,
             )
             model.eval()
+            if device_index is not None:
+                model = model.to(f"cuda:{device_index}")
             loaded = (tokenizer, model)
-            self._models[model_id] = loaded
+            self._models[cache_key] = loaded
             return loaded
 
 
@@ -70,6 +76,8 @@ def embed(model_id: str, values: list[str]) -> tuple[list[list[float]], int]:
         max_length=max_length,
         return_tensors="pt",
     )
+    device = next(model.parameters()).device
+    encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
     with torch.inference_mode():
         output = model(**encoded)
         mask = encoded["attention_mask"].unsqueeze(-1).to(output.last_hidden_state.dtype)
@@ -77,6 +85,27 @@ def embed(model_id: str, values: list[str]) -> tuple[list[list[float]], int]:
         normalized = functional.normalize(pooled, p=2, dim=1)
     token_count = int(encoded["attention_mask"].sum().item())
     return normalized.cpu().tolist(), token_count
+
+
+def embed_scheduled(model_id: str, values: list[str]) -> tuple[list[list[float]], int]:
+    from .resources import inference_slot
+
+    if gpu_runtime.gpu_eligible("embedding", model_id):
+        devices = sorted(gpu_runtime.enabled_devices(), key=lambda item: (item["utilization_percent"], -item["memory_free"]))
+        for device in devices:
+            try:
+                with gpu_runtime.reserve(device, timeout=0):
+                    return embed(model_id, values)
+            except TimeoutError:
+                continue
+        if devices:
+            try:
+                with gpu_runtime.reserve(devices[0], timeout=gpu_runtime.gpu_wait_seconds()):
+                    return embed(model_id, values)
+            except TimeoutError:
+                pass
+    with inference_slot():
+        return embed(model_id, values)
 
 
 def validate_embedding_bundle(folder: Path) -> None:

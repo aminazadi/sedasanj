@@ -252,6 +252,7 @@ class SystemMetricsResponse(ApiSchema):
     processes: list[ProcessMetricsResponse]
     container: ContainerMetricsResponse
     scheduler: SchedulerMetricsResponse
+    gpus: list[dict[str, Any]] = Field(default_factory=list)
     sampled_at: float
 
 

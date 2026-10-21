@@ -270,9 +270,9 @@ def list_models(kind: str = Query(default="llm", pattern="^(llm|asr|decision|tts
 async def create_embeddings(body: EmbeddingRequest, principal: Principal = Depends(authorize)):
     require_access(principal, "embedding", [body.model])
     values = [body.input] if isinstance(body.input, str) else body.input
-    from asr_service.services.embedding_processing import embed
+    from asr_service.services.embedding_processing import embed_scheduled
 
-    vectors, prompt_tokens = await run_in_threadpool(embed, body.model, values)
+    vectors, prompt_tokens = await run_in_threadpool(embed_scheduled, body.model, values)
     return {
         "object": "list",
         "data": [

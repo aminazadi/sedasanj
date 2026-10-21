@@ -8,13 +8,18 @@ from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
 
 from .resources import LLM_CPU_THREADS, LLM_MAX_CONCURRENT
+from . import gpu_runtime
 
 
-def _load(mid):
+def _load(mid, device_index=None, split=False):
  from llama_cpp import Llama
  filename=CATALOG[mid].files[0].filename
  context=CATALOG[mid].decoding.get("context_size") or int(os.getenv("DORNA_CONTEXT_SIZE","12288"))
- return Llama(model_path=str(MODEL_DIR/mid/filename),n_ctx=context,n_gpu_layers=int(os.getenv("DORNA_GPU_LAYERS","0")),n_threads=LLM_CPU_THREADS,n_threads_batch=LLM_CPU_THREADS,verbose=False)
+ options={"model_path":str(MODEL_DIR/mid/filename),"n_ctx":context,"n_gpu_layers":int(os.getenv("DORNA_GPU_LAYERS","0")),"n_threads":LLM_CPU_THREADS,"n_threads_batch":LLM_CPU_THREADS,"verbose":False}
+ if device_index is not None:
+  from llama_cpp import LLAMA_SPLIT_MODE_LAYER, LLAMA_SPLIT_MODE_NONE
+  options.update(n_gpu_layers=-1,split_mode=LLAMA_SPLIT_MODE_LAYER if split else LLAMA_SPLIT_MODE_NONE,main_gpu=device_index)
+ return Llama(**options)
 
 
 class ModelPool:
@@ -73,12 +78,15 @@ class GlobalModelPool:
 
  @contextmanager
  def lease(self, model_id):
+  device_index=gpu_runtime.current_device_index()
+  split=gpu_runtime.current_is_split()
+  cache_key=(model_id,device_index,split)
   create = False
   evicted = None
   with self.condition:
    while True:
-    if self.idle[model_id]:
-     model = self.idle[model_id].pop()
+    if self.idle[cache_key]:
+     model = self.idle[cache_key].pop()
      break
     if self.total < self.maximum:
      self.total += 1
@@ -101,7 +109,7 @@ class GlobalModelPool:
      pass
   if create:
    try:
-    model = _load(model_id)
+    model = _load(model_id,device_index,split)
    except Exception:
     with self.condition:
      self.total -= 1
@@ -111,7 +119,7 @@ class GlobalModelPool:
    yield model
   finally:
    with self.condition:
-    self.idle[model_id].append(model)
+    self.idle[cache_key].append(model)
     self.condition.notify_all()
 
 
@@ -124,7 +132,7 @@ class _ModelLease:
   return self.registry.lease(self.model_id)
 
 
-_global_pool = GlobalModelPool(LLM_MAX_CONCURRENT)
+_global_pool = GlobalModelPool(max(LLM_MAX_CONCURRENT, 64))
 
 
 def _pool(model_id):

@@ -36,6 +36,7 @@ from asr_service.infrastructure.storage import (
 )
 
 from . import object_storage
+from . import gpu_runtime
 from .audio_compression import decompress_gzip
 from .inference import NoSpeechDetectedError, transcribe
 from .ingress import ensure_spool_capacity
@@ -567,6 +568,8 @@ def serialize_run(run, response_format="verbose_json"):
         "content_type": content_type,
         "result": result,
         "error": run.get("error"),
+        "device_id": run.get("device_id"),
+        "device_type": run.get("device_type"),
     }
 
 
@@ -599,7 +602,31 @@ class TaskManager:
         self._recover()
         for i in range(WORKERS):
             thread = threading.Thread(
-                target=self._loop, args=(f"{self.instance}-{i}",), daemon=True
+                target=self._loop, args=(f"{self.instance}-cpu-{i}", None), daemon=True
+            )
+            thread.start()
+            self.threads.append(thread)
+        for i in range(2):
+            thread = threading.Thread(
+                target=self._loop, args=(f"{self.instance}-remote-{i}", None, True), daemon=True
+            )
+            thread.start()
+            self.threads.append(thread)
+        for device in gpu_runtime.discover_gpus():
+            for slot in range(8):
+                thread = threading.Thread(
+                    target=self._loop,
+                    args=(f"{self.instance}-gpu-{device['uuid'][-8:]}-{slot}", device),
+                    daemon=True,
+                )
+                thread.start()
+                self.threads.append(thread)
+        device_group = gpu_runtime.enabled_devices()
+        if len(device_group) > 1:
+            thread = threading.Thread(
+                target=self._loop,
+                args=(f"{self.instance}-gpu-split", None, False, device_group),
+                daemon=True,
             )
             thread.start()
             self.threads.append(thread)
@@ -703,15 +730,15 @@ class TaskManager:
             except OSError:
                 pass
 
-    def _claim(self, worker):
+    def _claim(self, worker, gpu_id=None, remote_only=False, gpu_group=None):
         stamp = now()
         with closing(connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             # Select a task only when its *next* model run is ready. Selecting
             # the oldest parent task first used to let a retry backoff block all
             # newer ready work and left CPU capacity idle.
-            task = db.execute(
-                """SELECT t.task_id FROM tasks t
+            candidates = db.execute(
+                """SELECT t.* FROM tasks t
                    WHERE t.status IN ('queued','retrying') AND t.available_at<=?
                    AND (
                      -- ASR and LLM work share the same inference slots and
@@ -724,11 +751,13 @@ class TaskManager:
                      (t.kind IN ('chat','chat_async','text') AND (
                        SELECT count(*) FROM tasks active_llm
                        WHERE active_llm.status='running' AND active_llm.kind IN ('chat','chat_async','text')
+                       AND coalesce((SELECT device_type FROM task_runs active_run WHERE active_run.task_id=active_llm.task_id AND active_run.status='processing' LIMIT 1),'cpu')!='remote'
                      ) < ?)
                      OR
                      (t.kind='decision' AND (
                        SELECT count(*) FROM tasks active_decision
                        WHERE active_decision.status='running' AND active_decision.kind='decision'
+                       AND coalesce((SELECT device_type FROM task_runs active_run WHERE active_run.task_id=active_decision.task_id AND active_run.status='processing' LIMIT 1),'cpu')!='remote'
                      ) < ?)
                    )
                    AND EXISTS(
@@ -738,44 +767,60 @@ class TaskManager:
                                      WHERE first_run.task_id=t.task_id
                                      AND first_run.status IN ('pending','retrying'))
                    )
-                   ORDER BY t.created_at, t.rowid LIMIT 1""",
-                (stamp, LLM_MAX_CONCURRENT, DECISION_MAX_CONCURRENT, stamp),
-            ).fetchone()
-            if not task:
-                return None
-            run = db.execute(
-                "SELECT * FROM task_runs WHERE task_id=? AND status IN ('pending','retrying') AND available_at<=? ORDER BY position LIMIT 1",
-                (task["task_id"], stamp),
-            ).fetchone()
-            if not run or run["available_at"] > stamp:
-                return None
-            if not db.execute(
-                "UPDATE task_runs SET status='processing',worker_id=?,started_at=coalesce(started_at,?),attempt_started_at=?,heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status IN ('pending','retrying')",
-                (worker, stamp, stamp, stamp, stamp, run["id"]),
-            ).rowcount:
-                return None
-            db.execute(
-                "UPDATE tasks SET status='running',worker_id=?,started_at=coalesce(started_at,?),heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE task_id=?",
-                (worker, stamp, stamp, stamp, task["task_id"]),
-            )
-            claimed = dict(
-                db.execute(
-                    "SELECT * FROM tasks WHERE task_id=?", (task["task_id"],)
+                   ORDER BY t.created_at, t.rowid LIMIT 100""",
+                (
+                    stamp,
+                    max(LLM_MAX_CONCURRENT, len(gpu_runtime.enabled_devices()) * gpu_runtime.get_settings()["max_concurrent_per_device"]) if gpu_id else LLM_MAX_CONCURRENT,
+                    max(DECISION_MAX_CONCURRENT, len(gpu_runtime.enabled_devices()) * gpu_runtime.get_settings()["max_concurrent_per_device"]) if gpu_id else DECISION_MAX_CONCURRENT,
+                    stamp,
+                ),
+            ).fetchall()
+            for candidate in candidates:
+                kind = candidate["kind"]
+                model_id = candidate["model_id"]
+                route_kind = "asr" if kind == "asr" else "llm" if kind in {"chat", "chat_async", "text"} else kind
+                remote = uses_ninerouter(route_kind, model_id) if route_kind in {"asr", "llm"} else False
+                if remote_only != remote:
+                    continue
+                if gpu_id:
+                    needs_group = gpu_runtime.requires_multi_gpu(kind, model_id)
+                    if not gpu_runtime.gpu_eligible(kind, model_id) or needs_group != bool(gpu_group):
+                        continue
+                elif not remote and gpu_runtime.gpu_eligible(kind, model_id):
+                    settings = gpu_runtime.get_settings()
+                    if settings["mode"] == "gpu":
+                        continue
+                    if settings["mode"] == "auto":
+                        try:
+                            age_seconds = (datetime.now(timezone.utc) - datetime.fromisoformat(candidate["created_at"])).total_seconds()
+                        except (TypeError, ValueError):
+                            age_seconds = 0
+                        if age_seconds < settings["cpu_fallback_seconds"]:
+                            continue
+                task_id = candidate["task_id"]
+                run = db.execute(
+                    "SELECT * FROM task_runs WHERE task_id=? AND status IN ('pending','retrying') AND available_at<=? ORDER BY position LIMIT 1",
+                    (task_id, stamp),
                 ).fetchone()
-            )
-            claimed["run"] = dict(
+                if not run:
+                    continue
+                if not db.execute(
+                    "UPDATE task_runs SET status='processing',worker_id=?,device_id=?,device_type=?,started_at=coalesce(started_at,?),attempt_started_at=?,heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status IN ('pending','retrying')",
+                    (worker, gpu_id, "cuda_split" if gpu_group else "cuda" if gpu_id else "remote" if remote_only else "cpu", stamp, stamp, stamp, stamp, run["id"]),
+                ).rowcount:
+                    continue
                 db.execute(
-                    "SELECT * FROM task_runs WHERE id=?", (run["id"],)
-                ).fetchone()
-            )
-            if claimed.get("usage_id"):
-                db.execute(
-                    "UPDATE usage SET status='processing' WHERE id=?",
-                    (claimed["usage_id"],),
+                    "UPDATE tasks SET status='running',worker_id=?,started_at=coalesce(started_at,?),heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE task_id=?",
+                    (worker, stamp, stamp, stamp, task_id),
                 )
-            return claimed
+                claimed = dict(db.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone())
+                claimed["run"] = dict(db.execute("SELECT * FROM task_runs WHERE id=?", (run["id"],)).fetchone())
+                if claimed.get("usage_id"):
+                    db.execute("UPDATE usage SET status='processing' WHERE id=?", (claimed["usage_id"],))
+                return claimed
+            return None
 
-    def _loop(self, worker):
+    def _loop(self, worker, gpu_device=None, remote_worker=False, gpu_group=None):
         while not self.stop_event.is_set():
             if worker.endswith("-0") and time.monotonic() >= self.next_chat_expiry:
                 self.next_chat_expiry = time.monotonic() + 3600
@@ -785,11 +830,57 @@ class TaskManager:
                     logger.exception("Unable to expire completed chat tasks")
             # Do not start a new job merely because a numerical slot is free:
             # preserve CPU/RAM headroom for the OS and already-running jobs.
+            if gpu_device:
+                task = None
+                try:
+                    with gpu_runtime.reserve(gpu_device, timeout=0):
+                        task = self._claim(worker, gpu_device["uuid"])
+                        if task:
+                            self._run(task, object())
+                            run = row("SELECT status FROM task_runs WHERE id=?", (task["run"]["id"],))
+                            if run and run["status"] == "succeeded":
+                                gpu_runtime.record_success(gpu_device["uuid"])
+                except TimeoutError:
+                    pass
+                except Exception:
+                    logger.exception("GPU worker failed on %s", gpu_device["uuid"])
+                    gpu_runtime.record_error(gpu_device["uuid"], "GPU worker failure")
+                if not task:
+                    self.stop_event.wait(POLL_SECONDS)
+                continue
+            if gpu_group:
+                task = None
+                group_id = ",".join(device["uuid"] for device in gpu_group)
+                try:
+                    with gpu_runtime.reserve_group(gpu_group, timeout=0):
+                        task = self._claim(worker, group_id, gpu_group=gpu_group)
+                        if task:
+                            self._run(task, object())
+                            run = row("SELECT status FROM task_runs WHERE id=?", (task["run"]["id"],))
+                            if run and run["status"] == "succeeded":
+                                gpu_runtime.record_success(group_id)
+                except TimeoutError:
+                    pass
+                except Exception:
+                    logger.exception("Multi-GPU worker failed")
+                    gpu_runtime.record_error(group_id, "Multi-GPU worker failure")
+                if not task:
+                    self.stop_event.wait(POLL_SECONDS)
+                continue
+            if remote_worker:
+                try:
+                    task = self._claim(worker, remote_only=True)
+                except Exception:
+                    logger.exception("Unable to claim the next remote inference task")
+                    task = None
+                if task:
+                    self._run(task, object())
+                else:
+                    self.stop_event.wait(POLL_SECONDS)
+                continue
             if not admission_allowed(queue_depth() > 0):
                 self.stop_event.wait(POLL_SECONDS)
                 continue
-            # Admission happens before claiming the task. A task therefore is
-            # never presented as running while merely waiting for CPU capacity.
             slot = inference_slot(timeout=0)
             try:
                 slot.__enter__()
@@ -799,9 +890,6 @@ class TaskManager:
             try:
                 task = self._claim(worker)
             except Exception:
-                # This is a scheduler/database failure, not a task failure,
-                # so it has no task id to attach to the dashboard.  It must
-                # still be visible in the service logs.
                 logger.exception("Unable to claim the next queued task")
                 task = None
             if not task:
@@ -1045,10 +1133,18 @@ class TaskManager:
                 else:
                     payload = json.dumps({"model": run["model_id"], "messages": args["messages"],
                                           "options": args["options"]}, ensure_ascii=False)
+                    child_env = os.environ.copy()
+                    gpu_indices = gpu_runtime.current_device_indices()
+                    if gpu_indices:
+                        child_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_indices))
+                        child_env["ASR_ASSIGNED_GPU_INDICES"] = ",".join(str(index) for index in range(len(gpu_indices)))
+                        child_env["ASR_ASSIGNED_GPU_INDEX"] = "0"
+                        if gpu_runtime.current_is_split():
+                            child_env["ASR_ASSIGNED_GPU_SPLIT"] = "1"
                     with subprocess.Popen(
                         [sys.executable, "-m", "asr_service.services.chat_task_runner"],
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                        text=True,
+                        text=True, env=child_env,
                     ) as child:
                         try:
                             deadline = time.monotonic() + CHAT_TASK_TIMEOUT_SECONDS
@@ -1119,6 +1215,8 @@ class TaskManager:
             log_run(run["id"], "Model run was cancelled", "warning", "cancelled")
         except Exception as exc:
             elapsed = time.monotonic() - started
+            if run.get("device_id"):
+                gpu_runtime.record_error(run["device_id"], f"{type(exc).__name__}: {exc}")
             current = row("SELECT * FROM task_runs WHERE id=?", (run["id"],))
             retry = (
                 current

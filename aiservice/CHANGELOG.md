@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-22 — AMINAZADI
+
+- Added an optional CUDA 12.6/cuDNN 9 image and Compose overlay for NVIDIA GPU deployments while keeping CPU deployment as the default.
+- Added UUID-based GPU discovery, VRAM-aware reservations, per-device model caches, GPU/CPU scheduling, bounded CPU fallback, and OOM-driven concurrency backoff.
+- Added administrator GPU mode and device settings, per-GPU runtime metrics, query-preserved settings tabs, and scheduled embedding inference.
+- Persisted per-model execution device metadata and added focused GPU runtime coverage.
+
 ## 2026-10-09 — AMINAZADI
 
 - Isolated PyTorch wheel downloads from dependency resolution so all transitive Python packages are installed through the configured Iranian PyPI mirror instead of `files.pythonhosted.org`.

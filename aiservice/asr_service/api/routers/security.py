@@ -3,12 +3,14 @@
 import json
 import re
 from datetime import datetime, timezone
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from asr_service.infrastructure.storage import execute, now, row, rows
+from asr_service.services import gpu_runtime
 from asr_service.infrastructure.ninerouter import configured_models
 from ..dependencies import authorize_admin, issue_key
 from ..schemas.responses import RequestFailurePageResponse
@@ -162,6 +164,29 @@ class CorsPolicy(BaseModel):
 
 
 DEFAULT_CORS = CorsPolicy()
+
+
+class GpuRuntimeUpdate(BaseModel):
+    mode: Literal["auto", "cpu", "gpu"] = "auto"
+    enabled_devices: list[str] = Field(default_factory=list)
+    max_concurrent_per_device: int = Field(default=1, ge=1, le=8)
+    min_free_vram_mb: int = Field(default=1024, ge=0, le=65536)
+    cpu_fallback_seconds: int = Field(default=30, ge=0, le=3600)
+    large_model_policy: Literal["split_when_needed"] = "split_when_needed"
+
+
+@router.get("/gpu-runtime", summary="Get GPU inventory and scheduler settings")
+def get_gpu_runtime():
+    return {"settings": gpu_runtime.get_settings(), **gpu_runtime.snapshot()}
+
+
+@router.put("/gpu-runtime", summary="Update GPU scheduler settings")
+def put_gpu_runtime(body: GpuRuntimeUpdate):
+    try:
+        settings = gpu_runtime.save_settings(body.model_dump())
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, str(error)) from error
+    return {"settings": settings, **gpu_runtime.snapshot()}
 
 
 def get_cors_policy():

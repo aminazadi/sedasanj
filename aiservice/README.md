@@ -76,6 +76,36 @@ cache فقط RAM را آزاد می‌کند و آن مدل را غیرفعال 
 با backoff و jitter دوباره امتحان می‌شوند و lease تسک‌های نیمه‌کاره پس از restart بازیابی
 می‌شود. فایل ورودی پس از پایان حذف و نتیجه‌ها طبق TTL پاک می‌شوند.
 
+### اجرای چند GPU NVIDIA
+
+اجرای CPU پیش‌فرض باقی می‌ماند. برای ساخت و اجرای تصویر CUDA از NVIDIA Container Toolkit
+و Docker Compose سازگار با رزرو GPU استفاده کنید:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+تصویر GPU از PyTorch 2.7.1/CUDA 12.6/cuDNN 9 و llama.cpp با CUDA استفاده می‌کند؛
+CTranslate2 فقط وقتی CUDA را فعال می‌کند که کتابخانه و درایور داخل کانتینر قابل‌استفاده
+باشند. پیش از deploy، خروجی دستور زیر و دسترسی Docker به `nvidia-smi` را بررسی کنید:
+
+```bash
+nvidia-smi --query-gpu=index,uuid,name,memory.total,memory.free,utilization.gpu --format=csv
+```
+
+`nvidia-smi -L` فقط فهرست کارت‌ها را نشان می‌دهد و به‌تنهایی دسترسی کانتینر یا VRAM آزاد
+را تأیید نمی‌کند. workerهای محلی، ASR مبتنی بر faster-whisper، مدل GGUF، Laya و embeddingهای
+PyTorch را در صورت پشتیبانی runtime روی GPU اجرا می‌کنند. سایر معماری‌ها روی CPU می‌مانند؛
+درخواست‌های 9Router از worker محلی جدا هستند.
+
+در `auto`، کار GPU تا ۳۰ ثانیه برای ظرفیت می‌ماند و سپس فقط با پذیرش کنترل فشار CPU به مسیر
+CPU می‌رود. `gpu` این fallback را برای مدل‌های GPU-capable خاموش می‌کند و `cpu` همهٔ کارهای
+محلی را به CPU می‌فرستد. در **تنظیمات ← زمان‌بند GPU** دستگاه‌ها، حداقل VRAM آزاد، انتظار CPU
+و سقف هم‌زمانی را مدیریت کنید. سقف از یک کار برای هر GPU شروع می‌شود؛ پس از ده اجرای موفق
+یک پله بالا می‌رود تا به سقف تنظیم‌شده برسد و OOM آن را کاهش می‌دهد. پنل `/admin` و
+`GET /api/system-metrics` مصرف، ظرفیت مؤثر و خطای اخیر هر دستگاه را نمایش می‌دهند؛
+`GET/PUT /api/gpu-runtime` تنظیمات را می‌خواند و ذخیره می‌کند.
+
 تنظیمات مهم:
 
 - `ASR_TASK_WORKERS`: تعداد workerهای صف پایدار.

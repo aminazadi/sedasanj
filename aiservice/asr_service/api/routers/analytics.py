@@ -11,6 +11,7 @@ from asr_service.infrastructure import storage
 from asr_service.infrastructure.storage import row, rows
 from asr_service.services.system_monitor import snapshot
 from asr_service.services.resources import scheduler_state
+from asr_service.services import gpu_runtime
 from asr_service.services.task_queue import cancel_all_active, serialize_run
 
 from ..dependencies import authorize_admin
@@ -92,6 +93,7 @@ def system_metrics():
 
     result = snapshot()
     result["scheduler"] = scheduler_state()
+    result["gpus"] = gpu_runtime.snapshot()["devices"]
     return result
 
 
