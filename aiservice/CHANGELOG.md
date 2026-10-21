@@ -2,6 +2,8 @@
 
 ## 2026-10-22 — AMINAZADI
 
+- Completed the environment template for GPU scheduling and operational tuning, and passed GGUF context, queue polling, network metrics, and trusted proxy settings through Compose.
+- Removed legacy direct GGUF GPU-layer configuration so CPU fallback cannot bypass GPU reservations.
 - Added an optional CUDA 12.6/cuDNN 9 image and Compose overlay for NVIDIA GPU deployments while keeping CPU deployment as the default.
 - Added UUID-based GPU discovery, VRAM-aware reservations, per-device model caches, GPU/CPU scheduling, bounded CPU fallback, and OOM-driven concurrency backoff.
 - Added administrator GPU mode and device settings, per-GPU runtime metrics, query-preserved settings tabs, and scheduled embedding inference.

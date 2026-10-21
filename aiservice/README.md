@@ -351,8 +351,8 @@ curl http://localhost:8000/v1/text/process \
 اطلاعات جزئی فقط هنگام بازشدن آکاردئون دریافت می‌شود تا تاریخچه‌های بزرگ سبک بمانند.
 
 برای صورت‌جلسه، `operation` را `minutes` و `style` را یکی از `formal`،
-`semi_formal` یا `action` قرار دهید. دقیقاً یکی از `model` یا `models` اجباری است. اجرای پیش‌فرض CPU است و با
-`DORNA_GPU_LAYERS` قابل تنظیم است.
+`semi_formal` یا `action` قرار دهید. دقیقاً یکی از `model` یا `models` اجباری است. اجرای GPU
+مدل‌های GGUF از زمان‌بند مشترک و تنظیمات GPU پنل ادمین کنترل می‌شود.
 
 ## API سازگار با OpenAI برای مدل‌های متنی
 

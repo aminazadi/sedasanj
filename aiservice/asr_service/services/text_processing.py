@@ -15,7 +15,7 @@ def _load(mid, device_index=None, split=False):
  from llama_cpp import Llama
  filename=CATALOG[mid].files[0].filename
  context=CATALOG[mid].decoding.get("context_size") or int(os.getenv("DORNA_CONTEXT_SIZE","12288"))
- options={"model_path":str(MODEL_DIR/mid/filename),"n_ctx":context,"n_gpu_layers":int(os.getenv("DORNA_GPU_LAYERS","0")),"n_threads":LLM_CPU_THREADS,"n_threads_batch":LLM_CPU_THREADS,"verbose":False}
+ options={"model_path":str(MODEL_DIR/mid/filename),"n_ctx":context,"n_gpu_layers":0,"n_threads":LLM_CPU_THREADS,"n_threads_batch":LLM_CPU_THREADS,"verbose":False}
  if device_index is not None:
   from llama_cpp import LLAMA_SPLIT_MODE_LAYER, LLAMA_SPLIT_MODE_NONE
   options.update(n_gpu_layers=-1,split_mode=LLAMA_SPLIT_MODE_LAYER if split else LLAMA_SPLIT_MODE_NONE,main_gpu=device_index)
