@@ -56,6 +56,9 @@ def _load(mid, device_index):
  if spec.architecture=="nemoCtc":return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(model=str(root/"model.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS)
  return sherpa_onnx.OfflineRecognizer.from_transducer(encoder=str(root/"encoder.int8.onnx"),decoder=str(root/"decoder.int8.onnx"),joiner=str(root/"joiner.int8.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS,model_type="nemo_transducer")
 def load(mid):return _load(mid,gpu_runtime.current_device_index())
+def evict_model(mid):
+ _load.cache_clear()
+ if mid=="gtcrn-denoiser":denoiser.cache_clear()
 def _decode_whisper(engine, source, options):
  """Materialize the lazy segment iterator while its input stream is still alive."""
  iterator, info = engine.transcribe(source, **options)

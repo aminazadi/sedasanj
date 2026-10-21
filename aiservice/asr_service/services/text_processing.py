@@ -19,6 +19,9 @@ def _load(mid, device_index=None, split=False):
  if device_index is not None:
   from llama_cpp import LLAMA_SPLIT_MODE_LAYER, LLAMA_SPLIT_MODE_NONE
   options.update(n_gpu_layers=-1,split_mode=LLAMA_SPLIT_MODE_LAYER if split else LLAMA_SPLIT_MODE_NONE,main_gpu=device_index)
+  if split:
+   indices=gpu_runtime.current_device_indices()
+   options["tensor_split"]=[1.0 if index in indices else 0.0 for index in range(max(indices)+1)]
  return Llama(**options)
 
 
@@ -76,6 +79,19 @@ class GlobalModelPool:
   self.total = 0
   self.condition = threading.Condition()
 
+ def evict(self, model_id):
+  removed=[]
+  with self.condition:
+   for key in [key for key in self.idle if key[0]==model_id]:
+    removed.extend(self.idle.pop(key))
+   self.total-=len(removed)
+   self.condition.notify_all()
+  for model in removed:
+   close=getattr(model,"close",None)
+   if close:
+    try:close()
+    except Exception:pass
+
  @contextmanager
  def lease(self, model_id):
   device_index=gpu_runtime.current_device_index()
@@ -88,7 +104,8 @@ class GlobalModelPool:
     if self.idle[cache_key]:
      model = self.idle[cache_key].pop()
      break
-    if self.total < self.maximum:
+    capacity=max(self.maximum, LLM_MAX_CONCURRENT+len(gpu_runtime.enabled_devices())*gpu_runtime.get_settings()["max_concurrent_per_device"])
+    if self.total < capacity:
      self.total += 1
      model = None
      create = True
@@ -117,7 +134,16 @@ class GlobalModelPool:
     raise
   try:
    yield model
-  finally:
+  except BaseException:
+   close=getattr(model,"close",None)
+   if close:
+    try:close()
+    except Exception:pass
+   with self.condition:
+    self.total -= 1
+    self.condition.notify_all()
+   raise
+  else:
    with self.condition:
     self.idle[cache_key].append(model)
     self.condition.notify_all()
@@ -132,7 +158,11 @@ class _ModelLease:
   return self.registry.lease(self.model_id)
 
 
-_global_pool = GlobalModelPool(max(LLM_MAX_CONCURRENT, 64))
+_global_pool = GlobalModelPool(LLM_MAX_CONCURRENT)
+
+
+def evict_model(model_id):
+ _global_pool.evict(model_id)
 
 
 def _pool(model_id):

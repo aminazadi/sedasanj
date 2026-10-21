@@ -74,8 +74,8 @@ class GpuRuntimeTests(unittest.TestCase):
         from asr_service.infrastructure import storage
 
         devices = [
-            {"index": 0, "uuid": "GPU-a", "memory_free": 4 * 1024**3},
-            {"index": 1, "uuid": "GPU-b", "memory_free": 4 * 1024**3},
+            {"index": 0, "uuid": "GPU-a", "memory_total": 8 * 1024**3, "memory_free": 4 * 1024**3},
+            {"index": 1, "uuid": "GPU-b", "memory_total": 8 * 1024**3, "memory_free": 4 * 1024**3},
         ]
         settings = {"min_free_vram_mb": 1024}
         with tempfile.TemporaryDirectory() as directory:
@@ -86,7 +86,41 @@ class GpuRuntimeTests(unittest.TestCase):
             with patch.object(gpu_runtime, "enabled_devices", return_value=devices), patch.object(
                 gpu_runtime, "get_settings", return_value=settings
             ), patch.object(storage, "MODEL_DIR", Path(directory)):
+                self.assertFalse(gpu_runtime.requires_multi_gpu("chat", "dorna-8b-q4_k_m"))
+                devices[0]["memory_total"] = 6 * 1024**3
+                devices[1]["memory_total"] = 6 * 1024**3
                 self.assertTrue(gpu_runtime.requires_multi_gpu("chat", "dorna-8b-q4_k_m"))
+
+    def test_split_selects_only_the_cards_required_for_the_model(self):
+        from asr_service.infrastructure import storage
+
+        devices = [
+            {"index": index, "uuid": f"GPU-{index}", "memory_total": 6 * 1024**3, "memory_free": 5 * 1024**3}
+            for index in range(3)
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            model_dir = Path(directory) / "dorna-8b-q4_k_m"
+            model_dir.mkdir()
+            with (model_dir / "Dorna-Llama3-8B-Instruct.Q4_K_M.gguf").open("wb") as model_file:
+                model_file.truncate(6 * 1024**3)
+            with patch.object(gpu_runtime, "enabled_devices", return_value=devices), patch.object(
+                gpu_runtime, "get_settings", return_value={"min_free_vram_mb": 1024}
+            ), patch.object(storage, "MODEL_DIR", Path(directory)):
+                self.assertEqual(2, len(gpu_runtime.split_devices("chat", "dorna-8b-q4_k_m")))
+
+    def test_cpu_mode_preserves_selected_devices_for_admin_settings(self):
+        device = {"index": 0, "uuid": "GPU-a", "name": "RTX", "memory_total": 8 * 1024**3,
+                  "memory_free": 7 * 1024**3, "utilization_percent": 0}
+        settings = {"mode": "cpu", "enabled_devices": ["GPU-a"], "max_concurrent_per_device": 1,
+                    "cpu_fallback_seconds": 30, "min_free_vram_mb": 1024}
+        with patch.object(gpu_runtime, "get_settings", return_value=settings), patch.object(
+            gpu_runtime, "discover_gpus", return_value=[device]
+        ), patch.object(gpu_runtime, "runtime_capabilities", return_value={}), patch.object(
+            gpu_runtime, "rows", return_value=[]
+        ):
+            observed = gpu_runtime.snapshot()["devices"][0]
+        self.assertTrue(observed["selected"])
+        self.assertFalse(observed["enabled"])
 
 
 if __name__ == "__main__":

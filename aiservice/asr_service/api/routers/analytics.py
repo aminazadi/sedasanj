@@ -296,7 +296,7 @@ def usage_detail(usage_id: int):
     )
     runs = rows(
         """SELECT id,position,model_id,status,attempts,started_at,finished_at,
-        duration_seconds,processing_seconds,result_json,error
+        duration_seconds,processing_seconds,result_json,error,device_id,device_type,device_reason
         FROM task_runs WHERE usage_id=? ORDER BY position""",
         (usage_id,),
     )

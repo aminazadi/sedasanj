@@ -35,6 +35,14 @@ class DownloadManager:
    if CATALOG[mid].kind == "embedding":
     from .embedding_processing import registry
     registry.evict(mid)
+   if CATALOG[mid].kind == "asr":
+    from .inference import evict_model
+    evict_model(mid)
+   if CATALOG[mid].kind == "llm":
+    from .text_processing import evict_model
+    evict_model(mid)
+    from .gpu_runtime import forget_model
+    forget_model(mid)
    for folder in (MODEL_DIR/mid,MODEL_DIR/(mid+".staging")):
     if folder.is_symlink():raise HTTPException(409,"Model directory is a symbolic link")
     if folder.is_dir():shutil.rmtree(folder)

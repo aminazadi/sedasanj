@@ -21,7 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl lib
 WORKDIR /app
 COPY requirements-runtime.txt requirements-build.txt ./
 RUN python -m pip install --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
-    -r requirements-runtime.txt -r requirements-build.txt
+    -r requirements-runtime.txt -r requirements-build.txt \
+    && python -m pip install --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
+       --force-reinstall --no-deps --no-binary=llama-cpp-python llama-cpp-python==0.3.16 \
+    && python -c "from llama_cpp import llama_supports_gpu_offload; assert llama_supports_gpu_offload(), 'llama.cpp CUDA backend was not built'"
 COPY app.py ./
 COPY asr_service ./asr_service
 RUN useradd --create-home --uid 10001 asr \

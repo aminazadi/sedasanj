@@ -1,5 +1,6 @@
 import json, tempfile, threading, time, unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from asr_service.infrastructure import storage
@@ -152,6 +153,61 @@ class TaskQueueTests(unittest.TestCase):
         self.assertIsNotNone(claimed_asr)
         self.assertEqual(asr["task_id"], claimed_asr["task_id"])
 
+    def test_failover_routes_using_the_next_model_run(self):
+        task, _ = self.queue.enqueue("chat", models=["local-first", "remote-second"], input_data={"messages": []})
+        first, second = self.queue.get_runs(task["task_id"])
+        storage.execute("UPDATE task_runs SET status='failed' WHERE id=?", (first["id"],))
+        with patch.object(self.queue, "uses_ninerouter", side_effect=lambda _kind, model: model == "remote-second"):
+            claimed = self.queue.TaskManager()._claim("remote-worker", remote_only=True)
+        self.assertIsNotNone(claimed)
+        self.assertEqual(second["id"], claimed["run"]["id"])
+        self.assertEqual("remote", claimed["run"]["device_type"])
+
+    def test_eligible_task_after_one_hundred_ineligible_tasks_can_be_claimed(self):
+        with patch.object(self.queue, "QUEUE_LIMIT", 200):
+            for index in range(101):
+                self.queue.enqueue("chat", f"local-{index}", input_data={"messages": []})
+            remote, _ = self.queue.enqueue("chat", "remote-last", input_data={"messages": []})
+        with patch.object(self.queue, "uses_ninerouter", side_effect=lambda _kind, model: model == "remote-last"):
+            claimed = self.queue.TaskManager()._claim("remote-worker", remote_only=True)
+        self.assertEqual(remote["task_id"], claimed["task_id"])
+
+    def test_stale_worker_is_recovered_without_allowing_old_owner_to_complete(self):
+        task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})
+        manager = self.queue.TaskManager()
+        claimed = manager._claim("old-worker")
+        storage.execute(
+            "UPDATE task_runs SET heartbeat_at='2000-01-01T00:00:00+00:00' WHERE id=?",
+            (claimed["run"]["id"],),
+        )
+        manager._reap_stale()
+        self.assertEqual("retrying", self.queue.get_runs(task["task_id"])[0]["status"])
+        self.assertEqual(
+            0,
+            manager._update_owned_run(claimed["run"], "status='succeeded'", ()),
+        )
+        self.assertEqual("retrying", self.queue.get_task(task["task_id"])["status"])
+
+    def test_gpu_mode_does_not_silently_run_cuda_model_on_cpu_without_device(self):
+        self.queue.enqueue("chat", "local", input_data={"messages": []})
+        with patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}), patch.object(
+            self.queue.gpu_runtime, "cuda_model_family", return_value=True
+        ), patch.object(self.queue.gpu_runtime, "gpu_eligible", return_value=False):
+            self.assertIsNone(self.queue.TaskManager()._claim("cpu-worker"))
+
+    def test_stale_cancelled_worker_finishes_as_cancelled(self):
+        task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})
+        manager = self.queue.TaskManager()
+        claimed = manager._claim("old-worker")
+        storage.execute("UPDATE tasks SET cancel_requested=1 WHERE task_id=?", (task["task_id"],))
+        storage.execute(
+            "UPDATE task_runs SET heartbeat_at='2000-01-01T00:00:00+00:00' WHERE id=?",
+            (claimed["run"]["id"],),
+        )
+        manager._reap_stale()
+        self.assertEqual("cancelled", self.queue.get_task(task["task_id"])["status"])
+        self.assertEqual("cancelled", self.queue.get_runs(task["task_id"])[0]["status"])
+
     def test_installed_local_model_wins_over_same_remote_identifier(self):
         model_dir = storage.MODEL_DIR
         local = model_dir / "whisper-large-v3"
@@ -180,7 +236,9 @@ class TaskQueueTests(unittest.TestCase):
         manager = self.queue.TaskManager()
         claimed = manager._claim("worker")
         self.assertIsNotNone(claimed)
-        manager._run(claimed)
+        normalization = SimpleNamespace(normalize_transcription=lambda _path, result, _decode, **_options: result)
+        with patch.dict("sys.modules", {"asr_service.services.speech_segmentation": normalization}):
+            manager._run(claimed)
         usage = storage.row(
             "SELECT status,result_json,content_type FROM usage WHERE id=?",
             (task["usage_id"],),
@@ -188,6 +246,9 @@ class TaskQueueTests(unittest.TestCase):
         self.assertEqual("success", usage["status"])
         self.assertEqual("سلام", json.loads(usage["result_json"]))
         self.assertEqual("text/plain", usage["content_type"])
+        from asr_service.api.routers.analytics import usage_detail
+
+        self.assertEqual("cpu", usage_detail(task["usage_id"])["runs"][0]["device_type"])
 
     def test_no_speech_result_fails_once_instead_of_retrying_as_success(self):
         self.queue.TASK_DIR.mkdir(parents=True, exist_ok=True)

@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +20,27 @@ from . import gpu_runtime
 
 class EmbeddingRegistry:
     def __init__(self) -> None:
-        self._models: dict[str, tuple[Any, Any]] = {}
-        self._lock = threading.Lock()
+        self._models: dict[tuple[str, int | None], tuple[Any, Any]] = {}
+        self._active: dict[str, int] = {}
+        self._lock = threading.RLock()
 
     def evict(self, model_id: str) -> None:
         with self._lock:
+            if self._active.get(model_id, 0):
+                raise HTTPException(409, "Wait for active embedding inference before deleting this model")
             for key in [key for key in self._models if key[0] == model_id]:
                 self._models.pop(key, None)
+
+    @contextmanager
+    def lease(self, model_id: str):
+        with self._lock:
+            loaded = self.get(model_id)
+            self._active[model_id] = self._active.get(model_id, 0) + 1
+        try:
+            yield loaded
+        finally:
+            with self._lock:
+                self._active[model_id] -= 1
 
     def get(self, model_id: str) -> tuple[Any, Any]:
         spec = CATALOG.get(model_id)
@@ -66,44 +82,49 @@ def embed(model_id: str, values: list[str]) -> tuple[list[list[float]], int]:
     import torch
     from torch.nn import functional
 
-    tokenizer, model = registry.get(model_id)
-    spec = CATALOG[model_id]
-    max_length = int(spec.decoding.get("context_size") or 512)
-    encoded = tokenizer(
-        values,
-        padding=True,
-        truncation=True,
-        max_length=max_length,
-        return_tensors="pt",
-    )
-    device = next(model.parameters()).device
-    encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
-    with torch.inference_mode():
-        output = model(**encoded)
-        mask = encoded["attention_mask"].unsqueeze(-1).to(output.last_hidden_state.dtype)
-        pooled = (output.last_hidden_state * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
-        normalized = functional.normalize(pooled, p=2, dim=1)
-    token_count = int(encoded["attention_mask"].sum().item())
-    return normalized.cpu().tolist(), token_count
+    with registry.lease(model_id) as (tokenizer, model):
+        spec = CATALOG[model_id]
+        max_length = int(spec.decoding.get("context_size") or 512)
+        encoded = tokenizer(
+            values,
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt",
+        )
+        device = next(model.parameters()).device
+        encoded = {key: tensor.to(device) for key, tensor in encoded.items()}
+        with torch.inference_mode():
+            output = model(**encoded)
+            mask = encoded["attention_mask"].unsqueeze(-1).to(output.last_hidden_state.dtype)
+            pooled = (output.last_hidden_state * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+            normalized = functional.normalize(pooled, p=2, dim=1)
+        token_count = int(encoded["attention_mask"].sum().item())
+        return normalized.cpu().tolist(), token_count
 
 
 def embed_scheduled(model_id: str, values: list[str]) -> tuple[list[list[float]], int]:
-    from .resources import inference_slot
+    from .resources import admission_allowed, inference_slot
 
     if gpu_runtime.gpu_eligible("embedding", model_id):
-        devices = sorted(gpu_runtime.enabled_devices(), key=lambda item: (item["utilization_percent"], -item["memory_free"]))
-        for device in devices:
-            try:
-                with gpu_runtime.reserve(device, timeout=0):
-                    return embed(model_id, values)
-            except TimeoutError:
-                continue
-        if devices:
-            try:
-                with gpu_runtime.reserve(devices[0], timeout=gpu_runtime.gpu_wait_seconds()):
-                    return embed(model_id, values)
-            except TimeoutError:
-                pass
+        deadline = time.monotonic() + gpu_runtime.gpu_wait_seconds()
+        while True:
+            devices = sorted(gpu_runtime.enabled_devices(), key=lambda item: (item["utilization_percent"], -item["memory_free"]))
+            for device in devices:
+                try:
+                    with gpu_runtime.reserve(device, timeout=0):
+                        return embed(model_id, values)
+                except TimeoutError:
+                    continue
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(min(0.1, deadline - time.monotonic()))
+        if gpu_runtime.get_settings()["mode"] == "gpu":
+            raise HTTPException(503, "GPU capacity is currently unavailable")
+    elif gpu_runtime.get_settings()["mode"] == "gpu" and gpu_runtime.cuda_model_family("embedding", model_id):
+        raise HTTPException(503, "GPU runtime is currently unavailable")
+    while not admission_allowed():
+        time.sleep(0.25)
     with inference_slot():
         return embed(model_id, values)
 

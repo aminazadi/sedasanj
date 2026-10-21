@@ -33,6 +33,8 @@ class DecisionRuntimeRegistry:
 
     def evict(self, model_id):
         with self._lock:
+            if any(item["active"] for key, item in self._items.items() if key[0] == model_id):
+                raise HTTPException(409, "Wait for active decision inference before deleting this model")
             for key in [key for key in self._items if key[0] == model_id]:
                 self._items.pop(key, None)
 

@@ -7,20 +7,22 @@ import os
 import subprocess
 import threading
 import time
-from functools import lru_cache
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from asr_service.infrastructure.storage import execute, row
+from asr_service.infrastructure.storage import execute, row, rows
 
 
 _current_gpu = ContextVar("asr_current_gpu", default=None)
 _lock = threading.Condition()
 _active = {}
 _last_errors = {}
+_oom_counts = {}
 _effective_limits = {}
 _success_streaks = {}
+_oom_split_models = set()
 _device_cache = {"at": 0.0, "value": []}
+_capability_cache = {"at": 0.0, "value": {}}
 CPU_FALLBACK_SECONDS = max(0, int(os.getenv("ASR_GPU_CPU_FALLBACK_SECONDS", "30")))
 GPU_MIN_FREE_BYTES = max(0, int(os.getenv("ASR_GPU_MIN_FREE_MB", "1024"))) * 1024 * 1024
 GPU_MAX_CONCURRENT = max(1, int(os.getenv("ASR_GPU_MAX_CONCURRENT", "1")))
@@ -103,9 +105,11 @@ def save_settings(value):
     return current
 
 
-@lru_cache(maxsize=1)
 def runtime_capabilities():
     """Probe installed local backends without importing GPU libraries eagerly."""
+    with _lock:
+        if time.monotonic() - _capability_cache["at"] < 30:
+            return dict(_capability_cache["value"])
     result = {"ctranslate2": False, "llama_cpp": False, "torch": False}
     try:
         import ctranslate2
@@ -122,6 +126,8 @@ def runtime_capabilities():
         result["torch"] = bool(torch.cuda.is_available())
     except Exception:
         pass
+    with _lock:
+        _capability_cache.update(at=time.monotonic(), value=dict(result))
     return result
 
 
@@ -138,21 +144,33 @@ def gpu_eligible(kind, model_id):
     devices = enabled_devices()
     if not devices:
         return False
+    if not cuda_model_family(kind, model_id):
+        return False
+    capabilities = runtime_capabilities()
+    if kind == "asr":
+        return capabilities["ctranslate2"]
+    if kind in {"chat", "chat_async", "text"}:
+        return capabilities["llama_cpp"]
+    if kind == "decision":
+        return capabilities["torch"]
+    if kind == "embedding":
+        return capabilities["torch"]
+    return False
+
+
+def cuda_model_family(kind, model_id):
     from asr_service.domain.catalog import CATALOG
 
     model = CATALOG.get(model_id)
     if not model:
         return False
-    capabilities = runtime_capabilities()
     if kind == "asr":
-        return model.architecture == "fasterWhisper" and capabilities["ctranslate2"]
+        return model.architecture == "fasterWhisper"
     if kind in {"chat", "chat_async", "text"}:
-        return model.kind == "llm" and capabilities["llama_cpp"]
+        return model.kind == "llm"
     if kind == "decision":
-        return model.kind == "decision" and model.engine == "laya_multilingual" and capabilities["torch"]
-    if kind == "embedding":
-        return model.kind == "embedding" and capabilities["torch"]
-    return False
+        return model.kind == "decision" and model.engine == "laya_multilingual"
+    return kind == "embedding" and model.kind == "embedding"
 
 
 def gpu_wait_seconds():
@@ -192,28 +210,64 @@ def current_device_indices():
     return [index] if index is not None else []
 
 
-def requires_multi_gpu(kind, model_id):
-    if kind not in {"chat", "chat_async", "text"}:
-        return False
-    devices = enabled_devices()
-    if len(devices) < 2:
-        return False
+def model_memory_estimate(model_id):
     from asr_service.domain.catalog import CATALOG
     from asr_service.infrastructure.storage import MODEL_DIR
 
     model = CATALOG.get(model_id)
     if not model or model.kind != "llm" or not model.files:
-        return False
+        return 0
     path = MODEL_DIR / model_id / model.files[0].filename
     try:
         required = path.stat().st_size
     except OSError:
         required = model.files[0].expected_size or 0
     if not required:
-        return False
+        return 0
+    return int(required * 1.15)
+
+
+def split_devices(kind, model_id):
+    if kind not in {"chat", "chat_async", "text"}:
+        return []
+    devices = enabled_devices()
+    if len(devices) < 2:
+        return []
+    required = model_memory_estimate(model_id)
+    if not required:
+        return []
     safety = int(get_settings()["min_free_vram_mb"]) * 1024 * 1024
-    required = int(required * 1.15) + safety
-    return max(device["memory_free"] for device in devices) < required <= sum(device["memory_free"] for device in devices) - safety
+    with _lock:
+        forced = model_id in _oom_split_models
+    usable = [(max(0, device["memory_total"] - safety), device) for device in devices]
+    if not forced and max(capacity for capacity, _ in usable) >= required:
+        return []
+    ordered = sorted(usable, key=lambda item: (-item[0], -item[1]["memory_free"]))
+    selected = []
+    capacity = 0
+    for available, device in ordered:
+        selected.append(device)
+        capacity += available
+        if len(selected) >= 2 and capacity >= required:
+            return selected
+    return []
+
+
+def requires_multi_gpu(kind, model_id):
+    return bool(split_devices(kind, model_id))
+
+
+def note_model_oom(model_id, message):
+    lowered = str(message).lower()
+    if "out of memory" in lowered or "cuda_error_out_of_memory" in lowered:
+        with _lock:
+            _oom_split_models.add(model_id)
+            _lock.notify_all()
+
+
+def forget_model(model_id):
+    with _lock:
+        _oom_split_models.discard(model_id)
 
 
 def record_error(device_id, message):
@@ -223,6 +277,7 @@ def record_error(device_id, message):
         for identifier in identifiers:
             _last_errors[identifier] = {"message": str(message)[:300], "at": time.time()}
             if "out of memory" in lowered or "cuda_error_out_of_memory" in lowered:
+                _oom_counts[identifier] = _oom_counts.get(identifier, 0) + 1
                 _effective_limits[identifier] = max(1, _effective_limits.get(identifier, 1) - 1)
                 _success_streaks[identifier] = 0
         _lock.notify_all()
@@ -241,7 +296,7 @@ def record_success(device_id):
 
 
 @contextmanager
-def reserve_group(devices, timeout=0):
+def reserve_group(devices, timeout=0, required_bytes=0):
     """Atomically reserve every enabled GPU for a model that needs sharding."""
     devices = sorted(devices, key=lambda item: item["uuid"])
     identifiers = [device["uuid"] for device in devices]
@@ -259,6 +314,7 @@ def reserve_group(devices, timeout=0):
                 and set(identifiers) <= set(settings.get("enabled_devices") or ())
                 and all(item in current and current[item]["memory_free"] >= minimum for item in identifiers)
                 and all(_active.get(item, 0) == 0 for item in identifiers)
+                and sum(max(0, current[item]["memory_free"] - minimum) for item in identifiers if item in current) >= required_bytes
             )
             if available:
                 for item in identifiers:
@@ -321,13 +377,33 @@ def snapshot():
     with _lock:
         active = dict(_active)
         errors = dict(_last_errors)
+        oom_counts = dict(_oom_counts)
+    try:
+        counts = rows(
+            """SELECT device_id,status,count(*) AS n FROM task_runs
+               WHERE device_id IS NOT NULL AND status IN ('processing','succeeded','failed')
+               GROUP BY device_id,status"""
+        )
+    except Exception:
+        counts = []
+    by_device = {}
+    for item in counts:
+        for identifier in item["device_id"].split(","):
+            by_device.setdefault(identifier, {})[item["status"]] = item["n"]
     for device in devices:
+        outcomes = by_device.get(device["uuid"], {})
+        completed = outcomes.get("succeeded", 0) + outcomes.get("failed", 0)
         device.update({
+            "selected": device["uuid"] in enabled,
             "enabled": device["uuid"] in enabled and settings["mode"] != "cpu",
             "active": active.get(device["uuid"], 0),
             "max_concurrent": settings["max_concurrent_per_device"],
             "effective_max_concurrent": min(settings["max_concurrent_per_device"], _effective_limits.get(device["uuid"], 1)),
             "last_error": errors.get(device["uuid"]),
+            "oom_count": oom_counts.get(device["uuid"], 0),
+            "succeeded": outcomes.get("succeeded", 0),
+            "failed": outcomes.get("failed", 0),
+            "success_rate": round(outcomes.get("succeeded", 0) / completed, 4) if completed else None,
         })
     return {
         "mode": settings["mode"], "devices": devices,

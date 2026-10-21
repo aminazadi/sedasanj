@@ -6,6 +6,11 @@
 - Added UUID-based GPU discovery, VRAM-aware reservations, per-device model caches, GPU/CPU scheduling, bounded CPU fallback, and OOM-driven concurrency backoff.
 - Added administrator GPU mode and device settings, per-GPU runtime metrics, query-preserved settings tabs, and scheduled embedding inference.
 - Persisted per-model execution device metadata and added focused GPU runtime coverage.
+- Corrected failover dispatch to use the next model run, separated CPU concurrency from GPU reservations, and removed the 100-candidate claim ceiling.
+- Stabilized GGUF split decisions against transient free-VRAM changes, reserved only the GPU subset needed by large models, checked available split memory, and prioritized aging split jobs.
+- Recovered stale worker heartbeats, guarded task completion against cancellation and reassignment races, and recorded CPU fallback reasons and per-device outcomes.
+- Evicted ASR, GGUF, decision, and embedding caches safely during model deletion; kept selected GPUs checked in CPU mode and restored history filters from the URL.
+- Forced the GPU image to compile and verify the llama.cpp CUDA backend during build.
 
 ## 2026-10-09 — AMINAZADI
 

@@ -570,6 +570,7 @@ def serialize_run(run, response_format="verbose_json"):
         "error": run.get("error"),
         "device_id": run.get("device_id"),
         "device_type": run.get("device_type"),
+        "device_reason": run.get("device_reason"),
     }
 
 
@@ -579,6 +580,14 @@ class TaskManager:
         self.threads = []
         self.instance = uuid.uuid4().hex[:12]
         self.next_chat_expiry = 0
+        self.next_stale_scan = 0
+
+    def _update_owned_run(self, run, values, arguments):
+        with closing(connect()) as db, db:
+            return db.execute(
+                f"UPDATE task_runs SET {values} WHERE id=? AND status='processing' AND worker_id=?",
+                (*arguments, run["id"], run["worker_id"]),
+            ).rowcount
 
     def _expire_chat_tasks(self):
         """Purge private chat results and idempotency keys past retention."""
@@ -621,11 +630,10 @@ class TaskManager:
                 )
                 thread.start()
                 self.threads.append(thread)
-        device_group = gpu_runtime.enabled_devices()
-        if len(device_group) > 1:
+        if len(gpu_runtime.discover_gpus()) > 1:
             thread = threading.Thread(
                 target=self._loop,
-                args=(f"{self.instance}-gpu-split", None, False, device_group),
+                args=(f"{self.instance}-gpu-split", None, False, True),
                 daemon=True,
             )
             thread.start()
@@ -641,8 +649,19 @@ class TaskManager:
         recover_interrupted_chat_completions()
         self._expire_chat_tasks()
         for run in rows(
-            "SELECT id,task_id,attempts,max_attempts FROM task_runs WHERE status='processing' AND task_id IS NOT NULL"
+            """SELECT r.id,r.task_id,r.attempts,r.max_attempts,t.cancel_requested
+               FROM task_runs r JOIN tasks t ON t.task_id=r.task_id WHERE r.status='processing'"""
         ):
+            if run["cancel_requested"]:
+                execute(
+                    "UPDATE task_runs SET status='cancelled',finished_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL,error='Cancelled during worker restart' WHERE id=?",
+                    (now(), now(), run["id"]),
+                )
+                execute(
+                    "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,error='Skipped after cancellation' WHERE task_id=? AND status IN ('pending','retrying')",
+                    (now(), now(), run["task_id"]),
+                )
+                continue
             if run["attempts"] < run["max_attempts"]:
                 execute(
                     "UPDATE task_runs SET status='retrying',worker_id=NULL,available_at=?,updated_at=?,error='Worker interrupted; run recovered' WHERE id=?",
@@ -730,7 +749,71 @@ class TaskManager:
             except OSError:
                 pass
 
-    def _claim(self, worker, gpu_id=None, remote_only=False, gpu_group=None):
+    def _reap_stale(self):
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=STALE_SECONDS)).isoformat()
+        recovered = []
+        exhausted = []
+        with closing(connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            stale = db.execute(
+                """SELECT r.id,r.task_id,r.attempts,r.max_attempts,t.cancel_requested
+                   FROM task_runs r JOIN tasks t ON t.task_id=r.task_id
+                   WHERE r.status='processing' AND coalesce(r.heartbeat_at,r.attempt_started_at,r.started_at)<?""",
+                (cutoff,),
+            ).fetchall()
+            for run in stale:
+                stamp = now()
+                if run["cancel_requested"]:
+                    changed = db.execute(
+                        """UPDATE task_runs SET status='cancelled',worker_id=NULL,heartbeat_at=NULL,
+                           finished_at=?,updated_at=?,error='Cancelled after worker heartbeat expired'
+                           WHERE id=? AND status='processing'""",
+                        (stamp, stamp, run["id"]),
+                    ).rowcount
+                    if changed:
+                        db.execute(
+                            "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,error='Skipped after cancellation' WHERE task_id=? AND status IN ('pending','retrying')",
+                            (stamp, stamp, run["task_id"]),
+                        )
+                        exhausted.append((run["id"], run["task_id"], True))
+                    continue
+                if run["attempts"] < run["max_attempts"]:
+                    changed = db.execute(
+                        """UPDATE task_runs SET status='retrying',worker_id=NULL,heartbeat_at=NULL,
+                           available_at=?,updated_at=?,error='Worker heartbeat expired; run recovered'
+                           WHERE id=? AND status='processing'""",
+                        (stamp, stamp, run["id"]),
+                    ).rowcount
+                    if changed:
+                        db.execute(
+                            """UPDATE tasks SET status='retrying',worker_id=NULL,heartbeat_at=NULL,
+                               available_at=?,updated_at=? WHERE task_id=? AND status='running'""",
+                            (stamp, stamp, run["task_id"]),
+                        )
+                        recovered.append(run["id"])
+                else:
+                    changed = db.execute(
+                        """UPDATE task_runs SET status='failed',worker_id=NULL,heartbeat_at=NULL,
+                           finished_at=?,updated_at=?,error='Worker heartbeat expired on final attempt'
+                           WHERE id=? AND status='processing'""",
+                        (stamp, stamp, run["id"]),
+                    ).rowcount
+                    if changed:
+                        exhausted.append((run["id"], run["task_id"], False))
+        for run_id in recovered:
+            log_run(run_id, "Worker heartbeat expired; model run recovered", "warning", "recovered")
+        for run_id, task_id, cancelled in exhausted:
+            if cancelled:
+                log_run(run_id, "Cancelled after worker heartbeat expired", "warning", "cancelled")
+            else:
+                log_run(run_id, "Worker heartbeat expired on final attempt", "error", "failed")
+            self._finish_parent(task_id)
+
+    def _claim(self, worker, gpu_id=None, remote_only=False, gpu_group=None, gpu_group_model_id=None):
+        if gpu_id and not gpu_group:
+            waiting_group = self._next_gpu_group(min_age_seconds=30)
+            if waiting_group and gpu_id in {device["uuid"] for device in waiting_group[0]}:
+                return None
         stamp = now()
         with closing(connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
@@ -738,75 +821,64 @@ class TaskManager:
             # the oldest parent task first used to let a retry backoff block all
             # newer ready work and left CPU capacity idle.
             candidates = db.execute(
-                """SELECT t.* FROM tasks t
+                """SELECT t.*, r.id AS next_run_id, r.model_id AS next_model_id
+                   FROM tasks t JOIN task_runs r ON r.task_id=t.task_id
                    WHERE t.status IN ('queued','retrying') AND t.available_at<=?
-                   AND (
-                     -- ASR and LLM work share the same inference slots and
-                     -- are dispatched in arrival order.  Do not make audio
-                     -- wait for every active LLM request.
-                     t.kind='asr'
-                     OR
-                     -- Keep the separate LLM pool bounded: each llama.cpp
-                     -- context has its own substantial memory footprint.
-                     (t.kind IN ('chat','chat_async','text') AND (
-                       SELECT count(*) FROM tasks active_llm
-                       WHERE active_llm.status='running' AND active_llm.kind IN ('chat','chat_async','text')
-                       AND coalesce((SELECT device_type FROM task_runs active_run WHERE active_run.task_id=active_llm.task_id AND active_run.status='processing' LIMIT 1),'cpu')!='remote'
-                     ) < ?)
-                     OR
-                     (t.kind='decision' AND (
-                       SELECT count(*) FROM tasks active_decision
-                       WHERE active_decision.status='running' AND active_decision.kind='decision'
-                       AND coalesce((SELECT device_type FROM task_runs active_run WHERE active_run.task_id=active_decision.task_id AND active_run.status='processing' LIMIT 1),'cpu')!='remote'
-                     ) < ?)
-                   )
-                   AND EXISTS(
-                     SELECT 1 FROM task_runs r WHERE r.task_id=t.task_id
-                     AND r.status IN ('pending','retrying') AND r.available_at<=?
-                     AND r.position=(SELECT min(first_run.position) FROM task_runs first_run
+                   AND r.status IN ('pending','retrying') AND r.available_at<=?
+                   AND r.position=(SELECT min(first_run.position) FROM task_runs first_run
                                      WHERE first_run.task_id=t.task_id
                                      AND first_run.status IN ('pending','retrying'))
-                   )
-                   ORDER BY t.created_at, t.rowid LIMIT 100""",
-                (
-                    stamp,
-                    max(LLM_MAX_CONCURRENT, len(gpu_runtime.enabled_devices()) * gpu_runtime.get_settings()["max_concurrent_per_device"]) if gpu_id else LLM_MAX_CONCURRENT,
-                    max(DECISION_MAX_CONCURRENT, len(gpu_runtime.enabled_devices()) * gpu_runtime.get_settings()["max_concurrent_per_device"]) if gpu_id else DECISION_MAX_CONCURRENT,
-                    stamp,
-                ),
+                   ORDER BY t.created_at, t.rowid""",
+                (stamp, stamp),
             ).fetchall()
             for candidate in candidates:
                 kind = candidate["kind"]
-                model_id = candidate["model_id"]
+                model_id = candidate["next_model_id"]
+                device_reason = None
                 route_kind = "asr" if kind == "asr" else "llm" if kind in {"chat", "chat_async", "text"} else kind
                 remote = uses_ninerouter(route_kind, model_id) if route_kind in {"asr", "llm"} else False
                 if remote_only != remote:
                     continue
+                if not gpu_id and not remote:
+                    category = ("chat", "chat_async", "text") if kind in {"chat", "chat_async", "text"} else (kind,)
+                    limit = LLM_MAX_CONCURRENT if kind in {"chat", "chat_async", "text"} else DECISION_MAX_CONCURRENT if kind == "decision" else None
+                    if limit is not None:
+                        placeholders = ",".join("?" for _ in category)
+                        active = db.execute(
+                            f"SELECT count(*) FROM task_runs r JOIN tasks t ON t.task_id=r.task_id "
+                            f"WHERE r.status='processing' AND r.device_type='cpu' AND t.kind IN ({placeholders})",
+                            category,
+                        ).fetchone()[0]
+                        if active >= limit:
+                            continue
                 if gpu_id:
-                    needs_group = gpu_runtime.requires_multi_gpu(kind, model_id)
+                    if gpu_group_model_id and model_id != gpu_group_model_id:
+                        continue
+                    selected_group = gpu_runtime.split_devices(kind, model_id)
+                    needs_group = bool(selected_group)
                     if not gpu_runtime.gpu_eligible(kind, model_id) or needs_group != bool(gpu_group):
                         continue
-                elif not remote and gpu_runtime.gpu_eligible(kind, model_id):
-                    settings = gpu_runtime.get_settings()
-                    if settings["mode"] == "gpu":
+                    if gpu_group and {device["uuid"] for device in selected_group} != {device["uuid"] for device in gpu_group}:
                         continue
-                    if settings["mode"] == "auto":
+                elif not remote:
+                    settings = gpu_runtime.get_settings()
+                    if settings["mode"] == "gpu" and gpu_runtime.cuda_model_family(kind, model_id):
+                        continue
+                    if settings["mode"] == "auto" and gpu_runtime.gpu_eligible(kind, model_id):
                         try:
                             age_seconds = (datetime.now(timezone.utc) - datetime.fromisoformat(candidate["created_at"])).total_seconds()
                         except (TypeError, ValueError):
                             age_seconds = 0
                         if age_seconds < settings["cpu_fallback_seconds"]:
                             continue
+                        device_reason = "gpu_wait_timeout"
                 task_id = candidate["task_id"]
-                run = db.execute(
-                    "SELECT * FROM task_runs WHERE task_id=? AND status IN ('pending','retrying') AND available_at<=? ORDER BY position LIMIT 1",
-                    (task_id, stamp),
-                ).fetchone()
+                run = db.execute("SELECT * FROM task_runs WHERE id=?", (candidate["next_run_id"],)).fetchone()
                 if not run:
                     continue
                 if not db.execute(
-                    "UPDATE task_runs SET status='processing',worker_id=?,device_id=?,device_type=?,started_at=coalesce(started_at,?),attempt_started_at=?,heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status IN ('pending','retrying')",
-                    (worker, gpu_id, "cuda_split" if gpu_group else "cuda" if gpu_id else "remote" if remote_only else "cpu", stamp, stamp, stamp, stamp, run["id"]),
+                    "UPDATE task_runs SET status='processing',worker_id=?,device_id=?,device_type=?,device_reason=?,started_at=coalesce(started_at,?),attempt_started_at=?,heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status IN ('pending','retrying')",
+                    (worker, gpu_id, "cuda_split" if gpu_group else "cuda" if gpu_id else "remote" if remote_only else "cpu", device_reason, stamp, stamp, stamp, stamp, run["id"]),
                 ).rowcount:
                     continue
                 db.execute(
@@ -820,9 +892,39 @@ class TaskManager:
                 return claimed
             return None
 
+    def _next_gpu_group(self, min_age_seconds=0):
+        ready = rows(
+            """SELECT t.kind, t.created_at, r.model_id FROM tasks t JOIN task_runs r ON r.task_id=t.task_id
+               WHERE t.status IN ('queued','retrying') AND t.available_at<=?
+               AND r.status IN ('pending','retrying') AND r.available_at<=?
+               AND r.position=(SELECT min(first_run.position) FROM task_runs first_run
+                               WHERE first_run.task_id=t.task_id AND first_run.status IN ('pending','retrying'))
+               ORDER BY t.created_at, t.rowid""",
+            (now(), now()),
+        )
+        for run in ready:
+            if min_age_seconds:
+                try:
+                    age = (datetime.now(timezone.utc) - datetime.fromisoformat(run["created_at"])).total_seconds()
+                except (TypeError, ValueError):
+                    age = 0
+                if age < min_age_seconds:
+                    continue
+            if gpu_runtime.gpu_eligible(run["kind"], run["model_id"]):
+                group = gpu_runtime.split_devices(run["kind"], run["model_id"])
+                if group:
+                    return group, run["model_id"]
+        return None
+
     def _loop(self, worker, gpu_device=None, remote_worker=False, gpu_group=None):
         while not self.stop_event.is_set():
-            if worker.endswith("-0") and time.monotonic() >= self.next_chat_expiry:
+            if worker == f"{self.instance}-cpu-0" and time.monotonic() >= self.next_stale_scan:
+                self.next_stale_scan = time.monotonic() + 10
+                try:
+                    self._reap_stale()
+                except Exception:
+                    logger.exception("Unable to recover stale inference workers")
+            if worker == f"{self.instance}-cpu-0" and time.monotonic() >= self.next_chat_expiry:
                 self.next_chat_expiry = time.monotonic() + 3600
                 try:
                     self._expire_chat_tasks()
@@ -850,10 +952,16 @@ class TaskManager:
                 continue
             if gpu_group:
                 task = None
-                group_id = ",".join(device["uuid"] for device in gpu_group)
+                selected = None
                 try:
-                    with gpu_runtime.reserve_group(gpu_group, timeout=0):
-                        task = self._claim(worker, group_id, gpu_group=gpu_group)
+                    group_candidate = self._next_gpu_group()
+                    if not group_candidate:
+                        self.stop_event.wait(POLL_SECONDS)
+                        continue
+                    selected, model_id = group_candidate
+                    group_id = ",".join(device["uuid"] for device in selected)
+                    with gpu_runtime.reserve_group(selected, timeout=0, required_bytes=gpu_runtime.model_memory_estimate(model_id)):
+                        task = self._claim(worker, group_id, gpu_group=selected, gpu_group_model_id=model_id)
                         if task:
                             self._run(task, object())
                             run = row("SELECT status FROM task_runs WHERE id=?", (task["run"]["id"],))
@@ -863,7 +971,8 @@ class TaskManager:
                     pass
                 except Exception:
                     logger.exception("Multi-GPU worker failed")
-                    gpu_runtime.record_error(group_id, "Multi-GPU worker failure")
+                    if selected:
+                        gpu_runtime.record_error(group_id, "Multi-GPU worker failure")
                 if not task:
                     self.stop_event.wait(POLL_SECONDS)
                 continue
@@ -903,17 +1012,19 @@ class TaskManager:
 
     def _finish_parent(self, task_id):
         task = get_task(task_id)
+        if not task or task["status"] in TERMINAL:
+            return
         runs = get_runs(task_id)
         if any(x["status"] not in RUN_TERMINAL for x in runs):
             execute(
-                "UPDATE tasks SET status='queued',available_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=?",
+                "UPDATE tasks SET status='queued',available_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=? AND status='running' AND cancel_requested=0",
                 (now(), now(), task_id),
             )
             return
         succeeded = sum(x["status"] == "succeeded" for x in runs)
         status = (
             "cancelled"
-            if task.get("cancel_requested") and not succeeded
+            if task.get("cancel_requested")
             else "succeeded" if succeeded else "failed"
         )
         results = [serialize_run(x, task["response_format"]) for x in runs]
@@ -946,8 +1057,8 @@ class TaskManager:
         usage_status = "success" if status == "succeeded" else "failed"
         with closing(connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
-            db.execute(
-                "UPDATE tasks SET status=?,finished_at=?,updated_at=?,result_json=?,duration_seconds=?,processing_seconds=?,error=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=?",
+            changed = db.execute(
+                "UPDATE tasks SET status=?,finished_at=?,updated_at=?,result_json=?,duration_seconds=?,processing_seconds=?,error=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=? AND status NOT IN ('succeeded','partially_succeeded','failed','cancelled')",
                 (
                     status,
                     stamp,
@@ -959,6 +1070,8 @@ class TaskManager:
                     task_id,
                 ),
             )
+            if not changed.rowcount:
+                return
             # Keep the final payload on the history row as well as on the task.
             # The dashboard reads history independently, so omitting this made a
             # successful processing result impossible to open from that screen.
@@ -1184,8 +1297,9 @@ class TaskManager:
             if (get_task(task_id) or {}).get("cancel_requested"):
                 raise CancelledError()
             elapsed = time.monotonic() - started
-            execute(
-                "UPDATE task_runs SET status='succeeded',finished_at=?,updated_at=?,result_json=?,duration_seconds=?,duration_after_vad=?,processing_seconds=coalesce(processing_seconds,0)+?,worker_id=NULL,heartbeat_at=NULL,error=NULL WHERE id=?",
+            if not self._update_owned_run(
+                run,
+                "status='succeeded',finished_at=?,updated_at=?,result_json=?,duration_seconds=?,duration_after_vad=?,processing_seconds=coalesce(processing_seconds,0)+?,worker_id=NULL,heartbeat_at=NULL,error=NULL",
                 (
                     now(),
                     now(),
@@ -1193,9 +1307,9 @@ class TaskManager:
                     duration,
                     duration_vad,
                     elapsed,
-                    run["id"],
                 ),
-            )
+            ):
+                return
             log_run(
                 run["id"],
                 f"Completed successfully in {elapsed:.2f} seconds",
@@ -1204,10 +1318,12 @@ class TaskManager:
             self._skip_remaining(task_id, run["position"])
         except CancelledError:
             elapsed = time.monotonic() - started
-            execute(
-                "UPDATE task_runs SET status='cancelled',finished_at=?,updated_at=?,processing_seconds=?,worker_id=NULL,heartbeat_at=NULL,error='Cancelled' WHERE id=?",
-                (now(), now(), elapsed, run["id"]),
-            )
+            if not self._update_owned_run(
+                run,
+                "status='cancelled',finished_at=?,updated_at=?,processing_seconds=?,worker_id=NULL,heartbeat_at=NULL,error='Cancelled'",
+                (now(), now(), elapsed),
+            ):
+                return
             execute(
                 "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,error='Skipped after cancellation' WHERE task_id=? AND status IN ('pending','retrying')",
                 (now(), now(), task_id),
@@ -1217,6 +1333,8 @@ class TaskManager:
             elapsed = time.monotonic() - started
             if run.get("device_id"):
                 gpu_runtime.record_error(run["device_id"], f"{type(exc).__name__}: {exc}")
+                if task["kind"] in {"chat", "chat_async", "text"}:
+                    gpu_runtime.note_model_oom(run["model_id"], exc)
             current = row("SELECT * FROM task_runs WHERE id=?", (run["id"],))
             retry = (
                 current
@@ -1235,10 +1353,12 @@ class TaskManager:
                         seconds=min(60, 2 ** current["attempts"] + random.random())
                     )
                 ).isoformat()
-                execute(
-                    "UPDATE task_runs SET status='retrying',available_at=?,updated_at=?,processing_seconds=coalesce(processing_seconds,0)+?,error=?,worker_id=NULL,heartbeat_at=NULL WHERE id=?",
-                    (available, now(), elapsed, error, run["id"]),
-                )
+                if not self._update_owned_run(
+                    run,
+                    "status='retrying',available_at=?,updated_at=?,processing_seconds=coalesce(processing_seconds,0)+?,error=?,worker_id=NULL,heartbeat_at=NULL",
+                    (available, now(), elapsed, error),
+                ):
+                    return
                 execute(
                     "UPDATE tasks SET status='retrying',available_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=?",
                     (available, now(), task_id),
@@ -1247,10 +1367,12 @@ class TaskManager:
                     run["id"], f"Retry scheduled for {available}", "warning", "retrying"
                 )
                 return
-            execute(
-                "UPDATE task_runs SET status='failed',finished_at=?,updated_at=?,processing_seconds=coalesce(processing_seconds,0)+?,error=?,worker_id=NULL,heartbeat_at=NULL WHERE id=?",
-                (now(), now(), elapsed, error, run["id"]),
-            )
+            if not self._update_owned_run(
+                run,
+                "status='failed',finished_at=?,updated_at=?,processing_seconds=coalesce(processing_seconds,0)+?,error=?,worker_id=NULL,heartbeat_at=NULL",
+                (now(), now(), elapsed, error),
+            ):
+                return
         finally:
             stop.set()
             thread.join(timeout=1)

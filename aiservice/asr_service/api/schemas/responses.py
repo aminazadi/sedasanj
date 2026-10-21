@@ -319,6 +319,9 @@ class UsageModelRunResponse(ApiSchema):
     content_type: str = "application/json"
     result: Any | None = None
     error: str | None = None
+    device_id: str | None = None
+    device_type: str | None = None
+    device_reason: str | None = None
     events: list[ExecutionEventResponse] = Field(default_factory=list)
 
 
@@ -462,6 +465,9 @@ class ModelRunResultResponse(ApiSchema):
     content_type: str
     result: Any | None = None
     error: str | None = None
+    device_id: str | None = None
+    device_type: str | None = None
+    device_reason: str | None = None
 
 
 class MultiModelResultResponse(ApiSchema):
