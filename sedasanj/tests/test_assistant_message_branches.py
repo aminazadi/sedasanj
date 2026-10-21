@@ -17,10 +17,13 @@ class _Session:
         return self.message if self.message.id == message_id else None
 
     async def scalar(self, statement):
+        if "assistant_runs" in str(statement):
+            return None
         return self.earlier_user_messages
 
-    async def execute(self, statement):
-        self.deleted = statement
+    async def execute(self, statement, *args):
+        if "DELETE FROM chat_messages" in str(statement):
+            self.deleted = statement
 
 
 class _EmptyRows:

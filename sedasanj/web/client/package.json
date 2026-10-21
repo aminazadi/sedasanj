@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:unit": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@cbi/web-shared": "file:../shared",

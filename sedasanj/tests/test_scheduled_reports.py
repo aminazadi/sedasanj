@@ -69,6 +69,8 @@ def test_interval_and_dst_missing_hour():
         {"schedule_mode": "fixed", "interval_hours": None, "fixed_hours": []},
         {"schedule_mode": "fixed", "interval_hours": None, "fixed_hours": [24]},
         {"schedule_mode": "fixed", "interval_hours": None, "fixed_hours": [9, 9]},
+        {"max_retries": 4},
+        {"retry_base_minutes": 0},
         {"fixed_hours": [9]},
     ],
 )
@@ -218,9 +220,13 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
         name="Report",
         instructions="Criteria",
         status="queued",
+        attempt_count=0,
+        max_retries=3,
+        retry_base_minutes=5,
         from_date=now - timedelta(hours=6),
         to_date=now,
         timezone="Asia/Tehran",
+        trigger="scheduled",
         memory_snapshot=[
             {
                 "title": "Analysis-only memory",
@@ -233,6 +239,8 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
     )
     usage = SimpleNamespace(id=uuid4(), status="reserved", model=None)
 
+    report_row = SimpleNamespace(window_start=now - timedelta(hours=6), updated_at=now)
+
     class Session:
         async def execute(self, statement, params=None):
             sql = str(statement)
@@ -241,6 +249,8 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
             if "FROM scheduled_report_runs" in sql:
                 assert tenant in statement.compile().params.values()
                 return Result(run)
+            if "FROM scheduled_reports" in sql:
+                return Result(report_row)
             if "FROM users" in sql:
                 return Result(SimpleNamespace(id=admin))
             if "FROM calls" in sql:
@@ -290,28 +300,35 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
         close=AsyncMock(),
     )
     monkeypatch.setattr(reports, "build_client", lambda *args, **kwargs: client)
+    staged_retry = AsyncMock()
+    monkeypatch.setattr(reports.outbox, "stage", staged_retry)
     payload = {"tenant_id": str(tenant), "run_id": str(run.id)}
     assert await reports.generate_scheduled_report({}, payload) == (
-        "failed" if fail else "succeeded"
+        "queued" if fail else "succeeded"
     )
-    assert run.status == ("failed" if fail else "succeeded")
+    assert run.status == ("queued" if fail else "succeeded")
     assert usage.status == ("failed" if fail else "succeeded")
     if fail:
         assert run.error_detail and run.content is None
+        assert run.attempt_count == 1
+        assert run.next_attempt_at is not None
+        staged_retry.assert_awaited_once()
+        assert report_row.window_start < run.to_date
     else:
         assert "ایندکس وکتوری" in run.content
         assert run.sources == [{"call_id": str(call)}]
         assert "Important rule" in client.complete.await_args.args[1]
         assert run.coverage["calls"] == 3
+        assert report_row.window_start == run.to_date
         assert (
             tool.await_args_list[0].args[2]["to_date"]
             == (now - timedelta(microseconds=1)).isoformat()
         )
-    assert await reports.generate_scheduled_report({}, payload) == "skipped"
+    assert await reports.generate_scheduled_report({}, payload) == ("not due" if fail else "skipped")
     assert client.complete.await_count == 1
 
 
-async def test_scheduler_advances_one_window_and_skips_active_execution(monkeypatch):
+async def test_scheduler_preserves_uncovered_window_and_skips_active_execution(monkeypatch):
     tenant = uuid4()
     before = datetime.now(UTC) - timedelta(hours=12)
     row = ScheduledReport(
@@ -351,9 +368,10 @@ async def test_scheduler_advances_one_window_and_skips_active_execution(monkeypa
     create = AsyncMock()
     monkeypatch.setattr(reports, "create_run", create)
     assert await reports.schedule_due_reports() == 1
-    assert create.await_args.args[2] == row.window_start
+    assert create.await_args.args[1].window_start == before
+    assert create.await_args.args[2] > before
     assert create.await_args.args[1] == row
-    assert row.window_start > before
+    assert row.window_start == before
     assert row.next_run_at > row.window_start
     assert (row.next_run_at - before) % timedelta(hours=6) == timedelta(0)
     cursor = row.window_start
@@ -361,6 +379,39 @@ async def test_scheduler_advances_one_window_and_skips_active_execution(monkeypa
     assert await reports.schedule_due_reports() == 0
     assert create.await_count == 1
     assert row.window_start == cursor
+
+
+@pytest.mark.parametrize("attempt,delay", [(1, 5), (2, 15), (3, 45)])
+async def test_retry_backoff_is_bounded_and_reuses_the_same_run(monkeypatch, attempt, delay):
+    run = SimpleNamespace(
+        id=uuid4(), tenant_id=uuid4(), usage_id=None, attempt_count=attempt,
+        max_retries=3, retry_base_minutes=5, status="running", started_at=datetime.now(UTC),
+    )
+    session = SimpleNamespace()
+    staged = AsyncMock()
+    monkeypatch.setattr(reports.outbox, "stage", staged)
+    now = datetime.now(UTC)
+
+    assert await reports._record_failure(session, run, RuntimeError("provider timeout"), now)
+    assert run.status == "queued"
+    assert run.next_attempt_at == now + timedelta(minutes=delay)
+    assert staged.await_args.kwargs["payload"]["run_id"] == str(run.id)
+
+
+async def test_permanent_quota_failure_is_not_retried(monkeypatch):
+    run = SimpleNamespace(
+        id=uuid4(), tenant_id=uuid4(), usage_id=None, attempt_count=1,
+        max_retries=3, retry_base_minutes=5, status="running", started_at=datetime.now(UTC),
+    )
+    staged = AsyncMock()
+    monkeypatch.setattr(reports.outbox, "stage", staged)
+
+    assert not await reports._record_failure(
+        SimpleNamespace(), run, ApiError("quota_exceeded", "quota exhausted"), datetime.now(UTC)
+    )
+    assert run.status == "failed"
+    assert run.error_code == "quota_exceeded"
+    staged.assert_not_awaited()
 
 
 async def test_manual_idempotency_returns_existing_run_without_new_job(monkeypatch):
@@ -394,6 +445,7 @@ async def test_pause_resume_and_criteria_edits_preserve_existing_execution_snaps
         next_run_at=now + timedelta(hours=6),
     )
     run = ScheduledReportRun(instructions=row.instructions)
+    window_cursor = row.window_start
     monkeypatch.setattr(api, "get_report", AsyncMock(return_value=row))
     monkeypatch.setattr(api.audit, "record", AsyncMock())
     monkeypatch.setattr(api, "client_ip", lambda request: None)
@@ -408,4 +460,4 @@ async def test_pause_resume_and_criteria_edits_preserve_existing_execution_snaps
     payload.enabled = True
     await api.edit_report(row.id, payload, None, principal, session)
     assert row.enabled and row.next_run_at > now
-    assert row.window_start >= now
+    assert row.window_start == window_cursor

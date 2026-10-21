@@ -2115,6 +2115,8 @@ class ScheduledReport(Base):
     fixed_hours: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), nullable=False, default=list
     )
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    retry_base_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     window_start: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     next_run_at: Mapped[datetime | None] = mapped_column(TSTZ)
     archived_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -2131,6 +2133,10 @@ class ScheduledReport(Base):
         CheckConstraint(
             "(schedule_mode = 'interval' AND interval_hours IS NOT NULL AND interval_hours BETWEEN 1 AND 8760 AND cardinality(fixed_hours) = 0) OR (schedule_mode = 'fixed' AND interval_hours IS NULL AND cardinality(fixed_hours) BETWEEN 1 AND 24 AND 0 <= ALL(fixed_hours) AND 23 >= ALL(fixed_hours))",
             name="scheduled_reports_schedule_check",
+        ),
+        CheckConstraint(
+            "max_retries BETWEEN 0 AND 3 AND retry_base_minutes BETWEEN 1 AND 60",
+            name="scheduled_reports_retry_policy_check",
         ),
         Index("idx_scheduled_reports_due", "tenant_id", "next_run_at"),
     )
@@ -2162,6 +2168,10 @@ class ScheduledReportRun(Base):
     to_date: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     timezone: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    retry_base_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
     memory_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
     )
@@ -2197,6 +2207,10 @@ class ScheduledReportRun(Base):
         ),
         CheckConstraint(
             "from_date < to_date", name="scheduled_report_runs_window_check"
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_retries BETWEEN 0 AND 3 AND retry_base_minutes BETWEEN 1 AND 60",
+            name="scheduled_report_runs_retry_policy_check",
         ),
         Index("idx_scheduled_report_runs_archive", "tenant_id", "created_at"),
         Index(

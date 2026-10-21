@@ -11,13 +11,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
 from app.deps import OperatorDep, OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
+    AssistantRun,
     AssistantToolRun,
     AssistantUsage,
     Call,
@@ -340,8 +341,20 @@ async def create_conversation(payload: ChatConversationCreate, principal: Operat
 @router.delete("/assistant/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(conversation_id: UUID, principal: OperatorDep, session: TenantSession) -> None:
     assert principal.tenant_id is not None
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"assistant-conversation:{conversation_id}"},
+    )
     row = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(row, getattr(principal, "role", "operator"))
+    active_run = await session.scalar(
+        select(AssistantRun.id).where(
+            AssistantRun.conversation_id == conversation_id,
+            AssistantRun.status.in_(("queued", "running")),
+        ).limit(1)
+    )
+    if active_run is not None:
+        raise ApiError("conflict_idempotency", "conversation has an active assistant run")
     await session.delete(row)
 
 
@@ -407,6 +420,10 @@ async def delete_message_tail(
     session: TenantSession,
 ) -> None:
     assert principal.tenant_id is not None
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"assistant-conversation:{conversation_id}"},
+    )
     conversation = await _conversation(
         session, conversation_id, principal.tenant_id, principal.id
     )
@@ -419,6 +436,14 @@ async def delete_message_tail(
         or message.role != "user"
     ):
         raise ApiError("not_found", "user message not found")
+    active_run = await session.scalar(
+        select(AssistantRun.id).where(
+            AssistantRun.conversation_id == conversation.id,
+            AssistantRun.status.in_(("queued", "running")),
+        ).limit(1)
+    )
+    if active_run is not None:
+        raise ApiError("conflict_idempotency", "conversation has an active assistant run")
     earlier_user_messages = await session.scalar(
         select(func.count())
         .select_from(ChatMessage)
@@ -1435,17 +1460,33 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             yield _sse("replace", {"content": answer})
         assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
         conversation.updated_at = datetime.now(UTC)
-        session.add(assistant_message)
-        await session.flush()
         assistant_run_id = getattr(request.state, "assistant_run_id", None)
+        assistant_run = None
         if assistant_run_id is not None:
             from app.models import AssistantRun
 
-            assistant_run = await session.get(AssistantRun, assistant_run_id)
-            if assistant_run is not None:
-                assistant_run.assistant_message_id = assistant_message.id
-                assistant_run.status = "succeeded" if status_value != "failed" else "failed"
-                assistant_run.updated_at = datetime.now(UTC)
+            assistant_run = await session.scalar(
+                select(AssistantRun)
+                .where(AssistantRun.id == assistant_run_id)
+                .with_for_update()
+            )
+            if assistant_run is not None and assistant_run.status == "cancelled":
+                cancelled_message = await session.get(ChatMessage, assistant_run.assistant_message_id)
+                if cancelled_message is not None:
+                    yield _sse(
+                        "done",
+                        {
+                            "message": ChatMessageOut.model_validate(cancelled_message).model_dump(mode="json"),
+                            "conversation_title": conversation.title,
+                        },
+                    )
+                    return
+        session.add(assistant_message)
+        await session.flush()
+        if assistant_run is not None:
+            assistant_run.assistant_message_id = assistant_message.id
+            assistant_run.status = "succeeded" if status_value != "failed" else "failed"
+            assistant_run.updated_at = datetime.now(UTC)
         for run in stored_runs:
             run.assistant_message_id = assistant_message.id
         usage.status = "failed" if status_value == "failed" else "succeeded"

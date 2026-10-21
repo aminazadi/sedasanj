@@ -78,7 +78,11 @@ async def publish(
     tenant_id: UUID, run_id: UUID, event: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
     async with session_scope(tenant_id) as session:
-        run = await session.get(AssistantRun, run_id)
+        run = await session.scalar(
+            select(AssistantRun)
+            .where(AssistantRun.id == run_id)
+            .with_for_update()
+        )
         if run is None:
             raise ApiError("not_found", "assistant run not found")
         sequence = run.next_sequence
@@ -151,6 +155,9 @@ async def disconnect(sid: str) -> None:
     task = _expiry_tasks.pop(sid, None)
     if task is not None and task is not asyncio.current_task():
         task.cancel()
+    for owner_sid, _owner_id, ephemeral_task in list(_ephemeral_tasks.values()):
+        if owner_sid == sid:
+            ephemeral_task.cancel()
 
 
 @sio.on("assistant:conversation:join")
@@ -199,6 +206,24 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                         AssistantRun.assistant_message_id.is_(None),
                     )
                     .order_by(AssistantRun.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        completed_runs = (
+            (
+                await session.execute(
+                    select(AssistantRun)
+                    .where(
+                        AssistantRun.conversation_id == conversation_id,
+                        AssistantRun.owner_id == owner_id,
+                        AssistantRun.status.in_(("succeeded", "failed", "cancelled")),
+                        AssistantRun.assistant_message_id.is_not(None),
+                        AssistantRun.updated_at > datetime.now(UTC) - timedelta(hours=2),
+                    )
+                    .order_by(AssistantRun.updated_at.desc())
+                    .limit(20)
                 )
             )
             .scalars()
@@ -255,6 +280,27 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                 "events": run_events[str(run.id)],
             }
             for run in active_runs
+        ],
+        "completed_runs": [
+            {
+                "id": str(run.id),
+                "sequence": run.last_event_sequence,
+                "message": {
+                    "id": str(message.id),
+                    "role": message.role,
+                    "content": message.content,
+                    "status": message.status,
+                    "model": message.model,
+                    "sources": message.sources,
+                    "attachments": message.attachments,
+                    "tool_runs": [],
+                    "memory_drafts": [],
+                    "created_at": message.created_at.isoformat(),
+                },
+                "conversation_title": conversation.title,
+            }
+            for run in completed_runs
+            if (message := next((item for item in messages if item.id == run.assistant_message_id), None))
         ],
         "sequence": latest,
     }
@@ -415,7 +461,11 @@ async def cancel_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
     except (ValueError, TypeError):
         return {"ok": False, "code": "invalid_request"}
     async with session_scope(identity["tenant_id"]) as session:
-        run = await session.get(AssistantRun, run_id)
+        run = await session.scalar(
+            select(AssistantRun)
+            .where(AssistantRun.id == run_id)
+            .with_for_update()
+        )
         if run is None:
             ephemeral = _ephemeral_tasks.get(str(run_id))
             if ephemeral is None or ephemeral[0] != sid or ephemeral[1] != identity["owner_id"]:
@@ -424,9 +474,31 @@ async def cancel_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "run_id": str(run_id)}
         if run.owner_id != identity["owner_id"]:
             return {"ok": False, "code": "not_found"}
+        if run.status == "cancelled":
+            return {"ok": True, "run_id": str(run_id)}
+        if run.status not in {"queued", "running"}:
+            return {"ok": False, "code": "already_finished"}
+        cancelled_message = None
         if run.status in {"queued", "running"}:
             run.status = "cancelled"
             run.updated_at = datetime.now(UTC)
+            message = ChatMessage(
+                conversation_id=run.conversation_id,
+                tenant_id=run.tenant_id,
+                role="assistant",
+                content="پاسخ متوقف شد.",
+                status="cancelled",
+                sources=[],
+            )
+            session.add(message)
+            await session.flush()
+            run.assistant_message_id = message.id
+            from app.schemas import ChatMessageOut
+
+            cancelled_message = ChatMessageOut.model_validate(message).model_dump(mode="json")
+            conversation = await session.get(ChatConversation, run.conversation_id)
+            if conversation is not None:
+                conversation.updated_at = datetime.now(UTC)
     import redis.asyncio as redis
 
     client = redis.from_url(get_settings().redis_url, decode_responses=True)
@@ -434,7 +506,12 @@ async def cancel_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         await client.setex(f"assistant:cancel:{run_id}", 3600, "1")
     finally:
         await client.aclose()
-    await publish(identity["tenant_id"], run_id, "cancelled", {"status": "cancelled"})
+    await publish(
+        identity["tenant_id"],
+        run_id,
+        "cancelled",
+        {"status": "cancelled", "message": cancelled_message},
+    )
     return {"ok": True, "run_id": str(run_id)}
 
 
@@ -543,6 +620,50 @@ async def start() -> None:
         _dispatcher_task = asyncio.create_task(_dispatch_pending(), name="assistant-run-dispatcher")
 
 
+async def _recover_stale_runs(tenant_id: UUID) -> list[tuple[UUID, dict[str, Any]]]:
+    from app.schemas import ChatMessageOut
+
+    recovered: list[tuple[UUID, dict[str, Any]]] = []
+    cutoff = datetime.now(UTC) - timedelta(minutes=40)
+    async with session_scope(tenant_id) as session:
+        runs = (
+            await session.execute(
+                select(AssistantRun)
+                .where(AssistantRun.status == "running", AssistantRun.updated_at < cutoff)
+                .order_by(AssistantRun.updated_at)
+                .limit(100)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalars().all()
+        for run in runs:
+            message = ChatMessage(
+                conversation_id=run.conversation_id,
+                tenant_id=tenant_id,
+                role="assistant",
+                content="اجرای پاسخ به‌دلیل پایان زمان پردازش متوقف شد. لطفاً دوباره تلاش کنید.",
+                status="failed",
+                sources=[],
+            )
+            session.add(message)
+            await session.flush()
+            run.assistant_message_id = message.id
+            run.status = "failed"
+            run.updated_at = datetime.now(UTC)
+            conversation = await session.get(ChatConversation, run.conversation_id)
+            if conversation is not None:
+                conversation.updated_at = datetime.now(UTC)
+            recovered.append(
+                (
+                    run.id,
+                    {
+                        "message": ChatMessageOut.model_validate(message).model_dump(mode="json"),
+                        "conversation_title": conversation.title if conversation else None,
+                    },
+                )
+            )
+    return recovered
+
+
 async def _dispatch_pending() -> None:
     last_event_cleanup = 0.0
     while True:
@@ -554,6 +675,7 @@ async def _dispatch_pending() -> None:
                     .all()
                 )
             for tenant_id in tenant_ids:
+                recovered = await _recover_stale_runs(tenant_id)
                 async with session_scope(tenant_id) as session:
                     if time.time() - last_event_cleanup >= 300:
                         cutoff = datetime.now(UTC) - timedelta(
@@ -578,6 +700,8 @@ async def _dispatch_pending() -> None:
                     )
                 if time.time() - last_event_cleanup >= 300:
                     last_event_cleanup = time.time()
+                for run_id, completion in recovered:
+                    await publish(tenant_id, run_id, "message:completed", completion)
                 for run_id in run_ids:
                     await get_queue().enqueue(
                         QUEUE_LLM,

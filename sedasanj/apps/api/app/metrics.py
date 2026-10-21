@@ -59,6 +59,18 @@ assistant_socket_connections_total = Counter(
 assistant_socket_events_total = Counter(
     "cbi_assistant_socket_events_total", "Assistant Socket.IO events", ["event"]
 )
+scheduled_report_attempts_total = Counter(
+    "cbi_scheduled_report_attempts_total", "Scheduled report generation attempts", ["result"]
+)
+scheduled_report_retries_total = Counter(
+    "cbi_scheduled_report_retries_total", "Scheduled report retry attempts queued"
+)
+scheduled_report_stuck = Counter(
+    "cbi_scheduled_report_stuck_total", "Scheduled report runs recovered after worker timeout"
+)
+scheduled_report_final_failures_total = Counter(
+    "cbi_scheduled_report_final_failures_total", "Scheduled report runs exhausted or rejected retry policy"
+)
 
 
 def start_metrics_server(settings: Settings) -> None:

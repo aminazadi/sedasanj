@@ -13,6 +13,7 @@ import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Wi
 import { useDesktopMenuToggle } from "../components/Layout";
 import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage, OrganizationMemory } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
+import { isFreshRunSequence, orderUniqueRunEvents, withConversationRunState } from "./assistantRunState.mjs";
 
 function TrashIcon() {
   return (
@@ -361,6 +362,8 @@ export default function Assistant() {
   const desktopMenuToggle = useDesktopMenuToggle();
   const [search, setSearch] = useSearchParams();
   const training = search.get("mode") === "train" && isOrgAdmin(session?.role);
+  const requestedConversationId = search.get("conversation");
+  const requestedCallId = search.get("call_id");
   const expandedCallId = search.get("source_call");
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
@@ -370,11 +373,16 @@ export default function Assistant() {
   const [listening, setListening] = useState(false);
   const speechPrefixRef = useRef("");
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [sendingRuns, setSendingRuns] = useState<Record<string, string | null>>({});
+  const sendingRunsRef = useRef(sendingRuns);
+  sendingRunsRef.current = sendingRuns;
   const [socketConnected, setSocketConnected] = useState(false);
-  const [processingConversationId, setProcessingConversationId] = useState<string | null>(null);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const cancelRequestedRef = useRef(false);
+  const conversationRunKey = ephemeral ? "ephemeral" : conversation?.id || "new";
+  const conversationRunKeyRef = useRef(conversationRunKey);
+  conversationRunKeyRef.current = conversationRunKey;
+  const activeRunId = sendingRuns[conversationRunKey] === "pending" ? null : sendingRuns[conversationRunKey] || null;
+  const sending = Object.prototype.hasOwnProperty.call(sendingRuns, conversationRunKey);
+  const cancelRequestedConversationKeysRef = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -402,7 +410,13 @@ export default function Assistant() {
   const streamingRepliesRef = useRef(new Map<string, ChatMessage>());
   const socketRef = useRef<Socket | null>(null);
   const runDraftsRef = useRef(new Map<string, string>());
+  const runConversationKeysRef = useRef(new Map<string, string>());
+  const requestConversationKeysRef = useRef(new Map<string, string>());
+  const joiningConversationIdsRef = useRef(new Set<string>());
+  const bufferedRunEventsRef = useRef(new Map<string, any[]>());
+  const ephemeralPendingContentRef = useRef("");
   const completionWaitersRef = useRef(new Map<string, (value: { message: ChatMessage; conversationTitle: string | null }) => void>());
+  const completionRejectorsRef = useRef(new Map<string, (error: Error) => void>());
   const completedRunsRef = useRef(new Map<string, { message: ChatMessage; conversationTitle: string | null }>());
   const terminalRunsRef = useRef(new Set<string>());
   const sequenceRef = useRef(new Map<string, number>());
@@ -420,6 +434,10 @@ export default function Assistant() {
     const value = search.get("attach_tab");
     return value === "dates" || value === "tools" ? value : "mentions";
   });
+
+  function setRunState(key: string, runId: string | null | undefined) {
+    setSendingRuns((current) => withConversationRunState(current, key, runId));
+  }
 
   function scrollToEnd() {
     const scroller = messagesScrollerRef.current;
@@ -484,7 +502,7 @@ export default function Assistant() {
       if (selectedConversationIdRef.current !== item.id) return;
       const streamingReply = streamingRepliesRef.current.get(item.id);
       setConversation(item);
-      setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); return next; }, { replace: true });
+      setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.delete("call_id"); return next; }, { replace: true });
       setEphemeral(false);
       setMessages(streamingReply ? [...rows, streamingReply] : rows);
       userNearBottomRef.current = true;
@@ -503,7 +521,7 @@ export default function Assistant() {
     setEphemeral(false);
     setMessages([]);
     setConversationsOpen(false);
-    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.set("conversation_view", "active"); return next; }, { replace: true });
+    setSearch((current) => { const next = new URLSearchParams(current); next.set("conversation", item.id); next.set("conversation_view", "active"); next.delete("call_id"); return next; }, { replace: true });
     return item;
   }
   function createEphemeral() {
@@ -517,6 +535,7 @@ export default function Assistant() {
     setEditingId(null);
     setConversationsOpen(false);
     setError(null);
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete("conversation"); next.delete("call_id"); return next; }, { replace: true });
   }
   async function remove(item: ChatConversation) {
     try {
@@ -633,6 +652,7 @@ export default function Assistant() {
       next.set("mode", nextMode);
       next.set("conversation_view", nextView);
       next.delete("conversation");
+      next.delete("call_id");
       return next;
     });
   }
@@ -648,8 +668,8 @@ export default function Assistant() {
           : primaryRows;
         if (!active) return;
         setConversations(rows);
-        const selected = rows.find((item) => item.id === search.get("conversation"));
-        const callId = training ? null : search.get("call_id");
+        const selected = rows.find((item) => item.id === requestedConversationId);
+        const callId = training ? null : requestedCallId;
         if (callId) await create(callId, () => active);
         else if (selected) await loadMessages(selected);
         else if (conversationView === "archived") {
@@ -666,7 +686,13 @@ export default function Assistant() {
       finally { if (active) setLoading(false); }
     })();
     return () => { active = false; };
-  }, [training, conversationView, session?.role]);
+  }, [training, conversationView, session?.role, requestedConversationId, requestedCallId]);
+  useEffect(() => { setMemoryStatus(search.get("memory_status") || "draft"); }, [search.get("memory_status")]);
+  useEffect(() => { setMemoryCategory(search.get("memory_category") || ""); }, [search.get("memory_category")]);
+  useEffect(() => {
+    const tab = search.get("attach_tab");
+    setMentionTab(tab === "dates" || tab === "tools" ? tab : "mentions");
+  }, [search.get("attach_tab")]);
   useEffect(() => {
     void loadMemories().catch((err) => setError(assistantErrorMessage(err)));
   }, [training, memoryStatus, memoryCategory]);
@@ -707,12 +733,17 @@ export default function Assistant() {
     };
     const markTerminalRun = (runId: string) => {
       terminalRunsRef.current.add(runId);
-      window.setTimeout(() => terminalRunsRef.current.delete(runId), 30000);
+      window.setTimeout(() => {
+        terminalRunsRef.current.delete(runId);
+        sequenceRef.current.delete(runId);
+        runConversationKeysRef.current.delete(runId);
+        runDraftsRef.current.delete(runId);
+      }, 30000);
     };
-    const resolveCancelledRun = (runId: string, draftId: string) => {
+    const resolveCancelledRun = (runId: string, draftId: string, message?: ChatMessage) => {
       markTerminalRun(runId);
       const result = {
-        message: { id: draftId, role: "assistant" as const, content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() },
+        message: message || { id: draftId, role: "assistant" as const, content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() },
         conversationTitle: null,
       };
       completedRunsRef.current.set(runId, result);
@@ -725,21 +756,35 @@ export default function Assistant() {
       const conversationId = envelope?.conversation_id ? String(envelope.conversation_id) : null;
       const event = String(envelope?.event || "");
       const payload = envelope?.payload || {};
-      if (runId && Number(envelope.sequence || 0) <= (sequenceRef.current.get(runId) || 0)) return;
+      const runKey = runConversationKeysRef.current.get(runId) || conversationId || "ephemeral";
+      if (runId && !isFreshRunSequence(sequenceRef.current.get(runId), Number(envelope.sequence || 0))) return;
       if (runId) sequenceRef.current.set(runId, Number(envelope.sequence || 0));
       if (runId && (event === "message:completed" || event === "done" || event === "cancelled")) markTerminalRun(runId);
-      if (conversationId && selectedConversationIdRef.current !== conversationId) {
+      if (runKey !== conversationRunKeyRef.current) {
         if (event === "cancelled") {
-          resolveCancelledRun(runId, messageForRun(runId));
+          setRunState(runKey, null);
+          resolveCancelledRun(runId, messageForRun(runId), payload.message as ChatMessage | undefined);
         } else if ((event === "message:completed" || event === "done") && payload.message) {
+          setRunState(runKey, null);
           const result = {
             message: payload.message as ChatMessage,
             conversationTitle: payload.conversation_title || null,
           };
+          if (result.message.memory_drafts?.length) {
+            setMemories((current) => [...result.message.memory_drafts!, ...current.filter((item) => !result.message.memory_drafts!.some((draft) => draft.id === item.id))]);
+          }
+          if (conversationId && result.conversationTitle) {
+            setConversations((current) => current.map((item) => item.id === conversationId ? { ...item, title: result.conversationTitle } : item));
+          }
           completedRunsRef.current.set(runId, result);
           completionWaitersRef.current.get(runId)?.(result);
           completionWaitersRef.current.delete(runId);
           window.setTimeout(() => completedRunsRef.current.delete(runId), 30000);
+        } else if (event === "message:completed" || event === "done") {
+          setRunState(runKey, null);
+          completionRejectorsRef.current.get(runId)?.(new Error("پاسخ دستیار کامل دریافت نشد. گفتگو را دوباره باز کنید."));
+          completionRejectorsRef.current.delete(runId);
+          completionWaitersRef.current.delete(runId);
         }
         return;
       }
@@ -774,17 +819,19 @@ export default function Assistant() {
       } else if (event === "message:completed" || event === "done") {
         const rawMessage = payload.message;
         if (!rawMessage) {
-          setSending(false);
-          setProcessingConversationId(null);
+          setRunState(runKey, null);
           setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
           return;
         }
         const message = rawMessage as ChatMessage;
         const result = { message, conversationTitle: payload.conversation_title || null };
-        setMessages((current) => current.map((item) => item.id === draftId ? message : item));
-        setSending(false);
-        setProcessingConversationId(null);
-        setActiveRunId(null);
+        setMessages((current) => {
+          const index = current.findIndex((item) => item.id === draftId);
+          if (index >= 0) return current.map((item) => item.id === draftId ? message : item);
+          if (current.some((item) => item.id === message.id)) return current;
+          return [...current, message];
+        });
+        setRunState(runKey, null);
         setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
         if (message.memory_drafts?.length) setMemories((current) => [...message.memory_drafts!, ...current.filter((item) => !message.memory_drafts!.some((draft) => draft.id === item.id))]);
         if (conversationId && payload.conversation_title) {
@@ -796,22 +843,45 @@ export default function Assistant() {
         completionWaitersRef.current.delete(runId);
         window.setTimeout(() => completedRunsRef.current.delete(runId), 30000);
       } else if (event === "cancelled") {
-        setSending(false);
-        setProcessingConversationId(null);
+        setRunState(runKey, null);
         const draftId = messageForRun(runId);
-        const cancelledMessage: ChatMessage = { id: draftId, role: "assistant", content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
-        setMessages((current) => current.map((item) => item.id === draftId ? cancelledMessage : item));
-        setActiveRunId(null);
-        resolveCancelledRun(runId, draftId);
+        const cancelledMessage: ChatMessage = payload.message as ChatMessage || { id: draftId, role: "assistant", content: "پاسخ متوقف شد.", status: "cancelled", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+        setMessages((current) => {
+          const index = current.findIndex((item) => item.id === draftId);
+          if (index >= 0) return current.map((item) => item.id === draftId ? cancelledMessage : item);
+          if (current.some((item) => item.id === cancelledMessage.id)) return current;
+          return [...current, cancelledMessage];
+        });
+        setRunState(runKey, null);
+        resolveCancelledRun(runId, draftId, cancelledMessage);
         setPhases((current) => { const next = { ...current }; delete next[draftId]; return next; });
       }
     };
     socket.on("connect", () => {
       setSocketConnected(true);
       const conversationId = selectedConversationIdRef.current;
-      if (conversationId) socket.emit("assistant:conversation:join", { conversation_id: conversationId, after_sequence: 0 });
+      if (conversationId) {
+        joiningConversationIdsRef.current.add(conversationId);
+        void socket.timeout(15000).emitWithAck("assistant:conversation:join", { conversation_id: conversationId, after_sequence: 0 })
+          .then((ack: any) => { if (!ack?.ok) { joiningConversationIdsRef.current.delete(conversationId); setError(ack?.code || "بازیابی گفتگو انجام نشد."); } })
+          .catch(() => { joiningConversationIdsRef.current.delete(conversationId); setError("بازیابی گفتگو پس از اتصال مجدد انجام نشد."); });
+      }
     });
-    socket.on("disconnect", () => setSocketConnected(false));
+    socket.on("disconnect", () => {
+      setSocketConnected(false);
+      if (sendingRunsRef.current.ephemeral !== undefined) {
+        setRunState("ephemeral", null);
+        if (ephemeralPendingContentRef.current) setText(ephemeralPendingContentRef.current);
+        setError("اتصال چت موقت قطع شد. متن پیام حفظ شده؛ پس از اتصال دوباره آن را ارسال کنید.");
+        for (const [runId, key] of runConversationKeysRef.current) {
+          if (key !== "ephemeral") continue;
+          completionWaitersRef.current.delete(runId);
+          completionRejectorsRef.current.get(runId)?.(new Error("اجرای چت موقت پس از قطع اتصال متوقف شد."));
+          completionRejectorsRef.current.delete(runId);
+          runConversationKeysRef.current.delete(runId);
+        }
+      }
+    });
     socket.on("connect_error", async () => {
       setSocketConnected(false);
       if (await refreshSession()) {
@@ -820,41 +890,89 @@ export default function Assistant() {
       }
     });
     socket.on("assistant:message:accepted", (accepted: any) => {
-      if (accepted?.run_id && accepted?.request_id) runDraftsRef.current.set(String(accepted.run_id), `draft-reply-${accepted.request_id}`);
-      if (accepted?.run_id) setActiveRunId(String(accepted.run_id));
-      if (accepted?.conversation_id) setProcessingConversationId(String(accepted.conversation_id));
+      if (accepted?.run_id && accepted?.request_id) {
+        const runId = String(accepted.run_id);
+        runDraftsRef.current.set(runId, `draft-reply-${accepted.request_id}`);
+        const key = String(accepted.conversation_id || requestConversationKeysRef.current.get(String(accepted.request_id)) || "ephemeral");
+        runConversationKeysRef.current.set(runId, key);
+        setRunState(key, runId);
+      }
     });
     socket.on("assistant:conversation:state", (state: any) => {
-      if (String(state?.conversation_id) !== selectedConversationIdRef.current) return;
+      const stateConversationId = String(state?.conversation_id || "");
+      if (stateConversationId !== selectedConversationIdRef.current) return;
       const restored: ChatMessage[] = (state.messages || []).map((item: any) => ({ ...item, tool_runs: [], memory_drafts: [] }));
       for (const run of state.active_runs || []) {
         if (terminalRunsRef.current.has(String(run.id))) continue;
         const draftId = `draft-reply-${run.id}`;
         runDraftsRef.current.set(String(run.id), draftId);
-        setActiveRunId(String(run.id));
+        runConversationKeysRef.current.set(String(run.id), String(state.conversation_id));
+        setRunState(String(state.conversation_id), String(run.id));
         sequenceRef.current.set(String(run.id), 0);
         restored.push({ id: draftId, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() });
       }
       setMessages(restored);
+      joiningConversationIdsRef.current.delete(stateConversationId);
+      for (const completed of state.completed_runs || []) {
+        const runId = String(completed.id);
+        const result = {
+          message: completed.message as ChatMessage,
+          conversationTitle: completed.conversation_title || null,
+        };
+        runConversationKeysRef.current.set(runId, stateConversationId);
+        sequenceRef.current.set(runId, Number(completed.sequence || 0));
+        markTerminalRun(runId);
+        completedRunsRef.current.set(runId, result);
+        completionWaitersRef.current.get(runId)?.(result);
+        completionWaitersRef.current.delete(runId);
+        window.setTimeout(() => completedRunsRef.current.delete(runId), 30000);
+        setSendingRuns((current) => {
+          if (current[stateConversationId] !== runId) return current;
+          const next = { ...current };
+          delete next[stateConversationId];
+          return next;
+        });
+      }
       const activeRuns = (state.active_runs || []).filter((run: any) => !terminalRunsRef.current.has(String(run.id)));
       if (activeRuns.length) {
-        setSending(true);
-        setProcessingConversationId(String(state.conversation_id));
-        for (const run of activeRuns) for (const event of run.events || []) applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
+        const activeRunIds = new Set(activeRuns.map((run: any) => String(run.id)));
+        for (const run of activeRuns) {
+          for (const event of orderUniqueRunEvents(run.events || [], bufferedRunEventsRef.current.get(String(run.id)) || [])) {
+            applyEnvelope({ ...event, run_id: run.id, conversation_id: state.conversation_id });
+          }
+          bufferedRunEventsRef.current.delete(String(run.id));
+        }
+        for (const [runId, buffered] of bufferedRunEventsRef.current) {
+          if (activeRunIds.has(runId)) continue;
+          sequenceRef.current.set(runId, 0);
+          runConversationKeysRef.current.set(runId, stateConversationId);
+          for (const event of orderUniqueRunEvents([], buffered)) {
+            applyEnvelope({ ...event, run_id: runId, conversation_id: stateConversationId });
+          }
+          bufferedRunEventsRef.current.delete(runId);
+        }
       } else {
-        setSending(false);
-        setProcessingConversationId(null);
-        setActiveRunId(null);
+        setRunState(String(state.conversation_id), null);
       }
     });
     for (const event of ["delta", "replace", "phase", "tool_started", "tool_completed", "tool_failed", "message:completed", "done", "cancelled"]) {
-      socket.on(`assistant:${event}`, applyEnvelope);
+      socket.on(`assistant:${event}`, (envelope: any) => {
+        const conversationId = envelope?.conversation_id ? String(envelope.conversation_id) : null;
+        const runId = String(envelope?.run_id || "");
+        if (conversationId && joiningConversationIdsRef.current.has(conversationId)) {
+          const buffered = bufferedRunEventsRef.current.get(runId) || [];
+          buffered.push(envelope);
+          bufferedRunEventsRef.current.set(runId, buffered);
+          return;
+        }
+        applyEnvelope(envelope);
+      });
     }
     socket.on("assistant:error", (payload: any) => {
-      setError(payload?.message || "اتصال دستیار با خطا روبه‌رو شد.");
-      setSending(false);
-      setProcessingConversationId(null);
-      setActiveRunId(null);
+      const runId = String(payload?.run_id || "");
+      const key = runId ? runConversationKeysRef.current.get(runId) || "ephemeral" : conversationRunKeyRef.current;
+      if (key === conversationRunKeyRef.current) setError(payload?.message || "اتصال دستیار با خطا روبه‌رو شد.");
+      if (runId) setRunState(key, null);
     });
     socket.connect();
     return () => {
@@ -865,9 +983,13 @@ export default function Assistant() {
   }, []);
   useEffect(() => {
     const socket = socketRef.current;
-    if (!socket?.connected || !conversation?.id || ephemeral) return;
-    socket.emit("assistant:conversation:join", { conversation_id: conversation.id, after_sequence: 0 });
-    return () => { socket.emit("assistant:conversation:leave", { conversation_id: conversation.id }); };
+    if (!socket?.connected || !conversation?.id || ephemeral || joiningConversationIdsRef.current.has(conversation.id)) return;
+    const conversationId = conversation.id;
+    joiningConversationIdsRef.current.add(conversationId);
+    void socket.timeout(15000).emitWithAck("assistant:conversation:join", { conversation_id: conversationId, after_sequence: 0 })
+      .then((ack: any) => { if (!ack?.ok) { joiningConversationIdsRef.current.delete(conversationId); setError(ack?.code || "بازیابی گفتگو انجام نشد."); } })
+      .catch(() => { joiningConversationIdsRef.current.delete(conversationId); setError("بازیابی گفتگو انجام نشد."); });
+    return () => { joiningConversationIdsRef.current.delete(conversationId); socket.emit("assistant:conversation:leave", { conversation_id: conversationId }); };
   }, [conversation?.id, ephemeral, socketConnected]);
   useEffect(() => {
     if (loadedDraftKeyRef.current !== draftKey) {
@@ -914,10 +1036,10 @@ export default function Assistant() {
 
   async function interruptMessage() {
     if (!sending) return;
-    cancelRequestedRef.current = true;
+    cancelRequestedConversationKeysRef.current.add(conversationRunKey);
     if (!activeRunId) return;
     try {
-      const acknowledged = await socketRef.current?.emitWithAck("assistant:message:cancel", { run_id: activeRunId });
+      const acknowledged = await socketRef.current?.timeout(15000).emitWithAck("assistant:message:cancel", { run_id: activeRunId });
       if (!acknowledged?.ok) setError(acknowledged?.code || "توقف پاسخ انجام نشد.");
     } catch (err) {
       setError(assistantErrorMessage(err));
@@ -925,23 +1047,29 @@ export default function Assistant() {
   }
 
   async function sendBranch(content: string, history: ChatMessage[], branchAttachments: AssistantMessageAttachments = attachments) {
-    setSending(true);
-    cancelRequestedRef.current = false;
-    setActiveRunId(null);
+    let runKey = ephemeral ? "ephemeral" : conversation?.id || "new";
+    setRunState(runKey, "pending");
     setError(null);
     const messageAttachments = branchAttachments;
     const optimistic: ChatMessage = { id: `draft-${Date.now()}`, role: "user", content, status: "succeeded", model: null, sources: null, attachments: messageAttachments, tool_runs: [], created_at: new Date().toISOString() };
     const draftReply: ChatMessage = { id: `draft-reply-${Date.now()}`, role: "assistant", content: "", status: "running", model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
+    if (ephemeral) ephemeralPendingContentRef.current = content;
     let activeConversationId: string | null = null;
     try {
       const active = ephemeral ? null : conversation ?? await create();
       activeConversationId = active?.id ?? null;
-      setProcessingConversationId(active?.id ?? null);
+      const nextRunKey = active?.id || "ephemeral";
+      if (nextRunKey !== runKey) {
+        setRunState(runKey, null);
+        runKey = nextRunKey;
+        setRunState(runKey, "pending");
+      }
       setMessages([...history, optimistic, draftReply]);
       if (active) streamingRepliesRef.current.set(active.id, draftReply);
       const socket = socketRef.current;
       if (!socket?.connected) throw new Error("اتصال زنده دستیار برقرار نیست. پس از اتصال دوباره ارسال کنید.");
       const requestId = draftReply.id.replace("draft-reply-", "");
+      requestConversationKeysRef.current.set(requestId, runKey);
       const requestPayload = {
         request_id: requestId,
         conversation_id: active?.id ?? null,
@@ -950,8 +1078,8 @@ export default function Assistant() {
         attachments: messageAttachments,
       };
       const acknowledged = active
-        ? await socket.emitWithAck("assistant:message:send", requestPayload)
-        : await socket.emitWithAck("assistant:ephemeral:send", {
+        ? await socket.timeout(15000).emitWithAck("assistant:message:send", requestPayload)
+        : await socket.timeout(15000).emitWithAck("assistant:ephemeral:send", {
             ...requestPayload,
             call_id: null,
             history: history.slice(-24).map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })),
@@ -959,26 +1087,38 @@ export default function Assistant() {
       if (!acknowledged?.ok || !acknowledged?.run_id) throw new Error(acknowledged?.code || "ارسال پیام انجام نشد.");
       const runId = String(acknowledged.run_id);
       runDraftsRef.current.set(runId, draftReply.id);
-      setActiveRunId(runId);
-      if (cancelRequestedRef.current) {
-        const cancelAck = await socket.emitWithAck("assistant:message:cancel", { run_id: runId });
+      runConversationKeysRef.current.set(runId, runKey);
+      setRunState(runKey, runId);
+      if (cancelRequestedConversationKeysRef.current.has(runKey)) {
+        cancelRequestedConversationKeysRef.current.delete(runKey);
+        const cancelAck = await socket.timeout(15000).emitWithAck("assistant:message:cancel", { run_id: runId });
         if (!cancelAck?.ok) throw new Error(cancelAck?.code || "توقف پاسخ انجام نشد.");
       }
-      const reply = await new Promise<{ message: ChatMessage; conversationTitle: string | null }>((resolve) => {
+      const reply = await new Promise<{ message: ChatMessage; conversationTitle: string | null }>((resolve, reject) => {
         const cached = completedRunsRef.current.get(runId);
         if (cached) {
           completedRunsRef.current.delete(runId);
           resolve(cached);
-        } else completionWaitersRef.current.set(runId, resolve);
+        } else {
+          const timer = window.setTimeout(() => {
+            completionWaitersRef.current.delete(runId);
+            completionRejectorsRef.current.delete(runId);
+            reject(new Error("زمان انتظار برای پاسخ دستیار به پایان رسید. گفتگو را دوباره باز کنید تا وضعیت بازیابی شود."));
+          }, 31 * 60 * 1000);
+          completionWaitersRef.current.set(runId, (result) => { window.clearTimeout(timer); completionRejectorsRef.current.delete(runId); resolve(result); });
+          completionRejectorsRef.current.set(runId, (error) => { window.clearTimeout(timer); reject(error); });
+        }
       });
+      ephemeralPendingContentRef.current = "";
+      if (active) streamingRepliesRef.current.delete(active.id);
       if (active && reply.conversationTitle) {
         setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
         setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: reply.conversationTitle } : item));
       }
-      setAttachments(emptyAttachments());
+      if (conversationRunKeyRef.current === runKey) setAttachments(emptyAttachments());
       if (active) {
         const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${active.id}/messages`);
-        if (selectedConversationIdRef.current === active.id) setMessages(reply.message.status === "cancelled" ? [...rows, reply.message] : rows);
+        if (selectedConversationIdRef.current === active.id) setMessages(reply.message.status === "cancelled" && !rows.some((item) => item.id === reply.message.id) ? [...rows, reply.message] : rows);
         setConversations((current) => current.map((item) => item.id === active.id ? { ...item, title: reply.conversationTitle || item.title, updated_at: reply.message.created_at } : item));
         if (reply.conversationTitle) setConversation((current) => current?.id === active.id ? { ...current, title: reply.conversationTitle } : current);
       }
@@ -987,12 +1127,11 @@ export default function Assistant() {
       const failedReply = (item: ChatMessage) => ({ ...item, content: message || "پاسخ دستیار آماده نشد.", status: "failed" as const });
       if (activeConversationId) updateStreamingReply(activeConversationId, draftReply.id, failedReply);
       else setMessages((current) => current.map((item) => item.id === draftReply.id ? failedReply(item) : item));
-      setError(message);
+      if (conversationRunKeyRef.current === runKey) setError(message);
     } finally {
-      cancelRequestedRef.current = false;
-      setActiveRunId(null);
-      setProcessingConversationId(null);
-      setSending(false);
+      cancelRequestedConversationKeysRef.current.delete(runKey);
+      requestConversationKeysRef.current.delete(draftReply.id.replace("draft-reply-", ""));
+      setRunState(runKey, null);
     }
   }
 
@@ -1018,7 +1157,7 @@ export default function Assistant() {
       await replaceMessageBranch(userMessage, userMessage.content);
     } catch (err) {
       setError(assistantErrorMessage(err));
-      setSending(false);
+      setRunState(conversationRunKey, null);
     }
   }
 
@@ -1043,7 +1182,7 @@ export default function Assistant() {
     }
     void replaceMessageBranch(messageEdit.message, messageEdit.value).catch((err) => {
       setError(assistantErrorMessage(err));
-      setSending(false);
+      setRunState(conversationRunKey, null);
     });
   }
 
@@ -1134,7 +1273,7 @@ export default function Assistant() {
   }
   function renderConversation(item: ChatConversation) {
     const isActive = conversation?.id === item.id;
-    const isProcessing = processingConversationId === item.id;
+    const isProcessing = sendingRuns[item.id] !== undefined;
     const archived = Boolean(item.archived_at);
     const pinned = Boolean(item.pinned_at);
     return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#4B6E48]"}`}>
@@ -1283,7 +1422,7 @@ export default function Assistant() {
         if (!pendingMessageEdit) return;
         void replaceMessageBranch(pendingMessageEdit.message, pendingMessageEdit.value).catch((err) => {
           setError(assistantErrorMessage(err));
-          setSending(false);
+          setRunState(conversationRunKey, null);
         });
       }}
     />

@@ -729,6 +729,12 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
         message = completion["message"]
         async with session_scope(tenant_id) as control:
             run = await control.get(AssistantRun, run_id)
+            if (
+                run is not None
+                and run.status in {"failed", "cancelled"}
+                and run.assistant_message_id != UUID(message["id"])
+            ):
+                return "already failed"
             if run is not None:
                 run.assistant_message_id = UUID(message["id"])
                 run.status = "succeeded" if message.get("status") != "failed" else "failed"

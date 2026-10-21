@@ -26,6 +26,8 @@ class ReportInput(BaseModel):
     schedule_mode: Literal["interval", "fixed"] = "interval"
     interval_hours: int | None = Field(default=24, ge=1, le=8760)
     fixed_hours: list[int] = Field(default_factory=list, max_length=24)
+    max_retries: int = Field(default=3, ge=0, le=3)
+    retry_base_minutes: int = Field(default=5, ge=1, le=60)
 
     @model_validator(mode="after")
     def validate_schedule(self) -> ReportInput:
@@ -66,6 +68,10 @@ class RunSummary(BaseModel):
     created_at: datetime
     error_code: str | None
     error_detail: str | None
+    attempt_count: int
+    max_retries: int
+    next_attempt_at: datetime | None
+    coverage: dict = Field(default_factory=dict)
 
 
 class RunOut(RunSummary):
@@ -158,15 +164,12 @@ async def edit_report(
         payload.interval_hours,
         payload.fixed_hours,
     )
-    reactivated = payload.enabled and not row.enabled
     for key, value in payload.model_dump().items():
         setattr(row, key, value)
-    if reactivated:
-        row.window_start = now
     tenant = await session.get(Tenant, principal.tenant_id)
     if not row.enabled:
         row.next_run_at = None
-    elif changed or reactivated:
+    elif changed or (payload.enabled and row.next_run_at is None):
         row.next_run_at = next_run_at(row, now, tenant.timezone)
     row.updated_at = now
     await audit.record(
@@ -283,7 +286,6 @@ async def list_runs(
                     defer(ScheduledReportRun.memory_snapshot),
                     defer(ScheduledReportRun.content),
                     defer(ScheduledReportRun.sources),
-                    defer(ScheduledReportRun.coverage),
                     defer(ScheduledReportRun.instructions),
                 )
                 .where(*filters)

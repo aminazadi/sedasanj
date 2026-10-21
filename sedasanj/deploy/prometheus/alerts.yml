@@ -82,6 +82,20 @@ groups:
         annotations:
           summary: "durable job dispatch is delayed"
 
+      - alert: ScheduledReportFailures
+        expr: increase(cbi_scheduled_report_final_failures_total[15m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "a scheduled report exhausted its retry policy"
+
+      - alert: ScheduledReportWorkerRecovery
+        expr: increase(cbi_scheduled_report_stuck_total[15m]) > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "a scheduled report worker exceeded its processing deadline"
+
       - alert: LlmProviderFailures
         expr: cbi_provider_tasks{status="failed"} > 5
         for: 5m

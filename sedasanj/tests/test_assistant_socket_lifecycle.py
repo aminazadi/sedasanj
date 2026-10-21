@@ -66,4 +66,4 @@ async def test_join_subscribes_before_reading_conversation_snapshot(monkeypatch)
     )
 
     assert result == {"ok": True, "sequence": 0}
-    assert events == ["room-joined", "snapshot-query", "snapshot-query", "state-emitted"]
+    assert events == ["room-joined", "snapshot-query", "snapshot-query", "snapshot-query", "state-emitted"]
