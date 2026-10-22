@@ -25,10 +25,9 @@ WORKDIR /app
 COPY requirements-runtime.txt requirements-build.txt ./
 COPY docker/pip-install-with-fallback.sh /usr/local/bin/pip-install-with-fallback
 RUN sh /usr/local/bin/pip-install-with-fallback python --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
+    --no-cache-dir --no-binary=llama-cpp-python \
     -r requirements-runtime.txt -r requirements-build.txt \
-    && sh /usr/local/bin/pip-install-with-fallback python --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
-       --force-reinstall --no-deps --no-binary=llama-cpp-python llama-cpp-python==0.3.16 \
-    && python -c "from llama_cpp import llama_supports_gpu_offload; assert llama_supports_gpu_offload(), 'llama.cpp CUDA backend was not built'"
+    && python -c "from pathlib import Path; import sysconfig; cuda_lib = Path(sysconfig.get_path('platlib')) / 'llama_cpp/lib/libggml-cuda.so'; assert cuda_lib.is_file(), f'llama.cpp CUDA backend was not built: {cuda_lib}'"
 COPY app.py ./
 COPY asr_service ./asr_service
 RUN useradd --create-home --uid 10001 asr \
