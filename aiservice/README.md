@@ -86,6 +86,33 @@ cache فقط RAM را آزاد می‌کند و آن مدل را غیرفعال 
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
+اگر تصویر ساخته شد ولی Docker خطای `could not select device driver "nvidia"` داد،
+NVIDIA Container Toolkit باید روی **میزبان** نصب و برای Docker ثبت شود. ابتدا
+`nvidia-smi` را روی میزبان اجرا کنید؛ اگر این دستور خطا داد، درایور NVIDIA را
+پیش از ادامه نصب یا تعمیر کنید. روی Ubuntu/Debian:
+
+```bash
+bash <<'SH'
+set -euo pipefail
+nvidia-smi
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+docker info --format '{{json .Runtimes}}'
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --no-build
+SH
+```
+
+اگر `nvidia-ctk` از قبل نصب است، از دستور `sudo nvidia-ctk runtime configure`
+به بعد اجرا کنید.
+
 بسته‌های Ubuntu در تصویر GPU ابتدا از آینه ایرانی ArvanCloud و در صورت خطا از
 آینه‌های USTC و Tsinghua نصب می‌شوند. برای تغییر ترتیب یا افزودن آینه دیگر،
 `APT_UBUNTU_MIRRORS` را در `.env` با نشانی‌های جداشده با فاصله تنظیم کنید.

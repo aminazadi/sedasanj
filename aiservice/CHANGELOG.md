@@ -2,6 +2,7 @@
 
 ## 2026-10-22 — AMINAZADI
 
+- Documented NVIDIA Container Toolkit host setup and Docker runtime registration for GPU images that build successfully but cannot start with an NVIDIA device reservation.
 - Built llama-cpp-python from source once in the GPU image and verified its CUDA library without importing the package before the host GPU driver is mounted.
 - Retried CPU and GPU Python dependency installation through configurable Chinese PyPI mirrors when the primary Iranian mirror returns missing package files.
 - Routed GPU image Ubuntu package installation through configurable Iranian and Chinese mirrors with automatic fallback, excluding the blocked NVIDIA apt source from this installation step.
