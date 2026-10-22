@@ -4,11 +4,13 @@ FROM python:3.11-slim-bookworm AS python-builder
 ARG PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_DEFAULT_TIMEOUT=600
+ARG PIP_FALLBACK_INDEX_URLS="https://mirrors.aliyun.com/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG TARGETARCH
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
+    PIP_FALLBACK_INDEX_URLS=${PIP_FALLBACK_INDEX_URLS} \
     PIP_RETRIES=15 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     CMAKE_BUILD_PARALLEL_LEVEL=4
@@ -18,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY requirements-runtime.txt requirements-build.txt ./
+COPY docker/pip-install-with-fallback.sh /usr/local/bin/pip-install-with-fallback
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m venv /opt/venv \
     && if [ "${TARGETARCH}" = "arm64" ]; then \
@@ -30,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/venv/bin/python -m pip install \
        --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" /tmp/torch-wheel/torch-*.whl \
     && rm -rf /tmp/torch-wheel \
-    && /opt/venv/bin/python -m pip install \
+    && sh /usr/local/bin/pip-install-with-fallback /opt/venv/bin/python \
        --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
        -r requirements-runtime.txt -r requirements-build.txt
 

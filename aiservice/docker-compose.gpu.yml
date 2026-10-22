@@ -7,6 +7,7 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
         PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-600}
+        PIP_FALLBACK_INDEX_URLS: ${PIP_FALLBACK_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/}
         APT_UBUNTU_MIRRORS: ${APT_UBUNTU_MIRRORS:-https://mirror.arvancloud.ir/ubuntu/ https://mirrors.ustc.edu.cn/ubuntu/ https://mirrors.tuna.tsinghua.edu.cn/ubuntu/}
     image: persian-asr:gpu
     environment:

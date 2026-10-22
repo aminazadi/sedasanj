@@ -3,10 +3,12 @@ FROM pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel
 ARG PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_DEFAULT_TIMEOUT=600
+ARG PIP_FALLBACK_INDEX_URLS="https://mirrors.aliyun.com/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
 ARG APT_UBUNTU_MIRRORS="https://mirror.arvancloud.ir/ubuntu/ https://mirrors.ustc.edu.cn/ubuntu/ https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
+    PIP_FALLBACK_INDEX_URLS=${PIP_FALLBACK_INDEX_URLS} \
     PIP_RETRIES=15 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     CMAKE_ARGS=-DGGML_CUDA=on \
@@ -21,9 +23,10 @@ COPY docker/install-gpu-apt-packages.sh /usr/local/bin/install-gpu-apt-packages
 RUN APT_UBUNTU_MIRRORS="${APT_UBUNTU_MIRRORS}" sh /usr/local/bin/install-gpu-apt-packages
 WORKDIR /app
 COPY requirements-runtime.txt requirements-build.txt ./
-RUN python -m pip install --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
+COPY docker/pip-install-with-fallback.sh /usr/local/bin/pip-install-with-fallback
+RUN sh /usr/local/bin/pip-install-with-fallback python --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
     -r requirements-runtime.txt -r requirements-build.txt \
-    && python -m pip install --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
+    && sh /usr/local/bin/pip-install-with-fallback python --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \
        --force-reinstall --no-deps --no-binary=llama-cpp-python llama-cpp-python==0.3.16 \
     && python -c "from llama_cpp import llama_supports_gpu_offload; assert llama_supports_gpu_offload(), 'llama.cpp CUDA backend was not built'"
 COPY app.py ./
