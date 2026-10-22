@@ -2,6 +2,7 @@
 
 ## 2026-10-22 — AMINAZADI
 
+- Routed GPU image Ubuntu package installation through configurable Iranian and Chinese mirrors with automatic fallback, excluding the blocked NVIDIA apt source from this installation step.
 - Completed the environment template for GPU scheduling and operational tuning, and passed GGUF context, queue polling, network metrics, and trusted proxy settings through Compose.
 - Removed legacy direct GGUF GPU-layer configuration so CPU fallback cannot bypass GPU reservations.
 - Added an optional CUDA 12.6/cuDNN 9 image and Compose overlay for NVIDIA GPU deployments while keeping CPU deployment as the default.

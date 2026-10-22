@@ -3,6 +3,7 @@ FROM pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel
 ARG PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_DEFAULT_TIMEOUT=600
+ARG APT_UBUNTU_MIRRORS="https://mirror.arvancloud.ir/ubuntu/ https://mirrors.ustc.edu.cn/ubuntu/ https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
@@ -16,8 +17,8 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     ASR_MODELS_DIR=/data/models \
     ASR_FORWARDED_ALLOW_IPS=127.0.0.1,172.29.0.0/16
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl libgomp1 build-essential cmake ninja-build \
-    && rm -rf /var/lib/apt/lists/*
+COPY docker/install-gpu-apt-packages.sh /usr/local/bin/install-gpu-apt-packages
+RUN APT_UBUNTU_MIRRORS="${APT_UBUNTU_MIRRORS}" sh /usr/local/bin/install-gpu-apt-packages
 WORKDIR /app
 COPY requirements-runtime.txt requirements-build.txt ./
 RUN python -m pip install --retries 15 --timeout "${PIP_DEFAULT_TIMEOUT}" \

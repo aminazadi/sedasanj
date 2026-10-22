@@ -85,6 +85,12 @@ cache فقط RAM را آزاد می‌کند و آن مدل را غیرفعال 
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
+بسته‌های Ubuntu در تصویر GPU ابتدا از آینه ایرانی ArvanCloud و در صورت خطا از
+آینه‌های USTC و Tsinghua نصب می‌شوند. برای تغییر ترتیب یا افزودن آینه دیگر،
+`APT_UBUNTU_MIRRORS` را در `.env` با نشانی‌های جداشده با فاصله تنظیم کنید.
+این مرحله فقط مخازن Ubuntu را می‌خواند تا خطای 403 مخزن NVIDIA موجود در تصویر پایه
+مانع نصب بسته‌های سیستم نشود.
+
 تصویر GPU از PyTorch 2.7.1/CUDA 12.6/cuDNN 9 و llama.cpp با CUDA استفاده می‌کند؛
 CTranslate2 فقط وقتی CUDA را فعال می‌کند که کتابخانه و درایور داخل کانتینر قابل‌استفاده
 باشند. پیش از deploy، خروجی دستور زیر و دسترسی Docker به `nvidia-smi` را بررسی کنید:
