@@ -55,7 +55,7 @@ async def ingest_missed_call(
         "call_type": payload.call_type,
     }
     statement = pg_insert(Call).values(**values).on_conflict_do_nothing(
-        constraint="calls_tenant_uniqueid_key"
+        index_elements=[Call.tenant_id, Call.asterisk_uniqueid]
     ).returning(Call)
     call = (await session.execute(statement)).scalar_one_or_none()
     if call is None:
