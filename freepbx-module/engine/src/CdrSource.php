@@ -30,9 +30,9 @@ class CdrSource
         }
         require_once $bootstrap;
         $table = \FreePBX::Config()->get('CDRDBTABLENAME') ?: 'cdr';
-        $db = \FreePBX::Cdr()->getCdrDbHandle();
-        $db->exec("SET time_zone = 'SYSTEM'");
-        return $source = new self($db, (string) $table);
+        $cdrDb = \FreePBX::Cdr()->getCdrDbHandle();
+        $cdrDb->exec("SET time_zone = 'SYSTEM'");
+        return $source = new self($cdrDb, (string) $table);
     }
 
     public function diagnostics(): array

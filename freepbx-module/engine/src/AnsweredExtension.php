@@ -35,7 +35,7 @@ class AnsweredExtension
             if (!is_object($cdr) || !method_exists($cdr, 'getCdrDbHandle')) {
                 return null;
             }
-            $db = $cdr->getCdrDbHandle();
+            $cdrDb = $cdr->getCdrDbHandle();
             $table = (string) \FreePBX::Config()->get('CDRDBTABLENAME');
             if ($table === '') {
                 $table = 'cdr';
@@ -43,7 +43,7 @@ class AnsweredExtension
             if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table) !== 1) {
                 return null;
             }
-            $stmt = $db->prepare(
+            $stmt = $cdrDb->prepare(
                 'SELECT disposition, dstchannel FROM `' . $table . '` WHERE uniqueid = :uniqueid LIMIT 50'
             );
             $stmt->execute(['uniqueid' => $uniqueId]);

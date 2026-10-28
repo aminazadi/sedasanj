@@ -2,6 +2,7 @@
 
 ## 2026-10-29 — AMINAZADI
 
+- Fixed FreePBX global database handle corruption during CDR lookups in module 1.3.7.
 - Fixed background FreePBX CDR bootstrap variable scope in module 1.3.6.
 - Released FreePBX module 1.3.5 with voicemail parse-back repair and URL-persisted administration tabs.
 

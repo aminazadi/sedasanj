@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.7 — AMINAZADI
+
+- Fixed CDR lookups overwriting the FreePBX global database handle and breaking administration page rendering.
+
 ## 1.3.6 — AMINAZADI
 
 - Preserved FreePBX bootstrap globals when connecting to CDR from the background poller and answered-extension lookup.
