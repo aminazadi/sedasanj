@@ -14,6 +14,8 @@
 
 ```bash
 sudo apt update && sudo apt install -y docker.io docker-compose-v2 ffmpeg
+echo 'vm.overcommit_memory=1' | sudo tee /etc/sysctl.d/99-sedasanj-redis.conf
+sudo sysctl --system
 sudo mkdir -p /srv/cbi/models /srv/backup
 # Place the models in /srv/cbi/models:
 #   dorna-llama3-8b-instruct-q4_k_m.gguf
@@ -25,6 +27,10 @@ docker compose config --quiet
 docker compose up -d --build --remove-orphans
 docker compose logs -f migrate
 ```
+
+پیش از هر اجرای Redis، سرویس `redis-aof-repair` صحت AOF پایدار را بررسی می‌کند. اگر AOF
+ناقص باشد، ابتدا یک کپی کامل در `aof-repair-backups` همان volume می‌سازد و سپس repair رسمی
+Redis را اجرا می‌کند. فایل سالم بدون هیچ تغییری عبور داده می‌شود.
 
 در `.env` این دو مقدار اجباری‌اند:
 

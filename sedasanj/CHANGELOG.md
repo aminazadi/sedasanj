@@ -2,6 +2,8 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Added a pre-start Redis AOF integrity check with timestamped backup and automatic repair for truncated append-only files, and pinned the Redis image version.
+- Documented the required host memory-overcommit setting for reliable Redis persistence.
 - Changed Python dependency mirror handling from simultaneous index merging to isolated sequential fallback, preventing malformed mirror responses from aborting Docker builds.
 - Persisted local inference and emotion model caches in the project-root `models` directory so redeployments reuse existing downloads.
 - Added one-time migration from the legacy Docker emotion-model volume and excluded project-root model artifacts from Git and Docker build contexts.

@@ -429,12 +429,23 @@ services:
       resources:
         limits: { cpus: "${PG_CPUS:-2}", memory: "${PG_MEMORY:-2G}" }
 
+  redis-aof-repair:
+    image: redis:7.4.11-alpine
+    restart: "no"
+    command: ["sh", "/repair-aof.sh"]
+    volumes:
+      - redisdata:/data
+      - ./redis/repair-aof.sh:/repair-aof.sh:ro
+
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.11-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "3gb"]
     volumes:
       - redisdata:/data
+    depends_on:
+      redis-aof-repair:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

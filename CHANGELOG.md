@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Added recoverable Redis startup repair for corrupted AOF persistence and documented the required host memory-overcommit configuration.
 - Fixed API and worker image builds by retrying Python package mirrors independently when an index returns a truncated or malformed response.
 - Persisted Sedasanj and AISERVICE model downloads in Git-ignored, build-excluded project-root directories and reused them across deployments.
 - Added automatic one-time migration from the previous Docker model volumes.
