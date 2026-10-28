@@ -1,0 +1,56 @@
+{
+  "schema": "sedasanj.freepbx.recuploader.config",
+  "version": 1,
+  "target": "freepbx-module",
+  "generated_at": "2026-10-28T00:00:00.000Z",
+  "profile": {
+    "api_key_id": "123e4567-e89b-12d3-a456-426614174000",
+    "api_key_prefix": "sk_live_test"
+  },
+  "settings": {
+    "general": {
+      "endpoint": "https://api.sedasanj.ir/v1/ingest/calls",
+      "api_key": "sk_live_test_secret",
+      "auth_header": "Authorization",
+      "auth_scheme": "Bearer",
+      "archive_password": "",
+      "verify_tls": true,
+      "timeout_seconds": 60,
+      "immediate_retries": 2
+    },
+    "upload": {
+      "format": "gzip"
+    },
+    "post_upload": {
+      "on_success": "move",
+      "move_dir": "/var/spool/asterisk-recording-uploader/uploaded"
+    },
+    "archive": {
+      "format": "gsm"
+    },
+    "watcher": {
+      "watch_dir": "/var/spool/asterisk/monitor",
+      "filename_pattern": "^(?P<exten>[^-]+)-(?P<date>\\d{8})-(?P<time>\\d{6})-(?P<uniqueid>[\\d.]+)\\.(?P<ext>wav|mp3|gsm)$",
+      "min_file_age_seconds": 3,
+      "exclude_patterns": "^(recv_|trans_).*$"
+    },
+    "queue": {
+      "max_retries": 100,
+      "retry_base_seconds": 30,
+      "retry_max_seconds": 3600,
+      "credit_retry_seconds": 3600
+    },
+    "state": {
+      "sweep_interval_seconds": 300,
+      "stale_processing_seconds": 600,
+      "retention_days": 90
+    },
+    "logging": {
+      "log_level": "INFO"
+    },
+    "missed_calls": {
+      "enabled": false,
+      "poll_interval_seconds": 30
+    }
+  }
+}

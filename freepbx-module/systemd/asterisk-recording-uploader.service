@@ -1,0 +1,22 @@
+[Unit]
+Description=Asterisk Recording Uploader module (combined sweeper + retry queue)
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=ARU_CONFIG=/etc/asterisk-recording-uploader/config.ini
+# php-cli is resolved through $PATH at the moment the service actually
+# starts (command -v php), not hardcoded here - it is not always at
+# /usr/bin/php, and this must stay in sync with Recuploader::installSystemdUnit().
+ExecStart=/bin/bash -c 'exec "$(command -v php)" /usr/local/bin/asterisk-recording-uploader/bin/service.php'
+Restart=on-failure
+RestartSec=5
+User=asterisk
+Group=asterisk
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

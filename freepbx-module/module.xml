@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module>
+	<rawname>recuploader</rawname>
+	<name>Seda Sanj</name>
+	<version>1.2.1</version>
+	<publisher>Seda Sanj</publisher>
+	<license>GPLv3+</license>
+	<licenselink>http://www.gnu.org/licenses/gpl-3.0.txt</licenselink>
+	<category>Admin</category>
+	<description>Seda Sanj (sedasanj.ir) uploads finished call recordings to an external HTTP endpoint (by default the Persian ASR transcription service), with automatic retry and self-healing reconciliation. Combines the retry queue and the sweeper into a single background service and provisions the MixMonitor recording path automatically - configure everything, including which ASR model(s) to use, from this page.</description>
+	<changelog>changelog.md</changelog>
+	<menuitems>
+		<recuploader>Seda Sanj</recuploader>
+	</menuitems>
+</module>

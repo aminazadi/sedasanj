@@ -1,0 +1,17 @@
+{
+  "schema": "sedasanj.freepbx.core-patches",
+  "version": 1,
+  "freepbx_majors": [16, 17],
+  "fixtures": [
+    {
+      "name": "main_mixmonitor",
+      "before_sha256": "6cd5d1e2582bc6ca7f6534a38427568b10bcc411ed50f35167f07c4666bab72f",
+      "after_sha256": "6f272e32b646bf30dd6403fe498ee3e4c77a7778f5f0cf223fe3af35f108bdb7"
+    },
+    {
+      "name": "manual_mixmonitor",
+      "before_sha256": "556c52dfe13c53d120830cecfc2b6795b63ada228b44324ef5b0682be331b94d",
+      "after_sha256": "855e571c134d5223950dbcd197d0f1a80c0660032afa23d1b4705f29a04066ba"
+    }
+  ]
+}

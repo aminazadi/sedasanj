@@ -1,3 +1,12 @@
+# Changelog
+
+## 2026-10-28 — AMINAZADI
+
+- Fixed FreePBX configuration imports by supporting the optional missed_calls section and reporting precise section validation errors.
+- Completed the FreePBX missed-call upload path with CDR polling, JSON delivery, retry handling, admin controls, and CDR readiness feedback.
+- Kept missed-call uploads disabled by default in generated configuration and added a shared web/PHP contract fixture.
+- Added the editable FreePBX module source and prepared release package version 1.2.1.
+
 - AMINAZADI: Updated the homepage hero headline to «بدون صداسنج هیچ مرکز تماسی موثر نیست».
 - AMINAZADI: Replaced the landing page's customer voice call to action with the quick demo section shown in the reference.
 

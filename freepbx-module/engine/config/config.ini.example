@@ -1,0 +1,91 @@
+; Managed by whichever frontend is installed (FreePBX GUI, or
+; frontends/generic/bin/configure.php on Issabel / plain Asterisk).
+; Manual changes here may be overwritten the next time settings are saved
+; through a frontend - see each frontend's own docs.
+;
+; This is the example/fallback copy dropped into
+; /etc/asterisk-recording-uploader/config.ini ONLY if that file doesn't
+; exist yet.
+;
+; SINGLE SOURCE OF TRUTH: every value below mirrors
+; Engine\Config::DEFAULTS in engine/src/Config.php. That PHP array is now
+; the only place default values are declared (plan.md §2.5 / §3.6) - this
+; file is generated from it at release time rather than hand-maintained.
+
+[general]
+endpoint = https://api.sedasanj.ir/v1/ingest/calls
+api_key =
+api_key_b64 =
+auth_header = Authorization
+auth_scheme = Bearer
+archive_password =
+archive_password_b64 =
+verify_tls = true
+timeout_seconds = 60
+immediate_retries = 2
+
+[upload]
+format = gzip
+method = POST_MULTIPART
+file_field_name = file
+metadata_mode = form_fields
+metadata_json_field_name = metadata
+extra_headers =
+gzip = true
+
+[post_upload]
+on_success = move
+move_dir = /var/spool/asterisk-recording-uploader/uploaded
+
+[archive]
+format = gsm
+
+[watcher]
+watch_dir = /var/spool/asterisk/monitor
+filename_pattern = ^(?P<exten>[^-]+)-(?P<date>\d{8})-(?P<time>\d{6})-(?P<uniqueid>[\d.]+)\.(?P<ext>wav|mp3|gsm)$
+state_file = /var/lib/asterisk-recording-uploader/watcher_state.json
+min_file_age_seconds = 3
+
+[voicemail]
+enabled = false
+spool_dir = /var/spool/asterisk/voicemail
+folders = INBOX,Old,Urgent,Work,Family,Friends
+mailbox_filter =
+backfill = false
+sweep_interval_seconds = 60
+audio_preference = wav,WAV,gsm
+
+[missed_calls]
+enabled = false
+poll_interval_seconds = 30
+settle_seconds = 15
+overlap_seconds = 120
+cursor_file = /var/lib/asterisk-recording-uploader/missed-calls-cursor.json
+spool_dir = /var/spool/asterisk-recording-uploader/missed-calls/pending
+failed_dir = /var/spool/asterisk-recording-uploader/missed-calls/failed
+
+[queue]
+; pending: recordings still to be delivered (the staged copy) plus the
+; SQLite queue's audio bookkeeping (or JSON job files, on the fallback path)
+spool_dir = /var/spool/asterisk-recording-uploader/pending
+; failed: recordings (and any leftover job files) whose upload was given up on
+failed_dir = /var/spool/asterisk-recording-uploader/failed
+max_retries = 100
+retry_base_seconds = 30
+retry_max_seconds = 3600
+credit_retry_seconds = 3600
+
+[state]
+; state.sqlite lives alongside this file's directory (see Config::sqlitePath()).
+; Used directly only on the JSON fallback path (no pdo_sqlite available).
+state_file = /var/lib/asterisk-recording-uploader/state.json
+sweep_interval_seconds = 300
+stale_processing_seconds = 600
+recursive_scan = true
+exclude_patterns = ^(recv_|trans_).*$
+retention_days = 90
+
+[logging]
+log_file = /var/log/asterisk-recording-uploader/uploader.log
+log_level = INFO
+use_syslog = true
