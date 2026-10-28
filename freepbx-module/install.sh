@@ -339,9 +339,25 @@ install -m 644 "$MODULE_DIR/systemd/asterisk-recording-uploader.service" \
   /etc/systemd/system/asterisk-recording-uploader.service
 systemctl daemon-reload
 
-echo "==> sudoers drop-in (lets the FreePBX GUI restart just this service)"
+echo "==> Self-update helper and release signing key"
+install -d -o root -g root -m 0755 /etc/sedasanj-recuploader-update \
+  /var/lib/sedasanj-recuploader-update /var/lib/sedasanj-recuploader-update/jobs
+install -o root -g root -m 0755 "$MODULE_DIR/bin/sedasanj-recuploader-update.sh" \
+  /usr/local/sbin/sedasanj-recuploader-update
+install -o root -g root -m 0644 "$MODULE_DIR/assets/release-signing.pub" \
+  /etc/sedasanj-recuploader-update/release-signing.pub
+install -o asterisk -g asterisk -m 0644 "$MODULE_DIR/assets/release-signing.pub" \
+  "$CONF_DIR/release-signing.pub"
+install -d -o asterisk -g asterisk -m 0750 /var/spool/asterisk-recording-uploader/updates
+if ! "$PHP_BIN" -r 'exit(function_exists("sodium_crypto_sign_verify_detached") ? 0 : 1);'; then
+  echo "WARNING: the PHP sodium extension is missing - automatic module updates" >&2
+  echo "         stay disabled until it is installed (e.g. 'apt-get install php-sodium')." >&2
+fi
+
+echo "==> sudoers drop-in (lets the FreePBX GUI restart just this service and run the update helper)"
 cat > /etc/sudoers.d/asterisk-recording-uploader <<'EOF'
-asterisk ALL=(root) NOPASSWD: /bin/systemctl start asterisk-recording-uploader.service, /bin/systemctl stop asterisk-recording-uploader.service, /bin/systemctl restart asterisk-recording-uploader.service, /bin/systemctl enable asterisk-recording-uploader.service, /bin/systemctl disable asterisk-recording-uploader.service, /bin/systemctl status asterisk-recording-uploader.service
+Defaults:asterisk !requiretty
+asterisk ALL=(root) NOPASSWD: /bin/systemctl start asterisk-recording-uploader.service, /bin/systemctl stop asterisk-recording-uploader.service, /bin/systemctl restart asterisk-recording-uploader.service, /bin/systemctl enable asterisk-recording-uploader.service, /bin/systemctl disable asterisk-recording-uploader.service, /bin/systemctl status asterisk-recording-uploader.service, /usr/local/sbin/sedasanj-recuploader-update
 EOF
 chmod 440 /etc/sudoers.d/asterisk-recording-uploader
 

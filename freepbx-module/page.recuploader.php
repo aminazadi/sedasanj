@@ -144,6 +144,51 @@ $helpIcon = function ($title, $content) {
 	.sedasanj-panel .sj-footer { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 24px; color: var(--sj-neutral); font-size: 12px; }
 	.sedasanj-panel .sj-footer .sj-logo { width: 54px; color: var(--sj-neutral); }
 
+	/* ---- Self-update banner, progress, changelog (Persian, RTL) ---- */
+	.sedasanj-panel .sj-rtl { direction: rtl; text-align: right; }
+	.sedasanj-panel .sj-update-card { margin-bottom: 16px; padding: 18px 22px; border: 1px solid var(--sj-sand); border-right: 4px solid var(--sj-green); background: #fff; color: var(--sj-ink); }
+	.sedasanj-panel .sj-update-card.sev-critical, .sedasanj-panel .sj-update-card.sev-security { border-right-color: #dc2626; }
+	.sedasanj-panel .sj-update-card h4 { margin: 0; font-size: 16px; font-weight: 800; }
+	.sedasanj-panel .sj-update-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+	.sedasanj-panel .sj-update-sub { margin: 8px 0 0; color: var(--sj-label); font-size: 13px; }
+	.sedasanj-panel .sj-update-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+	.sedasanj-panel .sj-badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--sj-sand); background: var(--sj-canvas); color: var(--sj-ink); font-size: 11px; font-weight: 700; line-height: 1.6; }
+	.sedasanj-panel .sj-badge.sev-recommended { border-color: #e2d6a8; background: #fbf7ea; color: #6b5414; }
+	.sedasanj-panel .sj-badge.sev-critical, .sedasanj-panel .sj-badge.sev-security { border-color: #efc9c9; background: #fdf2f2; color: #991b1b; }
+	.sedasanj-panel .sj-badge.is-current { border-color: var(--sj-green); background: #eef3ed; color: var(--sj-green-dark); }
+	.sedasanj-panel .sj-progress { height: 8px; margin: 14px 0 6px; border: 1px solid var(--sj-sand); background: var(--sj-canvas); }
+	.sedasanj-panel .sj-progress > span { display: block; height: 100%; width: 0; background: var(--sj-green); transition: width .4s; }
+	.sedasanj-panel .sj-steps { margin: 10px 0 0; padding: 0; list-style: none; }
+	.sedasanj-panel .sj-steps li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed #e2e8f0; color: var(--sj-neutral); font-size: 13px; }
+	.sedasanj-panel .sj-steps li .fa { width: 16px; text-align: center; }
+	.sedasanj-panel .sj-steps li.is-running { color: var(--sj-ink); font-weight: 700; }
+	.sedasanj-panel .sj-steps li.is-done { color: var(--sj-label); }
+	.sedasanj-panel .sj-steps li.is-done .fa { color: var(--sj-green); }
+	.sedasanj-panel .sj-steps li.is-failed { color: #991b1b; }
+	.sedasanj-panel .sj-update-card details { margin-top: 12px; }
+	.sedasanj-panel .sj-update-card summary { cursor: pointer; color: var(--sj-label); font-size: 12px; }
+	.sedasanj-panel .sj-update-card .sj-log { direction: ltr; text-align: left; max-height: 260px; margin-top: 8px; }
+	.sedasanj-panel .sj-modal { position: fixed; inset: 0; z-index: 2000; display: none; align-items: flex-start; justify-content: center; padding: 6vh 16px; background: rgb(15 23 42 / 0.55); overflow: auto; }
+	.sedasanj-panel .sj-modal.is-open { display: flex; }
+	.sedasanj-panel .sj-modal-box { width: 100%; max-width: 760px; border: 1px solid var(--sj-sand); background: #fff; }
+	.sedasanj-panel .sj-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; background: var(--sj-green) var(--sj-dots-light); color: var(--sj-canvas); }
+	.sedasanj-panel .sj-modal-head h4 { margin: 0; color: var(--sj-canvas); font-size: 15px; font-weight: 700; }
+	.sedasanj-panel .sj-modal-head button { border: 0; background: transparent; color: var(--sj-canvas); font-size: 22px; line-height: 1; }
+	.sedasanj-panel .sj-modal-body { max-height: 72vh; padding: 18px 22px; overflow: auto; }
+	.sedasanj-panel .sj-timeline { margin: 0; padding: 0 22px 0 0; list-style: none; border-right: 2px solid var(--sj-sand); }
+	.sedasanj-panel .sj-timeline > li { position: relative; margin-bottom: 24px; }
+	.sedasanj-panel .sj-timeline > li::before { position: absolute; top: 6px; right: -30px; width: 14px; height: 14px; border: 2px solid var(--sj-green); background: var(--sj-canvas); content: ""; }
+	.sedasanj-panel .sj-timeline > li.sev-critical::before, .sedasanj-panel .sj-timeline > li.sev-security::before { border-color: #dc2626; }
+	.sedasanj-panel .sj-release-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+	.sedasanj-panel .sj-release-head strong { color: var(--sj-ink); font-size: 15px; }
+	.sedasanj-panel .sj-release-date { color: var(--sj-neutral); font-size: 12px; }
+	.sedasanj-panel .sj-release-html { color: #334155; font-size: 13px; line-height: 1.9; }
+	.sedasanj-panel .sj-release-html h2, .sedasanj-panel .sj-release-html h3, .sedasanj-panel .sj-release-html h4 { margin: 12px 0 6px; font-size: 14px; font-weight: 700; }
+	.sedasanj-panel .sj-release-html ul, .sedasanj-panel .sj-release-html ol { padding-right: 20px; padding-left: 0; }
+	.sedasanj-panel .sj-release-html pre { direction: ltr; text-align: left; }
+	.sedasanj-panel .sj-release-html table { margin: 8px 0; border-collapse: collapse; }
+	.sedasanj-panel .sj-release-html th, .sedasanj-panel .sj-release-html td { padding: 4px 8px; border: 1px solid #e2e8f0; }
+
 	@media (max-width: 767px) {
 		.sedasanj-panel { padding: 16px; }
 		.sedasanj-panel .sj-hero { padding: 18px; }
@@ -174,6 +219,9 @@ $helpIcon = function ($title, $content) {
 			<?php endif; ?>
 		</div>
 	</header>
+
+	<!-- Filled by the checkupdate AJAX call (see the self-update script below). -->
+	<div id="sj-update-banner" class="sj-rtl" dir="rtl"></div>
 
 	<?php if ($saved && $saveError === null): ?>
 		<div class="alert alert-success alert-dismissible" role="alert">
@@ -243,6 +291,11 @@ $helpIcon = function ($title, $content) {
 			<li role="presentation">
 				<a href="#tab-logging" aria-controls="tab-logging" role="tab" data-toggle="tab">
 					<i class="fa fa-list-alt"></i> <?php echo _("Logging"); ?>
+				</a>
+			</li>
+			<li role="presentation">
+				<a href="#tab-changelog" aria-controls="tab-changelog" role="tab" data-toggle="tab">
+					<i class="fa fa-history"></i> تغییرات نسخه‌ها
 				</a>
 			</li>
 		</ul>
@@ -657,6 +710,12 @@ $helpIcon = function ($title, $content) {
 
 			</div><!-- /tab-logging -->
 
+			<!-- ================= Changelog (loaded on first open) ================= -->
+			<div role="tabpanel" class="tab-pane sj-rtl" id="tab-changelog" dir="rtl">
+				<div id="sj-update-check-note" class="alert alert-warning" style="display: none;"></div>
+				<div id="sj-changelog"><p class="text-muted"><i class="fa fa-spinner fa-spin"></i> در حال دریافت تاریخچهٔ نسخه‌ها...</p></div>
+			</div><!-- /tab-changelog -->
+
 		</div><!-- /tab-content -->
 
 		<div class="form-group sj-actions">
@@ -700,6 +759,16 @@ $helpIcon = function ($title, $content) {
 		<?php if ($logoSvg !== false): ?><span class="sj-logo"><?php echo $logoSvg; ?></span>&middot;<?php endif; ?>
 		<a href="https://sedasanj.ir" target="_blank" rel="noopener">sedasanj.ir</a>
 	</footer>
+
+	<div id="sj-changelog-modal" class="sj-modal sj-rtl" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="sj-changelog-modal-title">
+		<div class="sj-modal-box">
+			<div class="sj-modal-head">
+				<h4 id="sj-changelog-modal-title">تغییرات نسخهٔ جدید</h4>
+				<button type="button" class="sj-modal-close" aria-label="بستن">&times;</button>
+			</div>
+			<div class="sj-modal-body"></div>
+		</div>
+	</div>
 
 </div>
 
@@ -808,6 +877,246 @@ $helpIcon = function ($title, $content) {
 				aruRenderLogResults(null);
 			}).always(function () {
 				$btn.prop('disabled', false);
+			});
+		});
+
+		/* ---- Self-update ------------------------------------------------
+		 * checkupdate runs on every load. It shows the banner when a newer
+		 * release exists, or jumps straight back into the progress view if
+		 * an update job is still running (e.g. the page was reloaded
+		 * mid-update). startupdate returns a job id at once; the root helper
+		 * then reports progress through updatestatus, polled every 1.5s.
+		 * While `fwconsole ma install` replaces this module, ajax.php can
+		 * briefly fail, so poll errors are tolerated rather than fatal. */
+		var sjAjaxUrl = (window.FreePBX && FreePBX.ajaxurl) ? FreePBX.ajaxurl : 'ajax.php';
+		var sjSeverity = { normal: 'عادی', recommended: 'توصیه‌شده', critical: 'بحرانی', security: 'امنیتی' };
+		var sjSteps = [
+			['verify', 'بررسی امضا و یکپارچگی بسته'],
+			['extract', 'استخراج و اعتبارسنجی بسته'],
+			['backup', 'پشتیبان‌گیری از نصب فعلی'],
+			['swap', 'جایگزینی فایل‌های ماژول'],
+			['install', 'نصب ماژول (fwconsole ma install)'],
+			['reload', 'اعمال تنظیمات FreePBX'],
+			['health', 'بررسی سلامت سرویس'],
+			['report', 'ارسال گزارش به سرور']
+		];
+		var sjReasons = {
+			sodium: 'افزونهٔ PHP sodium روی این سرور نصب نیست (برای نمونه php-sodium را نصب کنید).',
+			helper: 'ابزار بروزرسانی روی سرور نصب نشده است؛ یک‌بار install.sh را با دسترسی root اجرا کنید.',
+			signing_key: 'کلید امضای نسخه‌ها روی این سرور پیکربندی نشده است.',
+			exec: 'تابع exec در PHP غیرفعال است.'
+		};
+		var sjCurrentVersion = <?php echo json_encode($moduleVersion['files']); ?>;
+		var sjPollErrors = 0;
+
+		function sjCall(command, data, method) {
+			return $.ajax({
+				url: sjAjaxUrl,
+				method: method || 'GET',
+				dataType: 'json',
+				timeout: command === 'startupdate' ? 330000 : 20000,
+				data: $.extend({ module: 'recuploader', command: command }, data || {})
+			});
+		}
+
+		function sjSevBadge(sev) {
+			sev = sjSeverity[sev] ? sev : 'normal';
+			return '<span class="sj-badge sev-' + sev + '">' + sjSeverity[sev] + '</span>';
+		}
+
+		function sjDate(iso) {
+			var d = iso ? new Date(iso) : null;
+			if (!d || isNaN(d.getTime())) { return ''; }
+			try { return d.toLocaleDateString('fa-IR', { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return d.toISOString().slice(0, 10); }
+		}
+
+		// Item HTML is already reduced to a tag allowlist server-side
+		// (Recuploader::sanitizeChangelogHtml()); everything else is escaped.
+		function sjTimeline(items) {
+			if (!items || !items.length) { return '<p class="text-muted">هنوز تغییری ثبت نشده است.</p>'; }
+			var html = '<ul class="sj-timeline">';
+			$.each(items, function (i, item) {
+				var sev = sjSeverity[item.severity] ? item.severity : 'normal';
+				html += '<li class="sev-' + sev + '"><div class="sj-release-head">'
+					+ '<strong>نسخهٔ ' + aruEscapeHtml(item.version) + '</strong>' + sjSevBadge(sev)
+					+ (item.version === sjCurrentVersion ? '<span class="sj-badge is-current">نسخهٔ فعلی</span>' : '')
+					+ '<span class="sj-release-date">' + aruEscapeHtml(sjDate(item.published_at)) + '</span></div>'
+					+ (item.title ? '<div><strong>' + aruEscapeHtml(item.title) + '</strong></div>' : '')
+					+ '<div class="sj-release-html">' + (item.html || '') + '</div></li>';
+			});
+			return html + '</ul>';
+		}
+
+		function sjOpenModal(title, bodyHtml) {
+			var $m = $('#sj-changelog-modal');
+			$m.find('#sj-changelog-modal-title').text(title);
+			$m.find('.sj-modal-body').html(bodyHtml);
+			$m.addClass('is-open');
+		}
+		$('#sj-changelog-modal').on('click', function (e) {
+			if (e.target === this || $(e.target).closest('.sj-modal-close').length) { $(this).removeClass('is-open'); }
+		});
+		$(document).on('keydown', function (e) {
+			if (e.key === 'Escape') { $('#sj-changelog-modal').removeClass('is-open'); }
+		});
+
+		function sjRenderBanner(d) {
+			var latest = d.latest;
+			var sev = sjSeverity[latest.severity] ? latest.severity : 'normal';
+			var html = '<div class="sj-update-card sev-' + sev + '">'
+				+ '<div class="sj-update-head"><i class="fa fa-arrow-circle-up" style="color: var(--sj-green); font-size: 20px;"></i>'
+				+ '<h4>نسخهٔ ' + aruEscapeHtml(latest.version) + ' ماژول صداسنج منتشر شد</h4>' + sjSevBadge(sev) + '</div>'
+				+ '<p class="sj-update-sub">' + (latest.title ? aruEscapeHtml(latest.title) + ' &middot; ' : '')
+				+ 'نسخهٔ فعلی شما ' + aruEscapeHtml(d.current) + ' است.'
+				+ (latest.published_at ? ' تاریخ انتشار: ' + aruEscapeHtml(sjDate(latest.published_at)) : '') + '</p>'
+				+ '<div class="sj-update-actions">'
+				+ '<button type="button" class="btn btn-default" id="sj-show-changes"><i class="fa fa-list-ul"></i> مشاهدهٔ تغییرات</button>';
+			if (d.capability && d.capability.auto) {
+				html += '<button type="button" class="btn btn-sj" id="sj-start-update"><i class="fa fa-download"></i> بروزرسانی به نسخهٔ ' + aruEscapeHtml(latest.version) + '</button>';
+			}
+			html += '</div>';
+			if (!d.capability || !d.capability.auto) {
+				var reasons = $.map((d.capability && d.capability.reasons) || [], function (r) { return '<li>' + aruEscapeHtml(sjReasons[r] || r) + '</li>'; });
+				html += '<div class="alert alert-warning" style="margin: 14px 0 0;"><strong>بروزرسانی خودکار روی این سرور در دسترس نیست.</strong>'
+					+ ' بستهٔ نسخهٔ جدید را از پنل صداسنج یا پشتیبانی دریافت و دستی نصب کنید.<ul style="margin: 6px 0 0;">' + reasons.join('') + '</ul></div>';
+			}
+			html += '<div id="sj-update-error"></div></div>';
+			$('#sj-update-banner').html(html);
+			$('#sj-show-changes').on('click', function () {
+				sjOpenModal('تغییرات تا نسخهٔ ' + latest.version, sjTimeline(d.changelog));
+			});
+			$('#sj-start-update').on('click', function () {
+				if (!confirm('ماژول به نسخهٔ ' + latest.version + ' بروزرسانی شود؟ پیش از نصب از وضعیت فعلی پشتیبان گرفته می‌شود و در صورت خطا نسخهٔ فعلی بازگردانده می‌شود.')) { return; }
+				sjStartUpdate(latest.id, latest.version, $(this));
+			});
+		}
+
+		function sjStartUpdate(releaseId, version, $btn) {
+			if ($btn) { $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> در حال دانلود و بررسی بسته...'); }
+			sjCall('startupdate', { release_id: releaseId }, 'POST').done(function (r) {
+				if (r && r.status && r.job) {
+					sjShowProgress(r.job, version);
+				} else {
+					sjBannerError((r && r.message) || 'شروع بروزرسانی ناموفق بود.', $btn, version);
+				}
+			}).fail(function () {
+				sjBannerError('ارتباط با سرور برای شروع بروزرسانی برقرار نشد.', $btn, version);
+			});
+		}
+
+		function sjBannerError(message, $btn, version) {
+			var $target = $('#sj-update-error').length ? $('#sj-update-error') : $('#sj-update-result');
+			$target.html('<div class="alert alert-danger" style="margin: 14px 0 0;">' + aruEscapeHtml(message) + '</div>');
+			if ($btn) { $btn.prop('disabled', false).html('<i class="fa fa-download"></i> بروزرسانی به نسخهٔ ' + aruEscapeHtml(version)); }
+		}
+
+		function sjShowProgress(job, version) {
+			var steps = $.map(sjSteps, function (s) {
+				return '<li data-step="' + s[0] + '"><i class="fa fa-circle-o"></i><span>' + s[1] + '</span></li>';
+			}).join('');
+			$('#sj-update-banner').html('<div class="sj-update-card" id="sj-update-progress">'
+				+ '<div class="sj-update-head"><i class="fa fa-cog fa-spin" style="color: var(--sj-green); font-size: 18px;"></i>'
+				+ '<h4>در حال بروزرسانی' + (version ? ' به نسخهٔ ' + aruEscapeHtml(version) : '') + '</h4></div>'
+				+ '<p class="sj-update-sub" id="sj-update-note">لطفاً تا پایان کار این صفحه را نبندید؛ در صورت بستن، با بازکردن دوباره پیشرفت نمایش داده می‌شود.</p>'
+				+ '<div class="sj-progress"><span></span></div>'
+				+ '<ul class="sj-steps">' + steps + '</ul>'
+				+ '<div id="sj-update-result"></div>'
+				+ '<details><summary>جزئیات فنی</summary><pre class="sj-log" id="sj-update-log"></pre></details></div>');
+			sjPollErrors = 0;
+			sjPoll(job, version);
+		}
+
+		function sjPoll(job, version) {
+			sjCall('updatestatus', { job: job }).done(function (s) {
+				if (!s || !s.status) {
+					sjPollErrors++;
+					if (sjPollErrors > 20) { return sjFinish({ state: 'failed', message: (s && s.message) || 'وضعیت بروزرسانی پیدا نشد.' }, job, version); }
+				} else {
+					sjPollErrors = 0;
+					sjRenderStatus(s);
+					if (s.state === 'succeeded' || s.state === 'failed' || s.state === 'rolled_back') { return sjFinish(s, job, version || s.to_version); }
+				}
+				setTimeout(function () { sjPoll(job, version); }, 1500);
+			}).fail(function () {
+				// Expected for a few seconds while the module itself is being reinstalled.
+				sjPollErrors++;
+				$('#sj-update-note').text(sjPollErrors > 8
+					? 'پاسخی از سرور دریافت نشد؛ بروزرسانی در پس‌زمینه ادامه دارد و دوباره تلاش می‌شود...'
+					: 'لطفاً تا پایان کار این صفحه را نبندید؛ در صورت بستن، با بازکردن دوباره پیشرفت نمایش داده می‌شود.');
+				setTimeout(function () { sjPoll(job, version); }, sjPollErrors > 8 ? 4000 : 1500);
+			});
+		}
+
+		function sjRenderStatus(s) {
+			var states = {};
+			$.each(s.steps || [], function (i, st) { states[st.id] = st.state; });
+			var icons = { pending: 'fa-circle-o', running: 'fa-spinner fa-spin', done: 'fa-check', failed: 'fa-times', skipped: 'fa-minus' };
+			$('#sj-update-progress .sj-steps li').each(function () {
+				var st = states[$(this).data('step')] || 'pending';
+				$(this).attr('class', 'is-' + st).find('.fa').attr('class', 'fa ' + (icons[st] || icons.pending));
+			});
+			$('#sj-update-progress .sj-progress > span').css('width', Math.max(0, Math.min(100, s.percent || 0)) + '%');
+			$('#sj-update-log').text(s.log_tail || '');
+		}
+
+		function sjFinish(s, job, version) {
+			var $head = $('#sj-update-progress .sj-update-head .fa');
+			if (s.state === 'succeeded') {
+				$head.attr('class', 'fa fa-check-circle');
+				$('#sj-update-result').html('<div class="alert alert-success" style="margin: 14px 0 0;">بروزرسانی به نسخهٔ ' + aruEscapeHtml(version || '') + ' با موفقیت انجام شد. صفحه تا چند لحظهٔ دیگر بارگذاری می‌شود...</div>');
+				setTimeout(function () { location.reload(); }, 3000);
+				return;
+			}
+			$head.attr('class', 'fa fa-exclamation-triangle').css('color', '#dc2626');
+			$('#sj-update-progress').addClass('sev-critical');
+			var msg = s.state === 'rolled_back'
+				? 'بروزرسانی ناموفق بود و نسخهٔ قبلی بازگردانده شد.'
+				: 'بروزرسانی ناموفق بود.';
+			$('#sj-update-note').text('');
+			$('#sj-update-result').html('<div class="alert alert-danger" style="margin: 14px 0 0;"><strong>' + msg + '</strong>'
+				+ (s.message ? '<div dir="ltr" style="text-align: left; margin-top: 6px;">' + aruEscapeHtml(s.message) + '</div>' : '')
+				+ '<div style="margin-top: 10px;"><button type="button" class="btn btn-sj" id="sj-update-retry"><i class="fa fa-repeat"></i> تلاش مجدد</button></div></div>');
+			$('#sj-update-progress details').attr('open', 'open');
+			$('#sj-update-retry').on('click', function () {
+				var $btn = $(this).prop('disabled', true);
+				sjCall('checkupdate', { force: 1 }).done(function (d) {
+					if (d && d.update_available && d.latest && d.capability && d.capability.auto) {
+						sjStartUpdate(d.latest.id, d.latest.version, null);
+					} else {
+						location.reload();
+					}
+				}).fail(function () { $btn.prop('disabled', false); });
+			});
+		}
+
+		sjCall('checkupdate').done(function (d) {
+			if (!d || !d.status) { return; }
+			if (d.active_job) {
+				sjShowProgress(d.active_job.job, d.active_job.to_version);
+			} else if (d.update_available && d.latest) {
+				sjRenderBanner(d);
+			}
+			if (d.check_error) {
+				$('#sj-update-check-note').text('بررسی نسخهٔ جدید ناموفق بود: ' + d.check_error).show();
+			}
+		}).fail(function () {
+			$('#sj-update-check-note').text('بررسی نسخهٔ جدید ناموفق بود.').show();
+		});
+
+		var sjChangelogLoaded = false;
+		$('a[href="#tab-changelog"]').on('shown.bs.tab click', function () {
+			if (sjChangelogLoaded) { return; }
+			sjChangelogLoaded = true;
+			sjCall('releases').done(function (r) {
+				if (r && r.status) {
+					$('#sj-changelog').html(sjTimeline(r.items));
+				} else {
+					sjChangelogLoaded = false;
+					$('#sj-changelog').html('<div class="alert alert-warning">دریافت تاریخچهٔ نسخه‌ها ناموفق بود' + (r && r.message ? ': <span dir="ltr">' + aruEscapeHtml(r.message) + '</span>' : '.') + '</div>');
+				}
+			}).fail(function () {
+				sjChangelogLoaded = false;
+				$('#sj-changelog').html('<div class="alert alert-warning">دریافت تاریخچهٔ نسخه‌ها ناموفق بود.</div>');
 			});
 		});
 

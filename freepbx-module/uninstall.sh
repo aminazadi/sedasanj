@@ -50,6 +50,8 @@ rm -f /etc/systemd/system/asterisk-recording-uploader.service
 systemctl daemon-reload
 
 rm -f /etc/sudoers.d/asterisk-recording-uploader
+rm -f /usr/local/sbin/sedasanj-recuploader-update
+rm -rf /etc/sedasanj-recuploader-update
 
 if [ -f "$CALLRECORDING_FILE" ] && [ -f "${CALLRECORDING_FILE}.orig" ] && command -v php >/dev/null 2>&1; then
   if php -r '
@@ -112,7 +114,8 @@ if [ "$PURGE" = true ]; then
   # SPOOL_DIR includes the pending/failed/uploaded subdirectories, so any
   # recordings still waiting in pending/ or parked in failed/ go with it.
   rm -rf /etc/asterisk-recording-uploader /var/lib/asterisk-recording-uploader \
-         /var/spool/asterisk-recording-uploader /var/log/asterisk-recording-uploader
+         /var/spool/asterisk-recording-uploader /var/log/asterisk-recording-uploader \
+         /var/lib/sedasanj-recuploader-update
   echo "Purged config/state/spool/logs."
 else
   echo "Left config/state/spool/logs in place. Re-run with --purge to remove those too."

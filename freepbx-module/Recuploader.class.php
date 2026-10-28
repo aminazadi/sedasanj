@@ -51,6 +51,20 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	const SUDOERS_FILE = '/etc/sudoers.d/asterisk-recording-uploader';
 	const SERVICE_NAME = 'asterisk-recording-uploader.service';
 
+	// Self-update (see bin/sedasanj-recuploader-update.sh). CONF_DIR is
+	// chowned to asterisk, so the helper verifies against its own copy of
+	// the signing key in UPDATE_ROOT_DIR, which only root can write; the
+	// CONF_DIR copy is only the GUI's early check. UPDATES_DIR (asterisk)
+	// holds downloads and job.json; UPDATE_STATUS_DIR (root, world
+	// readable) holds the helper's status.json per job.
+	const UPDATE_HELPER     = '/usr/local/sbin/sedasanj-recuploader-update';
+	const UPDATE_ROOT_DIR   = '/etc/sedasanj-recuploader-update';
+	const UPDATE_PUBKEY     = '/etc/asterisk-recording-uploader/release-signing.pub';
+	const UPDATES_DIR       = '/var/spool/asterisk-recording-uploader/updates';
+	const UPDATE_STATUS_DIR = '/var/lib/sedasanj-recuploader-update/jobs';
+	const UPDATE_CACHE_SECONDS = 60;
+	const UPDATE_STALE_SECONDS = 1200;
+
 	// The single supported recording path as of 1.0.0: MixMonitor globals in
 	// globals_custom.conf pointing at bin/mix-stereo.php -> bin/uploader.php.
 	const GLOBALS_FILE = '/etc/asterisk/globals_custom.conf';
@@ -109,6 +123,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			$this->writeConfigIniIfMissing();
 			$this->installSystemdUnit();
 			$this->installSudoers();
+			$this->installUpdateHelper();
 			$this->injectMixmonGlobals();
 			$this->removeLegacyDialplanHook();
 			$this->reloadDialplan();
@@ -175,6 +190,8 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 		if (file_exists(self::SUDOERS_FILE)) {
 			@unlink(self::SUDOERS_FILE);
 		}
+		@unlink(self::UPDATE_HELPER);
+		$this->shell('rm -rf ' . escapeshellarg(self::UPDATE_ROOT_DIR) . ' 2>&1');
 		$this->removeMixmonGlobals();
 		$this->reloadDialplan();
 		$this->shell('rm -rf ' . escapeshellarg(self::BIN_DIR) . ' 2>&1');
@@ -247,6 +264,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 				return;
 			}
 			if ($this->writeConfigIni($settings)) {
+				$this->setConfig('recuploader_update_cache', '');
 				$this->serviceControl('restart');
 			}
 			// On failure, lastSaveError is set and the service is deliberately
@@ -350,7 +368,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * ------------------------------------------------------------------ */
 
 	public function ajaxRequest($req, &$setting) {
-		if ($req === 'getlogs') {
+		if (in_array($req, array('getlogs', 'checkupdate', 'releases', 'startupdate', 'updatestatus'), true)) {
 			$setting['authenticate'] = true;
 			$setting['allowremote'] = false;
 			return true;
@@ -359,8 +377,20 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	}
 
 	public function ajaxHandler() {
-		if (!isset($_REQUEST['command']) || $_REQUEST['command'] !== 'getlogs') {
-			return false;
+		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
+		switch ($command) {
+			case 'checkupdate':
+				return $this->ajaxCheckUpdate(!empty($_REQUEST['force']));
+			case 'releases':
+				return $this->ajaxReleases();
+			case 'startupdate':
+				return $this->startUpdate(isset($_REQUEST['release_id']) ? (string) $_REQUEST['release_id'] : '');
+			case 'updatestatus':
+				return $this->getUpdateStatus(isset($_REQUEST['job']) ? (string) $_REQUEST['job'] : '');
+			case 'getlogs':
+				break;
+			default:
+				return false;
 		}
 		$logLevels = array('DEBUG', 'INFO', 'WARNING', 'ERROR');
 		$minLevel = (isset($_REQUEST['log_min_level']) && in_array($_REQUEST['log_min_level'], $logLevels, true))
@@ -374,6 +404,420 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			'count'     => count($lines),
 			'min_level' => $minLevel,
 			'max_lines' => $maxLines,
+		);
+	}
+
+	/* ------------------------------------------------------------------ *
+	 * Self-update (page banner, Changelog tab, update progress panel).
+	 *
+	 * checkupdate runs on every page load: it asks the ingest API for the
+	 * latest release (doubling as this host's heartbeat) and reports any
+	 * update job still in flight so a reloaded page resumes its progress
+	 * view. startupdate downloads and verifies the release as asterisk, then
+	 * hands the job to the root helper (UPDATE_HELPER) via sudo; the helper
+	 * writes status.json, which updatestatus serves to the poller.
+	 * ------------------------------------------------------------------ */
+
+	public function getUpdateCapability() {
+		$reasons = array();
+		if (!function_exists('sodium_crypto_sign_verify_detached')) {
+			$reasons[] = 'sodium';
+		}
+		if (!function_exists('exec')) {
+			$reasons[] = 'exec';
+		}
+		if (!is_file(self::UPDATE_HELPER)) {
+			$reasons[] = 'helper';
+		}
+		if ($this->updatePublicKey() === null) {
+			$reasons[] = 'signing_key';
+		}
+		return array('auto' => !$reasons, 'reasons' => $reasons);
+	}
+
+	protected function updatePublicKey() {
+		$text = is_readable(self::UPDATE_PUBKEY) ? @file_get_contents(self::UPDATE_PUBKEY) : false;
+		return $text === false ? null : \Engine\ModuleUpdate::parsePublicKey($text);
+	}
+
+	protected function hostUuid() {
+		$uuid = (string) $this->getConfig('recuploader_host_uuid');
+		if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $uuid)) {
+			$bytes = random_bytes(16);
+			$bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
+			$bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+			$uuid = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
+			$this->setConfig('recuploader_host_uuid', $uuid);
+		}
+		return $uuid;
+	}
+
+	protected function ajaxCheckUpdate($force) {
+		$version = $this->getModuleVersion();
+		$result = array(
+			'status' => true,
+			'current' => $version['files'],
+			'capability' => $this->getUpdateCapability(),
+			'update_available' => false,
+			'latest' => null,
+			'changelog' => array(),
+			'active_job' => null,
+		);
+		$active = $this->activeUpdateJob();
+		if ($active !== null) {
+			$result['active_job'] = $active;
+		}
+		try {
+			$data = $this->fetchUpdateInfo($force);
+			$result['update_available'] = $data['update_available'];
+			$result['latest'] = $data['latest'];
+			$result['changelog'] = $data['changelog'];
+		} catch (\Throwable $exc) {
+			$result['check_error'] = $this->safeError($exc->getMessage());
+		}
+		return $result;
+	}
+
+	protected function ajaxReleases() {
+		try {
+			$data = $this->updateApiRequest(\Engine\ModuleUpdate::releasesUrl($this->getSettings()['endpoint']));
+			$items = array();
+			foreach ((isset($data['items']) && is_array($data['items'])) ? $data['items'] : array() as $item) {
+				if (is_array($item)) {
+					$items[] = $this->cleanChangelogItem($item);
+				}
+			}
+			return array('status' => true, 'current' => $this->getModuleVersion()['files'], 'items' => $items);
+		} catch (\Throwable $exc) {
+			return array('status' => false, 'message' => $this->safeError($exc->getMessage()));
+		}
+	}
+
+	/**
+	 * GET /module/updates, cached in the KV store for UPDATE_CACHE_SECONDS
+	 * so rapid page reloads don't hammer the API. Cache entries are keyed
+	 * by the current version so a finished update re-checks immediately.
+	 */
+	protected function fetchUpdateInfo($force = false) {
+		$current = $this->getModuleVersion()['files'];
+		$cached = json_decode((string) $this->getConfig('recuploader_update_cache'), true);
+		if (!$force && is_array($cached) && ($cached['current'] ?? null) === $current
+			&& (int) ($cached['at'] ?? 0) > time() - self::UPDATE_CACHE_SECONDS && is_array($cached['data'] ?? null)) {
+			return $cached['data'];
+		}
+		$freepbx = '';
+		try {
+			$freepbx = function_exists('getversion') ? (string) getversion() : '';
+		} catch (\Throwable $exc) {
+		}
+		$url = \Engine\ModuleUpdate::updatesUrl($this->getSettings()['endpoint'], array(
+			'current' => $current,
+			'freepbx' => $freepbx,
+			'php' => PHP_VERSION,
+			'host_uuid' => $this->hostUuid(),
+			'hostname' => (string) gethostname(),
+			'service' => $this->getServiceStatus(),
+		));
+		$raw = $this->updateApiRequest($url);
+		$latest = null;
+		if (is_array($raw['latest'] ?? null)) {
+			$l = $raw['latest'];
+			$latest = array(
+				'id' => (string) ($l['id'] ?? ''),
+				'version' => (string) ($l['version'] ?? ''),
+				'severity' => $this->cleanSeverity($l['severity'] ?? ''),
+				'title' => (string) ($l['title'] ?? ''),
+				'size' => (int) ($l['size'] ?? 0),
+				'sha256' => strtolower((string) ($l['sha256'] ?? '')),
+				'signature' => (string) ($l['signature'] ?? ''),
+				'published_at' => (string) ($l['published_at'] ?? ''),
+			);
+			if (!\Engine\ModuleUpdate::isReleaseId($latest['id']) || !\Engine\ModuleUpdate::isVersion($latest['version'])) {
+				$latest = null;
+			}
+		}
+		$changelog = array();
+		foreach (is_array($raw['changelog'] ?? null) ? $raw['changelog'] : array() as $item) {
+			if (is_array($item)) {
+				$changelog[] = $this->cleanChangelogItem($item);
+			}
+		}
+		$data = array(
+			'update_available' => !empty($raw['update_available']) && $latest !== null && version_compare($latest['version'], $current, '>'),
+			'latest' => $latest,
+			'changelog' => $changelog,
+		);
+		$this->setConfig('recuploader_update_cache', json_encode(array('at' => time(), 'current' => $current, 'data' => $data)));
+		return $data;
+	}
+
+	protected function cleanSeverity($value) {
+		return in_array($value, array('normal', 'recommended', 'critical', 'security'), true) ? $value : 'normal';
+	}
+
+	protected function cleanChangelogItem(array $item) {
+		return array(
+			'version' => (string) ($item['version'] ?? ''),
+			'title' => (string) ($item['title'] ?? ''),
+			'severity' => $this->cleanSeverity($item['severity'] ?? ''),
+			'html' => $this->sanitizeChangelogHtml((string) ($item['html'] ?? '')),
+			'published_at' => (string) ($item['published_at'] ?? ''),
+		);
+	}
+
+	/**
+	 * Second line of defence after the API's own sanitiser: keeps a small
+	 * tag allowlist, drops every attribute, and rebuilds links with an
+	 * http(s) href only.
+	 */
+	public function sanitizeChangelogHtml($html) {
+		$html = preg_replace('#<(script|style|iframe|object|embed|template)\b.*?</\1\s*>#is', '', $html);
+		$html = strip_tags((string) $html, '<h2><h3><h4><p><br><hr><ul><ol><li><strong><b><em><i><u><code><pre><blockquote><a><table><thead><tbody><tr><th><td>');
+		return preg_replace_callback('#<(/?)([a-z][a-z0-9]*)\b([^>]*)>#i', function ($m) {
+			$tag = strtolower($m[2]);
+			if ($m[1] === '/') {
+				return '</' . $tag . '>';
+			}
+			if ($tag === 'a') {
+				if (preg_match('#\bhref\s*=\s*(["\']?)(https?://[^"\'\s<>]+)\1#i', $m[3], $href)) {
+					return '<a href="' . htmlspecialchars($href[2], ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener noreferrer">';
+				}
+				return '<a>';
+			}
+			return '<' . $tag . '>';
+		}, $html);
+	}
+
+	/**
+	 * Calls the ingest API with the uploader's own credentials. With $sink
+	 * set, the response body streams into that file handle instead.
+	 */
+	protected function updateApiRequest($url, $method = 'GET', $body = null, $timeout = 5, $sink = null) {
+		if (!function_exists('curl_init')) {
+			throw new \RuntimeException('PHP curl extension is unavailable');
+		}
+		$s = $this->getSettings();
+		if ($s['api_key'] === '') {
+			throw new \RuntimeException('API key is not configured');
+		}
+		$headers = array(
+			$s['auth_header'] . ': ' . trim($s['auth_scheme'] . ' ' . $s['api_key']),
+			'Accept: application/json',
+		);
+		$options = array(
+			CURLOPT_HTTPHEADER => $headers,
+			CURLOPT_CONNECTTIMEOUT => min(5, $timeout),
+			CURLOPT_TIMEOUT => $timeout,
+			CURLOPT_SSL_VERIFYPEER => $s['verify_tls'] === '1',
+			CURLOPT_SSL_VERIFYHOST => $s['verify_tls'] === '1' ? 2 : 0,
+			// No redirects: X-API-Key style headers would follow them to
+			// another host. The API streams release downloads itself.
+			CURLOPT_FOLLOWLOCATION => false,
+		);
+		if ($method === 'POST') {
+			$options[CURLOPT_POST] = true;
+			$options[CURLOPT_POSTFIELDS] = json_encode($body);
+			$options[CURLOPT_HTTPHEADER][] = 'Content-Type: application/json';
+		}
+		if ($sink !== null) {
+			$options[CURLOPT_FILE] = $sink;
+		} else {
+			$options[CURLOPT_RETURNTRANSFER] = true;
+		}
+		$ch = curl_init($url);
+		curl_setopt_array($ch, $options);
+		$response = curl_exec($ch);
+		$status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$error = curl_error($ch);
+		curl_close($ch);
+		if ($response === false) {
+			throw new \RuntimeException('Update server unreachable: ' . $error);
+		}
+		if ($status < 200 || $status >= 300) {
+			throw new \RuntimeException("Update server returned HTTP {$status}");
+		}
+		if ($sink !== null) {
+			return null;
+		}
+		$data = json_decode((string) $response, true);
+		if (!is_array($data)) {
+			throw new \RuntimeException('Update server returned an invalid response');
+		}
+		return $data;
+	}
+
+	protected function startUpdate($releaseId) {
+		$capability = $this->getUpdateCapability();
+		if (!$capability['auto']) {
+			return array('status' => false, 'error' => 'unsupported', 'reasons' => $capability['reasons'], 'message' => 'Automatic update is not available on this server');
+		}
+		if (!\Engine\ModuleUpdate::isReleaseId($releaseId)) {
+			return array('status' => false, 'error' => 'invalid', 'message' => 'Invalid release id');
+		}
+		if (!is_dir(self::UPDATES_DIR) && !@mkdir(self::UPDATES_DIR, 0750, true)) {
+			return array('status' => false, 'error' => 'spool', 'message' => 'Cannot create ' . self::UPDATES_DIR);
+		}
+		$lock = @fopen(self::UPDATES_DIR . '/.lock', 'c');
+		if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+			$active = $this->activeUpdateJob();
+			return $active !== null
+				? array('status' => true, 'job' => $active['job'], 'resumed' => true)
+				: array('status' => false, 'error' => 'busy', 'message' => 'Another update request is being prepared');
+		}
+		@set_time_limit(0);
+		ignore_user_abort(true);
+		$jobDir = null;
+		try {
+			$active = $this->activeUpdateJob();
+			if ($active !== null) {
+				return array('status' => true, 'job' => $active['job'], 'resumed' => true);
+			}
+			$info = $this->fetchUpdateInfo(true);
+			$release = $info['latest'];
+			if (!$info['update_available'] || $release === null || $release['id'] !== $releaseId) {
+				throw new \RuntimeException('This release is no longer the latest available update; reload the page');
+			}
+			$publicKey = $this->updatePublicKey();
+			$job = bin2hex(random_bytes(16));
+			$jobDir = self::UPDATES_DIR . '/' . $job;
+			if (!@mkdir($jobDir, 0750)) {
+				throw new \RuntimeException('Cannot create update job directory');
+			}
+			$zip = $jobDir . '/release.zip';
+			$handle = @fopen($zip . '.part', 'wb');
+			if ($handle === false) {
+				throw new \RuntimeException('Cannot write the release download');
+			}
+			try {
+				$this->updateApiRequest(\Engine\ModuleUpdate::downloadUrl($this->getSettings()['endpoint'], $release['id']), 'GET', null, 300, $handle);
+			} finally {
+				fclose($handle);
+			}
+			\Engine\ModuleUpdate::verifyArtifact($zip . '.part', $release, $publicKey);
+			if (!@rename($zip . '.part', $zip)) {
+				throw new \RuntimeException('Cannot finalize the release download');
+			}
+			$from = $this->getModuleVersion()['files'];
+			$jobInfo = array(
+				'job' => $job,
+				'release_id' => $release['id'],
+				'version' => $release['version'],
+				'from_version' => $from,
+				'sha256' => $release['sha256'],
+				'signature' => $release['signature'],
+				'size' => $release['size'],
+				'host_uuid' => $this->hostUuid(),
+				'created_at' => time(),
+			);
+			if (@file_put_contents($jobDir . '/job.json', json_encode($jobInfo, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
+				throw new \RuntimeException('Cannot write job.json');
+			}
+			$this->setConfig('recuploader_update_job', $job);
+			$this->reportUpdate($release['id'], $from, $release['version'], 'started', '');
+			$this->launchUpdateHelper($job, $jobDir);
+			$this->pruneUpdateJobs($job);
+			return array('status' => true, 'job' => $job);
+		} catch (\Throwable $exc) {
+			if ($jobDir !== null) {
+				$this->shell('rm -rf ' . escapeshellarg($jobDir) . ' 2>&1');
+			}
+			return array('status' => false, 'error' => 'prepare', 'message' => $this->safeError($exc->getMessage()));
+		} finally {
+			flock($lock, LOCK_UN);
+			fclose($lock);
+		}
+	}
+
+	/**
+	 * Fire-and-forget: the helper re-execs itself under systemd-run so it
+	 * survives web server restarts; setsid/nohup keep this request from
+	 * waiting on it when systemd-run is unavailable. Launch errors land in
+	 * launch.log, which getUpdateStatus() surfaces.
+	 */
+	protected function launchUpdateHelper($job, $jobDir) {
+		$setsid = trim((string) @shell_exec('command -v setsid 2>/dev/null')) !== '' ? 'setsid ' : '';
+		$command = $setsid . 'nohup sudo -n ' . escapeshellarg(self::UPDATE_HELPER) . ' ' . escapeshellarg($job)
+			. ' > ' . escapeshellarg($jobDir . '/launch.log') . ' 2>&1 < /dev/null &';
+		@exec($command);
+	}
+
+	protected function reportUpdate($releaseId, $from, $to, $status, $message) {
+		try {
+			$this->updateApiRequest(\Engine\ModuleUpdate::reportUrl($this->getSettings()['endpoint']), 'POST', array(
+				'host_uuid' => $this->hostUuid(),
+				'release_id' => $releaseId,
+				'from_version' => $from,
+				'to_version' => $to,
+				'status' => $status,
+				'message' => $message,
+			), 5);
+		} catch (\Throwable $exc) {
+			error_log('recuploader: update report failed: ' . $this->safeError($exc->getMessage()));
+		}
+	}
+
+	/** Keeps the current job plus the newest other one. */
+	protected function pruneUpdateJobs($keep) {
+		$jobs = array();
+		foreach (glob(self::UPDATES_DIR . '/*', GLOB_ONLYDIR) ?: array() as $dir) {
+			$name = basename($dir);
+			if ($name !== $keep && \Engine\ModuleUpdate::isJobId($name)) {
+				$jobs[$dir] = (int) @filemtime($dir);
+			}
+		}
+		arsort($jobs);
+		foreach (array_slice(array_keys($jobs), 1) as $dir) {
+			$this->shell('rm -rf ' . escapeshellarg($dir) . ' 2>&1');
+		}
+	}
+
+	/** The last started job while it is still running (or waiting for the helper to start). */
+	protected function activeUpdateJob() {
+		$job = (string) $this->getConfig('recuploader_update_job');
+		if (!\Engine\ModuleUpdate::isJobId($job)) {
+			return null;
+		}
+		$status = $this->getUpdateStatus($job);
+		if (empty($status['status']) || !in_array($status['state'], array('queued', 'running'), true)) {
+			return null;
+		}
+		if ((int) ($status['updated_at'] ?? 0) < time() - self::UPDATE_STALE_SECONDS) {
+			return null;
+		}
+		return array('job' => $job, 'state' => $status['state'], 'to_version' => $status['to_version'] ?? '');
+	}
+
+	public function getUpdateStatus($job) {
+		if (!\Engine\ModuleUpdate::isJobId($job)) {
+			return array('status' => false, 'message' => 'Invalid job id');
+		}
+		$data = json_decode((string) @file_get_contents(self::UPDATE_STATUS_DIR . '/' . $job . '/status.json'), true);
+		if (is_array($data) && isset($data['state'])) {
+			$data['status'] = true;
+			$data['job'] = $job;
+			$data['log_tail'] = $this->safeError((string) ($data['log_tail'] ?? ''));
+			return $data;
+		}
+		$jobDir = self::UPDATES_DIR . '/' . $job;
+		$jobInfo = json_decode((string) @file_get_contents($jobDir . '/job.json'), true);
+		if (!is_array($jobInfo)) {
+			return array('status' => false, 'message' => 'Unknown update job');
+		}
+		$launchLog = trim((string) @file_get_contents($jobDir . '/launch.log'));
+		$age = time() - (int) ($jobInfo['created_at'] ?? 0);
+		$failed = ($launchLog !== '' && $age > 5) || $age > 120;
+		return array(
+			'status' => true,
+			'job' => $job,
+			'state' => $failed ? 'failed' : 'queued',
+			'step' => $failed ? 'verify' : '',
+			'steps' => array(),
+			'percent' => 0,
+			'from_version' => (string) ($jobInfo['from_version'] ?? ''),
+			'to_version' => (string) ($jobInfo['version'] ?? ''),
+			'message' => $failed ? 'The update helper did not start (check the sudoers entry for ' . self::UPDATE_HELPER . ')' : '',
+			'log_tail' => $this->safeError($launchLog),
+			'updated_at' => (int) ($jobInfo['created_at'] ?? 0),
 		);
 	}
 
@@ -687,6 +1131,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			self::SPOOL_DIR . '/pending',
 			self::SPOOL_DIR . '/failed',
 			self::SPOOL_DIR . '/uploaded',
+			self::UPDATES_DIR,
 			self::LOG_DIR,
 		) as $dir) {
 			if (!is_dir($dir)) {
@@ -987,16 +1432,42 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * without needing broader root access.
 	 */
 	protected function installSudoers() {
-		$line = "asterisk ALL=(root) NOPASSWD: /bin/systemctl start " . self::SERVICE_NAME . ", "
+		// The update helper is launched from the GUI with no TTY, which
+		// older SNG7 sudoers configs reject via "Defaults requiretty".
+		$line = "Defaults:asterisk !requiretty\n"
+			. "asterisk ALL=(root) NOPASSWD: /bin/systemctl start " . self::SERVICE_NAME . ", "
 			. "/bin/systemctl stop " . self::SERVICE_NAME . ", "
 			. "/bin/systemctl restart " . self::SERVICE_NAME . ", "
 			. "/bin/systemctl enable " . self::SERVICE_NAME . ", "
 			. "/bin/systemctl disable " . self::SERVICE_NAME . ", "
-			. "/bin/systemctl status " . self::SERVICE_NAME . "\n";
+			. "/bin/systemctl status " . self::SERVICE_NAME . ", "
+			. self::UPDATE_HELPER . "\n";
 		if (@file_put_contents(self::SUDOERS_FILE, $line) === false) {
 			error_log('recuploader: failed to write ' . self::SUDOERS_FILE . ' - check ownership/permissions');
 		}
 		@chmod(self::SUDOERS_FILE, 0440);
+	}
+
+	/**
+	 * Installs the root-owned self-update helper and the release signing
+	 * key. Needs root (fwconsole/install.sh); under the Module Admin GUI
+	 * these silently fail and the page falls back to manual download.
+	 */
+	protected function installUpdateHelper() {
+		$helper = __DIR__ . '/bin/sedasanj-recuploader-update.sh';
+		$pubkey = __DIR__ . '/assets/release-signing.pub';
+		if (!is_file($helper) || !is_file($pubkey)) {
+			error_log('recuploader: update helper or signing key missing from the module package - auto-update disabled');
+			return;
+		}
+		$this->shell('install -d -o root -g root -m 0755 ' . escapeshellarg(self::UPDATE_ROOT_DIR)
+			. ' ' . escapeshellarg(dirname(self::UPDATE_STATUS_DIR)) . ' ' . escapeshellarg(self::UPDATE_STATUS_DIR) . ' 2>&1');
+		$this->shell('install -o root -g root -m 0755 ' . escapeshellarg($helper) . ' ' . escapeshellarg(self::UPDATE_HELPER) . ' 2>&1');
+		$this->shell('install -o root -g root -m 0644 ' . escapeshellarg($pubkey) . ' ' . escapeshellarg(self::UPDATE_ROOT_DIR . '/release-signing.pub') . ' 2>&1');
+		$this->shell('install -o asterisk -g asterisk -m 0644 ' . escapeshellarg($pubkey) . ' ' . escapeshellarg(self::UPDATE_PUBKEY) . ' 2>&1');
+		if (!function_exists('sodium_crypto_sign_verify_detached')) {
+			error_log('recuploader: PHP sodium extension is missing - automatic updates are disabled until php-sodium is installed');
+		}
 	}
 
 	protected function serviceControl($action) {
