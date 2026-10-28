@@ -1,12 +1,13 @@
 FROM python:3.12-slim AS base
 
 ARG PIP_INDEX_URL=https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/
+ARG PIP_FALLBACK_INDEX_URLS="https://mirrors.aliyun.com/pypi/simple/ https://mirrors.ustc.edu.cn/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_INDEX_URL=${PIP_INDEX_URL} \
-    PIP_EXTRA_INDEX_URL="https://mirrors.aliyun.com/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" \
+    PIP_FALLBACK_INDEX_URLS=${PIP_FALLBACK_INDEX_URLS} \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=5
 

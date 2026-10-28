@@ -90,6 +90,7 @@ x-api-build: &api-build
   network: ${BUILD_NETWORK:-host}
   args:
     PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
+    PIP_FALLBACK_INDEX_URLS: ${PIP_FALLBACK_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple/ https://mirrors.ustc.edu.cn/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/}
 
 services:
   model-storage-init:
@@ -250,6 +251,7 @@ services:
       network: ${BUILD_NETWORK:-host}
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
+        PIP_FALLBACK_INDEX_URLS: ${PIP_FALLBACK_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple/ https://mirrors.ustc.edu.cn/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/}
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     restart: unless-stopped
     command: ["arq", "worker_emotion.main.WorkerSettings"]
