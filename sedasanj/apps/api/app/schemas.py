@@ -1189,3 +1189,104 @@ class StaffSensitiveAction(BaseModel):
 
 class StaffPasswordReset(StaffSensitiveAction):
     password: str = Field(min_length=8, max_length=128)
+
+
+ModuleSeverity = Literal["normal", "recommended", "critical", "security"]
+ModuleChannel = Literal["stable", "beta"]
+ModuleUpdateStatus = Literal["started", "succeeded", "failed", "rolled_back"]
+
+
+class ModuleReleaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    product: str
+    version: str
+    title: str
+    changelog_html: str
+    severity: ModuleSeverity
+    channel: ModuleChannel
+    min_freepbx_major: int | None
+    min_from_version: str | None
+    artifact_sha256: str
+    artifact_size: int
+    status: Literal["draft", "published", "revoked"]
+    published_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    installations: int = 0
+
+
+class ModuleReleaseUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    changelog_html: str | None = Field(default=None, max_length=200_000)
+    severity: ModuleSeverity | None = None
+    channel: ModuleChannel | None = None
+    min_freepbx_major: int | None = Field(default=None, ge=13, le=99)
+    min_from_version: str | None = Field(default=None, max_length=32)
+
+
+class ModuleZipInspection(BaseModel):
+    rawname: str
+    version: str
+    sha256: str
+    size: int
+    latest_published: str | None
+    already_exists: bool
+
+
+class ModuleChangelogEntry(BaseModel):
+    id: UUID
+    version: str
+    title: str
+    severity: ModuleSeverity
+    html: str
+    published_at: datetime | None
+
+
+class ModuleUpdateOffer(BaseModel):
+    id: UUID
+    version: str
+    severity: ModuleSeverity
+    title: str
+    size: int
+    sha256: str
+    signature: str
+    published_at: datetime | None
+
+
+class ModuleUpdateCheckOut(BaseModel):
+    update_available: bool
+    current: str
+    latest: ModuleUpdateOffer | None
+    changelog: list[ModuleChangelogEntry]
+    server_time: datetime
+
+
+class ModuleUpdateReportIn(BaseModel):
+    host_uuid: str = Field(min_length=8, max_length=64)
+    release_id: UUID | None = None
+    from_version: str | None = Field(default=None, max_length=32)
+    to_version: str = Field(min_length=1, max_length=32)
+    status: ModuleUpdateStatus
+    message: str | None = Field(default=None, max_length=4000)
+
+
+class ModuleInstallationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    tenant_name: str | None = None
+    host_uuid: str
+    hostname: str | None
+    freepbx_version: str | None
+    php_version: str | None
+    module_version: str
+    service_status: str | None
+    last_seen_at: datetime
+    last_update_status: ModuleUpdateStatus | None
+    last_update_error: str | None
+    last_update_at: datetime | None
+    update_available: bool = False
+    latest_version: str | None = None

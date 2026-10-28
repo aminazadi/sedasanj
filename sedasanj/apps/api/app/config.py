@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     provisioner_database_url: str | None = None
     tenant_database_master_key: str | None = None
     platform_secrets_key: str | None = None
+    # Base64 32-byte Ed25519 seed used to sign FreePBX module releases.
+    module_release_signing_key: str | None = None
     tenant_databases_enabled: bool = False
     tenant_database_auto_migrate: bool = False
     tenant_database_pool_size: int = Field(default=3, ge=1, le=20)
@@ -190,6 +192,7 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 200 * 1024 * 1024
     max_extracted_audio_bytes: int = 512 * 1024 * 1024
+    max_module_release_bytes: int = 200 * 1024 * 1024
     max_archive_compression_ratio: int = Field(default=100, ge=1, le=1000)
     min_billable_seconds: int = 30
     duration_mismatch_tolerance: float = Field(default=0.2, ge=0.0, le=1.0)

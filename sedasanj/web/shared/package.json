@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx",
+    "./components/ReleaseTimeline": "./components/ReleaseTimeline.tsx",
     "./components/TableFilters": "./components/TableFilters.tsx",
     "./components/ToggleSwitch": "./components/ToggleSwitch.tsx",
     "./theme": "./theme.js"

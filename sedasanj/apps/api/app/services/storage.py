@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,9 @@ class Storage(abc.ABC):
 
     @abc.abstractmethod
     async def get(self, key: str) -> bytes: ...
+
+    @abc.abstractmethod
+    def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]: ...
 
     @abc.abstractmethod
     async def delete(self, key: str) -> None: ...
@@ -82,6 +86,13 @@ class S3Storage(Storage):
             data: bytes = await response["Body"].read()
             return data
 
+    async def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]:
+        async with self._client() as client:
+            response = await client.get_object(Bucket=self.bucket, Key=key)
+            async with response["Body"] as body:
+                while chunk := await body.read(chunk_size):
+                    yield chunk
+
     async def delete(self, key: str) -> None:
         async with self._client() as client:
             await client.delete_object(Bucket=self.bucket, Key=key)
@@ -119,6 +130,11 @@ class MemoryStorage(Storage):
 
     async def get(self, key: str) -> bytes:
         return self.objects[key]
+
+    async def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]:
+        data = self.objects[key]
+        for offset in range(0, len(data), chunk_size):
+            yield data[offset : offset + chunk_size]
 
     async def delete(self, key: str) -> None:
         self.objects.pop(key, None)

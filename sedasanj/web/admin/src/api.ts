@@ -169,3 +169,41 @@ export function formatJobError(code: string | null, detail: string | null): stri
   if (detail) return detail;
   return code ?? "—";
 }
+
+/** Multipart upload with progress; fetch cannot report upload progress for large zips. */
+export function uploadWithProgress<T>(
+  path: string,
+  form: FormData,
+  onProgress: (fraction: number) => void,
+  retry = true,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", path);
+    const access = tokens.access();
+    if (access) xhr.setRequestHeader("Authorization", `Bearer ${access}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total);
+    };
+    xhr.onerror = () => reject(new ApiError(0, "network", "ارتباط با سرور برقرار نشد."));
+    xhr.onload = async () => {
+      if (xhr.status === 401 && retry && (await refreshSession())) {
+        uploadWithProgress<T>(path, form, onProgress, false).then(resolve, reject);
+        return;
+      }
+      let body: unknown = null;
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        /* non-JSON body */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as T);
+        return;
+      }
+      const error = (body as { error?: { code?: string; message?: string } } | null)?.error;
+      reject(new ApiError(xhr.status, error?.code ?? "internal", error?.message ?? xhr.statusText));
+    };
+    xhr.send(form);
+  });
+}

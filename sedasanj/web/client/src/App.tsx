@@ -14,6 +14,8 @@ import Install from "./pages/Install";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Legal from "./pages/Legal";
+import FreepbxServers from "./pages/FreepbxServers";
+import ModuleChangelog from "./pages/ModuleChangelog";
 import Overview from "./pages/Overview";
 import Tasks from "./pages/Tasks";
 import Assistant from "./pages/Assistant";
@@ -74,6 +76,8 @@ export default function App() {
         {orgAdmin ? <Route path="/kpi-settings" element={<Navigate to="/account-settings?tab=kpi" replace />} /> : null}
         {orgAdmin ? <Route path="/payment-result" element={<PaymentResult />} /> : null}
         {operator ? null : <Route path="/install" element={<Install />} />}
+        {operator ? null : <Route path="/module-changelog" element={<ModuleChangelog />} />}
+        {orgAdmin ? <Route path="/freepbx-servers" element={<FreepbxServers />} /> : null}
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/terms" element={<Legal title="قوانین استفاده" />} />

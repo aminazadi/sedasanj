@@ -1936,6 +1936,116 @@ class PlatformSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
+class ModuleRelease(Base):
+    """A signed FreePBX module zip plus its changelog; global, not tenant-scoped."""
+
+    __tablename__ = "module_releases"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    product: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    version_major: Mapped[int] = mapped_column(Integer, nullable=False)
+    version_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    version_patch: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    changelog_html: Mapped[str] = mapped_column(Text, nullable=False)
+    changelog_plain: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    min_freepbx_major: Mapped[int | None] = mapped_column(Integer)
+    min_from_version: Mapped[str | None] = mapped_column(String(32))
+    artifact_key: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    signature_b64: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("product", "version", name="module_releases_product_version_key"),
+        CheckConstraint(
+            "severity IN ('normal','recommended','critical','security')",
+            name="module_releases_severity_check",
+        ),
+        CheckConstraint("channel IN ('stable','beta')", name="module_releases_channel_check"),
+        CheckConstraint(
+            "status IN ('draft','published','revoked')", name="module_releases_status_check"
+        ),
+    )
+
+
+class ModuleInstallation(Base):
+    """One FreePBX host running the module, refreshed on every update check."""
+
+    __tablename__ = "module_installations"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    api_key_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("api_keys.id", ondelete="SET NULL")
+    )
+    product: Mapped[str] = mapped_column(String(64), nullable=False)
+    host_uuid: Mapped[str] = mapped_column(String(64), nullable=False)
+    hostname: Mapped[str | None] = mapped_column(String(255))
+    freepbx_version: Mapped[str | None] = mapped_column(String(64))
+    php_version: Mapped[str | None] = mapped_column(String(32))
+    module_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    service_status: Mapped[str | None] = mapped_column(String(32))
+    last_seen_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    last_update_status: Mapped[str | None] = mapped_column(String(16))
+    last_update_error: Mapped[str | None] = mapped_column(Text)
+    last_update_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "product", "host_uuid", name="module_installations_host_key"
+        ),
+    )
+
+
+class ModuleUpdateEvent(Base):
+    __tablename__ = "module_update_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    installation_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("module_installations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    release_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("module_releases.id", ondelete="SET NULL")
+    )
+    from_version: Mapped[str | None] = mapped_column(String(32))
+    to_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('started','succeeded','failed','rolled_back')",
+            name="module_update_events_status_check",
+        ),
+    )
+
+
 class TenantDatabaseRegistry(Base):
     __tablename__ = "tenant_database_registry"
 
