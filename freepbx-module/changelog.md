@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 — AMINAZADI
+
+- Fixed missed-call readiness validation to resolve Asterisk CDR include files, including FreePBX-managed `cdr_general_custom.conf` overrides.
+
 ## 1.3.0 — AMINAZADI
 
 - Added in-page update checks: every visit to Admin > Seda Sanj asks the Seda Sanj API for newer releases and shows a banner with the release notes.

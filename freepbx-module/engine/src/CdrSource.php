@@ -39,19 +39,7 @@ class CdrSource
             $columns = $this->db->query('SHOW COLUMNS FROM `' . $this->table . '`')->fetchAll(\PDO::FETCH_COLUMN);
             $required = ['calldate', 'src', 'dst', 'disposition', 'duration', 'uniqueid', 'linkedid', 'dcontext'];
             $missing = array_values(array_diff($required, $columns));
-            $settings = [];
-            $path = '/etc/asterisk/cdr.conf';
-            if (is_readable($path)) {
-                $contents = file_get_contents($path);
-                $section = '';
-                foreach (preg_split('/\R/', $contents) as $line) {
-                    if (preg_match('/^\s*\[([^]]+)\]/', $line, $match)) {
-                        $section = strtolower(trim($match[1]));
-                    } elseif ($section === 'general' && preg_match('/^\s*(unanswered|congestion|canceldispositionenabled)\s*=\s*([^;#\s]+)/i', $line, $match)) {
-                        $settings[strtolower($match[1])] = strtolower($match[2]);
-                    }
-                }
-            }
+            $settings = self::cdrSettings('/etc/asterisk/cdr.conf');
             return [
                 'available' => !$missing,
                 'table' => $this->table,
@@ -63,6 +51,67 @@ class CdrSource
         } catch (\Throwable $exc) {
             return ['available' => false, 'table' => $this->table, 'error' => $exc->getMessage()];
         }
+    }
+
+    public static function cdrSettings(string $path): array
+    {
+        $settings = [];
+        $visited = [];
+        self::readCdrSettings($path, $settings, $visited, '', 0);
+        return $settings;
+    }
+
+    private static function readCdrSettings(
+        string $path,
+        array &$settings,
+        array &$visited,
+        string $section,
+        int $depth
+    ): string {
+        if ($depth > 20 || !is_readable($path)) {
+            return $section;
+        }
+        $resolved = realpath($path);
+        if ($resolved === false || isset($visited[$resolved])) {
+            return $section;
+        }
+        $visited[$resolved] = true;
+        $contents = file_get_contents($resolved);
+        if ($contents === false) {
+            return $section;
+        }
+        foreach (preg_split('/\R/', $contents) as $line) {
+            if (preg_match('/^\s*\[([^]]+)\]/', $line, $match)) {
+                $section = strtolower(trim($match[1]));
+                continue;
+            }
+            if (preg_match('/^\s*#(?:try)?include\s+(?:"([^"]+)"|([^;\s]+))/i', $line, $match)) {
+                $quotedInclude = $match[1] ?? '';
+                $include = $quotedInclude !== '' ? $quotedInclude : ($match[2] ?? '');
+                if ($include === '') {
+                    continue;
+                }
+                if ($include[0] !== DIRECTORY_SEPARATOR) {
+                    $include = dirname($resolved) . DIRECTORY_SEPARATOR . $include;
+                }
+                $section = self::readCdrSettings(
+                    $include,
+                    $settings,
+                    $visited,
+                    $section,
+                    $depth + 1
+                );
+                continue;
+            }
+            if ($section === 'general' && preg_match(
+                '/^\s*(unanswered|congestion|canceldispositionenabled)\s*=\s*([^;#\s]+)/i',
+                $line,
+                $match
+            )) {
+                $settings[strtolower($match[1])] = strtolower($match[2]);
+            }
+        }
+        return $section;
     }
 
     public function candidates(int $windowStart, int $afterEpoch, string $afterLinkedId, int $beforeEpoch, int $limit = 500): array
