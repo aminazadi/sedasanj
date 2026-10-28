@@ -14,4 +14,16 @@ if (($legacySettings['missed_calls_enabled'] ?? null) !== '0') {
     throw new RuntimeException('Configuration without missed_calls did not receive the disabled default.');
 }
 
+$ini = tempnam(sys_get_temp_dir(), 'sj-config-');
+$voicemailSpool = '/var/spool/asterisk/voicemail';
+$voicemailFolders = 'INBOX,Old,Urgent';
+file_put_contents($ini, "[voicemail]\nspool_dir=\"\"\nspool_dir_b64=\"" . base64_encode($voicemailSpool)
+    . "\"\nfolders=\"\"\nfolders_b64=\"" . base64_encode($voicemailFolders) . "\"\n");
+$runtime = Engine\Config::load($ini);
+unlink($ini);
+if ($runtime['voicemail']['spool_dir'] !== $voicemailSpool
+    || $runtime['voicemail']['folders'] !== $voicemailFolders) {
+    throw new RuntimeException('Base64 voicemail settings did not survive parse-back.');
+}
+
 echo "FreePBX configuration contract passed.\n";

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-29 — AMINAZADI
+
+- Fixed FreePBX voicemail configuration parse-back and persisted active module tabs in the URL across all form actions in module 1.3.5.
+
 ## 2026-10-28 — AMINAZADI
 
 - Changed FreePBX update-check and release-history error messages to English and released module 1.3.4.

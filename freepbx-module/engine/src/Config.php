@@ -185,6 +185,7 @@ class Config
             'general' => ['endpoint', 'api_key', 'archive_password'],
             'post_upload' => ['move_dir'],
             'watcher' => ['watch_dir', 'filename_pattern'],
+            'voicemail' => ['spool_dir', 'folders'],
             'state' => ['exclude_patterns'],
         ];
         foreach ($encodedValues as $section => $keys) {

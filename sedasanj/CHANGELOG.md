@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-29 — AMINAZADI
+
+- Released FreePBX module 1.3.5 with voicemail parse-back repair and URL-persisted administration tabs.
+
 ## 2026-10-28 — AMINAZADI
 
 - Released FreePBX module 1.3.4 with English update-check and release-history error messages.

@@ -774,6 +774,33 @@ $helpIcon = function ($title, $content) {
 
 <script>
 	$(function () {
+		var sjTabNames = [
+			'endpoint', 'import', 'watcher', 'missed-calls', 'voicemail',
+			'post', 'retry', 'logging', 'changelog'
+		];
+
+		function sjTabNameFromHref(href) {
+			var name = String(href || '').replace(/^#tab-/, '');
+			return $.inArray(name, sjTabNames) === -1 ? 'endpoint' : name;
+		}
+
+		function sjPersistActiveTab(name) {
+			var url = new URL(window.location.href);
+			url.searchParams.set('display', 'recuploader');
+			url.searchParams.set('tab', name);
+			window.history.replaceState({}, '', url.toString());
+			$('#recuploader-form').attr('action', 'config.php?' + url.searchParams.toString());
+		}
+
+		var requestedTab = new URL(window.location.href).searchParams.get('tab') || 'endpoint';
+		if ($.inArray(requestedTab, sjTabNames) === -1) { requestedTab = 'endpoint'; }
+		$('.sedasanj-panel a[data-toggle="tab"]').on('shown.bs.tab', function (event) {
+			sjPersistActiveTab(sjTabNameFromHref($(event.target).attr('href')));
+		});
+		$('#recuploader-form').on('submit', function () {
+			var href = $('.sedasanj-panel .nav-tabs li.active a[data-toggle="tab"]').attr('href');
+			sjPersistActiveTab(sjTabNameFromHref(href));
+		});
 
 		/* ---- Initialize help popovers -----------------------------------
 		 * FreePBX's admin chrome does not auto-init popovers for custom
@@ -1119,6 +1146,9 @@ $helpIcon = function ($title, $content) {
 				$('#sj-changelog').html('<div class="alert alert-warning">Failed to load release history.</div>');
 			});
 		});
+
+		$('a[href="#tab-' + requestedTab + '"]').tab('show');
+		sjPersistActiveTab(requestedTab);
 
 	});
 </script>

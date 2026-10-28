@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.5 — AMINAZADI
+
+- Fixed parse-back validation for Base64-encoded voicemail spool and folder settings.
+- Persisted the active administration tab in the URL across validation, save, reload, and update actions.
+
 ## 1.3.4 — AMINAZADI
 
 - Changed the update-check and release-history error messages to English.
