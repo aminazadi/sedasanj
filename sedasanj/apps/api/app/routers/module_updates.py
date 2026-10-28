@@ -272,6 +272,8 @@ async def admin_create_module_release(
                 "invalid_request",
                 f"version {inspection.version} must be newer than published {newest.version}",
             )
+        releases.embed_signing_public_key(path)
+        inspection = releases.inspect_zip(path)
         safe_html, plain = releases.sanitize_changelog(changelog_html)
         signature = releases.sign_digest(inspection.sha256)
         key = releases.artifact_key(product, inspection.version)

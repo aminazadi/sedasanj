@@ -156,6 +156,10 @@ services:
     environment:
       <<: *python-env
       FORWARDED_ALLOW_IPS: ${APP_PROXY_SUBNET:-172.30.0.0/28},${NPM_PROXY_IP:?Set NPM_PROXY_IP}
+      MODULE_RELEASE_SIGNING_KEY: ${MODULE_RELEASE_SIGNING_KEY:-}
+      MODULE_RELEASE_SIGNING_KEY_FILE: /module-release-signing/private.seed
+    volumes:
+      - module-release-signing:/module-release-signing
     dns: *external-dns
     networks: [default, proxy]
     depends_on:
@@ -561,6 +565,8 @@ services:
 volumes:
   emotion-model-cache:
     name: ${EMOTION_MODEL_CACHE_VOLUME_NAME:-cbi_emotion-model-cache}
+  module-release-signing:
+    name: ${MODULE_RELEASE_SIGNING_VOLUME_NAME:-cbi_module-release-signing}
   pgdata:
     name: ${POSTGRES_VOLUME_NAME:-cbi_pgdata}
   redisdata:

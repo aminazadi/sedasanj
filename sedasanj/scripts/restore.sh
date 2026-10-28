@@ -18,6 +18,15 @@ docker compose exec -T minio sh -lc "
   mc mirror --overwrite --quiet /data-backup/$(basename "${SRC}") local/audio
 "
 
+if test -f "${SRC}/module-release-signing.seed"; then
+  echo "==> restoring module release signing key"
+  docker compose run --rm --no-deps -T api sh -c '
+    umask 077
+    mkdir -p /module-release-signing
+    cat > /module-release-signing/private.seed
+  ' < "${SRC}/module-release-signing.seed"
+fi
+
 echo "==> starting services"
 docker compose up -d api worker-asr worker-llm worker-notify
 

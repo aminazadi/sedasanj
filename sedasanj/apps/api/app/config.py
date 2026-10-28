@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     platform_secrets_key: str | None = None
     # Base64 32-byte Ed25519 seed used to sign FreePBX module releases.
     module_release_signing_key: str | None = None
+    module_release_signing_key_file: str | None = None
     tenant_databases_enabled: bool = False
     tenant_database_auto_migrate: bool = False
     tenant_database_pool_size: int = Field(default=3, ge=1, le=20)
@@ -201,7 +202,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     @field_validator(
-        "voicesanj_api_key", "openai_api_key", "asr_provider_api_key", "decision_api_key", "ninerouter_api_key", mode="before"
+        "voicesanj_api_key",
+        "openai_api_key",
+        "asr_provider_api_key",
+        "decision_api_key",
+        "ninerouter_api_key",
+        mode="before",
     )
     @classmethod
     def _normalize_provider_api_keys(cls, value: object) -> object:

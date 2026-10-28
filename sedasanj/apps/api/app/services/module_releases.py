@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
+import os
 import re
 import stat
+import tempfile
 import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -29,6 +32,7 @@ CHANNELS = ("stable", "beta")
 _VERSION_RE = re.compile(r"^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$")
 _MAX_ZIP_ENTRIES = 5000
 _MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+_PUBLIC_KEY_ENTRY = f"{MODULE_RAWNAME}/assets/release-signing.pub"
 
 
 def parse_version(value: str) -> tuple[int, int, int]:
@@ -101,14 +105,50 @@ def inspect_zip(path: Path) -> ZipInspection:
 
 def _signing_key() -> Ed25519PrivateKey:
     raw = get_settings().module_release_signing_key
-    if not raw:
+    if raw:
+        try:
+            seed = base64.b64decode(raw, validate=True)
+            return Ed25519PrivateKey.from_private_bytes(seed)
+        except ValueError as exc:
+            raise ApiError(
+                "internal", "MODULE_RELEASE_SIGNING_KEY must be a base64 32-byte seed"
+            ) from exc
+
+    configured_path = get_settings().module_release_signing_key_file
+    if not configured_path:
         raise ApiError("internal", "MODULE_RELEASE_SIGNING_KEY is not configured")
+    path = Path(configured_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(f".{path.name}.lock")
+    with lock_path.open("a+b") as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            seed = path.read_bytes()
+        except FileNotFoundError:
+            seed = Ed25519PrivateKey.generate().private_bytes(
+                serialization.Encoding.Raw,
+                serialization.PrivateFormat.Raw,
+                serialization.NoEncryption(),
+            )
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(seed)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            os.chmod(path, 0o600)
     try:
-        seed = base64.b64decode(raw, validate=True)
         return Ed25519PrivateKey.from_private_bytes(seed)
     except ValueError as exc:
         raise ApiError(
-            "internal", "MODULE_RELEASE_SIGNING_KEY must be a base64 32-byte seed"
+            "internal", "MODULE_RELEASE_SIGNING_KEY_FILE must contain a raw 32-byte seed"
         ) from exc
 
 
@@ -124,6 +164,32 @@ def public_key_b64() -> str:
         .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     )
     return base64.b64encode(raw).decode("ascii")
+
+
+def embed_signing_public_key(path: Path) -> None:
+    payload = (
+        "# Seda Sanj release signing public key (Ed25519, raw 32 bytes, base64).\n"
+        f"{public_key_b64()}\n"
+    ).encode()
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    found = False
+    try:
+        with zipfile.ZipFile(path) as source, zipfile.ZipFile(temporary, "w") as target:
+            for entry in source.infolist():
+                body = source.read(entry)
+                if entry.filename == _PUBLIC_KEY_ENTRY:
+                    body = payload
+                    found = True
+                target.writestr(entry, body)
+            if not found:
+                target.writestr(_PUBLIC_KEY_ENTRY, payload, compress_type=zipfile.ZIP_DEFLATED)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def artifact_key(product: str, version: str) -> str:

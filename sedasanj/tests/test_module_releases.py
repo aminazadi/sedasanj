@@ -119,8 +119,49 @@ def test_signature_verifies_with_published_public_key(monkeypatch: pytest.Monkey
 
 def test_signing_requires_configured_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "module_release_signing_key", None)
+    monkeypatch.setattr(get_settings(), "module_release_signing_key_file", None)
     with pytest.raises(ApiError, match="SIGNING_KEY"):
         releases.sign_digest("a" * 64)
+
+
+def test_signing_key_is_generated_once_and_persisted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    key_file = tmp_path / "signing" / "private.seed"
+    monkeypatch.setattr(get_settings(), "module_release_signing_key", None)
+    monkeypatch.setattr(
+        get_settings(), "module_release_signing_key_file", str(key_file)
+    )
+
+    first_public_key = releases.public_key_b64()
+    second_public_key = releases.public_key_b64()
+
+    assert first_public_key == second_public_key
+    assert len(key_file.read_bytes()) == 32
+    assert key_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_published_archive_contains_matching_public_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seed = base64.b64encode(bytes(range(32))).decode()
+    monkeypatch.setattr(get_settings(), "module_release_signing_key", seed)
+    path = _module_zip(tmp_path)
+
+    releases.embed_signing_public_key(path)
+    inspection = releases.inspect_zip(path)
+    signature = base64.b64decode(releases.sign_digest(inspection.sha256))
+
+    with zipfile.ZipFile(path) as archive:
+        public_key_file = archive.read(
+            "recuploader/assets/release-signing.pub"
+        ).decode()
+    public_key_b64 = [
+        line for line in public_key_file.splitlines() if line and not line.startswith("#")
+    ][0]
+    assert public_key_b64 == releases.public_key_b64()
+    public = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))
+    public.verify(signature, inspection.sha256.encode("ascii"))
 
 
 def test_sanitize_strips_scripts_handlers_and_bad_links() -> None:
