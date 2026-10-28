@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Released FreePBX module 1.3.4 with English update-check and release-history error messages.
 - Released FreePBX module 1.3.3 with an English release-history tab title.
 - Released FreePBX module 1.3.2 with direct recognition of effective settings in `cdr_general_custom.conf`.
 - Fixed FreePBX missed-call validation to honor effective CDR settings from included configuration files and released module 1.3.1.

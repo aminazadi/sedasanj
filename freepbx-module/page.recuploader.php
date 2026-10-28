@@ -1097,10 +1097,10 @@ $helpIcon = function ($title, $content) {
 				sjRenderBanner(d);
 			}
 			if (d.check_error) {
-				$('#sj-update-check-note').text('بررسی نسخهٔ جدید ناموفق بود: ' + d.check_error).show();
+				$('#sj-update-check-note').text('New version check failed: ' + d.check_error).show();
 			}
 		}).fail(function () {
-			$('#sj-update-check-note').text('بررسی نسخهٔ جدید ناموفق بود.').show();
+			$('#sj-update-check-note').text('New version check failed.').show();
 		});
 
 		var sjChangelogLoaded = false;
@@ -1112,11 +1112,11 @@ $helpIcon = function ($title, $content) {
 					$('#sj-changelog').html(sjTimeline(r.items));
 				} else {
 					sjChangelogLoaded = false;
-					$('#sj-changelog').html('<div class="alert alert-warning">دریافت تاریخچهٔ نسخه‌ها ناموفق بود' + (r && r.message ? ': <span dir="ltr">' + aruEscapeHtml(r.message) + '</span>' : '.') + '</div>');
+					$('#sj-changelog').html('<div class="alert alert-warning">Failed to load release history' + (r && r.message ? ': <span dir="ltr">' + aruEscapeHtml(r.message) + '</span>' : '.') + '</div>');
 				}
 			}).fail(function () {
 				sjChangelogLoaded = false;
-				$('#sj-changelog').html('<div class="alert alert-warning">دریافت تاریخچهٔ نسخه‌ها ناموفق بود.</div>');
+				$('#sj-changelog').html('<div class="alert alert-warning">Failed to load release history.</div>');
 			});
 		});
 

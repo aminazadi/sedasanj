@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4 — AMINAZADI
+
+- Changed the update-check and release-history error messages to English.
+
 ## 1.3.3 — AMINAZADI
 
 - Changed the release-history tab title to English.
