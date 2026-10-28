@@ -2,6 +2,10 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Added a PyPI fallback when the configured package mirror fails during API image dependency installation.
+
+## 2026-10-28 — AMINAZADI
+
 - Fixed FreePBX configuration imports by supporting the optional missed_calls section and reporting precise section validation errors.
 - Completed the FreePBX missed-call upload path with CDR polling, JSON delivery, retry handling, admin controls, and CDR readiness feedback.
 - Kept missed-call uploads disabled by default in generated configuration and added a shared web/PHP contract fixture.
