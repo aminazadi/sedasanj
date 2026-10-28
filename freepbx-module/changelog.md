@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3 — AMINAZADI
+
+- Changed the release-history tab title to English.
+
 ## 1.3.2 — AMINAZADI
 
 - Added a direct FreePBX custom-CDR fallback so readiness validation honors `cdr_general_custom.conf` even when include parsing is unavailable.

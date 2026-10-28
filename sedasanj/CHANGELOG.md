@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Released FreePBX module 1.3.3 with an English release-history tab title.
 - Released FreePBX module 1.3.2 with direct recognition of effective settings in `cdr_general_custom.conf`.
 - Fixed FreePBX missed-call validation to honor effective CDR settings from included configuration files and released module 1.3.1.
 - Repaired organization database provisioning by accepting stable master secrets through deterministic Fernet-key derivation, added regression coverage, documented key stability, and persisted admin database pagination in the URL.

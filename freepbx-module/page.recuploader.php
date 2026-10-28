@@ -295,7 +295,7 @@ $helpIcon = function ($title, $content) {
 			</li>
 			<li role="presentation">
 				<a href="#tab-changelog" aria-controls="tab-changelog" role="tab" data-toggle="tab">
-					<i class="fa fa-history"></i> تغییرات نسخه‌ها
+					<i class="fa fa-history"></i> Release History
 				</a>
 			</li>
 		</ul>

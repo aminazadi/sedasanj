@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Changed the FreePBX release-history tab title to English and released module 1.3.3.
 - Added a direct FreePBX custom-CDR fallback and released module 1.3.2 after field validation exposed an environment-specific include parsing failure.
 - Fixed FreePBX missed-call validation to resolve effective CDR options from included configuration files and prepared module release 1.3.1.
 - Corrected module-release back-link arrow direction across the administration pages.
