@@ -1007,6 +1007,30 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 		$this->shell('sudo -n systemctl ' . escapeshellarg($action) . ' ' . self::SERVICE_NAME . ' 2>&1');
 	}
 
+	public function getServiceStatus() {
+		return $this->serviceIsActive() ? 'running' : 'stopped';
+	}
+
+	/**
+	 * 'files' is the version of the code actually deployed (module.xml next
+	 * to this class); 'installed' is what FreePBX has registered in its
+	 * modules table. They differ only when files were copied in without a
+	 * `fwconsole ma install`, which the page flags.
+	 */
+	public function getModuleVersion() {
+		$xml = @simplexml_load_file(__DIR__ . '/module.xml');
+		$files = ($xml !== false && isset($xml->version)) ? trim((string) $xml->version) : '';
+		$installed = '';
+		try {
+			$stmt = $this->FreePBX->Database->prepare('SELECT version FROM modules WHERE modulename = ?');
+			$stmt->execute(array('recuploader'));
+			$installed = trim((string) $stmt->fetchColumn());
+		} catch (\Throwable $e) {
+			$installed = '';
+		}
+		return array('files' => $files !== '' ? $files : $installed, 'installed' => $installed);
+	}
+
 	protected function serviceIsActive() {
 		if (!function_exists('exec')) {
 			return true;

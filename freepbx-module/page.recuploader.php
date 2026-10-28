@@ -19,6 +19,9 @@ $queueSummary = $recuploader->getQueueSummary();
 $voicemailSummary = $recuploader->getVoicemailSummary();
 $missedCallSummary = $recuploader->getMissedCallSummary();
 $pageError = $recuploader->getLastSaveError();
+$serviceStatus = $recuploader->getServiceStatus();
+$moduleVersion = $recuploader->getModuleVersion();
+$logoSvg = @file_get_contents(__DIR__ . '/assets/images/sedasanj-logo.svg');
 
 $logLevels   = array('DEBUG', 'INFO', 'WARNING', 'ERROR');
 $logMinLevel = (isset($_REQUEST['log_min_level']) && in_array($_REQUEST['log_min_level'], $logLevels, true))
@@ -41,12 +44,136 @@ $helpIcon = function ($title, $content) {
 		. ' data-original-title="' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '"></i>';
 };
 ?>
-<div class="container-fluid">
+<style>
+	/* Mirrors the Seda Sanj client panel (sedasanj/web/client/src/index.css):
+	 * square corners, no shadows, dotted green chrome, beige-bordered cards. */
+	@font-face { font-family: "SedaSanj Vazirmatn"; src: url("modules/recuploader/assets/fonts/Vazirmatn-Variable.woff2") format("woff2-variations"); font-weight: 100 900; font-style: normal; font-display: swap; }
+	.sedasanj-panel { --sj-green: #4b6e48; --sj-green-dark: #3d5b3a; --sj-sand: #b2ac88; --sj-canvas: #f2f0ef; --sj-neutral: #898989; --sj-ink: #0f172a; --sj-label: #475569; --sj-dots-light: radial-gradient(circle, rgb(242 240 239 / 0.1) 0 1px, transparent 1.15px) 0 0 / 7px 7px; --sj-dots-grey: radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px; margin: 0 -15px; padding: 24px 24px 32px; min-height: 100vh; background: var(--sj-canvas); color: var(--sj-neutral); font-family: "SedaSanj Vazirmatn", Vazirmatn, system-ui, -apple-system, "Segoe UI", sans-serif; }
+	.sedasanj-panel *, .sedasanj-panel *::before, .sedasanj-panel *::after { border-radius: 0 !important; box-shadow: none !important; }
+	.sedasanj-panel h1, .sedasanj-panel h3, .sedasanj-panel h4 { font-family: inherit; color: var(--sj-ink); }
+	.sedasanj-panel a { color: var(--sj-green); }
 
-	<h1>
-		<?php echo _("Seda Sanj"); ?>
-		<small><?php echo _("Recording Uploader &middot; sedasanj.ir"); ?></small>
-	</h1>
+	/* ---- Brand header (the panel sidebar's dotted green) ---- */
+	.sedasanj-panel .sj-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; padding: 22px 28px; background: var(--sj-green) var(--sj-dots-light); border: 1px solid var(--sj-green); color: var(--sj-canvas); }
+	.sedasanj-panel .sj-brand { display: flex; align-items: center; gap: 24px; }
+	.sedasanj-panel .sj-logo { display: block; width: 144px; color: var(--sj-canvas); line-height: 0; }
+	.sedasanj-panel .sj-logo svg { width: 100%; height: auto; }
+	.sedasanj-panel .sj-brand-text { padding-left: 24px; border-left: 1px solid var(--sj-sand); }
+	.sedasanj-panel .sj-brand-text h1 { margin: 0; font-size: 20px; font-weight: 900; color: var(--sj-canvas); }
+	.sedasanj-panel .sj-brand-text p { margin: 4px 0 0; color: var(--sj-sand); font-size: 13px; }
+	.sedasanj-panel .sj-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+	.sedasanj-panel .sj-pill { display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px; font-size: 12px; line-height: 1.4; font-weight: 700; border: 1px solid var(--sj-sand); background: var(--sj-canvas); color: #000; }
+	.sedasanj-panel .sj-pill.sj-version { background: var(--sj-sand); }
+	.sedasanj-panel .sj-dot { position: relative; flex: 0 0 auto; width: 10px; height: 10px; background: var(--sj-neutral); }
+	.sedasanj-panel .sj-dot::after { position: absolute; inset: -2px; border: 1px solid currentColor; content: ""; opacity: 0; pointer-events: none; animation: sj-dot-pulse 1.9s ease-out infinite; }
+	.sedasanj-panel .sj-pill.is-running .sj-dot { background: var(--sj-green); color: var(--sj-green); }
+	.sedasanj-panel .sj-pill.is-stopped .sj-dot { color: #dc2626; }
+	@keyframes sj-dot-pulse { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.2); } }
+	@media (prefers-reduced-motion: reduce) { .sedasanj-panel .sj-dot::after { animation: none; } }
+	.sedasanj-panel .sj-pill.is-stopped { color: #b91c1c; }
+	.sedasanj-panel .sj-pill.is-stopped .sj-dot { background: #dc2626; }
+
+	/* ---- Main card ---- */
+	.sedasanj-panel .sj-card { background: var(--sj-canvas); border: 1px solid var(--sj-sand); }
+	.sedasanj-panel .sj-card > .nav-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 10px 12px; background: var(--sj-green) var(--sj-dots-light); border-bottom: 1px solid var(--sj-sand); }
+	.sedasanj-panel .sj-card > .nav-tabs > li { float: none; margin: 0; }
+	.sedasanj-panel .sj-card > .nav-tabs > li > a { display: flex; align-items: center; gap: 8px; margin: 0; padding: 9px 12px; border: 0; color: var(--sj-canvas); font-size: 13px; background: transparent; transition: background-color .2s, color .2s; }
+	.sedasanj-panel .sj-card > .nav-tabs > li > a .fa { color: var(--sj-sand); font-size: 15px; transition: color .2s; }
+	.sedasanj-panel .sj-card > .nav-tabs > li > a:hover,
+	.sedasanj-panel .sj-card > .nav-tabs > li.active > a,
+	.sedasanj-panel .sj-card > .nav-tabs > li.active > a:hover,
+	.sedasanj-panel .sj-card > .nav-tabs > li.active > a:focus { border: 0; background: var(--sj-canvas); color: var(--sj-green); }
+	.sedasanj-panel .sj-card > .nav-tabs > li.active > a { font-weight: 700; }
+	.sedasanj-panel .sj-card > .nav-tabs > li > a:hover .fa,
+	.sedasanj-panel .sj-card > .nav-tabs > li.active > a .fa { color: var(--sj-green); }
+	.sedasanj-panel .sj-card > .nav-tabs > li > a:focus { outline: none; }
+	.sedasanj-panel .sj-card > .nav-tabs > li > a:focus-visible { outline: 2px solid var(--sj-sand); outline-offset: -2px; }
+	.sedasanj-panel .sj-card > .tab-content { padding: 28px 24px 8px; background: #fff; }
+
+	/* ---- Forms ---- */
+	.sedasanj-panel .control-label { color: var(--sj-label); font-weight: 500; font-size: 13px; }
+	.sedasanj-panel .form-control { height: 38px; border: 1px solid var(--sj-sand); background-color: var(--sj-canvas); color: var(--sj-ink); font-family: inherit; transition: border-color .15s; }
+	.sedasanj-panel .form-control:focus { border-color: var(--sj-green); outline: none; }
+	.sedasanj-panel .form-control::placeholder { color: #a8a8a8; }
+	.sedasanj-panel select.form-control { appearance: none; -webkit-appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%23898989' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 18px; }
+	.sedasanj-panel .sj-log-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 16px; }
+	.sedasanj-panel .sj-log-field { display: flex; align-items: center; gap: 10px; }
+	.sedasanj-panel .sj-log-field label { margin: 0; color: var(--sj-label); font-size: 13px; font-weight: 500; white-space: nowrap; }
+	.sedasanj-panel #log_min_level { width: 140px; }
+	.sedasanj-panel #log_max_lines { width: 110px; }
+	.sedasanj-panel input[type="file"].form-control { height: auto; padding: 7px 10px; }
+	.sedasanj-panel .help-block { color: #64748b; font-size: 12px; }
+	.sedasanj-panel .fpbx-help-icon { color: var(--sj-sand); }
+	.sedasanj-panel .switch input:checked + .slider { background-color: var(--sj-green); }
+	.sedasanj-panel .btn { border: 1px solid var(--sj-neutral); background: transparent; color: var(--sj-green); font-family: inherit; font-weight: 500; transition: background-color .15s; }
+	.sedasanj-panel .btn:hover, .sedasanj-panel .btn:focus { background: #f1f5f9; color: var(--sj-green); }
+	.sedasanj-panel .btn-primary, .sedasanj-panel .btn-sj { border-color: var(--sj-green); background: var(--sj-green); color: var(--sj-canvas); }
+	.sedasanj-panel .btn-primary:hover, .sedasanj-panel .btn-primary:focus, .sedasanj-panel .btn-sj:hover, .sedasanj-panel .btn-sj:focus { border-color: var(--sj-green-dark); background: var(--sj-green-dark); color: var(--sj-canvas); }
+	.sedasanj-panel .btn-sj { padding: 9px 22px; font-weight: 700; }
+	.sedasanj-panel .sj-actions { margin: 0; padding: 16px 24px; background: var(--sj-canvas) var(--sj-dots-grey); border-top: 1px solid var(--sj-sand); }
+	.sedasanj-panel hr { border-top-color: var(--sj-sand); }
+
+	/* ---- Alerts ---- */
+	.sedasanj-panel .alert { border: 1px solid var(--sj-sand); background: var(--sj-canvas); color: #334155; }
+	.sedasanj-panel .alert-info { border-inline-start: 3px solid var(--sj-sand); }
+	.sedasanj-panel .alert-success { border-color: #b7c9b5; border-inline-start: 3px solid var(--sj-green); background: #eef3ed; color: var(--sj-green-dark); }
+	.sedasanj-panel .alert-warning { border-color: #e2d6a8; border-inline-start: 3px solid #b8932f; background: #fbf7ea; color: #6b5414; }
+	.sedasanj-panel .alert-danger { border-color: #efc9c9; border-inline-start: 3px solid #dc2626; background: #fdf2f2; color: #991b1b; }
+
+	/* ---- Stat cards (panel-stat-card) ---- */
+	.sedasanj-panel .sj-stats { margin: 0 -8px 18px; }
+	.sedasanj-panel .sj-stats > [class*="col-"] { padding: 0 8px; }
+	.sedasanj-panel .sj-stat { position: relative; margin-bottom: 12px; padding: 14px 16px; border: 1px solid var(--sj-sand); background: radial-gradient(circle at 2.75rem 2.75rem, #f2f0ef 0 2.5rem, rgb(242 240 239 / 0.94) 3rem, rgb(242 240 239 / 0.78) 4rem, rgb(242 240 239 / 0.52) 5rem, rgb(242 240 239 / 0.24) 6rem, transparent 7rem), var(--sj-dots-grey), var(--sj-canvas); transition: border-color .15s; }
+	.sedasanj-panel .sj-stat:hover { border-color: var(--sj-neutral); }
+	.sedasanj-panel .sj-stat span { display: block; margin-bottom: 4px; color: var(--sj-label); font-size: 13px; font-weight: 500; }
+	.sedasanj-panel .sj-stat strong { display: block; color: var(--sj-ink); font-size: 24px; font-weight: 800; line-height: 1.3; letter-spacing: -.02em; }
+
+	/* ---- Tables, code, logs ---- */
+	.sedasanj-panel .table > tbody > tr > th, .sedasanj-panel .table > tbody > tr > td { border-top-color: #e2e8f0; }
+	.sedasanj-panel .table-striped > tbody > tr:nth-of-type(odd) { background: rgb(242 240 239 / 0.6); }
+	.sedasanj-panel code { border: 1px solid rgb(178 172 136 / 0.75); background: rgb(242 240 239 / 0.75); padding: 1px 5px; color: #334155; font-size: .85em; }
+	.sedasanj-panel .sj-log { max-height: 500px; overflow: auto; margin: 0 0 10px; padding: 12px; border: 1px solid var(--sj-sand); background: #1e293b; color: var(--sj-canvas); font-size: 12px; line-height: 1.6; }
+
+	/* ---- Service information & footer ---- */
+	.sedasanj-panel .sj-info { margin-top: 20px; }
+	.sedasanj-panel .sj-info .panel-heading { padding: 12px 16px; background: var(--sj-canvas) var(--sj-dots-grey); border-bottom: 1px solid var(--sj-sand); }
+	.sedasanj-panel .sj-info .panel-title { color: var(--sj-ink); font-size: 14px; font-weight: 700; }
+	.sedasanj-panel .sj-info .panel-title .fa { color: var(--sj-green); }
+	.sedasanj-panel .sj-info .panel-body { background: #fff; }
+	.sedasanj-panel .sj-info dt { color: var(--sj-label); font-weight: 500; }
+	.sedasanj-panel .sj-footer { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 24px; color: var(--sj-neutral); font-size: 12px; }
+	.sedasanj-panel .sj-footer .sj-logo { width: 54px; color: var(--sj-neutral); }
+
+	@media (max-width: 767px) {
+		.sedasanj-panel { padding: 16px; }
+		.sedasanj-panel .sj-hero { padding: 18px; }
+		.sedasanj-panel .sj-brand { flex-direction: column; align-items: flex-start; gap: 12px; }
+		.sedasanj-panel .sj-brand-text { padding-left: 0; border-left: 0; }
+	}
+</style>
+
+<div class="container-fluid sedasanj-panel">
+
+	<header class="sj-hero">
+		<div class="sj-brand">
+			<?php if ($logoSvg !== false): ?>
+				<a class="sj-logo" href="https://sedasanj.ir" target="_blank" rel="noopener" title="sedasanj.ir"><?php echo $logoSvg; ?></a>
+			<?php endif; ?>
+			<div class="sj-brand-text">
+				<h1><?php echo _("Seda Sanj"); ?></h1>
+				<p><?php echo _("Call recording uploader &amp; AI transcription for FreePBX"); ?></p>
+			</div>
+		</div>
+		<div class="sj-meta">
+			<span class="sj-pill <?php echo $serviceStatus === 'running' ? 'is-running' : 'is-stopped'; ?>">
+				<span class="sj-dot"></span>
+				<?php echo $serviceStatus === 'running' ? _("Service running") : _("Service stopped"); ?>
+			</span>
+			<?php if ($moduleVersion['files'] !== ''): ?>
+				<span class="sj-pill sj-version" title="<?php echo htmlspecialchars($moduleVersion['installed'] !== '' && $moduleVersion['installed'] !== $moduleVersion['files'] ? sprintf(_('Files are v%1$s, FreePBX has v%2$s registered - run fwconsole ma install recuploader'), $moduleVersion['files'], $moduleVersion['installed']) : _('Installed module version'), ENT_QUOTES, 'UTF-8'); ?>">v<?php echo htmlspecialchars($moduleVersion['files'], ENT_QUOTES, 'UTF-8'); ?><?php if ($moduleVersion['installed'] !== '' && $moduleVersion['installed'] !== $moduleVersion['files']): ?> <i class="fa fa-exclamation-triangle"></i><?php endif; ?></span>
+			<?php endif; ?>
+		</div>
+	</header>
 
 	<?php if ($saved && $saveError === null): ?>
 		<div class="alert alert-success alert-dismissible" role="alert">
@@ -75,6 +202,7 @@ $helpIcon = function ($title, $content) {
 	<form method="post" action="config.php?display=recuploader" id="recuploader-form" class="form-horizontal" enctype="multipart/form-data">
 		<input type="hidden" name="display" value="recuploader">
 
+		<div class="sj-card">
 		<!-- ================= Tab navigation ================= -->
 		<ul class="nav nav-tabs" role="tablist">
 			<li role="presentation" class="active">
@@ -119,7 +247,7 @@ $helpIcon = function ($title, $content) {
 			</li>
 		</ul>
 
-		<div class="tab-content" style="padding-top: 20px;">
+		<div class="tab-content">
 			<div role="tabpanel" class="tab-pane" id="tab-import">
 				<div class="alert alert-info"><?php echo _("Upload the versioned sedasanj-freepbx-config.json file. The file is validated locally and online before a masked preview is shown. Applying a preview replaces all supported settings and rolls back if the service cannot restart."); ?></div>
 				<div class="form-group">
@@ -296,10 +424,10 @@ $helpIcon = function ($title, $content) {
 					<?php echo $missedCallSummary['cdr_available'] ? _("CDR table is available.") : _("CDR table is unavailable."); ?>
 					<?php echo $missedCallSummary['unanswered_ready'] ? _("Unanswered CDR recording is enabled.") : _("unanswered=yes is not enabled in cdr.conf."); ?>
 				</div>
-				<div class="row" style="margin: 15px 0;">
-					<div class="col-sm-4"><div class="well text-center"><strong><?php echo (int) $missedCallSummary['queued']; ?></strong><br><?php echo _("Queued"); ?></div></div>
-					<div class="col-sm-4"><div class="well text-center"><strong><?php echo (int) $missedCallSummary['delivered']; ?></strong><br><?php echo _("Delivered markers"); ?></div></div>
-					<div class="col-sm-4"><div class="well text-center"><strong><?php echo (int) $missedCallSummary['failed']; ?></strong><br><?php echo _("Failed"); ?></div></div>
+				<div class="row sj-stats">
+					<div class="col-sm-4"><div class="sj-stat"><span><?php echo _("Queued"); ?></span><strong><?php echo (int) $missedCallSummary['queued']; ?></strong></div></div>
+					<div class="col-sm-4"><div class="sj-stat"><span><?php echo _("Delivered markers"); ?></span><strong><?php echo (int) $missedCallSummary['delivered']; ?></strong></div></div>
+					<div class="col-sm-4"><div class="sj-stat"><span><?php echo _("Failed"); ?></span><strong><?php echo (int) $missedCallSummary['failed']; ?></strong></div></div>
 				</div>
 				<div class="form-group"><label class="col-sm-3 control-label" for="missed_calls_enabled"><?php echo _("Enable Missed Calls"); ?></label><div class="col-sm-6"><label class="switch"><input type="checkbox" id="missed_calls_enabled" name="missed_calls_enabled" value="1" <?php echo ($s['missed_calls_enabled'] === '1' ? 'checked' : ''); ?>><span class="slider round"></span></label></div></div>
 				<div class="form-group"><label class="col-sm-3 control-label" for="missed_calls_poll_interval_seconds"><?php echo _("Poll Interval (seconds)"); ?></label><div class="col-sm-3"><input type="number" class="form-control" id="missed_calls_poll_interval_seconds" name="missed_calls_poll_interval_seconds" min="10" max="3600" value="<?php echo htmlspecialchars($s['missed_calls_poll_interval_seconds']); ?>"></div></div>
@@ -307,11 +435,11 @@ $helpIcon = function ($title, $content) {
 
 			<div role="tabpanel" class="tab-pane" id="tab-voicemail">
 				<div class="alert alert-info"><?php echo _("Voicemail messages are copied and uploaded without changing, moving, or deleting anything in the mailbox. Each message is transcribed and analyzed without consuming call-processing credit. The first scan ignores existing messages unless backfill is enabled."); ?></div>
-				<div class="row" style="margin: 15px 0;">
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $voicemailSummary['uploaded']; ?></strong><br><?php echo _("Uploaded"); ?></div></div>
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $voicemailSummary['ignored']; ?></strong><br><?php echo _("Ignored existing messages"); ?></div></div>
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $voicemailSummary['spooled']; ?></strong><br><?php echo _("Awaiting retry"); ?></div></div>
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $voicemailSummary['failed']; ?></strong><br><?php echo _("Failed"); ?></div></div>
+				<div class="row sj-stats">
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Uploaded"); ?></span><strong><?php echo (int) $voicemailSummary['uploaded']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Ignored existing messages"); ?></span><strong><?php echo (int) $voicemailSummary['ignored']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Awaiting retry"); ?></span><strong><?php echo (int) $voicemailSummary['spooled']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Failed"); ?></span><strong><?php echo (int) $voicemailSummary['failed']; ?></strong></div></div>
 				</div>
 				<div class="form-group">
 					<label class="col-sm-3 control-label" for="voicemail_enabled"><?php echo _("Enable Voicemail Upload"); ?></label>
@@ -385,10 +513,10 @@ $helpIcon = function ($title, $content) {
 
 			<!-- ================= Retry Queue & Sweeper ================= -->
 			<div role="tabpanel" class="tab-pane" id="tab-retry">
-				<div class="row" style="margin: 15px 0;">
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $queueSummary['pending']; ?></strong><br><?php echo _("Pending"); ?></div></div>
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $queueSummary['blocked_credit']; ?></strong><br><?php echo _("Blocked by credit"); ?></div></div>
-					<div class="col-sm-3"><div class="well text-center"><strong><?php echo (int) $queueSummary['failed']; ?></strong><br><?php echo _("Failed"); ?></div></div>
+				<div class="row sj-stats">
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Pending"); ?></span><strong><?php echo (int) $queueSummary['pending']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Blocked by credit"); ?></span><strong><?php echo (int) $queueSummary['blocked_credit']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Failed"); ?></span><strong><?php echo (int) $queueSummary['failed']; ?></strong></div></div>
 				</div>
 				<?php if ($queueSummary['last_error'] !== ''): ?><div class="alert alert-warning"><strong><?php echo _("Last error"); ?>:</strong> <?php echo htmlspecialchars($queueSummary['last_error'], ENT_QUOTES, 'UTF-8'); ?></div><?php endif; ?>
 
@@ -478,23 +606,22 @@ $helpIcon = function ($title, $content) {
 					<i class="fa fa-list-alt"></i> <?php echo _("Recent Log Entries"); ?>
 				</h4>
 
-				<div class="form-inline" style="margin-bottom: 15px;">
+				<div class="sj-log-controls">
 					<input form="log-viewer-form" type="hidden" name="display" value="recuploader">
 
-					<div class="form-group">
-						<label for="log_min_level" style="margin-right: 5px;"><?php echo _("Minimum level"); ?></label>
-						<select form="log-viewer-form" class="form-control" id="log_min_level" name="log_min_level" style="margin-right: 15px;">
+					<div class="sj-log-field">
+						<label for="log_min_level"><?php echo _("Minimum level"); ?></label>
+						<select form="log-viewer-form" class="form-control" id="log_min_level" name="log_min_level">
 							<?php foreach ($logLevels as $lvl): ?>
 								<option value="<?php echo $lvl; ?>" <?php echo ($logMinLevel === $lvl ? 'selected' : ''); ?>><?php echo $lvl; ?></option>
 							<?php endforeach; ?>
 						</select>
 					</div>
 
-					<div class="form-group">
-						<label for="log_max_lines" style="margin-right: 5px;"><?php echo _("Lines"); ?></label>
+					<div class="sj-log-field">
+						<label for="log_max_lines"><?php echo _("Lines"); ?></label>
 						<input form="log-viewer-form" type="number" class="form-control" id="log_max_lines" name="log_max_lines"
-							value="<?php echo (int) $logMaxLines; ?>" min="10" max="2000"
-							style="width: 100px; margin-right: 15px;">
+							value="<?php echo (int) $logMaxLines; ?>" min="10" max="2000">
 					</div>
 
 					<button id="log-refresh-btn" form="log-viewer-form" type="submit" class="btn btn-default">
@@ -513,7 +640,7 @@ $helpIcon = function ($title, $content) {
 						<code>/var/log/asterisk-recording-uploader/uploader.log</code>
 					</p>
 				<?php else: ?>
-					<pre style="max-height: 500px; overflow: auto; background: #1e1e1e; color: #ddd; padding: 10px; border-radius: 4px;"><?php
+					<pre class="sj-log"><?php
 						foreach (array_reverse($logLines) as $line) {
 							echo htmlspecialchars($line) . "\n";
 						}
@@ -532,13 +659,14 @@ $helpIcon = function ($title, $content) {
 
 		</div><!-- /tab-content -->
 
-		<div class="form-group" style="margin-top: 25px;">
+		<div class="form-group sj-actions">
 			<div class="col-sm-offset-3 col-sm-9">
-				<button type="submit" name="recuploader_save" value="1" class="btn btn-default">
+				<button type="submit" name="recuploader_save" value="1" class="btn btn-sj">
 					<i class="fa fa-save"></i> <?php echo _("Save &amp; Restart Service"); ?>
 				</button>
 			</div>
 		</div>
+		</div><!-- /sj-card -->
 
 	</form>
 
@@ -547,7 +675,7 @@ $helpIcon = function ($title, $content) {
 	<form id="log-viewer-form" method="get" action="config.php"></form>
 
 	<!-- ================= Service Information ================= -->
-	<div class="panel panel-default" style="margin-top: 30px;">
+	<div class="panel panel-default sj-card sj-info">
 		<div class="panel-heading">
 			<h3 class="panel-title"><i class="fa fa-info-circle"></i> <?php echo _("Service Information"); ?></h3>
 		</div>
@@ -568,10 +696,10 @@ $helpIcon = function ($title, $content) {
 		</div>
 	</div>
 
-	<p class="text-muted" style="margin-top: 20px;">
-		<?php echo _("Seda Sanj"); ?> &middot;
+	<footer class="sj-footer">
+		<?php if ($logoSvg !== false): ?><span class="sj-logo"><?php echo $logoSvg; ?></span>&middot;<?php endif; ?>
 		<a href="https://sedasanj.ir" target="_blank" rel="noopener">sedasanj.ir</a>
-	</p>
+	</footer>
 
 </div>
 
@@ -647,7 +775,7 @@ $helpIcon = function ($title, $content) {
 				);
 				return;
 			}
-			var html = '<pre style="max-height: 500px; overflow: auto; background: #1e1e1e; color: #ddd; padding: 10px; border-radius: 4px;">';
+			var html = '<pre class="sj-log">';
 			$.each(lines, function (i, line) {
 				html += aruEscapeHtml(line) + '\n';
 			});
