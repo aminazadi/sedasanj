@@ -47,7 +47,7 @@ export default function ModuleFleet() {
     <div className="space-y-4">
       <ErrorBox message={error} />
       <div className="flex items-center justify-between">
-        <Link to="/module-releases" className="text-sm text-slate-500 hover:text-slate-800">← نسخه‌های ماژول</Link>
+        <Link to="/module-releases" className="text-sm text-slate-500 hover:text-slate-800">→ نسخه‌های ماژول</Link>
       </div>
 
       <div className="card">

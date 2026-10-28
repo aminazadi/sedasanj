@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Reversed module-release back-link arrows to match the right-to-left navigation direction.
 - Added automatic persistent Ed25519 release-key generation, backup and restore support, and embedded the matching public key into uploaded FreePBX module archives before signing.
 - Added a pre-start Redis AOF integrity check with timestamped backup and automatic repair for truncated append-only files, and pinned the Redis image version.
 - Documented the required host memory-overcommit setting for reliable Redis persistence.

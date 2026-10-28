@@ -304,7 +304,7 @@ function Header({ version, status }: { version?: string; status?: ModuleRelease[
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <Link to="/module-releases" className="text-sm text-slate-500 hover:text-slate-800">← نسخه‌های ماژول</Link>
+        <Link to="/module-releases" className="text-sm text-slate-500 hover:text-slate-800">→ نسخه‌های ماژول</Link>
         <h1 className="text-xl font-extrabold text-slate-900">
           {version ? <>نسخهٔ <span dir="ltr">v{version}</span></> : "ثبت نسخهٔ جدید"}
           {status ? <span className="badge mr-2 bg-slate-100 align-middle text-slate-600">{labels[status]}</span> : null}

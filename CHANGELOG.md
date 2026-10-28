@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Corrected module-release back-link arrow direction across the administration pages.
 - Fixed FreePBX module uploads by provisioning and backing up a persistent release-signing key and embedding its public key into every published module archive.
 - Added recoverable Redis startup repair for corrupted AOF persistence and documented the required host memory-overcommit configuration.
 - Fixed API and worker image builds by retrying Python package mirrors independently when an index returns a truncated or malformed response.
