@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 — AMINAZADI
+
+- Added in-page update checks: every visit to Admin > Seda Sanj asks the Seda Sanj API for newer releases and shows a banner with the release notes.
+- Added one-click automatic updates: the release is downloaded, checked against its SHA-256 and Ed25519 signature, backed up, installed and health-checked by a root-owned helper, with automatic rollback on failure and live step-by-step progress.
+- Added a "تغییرات نسخه‌ها" (release history) tab.
+- The installer now provisions `/usr/local/sbin/sedasanj-recuploader-update`, the release signing key and the matching sudoers entry. Automatic updates require the PHP sodium extension.
+- This release must be installed manually once (install.sh or `fwconsole ma install`); later releases can be applied from the page.
+
 ## 1.2.1 — AMINAZADI
 
 - Completed the opt-in missed-call CDR poller, JSON ingest, retry spool, service scheduling, settings, and readiness checks.

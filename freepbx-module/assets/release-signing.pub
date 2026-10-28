@@ -1,0 +1,5 @@
+# Seda Sanj release signing public key (Ed25519, raw 32 bytes, base64).
+# PLACEHOLDER: replace the line below with the real key before building a
+# release - see "Release signing" in README.md. While this placeholder is
+# in place, automatic updates stay disabled on every server.
+REPLACE_WITH_BASE64_ED25519_PUBLIC_KEY

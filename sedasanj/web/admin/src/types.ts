@@ -254,3 +254,59 @@ export interface SubscriptionAdmin {
   extra_operators: number;
   assistant_monthly_messages: number;
 }
+
+export type ModuleSeverity = "normal" | "recommended" | "critical" | "security";
+export type ModuleReleaseStatus = "draft" | "published" | "revoked";
+
+export interface ModuleRelease {
+  id: string;
+  product: string;
+  version: string;
+  title: string;
+  changelog_html: string;
+  severity: ModuleSeverity;
+  channel: "stable" | "beta";
+  min_freepbx_major: number | null;
+  min_from_version: string | null;
+  artifact_sha256: string;
+  artifact_size: number;
+  status: ModuleReleaseStatus;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  installations: number;
+}
+
+export interface ModuleZipInspection {
+  rawname: string;
+  version: string;
+  sha256: string;
+  size: number;
+  latest_published: string | null;
+  already_exists: boolean;
+}
+
+export interface ModuleInstallation {
+  id: string;
+  tenant_id: string;
+  tenant_name: string | null;
+  host_uuid: string;
+  hostname: string | null;
+  freepbx_version: string | null;
+  php_version: string | null;
+  module_version: string;
+  service_status: string | null;
+  last_seen_at: string;
+  last_update_status: "started" | "succeeded" | "failed" | "rolled_back" | null;
+  last_update_error: string | null;
+  last_update_at: string | null;
+  update_available: boolean;
+  latest_version: string | null;
+}
+
+export interface ModuleInstallationStats {
+  versions: Array<{ version: string; count: number }>;
+  total: number;
+  latest_version: string | null;
+  failed_updates: number;
+}

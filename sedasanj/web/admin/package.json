@@ -13,10 +13,14 @@
     "@cbi/web-shared": "file:../shared",
     "@iconify-icons/lucide": "^2.0.14",
     "@iconify/react": "^6.0.2",
+    "@tinymce/tinymce-react": "6.3.1",
+    "dompurify": "3.2.7",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-router-dom": "7.18.3",
-    "recharts": "2.12.7"
+    "recharts": "2.12.7",
+    "tinymce": "7.9.1",
+    "tinymce-i18n": "26.9.28"
   },
   "devDependencies": {
     "@types/react": "18.3.5",

@@ -12,6 +12,9 @@ import Subscriptions from "./pages/Subscriptions";
 import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
 import Login from "./pages/Login";
+import ModuleFleet from "./pages/ModuleFleet";
+import ModuleReleaseEditor from "./pages/ModuleReleaseEditor";
+import ModuleReleases from "./pages/ModuleReleases";
 import Packages from "./pages/Packages";
 import Settings from "./pages/Settings";
 import TenantDetailPage from "./pages/TenantDetail";
@@ -45,6 +48,9 @@ export default function App() {
         <Route path="/commerce" element={<Commerce />} />
         <Route path="/sales" element={<Sales />} />
         <Route path="/installations" element={<Installations />} />
+        <Route path="/module-releases" element={<ModuleReleases />} />
+        <Route path="/module-releases/:releaseId" element={<ModuleReleaseEditor />} />
+        <Route path="/module-fleet" element={<ModuleFleet />} />
         <Route path="/staff" element={<Staff />} />
         <Route path="/commerce-settings" element={<CommerceSettings />} />
         <Route path="/audit" element={<Audit />} />

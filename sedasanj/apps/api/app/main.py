@@ -28,6 +28,7 @@ from app.routers import (
     health,
     ingest,
     kpi,
+    module_updates,
     organization_memories,
     phone_auth,
     quick_demo,
@@ -154,6 +155,7 @@ def create_app() -> FastAPI:
         organization_memories,
         scheduled_reports,
         kpi,
+        module_updates,
         admin,
     ):
         app.include_router(module.router)

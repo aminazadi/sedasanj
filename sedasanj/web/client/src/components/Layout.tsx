@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
+import ModuleUpdateBanner from "./ModuleUpdateBanner";
 import QuickAssistantWidget from "./QuickAssistantWidget";
 
 type NavigationItem = {
@@ -39,6 +40,8 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/account", label: "اعتبار و اشتراک", icon: "M12 2v20M17 6H9a3 3 0 0 0 0 6h6a3 3 0 0 1 0 6H6", hideForOperator: true },
       { to: "/account-settings", label: "تنظیمات حساب", icon: "M12 2v2M12 20v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z", orgAdminOnly: true },
       { to: "/install", label: "راه‌اندازی", icon: "M14.7 6.3a4 4 0 0 0-5-5L7.4 3.6l3 3 2.3-2.3M5.5 8.5l-3.8 3.8a2.4 2.4 0 0 0 0 3.4l6.6 6.6a2.4 2.4 0 0 0 3.4 0l3.8-3.8M14 12l6.3 6.3a2.4 2.4 0 0 1-3.4 3.4l-6.3-6.3", hideForOperator: true },
+      { to: "/freepbx-servers", label: "سرورهای FreePBX", icon: "M2 4h20v6H2zM2 14h20v6H2zM6 7h.01M6 17h.01", orgAdminOnly: true },
+      { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: "M12 8v4l3 3M3.05 11a9 9 0 1 1 .5 4M3 4v5h5", hideForOperator: true },
       { to: "/api-docs", label: "مستندات API", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6" },
     ],
   },
@@ -178,6 +181,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isAssistantPage = location.pathname === "/assistant";
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(() => location.pathname !== "/assistant");
   const pageTitle = getPageTitle(location.pathname);
+  const { session } = useAuth();
+  const orgAdmin = isOrgAdmin(session?.role);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -228,7 +233,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{orgAdmin && !isAssistantPage ? <ModuleUpdateBanner /> : null}{children}</main>
         {!isAssistantPage ? <QuickAssistantWidget /> : null}
       </div>
     </DesktopMenuToggleContext.Provider>

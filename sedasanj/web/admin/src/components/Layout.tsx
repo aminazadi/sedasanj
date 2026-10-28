@@ -21,6 +21,8 @@ const icons = {
   jobs: <><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18m5-13 3 4-3 4" /></>,
   file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6" /></>,
   staff: <><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0M18 5h4M20 3v4" /></>,
+  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></>,
+  server: <><rect width="20" height="8" x="2" y="2" rx="2" /><rect width="20" height="8" x="2" y="14" rx="2" /><path d="M6 6h.01M6 18h.01" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1.4 1.6H9.6A1.7 1.7 0 0 0 8 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 13.6V10.4A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10.4 3h3.2A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1.4v3.2a1.7 1.7 0 0 0-1.6 1.4Z" /></>,
 };
 
@@ -43,6 +45,13 @@ const NAVIGATION: NavigationGroup[] = [
       { to: "/packages", label: "بسته‌های اعتبار", icon: icons.package },
       { to: "/sales", label: "فروش و سرنخ‌ها", icon: icons.chart },
       { to: "/installations", label: "نصب و استقرار", icon: icons.tool },
+    ],
+  },
+  {
+    label: "ماژول FreePBX",
+    items: [
+      { to: "/module-releases", label: "نسخه‌ها و تغییرات", icon: icons.upload },
+      { to: "/module-fleet", label: "سرورهای FreePBX", icon: icons.server },
     ],
   },
   {

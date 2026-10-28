@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+import base64
+import stat
+import zipfile
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+from app.config import get_settings
+from app.errors import ApiError
+from app.services import module_releases as releases
+
+MODULE_XML = "<module><rawname>{rawname}</rawname><version>{version}</version></module>"
+
+
+def _zip(tmp_path: Path, entries: dict[str, bytes], name: str = "module.zip") -> Path:
+    path = tmp_path / name
+    with zipfile.ZipFile(path, "w") as archive:
+        for entry, body in entries.items():
+            archive.writestr(entry, body)
+    return path
+
+
+def _module_zip(tmp_path: Path, version: str = "1.3.0", rawname: str = "recuploader") -> Path:
+    return _zip(
+        tmp_path,
+        {
+            "recuploader/module.xml": MODULE_XML.format(rawname=rawname, version=version).encode(),
+            "recuploader/Recuploader.class.php": b"<?php\n",
+        },
+    )
+
+
+def _release(version: str, **overrides: object) -> SimpleNamespace:
+    major, minor, patch = releases.parse_version(version)
+    values: dict[str, object] = {
+        "version": version,
+        "version_major": major,
+        "version_minor": minor,
+        "version_patch": patch,
+        "status": "published",
+        "channel": "stable",
+        "min_freepbx_major": None,
+        "min_from_version": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_inspect_zip_reads_version_and_digest(tmp_path: Path) -> None:
+    path = _module_zip(tmp_path)
+    inspection = releases.inspect_zip(path)
+    assert inspection.version == "1.3.0"
+    assert inspection.rawname == "recuploader"
+    assert len(inspection.sha256) == 64
+    assert inspection.size == path.stat().st_size
+
+
+def test_inspect_zip_rejects_wrong_rawname(tmp_path: Path) -> None:
+    with pytest.raises(ApiError, match="rawname"):
+        releases.inspect_zip(_module_zip(tmp_path, rawname="other"))
+
+
+def test_inspect_zip_rejects_bad_version(tmp_path: Path) -> None:
+    with pytest.raises(ApiError, match="version"):
+        releases.inspect_zip(_module_zip(tmp_path, version="1.3"))
+
+
+@pytest.mark.parametrize(
+    "entry", ["recuploader/../../etc/passwd", "/recuploader/x", "other/module.xml"]
+)
+def test_inspect_zip_rejects_unsafe_paths(tmp_path: Path, entry: str) -> None:
+    path = _zip(
+        tmp_path,
+        {
+            "recuploader/module.xml": MODULE_XML.format(
+                rawname="recuploader", version="1.0.0"
+            ).encode(),
+            entry: b"x",
+        },
+    )
+    with pytest.raises(ApiError) as caught:
+        releases.inspect_zip(path)
+    assert caught.value.code == "archive_unsafe"
+
+
+def test_inspect_zip_rejects_symlinks(tmp_path: Path) -> None:
+    path = tmp_path / "link.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "recuploader/module.xml", MODULE_XML.format(rawname="recuploader", version="1.0.0")
+        )
+        link = zipfile.ZipInfo("recuploader/evil")
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(link, "/etc/shadow")
+    with pytest.raises(ApiError, match="symlink"):
+        releases.inspect_zip(path)
+
+
+def test_inspect_zip_rejects_non_zip(tmp_path: Path) -> None:
+    path = tmp_path / "bad.zip"
+    path.write_bytes(b"not a zip")
+    with pytest.raises(ApiError) as caught:
+        releases.inspect_zip(path)
+    assert caught.value.code == "unsupported_archive"
+
+
+def test_signature_verifies_with_published_public_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    seed = base64.b64encode(bytes(range(32))).decode()
+    monkeypatch.setattr(get_settings(), "module_release_signing_key", seed)
+    digest = "a" * 64
+    signature = base64.b64decode(releases.sign_digest(digest))
+    public = Ed25519PublicKey.from_public_bytes(base64.b64decode(releases.public_key_b64()))
+    public.verify(signature, digest.encode("ascii"))
+
+
+def test_signing_requires_configured_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "module_release_signing_key", None)
+    with pytest.raises(ApiError, match="SIGNING_KEY"):
+        releases.sign_digest("a" * 64)
+
+
+def test_sanitize_strips_scripts_handlers_and_bad_links() -> None:
+    html, plain = releases.sanitize_changelog(
+        '<h2 style="color:red">امکانات جدید</h2><script>alert(1)</script>'
+        '<p onclick="x()">متن <a href="javascript:alert(1)">بد</a> '
+        '<a href="https://sedasanj.ir">خوب</a></p><img src=x onerror=alert(1)>'
+        '<pre class="language-bash"><code>fwconsole reload</code></pre><ul><li>یک'
+    )
+    assert "script" not in html and "alert" not in html
+    assert "onclick" not in html and "style" not in html and "<img" not in html
+    assert "javascript" not in html and "بد</a>" in html
+    assert 'href="https://sedasanj.ir"' in html and 'rel="noopener noreferrer"' in html
+    assert '<pre class="language-bash">' in html
+    assert html.endswith("</li></ul>")
+    assert "امکانات جدید" in plain and "fwconsole reload" in plain
+
+
+def test_sanitize_escapes_text() -> None:
+    html, _ = releases.sanitize_changelog("<p>&lt;b&gt;not bold&lt;/b&gt;</p>")
+    assert html == "<p>&lt;b&gt;not bold&lt;/b&gt;</p>"
+
+
+def test_select_update_returns_newest_and_every_step_between() -> None:
+    rows = [_release(v) for v in ("1.2.1", "1.3.0", "1.3.1", "1.4.0")]
+    latest, changelog = releases.select_update(rows, "1.2.1")
+    assert latest is not None and latest.version == "1.4.0"
+    assert [row.version for row in changelog] == ["1.4.0", "1.3.1", "1.3.0"]
+
+
+def test_select_update_none_when_current_is_newest() -> None:
+    assert releases.select_update([_release("1.3.0")], "1.3.0") == (None, [])
+    assert releases.select_update([_release("1.3.0")], "2.0.0") == (None, [])
+
+
+def test_select_update_ignores_drafts_revoked_and_beta() -> None:
+    rows = [
+        _release("1.3.0"),
+        _release("1.4.0", status="draft"),
+        _release("1.5.0", status="revoked"),
+        _release("1.6.0", channel="beta"),
+    ]
+    latest, _ = releases.select_update(rows, "1.2.0")
+    assert latest is not None and latest.version == "1.3.0"
+    beta, _ = releases.select_update(rows, "1.2.0", channel="beta")
+    assert beta is not None and beta.version == "1.6.0"
+
+
+def test_select_update_respects_freepbx_and_upgrade_floor() -> None:
+    rows = [
+        _release("1.3.0"),
+        _release("1.4.0", min_freepbx_major=17),
+        _release("2.0.0", min_from_version="1.4.0"),
+    ]
+    latest, changelog = releases.select_update(rows, "1.2.0", freepbx="16.0.40")
+    assert latest is not None and latest.version == "1.3.0"
+    assert [row.version for row in changelog] == ["1.3.0"]
+    latest, _ = releases.select_update(rows, "1.2.0", freepbx="17.0.1")
+    assert latest is not None and latest.version == "1.4.0"
+    latest, _ = releases.select_update(rows, "1.4.0", freepbx="17.0.1")
+    assert latest is not None and latest.version == "2.0.0"
