@@ -26,6 +26,7 @@ class AnsweredExtension
             return null;
         }
         try {
+            global $amp_conf, $db, $freepbx_conf, $bootstrap_settings;
             require_once '/etc/freepbx.conf';
             if (!class_exists('FreePBX')) {
                 return null;

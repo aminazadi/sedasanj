@@ -18,6 +18,8 @@ class CdrSource
 
     public static function connect(): self
     {
+        global $amp_conf, $db, $freepbx_conf, $bootstrap_settings;
+
         static $source = null;
         if ($source instanceof self) {
             return $source;

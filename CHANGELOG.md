@@ -2,6 +2,7 @@
 
 ## 2026-10-29 — AMINAZADI
 
+- Fixed background FreePBX CDR bootstrap variable scope in module 1.3.6.
 - Fixed FreePBX voicemail configuration parse-back and persisted active module tabs in the URL across all form actions in module 1.3.5.
 
 ## 2026-10-28 — AMINAZADI

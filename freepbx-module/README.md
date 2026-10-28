@@ -1,4 +1,4 @@
-# Seda Sanj FreePBX Module 1.3.5
+# Seda Sanj FreePBX Module 1.3.6
 
 Voicemail upload is disabled by default. Enable it in **Admin > Seda Sanj > Voicemail** after confirming the Asterisk service account can read `/var/spool/asterisk/voicemail`. The sweeper reads message metadata and audio without modifying mailbox files, skips `tmp`, and uploads only complete messages older than the recording settle interval. Existing messages are ignored on first activation unless backfill is explicitly enabled. GSM and wav49 inputs are converted to mono 8 kHz PCM in the private pending spool before upload; original voicemail files are never renamed, moved, or deleted.
 

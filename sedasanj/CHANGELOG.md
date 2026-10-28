@@ -2,6 +2,7 @@
 
 ## 2026-10-29 — AMINAZADI
 
+- Fixed background FreePBX CDR bootstrap variable scope in module 1.3.6.
 - Released FreePBX module 1.3.5 with voicemail parse-back repair and URL-persisted administration tabs.
 
 ## 2026-10-28 — AMINAZADI

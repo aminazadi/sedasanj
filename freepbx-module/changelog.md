@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.6 — AMINAZADI
+
+- Preserved FreePBX bootstrap globals when connecting to CDR from the background poller and answered-extension lookup.
+
 ## 1.3.5 — AMINAZADI
 
 - Fixed parse-back validation for Base64-encoded voicemail spool and folder settings.
