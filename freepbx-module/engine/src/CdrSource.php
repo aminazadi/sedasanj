@@ -58,6 +58,8 @@ class CdrSource
         $settings = [];
         $visited = [];
         self::readCdrSettings($path, $settings, $visited, '', 0);
+        $customPath = dirname($path) . DIRECTORY_SEPARATOR . 'cdr_general_custom.conf';
+        self::readCdrSettings($customPath, $settings, $visited, 'general', 0);
         return $settings;
     }
 

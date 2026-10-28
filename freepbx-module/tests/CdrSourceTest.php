@@ -20,6 +20,12 @@ $settings = Engine\CdrSource::cdrSettings($dir . '/cdr.conf');
 assertCdr(($settings['unanswered'] ?? null) === 'yes', 'custom unanswered setting');
 assertCdr(($settings['congestion'] ?? null) === 'yes', 'custom congestion setting');
 
+file_put_contents($dir . '/cdr.conf', "[general]\n#include unsupported-syntax\n");
+$settings = Engine\CdrSource::cdrSettings($dir . '/cdr.conf');
+assertCdr(($settings['unanswered'] ?? null) === 'yes', 'direct FreePBX custom fallback');
+assertCdr(($settings['congestion'] ?? null) === 'yes', 'direct FreePBX congestion fallback');
+
+unlink($dir . '/cdr_general_custom.conf');
 file_put_contents($dir . '/recursive.conf', "#include recursive.conf\nunanswered=yes\n");
 file_put_contents($dir . '/cdr.conf', "[general]\n#tryinclude missing.conf\n#include recursive.conf\n");
 $settings = Engine\CdrSource::cdrSettings($dir . '/cdr.conf');
