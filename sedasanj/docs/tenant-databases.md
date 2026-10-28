@@ -9,8 +9,10 @@ resolved through `tenant_database_registry`.
 
 ## Bootstrap
 
-Set `TENANT_DATABASE_MASTER_KEY` to a Fernet key, keep `PROVISIONER_DATABASE_URL` restricted
-to the provision worker, and enable `TENANT_DATABASES_ENABLED`. The PostgreSQL image contains
+Set `TENANT_DATABASE_MASTER_KEY` to a stable high-entropy secret or Fernet key, keep
+`PROVISIONER_DATABASE_URL` restricted to the provision worker, and enable
+`TENANT_DATABASES_ENABLED`. Non-Fernet secrets are deterministically converted to a Fernet key,
+so the value must remain unchanged after tenant credentials are encrypted. The PostgreSQL image contains
 the pinned pgvector and Apache AGE binaries. The provision worker creates roles, databases,
 extensions, schemas, graph storage, grants, identity records, and health checks automatically.
 

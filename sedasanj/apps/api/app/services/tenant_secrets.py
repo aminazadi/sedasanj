@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 from typing import Any, cast
 
 from app.config import get_settings
+
+
+def normalize_master_key(key: str) -> bytes:
+    normalized = key.strip()
+    if not normalized:
+        raise RuntimeError("tenant database master key is not configured")
+    try:
+        decoded = base64.urlsafe_b64decode(normalized.encode("ascii"))
+    except (ValueError, UnicodeEncodeError):
+        decoded = b""
+    if len(decoded) == 32:
+        return normalized.encode("ascii")
+    return base64.urlsafe_b64encode(hashlib.sha256(normalized.encode("utf-8")).digest())
 
 
 def _fernet() -> Any:
@@ -11,10 +26,7 @@ def _fernet() -> Any:
     key = get_settings().tenant_database_master_key
     if not key:
         raise RuntimeError("tenant database master key is not configured")
-    try:
-        return Fernet(key.encode("ascii"))
-    except (ValueError, UnicodeEncodeError) as exc:
-        raise RuntimeError("tenant database master key must be a valid Fernet key") from exc
+    return Fernet(normalize_master_key(key))
 
 
 def encrypt_dsn(dsn: str) -> str:

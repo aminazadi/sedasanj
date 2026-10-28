@@ -2,6 +2,7 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Repaired organization database provisioning by accepting stable master secrets through deterministic Fernet-key derivation, added regression coverage, documented key stability, and persisted admin database pagination in the URL.
 - Reversed module-release back-link arrows to match the right-to-left navigation direction.
 - Added automatic persistent Ed25519 release-key generation, backup and restore support, and embedded the matching public key into uploaded FreePBX module archives before signing.
 - Added a pre-start Redis AOF integrity check with timestamped backup and automatic repair for truncated append-only files, and pinned the Redis image version.

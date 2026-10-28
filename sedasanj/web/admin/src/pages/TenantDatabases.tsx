@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { request } from "../api";
 import { ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { Page, TenantDatabaseStatus } from "../types";
 
 export default function TenantDatabases() {
   const limit = 25;
-  const [offset, setOffset] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const parsedOffset = Number.parseInt(searchParams.get("offset") || "0", 10);
+  const offset = Number.isSafeInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
   const [page, setPage] = useState<Page<TenantDatabaseStatus> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -51,6 +54,15 @@ export default function TenantDatabases() {
     } finally {
       setRetrying(null);
     }
+  }
+
+  function setOffset(nextOffset: number) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (nextOffset > 0) next.set("offset", String(nextOffset));
+      else next.delete("offset");
+      return next;
+    });
   }
 
   if (!page) return error ? <ErrorBox message={error} /> : <Loading />;

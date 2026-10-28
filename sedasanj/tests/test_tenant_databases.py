@@ -9,7 +9,7 @@ from app.config import Settings, get_settings
 from app.models import TenantProvisioningJob
 from app.services.assistant_policy import PRIVACY_REFUSAL, must_refuse
 from app.services.tenant_provisioning import SCHEMA_HEAD, _schema_head, database_identifiers
-from app.services.tenant_secrets import decrypt_dsn, encrypt_dsn
+from app.services.tenant_secrets import decrypt_dsn, encrypt_dsn, normalize_master_key
 
 
 def test_database_identifiers_are_deterministic_and_safe() -> None:
@@ -60,6 +60,19 @@ def test_tenant_dsn_is_encrypted(monkeypatch: pytest.MonkeyPatch) -> None:
         ciphertext = encrypt_dsn(dsn)
         assert dsn not in ciphertext
         assert decrypt_dsn(ciphertext) == dsn
+    finally:
+        get_settings.cache_clear()
+
+
+def test_tenant_dsn_accepts_a_stable_master_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "a-stable-production-secret-that-is-not-a-fernet-key"
+    monkeypatch.setenv("TENANT_DATABASE_MASTER_KEY", key)
+    get_settings.cache_clear()
+    try:
+        dsn = "postgresql+asyncpg://tenant:secret@postgres:5432/cbi_tenant_test"
+        ciphertext = encrypt_dsn(dsn)
+        assert decrypt_dsn(ciphertext) == dsn
+        assert normalize_master_key(f"  {key}  ") == normalize_master_key(key)
     finally:
         get_settings.cache_clear()
 
