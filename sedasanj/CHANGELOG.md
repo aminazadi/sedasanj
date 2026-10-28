@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-28 — AMINAZADI
+
+- Persisted local inference and emotion model caches in the project-root `models` directory so redeployments reuse existing downloads.
+- Added one-time migration from the legacy Docker emotion-model volume and excluded project-root model artifacts from Git and Docker build contexts.
+
 ## 2026-10-22 — AMINAZADI
 
 - پایدارسازی اجرای دستیار سوکتی با وضعیت مستقل گفتگو، ادغام رویدادها بر اساس توالی، بازیابی پاسخ‌ها و مدیریت قطع اتصال، توقف و اجرای گیرکرده.

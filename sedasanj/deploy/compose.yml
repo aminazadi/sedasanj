@@ -92,6 +92,22 @@ x-api-build: &api-build
     PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
 
 services:
+  model-storage-init:
+    image: alpine:3.22
+    restart: "no"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /models/emotion-cache
+        if [ -z "$$(find /models/emotion-cache -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+          cp -a /legacy-emotion-cache/. /models/emotion-cache/
+        fi
+    volumes:
+      - ${MODELS_DIR:-../models}:/models
+      - emotion-model-cache:/legacy-emotion-cache:ro
+
   client:
     build:
       context: ..
@@ -210,7 +226,7 @@ services:
     environment: *python-env
     dns: *external-dns
     volumes:
-      - ${MODELS_DIR:-./models}:/models:ro
+      - ${MODELS_DIR:-../models}:/models:ro
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }
@@ -243,12 +259,13 @@ services:
       MODELSCOPE_CACHE: /model-cache/modelscope
     dns: *external-dns
     volumes:
-      - emotion-model-cache:/model-cache
+      - ${EMOTION_MODELS_DIR:-../models/emotion-cache}:/model-cache
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }
       minio: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
+      model-storage-init: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
       interval: 15s
@@ -359,7 +376,7 @@ services:
       --threads ${LLM_THREADS:-2}
       --host 0.0.0.0 --port 8081
     volumes:
-      - ${MODELS_DIR:-./models}:/models:ro
+      - ${MODELS_DIR:-../models}:/models:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
       interval: 30s

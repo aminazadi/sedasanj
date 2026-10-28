@@ -12,4 +12,5 @@
 deploy/.env
 deploy/backup
 deploy/models
+models
 *.wav

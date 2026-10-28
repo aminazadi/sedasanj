@@ -15,6 +15,7 @@ dist/
 .env
 deploy/.env
 deploy/data/
+models/
 *.wav
 !tests/fixtures/*.wav
 asterisk-module-*.zip

@@ -14,8 +14,8 @@
 
 ```bash
 sudo apt update && sudo apt install -y docker.io docker-compose-v2 ffmpeg
-sudo mkdir -p /srv/models /srv/backup
-# مدل‌ها را در /srv/models قرار دهید:
+sudo mkdir -p /srv/cbi/models /srv/backup
+# Place the models in /srv/cbi/models:
 #   dorna-llama3-8b-instruct-q4_k_m.gguf
 #   shenava-koochik-int8.bin
 git clone https://github.com/aminazadi/cbi-voice-analytics.git /srv/cbi
@@ -162,7 +162,9 @@ AUDIO_ENHANCEMENT_MODEL=speech-clarity-balanced
 `worker-emotion` پس از ASR و پیش از تحلیل متن اجرا می‌شود. کانال مشتری و اپراتور را مستقل، بر
 اساس زمان‌بندی utteranceها، به پنجره‌های محدود تقسیم می‌کند و emotion2vec+ base را فقط روی CPU
 اجرا می‌کند. شناسه و revision مدل همراه پروفایل صوت ذخیره می‌شود. مدل در نخستین اجرای واقعی در
-volume پایدار `emotion-model-cache` دریافت و برای راه‌اندازی‌های بعدی استفاده می‌شود.
+`models/emotion-cache` ریشه پروژه دریافت می‌شود. این مسیر در Git نادیده گرفته شده و در
+استقرارهای بعدی مستقیماً استفاده می‌شود. در اولین استقرار پس از این تغییر، cache موجود در
+volume قدیمی به‌صورت خودکار به مسیر جدید منتقل می‌شود.
 
 ```dotenv
 VOICE_SENTIMENT_ENABLED=true

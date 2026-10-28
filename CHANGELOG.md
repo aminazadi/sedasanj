@@ -2,6 +2,11 @@
 
 ## 2026-10-28 — AMINAZADI
 
+- Persisted Sedasanj and AISERVICE model downloads in Git-ignored, build-excluded project-root directories and reused them across deployments.
+- Added automatic one-time migration from the previous Docker model volumes.
+
+## 2026-10-28 — AMINAZADI
+
 - Configured the official PyPI index as an additional package source during API and worker image builds.
 - Replaced the official PyPI extra index with Aliyun and Tsinghua mirrors for API and worker image builds.
 - Added a PyPI fallback when the configured package mirror fails during API image dependency installation.

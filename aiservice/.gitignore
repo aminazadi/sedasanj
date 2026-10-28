@@ -26,6 +26,7 @@ dist/
 
 # Runtime data and local tooling
 data/
+models/
 .DS_Store
 .idea/
 .vscode/

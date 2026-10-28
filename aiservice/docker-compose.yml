@@ -1,4 +1,21 @@
 services:
+  model-storage-init:
+    image: alpine:3.22
+    restart: "no"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /models
+        if [ -z "$$(find /models -mindepth 1 -maxdepth 1 -print -quit)" ] && [ -d /legacy-data/models ]; then
+          cp -a /legacy-data/models/. /models/
+        fi
+        chown 10001:10001 /models
+    volumes:
+      - ${ASR_MODELS_DIR:-./models}:/models
+      - asr-data:/legacy-data:ro
+
   persian-asr:
     build:
       context: .
@@ -86,11 +103,15 @@ services:
       ASR_FORWARDED_ALLOW_IPS: ${ASR_FORWARDED_ALLOW_IPS:-127.0.0.1,172.29.0.0/16}
     volumes:
       - asr-data:/data
+      - ${ASR_MODELS_DIR:-./models}:/data/models
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       # A single read-only file lets statvfs() measure the host root disk.
       # Mounting the whole host filesystem would expose unnecessary data.
       - /etc/hostname:/host/rootfs-probe:ro
+    depends_on:
+      model-storage-init:
+        condition: service_completed_successfully
     init: true
     mem_limit: ${ASR_MEMORY_LIMIT:-32g}
     pids_limit: ${ASR_PIDS_LIMIT:-512}

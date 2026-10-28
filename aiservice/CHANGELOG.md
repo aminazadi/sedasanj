@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-28 — AMINAZADI
+
+- Persisted admin-downloaded AI models in the AISERVICE project-root `models` directory for reuse across deployments.
+- Added one-time migration from the legacy data volume and excluded downloaded model artifacts from Git and Docker build contexts.
+
 ## 2026-10-22 — AMINAZADI
 
 - Documented NVIDIA Container Toolkit host setup and Docker runtime registration for GPU images that build successfully but cannot start with an NVIDIA device reservation.
