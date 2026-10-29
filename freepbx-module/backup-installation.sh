@@ -17,6 +17,8 @@ PRESENT_LIST="${BACKUP_DIR}/present-paths.txt"
 ABSENT_LIST="${BACKUP_DIR}/absent-paths.txt"
 MANIFEST="${BACKUP_DIR}/manifest.txt"
 
+# The recording spool (pending/uploaded/failed audio) is deliberately NOT backed up: this module never
+# rewrites it, it can hold many gigabytes, and tarring it made updates slow or impossible on busy PBXs.
 MANAGED_PATHS=(
   "var/www/html/admin/modules/recuploader"
   "var/www/html/admin/modules/callrecording/functions.inc.php"
@@ -27,7 +29,6 @@ MANAGED_PATHS=(
   "usr/local/bin/asterisk-recording-uploader"
   "etc/asterisk-recording-uploader"
   "var/lib/asterisk-recording-uploader"
-  "var/spool/asterisk-recording-uploader"
   "var/log/asterisk-recording-uploader"
 )
 

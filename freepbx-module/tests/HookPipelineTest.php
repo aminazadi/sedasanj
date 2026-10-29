@@ -27,7 +27,7 @@ $port = 19000 + (getmypid() % 1000);
 $server = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", "$root/router.php"], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
 for ($i = 0; $i < 50; $i++) { $s = @fsockopen('127.0.0.1', $port); if ($s) { fclose($s); break; } usleep(100000); }
 
-function writeConfig(string $root, int $port, string $path): string
+function writeConfig(string $root, int $port, string $path, string $archive = 'wav'): string
 {
 	foreach (['pending', 'failed', 'uploaded', 'state', 'log', 'monitor'] as $d) { @mkdir("$root/$d", 0755, true); }
 	$ini = "$root/config.ini";
@@ -44,7 +44,7 @@ format = wav
 on_success = keep
 move_dir = $root/uploaded
 [archive]
-format = wav
+format = $archive
 [watcher]
 watch_dir = $root/monitor
 state_file = $root/state/watcher_state.json
@@ -113,6 +113,17 @@ if ($job === null || $job['status'] !== 'blocked_config') { $fail('C: job not pa
 if (!is_file($job['filepath'])) { $fail('C: paused job lost its audio'); }
 if (strpos(file_get_contents("$root/log/uploader.log"), 'SS-UPL-0401') === false) { $fail('C: 401 not logged with SS-UPL-0401'); }
 if (strpos(file_get_contents("$root/log/uploader.log"), 'sk_live_testkey123456') !== false) { $fail('C: api key leaked into the log'); }
+
+// D. local archive cannot be produced (unknown archive format) -> still delivered, warning logged.
+$ini = writeConfig($root, $port, '200/-', 'zzz');
+@unlink("$root/hits.log");
+[$code, $out, $dir, $name] = run($root, $ini, '1730000000.4', false);
+if ($code !== 0) { $fail("D: archive failure blocked the upload (exit $code): $out"); }
+if (count(array_filter(explode("\n", (string) @file_get_contents("$root/hits.log")))) !== 1) { $fail('D: recording was not uploaded'); }
+if (!preg_match('/WARNING|ERROR|INFO/', (string) file_get_contents("$root/log/uploader.log")) || strpos(file_get_contents("$root/log/uploader.log"), 'Local archive copy skipped') === false) {
+	// the closure logs at DEBUG; the config sets log_level = DEBUG so it must be present
+	$fail('D: archive failure not logged');
+}
 
 proc_terminate($server);
 exec('rm -rf ' . escapeshellarg($root));

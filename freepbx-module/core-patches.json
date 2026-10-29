@@ -1,7 +1,7 @@
 {
   "schema": "sedasanj.freepbx.core-patches",
   "version": 1,
-  "freepbx_majors": [16, 17],
+  "freepbx_majors": [15, 16, 17],
   "fixtures": [
     {
       "name": "main_mixmonitor",

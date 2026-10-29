@@ -54,7 +54,7 @@ class QueueWorker
                     ? (int) ($cfg['queue']['credit_retry_seconds'] ?? 3600)
                     : (int) ($cfg['queue']['config_retry_seconds'] ?? 3600);
                 $job['status'] = $exc->creditBlocked ? 'blocked_credit' : 'blocked_config';
-                $job['last_error'] = $exc->getMessage();
+                $job['last_error'] = $exc->getMessage() . ' [' . $exc->errorCode . ']';
                 $job['last_error_code'] = $exc->errorCode;
                 $job['next_attempt_epoch'] = microtime(true) + $delay;
                 $queue->save($job);
@@ -66,7 +66,7 @@ class QueueWorker
             }
             $job['attempts'] = ($job['attempts'] ?? 0) + 1;
             $job['status'] = 'pending';
-            $job['last_error'] = $exc->getMessage();
+            $job['last_error'] = $exc->getMessage() . ' [' . $exc->errorCode . ']';
             $job['last_error_code'] = $exc->errorCode;
 
             if (!$exc->retryable || $job['attempts'] >= $cfg['queue']['max_retries']) {
@@ -99,8 +99,9 @@ class QueueWorker
         $attempts = ($job['attempts'] ?? 0) + 1;
         $log->info("Job {$jobId} succeeded on retry attempt {$attempts}");
         $archivePath = $job['archive_path'] ?? null;
-        if ($archivePath) {
-            Pipeline::finalizeSuccessfulUpload($cfg, $filepath, $archivePath, $log);
+        if ($archivePath || empty($metadata['_voicemail'])) {
+            // A null archive path means the local archive copy was skipped; just clean up the staged file.
+            Pipeline::finalizeSuccessfulUpload($cfg, $filepath, $archivePath ?: null, $log);
         } else {
             // Job was spooled by a pre-upgrade version and has no
             // archive_path - fall back to applying on_success directly.

@@ -6,9 +6,14 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSIONS="${*:-7.4 8.1 8.3}"
 status=0
+# Test a snapshot: bind-mounting the live tree races with editors on macOS (files read as empty or
+# unreadable right after a write), which shows up as spurious lint failures.
+SNAPSHOT=$(mktemp -d)
+trap 'rm -rf "$SNAPSHOT"' EXIT HUP INT TERM
+cp -R "$ROOT/freepbx-module" "$SNAPSHOT/m"
 for v in $VERSIONS; do
   echo "=== PHP $v"
-  docker run --rm -v "$ROOT/freepbx-module":/m:ro "php:$v-cli" sh -c '
+  docker run --rm -v "$SNAPSHOT/m":/m:ro "php:$v-cli" sh -c '
     rc=0
     php -v | head -1
     for f in $(find /m -name "*.php" -not -path "*/tests/fixtures/*"); do
