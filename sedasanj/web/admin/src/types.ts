@@ -267,6 +267,8 @@ export interface ModuleRelease {
   severity: ModuleSeverity;
   channel: "stable" | "beta";
   min_freepbx_major: number | null;
+  max_freepbx_major?: number | null;
+  min_php_version?: string | null;
   min_from_version: string | null;
   artifact_sha256: string;
   artifact_size: number;

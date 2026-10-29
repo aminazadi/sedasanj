@@ -1955,6 +1955,8 @@ class ModuleRelease(Base):
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     min_freepbx_major: Mapped[int | None] = mapped_column(Integer)
+    max_freepbx_major: Mapped[int | None] = mapped_column(Integer)
+    min_php_version: Mapped[str | None] = mapped_column(String(16))
     min_from_version: Mapped[str | None] = mapped_column(String(32))
     artifact_key: Mapped[str] = mapped_column(Text, nullable=False)
     artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)

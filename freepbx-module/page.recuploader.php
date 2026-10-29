@@ -1223,6 +1223,9 @@ $helpIcon = function ($title, $content) {
 			} else if (d.update_available && d.latest) {
 				sjRenderBanner(d);
 			}
+			if (d.current_revoked) {
+				$('<div class="alert alert-danger" role="alert">').text(<?php echo json_encode(_("The installed module version was withdrawn by Seda Sanj (it has a known problem). Update as soon as a newer version is offered, or contact support.")); ?>).insertBefore('#recuploader-form');
+			}
 			if (d.check_error) {
 				$('#sj-update-check-note').text('New version check failed: ' + d.check_error).show();
 			}

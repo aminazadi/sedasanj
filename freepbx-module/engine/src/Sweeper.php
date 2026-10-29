@@ -180,6 +180,11 @@ class Sweeper
                 continue;
             }
 
+            // In-progress files of the hook (stereo merge, atomic writes) are never candidates.
+            if (preg_match('/\.(part|tmp)(\.\d+)?$/', $name)) {
+                continue;
+            }
+
             $excluded = false;
             foreach ($excludes as $pattern) {
                 if (@preg_match($pattern, $name) === 1) {
@@ -189,7 +194,12 @@ class Sweeper
             }
             if ($excluded) {
                 if (!$dryRun) {
-                    StateStore::record($cfg, $filepath, 'ignored', ['source' => 'sweeper']);
+                    // Reuse the open store and skip files already marked: this loop runs over every
+                    // file of the tree on every sweep, and opening a database per file was the cost.
+                    $known = $store->get($filepath);
+                    if (($known['status'] ?? '') !== 'ignored') {
+                        $store->upsert($filepath, ['status' => 'ignored', 'source' => 'sweeper']);
+                    }
                 }
                 $summary['ignored']++;
                 continue;

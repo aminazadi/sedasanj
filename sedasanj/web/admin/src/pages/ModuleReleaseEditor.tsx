@@ -16,6 +16,8 @@ interface Form {
   severity: ModuleSeverity;
   channel: "stable" | "beta";
   min_freepbx_major: string;
+  max_freepbx_major: string;
+  min_php_version: string;
   min_from_version: string;
 }
 
@@ -26,6 +28,8 @@ function toForm(release: ModuleRelease): Form {
     severity: release.severity,
     channel: release.channel,
     min_freepbx_major: release.min_freepbx_major ? String(release.min_freepbx_major) : "",
+    max_freepbx_major: release.max_freepbx_major ? String(release.max_freepbx_major) : "",
+    min_php_version: release.min_php_version ?? "",
     min_from_version: release.min_from_version ?? "",
   };
 }
@@ -152,6 +156,8 @@ export default function ModuleReleaseEditor() {
           severity: form.severity,
           channel: form.channel,
           min_freepbx_major: form.min_freepbx_major ? Number(fmt.latinDigits(form.min_freepbx_major)) : null,
+          max_freepbx_major: form.max_freepbx_major ? Number(fmt.latinDigits(form.max_freepbx_major)) : null,
+          min_php_version: form.min_php_version.trim() || null,
           min_from_version: fmt.latinDigits(form.min_from_version.trim()) || null,
         },
       });
@@ -258,6 +264,14 @@ export default function ModuleReleaseEditor() {
               </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label">حداکثر FreePBX</label>
+                <input className="input" dir="ltr" inputMode="numeric" placeholder="17" value={form.max_freepbx_major} onChange={(e) => set("max_freepbx_major", e.target.value)} />
+              </div>
+              <div>
+                <label className="label">حداقل PHP (CLI)</label>
+                <input className="input" dir="ltr" placeholder="7.4" value={form.min_php_version} onChange={(e) => set("min_php_version", e.target.value)} />
+              </div>
               <div>
                 <label className="label">حداقل FreePBX</label>
                 <input className="input" dir="ltr" inputMode="numeric" placeholder="16" value={form.min_freepbx_major} onChange={(e) => set("min_freepbx_major", e.target.value)} />

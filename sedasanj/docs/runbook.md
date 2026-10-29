@@ -10,7 +10,7 @@
 
 | نشانه | بررسی | اقدام |
 | --- | --- | --- |
-| صف ASR رشد می‌کند | `docker compose logs worker-asr` | افزایش `--workers` یا replica ورکر ASR |
+| صف ASR رشد می‌کند | `docker compose logs worker-asr` | افزایش replicaهای ورکر ASR (`deploy.replicas` در compose؛ `--workers` در این پروژه استفاده نمی‌شود) |
 | صف emotion رشد می‌کند | `docker compose logs worker-emotion` و مصرف CPU/RAM | ابتدا cache مدل و سپس `MAX_CONCURRENT_EMOTION_JOBS` را بررسی کنید؛ افزایش هم‌زمانی RAM بیشتری مصرف می‌کند |
 | `emotion_failed` | timeline پردازش و لاگ `worker-emotion` | دسترسی به مدل، revision، فضای volume و محدودیت ۴GB حافظه را بررسی کنید؛ تحلیل متن پس از خطای نهایی ادامه می‌یابد |
 | خطای JSON مدل زیاد است | لاگ ورکر LLM، دقت prompt_version | بازگردانی نسخه پرامپت یا کاهش طول chunk |

@@ -1207,6 +1207,8 @@ class ModuleReleaseOut(BaseModel):
     severity: ModuleSeverity
     channel: ModuleChannel
     min_freepbx_major: int | None
+    max_freepbx_major: int | None = None
+    min_php_version: str | None = None
     min_from_version: str | None
     artifact_sha256: str
     artifact_size: int
@@ -1223,6 +1225,8 @@ class ModuleReleaseUpdate(BaseModel):
     severity: ModuleSeverity | None = None
     channel: ModuleChannel | None = None
     min_freepbx_major: int | None = Field(default=None, ge=13, le=99)
+    max_freepbx_major: int | None = Field(default=None, ge=13, le=99)
+    min_php_version: str | None = Field(default=None, pattern=r"^\d{1,2}\.\d{1,2}(\.\d{1,3})?$")
     min_from_version: str | None = Field(default=None, max_length=32)
 
 
@@ -1260,6 +1264,8 @@ class ModuleUpdateOffer(BaseModel):
 
 class ModuleUpdateCheckOut(BaseModel):
     update_available: bool
+    # True when the version the host runs was revoked (for example a bad release): update soon.
+    current_revoked: bool = False
     current: str
     latest: ModuleUpdateOffer | None
     changelog: list[ModuleChangelogEntry]

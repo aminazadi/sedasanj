@@ -910,6 +910,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			'update_available' => false,
 			'latest' => null,
 			'changelog' => array(),
+			'current_revoked' => false,
 			'active_job' => null,
 		);
 		$active = $this->activeUpdateJob();
@@ -921,6 +922,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			$result['update_available'] = $data['update_available'];
 			$result['latest'] = $data['latest'];
 			$result['changelog'] = $data['changelog'];
+			$result['current_revoked'] = !empty($data['current_revoked']);
 		} catch (\Throwable $exc) {
 			$result['check_error'] = $this->safeError($exc->getMessage());
 		}
@@ -997,6 +999,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			'update_available' => !empty($raw['update_available']) && $latest !== null && version_compare($latest['version'], $current, '>'),
 			'latest' => $latest,
 			'changelog' => $changelog,
+			'current_revoked' => !empty($raw['current_revoked']),
 		);
 		$this->setConfig('recuploader_update_cache', json_encode(array('at' => time(), 'current' => $current, 'data' => $data)));
 		return $data;
