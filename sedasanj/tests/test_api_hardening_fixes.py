@@ -34,9 +34,7 @@ def test_every_literal_api_error_code_is_registered() -> None:
 
 
 def _request(headers: dict[str, str], host: str | None) -> Any:
-    return SimpleNamespace(
-        headers=headers, client=SimpleNamespace(host=host) if host else None
-    )
+    return SimpleNamespace(headers=headers, client=SimpleNamespace(host=host) if host else None)
 
 
 def test_client_ip_ignores_spoofable_forwarded_header() -> None:
@@ -97,3 +95,65 @@ async def test_replay_keeps_post_storage_failure(monkeypatch: pytest.MonkeyPatch
 def test_new_error_codes_map_to_statuses() -> None:
     assert ApiError("conflict", "x").status_code == 409
     assert ApiError("worker_timeout", "x").status_code == 504
+
+
+def test_validation_errors_do_not_echo_submitted_values() -> None:
+    import httpx
+    from fastapi import FastAPI
+    from pydantic import BaseModel
+
+    from app.errors import install_error_handlers
+
+    class Body(BaseModel):
+        password: str
+        age: int
+
+    app = FastAPI()
+    install_error_handlers(app)
+
+    @app.post("/x")
+    async def x(body: Body) -> dict[str, bool]:  # pragma: no cover - never reached
+        return {"ok": True}
+
+    async def call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+            return await client.post(
+                "/x", json={"password": "hunter2-secret", "age": "not-a-number"}
+            )
+
+    import asyncio
+
+    response = asyncio.run(call())
+    assert response.status_code == 422
+    assert "hunter2-secret" not in response.text and "not-a-number" not in response.text
+    assert "age" in response.json()["error"]["message"]
+
+
+def test_client_errors_are_not_retryable_but_server_errors_are() -> None:
+    import asyncio
+
+    import httpx
+    from fastapi import FastAPI
+
+    from app.errors import install_error_handlers
+
+    app = FastAPI()
+    install_error_handlers(app)
+
+    async def call(method: str, path: str) -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+            return await client.request(method, path)
+
+    missing = asyncio.run(call("GET", "/nope"))
+    assert missing.status_code == 404 and missing.json()["error"]["retryable"] is False
+
+    @app.get("/only-get")
+    async def only_get() -> dict[str, bool]:
+        return {"ok": True}
+
+    wrong_method = asyncio.run(call("POST", "/only-get"))
+    assert wrong_method.status_code == 405
+    assert wrong_method.json()["error"]["retryable"] is False
+    assert wrong_method.json()["error"]["code"] == "invalid_request"
