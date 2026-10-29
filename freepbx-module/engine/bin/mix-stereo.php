@@ -101,9 +101,9 @@ function mixstereo_main(array $argv): int
     try {
         $left = Wav::read($in);
         $right = Wav::read($out);
-        $stereo = Wav::mergeStereo($left, $right);
-        Wav::write($part, $stereo);
-        unset($left, $right, $stereo);
+        // Streams to disk: memory stays near the size of the two legs even for very long calls.
+        Wav::mergeStereoToFile($left, $right, $part);
+        unset($left, $right);
     } catch (\Throwable $exc) {
         @unlink($part);
         mixstereo_say('SS-HOOK-1003', "could not merge legs ({$exc->getMessage()})", $trace);

@@ -204,16 +204,36 @@ class Wav
         $rightFrames = intdiv(strlen($right->data), $bytesPerSample);
         $frames = max($leftFrames, $rightFrames);
 
-        $leftData = str_pad($left->data, $frames * $bytesPerSample, "\x00");
-        $rightData = str_pad($right->data, $frames * $bytesPerSample, "\x00");
+        // Pad only the shorter leg (str_pad always copies, which doubled peak memory on long calls).
+        $leftData = strlen($left->data) === $frames * $bytesPerSample
+            ? $left->data : str_pad($left->data, $frames * $bytesPerSample, "\x00");
+        $rightData = strlen($right->data) === $frames * $bytesPerSample
+            ? $right->data : str_pad($right->data, $frames * $bytesPerSample, "\x00");
 
-        $out = '';
-        // Interleave sample-by-sample (bytesPerSample bytes at a time).
-        for ($i = 0; $i < $frames; $i++) {
-            $pos = $i * $bytesPerSample;
-            $out .= substr($leftData, $pos, $bytesPerSample);
-            $out .= substr($rightData, $pos, $bytesPerSample);
+        $parts = [];
+        if ($bytesPerSample === 2) {
+            // 16-bit PCM (every real recording): interleave in blocks with unpack/pack, far cheaper than
+            // appending two bytes at a time for hours of audio.
+            $block = 8192;
+            for ($start = 0; $start < $frames; $start += $block) {
+                $count = min($block, $frames - $start);
+                $l = array_values(unpack('v*', substr($leftData, $start * 2, $count * 2)));
+                $r = array_values(unpack('v*', substr($rightData, $start * 2, $count * 2)));
+                $mixed = [];
+                for ($i = 0; $i < $count; $i++) {
+                    $mixed[] = $l[$i];
+                    $mixed[] = $r[$i];
+                }
+                $parts[] = pack('v*', ...$mixed);
+            }
+        } else {
+            for ($i = 0; $i < $frames; $i++) {
+                $pos = $i * $bytesPerSample;
+                $parts[] = substr($leftData, $pos, $bytesPerSample) . substr($rightData, $pos, $bytesPerSample);
+            }
         }
+        unset($leftData, $rightData);
+        $out = implode('', $parts);
 
         return new WavFile(2, $left->sampleRate, $left->bitsPerSample, $out);
     }
@@ -222,6 +242,63 @@ class Wav
      * Down-mix a stereo WavFile to mono by averaging each frame's two
      * 16-bit samples (replaces `ffmpeg -ac 1`).
      */
+    /**
+     * Same result as mergeStereo() followed by write(), but streams the interleaved samples to disk in
+     * blocks, so memory stays at roughly the two input legs even for multi-hour calls. The file is
+     * written under a temporary name and renamed only when complete.
+     */
+    public static function mergeStereoToFile(WavFile $left, WavFile $right, string $path): void
+    {
+        if ($left->channels !== 1 || $right->channels !== 1) {
+            throw new WavError('mergeStereo() expects two mono inputs');
+        }
+        if ($left->sampleRate !== $right->sampleRate) {
+            throw new WavError(sprintf('Mismatched sample rates: %d vs %d', $left->sampleRate, $right->sampleRate));
+        }
+        if ($left->bitsPerSample !== $right->bitsPerSample) {
+            throw new WavError(sprintf('Mismatched bit depth: %d vs %d', $left->bitsPerSample, $right->bitsPerSample));
+        }
+        $bytes = $left->bytesPerSample();
+        $frames = max(intdiv(strlen($left->data), $bytes), intdiv(strlen($right->data), $bytes));
+        $temporary = $path . '.tmp.' . getmypid();
+        $handle = @fopen($temporary, 'wb');
+        if ($handle === false) {
+            throw new WavError("Could not write WAV file: {$path}");
+        }
+        $dataSize = $frames * $bytes * 2;
+        $header = 'RIFF' . pack('V', 36 + $dataSize) . 'WAVE' . 'fmt ' . pack('V', 16)
+            . pack('vvVVvv', 1, 2, $left->sampleRate, $left->sampleRate * $bytes * 2, $bytes * 2, $left->bitsPerSample)
+            . 'data' . pack('V', $dataSize);
+        $ok = fwrite($handle, $header) === strlen($header);
+        $block = 8192;
+        for ($start = 0; $ok && $start < $frames; $start += $block) {
+            $count = min($block, $frames - $start);
+            $l = str_pad((string) substr($left->data, $start * $bytes, $count * $bytes), $count * $bytes, "\x00");
+            $r = str_pad((string) substr($right->data, $start * $bytes, $count * $bytes), $count * $bytes, "\x00");
+            if ($bytes === 2) {
+                $lv = array_values(unpack('v*', $l));
+                $rv = array_values(unpack('v*', $r));
+                $mixed = [];
+                for ($i = 0; $i < $count; $i++) {
+                    $mixed[] = $lv[$i];
+                    $mixed[] = $rv[$i];
+                }
+                $chunk = pack('v*', ...$mixed);
+            } else {
+                $chunk = '';
+                for ($i = 0; $i < $count; $i++) {
+                    $chunk .= substr($l, $i * $bytes, $bytes) . substr($r, $i * $bytes, $bytes);
+                }
+            }
+            $ok = fwrite($handle, $chunk) === strlen($chunk);
+        }
+        $ok = fclose($handle) && $ok;
+        if (!$ok || !@rename($temporary, $path)) {
+            @unlink($temporary);
+            throw new WavError("Could not write WAV file: {$path} (disk full?)");
+        }
+    }
+
     public static function monoDownmix(WavFile $stereo): WavFile
     {
         if ($stereo->channels !== 2) {
