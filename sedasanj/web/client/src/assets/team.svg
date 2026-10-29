@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" fill="none" role="img" aria-label="تیم">
+  <ellipse cx="240" cy="268" rx="150" ry="14" fill="#4b6e48" opacity=".1"/>
+  <g stroke="#b2ac88" stroke-width="1.5" stroke-linecap="round">
+    <path d="M70 70h60c14 0 18 12 34 12" />
+    <path d="M410 200h-52c-14 0-18-14-34-14" />
+    <path d="M96 214c-26 0-34-14-34-30" />
+    <path d="M384 66c26 0 34 14 34 30" />
+  </g>
+  <g stroke="#4b6e48" stroke-width="2" fill="#f2f0ef">
+    <circle cx="70" cy="70" r="6"/><circle cx="410" cy="200" r="6"/>
+    <circle cx="62" cy="184" r="5"/><circle cx="418" cy="96" r="5"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="5" stroke-linecap="round" opacity=".55">
+    <path d="M28 128v24M40 116v48M52 124v32"/>
+    <path d="M428 128v24M440 116v48M452 124v32"/>
+  </g>
+  <g>
+    <rect x="120" y="150" width="240" height="84" fill="#f2f0ef" stroke="#4b6e48" stroke-width="2.5"/>
+    <path d="M120 176h240" stroke="#b2ac88" stroke-width="2"/>
+    <g fill="#b2ac88" opacity=".6"><rect x="140" y="196" width="80" height="8"/><rect x="140" y="212" width="56" height="8"/><rect x="290" y="196" width="50" height="8"/></g>
+    <circle cx="140" cy="163" r="4" fill="#4b6e48"/><circle cx="154" cy="163" r="4" fill="#b2ac88"/>
+  </g>
+  <g>
+    <circle cx="240" cy="83.3" r="17.48" fill="#f2f0ef" stroke="#4b6e48" stroke-width="5"/><path d="M203.2 145.4c0-36.800000000000004 18.400000000000002-41.4 36.800000000000004-41.4s36.800000000000004 4.6000000000000005 36.800000000000004 41.4z" fill="#f2f0ef" stroke="#4b6e48" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="168" cy="107.6" r="12.16" fill="#e7ecdd" stroke="#4b6e48" stroke-width="4"/><path d="M142.4 150.8c0-25.6 12.8-28.8 25.6-28.8s25.6 3.2 25.6 28.8z" fill="#e7ecdd" stroke="#4b6e48" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="312" cy="107.6" r="12.16" fill="#e7ecdd" stroke="#4b6e48" stroke-width="4"/><path d="M286.4 150.8c0-25.6 12.8-28.8 25.6-28.8s25.6 3.2 25.6 28.8z" fill="#e7ecdd" stroke="#4b6e48" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="3" stroke-linecap="round"><path d="M372 120h22M383 109v22"/></g>
+  <g stroke="#4b6e48" stroke-width="2.5" stroke-linecap="round">
+    <path d="M388 40v14M381 47h14"/>
+    <path d="M100 236v10M95 241h10" stroke="#b2ac88"/>
+  </g>
+</svg>

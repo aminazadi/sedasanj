@@ -139,7 +139,7 @@ export default function FollowUpTaskCard({
   return (
     <li
       className={`border px-3 py-2.5 ${
-        done ? "border-[#B2AC88] bg-[#B2AC88]/20" : "border-[#B2AC88] bg-[#F2F0EF]"
+        done ? "border-[color:var(--line)] bg-[#B2AC88]/20" : "border-[color:var(--line)] bg-[#F2F0EF]"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -151,7 +151,7 @@ export default function FollowUpTaskCard({
           className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${
             done
               ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-              : "border-[#B2AC88] bg-[#F2F0EF] text-transparent"
+              : "border-[color:var(--line)] bg-[#F2F0EF] text-transparent"
           }`}
           disabled={!canEdit || saving}
           onClick={() => void toggleDone()}
@@ -186,7 +186,7 @@ export default function FollowUpTaskCard({
                 className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${
                   open
                     ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-                    : "border-[#B2AC88] text-[#4B6E48] hover:bg-[#B2AC88]/40"
+                    : "border-[color:var(--line)] text-[#4B6E48] hover:bg-[#B2AC88]/40"
                 }`}
                 aria-label={open ? "بستن ویرایش" : "ویرایش کار"}
                 title={open ? "بستن ویرایش" : "ویرایش"}

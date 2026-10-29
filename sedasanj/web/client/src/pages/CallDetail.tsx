@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { chart, palette } from "@cbi/web-shared/theme";
 import { Icon } from "@iconify/react";
@@ -39,6 +40,7 @@ import {
 } from "../components/Widgets";
 import type { AsrTranscriptRevision, CallDetail, CorrectionStatus, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
 import { downloadTextFile } from "../utils/download";
+import { CallStateArt, type CallStateKind, type CallStateSection } from "../components/CallStateArt";
 
 const NER_LABELS: Record<string, string> = {
   persons: "افراد",
@@ -56,6 +58,16 @@ const DIRECTION_LABELS: Record<string, string> = {
 
 const TURN_MERGE_GAP_MS = 1200;
 const SPEAKER_COLORS = [chart.primary, chart.secondary];
+
+/** Phone number with the phonebook title (when there is one) above it. */
+function CallParty({ number, name }: { number: string | null; name?: string | null }) {
+  return (
+    <span className="inline-flex flex-col items-center leading-tight">
+      {name ? <bdi className="text-sm font-bold sm:text-base">{name}</bdi> : null}
+      <bdi dir="ltr">{number ? fmt.digits(number) : "—"}</bdi>
+    </span>
+  );
+}
 
 function CopyIcon({ checked = false }: { checked?: boolean }) {
   return (
@@ -171,64 +183,23 @@ function SectionTitle({
   );
 }
 
-type EmptyStateIcon = "sentiment" | "conversation" | "transcript" | "tasks" | "summary" | "entities";
-
 function EmptyState({
   icon,
   message,
+  state = "empty",
+  compact = false,
   className = "",
 }: {
-  icon: EmptyStateIcon;
+  icon: CallStateSection;
+  compact?: boolean;
   message: string;
+  state?: CallStateKind;
   className?: string;
 }) {
-  const paths: Record<EmptyStateIcon, ReactNode> = {
-    sentiment: (
-      <>
-        <path d="M4 18 9 13l4 3 7-9" />
-        <path d="M15 7h5v5" />
-      </>
-    ),
-    conversation: (
-      <>
-        <path d="M5 6.5h9a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3H9l-4 3v-11Z" />
-        <path d="M9 10.5h4M19 10v6l-3 2.5" />
-      </>
-    ),
-    transcript: (
-      <>
-        <path d="M7 3.5h7l4 4V20H7z" />
-        <path d="M14 3.5V8h4M10 12h5M10 15.5h5" />
-      </>
-    ),
-    tasks: (
-      <>
-        <rect x="5" y="4" width="14" height="16" rx="1" />
-        <path d="m8.5 10 1.5 1.5 3-3M14.5 10H16M8.5 16h7" />
-      </>
-    ),
-    summary: (
-      <>
-        <path d="M12 3 13.4 8.6 19 10l-5.6 1.4L12 17l-1.4-5.6L5 10l5.6-1.4z" />
-        <path d="m18.5 16 .6 2.4 2.4.6-2.4.6-.6 2.4-.6-2.4-2.4-.6 2.4-.6z" />
-      </>
-    ),
-    entities: (
-      <>
-        <circle cx="9" cy="8" r="3" />
-        <path d="M3.5 19a5.5 5.5 0 0 1 11 0M17 8h4M17 12h4M17 16h3" />
-      </>
-    ),
-  };
-
   return (
-    <div className={`flex flex-col items-center justify-center gap-3 bg-slate-50 px-5 py-8 text-center ${className}`}>
-      <span className="flex h-14 w-14 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48]" aria-hidden="true">
-        <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          {paths[icon]}
-        </svg>
-      </span>
-      <p className="max-w-md text-sm leading-6 text-slate-400">{message}</p>
+    <div className={`flex flex-col items-center justify-center gap-2 bg-slate-50 px-5 py-6 text-center ${className}`}>
+      <CallStateArt section={icon} kind={state} compact={compact} />
+      <p className={`max-w-md text-sm leading-6 ${state === "failed" ? "text-[#B5543F]" : "text-slate-400"}`} role={state === "empty" ? undefined : "status"}>{message}</p>
     </div>
   );
 }
@@ -238,7 +209,7 @@ function ActionTooltip({ label, children }: { label: string; children: ReactNode
     <span className="group relative inline-flex">
       {children}
       <span
-        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-max max-w-52 -translate-x-1/2 border border-[#B2AC88] bg-[#F2F0EF] px-2.5 py-1.5 text-[11px] font-normal leading-5 text-[#000000] shadow-lg group-hover:block group-focus-within:block"
+        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-max max-w-52 -translate-x-1/2 border border-[color:var(--line)] bg-[#F2F0EF] px-2.5 py-1.5 text-[11px] font-normal leading-5 text-[#000000] shadow-lg group-hover:block group-focus-within:block"
         role="tooltip"
       >
         {label}
@@ -512,7 +483,7 @@ function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
     <details className="card group" dir="rtl">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-bold text-slate-800">گزارش اجرای پردازش</span>
-        <span className="flex h-9 w-9 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#000000] transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
+        <span className="flex h-9 w-9 items-center justify-center border border-[color:var(--line)] bg-[#F2F0EF] text-[#000000] transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -557,6 +528,68 @@ function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
         </ol>
       </div>
     </details>
+  );
+}
+
+interface MenuAction { label: string; onClick: () => void; disabled?: boolean }
+
+/** "More" menu: keeps rarely used actions and technical details out of the card header. */
+function OverflowMenu({ label, actions, details }: { label: string; actions: MenuAction[]; details?: Array<{ term: string; value: string; ltr?: boolean }> }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Portalled and fixed so neighbouring stacking contexts (the title band, the message bubbles) cannot cover or clip it.
+  useLayoutEffect(() => {
+    if (!open) { setPosition(null); return; }
+    const place = () => {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      if (!trigger || !menu) return;
+      const anchor = trigger.getBoundingClientRect();
+      const margin = 8;
+      const left = Math.min(Math.max(anchor.left, margin), Math.max(window.innerWidth - menu.offsetWidth - margin, margin));
+      setPosition({ top: anchor.bottom + 4, left });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown); };
+  }, [open]);
+  return (
+    <>
+      <button ref={triggerRef} type="button" className={`flex h-9 w-9 items-center justify-center border border-[#898989] text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${open ? "bg-[#F2F0EF]" : "bg-white"}`} aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
+      </button>
+      {open ? createPortal(
+        <div ref={menuRef} role="menu" dir="rtl" className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] border border-[color:var(--line)] bg-[#F2F0EF] py-1 shadow-lg" style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}>
+          {actions.map((action) => (
+            <button key={action.label} type="button" role="menuitem" className="block w-full px-3 py-2 text-start text-sm text-slate-700 hover:bg-white hover:text-[#4B6E48] focus-visible:bg-white focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[#898989] disabled:hover:bg-transparent" disabled={action.disabled} onClick={() => { setOpen(false); action.onClick(); }}>
+              {action.label}
+            </button>
+          ))}
+          {details?.length ? (
+            <dl className="mt-1 space-y-1 border-t border-[color:var(--line)] px-3 py-2 text-[11px] text-slate-500">
+              {details.map((item) => (
+                <div key={item.term} className="flex justify-between gap-3"><dt>{item.term}</dt><dd className="min-w-0 truncate text-slate-700" dir={item.ltr ? "ltr" : undefined}>{item.value}</dd></div>
+              ))}
+            </dl>
+          ) : null}
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 }
 
@@ -890,6 +923,8 @@ export default function CallDetailPage() {
   const sentimentScore = insights?.sentiment_score;
   const hasAudioAnalysis = call.call_type === "answered" || call.call_type === "voicemail";
   const isAnsweredCall = call.call_type === "answered";
+  const callFailed = call.status.startsWith("failed");
+  const stateKind: CallStateKind = call.processing ? "processing" : callFailed ? "failed" : "empty";
   const isVoicemail = call.call_type === "voicemail";
   const isQuickDemo = isVoicemail && call.voicemail_context === "quick_demo";
   const isMissedCall = ["missed", "no_answer", "busy", "congestion", "failed", "canceled"].includes(call.call_type);
@@ -904,8 +939,8 @@ export default function CallDetailPage() {
       "متن مکالمه تماس",
       `تاریخ تماس: ${fmt.dateTime(call.started_at)}`,
       `مدت تماس: ${fmt.duration(call.duration_ms)}`,
-      `شماره تماس‌گیرنده: ${call.caller_number ? fmt.digits(call.caller_number) : "—"}`,
-      `شماره مقصد: ${call.dialed_number ? fmt.digits(call.dialed_number) : "—"}`,
+      `شماره تماس‌گیرنده: ${call.caller_number ? fmt.digits(call.caller_number) : "—"}${call.caller_name ? ` (${call.caller_name})` : ""}`,
+      `شماره مقصد: ${call.dialed_number ? fmt.digits(call.dialed_number) : "—"}${call.dialed_name ? ` (${call.dialed_name})` : ""}`,
     ].join("\n");
     downloadTextFile(`call-${call.id}-transcript.txt`, `${heading}\n\n${transcript}\n`);
   };
@@ -946,12 +981,12 @@ export default function CallDetailPage() {
                 <div>
                   <p className="text-xs text-[#000000]">{isQuickDemo ? "تست سریع صداسنج" : isVoicemail ? "پیام‌گیر صوتی" : isMissedCall ? "تماس ناموفق" : "مکالمه تلفنی"}</p>
                   <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="rtl">
-                    <bdi dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</bdi>
+                    <CallParty number={call.caller_number} name={call.caller_name} />
                     <span className="px-1 text-[#B2AC88]">
                       <span aria-hidden="true">←</span>
                       <span className="sr-only">به</span>
                     </span>
-                    <bdi dir="ltr">{call.dialed_number ? fmt.digits(call.dialed_number) : "—"}</bdi>
+                    <CallParty number={call.dialed_number} name={call.dialed_name} />
                   </h1>
                 </div>
               </div>
@@ -1038,7 +1073,7 @@ export default function CallDetailPage() {
             </div>
           </div>
           {audioUrl ? (
-            <div className="mt-5 border-t border-[#B2AC88] pt-4">
+            <div className="mt-5 border-t border-[color:var(--line)] pt-4">
               <AudioWaveformPlayer
                 audioRef={audioRef}
                 downloadName={`call-${call.id}-audio`}
@@ -1082,13 +1117,13 @@ export default function CallDetailPage() {
           title="کارهای قابل پیگیری"
           description="موارد عملیاتی استخراج‌شده از تماس؛ می‌توانید آن‌ها را ویرایش یا انجام‌شده کنید"
           action={
-            <Link className="text-xs text-brand-700 hover:underline" to="/tasks">
+            <Link className="btn-ghost inline-flex h-9 items-center px-3 py-0 text-xs" to="/tasks">
               همه کارها
             </Link>
           }
         />
         {tasks.length === 0 ? (
-          <EmptyState icon="tasks" message="موردی ثبت نشده است." className="min-h-36" />
+          <EmptyState icon="tasks" compact message="موردی ثبت نشده است." className="min-h-36" />
         ) : (
           <ul className="space-y-2">
             {tasks.map((task) => (
@@ -1213,7 +1248,7 @@ export default function CallDetailPage() {
               </div>
             </>
           ) : (
-            <EmptyState icon="sentiment" message="هنوز داده کافی برای ترسیم روند احساس وجود ندارد." className="h-64" />
+            <EmptyState icon="sentiment" state={stateKind} message={call.processing ? "تحلیل احساس در حال انجام است…" : callFailed ? "تحلیل احساس کامل نشد. تحلیل مجدد را اجرا کنید." : "هنوز داده کافی برای ترسیم روند احساس وجود ندارد."} className="h-64" />
           )}
         </div>
 
@@ -1256,7 +1291,7 @@ export default function CallDetailPage() {
               </div>
             </>
           ) : (
-            <EmptyState icon="conversation" message="داده گفتاری برای این تماس ثبت نشده است." className="h-64" />
+            <EmptyState icon="conversation" state={stateKind} message={call.processing ? "سهم گفتار پس از پیاده‌سازی محاسبه می‌شود…" : callFailed ? "داده گفتاری تولید نشد. رونویسی مجدد را اجرا کنید." : "داده گفتاری برای این تماس ثبت نشده است."} className="h-64" />
           )}
         </div>
       </section> : null}
@@ -1312,15 +1347,15 @@ export default function CallDetailPage() {
 
       {hasAudioAnalysis ? <section className="grid items-stretch gap-4 lg:grid-cols-3">
         <div className="relative min-h-0 lg:col-span-2">
-          <div className="card flex min-h-0 flex-col lg:absolute lg:inset-0">
+          <div className="card title-band flex min-h-0 flex-col lg:absolute lg:inset-0">
           <SectionTitle
             title={isVoicemail ? isQuickDemo ? "متن تست سریع" : "متن پیام صوتی" : "متن مکالمه"}
             description={isVoicemail ? `${fmt.int(conversationTurns.length)} بخش از پیام صوتی` : `${fmt.int(conversationTurns.length)} نوبت گفت‌وگو با تفکیک گوینده`}
             action={
-              <div className="flex items-center gap-2">
-                {transcriptVersions.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {transcriptVersions.length > 1 ? (
                   <select
-                    className="input h-9 max-w-48 py-0 text-xs"
+                    className="input h-9 max-w-40 py-0 text-xs"
                     aria-label="نسخه خام متن"
                     value={selectedRevision?.id ?? call.active_asr_revision_id ?? ""}
                     onChange={(event) => {
@@ -1337,58 +1372,33 @@ export default function CallDetailPage() {
                   </select>
                 ) : null}
                 {selectedRevision && !selectedRevision.active && selectedRevision.status === "succeeded" ? (
-                  <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" disabled={processingActionLoading} onClick={() => void activateTranscriptVersion(selectedRevision.id)}>فعال‌سازی نسخه</button>
+                  <button type="button" className="btn h-9 px-3 py-0 text-xs" disabled={processingActionLoading} onClick={() => void activateTranscriptVersion(selectedRevision.id)}>فعال‌سازی نسخه</button>
                 ) : null}
-                <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" disabled={!call.audio_available || processingActionLoading || transcriptVersions.some((item) => ["queued", "running"].includes(item.status))} onClick={() => void retranscribe()}>رونویسی مجدد</button>
-                <div className="flex border border-slate-200 bg-white p-0.5" role="group" aria-label="نسخه متن">
+                <div className="flex h-9 border border-[color:var(--line)] bg-white p-0.5" role="group" aria-label="نسخه متن">
                   {(["final", "raw"] as const).map((view) => (
-                    <button key={view} type="button" className={`px-2 py-1 text-xs ${transcriptView === view ? "bg-[#4B6E48] text-white" : "text-slate-600"}`} onClick={() => { const next = new URLSearchParams(searchParams); next.set("transcript", view); setSearchParams(next, { replace: true }); }}>
+                    <button key={view} type="button" aria-pressed={transcriptView === view} className={`whitespace-nowrap px-3 text-xs ${transcriptView === view ? "bg-[#4B6E48] text-white" : "text-slate-600 hover:bg-[#F2F0EF]"}`} onClick={() => { const next = new URLSearchParams(searchParams); next.set("transcript", view); setSearchParams(next, { replace: true }); }}>
                       {view === "final" ? "نسخه نهایی" : "متن خام"}
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="group relative flex h-9 w-9 shrink-0 items-center justify-center border border-[#898989] bg-white text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:text-[#898989] disabled:opacity-50"
-                  onClick={exportTranscript}
-                  disabled={!conversationTurns.length}
-                  aria-label="خروجی متن مکالمه"
-                  title="خروجی متن مکالمه"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
-                    <path d="M12 3v12" />
-                    <path d="m7 10 5 5 5-5" />
-                    <path d="M5 21h14" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost inline-flex h-9 items-center justify-center bg-white px-3 py-0 text-xs"
-                  onClick={() => void correctTranscript()}
-                  disabled={!call.transcript || correctionLoading || correctionActive}
-                  aria-describedby="correction-action-status"
-                >
-                  {correctionButtonLabel}
-                </button>
-                {call.asr_model ? (
-                  <button
-                    type="button"
-                    className="group relative flex h-9 w-9 shrink-0 items-center justify-center border border-[#898989] bg-white text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]"
-                    aria-label={`مدل تبدیل گفتار: ${call.asr_model}`}
-                  >
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M12 11v6M12 7.5v.5" />
-                    </svg>
-                    <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-max max-w-[min(28rem,calc(100vw-3rem))] break-all border border-[#B2AC88] bg-[#F2F0EF] px-3 py-2 text-left text-[11px] font-normal leading-5 text-[#000000] shadow-lg group-hover:block group-focus:block" dir="ltr" role="tooltip">
-                      {call.asr_model}
-                    </span>
-                  </button>
-                ) : null}
+                <OverflowMenu
+                  label="عملیات بیشتر متن"
+                  actions={[
+                    { label: "رونویسی مجدد", onClick: () => void retranscribe(), disabled: !call.audio_available || processingActionLoading || transcriptVersions.some((item) => ["queued", "running"].includes(item.status)) },
+                    { label: correctionButtonLabel, onClick: () => void correctTranscript(), disabled: !call.transcript || correctionLoading || correctionActive },
+                    { label: "خروجی متن مکالمه", onClick: exportTranscript, disabled: !conversationTurns.length },
+                  ]}
+                  details={displayRevision ? [
+                    { term: "مدل", value: displayRevision.asr_model ?? "نامشخص", ltr: true },
+                    { term: "زمان‌بندی", value: displayRevision.timestamp_source ?? "نامشخص", ltr: true },
+                    { term: "ایجاد", value: fmt.dateTime(displayRevision.created_at) },
+                    { term: "تصحیح", value: displayRevision.correction_status ? ({ queued: "در صف", running: "در حال اجرا", validating: "در حال اعتبارسنجی", succeeded: "موفق", failed: "ناموفق" } as const)[displayRevision.correction_status] : "انجام نشده" },
+                  ] : call.asr_model ? [{ term: "مدل", value: call.asr_model, ltr: true }] : undefined}
+                />
               </div>
             }
           />
-          <div id="correction-action-status" className="mb-3 min-h-5 text-xs" role="status" aria-live="polite">
+          <div id="correction-action-status" className={`text-xs ${correctionFeedback || correctionActive || (call.correction?.status === "succeeded" && call.correction.uncertain_count > 0) ? "mb-3" : ""}`} role="status" aria-live="polite">
             {correctionFeedback ? (
               <span className={correctionFeedback.tone === "error" ? "text-rose-700" : "text-[#4B6E48]"}>
                 {correctionFeedback.message}
@@ -1399,18 +1409,11 @@ export default function CallDetailPage() {
               <span className="text-amber-700">{fmt.int(call.correction.uncertain_count)} بخش نیازمند بررسی است ({fmt.percent(Math.round(call.correction.uncertain_ratio * 100))}).</span>
             ) : null}
           </div>
-          {displayRevision ? (
-            <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-              <span>مدل: <bdi dir="ltr">{displayRevision.asr_model ?? "نامشخص"}</bdi></span>
-              <span>زمان‌بندی: <bdi dir="ltr">{displayRevision.timestamp_source ?? "نامشخص"}</bdi></span>
-              <span>ایجاد: {fmt.dateTime(displayRevision.created_at)}</span>
-              <span>تصحیح: {displayRevision.correction_status ? ({ queued: "در صف", running: "در حال اجرا", validating: "در حال اعتبارسنجی", succeeded: "موفق", failed: "ناموفق" } as const)[displayRevision.correction_status] : "انجام نشده"}</span>
-            </div>
-          ) : null}
           {conversationTurns.length === 0 ? (
             <EmptyState
               icon="transcript"
-              message={call.processing ? "در حال پیاده‌سازی مکالمه…" : "هنوز پیاده‌سازی نشده است."}
+              state={stateKind}
+              message={call.processing ? "در حال پیاده‌سازی مکالمه…" : callFailed ? "پیاده‌سازی ناموفق بود. «رونویسی مجدد» را بزنید." : "هنوز پیاده‌سازی نشده است."}
               className="min-h-40 lg:flex-1"
             />
           ) : (
@@ -1469,8 +1472,9 @@ export default function CallDetailPage() {
               <p className="text-sm leading-7 text-slate-700">{insights.summary}</p>
             ) : (
               <EmptyState
-                icon="summary"
-                message={call.processing ? "خلاصه در حال آماده‌سازی است…" : "خلاصه‌ای برای این تماس ثبت نشده است."}
+                icon="summary" compact
+                state={stateKind}
+                message={call.processing ? "خلاصه در حال آماده‌سازی است…" : callFailed ? "خلاصه تولید نشد. تحلیل مجدد را اجرا کنید." : "خلاصه‌ای برای این تماس ثبت نشده است."}
                 className="min-h-32"
               />
             )}
@@ -1523,7 +1527,7 @@ export default function CallDetailPage() {
                 ))}
               </dl>
             ) : (
-              <EmptyState icon="entities" message="موردی استخراج نشده است." className="min-h-32" />
+              <EmptyState icon="entities" compact state={stateKind} message={call.processing ? "در حال استخراج اطلاعات…" : callFailed ? "استخراج اطلاعات کامل نشد." : "موردی استخراج نشده است."} className="min-h-32" />
             )}
           </div>
 

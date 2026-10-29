@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { Skeleton, SkeletonPanel } from "@cbi/web-shared/components/Skeleton";
 import { Icon } from "@iconify/react";
+import { EMPTY_STATE_ART } from "./pageArt";
 import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
 import buildingIcon from "@iconify-icons/lucide/building-2";
 import calendarIcon from "@iconify-icons/lucide/calendar";
@@ -54,12 +56,34 @@ export function ErrorBox({ message }: { message: string | null }) {
   );
 }
 
+/** Generic placeholder for pages without their own skeleton. */
 export function Loading() {
-  return <div className="py-10 text-center text-slate-400">در حال بارگذاری…</div>;
+  return <SkeletonPanel />;
+}
+
+/** Layout-shaped placeholder shown while the session is restored on a hard refresh. */
+export function AdminShellSkeleton() {
+  return (
+    <div className="panel-shell min-h-screen lg:pr-72">
+      <aside className="fixed inset-y-0 right-0 z-40 hidden w-72 lg:block">
+        <div className="panel-sidebar flex h-full flex-col overflow-hidden">
+          <div className="flex h-[96px] shrink-0 items-center justify-center border-b border-[color:var(--line)] px-5"><Skeleton style={{ width: "9rem", height: "2.5rem" }} /></div>
+          <div className="space-y-3 p-4">{Array.from({ length: 10 }, (_, index) => <Skeleton key={index} style={{ width: "100%", height: "2.5rem" }} />)}</div>
+        </div>
+      </aside>
+      <main className="admin-main mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+        <span className="sr-only" role="status">در حال بارگذاری</span>
+        <div className="space-y-4" aria-hidden="true">
+          <Skeleton style={{ width: "100%", height: "5rem" }} />
+          <SkeletonPanel rows={5} />
+        </div>
+      </main>
+    </div>
+  );
 }
 
 export function Empty({ children = "موردی یافت نشد." }: { children?: ReactNode }) {
-  return <div className="py-10 text-center text-slate-400">{children}</div>;
+  return <div className="panel-empty text-slate-400"><img className="panel-empty__art" src={EMPTY_STATE_ART} alt="" aria-hidden="true" loading="lazy" decoding="async" /><span>{children}</span></div>;
 }
 
 export function Pagination({

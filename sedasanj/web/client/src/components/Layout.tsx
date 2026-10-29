@@ -1,4 +1,22 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Icon, type IconifyIcon } from "@iconify/react";
+import bookUserIcon from "@iconify-icons/lucide/book-user";
+import botIcon from "@iconify-icons/lucide/bot";
+import calendarClockIcon from "@iconify-icons/lucide/calendar-clock";
+import dashboardIcon from "@iconify-icons/lucide/layout-dashboard";
+import fileTextIcon from "@iconify-icons/lucide/file-text";
+import historyIcon from "@iconify-icons/lucide/history";
+import logOutIcon from "@iconify-icons/lucide/log-out";
+import menuIcon from "@iconify-icons/lucide/menu";
+import phoneIcon from "@iconify-icons/lucide/phone";
+import rocketIcon from "@iconify-icons/lucide/rocket";
+import serverIcon from "@iconify-icons/lucide/server";
+import settingsIcon from "@iconify-icons/lucide/settings";
+import tasksIcon from "@iconify-icons/lucide/list-checks";
+import trophyIcon from "@iconify-icons/lucide/trophy";
+import userIcon from "@iconify-icons/lucide/user-round";
+import walletIcon from "@iconify-icons/lucide/wallet";
+import closeIcon from "@iconify-icons/lucide/x";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
@@ -8,7 +26,7 @@ import QuickAssistantWidget from "./QuickAssistantWidget";
 type NavigationItem = {
   to: string;
   label: string;
-  icon: string;
+  icon: IconifyIcon;
   orgAdminOnly?: boolean;
   hideForOperator?: boolean;
 };
@@ -16,33 +34,34 @@ type NavigationItem = {
 const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "نمای کلی",
-    items: [{ to: "/", label: "داشبورد", icon: "M3 13h8V3H3v10ZM13 21h8V11h-8v10ZM3 21h8v-6H3v6ZM13 9h8V3h-8v6Z" }],
+    items: [{ to: "/", label: "داشبورد", icon: dashboardIcon }],
   },
   {
     label: "مدیریت تماس‌ها",
     items: [
-      { to: "/calls", label: "تماس‌ها", icon: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.69 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.56 2.81.69A2 2 0 0 1 22 16.92Z" },
-      { to: "/tasks", label: "کارها", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" },
-      { to: "/assistant", label: "دستیار تماس‌ها", icon: "M12 2v4M8 3h8M5 8h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2ZM9 13h.01M15 13h.01M9 17h6" },
+      { to: "/calls", label: "تماس‌ها", icon: phoneIcon },
+      { to: "/contacts", label: "دفترچه تلفن", icon: bookUserIcon },
+      { to: "/tasks", label: "کارها", icon: tasksIcon },
+      { to: "/assistant", label: "دستیار تماس‌ها", icon: botIcon },
     ],
   },
   {
     label: "گزارش و ارزیابی",
     items: [
-      { to: "/scheduled-reports", label: "گزارش‌های زمان‌بندی‌شده", icon: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2ZM8 14h3M8 17h6", orgAdminOnly: true },
-      { to: "/operator-scores", label: "امتیازها", icon: "m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2Z" },
+      { to: "/scheduled-reports", label: "گزارش‌های زمان‌بندی‌شده", icon: calendarClockIcon, orgAdminOnly: true },
+      { to: "/operator-scores", label: "امتیازها", icon: trophyIcon },
     ],
   },
   {
     label: "حساب و تنظیمات",
     items: [
-      { to: "/profile", label: "پروفایل من", icon: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" },
-      { to: "/account", label: "اعتبار و اشتراک", icon: "M12 2v20M17 6H9a3 3 0 0 0 0 6h6a3 3 0 0 1 0 6H6", hideForOperator: true },
-      { to: "/account-settings", label: "تنظیمات حساب", icon: "M12 2v2M12 20v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z", orgAdminOnly: true },
-      { to: "/install", label: "راه‌اندازی", icon: "M14.7 6.3a4 4 0 0 0-5-5L7.4 3.6l3 3 2.3-2.3M5.5 8.5l-3.8 3.8a2.4 2.4 0 0 0 0 3.4l6.6 6.6a2.4 2.4 0 0 0 3.4 0l3.8-3.8M14 12l6.3 6.3a2.4 2.4 0 0 1-3.4 3.4l-6.3-6.3", hideForOperator: true },
-      { to: "/freepbx-servers", label: "سرورهای FreePBX", icon: "M2 4h20v6H2zM2 14h20v6H2zM6 7h.01M6 17h.01", orgAdminOnly: true },
-      { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: "M12 8v4l3 3M3.05 11a9 9 0 1 1 .5 4M3 4v5h5", hideForOperator: true },
-      { to: "/api-docs", label: "مستندات API", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h6" },
+      { to: "/profile", label: "پروفایل من", icon: userIcon },
+      { to: "/account", label: "اعتبار و اشتراک", icon: walletIcon, hideForOperator: true },
+      { to: "/account-settings", label: "تنظیمات حساب", icon: settingsIcon, orgAdminOnly: true },
+      { to: "/install", label: "راه‌اندازی", icon: rocketIcon, hideForOperator: true },
+      { to: "/freepbx-servers", label: "سرورهای FreePBX", icon: serverIcon, orgAdminOnly: true },
+      { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: historyIcon, hideForOperator: true },
+      { to: "/api-docs", label: "مستندات API", icon: fileTextIcon },
     ],
   },
 ];
@@ -94,11 +113,7 @@ function getPageTitle(pathname: string) {
 }
 
 function MenuIcon({ close = false }: { close?: boolean }) {
-  return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-      {close ? <><path d="m18 6-12 12" /><path d="m6 6 12 12" /></> : <><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></>}
-    </svg>
-  );
+  return <Icon icon={close ? closeIcon : menuIcon} className="h-6 w-6" aria-hidden="true" />;
 }
 
 function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
@@ -136,7 +151,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
                   >
                     {({ isActive }) => (
                       <>
-                        <svg className={`h-5 w-5 shrink-0 ${isActive ? "text-[#4B6E48]" : "text-[#B2AC88] transition group-hover:text-[#F2F0EF]"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={item.icon} /></svg>
+                        <Icon icon={item.icon} className={`h-5 w-5 shrink-0 ${isActive ? "text-[#4B6E48]" : "text-[#B2AC88] transition group-hover:text-[#F2F0EF]"}`} aria-hidden="true" />
                         <span className="truncate">{item.label}</span>
                         {isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}
                       </>
@@ -154,7 +169,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#F2F0EF] text-sm font-bold text-[#4B6E48]">{roleLabel?.slice(0, 2) || "کا"}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{roleLabel}</p>
-            <p className="truncate text-xs text-[#F2F0EF]">شناسه: {session?.userId.slice(0, 8)}</p>
+            <p className="truncate text-xs text-[#B2AC88]">شناسه: {session?.userId.slice(0, 8)}</p>
           </div>
           <button
             type="button"
@@ -166,7 +181,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
               navigate("/login");
             }}
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m10 17 5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /></svg>
+            <Icon icon={logOutIcon} className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
       </div>

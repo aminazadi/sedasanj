@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
-import { BrandLoader } from "./BrandLoader";
+import { SkeletonPanel } from "@cbi/web-shared/components/Skeleton";
+import { EMPTY_STATE_ART } from "./pageArt";
 import { Icon } from "@iconify/react";
 import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
 import barChartIcon from "@iconify-icons/lucide/chart-no-axes-column";
 import bullseyeIcon from "@iconify-icons/lucide/target";
 import checkMarkButtonIcon from "@iconify-icons/lucide/circle-check";
-import inboxIcon from "@iconify-icons/lucide/inbox";
 import clipboardIcon from "@iconify-icons/lucide/clipboard-list";
 import creditCardIcon from "@iconify-icons/lucide/credit-card";
 import fireIcon from "@iconify-icons/lucide/flame";
@@ -93,30 +93,31 @@ export function Pagination({
 
 export function StatusBadge({ status }: { status: string }) {
   const tones: Record<string, string> = {
-    missed: "border-rose-200 bg-rose-50 text-rose-700",
-    no_answer: "border-rose-200 bg-rose-50 text-rose-700",
-    busy: "border-amber-200 bg-amber-50 text-amber-700",
-    congestion: "border-orange-200 bg-orange-50 text-orange-700",
-    failed: "border-red-200 bg-red-50 text-red-700",
-    canceled: "border-slate-300 bg-slate-100 text-slate-600",
-    received: "border-sky-200 bg-sky-50 text-sky-700",
-    reserved: "border-violet-200 bg-violet-50 text-violet-700",
-    stored: "border-indigo-200 bg-indigo-50 text-indigo-700",
-    transcribing: "border-blue-200 bg-blue-50 text-blue-700",
-    transcribed: "border-cyan-200 bg-cyan-50 text-cyan-700",
-    correcting: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-    emotion_queued: "border-purple-200 bg-purple-50 text-purple-700",
-    emotion_analyzing: "border-pink-200 bg-pink-50 text-pink-700",
-    analyzing: "border-amber-200 bg-amber-50 text-amber-700",
-    analyzed: "border-lime-200 bg-lime-50 text-lime-700",
-    billed: "border-teal-200 bg-teal-50 text-teal-700",
-    notified: "border-green-200 bg-green-50 text-green-700",
-    complete: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    failed_retryable: "border-orange-200 bg-orange-50 text-orange-700",
-    failed_terminal: "border-rose-200 bg-rose-50 text-rose-700",
+    missed: "danger",
+    no_answer: "danger",
+    busy: "warning",
+    congestion: "orange",
+    failed: "danger",
+    canceled: "neutral",
+    voicemail: "neutral",
+    received: "info",
+    reserved: "violet",
+    stored: "info",
+    transcribing: "info",
+    transcribed: "info",
+    correcting: "violet",
+    emotion_queued: "violet",
+    emotion_analyzing: "violet",
+    analyzing: "warning",
+    analyzed: "success",
+    billed: "success",
+    notified: "success",
+    complete: "success",
+    failed_retryable: "orange",
+    failed_terminal: "danger",
   };
-  const tone = tones[status] ?? "border-slate-200 bg-slate-50 text-slate-600";
-  return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{STATUS_LABELS[status] ?? status}</span>;
+  const tone = tones[status] ?? "neutral";
+  return <span className={`badge badge-${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{STATUS_LABELS[status] ?? status}</span>;
 }
 
 export function ProcessingCard({
@@ -233,40 +234,27 @@ export function ProcessingCard({
   );
 }
 
+export const SENTIMENT_EMOJI: Record<string, string> = { angry: "😡", sad: "😢", neutral: "😐", satisfied: "🙂", happy: "😄" };
+
 export function SentimentBadge({ sentiment }: { sentiment: string | null }) {
   if (!sentiment) return <span className="text-slate-400">—</span>;
-  const tones: Record<string, string> = {
-    angry: "border-red-200 bg-red-50 text-red-700",
-    sad: "border-orange-200 bg-orange-50 text-orange-700",
-    neutral: "border-slate-300 bg-slate-100 text-slate-600",
-    satisfied: "border-sky-200 bg-sky-50 text-sky-700",
-    happy: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  };
-  const tone = tones[sentiment] ?? "border-slate-300 bg-slate-100 text-slate-600";
-  return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{SENTIMENT_LABELS[sentiment] ?? sentiment}</span>;
+  const tones: Record<string, string> = { angry: "danger", sad: "orange", neutral: "neutral", satisfied: "info", happy: "success" };
+  return <span className={`badge badge-${tones[sentiment] ?? "neutral"}`}><span aria-hidden="true">{SENTIMENT_EMOJI[sentiment] ?? "😐"}</span>{SENTIMENT_LABELS[sentiment] ?? sentiment}</span>;
 }
 
 export function OutcomeBadge({ outcome }: { outcome: string }) {
-  const tones: Record<string, string> = {
-    won: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    lost: "border-rose-200 bg-rose-50 text-rose-700",
-    follow_up: "border-amber-200 bg-amber-50 text-amber-700",
-    interested: "border-sky-200 bg-sky-50 text-sky-700",
-    not_qualified: "border-orange-200 bg-orange-50 text-orange-700",
-    unknown: "border-slate-300 bg-slate-100 text-slate-600",
-  };
-  const tone = tones[outcome] ?? "border-slate-300 bg-slate-100 text-slate-600";
-  return <span className={`badge border font-semibold ${tone}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{SALES_OUTCOME_LABELS[outcome] ?? outcome}</span>;
+  const tones: Record<string, string> = { won: "success", lost: "danger", follow_up: "warning", interested: "info", not_qualified: "orange", unknown: "neutral" };
+  return <span className={`badge badge-${tones[outcome] ?? "neutral"}`}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{SALES_OUTCOME_LABELS[outcome] ?? outcome}</span>;
 }
 
 export function TrajectoryBadge({ trajectory }: { trajectory: string | null | undefined }) {
   if (!trajectory) return null;
   const tone =
     trajectory === "improved"
-      ? "bg-emerald-50 text-emerald-700"
+      ? "badge-success"
       : trajectory === "worsened"
-        ? "bg-rose-50 text-rose-700"
-        : "bg-slate-100 text-slate-600";
+        ? "badge-danger"
+        : "badge-neutral";
   const mark = trajectory === "improved" ? "↑" : trajectory === "worsened" ? "↓" : "→";
   return (
     <span className={`badge ${tone}`}>
@@ -342,12 +330,13 @@ export function ErrorBox({ message, className = "" }: { message: string | null; 
   );
 }
 
-export function Loading({ children = "در حال بارگذاری…" }: { children?: ReactNode }) {
-  return <div className="flex min-h-40 items-center justify-center py-10"><BrandLoader compact label={typeof children === "string" ? children : "در حال بارگذاری"} /></div>;
+/** Generic placeholder for pages without their own skeleton. The brand logo is only for the first load (RouteLoadingOverlay). */
+export function Loading() {
+  return <SkeletonPanel />;
 }
 
 export function Empty({ children = "موردی یافت نشد." }: { children?: ReactNode }) {
-  return <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center"><span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-current bg-brand-50 text-brand-700"><Icon icon={inboxIcon} className="h-7 w-7" /></span><strong className="text-sm text-slate-700">{children}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.</p></div>;
+  return <div className="panel-empty"><img className="panel-empty__art" src={EMPTY_STATE_ART} alt="" aria-hidden="true" loading="lazy" decoding="async" /><strong className="text-sm text-slate-700">{children}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.</p></div>;
 }
 
 export function SummaryCell({ summary }: { summary: string | null }) {

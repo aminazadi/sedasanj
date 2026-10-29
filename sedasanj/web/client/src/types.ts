@@ -13,6 +13,8 @@ export interface CallSummary {
   asterisk_uniqueid: string;
   caller_number: string | null;
   dialed_number: string | null;
+  caller_name?: string | null;
+  dialed_name?: string | null;
   direction: string | null;
   agent_extension: string | null;
   started_at: string;
@@ -589,4 +591,40 @@ export interface TaskBoard {
   today_count: number;
   upcoming_count: number;
   completed_count: number;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  phone_number: string;
+  company: string | null;
+  email: string | null;
+  province: string | null;
+  city: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactPage {
+  items: Contact[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface ContactImportReport {
+  dry_run: boolean;
+  mode: "skip" | "update";
+  total_rows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  error_count: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
+export interface IranGeo {
+  provinces: Array<{ name: string; cities: string[] }>;
 }

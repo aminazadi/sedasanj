@@ -1,46 +1,46 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { fmt, request } from "../api";
-import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
+import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import type { AuditEvent, Page } from "../types";
-import TableFilters from "@cbi/web-shared/components/TableFilters";
+import FilterBar from "@cbi/web-shared/components/FilterBar";
+import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
+import { useResource } from "@cbi/web-shared/lib/useResource";
+
+const COLUMNS: SkeletonColumn[] = [
+  { label: "زمان", width: "8.5rem" },
+  { label: "عامل", width: "4rem" },
+  { label: "عملیات", width: "8rem", dir: "ltr" },
+  { label: "مشتری", width: "10rem", dir: "ltr", cellClassName: "max-w-[12rem] truncate" },
+  { label: "جزئیات", width: "16rem", dir: "ltr", cellClassName: "max-w-sm truncate text-xs text-slate-500" },
+];
 
 export default function Audit() {
   const limit = 25;
   const [offset, setOffset] = useState(0);
-  const [page, setPage] = useState<Page<AuditEvent> | null>(null);
   const [action, setAction] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
+  const audit = useResource<Page<AuditEvent>>((signal) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (action) params.set("action", action);
-    setPage(null);
-    request<Page<AuditEvent>>(`/v1/admin/audit?${params.toString()}`)
-      .then(setPage)
-      .catch((err) => setError(err.message));
+    return request<Page<AuditEvent>>(`/v1/admin/audit?${params.toString()}`, { signal });
   }, [action, offset]);
+  const page = audit.data;
   const events = page?.items ?? null;
 
   return (
     <div className="space-y-4">
-      <ErrorBox message={error} />
-      <TableFilters><div className="flex gap-3">
-        <div className="flex-1">
-          <label className="label">فیلتر عملیات</label>
-          <input
-            className="input"
-            dir="ltr"
-            placeholder="tenant.suspend"
-            value={action}
-            onChange={(event) => { setAction(event.target.value); setOffset(0); }}
-          />
-        </div>
-      </div></TableFilters>
+      <ErrorBox message={audit.error} />
+      <FilterBar
+        hasActive={Boolean(action)}
+        onClear={() => { setAction(""); setOffset(0); }}
+        fields={[
+          { id: "action", label: "عملیات", active: Boolean(action), onRemove: () => { setAction(""); setOffset(0); }, className: "sm:w-64", control: <input className="input" dir="ltr" placeholder="tenant.suspend" value={action} onChange={(event) => { setAction(event.target.value); setOffset(0); }} /> },
+        ]}
+      />
 
       <div className="card">
-        {!events ? (
-          <Loading />
-        ) : events.length === 0 ? (
+        {audit.loading ? (
+          <SkeletonTable columns={COLUMNS} rows={events?.length ? Math.min(events.length, limit) : 10} />
+        ) : !events || events.length === 0 ? (
           <Empty />
         ) : (
           <table className="table">

@@ -84,7 +84,7 @@ export async function refreshSession(): Promise<boolean> {
 
 export async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; retry?: boolean; headers?: Record<string, string> } = {},
+  options: { method?: string; body?: unknown; retry?: boolean; headers?: Record<string, string>; signal?: AbortSignal } = {},
 ): Promise<T> {
   const { method = "GET", body, retry = true } = options;
   const headers: Record<string, string> = { ...(options.headers ?? {}) };
@@ -97,6 +97,7 @@ export async function request<T>(
     method,
     headers,
     body: body === undefined ? undefined : isForm ? body as FormData : JSON.stringify(body),
+    signal: options.signal,
   });
   if (response.status === 401 && retry && (await refreshSession())) {
     return request<T>(path, { ...options, retry: false });

@@ -57,19 +57,22 @@ const FREEPBX_CONFIG = freePbxModuleConfig(
   "2026-01-01T00:00:00.000Z",
 );
 
+const INSTALL_KIND_LABELS: Record<string, string> = { initial: "نصب اولیه رایگان", reinstall: "نصب مجدد عادی", dedicated: "نصب اختصاصی" };
+const INSTALL_STATUS_LABELS: Record<string, string> = { requested: "ثبت‌شده", paid: "پرداخت‌شده", reviewing: "در حال بررسی", scheduled: "زمان‌بندی‌شده", in_progress: "در حال انجام", completed: "انجام‌شده", canceled: "لغوشده" };
+
 function Block({ title, code }: { title: string; code: string }) {
   return (
-    <div className="card">
-      <div className="mb-2 flex items-center justify-between">
+    <section className="card">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-bold">{title}</h2>
-        <button className="btn-ghost text-xs" onClick={() => void navigator.clipboard.writeText(code)}>
+        <button className="btn-ghost" type="button" onClick={() => void navigator.clipboard.writeText(code)}>
           کپی
         </button>
       </div>
-      <pre dir="ltr" className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+      <pre dir="ltr" className="overflow-x-auto bg-slate-900 p-3 text-xs text-slate-100">
         {code}
       </pre>
-    </div>
+    </section>
   );
 }
 
@@ -125,19 +128,35 @@ export default function Install() {
   }
 
   return (
-    <div className="space-y-4 [&>div:first-of-type>h1]:sr-only"><PageHeader title="درخواست نصب و استقرار" description="نصب اولیه عادی یک‌بار رایگان است؛ نصب مجدد ۳ میلیون و نصب اختصاصی ۲۰ میلیون تومان است." />
-      <div className="card"><h1 className="mb-2 text-xl font-bold">درخواست نصب و استقرار</h1><p className="mb-4 text-sm text-slate-500">نصب اولیه عادی یک‌بار رایگان است؛ نصب مجدد ۳ میلیون و نصب اختصاصی ۲۰ میلیون تومان است.</p><form className="grid gap-3 md:grid-cols-2" onSubmit={createInstallation}><select className="input" value={installForm.kind} onChange={(event) => setInstallForm({ ...installForm, kind: event.target.value })}><option value="initial">نصب اولیه رایگان</option><option value="reinstall">نصب مجدد عادی</option><option value="dedicated">نصب اختصاصی</option></select><input className="input" required placeholder="نوع PBX" value={installForm.pbx_type} onChange={(event) => setInstallForm({ ...installForm, pbx_type: event.target.value })}/><input className="input" placeholder="نسخه PBX" value={installForm.pbx_version} onChange={(event) => setInstallForm({ ...installForm, pbx_version: event.target.value })}/><input className="input" type="number" min={1} required placeholder="تعداد داخلی" value={installForm.extension_count} onChange={(event) => setInstallForm({ ...installForm, extension_count: Number(event.target.value) })}/><input className="input" required placeholder="روش اتصال" value={installForm.connection_method} onChange={(event) => setInstallForm({ ...installForm, connection_method: event.target.value })}/><input className="input" required placeholder="نام و تماس مسئول فنی" value={installForm.technical_contact} onChange={(event) => setInstallForm({ ...installForm, technical_contact: event.target.value })}/><JalaliDatePicker includeTime value={installForm.preferred_time} onChange={(value) => setInstallForm({ ...installForm, preferred_time: value })} placeholder="زمان ترجیحی نصب"/><input className="input" placeholder="توضیحات غیرمحرمانه" value={installForm.notes} onChange={(event) => setInstallForm({ ...installForm, notes: event.target.value })}/><button className="btn md:col-span-2">ثبت درخواست</button></form>{installations.length ? <div className="mt-5 overflow-x-auto"><table className="table"><thead><tr><th>نوع</th><th>PBX</th><th>وضعیت</th></tr></thead><tbody>{installations.map((item) => <tr key={item.id}><td>{item.kind}</td><td>{item.pbx_type}</td><td>{item.status}</td></tr>)}</tbody></table><Pagination page={Math.floor(installationOffset/limit)+1} hasPrevious={installationOffset>0} hasNext={installationOffset+limit<installationTotal} total={installationTotal} onPrevious={()=>setInstallationOffset(Math.max(0,installationOffset-limit))} onNext={()=>setInstallationOffset(installationOffset+limit)}/></div> : null}</div>
-      <div className="card bg-gradient-to-l from-brand-50 to-white">
+    <div className="space-y-4">
+      <PageHeader title="راه‌اندازی" description="درخواست نصب، راهنمای اتصال سرور تلفنی و آزمون اتصال عامل" />
+      <section className="card">
+        <h2 className="font-bold">درخواست نصب و استقرار</h2>
+        <p className="section-hint mb-4">نصب اولیه عادی یک‌بار رایگان است؛ نصب مجدد ۳ میلیون و نصب اختصاصی ۲۰ میلیون تومان است.</p>
+        <form className="grid gap-3 md:grid-cols-2" onSubmit={createInstallation}>
+          <label><span className="label">نوع درخواست</span><select className="input" value={installForm.kind} onChange={(event) => setInstallForm({ ...installForm, kind: event.target.value })}><option value="initial">نصب اولیه رایگان</option><option value="reinstall">نصب مجدد عادی</option><option value="dedicated">نصب اختصاصی</option></select></label>
+          <label><span className="label">نوع PBX</span><input className="input" required value={installForm.pbx_type} onChange={(event) => setInstallForm({ ...installForm, pbx_type: event.target.value })} /></label>
+          <label><span className="label">نسخه PBX</span><input className="input" dir="ltr" value={installForm.pbx_version} onChange={(event) => setInstallForm({ ...installForm, pbx_version: event.target.value })} /></label>
+          <label><span className="label">تعداد داخلی</span><input className="input" dir="ltr" type="number" min={1} required value={installForm.extension_count} onChange={(event) => setInstallForm({ ...installForm, extension_count: Number(event.target.value) })} /></label>
+          <label><span className="label">روش اتصال</span><input className="input" required value={installForm.connection_method} onChange={(event) => setInstallForm({ ...installForm, connection_method: event.target.value })} /></label>
+          <label><span className="label">نام و تماس مسئول فنی</span><input className="input" required value={installForm.technical_contact} onChange={(event) => setInstallForm({ ...installForm, technical_contact: event.target.value })} /></label>
+          <div><span className="label">زمان ترجیحی نصب</span><JalaliDatePicker includeTime value={installForm.preferred_time} onChange={(value) => setInstallForm({ ...installForm, preferred_time: value })} placeholder="انتخاب زمان" /></div>
+          <label><span className="label">توضیحات غیرمحرمانه</span><input className="input" value={installForm.notes} onChange={(event) => setInstallForm({ ...installForm, notes: event.target.value })} /></label>
+          <div className="form-actions md:col-span-2"><button className="btn">ثبت درخواست</button></div>
+        </form>
+        {installations.length ? <div className="mt-5 overflow-x-auto"><table className="table"><thead><tr><th>نوع</th><th>PBX</th><th>وضعیت</th></tr></thead><tbody>{installations.map((item) => <tr key={item.id}><td>{INSTALL_KIND_LABELS[item.kind] ?? item.kind}</td><td>{item.pbx_type}</td><td>{INSTALL_STATUS_LABELS[item.status] ?? item.status}</td></tr>)}</tbody></table><Pagination page={Math.floor(installationOffset/limit)+1} hasPrevious={installationOffset>0} hasNext={installationOffset+limit<installationTotal} total={installationTotal} onPrevious={()=>setInstallationOffset(Math.max(0,installationOffset-limit))} onNext={()=>setInstallationOffset(installationOffset+limit)}/></div> : null}
+      </section>
+      <section className="card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="mb-3 text-xl font-bold">راه‌اندازی امن روی سرور Asterisk</h2>
-            <p className="text-sm leading-6 text-slate-600">
+            <h2 className="font-bold">راه‌اندازی امن روی سرور Asterisk</h2>
+            <p className="section-hint">
               از ضبط تماس تا ارسال فشرده، صف retry و شروع پردازش را مرحله‌به‌مرحله تنظیم کنید.
             </p>
           </div>
           <Link className="btn" to="/api-docs">مشاهده مستندات کامل API</Link>
         </div>
-        <ol className="mt-5 list-decimal space-y-3 ps-6 text-right text-sm leading-7 text-slate-700">
+        <ol className="mt-4 list-decimal space-y-3 ps-6 text-right text-sm leading-7 text-slate-700">
           <li>ffmpeg و پایتون ۳٫۱۲ را روی سرور تلفنی نصب کنید.</li>
           <li>یک API key با فرمت GZIP یا ZIP بسازید و خروجی مخصوص روش اتصال خود را دانلود کنید.</li>
           <li>برای FreePBX، ماژول Seda Sanj را نصب و JSON را در تب Import Configuration بارگذاری و تأیید کنید.</li>
@@ -156,22 +175,23 @@ export default function Install() {
             بارگذاری مجدد وضعیت حساب
           </button>
         </div>
-      </div>
+      </section>
 
       <Block title="نمونه فایل قابل Import در FreePBX" code={FREEPBX_CONFIG} />
       <Block title="قطعه dialplan Python Agent (extensions.conf)" code={DIALPLAN} />
       <Block title="فایل تنظیمات Python Agent" code={CONFIG} />
 
-      <div className="card overflow-x-auto">
-        <h2 className="mb-3 font-bold">رفتار خطا و بازیابی</h2>
+      <section className="card overflow-x-auto">
+        <h2 className="font-bold">رفتار خطا و بازیابی</h2>
         <table className="table min-w-[620px]"><thead><tr><th>وضعیت</th><th>نمونه</th><th>رفتار agent</th></tr></thead><tbody><tr><td>کمبود اعتبار</td><td dir="ltr">402</td><td>blocked_credit؛ بدون مصرف attempt و ادامه خودکار پس از شارژ</td></tr><tr><td>موقت</td><td dir="ltr">429, 5xx, timeout</td><td>نگه‌داری در spool و retry با backoff</td></tr><tr><td>دائمی</td><td dir="ltr">401, 403, 413, 415, 422</td><td>انتقال metadata به dead-letter و نگه‌داری فایل برای بررسی</td></tr><tr><td>موفق یا تکراری</td><td dir="ltr">200, 201</td><td>پاک‌سازی یا انتقال به uploaded طبق تنظیمات</td></tr></tbody></table>
-      </div>
+      </section>
 
-      <div className="card">
-        <h2 className="mb-2 font-bold">آزمون اتصال عامل</h2>
+      <section className="card">
+        <h2 className="font-bold">آزمون اتصال عامل</h2>
         <form className="flex flex-wrap gap-2" onSubmit={test}>
           <input
             className="input md:w-96"
+            aria-label="کلید API"
             dir="ltr"
             placeholder="sk_live_..."
             value={key}
@@ -181,8 +201,8 @@ export default function Install() {
           <button className="btn">آزمون /v1/ingest/health</button>
         </form>
         <ErrorBox message={error} />
-        {result ? <div className="mt-3 grid gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900 md:grid-cols-4"><div><span className="block text-xs text-emerald-700">سازمان</span>{result.tenant ?? "—"}</div><div><span className="block text-xs text-emerald-700">اعتبار</span>{result.balance_minutes} دقیقه</div><div><span className="block text-xs text-emerald-700">فرمت</span>{result.archive_format?.toUpperCase()}</div><div><span className="block text-xs text-emerald-700">رمز ZIP</span>{result.archive_password_configured ? "فعال" : "غیرفعال"}</div></div> : null}
-      </div>
+        {result ? <div className="mt-3 grid gap-2 border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 md:grid-cols-4"><div><span className="block text-xs text-emerald-700">سازمان</span>{result.tenant ?? "—"}</div><div><span className="block text-xs text-emerald-700">اعتبار</span>{result.balance_minutes} دقیقه</div><div><span className="block text-xs text-emerald-700">فرمت</span>{result.archive_format?.toUpperCase()}</div><div><span className="block text-xs text-emerald-700">رمز ZIP</span>{result.archive_password_configured ? "فعال" : "غیرفعال"}</div></div> : null}
+      </section>
     </div>
   );
 }

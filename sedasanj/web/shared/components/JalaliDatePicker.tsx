@@ -201,15 +201,15 @@ export default function JalaliDatePicker({
           role="dialog"
           aria-label="انتخاب تاریخ شمسی"
           dir="rtl"
-          className="fixed z-[10000] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-2xl border border-[#B2AC88] bg-[#F2F0EF] shadow-2xl"
+          className="fixed z-[10000] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-2xl border border-[color:var(--line)] bg-[#F2F0EF] shadow-2xl"
           style={{ top: panelPosition.top, left: panelPosition.left, width: panelPosition.width }}
         >
-          <div className="flex items-center justify-between border-b border-[#B2AC88] bg-[#F2F0EF] px-4 py-3">
-            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" aria-label="ماه بعد" onClick={() => moveMonth(1)}>
+          <div className="flex items-center justify-between border-b border-[color:var(--line)] bg-[#F2F0EF] px-4 py-3">
+            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--line)] bg-[#F2F0EF] text-[#4B6E48] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" aria-label="ماه بعد" onClick={() => moveMonth(1)}>
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6" /></svg>
             </button>
             <div className="text-base font-extrabold text-[#4B6E48]">{MONTHS[viewMonth - 1]} {persianNumber.format(viewYear)}</div>
-            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" aria-label="ماه قبل" onClick={() => moveMonth(-1)}>
+            <button type="button" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--line)] bg-[#F2F0EF] text-[#4B6E48] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]" aria-label="ماه قبل" onClick={() => moveMonth(-1)}>
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6" /></svg>
             </button>
           </div>
@@ -238,7 +238,7 @@ export default function JalaliDatePicker({
           </div>
 
           {includeTime ? (
-            <div className="border-t border-[#B2AC88] bg-[#F2F0EF] px-4 py-3">
+            <div className="border-t border-[color:var(--line)] bg-[#F2F0EF] px-4 py-3">
               <div className="mb-3 flex items-center gap-2">
                 <span className="text-sm font-semibold text-[#4B6E48]">ساعت</span>
                 <input
@@ -277,7 +277,7 @@ export default function JalaliDatePicker({
           {value ? (
             <button
               type="button"
-              className="w-full border-t border-[#B2AC88] bg-[#F2F0EF] py-2.5 text-sm font-semibold text-[#898989] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4B6E48]"
+              className="w-full border-t border-[color:var(--line)] bg-[#F2F0EF] py-2.5 text-sm font-semibold text-[#898989] outline-none transition hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4B6E48]"
               onClick={() => {
                 onChange("");
                 setOpen(false);
@@ -287,7 +287,8 @@ export default function JalaliDatePicker({
             </button>
           ) : null}
         </div>,
-        document.body,
+        // A modal <dialog> sits in the top layer above the body, so the panel must live inside it.
+        root.current?.closest("dialog") ?? document.body,
       ) : null}
     </div>
   );

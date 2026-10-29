@@ -1,0 +1,33 @@
+/* Skeleton placeholders: soft accent bars on the panel surface, square like every other element. */
+.skeleton {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: rgb(178 172 136 / 0.25);
+}
+
+.skeleton::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(100deg, transparent 20%, rgb(242 240 239 / 0.75) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  to { transform: translateX(100%); }
+}
+
+/* One line of body text (text-sm, 20px line) */
+.skeleton--line { height: 1.25rem; }
+/* One badge (text-xs line 16px + py-0.5 + border) */
+.skeleton--badge { height: 1.375rem; width: 4.5rem; }
+/* One 32px icon button */
+.skeleton--button { height: 2rem; width: 2rem; }
+/* One .input (text line + py-2 + border) */
+.skeleton--input { height: 2.375rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { display: none; animation: none; }
+}

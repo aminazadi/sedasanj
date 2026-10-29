@@ -88,6 +88,7 @@ interface RequestOptions {
   retry?: boolean;
   raw?: boolean;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -103,6 +104,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     headers,
     body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     redirect: raw ? "manual" : "follow",
+    signal: options.signal,
   });
 
   if (response.status === 401 && retry && (await refreshSession())) {
@@ -111,6 +113,22 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (!response.ok) throw await parseError(response);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/** Downloads an authenticated file (CSV export, template) through the browser's save dialog. */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const send = () => fetch(path, { headers: { Authorization: `Bearer ${tokens.access() ?? ""}` } });
+  let response = await send();
+  if (response.status === 401 && (await refreshSession())) response = await send();
+  if (!response.ok) throw await parseError(response);
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function query(params: Record<string, string | number | undefined | null>): string {

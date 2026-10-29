@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" fill="none" role="img" aria-label="تخصیص اپراتور به تیم">
+  <ellipse cx="240" cy="268" rx="150" ry="14" fill="#4b6e48" opacity=".1"/>
+  <g stroke="#b2ac88" stroke-width="1.5" stroke-linecap="round">
+    <path d="M70 70h60c14 0 18 12 34 12" />
+    <path d="M410 200h-52c-14 0-18-14-34-14" />
+    <path d="M96 214c-26 0-34-14-34-30" />
+    <path d="M384 66c26 0 34 14 34 30" />
+  </g>
+  <g stroke="#4b6e48" stroke-width="2" fill="#f2f0ef">
+    <circle cx="70" cy="70" r="6"/><circle cx="410" cy="200" r="6"/>
+    <circle cx="62" cy="184" r="5"/><circle cx="418" cy="96" r="5"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="5" stroke-linecap="round" opacity=".55">
+    <path d="M28 128v24M40 116v48M52 124v32"/>
+    <path d="M428 128v24M440 116v48M452 124v32"/>
+  </g>
+  <g>
+    <rect x="70" y="86" width="130" height="128" fill="#f2f0ef" stroke="#4b6e48" stroke-width="2.5"/>
+    <path d="M70 112h130" stroke="#b2ac88" stroke-width="2"/>
+    <circle cx="135" cy="148.9" r="14.44" fill="#e7ecdd" stroke="#4b6e48" stroke-width="4"/><path d="M104.6 200.2c0-30.400000000000002 15.200000000000001-34.2 30.400000000000002-34.2s30.400000000000002 3.8000000000000003 30.400000000000002 34.2z" fill="#e7ecdd" stroke="#4b6e48" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+  <g>
+    <rect x="280" y="86" width="130" height="128" fill="#f2f0ef" stroke="#4b6e48" stroke-width="2.5"/>
+    <path d="M280 112h130" stroke="#b2ac88" stroke-width="2"/>
+    <g stroke="#b2ac88" stroke-width="2" stroke-dasharray="6 5" fill="none"><rect x="296" y="128" width="98" height="22"/><rect x="296" y="160" width="98" height="22"/></g>
+    <g fill="#b2ac88" opacity=".6"><circle cx="308" cy="139" r="5"/><circle cx="308" cy="171" r="5"/><rect x="322" y="135" width="52" height="8"/><rect x="322" y="167" width="40" height="8"/></g>
+    <rect x="296" y="192" width="98" height="12" fill="#4b6e48" opacity=".85"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M214 150h52M252 136l14 14-14 14"/>
+  </g>
+  <g>
+    <circle cx="240" cy="206" r="22" fill="#f2f0ef" stroke="#4b6e48" stroke-width="4"/>
+    <path d="M240 194v13l9 6" stroke="#4b6e48" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="2.5" stroke-linecap="round">
+    <path d="M388 40v14M381 47h14"/>
+    <path d="M100 236v10M95 241h10" stroke="#b2ac88"/>
+  </g>
+</svg>

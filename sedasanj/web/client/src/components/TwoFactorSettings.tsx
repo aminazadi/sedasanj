@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
+import { ErrorBox } from "./Widgets";
+import twoFactorArt from "../assets/two-factor.svg";
 
 const endpoint = "/v1/auth/totp";
 
@@ -36,27 +38,54 @@ export default function TwoFactorSettings() {
     finally { setBusy(false); }
   }
 
-  return <section className="card space-y-4 p-5">
-    <h2 className="font-bold">ورود دومرحله‌ای با گوگل آتنتیکیتور</h2>
-    {error && <p role="alert" className="text-red-600">{error}</p>}
-    {enabled === null ? <p>در حال بارگذاری…</p> : enabled ? <>
-      <p>فعال است.</p>
-      <form onSubmit={submit} className="space-y-3">
-        <label className="label" htmlFor="totp-password">گذرواژه فعلی</label>
-        <input id="totp-password" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <label className="label" htmlFor="totp-code">کد گوگل آتنتیکیتور</label>
-        <input id="totp-code" className="input" dir="ltr" inputMode="numeric" pattern="[0-9]{6}" value={fmt.digits(code)} onChange={(e) => setCode(fmt.latinDigits(e.target.value).replace(/\D/g, "").slice(0, 6))} required />
-        <button className="btn" disabled={busy}>غیرفعال‌سازی</button>
-      </form>
-    </> : secret ? <>
-      <p>در گوگل آتنتیکیتور گزینه افزودن حساب با کلید تنظیم را انتخاب کنید و این کلید را وارد کنید:</p>
-      <code className="block break-all rounded bg-slate-100 p-3" dir="ltr">{secret}</code>
-      <a href={uri} className="text-brand-600 underline">باز کردن در برنامه آتنتیکیتور</a>
-      <form onSubmit={submit} className="space-y-3">
-        <label className="label" htmlFor="totp-code">کد شش‌رقمی برنامه</label>
-        <input id="totp-code" className="input" dir="ltr" inputMode="numeric" pattern="[0-9]{6}" value={fmt.digits(code)} onChange={(e) => setCode(fmt.latinDigits(e.target.value).replace(/\D/g, "").slice(0, 6))} required />
-        <button className="btn" disabled={busy}>تأیید و فعال‌سازی</button>
-      </form>
-    </> : <button className="btn" disabled={busy} onClick={start}>فعال‌سازی ورود دومرحله‌ای</button>}
+  const codeField = (id: string, label: string) => <div>
+    <label className="label" htmlFor={id}>{label}</label>
+    <input id={id} className="input" dir="ltr" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" value={fmt.digits(code)} onChange={(e) => setCode(fmt.latinDigits(e.target.value).replace(/\D/g, "").slice(0, 6))} required />
+  </div>;
+  const step = (index: number, title: string, children?: React.ReactNode) => <li className="flex gap-3">
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[#4B6E48] text-sm font-bold text-[#F2F0EF]" aria-hidden="true">{index}</span>
+    <div className="min-w-0 flex-1 space-y-2"><p className="text-sm font-medium leading-7">{title}</p>{children}</div>
+  </li>;
+
+  return <section className="card">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 className="font-bold">ورود دومرحله‌ای با گوگل آتنتیکیتور</h2>
+      {enabled === null ? <span className="badge badge-neutral">در حال بررسی…</span> : enabled ? <span className="badge badge-success">فعال</span> : <span className="badge badge-warning">غیرفعال</span>}
+    </div>
+    <ErrorBox message={error || null} />
+    <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="min-w-0 space-y-5">
+        <p className="text-sm leading-7 text-slate-500">بعد از گذرواژه، یک کد شش‌رقمی از برنامهٔ روی گوشی شما هم لازم است؛ حتی با لو رفتن گذرواژه، ورود غیرمجاز ممکن نیست.</p>
+
+        {enabled === null ? null : enabled ? <form onSubmit={submit} className="space-y-3">
+          <p className="text-sm font-medium">برای غیرفعال‌سازی، گذرواژه و کد فعلی را وارد کنید.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="totp-password">گذرواژه فعلی</label>
+              <input id="totp-password" type="password" className="input" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </div>
+            {codeField("totp-code", "کد گوگل آتنتیکیتور")}
+          </div>
+          <button className="btn-danger" disabled={busy}>غیرفعال‌سازی</button>
+        </form> : secret ? <ol className="space-y-5">
+          {step(1, "برنامهٔ Google Authenticator را روی گوشی باز کنید و گزینهٔ افزودن حساب با کلید تنظیم را بزنید.")}
+          {step(2, "این کلید را در برنامه وارد کنید:", <>
+            <code className="block break-all border border-[color:var(--line)] bg-white p-3 text-sm" dir="ltr">{secret}</code>
+            <a href={uri} className="inline-block text-sm text-brand-600 underline">باز کردن در برنامه آتنتیکیتور</a>
+          </>)}
+          {step(3, "کد شش‌رقمی نمایش‌داده‌شده را وارد و تأیید کنید.", <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
+            <div className="w-48">{codeField("totp-code", "کد شش‌رقمی برنامه")}</div>
+            <button className="btn" disabled={busy}>تأیید و فعال‌سازی</button>
+          </form>)}
+        </ol> : <div className="space-y-4">
+          <ul className="space-y-2 text-sm leading-7">
+            <li className="flex gap-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" aria-hidden="true" />حساب مدیر سازمان در برابر لو رفتن گذرواژه محافظت می‌شود.</li>
+            <li className="flex gap-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" aria-hidden="true" />راه‌اندازی کمتر از یک دقیقه طول می‌کشد.</li>
+          </ul>
+          <button className="btn" disabled={busy} onClick={start}>فعال‌سازی ورود دومرحله‌ای</button>
+        </div>}
+      </div>
+      <img className="mx-auto hidden w-full max-w-xs mix-blend-multiply opacity-95 lg:block" src={twoFactorArt} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+    </div>
   </section>;
 }

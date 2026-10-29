@@ -10,17 +10,17 @@
 .demo-dialog-artwork{display:block;position:relative;width:min(100%,500px);height:auto;aspect-ratio:3 / 2;margin:-22px auto -36px;background-position:center;background-repeat:no-repeat;background-size:contain;opacity:.65;pointer-events:none}.demo-dialog-artwork.is-otp{width:min(100%,500px);aspect-ratio:1717 / 916;margin:-18px auto 0;opacity:.72}.demo-dialog .demo-phone-form{position:relative;z-index:1;margin-top:0}.demo-dialog .demo-phone-form.has-otp-artwork{gap:14px}
 .demo-dialog-artwork.is-organization{width:min(100%,500px);aspect-ratio:3 / 2;margin:-22px auto -36px;opacity:.65}
 .demo-dialog::backdrop{background:rgb(14 25 17 / .55);backdrop-filter:blur(4px)}
-.marketing-site .demo-dialog-close{position:absolute;top:8px;left:12px;border:0;background:transparent;font-size:36px;font-weight:300;line-height:1;color:#64748b;cursor:pointer}
+.demo-dialog-close{position:absolute;top:8px;left:12px;border:0;background:transparent;font-size:36px;font-weight:300;line-height:1;color:#64748b;cursor:pointer}
 .demo-phone-form{display:grid;gap:18px}
 .demo-phone-form h2{font-size:1.4rem;font-weight:700;margin:0}
 .demo-phone-form p{font-size:.9rem;line-height:1.8;color:#64748b;margin:0}
 .demo-phone-form .demo-code-hint{text-align:center}
 .demo-phone-form label{display:grid;gap:8px;font-size:.85rem;font-weight:600}
-.demo-phone-form input,.demo-phone-form select{width:100%;padding:12px;border:1px solid #cbd5e1;background-color:#f8fafc;font-size:16px;border-radius:0}
+.demo-phone-form input,.demo-phone-form select,.demo-phone-form textarea{width:100%;padding:12px;border:1px solid #cbd5e1;background-color:#f8fafc;font-size:16px;border-radius:0}
 .demo-phone-form select{padding-left:2.75rem}
 .demo-otp-inputs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;direction:ltr}
 .demo-phone-form .demo-otp-inputs input{width:100%;min-width:0;padding:12px 4px;text-align:center;font-size:1.25rem;font-variant-numeric:tabular-nums}
-.demo-phone-form input:focus,.demo-phone-form select:focus{outline:2px solid var(--primary,#4b6e48);outline-offset:2px}
+.demo-phone-form input:focus,.demo-phone-form select:focus,.demo-phone-form textarea:focus{outline:2px solid var(--primary,#4b6e48);outline-offset:2px}
 .demo-phone-form small,.demo-note{color:#64748b;font-size:.75rem;line-height:1.8}
 .demo-phone-form a{text-decoration:none}
 .demo-button{display:inline-flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:13px 20px;background:var(--primary,#4b6e48);color:#fff;font-weight:700;border:0;cursor:pointer;text-decoration:none}
@@ -122,3 +122,9 @@
 
 .login-method-tabs{margin:10px 0}
 .login-method-tabs button{padding:7px 10px}
+.demo-phone-form .demo-field{display:grid;gap:8px;font-size:.85rem;font-weight:600}
+.demo-dialog .demo-phone-form :is(input,select,textarea){padding:12px;border:1px solid #cbd5e1;background-color:#f8fafc;font-size:16px;color:#1e293b}
+.demo-dialog .demo-phone-form select{padding-left:2.75rem}
+/* Action stays pinned to the bottom edge while a long dialog scrolls: the bar carries the bottom padding itself, since a sticky element cannot leave its container */
+.demo-dialog:has(.demo-dialog-actions){padding-bottom:0}
+.demo-dialog .demo-dialog-actions{position:sticky;bottom:0;z-index:2;margin:0 -28px;padding:20px 28px;border-top:1px solid #dae3d7;background:#fff}

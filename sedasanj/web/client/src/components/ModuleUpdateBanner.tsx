@@ -31,7 +31,7 @@ export default function ModuleUpdateBanner() {
 
   return (
     <div
-      className={`mb-5 flex flex-wrap items-center gap-3 border px-4 py-3 text-sm ${security ? "border-2 border-amber-500 bg-amber-50 text-amber-900" : "border-[#B2AC88] bg-[#F2F0EF] text-[#3b5739]"}`}
+      className={`mb-5 flex flex-wrap items-center gap-3 border px-4 py-3 text-sm ${security ? "border-2 border-amber-500 bg-amber-50 text-amber-900" : "border-[color:var(--line)] bg-[#F2F0EF] text-[#3b5739]"}`}
       role="status"
     >
       <span className="font-bold">

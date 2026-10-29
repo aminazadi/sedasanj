@@ -69,25 +69,27 @@ export default function Profile() {
   if (!account && !error) return <Loading />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5" dir="rtl">
+    <div className="space-y-4">
       <PageHeader title="پروفایل من" description="مشخصات فردی، راه‌های تماس و امنیت ورود شما" />
       <ErrorBox message={error} />
       {account ? (
         <>
-        <section className="card grid gap-5 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7ECDD] text-2xl font-bold text-[#4B6E48]" aria-hidden="true">{(account.user.display_name || account.user.email).slice(0, 1)}</div>
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-bold text-slate-800">{account.user.display_name || account.user.email}</h2>
-            <p className="mt-1 break-all text-sm text-slate-500" dir="ltr">{account.user.email}</p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full bg-[#E7ECDD] px-3 py-1 text-[#4B6E48]">{ROLE_LABELS[account.user.role] || account.user.role}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{account.tenant.name}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">عضویت از {fmt.date(account.user.created_at)}</span>
+        <section className="card flex flex-wrap items-center justify-between gap-x-8 gap-y-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center bg-[#4B6E48] text-2xl font-bold text-[#F2F0EF]" aria-hidden="true">{(account.user.display_name || account.user.email).slice(0, 1)}</div>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-bold">{account.user.display_name || account.user.email}</h2>
+              <p className="mt-0.5 break-all text-sm text-slate-500 [unicode-bidi:plaintext]" dir="ltr" style={{ textAlign: "right" }}>{account.user.email}</p>
             </div>
           </div>
+          <dl className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm max-sm:grid-cols-1">
+            <div><dt className="text-xs text-slate-500">نقش</dt><dd className="mt-1 font-medium">{ROLE_LABELS[account.user.role] || account.user.role}</dd></div>
+            <div><dt className="text-xs text-slate-500">سازمان</dt><dd className="mt-1 font-medium">{account.tenant.name}</dd></div>
+            <div><dt className="text-xs text-slate-500">عضویت از</dt><dd className="mt-1 font-medium">{fmt.date(account.user.created_at)}</dd></div>
+          </dl>
         </section>
         <form className="card space-y-5" onSubmit={submit}>
-          <div><h2 className="font-bold text-slate-800">اطلاعات فردی</h2><p className="mt-1 text-sm text-slate-500">این اطلاعات برای شناسایی شما و شخصی‌سازی دستیار استفاده می‌شود.</p></div>
+          <div><h2 className="font-bold">اطلاعات فردی</h2><p className="section-hint">این اطلاعات برای شناسایی شما و شخصی‌سازی دستیار استفاده می‌شود.</p></div>
           <div className="grid gap-4 md:grid-cols-2">
             <label>
               <span className="label">نام و نام خانوادگی</span>
@@ -95,7 +97,7 @@ export default function Profile() {
             </label>
             <label>
               <span className="label">ایمیل</span>
-              <input className="input bg-slate-50" value={account.user.email} dir="ltr" disabled />
+              <input className="input" value={account.user.email} dir="ltr" disabled />
             </label>
             <label>
               <span className="label">شماره موبایل</span>
@@ -106,7 +108,7 @@ export default function Profile() {
               <input className="input" value={form.extension} onChange={(event) => setForm({ ...form, extension: event.target.value })} dir="ltr" inputMode="numeric" />
             </label>
           </div>
-          <label className="block border-t border-[#D8D3B9] pt-5">
+          <label className="block border-t border-[color:var(--line)] pt-5">
             <span className="label">درباره من و شیوه ارتباط دلخواه</span>
             <textarea
               className="input min-h-40 resize-y leading-7"
@@ -115,12 +117,12 @@ export default function Profile() {
               maxLength={2000}
               placeholder="درباره مسئولیت‌ها، حوزه کاری، علایق حرفه‌ای و لحنی که ترجیح می‌دهید دستیار با شما صحبت کند بنویسید."
             />
-            <span className="mt-1 block text-left text-xs text-slate-400">{fmt.int(form.profile_context.length)} / {fmt.int(2000)}</span>
+            <span className="field-hint block text-left">{fmt.int(form.profile_context.length)} / {fmt.int(2000)}</span>
           </label>
-          {account.user.role === "operator" ? <p className="text-xs text-slate-500">برای اپراتور ثبت حداقل یکی از شماره موبایل یا شماره داخلی الزامی است.</p> : null}
-          <div className="flex items-center gap-3">
+          {account.user.role === "operator" ? <p className="field-hint">برای اپراتور ثبت حداقل یکی از شماره موبایل یا شماره داخلی الزامی است.</p> : null}
+          <div className="form-actions">
             <button className="btn" disabled={saving}>{saving ? "در حال ذخیره…" : "ذخیره پروفایل"}</button>
-            {saved ? <span className="text-sm font-medium text-[#4B6E48]">پروفایل ذخیره شد.</span> : null}
+            {saved ? <span className="form-success" role="status">پروفایل ذخیره شد.</span> : null}
           </div>
         </form>
         {account.user.role === "org_admin" ? <TwoFactorSettings /> : null}

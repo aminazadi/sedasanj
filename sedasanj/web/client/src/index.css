@@ -34,6 +34,8 @@
 }
 
 :root {
+  --line: rgb(178 172 136 / 0.5);
+  --line-strong: rgb(137 137 137 / 0.5);
   color-scheme: light;
   --color-canvas: #f2f0ef;
   --color-accent: #b2ac88;
@@ -481,7 +483,7 @@ select {
 .panel-shell input,
 .panel-shell select,
 .panel-shell textarea {
-  border-color: #b2ac88;
+  border-color: var(--line);
   background: #f2f0ef;
 }
 
@@ -491,8 +493,43 @@ select {
 }
 
 .panel-shell .btn-ghost {
-  border-color: #898989;
+  border-color: var(--line-strong);
   color: #4b6e48;
+}
+
+.panel-shell .btn-danger {
+  border-color: transparent;
+  color: #be123c;
+}
+
+.panel-shell .btn-danger:hover {
+  background: rgb(225 29 72 / 0.08);
+}
+
+/* Tab-style section switcher (account settings) */
+.panel-tabs {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.panel-tab {
+  min-height: 4.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: #f2f0ef;
+  color: #334155;
+  text-align: right;
+  transition: border-color 200ms ease, background-color 200ms ease;
+}
+
+.panel-tab:hover {
+  border-color: var(--line-strong);
+}
+
+.panel-tab[aria-current="page"] {
+  border-color: #4b6e48;
+  background: #e7ecdd;
+  color: #345331;
 }
 
 .panel-shell main,
@@ -512,13 +549,13 @@ select {
 }
 
 .call-header-status > :first-child {
-  border-color: #b2ac88 !important;
+  border-color: var(--line) !important;
   background: #f2f0ef !important;
   color: #000 !important;
 }
 
 .call-header-status > :last-child {
-  border-color: #b2ac88 !important;
+  border-color: var(--line) !important;
   background: #b2ac88 !important;
   color: #000 !important;
 }
@@ -535,7 +572,7 @@ select {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid #b2ac88;
+  border: 1px solid var(--line);
   background:
     radial-gradient(circle at 2.75rem 2.75rem, #f2f0ef 0 2.5rem, rgb(242 240 239 / 0.94) 3rem, rgb(242 240 239 / 0.78) 4rem, rgb(242 240 239 / 0.52) 5rem, rgb(242 240 239 / 0.24) 6rem, transparent 7rem),
     radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
@@ -547,7 +584,7 @@ select {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid #b2ac88;
+  border: 1px solid var(--line);
   background:
     radial-gradient(circle at 2.75rem 2.75rem, #f2f0ef 0 2.5rem, rgb(242 240 239 / 0.94) 3rem, rgb(242 240 239 / 0.78) 4rem, rgb(242 240 239 / 0.52) 5rem, rgb(242 240 239 / 0.24) 6rem, transparent 7rem),
     radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
@@ -555,7 +592,7 @@ select {
 }
 
 .call-metric-card:hover {
-  border-color: #898989;
+  border-color: var(--line-strong);
 }
 
 .panel-shell,
@@ -632,17 +669,41 @@ select {
   .card {
     @apply rounded-xl border border-slate-200 bg-white p-4;
   }
+  .btn,
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
   .btn {
-    @apply rounded-lg bg-brand-500 px-4 py-2 text-white transition hover:bg-brand-600 disabled:opacity-50;
+    @apply bg-brand-500 text-white hover:bg-brand-600;
   }
   .btn-ghost {
-    @apply rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-100;
+    @apply border border-slate-300 text-slate-700 hover:bg-slate-100;
+  }
+  .btn-danger {
+    @apply border border-rose-300 bg-transparent px-4 py-2 text-rose-700 hover:bg-rose-50;
+  }
+  .table .btn,
+  .table .btn-ghost,
+  .table .btn-danger {
+    @apply px-3 py-1 text-xs;
   }
   .input {
-    @apply w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-500;
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 disabled:cursor-not-allowed disabled:opacity-70;
   }
   .label {
-    @apply mb-1 block text-sm text-slate-600;
+    @apply mb-1 block text-sm font-medium text-slate-600;
+  }
+  .field-hint {
+    @apply mt-1 text-xs leading-5 text-slate-500;
+  }
+  .section-hint {
+    @apply mt-1 text-sm leading-6 text-slate-500;
+  }
+  .form-actions {
+    @apply flex flex-wrap items-center gap-3;
+  }
+  .form-success {
+    @apply text-sm font-medium text-brand-600;
   }
   .table {
     @apply w-full min-w-max text-right text-sm;
@@ -669,6 +730,7 @@ select {
     position: sticky;
     inset-inline-end: 0;
     z-index: 2;
+    background: linear-gradient(var(--table-row-surface, transparent), var(--table-row-surface, transparent)), #f2f0ef;
     box-shadow: 1px 0 0 rgb(178 172 136 / 0.55);
   }
   .table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child {
@@ -676,10 +738,45 @@ select {
     background: #f2f0ef;
   }
   .table-row-link {
-    @apply cursor-pointer transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-500;
+    @apply cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-500;
   }
   .badge {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs;
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-success {
+    color: #176b34;
+    background-color: #e4f4e9;
+    border-color: #9fd2ae;
+  }
+  .badge-danger {
+    color: #b42318;
+    background-color: #fdebea;
+    border-color: #f0aca6;
+  }
+  .badge-warning {
+    color: #8a5a00;
+    background-color: #fff3d1;
+    border-color: #ecd083;
+  }
+  .badge-info {
+    color: #1c5aa3;
+    background-color: #e4effb;
+    border-color: #a3c4ea;
+  }
+  .badge-neutral {
+    color: #4a5059;
+    background-color: #eceef0;
+    border-color: #c9cdd3;
+  }
+  .badge-violet {
+    color: #6a3bb0;
+    background-color: #f0e9fb;
+    border-color: #c8b3ea;
+  }
+  .badge-orange {
+    color: #b04a07;
+    background-color: #ffeddc;
+    border-color: #f2bf94;
   }
 }
 
@@ -1085,15 +1182,6 @@ html {
   .landing *, .landing *::before, .landing *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .landing-reveal { opacity: 1; transform: none; }
 }
-@media (min-width: 768px) {
-  .table-filters:not([open]) > .table-filters-content { display: block !important; }
-}
-@media (min-width: 1280px) {
-  .table-filters:has(.calls-filters-form) { padding: 0.75rem; }
-  .calls-filters-form .label { margin-bottom: 0.25rem; font-size: 0.7rem; }
-  .calls-filters-form .input { min-height: 38px; padding-block: 0.4rem; padding-inline: 0.6rem; font-size: 0.8rem; }
-  .calls-filters-form select.input { padding-left: 2rem; background-position: left 0.5rem center; }
-}
 
 
 /* Help center */
@@ -1127,3 +1215,298 @@ html {
 .prose-help table { border-collapse: collapse; margin: .75rem 0; }
 .prose-help th, .prose-help td { border: 1px solid #e2e8f0; padding: .35rem .6rem; }
 .prose-help figcaption { font-size: .85rem; color: #64748b; text-align: center; }
+
+/* Illustrated page header, shared by every panel page */
+.panel-hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  z-index: 20;
+  min-height: 0;
+  padding: 0.875rem 1.25rem;
+  border: 1px solid var(--line);
+  background: #f2f0ef radial-gradient(circle, rgb(137 137 137 / 0.12) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+}
+
+.panel-hero::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(to left, #f2f0ef 0%, rgb(242 240 239 / 0.92) 42%, rgb(242 240 239 / 0.2) 100%);
+}
+
+.panel-hero__art {
+  position: absolute;
+  z-index: -2;
+  inset-block: 0;
+  left: 0;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  user-select: none;
+}
+
+.panel-hero__art--illustration {
+  width: min(46%, 30rem);
+  object-fit: contain;
+  object-position: left center;
+  padding: 0.25rem 1rem;
+  opacity: 0.95;
+}
+
+.panel-hero__art--backdrop {
+  width: 70%;
+  object-position: left center;
+  opacity: 0.55;
+}
+
+.panel-hero__body {
+  position: relative;
+  max-width: 38rem;
+}
+
+.panel-hero__actions {
+  position: relative;
+}
+
+@media (max-width: 767px) {
+  .panel-hero { padding: 0.75rem 1rem; }
+  .panel-hero__art { width: 100%; opacity: 0.22; }
+  .panel-hero::after { background: linear-gradient(to left, rgb(242 240 239 / 0.96), rgb(242 240 239 / 0.82)); }
+}
+
+.panel-empty {
+  display: flex;
+  min-height: 11rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+.panel-empty__art {
+  width: min(15rem, 70%);
+  height: auto;
+  margin-bottom: 0.5rem;
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+}
+
+/* Cards: calm hover + consistent section rhythm */
+.panel-shell .card {
+  transition: border-color 200ms ease;
+}
+
+.panel-shell .card:hover {
+  border-color: var(--line-strong);
+}
+
+/* Section titles: dotted band that fades out, separated from the body by a rule */
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child {
+  position: relative;
+  isolation: isolate;
+  margin: -1rem -1rem 1rem !important;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: #4b6e48;
+}
+
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(137 137 137 / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+}
+
+/* Dropdowns always show an arrow (beats the .input background shorthand) */
+.panel-shell select:not([multiple], [size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-left: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%234b6e48' stroke-width='1.6' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.75rem center;
+  background-size: 1.25rem;
+}
+
+/* No nested strokes: cards that hold fields or other cards are plain sections (no frame, fill or padding); the fields keep their own border */
+.panel-shell .table-filters,
+.panel-shell .card .card,
+.panel-shell .card .card:hover {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.panel-shell :is(.table-filters, .card .card) > :is(h2, h3):first-child {
+  margin: 0 0 1rem !important;
+}
+
+/* Same title band when the heading sits in a wrapper next to a description or an action */
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0, .table-filters) > div:first-child:has(> h2:first-child, > div:first-child > h2:first-child) {
+  position: relative;
+  isolation: isolate;
+  margin: -1rem -1rem 1rem !important;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0, .table-filters) > div:first-child:has(> h2:first-child, > div:first-child > h2:first-child)::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(137 137 137 / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+}
+
+.panel-shell .card > div:first-child > h2:first-child,
+.panel-shell .card > div:first-child > div:first-child > h2:first-child {
+  color: #4b6e48;
+}
+
+/* Tables sit flush with their card: no padding between the card frame and the table */
+.panel-shell .card > table.table,
+.panel-shell .card > .overflow-x-auto:has(> table.table) {
+  margin-inline: -1rem;
+}
+
+.panel-shell .card > table.table {
+  width: calc(100% + 2rem);
+  max-width: none;
+}
+
+.panel-shell .card > table.table:first-child,
+.panel-shell .card > .overflow-x-auto:first-child:has(> table.table) {
+  margin-top: -1rem;
+}
+
+.panel-shell .card > table.table:last-child,
+.panel-shell .card > .overflow-x-auto:last-child:has(> table.table) {
+  margin-bottom: -1rem;
+}
+
+/* The card is the scroll container: sticky cells are measured from its content box, so offset by the card padding */
+.panel-shell .card > table.table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child,
+.panel-shell .card > table.table tbody > tr > td:last-child:has(button, select) {
+  inset-inline-end: -1rem;
+}
+
+/* Funnel step list: rows separated by thin rules instead of boxes */
+.funnel-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding-block: 0.6rem;
+  border-bottom: 1px solid rgb(178 172 136 / 0.5);
+}
+
+.funnel-steps li:last-child { border-bottom: 0; }
+.funnel-steps i { flex: none; width: 0.65rem; height: 0.65rem; margin-top: 0.45rem; }
+
+/* Every data table without rows shows the shared empty state instead of a bare header */
+.panel-shell table.table:not(:has(tbody > tr)) {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.panel-shell table.table:not(:has(tbody > tr)) thead {
+  display: none;
+}
+
+.panel-shell table.table:not(:has(tbody > tr))::before {
+  display: block;
+  margin-top: 1.5rem;
+  padding-top: 9.9rem;
+  background: url("./assets/empty-state.svg") center top / 15rem auto no-repeat;
+  color: #4b6e48;
+  content: "موردی یافت نشد.";
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.panel-shell table.table:not(:has(tbody > tr))::after {
+  display: block;
+  max-width: 20rem;
+  margin-inline: auto;
+  padding: 0.25rem 1rem 1.5rem;
+  color: #898989;
+  content: "با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.";
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+/* Headers with actions keep the artwork clear of the buttons */
+.panel-hero:has(.panel-hero__actions) .panel-hero__art--illustration {
+  left: 16rem;
+  width: min(34%, 24rem);
+}
+
+@media (max-width: 1023px) {
+  .panel-hero:has(.panel-hero__actions) .panel-hero__art--illustration { left: 0; width: 100%; opacity: 0.18; }
+}
+
+/* Text: near-black for body and headings, dark grey for secondary copy (no washed-out greys) */
+.panel-shell {
+  --ink: #111111;
+  --ink-soft: #3a3a3a;
+  color: var(--ink);
+}
+
+.panel-shell :is(.text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600) {
+  color: var(--ink);
+}
+
+.panel-shell :is(.text-slate-500, .text-slate-400) {
+  color: var(--ink-soft);
+}
+
+.panel-shell .table th,
+.panel-shell .label {
+  color: var(--ink);
+}
+
+.panel-shell .btn-ghost {
+  color: var(--ink);
+}
+
+.panel-shell ::placeholder {
+  color: #7a7a7a;
+}
+
+/* Call-detail section state illustrations (components/CallStateArt.tsx) */
+.csa { width: 20rem; height: auto; max-width: 100%; }
+.csa--sm { width: 15rem; }
+.csa-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: csa-draw 2.4s ease-in-out infinite; }
+.csa-delay { animation-delay: 0.5s; }
+.csa-spin { animation: csa-spin 1.6s linear infinite; }
+.csa-pulse { animation: csa-pulse 1.6s ease-in-out infinite; }
+.csa-pop { animation: csa-pop 1.8s ease-in-out infinite; }
+.csa-bar { animation: csa-bar 1.1s ease-in-out infinite; }
+@keyframes csa-draw { 0% { stroke-dashoffset: 1; } 55%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -1; } }
+@keyframes csa-spin { to { transform: rotate(360deg); } }
+@keyframes csa-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.25); opacity: 0.6; } }
+@keyframes csa-pop { 0%, 100% { transform: scale(0.85); opacity: 0.4; } 40%, 70% { transform: scale(1); opacity: 1; } }
+@keyframes csa-bar { 0%, 100% { transform: scaleY(0.4); } 50% { transform: scaleY(1.2); } }
+@media (prefers-reduced-motion: reduce) {
+  .csa-draw, .csa-spin, .csa-pulse, .csa-pop, .csa-bar { animation: none; stroke-dashoffset: 0; }
+}

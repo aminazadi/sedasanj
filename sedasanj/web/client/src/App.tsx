@@ -9,6 +9,7 @@ import { HelpArticlePage, HelpErrorPage, HelpHome } from "./pages/Help";
 import ApiDocs from "./pages/ApiDocs";
 import CallDetailPage from "./pages/CallDetail";
 import Calls from "./pages/Calls";
+import Contacts from "./pages/Contacts";
 import Contact from "./pages/Contact";
 import Checkout from "./pages/Checkout";
 import Install from "./pages/Install";
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/calls" element={<Calls />} />
         <Route path="/quick-demo" element={<QuickDemo />} />
         <Route path="/calls/:callId" element={<CallDetailPage />} />
+        <Route path="/contacts" element={<Contacts />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/assistant" element={<Assistant />} />
         {orgAdmin ? <Route path="/scheduled-reports" element={<ScheduledReports />} /> : null}

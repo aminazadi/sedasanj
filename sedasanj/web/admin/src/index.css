@@ -34,6 +34,8 @@
 }
 
 :root {
+  --line: rgb(178 172 136 / 0.5);
+  --line-strong: rgb(137 137 137 / 0.5);
   color-scheme: light;
   --color-canvas: #f2f0ef;
   --color-accent: #b2ac88;
@@ -78,7 +80,7 @@ select {
 .panel-shell input,
 .panel-shell select,
 .panel-shell textarea {
-  border-color: #b2ac88;
+  border-color: var(--line);
   background: #f2f0ef;
 }
 
@@ -88,7 +90,7 @@ select {
 }
 
 .panel-shell .btn-ghost {
-  border-color: #898989;
+  border-color: var(--line-strong);
   color: #4b6e48;
 }
 
@@ -112,7 +114,7 @@ select {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid #b2ac88;
+  border: 1px solid var(--line);
   background:
     radial-gradient(circle at 2.75rem 2.75rem, #f2f0ef 0 2.5rem, rgb(242 240 239 / 0.94) 3rem, rgb(242 240 239 / 0.78) 4rem, rgb(242 240 239 / 0.52) 5rem, rgb(242 240 239 / 0.24) 6rem, transparent 7rem),
     radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
@@ -184,6 +186,7 @@ select {
     position: sticky;
     inset-inline-end: 0;
     z-index: 2;
+    background: linear-gradient(var(--table-row-surface, transparent), var(--table-row-surface, transparent)), #f2f0ef;
     box-shadow: 1px 0 0 rgb(178 172 136 / 0.55);
   }
   .table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child {
@@ -195,7 +198,6 @@ select {
   }
 }
 @media (min-width: 768px) {
-  .table-filters:not([open]) > .table-filters-content { display: block !important; }
 }
 
 
@@ -215,3 +217,211 @@ select {
 .prose-help th, .prose-help td { border: 1px solid #e2e8f0; padding: .35rem .6rem; }
 .prose-help figure { margin: 1rem 0; }
 .prose-help figcaption { font-size: .85rem; color: #64748b; text-align: center; }
+
+/* Illustrated page header: the first heading block of every page gets route art */
+.admin-main > * > :first-child:has(> h1, > div > h1) {
+  position: relative;
+  isolation: isolate;
+  z-index: 20;
+  min-height: 0;
+  padding: 0.875rem 1.25rem;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(to left, #f2f0ef 0%, rgb(242 240 239 / 0.9) 40%, rgb(242 240 239 / 0.3) 100%),
+    var(--page-art) center / cover no-repeat,
+    #f2f0ef;
+}
+
+.admin-main > * > :first-child:has(> h1, > div > h1) > :is(h1, div) {
+  position: relative;
+}
+
+@media (max-width: 767px) {
+  .admin-main > * > :first-child:has(> h1, > div > h1) {
+    padding: 0.75rem 1rem;
+    background:
+      linear-gradient(to left, rgb(242 240 239 / 0.96), rgb(242 240 239 / 0.82)),
+      var(--page-art) center / cover no-repeat,
+      #f2f0ef;
+  }
+}
+
+.panel-empty {
+  display: flex;
+  min-height: 11rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+.panel-empty__art {
+  width: min(15rem, 70%);
+  height: auto;
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+}
+
+/* Section titles: dotted band that fades out, separated from the body by a rule */
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child {
+  position: relative;
+  isolation: isolate;
+  margin: -1rem -1rem 1rem !important;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: #4b6e48;
+}
+
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(137 137 137 / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+}
+
+/* Dropdowns always show an arrow (beats the .input background shorthand) */
+.panel-shell select:not([multiple], [size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-left: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%234b6e48' stroke-width='1.6' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.75rem center;
+  background-size: 1.25rem;
+}
+
+/* No nested strokes: cards that hold fields or other cards are plain sections (no frame, fill or padding); the fields keep their own border */
+.panel-shell .table-filters,
+.panel-shell .card .card,
+.panel-shell .card .card:hover {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.panel-shell :is(.table-filters, .card .card) > :is(h2, h3):first-child {
+  margin: 0 0 1rem !important;
+}
+
+/* Same title band when the heading sits in a wrapper next to a description or an action */
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0, .table-filters) > div:first-child:has(> h2:first-child, > div:first-child > h2:first-child) {
+  position: relative;
+  isolation: isolate;
+  margin: -1rem -1rem 1rem !important;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0, .table-filters) > div:first-child:has(> h2:first-child, > div:first-child > h2:first-child)::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(137 137 137 / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
+}
+
+.panel-shell .card > div:first-child > h2:first-child,
+.panel-shell .card > div:first-child > div:first-child > h2:first-child {
+  color: #4b6e48;
+}
+
+/* Every data table without rows shows the shared empty state instead of a bare header */
+.panel-shell table.table:not(:has(tbody > tr)) {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.panel-shell table.table:not(:has(tbody > tr)) thead {
+  display: none;
+}
+
+.panel-shell table.table:not(:has(tbody > tr))::before {
+  display: block;
+  margin-top: 1.5rem;
+  padding-top: 9.9rem;
+  background: url("./assets/empty-state.svg") center top / 15rem auto no-repeat;
+  color: #4b6e48;
+  content: "موردی یافت نشد.";
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.panel-shell table.table:not(:has(tbody > tr))::after {
+  display: block;
+  max-width: 20rem;
+  margin-inline: auto;
+  padding: 0.25rem 1rem 1.5rem;
+  color: #898989;
+  content: "با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.";
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+/* Tables sit flush with their card: no padding between the card frame and the table */
+.panel-shell .card > table.table,
+.panel-shell .card > .overflow-x-auto:has(> table.table) {
+  margin-inline: -1rem;
+}
+
+.panel-shell .card > table.table {
+  width: calc(100% + 2rem);
+  max-width: none;
+}
+
+.panel-shell .card > table.table:first-child,
+.panel-shell .card > .overflow-x-auto:first-child:has(> table.table) {
+  margin-top: -1rem;
+}
+
+.panel-shell .card > table.table:last-child,
+.panel-shell .card > .overflow-x-auto:last-child:has(> table.table) {
+  margin-bottom: -1rem;
+}
+
+/* The card is the scroll container: sticky cells are measured from its content box, so offset by the card padding */
+.panel-shell .card > table.table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child,
+.panel-shell .card > table.table tbody > tr > td:last-child:has(button, select) {
+  inset-inline-end: -1rem;
+}
+
+/* Text: near-black for body and headings, dark grey for secondary copy (no washed-out greys) */
+.panel-shell {
+  --ink: #111111;
+  --ink-soft: #3a3a3a;
+  color: var(--ink);
+}
+
+.panel-shell :is(.text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600) {
+  color: var(--ink);
+}
+
+.panel-shell :is(.text-slate-500, .text-slate-400) {
+  color: var(--ink-soft);
+}
+
+.panel-shell .table th,
+.panel-shell .label {
+  color: var(--ink);
+}
+
+.panel-shell .btn-ghost {
+  color: var(--ink);
+}
+
+.panel-shell ::placeholder {
+  color: #7a7a7a;
+}

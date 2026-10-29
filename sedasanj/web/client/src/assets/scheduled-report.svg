@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" fill="none" role="img" aria-label="گزارش زمان‌بندی‌شده">
+  <ellipse cx="240" cy="270" rx="160" ry="14" fill="#4b6e48" opacity=".1"/>
+  <g stroke="#b2ac88" stroke-width="1.5" stroke-linecap="round">
+    <path d="M60 80h44"/>
+    <path d="M420 120h-20c-12 0-14 10-26 10"/>
+    <path d="M70 232c-22 0-28-12-28-26"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="2" fill="#f2f0ef">
+    <circle cx="60" cy="80" r="6"/><circle cx="420" cy="120" r="6"/><circle cx="42" cy="206" r="5"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="5" stroke-linecap="round" opacity=".55">
+    <path d="M24 124v24M36 112v48M48 120v32"/>
+  </g>
+  <!-- report -->
+  <g>
+    <path d="M92 52h98l32 32v146H92z" fill="#f2f0ef" stroke="#4b6e48" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M190 52v32h32" stroke="#4b6e48" stroke-width="2.5" stroke-linejoin="round" fill="#e7ecdd"/>
+    <g stroke="#b2ac88" stroke-width="5" stroke-linecap="round"><path d="M110 74h56"/><path d="M110 90h34"/></g>
+    <g stroke="#4b6e48" stroke-width="2.5" fill="#e7ecdd">
+      <rect x="112" y="150" width="18" height="40"/>
+      <rect x="138" y="132" width="18" height="58"/>
+      <rect x="164" y="112" width="18" height="78" fill="#4b6e48"/>
+    </g>
+    <path d="M108 190h92" stroke="#4b6e48" stroke-width="3" stroke-linecap="round"/>
+    <g stroke="#b2ac88" stroke-width="4" stroke-linecap="round"><path d="M110 208h78"/><path d="M110 218h50"/></g>
+  </g>
+  <!-- link -->
+  <path d="M254 156h-14" stroke="#4b6e48" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 6" opacity=".8"/>
+  <path d="M239 149l-8 7 8 7" stroke="#4b6e48" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- calendar -->
+  <g>
+    <rect x="262" y="82" width="150" height="128" fill="#f2f0ef" stroke="#4b6e48" stroke-width="2.5"/>
+    <rect x="262" y="82" width="150" height="30" fill="#e7ecdd" stroke="#4b6e48" stroke-width="2.5"/>
+    <g stroke="#4b6e48" stroke-width="5" stroke-linecap="round"><path d="M296 70v22"/><path d="M378 70v22"/></g>
+    <g fill="#b2ac88" opacity=".7">
+      <rect x="278" y="126" width="16" height="12"/><rect x="304" y="126" width="16" height="12"/><rect x="330" y="126" width="16" height="12"/><rect x="356" y="126" width="16" height="12"/><rect x="382" y="126" width="16" height="12"/>
+      <rect x="278" y="148" width="16" height="12"/><rect x="304" y="148" width="16" height="12"/><rect x="330" y="148" width="16" height="12"/>
+      <rect x="278" y="170" width="16" height="12"/><rect x="304" y="170" width="16" height="12"/>
+    </g>
+    <rect x="356" y="146" width="22" height="16" fill="#4b6e48"/>
+    <path d="M361 154l4 4 8-8" stroke="#f2f0ef" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- clock -->
+  <g>
+    <circle cx="384" cy="214" r="38" fill="#f2f0ef" stroke="#4b6e48" stroke-width="5"/>
+    <circle cx="384" cy="214" r="26" stroke="#b2ac88" stroke-width="3"/>
+    <path d="M384 214v-16M384 214l12 8" stroke="#4b6e48" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="384" cy="214" r="4" fill="#4b6e48"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="2.5" stroke-linecap="round">
+    <path d="M234 40v14M227 47h14"/>
+    <path d="M440 244v10M435 249h10" stroke="#b2ac88"/>
+  </g>
+</svg>

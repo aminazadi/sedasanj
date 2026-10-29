@@ -84,7 +84,7 @@ export default function Tasks() {
             className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               view === item.id
                 ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-                : "border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48] hover:bg-[#B2AC88] hover:text-black"
+                : "border-[color:var(--line)] bg-[#F2F0EF] text-[#4B6E48] hover:bg-[#B2AC88] hover:text-black"
             }`}
             onClick={() => setView(item.id)}
           >

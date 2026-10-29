@@ -1,41 +1,50 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { fmt, formatJobError, request } from "../api";
-import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
+import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import type { Job, Page } from "../types";
-import TableFilters from "@cbi/web-shared/components/TableFilters";
+import FilterBar, { FilterSelect } from "@cbi/web-shared/components/FilterBar";
+import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
+import { useResource } from "@cbi/web-shared/lib/useResource";
+
+type Operations = {job_counts:Record<string,number>;outbox_total:number;outbox_pending:Array<{id:string;queue_name:string;function_name:string;attempts:number;wait_seconds:number;last_error:string|null}>};
+
+const COLUMNS: SkeletonColumn[] = [
+  { label: "نوع", width: "3rem" },
+  { label: "تماس", width: "10rem", dir: "ltr", cellClassName: "max-w-[16rem] truncate" },
+  { label: "تلاش", width: "1.5rem" },
+  { label: "اجرا پس از", width: "8.5rem" },
+  { label: "خطا", width: "12rem", cellClassName: "max-w-md whitespace-normal" },
+  { label: null, width: "5.5rem", height: "1.875rem" },
+];
 
 const KINDS = ["", "asr", "emotion", "llm", "notify"];
+const DEFAULT_STATUS = "failed_retryable";
 
 export default function Jobs() {
   const limit = 25;
   const [offset, setOffset] = useState(0);
   const [outboxOffset, setOutboxOffset] = useState(0);
-  const [page, setPage] = useState<Page<Job> | null>(null);
   const [kind, setKind] = useState("");
-  const [status, setStatus] = useState("failed_retryable");
+  const [status, setStatus] = useState(DEFAULT_STATUS);
   const [error, setError] = useState<string | null>(null);
-  const [operations, setOperations] = useState<{job_counts:Record<string,number>;outbox_total:number;outbox_pending:Array<{id:string;queue_name:string;function_name:string;attempts:number;wait_seconds:number;last_error:string|null}>}|null>(null);
-
-  const reload = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
-      if (kind) params.set("kind", kind);
-      setPage(await request<Page<Job>>(`/v1/admin/jobs?${params.toString()}`));
-      setOperations(await request<{job_counts:Record<string,number>;outbox_total:number;outbox_pending:Array<{id:string;queue_name:string;function_name:string;attempts:number;wait_seconds:number;last_error:string|null}>}>(`/v1/admin/operations?offset=${outboxOffset}&limit=${limit}`));
-    } catch (err) {
-      setError((err as Error).message);
-    }
+  const jobsData = useResource<{ page: Page<Job>; operations: Operations }>(async (signal) => {
+    const params = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
+    if (kind) params.set("kind", kind);
+    const [page, operations] = await Promise.all([
+      request<Page<Job>>(`/v1/admin/jobs?${params.toString()}`, { signal }),
+      request<Operations>(`/v1/admin/operations?offset=${outboxOffset}&limit=${limit}`, { signal }),
+    ]);
+    return { page, operations };
   }, [kind, offset, outboxOffset, status]);
+  const reload = async () => jobsData.reload();
+  const page = jobsData.data?.page ?? null;
+  const operations = jobsData.data?.operations ?? null;
   const jobs = page?.items ?? null;
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
 
   async function requeue(jobId: string) {
     try {
       await request(`/v1/admin/jobs/${jobId}/requeue`, { method: "POST" });
-      await reload();
+      jobsData.reload();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -43,43 +52,21 @@ export default function Jobs() {
 
   return (
     <div className="space-y-4">
-      <ErrorBox message={error} />
-      <TableFilters><div className="flex flex-wrap gap-3">
-        <div>
-          <label className="label">نوع کار</label>
-          <select className="input" value={kind} onChange={(event) => { setKind(event.target.value); setOffset(0); }}>
-            {KINDS.map((item) => (
-              <option key={item} value={item}>
-                {item || "همه"}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">وضعیت</label>
-          <select
-            className="input"
-            value={status}
-            onChange={(event) => { setStatus(event.target.value); setOffset(0); }}
-          >
-            <option value="failed_retryable">خطای موقت</option>
-            <option value="failed_terminal">خطای نهایی</option>
-            <option value="queued">در صف</option>
-            <option value="running">در اجرا</option>
-            <option value="succeeded">موفق</option>
-          </select>
-        </div>
-        <div className="flex items-end">
-          <button className="btn" onClick={() => void reload()}>
-            بازخوانی
-          </button>
-        </div>
-      </div></TableFilters>
+      <ErrorBox message={jobsData.error ?? error} />
+      <FilterBar
+        hasActive={Boolean(kind) || status !== DEFAULT_STATUS}
+        onClear={() => { setKind(""); setStatus(DEFAULT_STATUS); setOffset(0); }}
+        actions={<button type="button" className="btn min-h-[42px]" onClick={() => void reload()}>بازخوانی</button>}
+        fields={[
+          { id: "status", label: "وضعیت", pinned: true, active: status !== DEFAULT_STATUS, onRemove: () => { setStatus(DEFAULT_STATUS); setOffset(0); }, control: <FilterSelect allLabel={null} value={status} onChange={(value) => { setStatus(value); setOffset(0); }} options={[{ value: "failed_retryable", label: "خطای موقت" }, { value: "failed_terminal", label: "خطای نهایی" }, { value: "queued", label: "در صف" }, { value: "running", label: "در اجرا" }, { value: "succeeded", label: "موفق" }]} /> },
+          { id: "kind", label: "نوع کار", active: Boolean(kind), onRemove: () => { setKind(""); setOffset(0); }, control: <FilterSelect value={kind} onChange={(value) => { setKind(value); setOffset(0); }} options={KINDS.filter(Boolean).map((item) => ({ value: item, label: item }))} /> },
+        ]}
+      />
 
       <div className="card">
-        {!jobs ? (
-          <Loading />
-        ) : jobs.length === 0 ? (
+        {jobsData.loading ? (
+          <SkeletonTable columns={COLUMNS} rows={jobs?.length ? Math.min(jobs.length, limit) : 8} />
+        ) : !jobs || jobs.length === 0 ? (
           <Empty />
         ) : (
           <table className="table">

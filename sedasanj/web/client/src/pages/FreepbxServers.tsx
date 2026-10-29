@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { SeverityBadge } from "@cbi/web-shared/components/ReleaseTimeline";
 import { fmt } from "../api";
-import { ErrorBox } from "../components/Widgets";
+import { Empty, ErrorBox, Loading } from "../components/Widgets";
+import { PageHeader } from "../components/PageHeader";
 import { loadModuleFleet, type ModuleFleet, type ModuleInstallation } from "../moduleUpdates";
 
 const UPDATE_STATUS: Record<NonNullable<ModuleInstallation["last_update_status"]>, { label: string; className: string }> = {
-  started: { label: "در حال به‌روزرسانی", className: "bg-sky-50 text-sky-700" },
-  succeeded: { label: "به‌روزرسانی موفق", className: "bg-emerald-50 text-emerald-700" },
-  failed: { label: "به‌روزرسانی ناموفق", className: "bg-rose-50 text-rose-700" },
-  rolled_back: { label: "بازگردانی به نسخهٔ قبل", className: "bg-amber-50 text-amber-800" },
+  started: { label: "در حال به‌روزرسانی", className: "badge-info" },
+  succeeded: { label: "به‌روزرسانی موفق", className: "badge-success" },
+  failed: { label: "به‌روزرسانی ناموفق", className: "badge-danger" },
+  rolled_back: { label: "بازگردانی به نسخهٔ قبل", className: "badge-warning" },
 };
 
 export default function FreepbxServers() {
@@ -24,6 +25,7 @@ export default function FreepbxServers() {
 
   return (
     <div className="space-y-4">
+      <PageHeader title="سرورهای FreePBX" description="وضعیت سرورهای متصل و نسخهٔ ماژول نصب‌شده روی هر کدام" />
       <ErrorBox message={error} />
       {fleet?.latest ? (
         <section className="card flex flex-wrap items-center justify-between gap-3">
@@ -40,14 +42,14 @@ export default function FreepbxServers() {
       ) : null}
 
       <section className="card">
-        <h2 className="mb-1 font-bold text-slate-900">سرورهای FreePBX سازمان</h2>
-        <p className="mb-4 text-sm text-slate-500">
+        <h2 className="font-bold">سرورهای FreePBX سازمان</h2>
+        <p className="section-hint mb-4">
           هر سرور با باز شدن صفحهٔ «Seda Sanj» در پنل FreePBX این‌جا ثبت می‌شود. برای به‌روزرسانی، همان صفحه را در FreePBX باز کنید و دکمهٔ «به‌روزرسانی» را بزنید.
         </p>
         {!fleet && !error ? (
-          <div className="py-10 text-center text-slate-400">در حال بارگذاری…</div>
+          <Loading />
         ) : !fleet?.items.length ? (
-          <div className="py-10 text-center text-slate-400">هنوز سروری گزارش نشده است.</div>
+          <Empty>هنوز سروری گزارش نشده است.</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
@@ -70,9 +72,9 @@ export default function FreepbxServers() {
                       <td>
                         <span className="font-mono" dir="ltr" data-keep-latin-digits>v{item.module_version}</span>{" "}
                         {item.update_available ? (
-                          <span className="badge bg-amber-50 text-amber-800">نسخهٔ <span dir="ltr" data-keep-latin-digits>v{item.latest_version}</span> آماده است</span>
+                          <span className="badge badge-warning">نسخهٔ <span dir="ltr" data-keep-latin-digits>v{item.latest_version}</span> آماده است</span>
                         ) : (
-                          <span className="badge bg-emerald-50 text-emerald-700">به‌روز</span>
+                          <span className="badge badge-success">به‌روز</span>
                         )}
                       </td>
                       <td dir="ltr" className="text-xs" data-keep-latin-digits>{item.freepbx_version ?? "—"}</td>

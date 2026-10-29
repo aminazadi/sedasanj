@@ -1,13 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
-import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
+import { Empty, ErrorBox, Pagination } from "../components/Widgets";
+import { FilterSelect, useFilterBar } from "@cbi/web-shared/components/FilterBar";
+import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
+import { useResource } from "@cbi/web-shared/lib/useResource";
 import type { HelpArticleSummary, HelpKind, HelpStatus } from "../types";
 
 interface ArticlePage {
   items: HelpArticleSummary[];
   total: number;
 }
+
+const COLUMNS: SkeletonColumn[] = [
+  { label: "عنوان", width: "12rem" },
+  { label: "نوع", width: "3rem" },
+  { label: "وضعیت", kind: "badge" },
+  { label: "نشانی", width: "8rem", dir: "ltr" },
+  { label: "آخرین ویرایش", width: "5rem" },
+];
 
 const KIND_LABEL: Record<HelpKind, string> = { article: "مقاله", error: "خطا", faq: "پرسش متداول" };
 const STATUS_META: Record<HelpStatus, { label: string; className: string }> = {
@@ -22,25 +33,16 @@ export default function HelpArticles() {
   const [kind, setKind] = useState<HelpKind | "">("");
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState<ArticlePage | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-      if (status) params.set("status", status);
-      if (kind) params.set("kind", kind);
-      if (query) params.set("q", query);
-      setPage(await request<ArticlePage>(`/v1/admin/help/articles?${params}`));
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
-    }
+  const articles = useResource<ArticlePage>((signal) => {
+    const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    if (status) params.set("status", status);
+    if (kind) params.set("kind", kind);
+    if (query) params.set("q", query);
+    return request<ArticlePage>(`/v1/admin/help/articles?${params}`, { signal });
   }, [offset, status, kind, query]);
+  const page = articles.data;
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const filterBar = useFilterBar({ hasActive: Boolean(q || query || status || kind), onClear: () => { setQ(""); setQuery(""); setStatus(""); setKind(""); setOffset(0); }, fields: [ { id: "q", label: "جستجو", active: Boolean(q || query), onRemove: () => { setQ(""); setQuery(""); setOffset(0); }, className: "sm:w-64", control: <form onSubmit={(e) => { e.preventDefault(); setOffset(0); setQuery(q.trim()); }}><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="عنوان یا نشانی" /></form> }, { id: "status", label: "وضعیت", active: Boolean(status), onRemove: () => { setOffset(0); setStatus(""); }, control: <FilterSelect value={status} onChange={(value) => { setOffset(0); setStatus(value as HelpStatus | ""); }} options={[{ value: "published", label: "منتشرشده" }, { value: "draft", label: "پیش‌نویس" }]} /> }, { id: "kind", label: "نوع", active: Boolean(kind), onRemove: () => { setOffset(0); setKind(""); }, control: <FilterSelect value={kind} onChange={(value) => { setOffset(0); setKind(value as HelpKind | ""); }} options={[{ value: "article", label: "مقاله" }, { value: "error", label: "خطا" }, { value: "faq", label: "پرسش متداول" }]} /> }, ] });
 
   return (
     <div className="space-y-4">
@@ -51,59 +53,18 @@ export default function HelpArticles() {
             متن، تصویر و ویدئو برای صفحهٔ عمومی «مرکز راهنما» و لینک کدهای خطا.
           </p>
         </div>
-        <Link to="/help/articles/new" className="btn">
-          مقالهٔ جدید
-        </Link>
-      </div>
-      <ErrorBox message={error} />
-      <div className="card flex flex-wrap items-end gap-3">
-        <div>
-          <label className="label">جستجو</label>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setOffset(0);
-              setQuery(q.trim());
-            }}
-          >
-            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="عنوان یا نشانی" />
-          </form>
-        </div>
-        <div>
-          <label className="label">وضعیت</label>
-          <select
-            className="input"
-            value={status}
-            onChange={(e) => {
-              setOffset(0);
-              setStatus(e.target.value as HelpStatus | "");
-            }}
-          >
-            <option value="">همه</option>
-            <option value="published">منتشرشده</option>
-            <option value="draft">پیش‌نویس</option>
-          </select>
-        </div>
-        <div>
-          <label className="label">نوع</label>
-          <select
-            className="input"
-            value={kind}
-            onChange={(e) => {
-              setOffset(0);
-              setKind(e.target.value as HelpKind | "");
-            }}
-          >
-            <option value="">همه</option>
-            <option value="article">مقاله</option>
-            <option value="error">خطا</option>
-            <option value="faq">پرسش متداول</option>
-          </select>
+        <div className="flex flex-wrap items-end justify-end gap-3">
+          <Link to="/help/articles/new" className="btn inline-flex min-h-[42px] items-center">
+            مقالهٔ جدید
+          </Link>
+          {filterBar.toolbar}
         </div>
       </div>
-      {!page ? (
-        <Loading />
-      ) : page.items.length === 0 ? (
+      <ErrorBox message={articles.error} />
+      {filterBar.fields}
+      {articles.loading ? (
+        <div className="card overflow-x-auto p-0"><SkeletonTable columns={COLUMNS} rows={page?.items.length ? Math.min(page.items.length, limit) : 8} /></div>
+      ) : !page || page.items.length === 0 ? (
         <Empty>هنوز مقاله‌ای نیست. با «مقالهٔ جدید» شروع کنید یا از «کدهای خطا» برای هر کد مقاله بسازید.</Empty>
       ) : (
         <div className="card overflow-x-auto p-0">

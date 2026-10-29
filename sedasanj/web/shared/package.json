@@ -6,9 +6,13 @@
   "exports": {
     "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx",
     "./components/ReleaseTimeline": "./components/ReleaseTimeline.tsx",
-    "./components/TableFilters": "./components/TableFilters.tsx",
+    "./components/FilterBar": "./components/FilterBar.tsx",
+    "./components/Skeleton": "./components/Skeleton.tsx",
     "./components/ToggleSwitch": "./components/ToggleSwitch.tsx",
     "./lib/otp": "./lib/otp.ts",
+    "./lib/resourceState": "./lib/resourceState.ts",
+    "./lib/useResource": "./lib/useResource.ts",
+    "./styles/skeleton.css": "./styles/skeleton.css",
     "./theme": "./theme.js"
   },
   "peerDependencies": {

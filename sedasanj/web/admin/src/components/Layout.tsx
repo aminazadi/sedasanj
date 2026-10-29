@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import logo from "../assets/logo-small-fa.webp";
+import { artForPath } from "./pageArt";
 
 type NavigationGroup = {
   label: string;
@@ -192,7 +193,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{children}</main>
+      <main className="admin-main mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8" style={{ "--page-art": `url(${artForPath(location.pathname)})` } as CSSProperties}>{children}</main>
     </div>
   );
 }

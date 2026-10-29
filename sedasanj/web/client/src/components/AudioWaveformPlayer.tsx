@@ -46,7 +46,7 @@ type AudioWaveformPlayerProps = {
   onWaveformReady?: () => void;
 };
 
-const controlClassName = "flex h-11 w-11 shrink-0 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF] text-[#000000] transition hover:border-[#4B6E48] hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]";
+const controlClassName = "flex h-11 w-11 shrink-0 items-center justify-center border border-[color:var(--line)] bg-[#F2F0EF] text-[#000000] transition hover:border-[#4B6E48] hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]";
 
 export default function AudioWaveformPlayer({ audioRef, downloadName, src, onError, onWaveformReady }: AudioWaveformPlayerProps) {
   const [duration, setDuration] = useState(0);
@@ -137,7 +137,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
   }
 
   return (
-    <div className="border border-[#B2AC88] bg-white/70 px-4 py-3 shadow-sm sm:px-5" dir="rtl">
+    <div className="border border-[color:var(--line)] bg-white/70 px-4 py-3 shadow-sm sm:px-5" dir="rtl">
       <audio
         ref={audioRef}
         src={src}
@@ -163,7 +163,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
 
       <button
         type="button"
-        className="group relative flex h-16 w-full items-center gap-[3px] overflow-hidden border-y border-[#B2AC88]/60 bg-[#F2F0EF]/60 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]"
+        className="group relative flex h-16 w-full items-center gap-[3px] overflow-hidden border-y border-[color:var(--line)]/60 bg-[#F2F0EF]/60 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]"
         onClick={seek}
         aria-label={waveformLabel}
         dir="ltr"

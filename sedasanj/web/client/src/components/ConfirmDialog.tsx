@@ -48,7 +48,7 @@ export default function ConfirmDialog({
       }}
     >
       <div
-        className="w-full max-w-sm border border-[#B2AC88] bg-white p-5 shadow-2xl"
+        className="w-full max-w-sm border border-[color:var(--line)] bg-white p-5 shadow-2xl"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -64,7 +64,7 @@ export default function ConfirmDialog({
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            className="min-h-10 border border-[#B2AC88] px-4 text-sm font-bold text-[#4B6E48] transition hover:bg-[#F2F0EF] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-10 border border-[color:var(--line)] px-4 text-sm font-bold text-[#4B6E48] transition hover:bg-[#F2F0EF] disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
             onClick={onCancel}
           >

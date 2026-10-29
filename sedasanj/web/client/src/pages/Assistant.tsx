@@ -1,3 +1,4 @@
+import { CallStateArt } from "../components/CallStateArt";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { Link, useSearchParams } from "react-router-dom";
@@ -9,7 +10,8 @@ import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import PersianSpeechInputButton from "../components/PersianSpeechInputButton";
-import { ErrorBox, Loading, SentimentBadge, StatusBadge } from "../components/Widgets";
+import { ErrorBox, SentimentBadge, StatusBadge } from "../components/Widgets";
+import { Skeleton } from "@cbi/web-shared/components/Skeleton";
 import { useDesktopMenuToggle } from "../components/Layout";
 import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage, OrganizationMemory } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
@@ -357,6 +359,87 @@ function TypingPromptGuide() {
   return <span aria-hidden="true">{Array.from(promptGuides[guideIndex]).slice(0, characterCount).join("")}<span className="animate-pulse">|</span></span>;
 }
 
+function AssistantBubbleSkeleton({ side, lines }: { side: "user" | "assistant"; lines: number[] }) {
+  return (
+    <div className="flex w-full items-end gap-4" dir="ltr" style={{ justifyContent: side === "user" ? "flex-end" : "flex-start" }}>
+      {side === "assistant" ? <Skeleton style={{ width: "2.25rem", height: "2.25rem" }} /> : null}
+      <div className="flex max-w-[calc(85%_-_2.75rem)] w-full flex-col gap-2 border border-[#B2AC88] bg-white px-4 py-3 sm:w-[28rem]" dir="rtl">
+        {lines.map((width, index) => <Skeleton key={index} className="skeleton--line" style={{ width: `${width}%` }} />)}
+      </div>
+      {side === "user" ? <Skeleton style={{ width: "2.25rem", height: "2.25rem" }} /> : null}
+    </div>
+  );
+}
+
+/** Placeholder for the message area only, shown while another conversation loads. */
+function AssistantMessagesSkeleton() {
+  return (
+    <div className="space-y-5" aria-hidden="true">
+      <span className="sr-only" role="status">در حال بارگذاری</span>
+      <AssistantBubbleSkeleton side="user" lines={[70]} />
+      <AssistantBubbleSkeleton side="assistant" lines={[95, 88, 60]} />
+      <AssistantBubbleSkeleton side="user" lines={[55]} />
+      <AssistantBubbleSkeleton side="assistant" lines={[92, 75]} />
+    </div>
+  );
+}
+
+/** Placeholder for the conversation list only, shown while another tab's list loads. */
+function AssistantListSkeleton({ label = "گفتگوهای فعال" }: { label?: string }) {
+  return (
+    <div className="mb-5" aria-hidden="true">
+      <span className="sr-only" role="status">در حال بارگذاری</span>
+      <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">{label}</p>
+      <div className="space-y-1">{Array.from({ length: 7 }, (_, index) => <Skeleton key={index} className="w-full" style={{ height: "2.75rem", opacity: 1 - index * 0.08 }} />)}</div>
+    </div>
+  );
+}
+
+/** Same shell as the loaded page (conversation sidebar, message area, composer) with placeholder content. */
+function AssistantSkeleton() {
+  return (
+    <div className="grid min-h-[calc(100vh-10rem)] items-start lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[18rem_minmax(0,1fr)] lg:border lg:border-[#B2AC88]" dir="rtl">
+      <span className="sr-only" role="status">در حال بارگذاری</span>
+      <div className="flex w-full items-center justify-between border border-[#B2AC88] bg-[#F2F0EF] px-4 py-3 lg:hidden" aria-hidden="true">
+        <Skeleton className="skeleton--line" style={{ width: "8rem" }} />
+        <Skeleton className="skeleton--line" style={{ width: "4rem" }} />
+      </div>
+      <aside className="assistant-sidebar relative hidden flex-col overflow-hidden lg:sticky lg:top-8 lg:flex lg:h-[calc(100vh-4rem)] lg:w-auto lg:border-l lg:border-[#B2AC88] lg:shadow-none" aria-hidden="true">
+        <nav className="flex-1 px-3 pb-24 pt-3">
+          <div className="mb-5 flex items-center gap-2">
+            <Skeleton style={{ width: "2.75rem", height: "2.75rem" }} />
+            <div className="flex flex-1 gap-1 border border-[#B2AC88] bg-white p-1">
+              {[0, 1, 2].map((index) => <Skeleton key={index} className="flex-1" style={{ height: "2.25rem" }} />)}
+            </div>
+          </div>
+          <AssistantListSkeleton />
+        </nav>
+        <Skeleton className="absolute bottom-5 left-5" style={{ width: "3.5rem", height: "3.5rem" }} />
+      </aside>
+      <section className="relative flex h-[calc(100dvh-10rem)] min-h-[32rem] flex-col overflow-hidden border border-[#B2AC88] bg-[#F2F0EF] lg:h-[calc(100dvh-4rem)] lg:border-0" aria-hidden="true">
+        <div className="absolute left-3 top-3 flex items-center gap-2 md:left-4 md:top-4">
+          <Skeleton style={{ width: "2.75rem", height: "2.75rem" }} />
+          <Skeleton style={{ width: "2.75rem", height: "2.75rem" }} />
+        </div>
+        <div className="flex-1 space-y-5 overflow-hidden p-4 pt-20 md:p-7 md:pt-20">
+          <AssistantMessagesSkeleton />
+        </div>
+        <div className="relative shrink-0 border-t border-[#B2AC88] bg-white p-3">
+          <div className="flex items-start gap-2">
+            <div className="relative min-w-0 flex-1 bg-[#F2F0EF]" style={{ height: "4.25rem" }}>
+              <div className="absolute inset-x-3 bottom-1 flex items-center justify-between gap-3">
+                <Skeleton style={{ width: "40%", height: "0.75rem" }} />
+                <div className="flex gap-1">{[0, 1, 2].map((index) => <Skeleton key={index} style={{ width: "3.5rem", height: "1.5rem" }} />)}</div>
+              </div>
+            </div>
+            <Skeleton className="self-stretch" style={{ width: "3rem", minHeight: "3rem" }} />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function Assistant() {
   const { session } = useAuth();
   const desktopMenuToggle = useDesktopMenuToggle();
@@ -374,6 +457,12 @@ export default function Assistant() {
   const [listening, setListening] = useState(false);
   const speechPrefixRef = useRef("");
   const [loading, setLoading] = useState(true);
+  const conversationsRef = useRef<ChatConversation[]>([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  conversationsRef.current = conversations;
+  const initialLoadDoneRef = useRef(false);
+  const loadedListKeyRef = useRef("");
   const [sendingRuns, setSendingRuns] = useState<Record<string, string | null>>({});
   const sendingRunsRef = useRef(sendingRuns);
   sendingRunsRef.current = sendingRuns;
@@ -502,6 +591,7 @@ export default function Assistant() {
 
   async function loadMessages(item: ChatConversation) {
     try {
+      setMessagesLoading(true);
       setError(null);
       selectedConversationIdRef.current = item.id;
       const rows = await request<ChatMessage[]>(`/v1/assistant/conversations/${item.id}/messages`);
@@ -516,6 +606,8 @@ export default function Assistant() {
       setConversationsOpen(false);
     } catch (err) {
       setError(assistantErrorMessage(err));
+    } finally {
+      if (selectedConversationIdRef.current === item.id) setMessagesLoading(false);
     }
   }
   async function create(callId: string | null = null, isCurrent: () => boolean = () => true) {
@@ -669,15 +761,24 @@ export default function Assistant() {
   useEffect(() => {
     let active = true;
     void (async () => {
+      // Only the first load blanks the page; later changes reload just the list (tab switch) or the messages (conversation switch).
+      const listKey = `${training}|${conversationView}|${session?.role}`;
+      const needList = loadedListKeyRef.current !== listKey;
       try {
-        setLoading(true);
-        const primaryRows = await request<ChatConversation[]>(`/v1/assistant/conversations?mode=${training ? "training" : "normal"}`);
-        if (!active) return;
-        const rows = !training && conversationView === "archived" && isOrgAdmin(session?.role)
-          ? [...primaryRows, ...(await request<ChatConversation[]>("/v1/assistant/conversations?mode=training"))].sort((first, second) => Date.parse(second.updated_at) - Date.parse(first.updated_at))
-          : primaryRows;
-        if (!active) return;
-        setConversations(rows);
+        if (!initialLoadDoneRef.current) setLoading(true);
+        else if (needList) setListLoading(true);
+        let rows = conversationsRef.current;
+        if (needList) {
+          const primaryRows = await request<ChatConversation[]>(`/v1/assistant/conversations?mode=${training ? "training" : "normal"}`);
+          if (!active) return;
+          rows = !training && conversationView === "archived" && isOrgAdmin(session?.role)
+            ? [...primaryRows, ...(await request<ChatConversation[]>("/v1/assistant/conversations?mode=training"))].sort((first, second) => Date.parse(second.updated_at) - Date.parse(first.updated_at))
+            : primaryRows;
+          if (!active) return;
+          setConversations(rows);
+          loadedListKeyRef.current = listKey;
+        }
+        setListLoading(false);
         const selected = rows.find((item) => item.id === requestedConversationId);
         const callId = training ? null : requestedCallId;
         if (callId) await create(callId, () => active);
@@ -687,7 +788,7 @@ export default function Assistant() {
           setMessages([]);
           setEphemeral(true);
         }
-        else if (selected) await loadMessages(selected);
+        else if (selected) { if (needList || selectedConversationIdRef.current !== selected.id) await loadMessages(selected); }
         else if (requestedConversationId) {
           selectedConversationIdRef.current = null;
           setConversation(null);
@@ -706,7 +807,7 @@ export default function Assistant() {
           else await create(null, () => active);
         }
       } catch (err) { if (active) setError(assistantErrorMessage(err)); }
-      finally { if (active) setLoading(false); }
+      finally { if (active) { initialLoadDoneRef.current = true; setLoading(false); setListLoading(false); setMessagesLoading(false); } }
     })();
     return () => { active = false; };
   }, [training, conversationView, session?.role, requestedConversationId, requestedCallId, temporaryRequested]);
@@ -1331,7 +1432,7 @@ export default function Assistant() {
       </div>
     </div>;
   }
-  if (loading) return <Loading />;
+  if (loading) return <AssistantSkeleton />;
   return <div className={`grid min-h-[calc(100vh-10rem)] items-start lg:min-h-[calc(100vh-4rem)] lg:border lg:border-[#B2AC88] ${memoryPanelOpen ? "lg:grid-cols-[18rem_minmax(0,1fr)_22rem]" : "lg:grid-cols-[18rem_minmax(0,1fr)]"}`} dir="rtl">
     <button type="button" className="flex w-full items-center justify-between border border-[#B2AC88] bg-[#F2F0EF] px-4 py-3 text-[#4B6E48] lg:hidden" onClick={() => setConversationsOpen(true)} aria-expanded={conversationsOpen} aria-controls="assistant-conversations-menu">
       <span className="min-w-0 truncate text-sm font-bold">{ephemeral ? "چت موقت" : conversation?.title || "گفتگوی جدید"}</span>
@@ -1352,7 +1453,7 @@ export default function Assistant() {
             {isOrgAdmin(session?.role) ? <button type="button" role="tab" aria-selected={training} className={`min-h-9 flex-1 px-2 text-xs font-bold transition ${training ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => selectAssistantTab("train")}>آموزش</button> : null}
           </div>
         </div>
-        {conversationView === "active" ? <>{conversations.some((item) => item.pinned_at && !item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">پین‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.pinned_at && !item.archived_at).sort((first, second) => Date.parse(second.pinned_at || "") - Date.parse(first.pinned_at || "")).map(renderConversation)}</div></div> : null}<div className="mb-5">
+        {listLoading ? <AssistantListSkeleton label={conversationView === "archived" ? "گفتگوهای آرشیوشده" : "گفتگوهای فعال"} /> : conversationView === "active" ? <>{conversations.some((item) => item.pinned_at && !item.archived_at) ? <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">پین‌شده‌ها</p><div className="space-y-1">{conversations.filter((item) => item.pinned_at && !item.archived_at).sort((first, second) => Date.parse(second.pinned_at || "") - Date.parse(first.pinned_at || "")).map(renderConversation)}</div></div> : null}<div className="mb-5">
           <p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوهای فعال</p>
           {conversations.some((item) => !item.archived_at && !item.pinned_at) ? <div className="space-y-1">{conversations.filter((item) => !item.archived_at && !item.pinned_at).map(renderConversation)}</div> : <p className="px-3 py-8 text-center text-xs text-[#898989]">گفتگوی فعال دیگری وجود ندارد.</p>}
         </div></> : <div className="mb-5"><p className="mb-2 px-3 text-[11px] font-medium text-[#898989]">گفتگوهای آرشیوشده</p>{conversations.some((item) => item.archived_at) ? <div className="space-y-1">{conversations.filter((item) => item.archived_at).map(renderConversation)}</div> : <p className="px-3 py-8 text-center text-xs text-[#898989]">گفتگوی آرشیوشده‌ای وجود ندارد.</p>}</div>}
@@ -1377,8 +1478,9 @@ export default function Assistant() {
       </div>
       <div ref={messagesScrollerRef} className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7" onScroll={handleMessagesScroll}>
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[#B2AC88] bg-white px-3 py-2 text-xs text-[#4B6E48]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
-        {messages.length === 0 ? <div className="mx-auto max-w-lg pt-20 text-center text-[#898989]"><div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#B2AC88] bg-[#F2F0EF]">{ephemeral ? <TemporaryChatIcon className="h-9 w-9 text-[#4B6E48]" /> : <ChatIcon active className="h-9 w-9" />}</div><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p></div> : null}
-        {messages.map((message) => {
+        {messagesLoading ? <AssistantMessagesSkeleton /> : null}
+        {!messagesLoading && messages.length === 0 ? <div className="mx-auto max-w-lg pt-10 text-center text-[#898989]"><CallStateArt section={training ? "training" : ephemeral ? "temporary" : "assistant"} className="mx-auto mb-3" /><h1 className="mb-3 text-xl font-bold text-[#4B6E48]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p></div> : null}
+        {(messagesLoading ? [] : messages).map((message) => {
           const user = message.role === "user";
           const attachedLabels = messageAttachmentLabels(message);
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import Layout from "./components/Layout";
+import { AdminShellSkeleton } from "./components/Widgets";
 import Audit from "./pages/Audit";
 import Commerce from "./pages/Commerce";
 import CommerceSettings from "./pages/CommerceSettings";
@@ -29,7 +30,7 @@ import TenantDatabases from "./pages/TenantDatabases";
 export default function App() {
   const { session, loading } = useAuth();
 
-  if (loading) return <div className="p-10 text-center text-slate-500">در حال بارگذاری…</div>;
+  if (loading) return <AdminShellSkeleton />;
   if (!session) {
     return (
       <Routes>

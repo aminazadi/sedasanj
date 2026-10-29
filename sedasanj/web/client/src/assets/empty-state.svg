@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" fill="none" role="img" aria-label="موردی یافت نشد">
+  <ellipse cx="240" cy="268" rx="150" ry="14" fill="#4b6e48" opacity=".1"/>
+  <g stroke="#b2ac88" stroke-width="1.5" stroke-linecap="round">
+    <path d="M70 70h60c14 0 18 12 34 12" />
+    <path d="M410 200h-52c-14 0-18-14-34-14" />
+    <path d="M96 214c-26 0-34-14-34-30" />
+    <path d="M384 66c26 0 34 14 34 30" />
+  </g>
+  <g stroke="#4b6e48" stroke-width="2" fill="#f2f0ef">
+    <circle cx="70" cy="70" r="6"/><circle cx="410" cy="200" r="6"/>
+    <circle cx="62" cy="184" r="5"/><circle cx="418" cy="96" r="5"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="5" stroke-linecap="round" opacity=".55">
+    <path d="M28 128v24M40 116v48M52 124v32"/>
+    <path d="M428 128v24M440 116v48M452 124v32"/>
+  </g>
+  <g>
+    <rect x="130" y="52" width="220" height="170" fill="#f2f0ef" stroke="#4b6e48" stroke-width="2.5"/>
+    <path d="M130 80h220" stroke="#b2ac88" stroke-width="2"/>
+    <circle cx="148" cy="66" r="4" fill="#4b6e48"/><circle cx="162" cy="66" r="4" fill="#b2ac88"/><circle cx="176" cy="66" r="4" fill="#b2ac88"/>
+    <rect x="300" y="60" width="38" height="12" fill="none" stroke="#b2ac88" stroke-width="2"/>
+    <g stroke="#b2ac88" stroke-width="2" stroke-dasharray="6 5">
+      <rect x="150" y="98" width="180" height="28" fill="none"/>
+      <rect x="150" y="136" width="180" height="28" fill="none"/>
+      <rect x="150" y="174" width="110" height="28" fill="none"/>
+    </g>
+    <g fill="#b2ac88" opacity=".55">
+      <circle cx="168" cy="112" r="6"/><circle cx="168" cy="150" r="6"/><circle cx="168" cy="188" r="6"/>
+      <rect x="184" y="108" width="90" height="8"/><rect x="184" y="146" width="70" height="8"/><rect x="184" y="184" width="50" height="8"/>
+    </g>
+  </g>
+  <g>
+    <circle cx="300" cy="170" r="42" fill="#f2f0ef" stroke="#4b6e48" stroke-width="5"/>
+    <path d="M330 202l46 46" stroke="#4b6e48" stroke-width="12" stroke-linecap="round"/>
+    <path d="M284 154l32 32M316 154l-32 32" stroke="#b2ac88" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <g stroke="#4b6e48" stroke-width="2.5" stroke-linecap="round">
+    <path d="M360 40v14M353 47h14"/>
+    <path d="M104 238v10M99 243h10" stroke="#b2ac88"/>
+  </g>
+</svg>

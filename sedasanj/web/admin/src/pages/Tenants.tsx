@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
-import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
+import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import type { Page, Tenant } from "../types";
+import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
+import { useResource } from "@cbi/web-shared/lib/useResource";
+
+const COLUMNS: SkeletonColumn[] = [
+  { label: "نام", width: "8rem" },
+  { label: "وضعیت", kind: "badge" },
+  { label: "اپراتور", width: "2rem" },
+  { label: "نگهداشت", width: "3.5rem" },
+  { label: "ایجاد", width: "5rem" },
+];
 
 const EMPTY_FORM = {
   name: "",
@@ -17,22 +27,16 @@ const EMPTY_FORM = {
 export default function Tenants() {
   const limit = 25;
   const [offset, setOffset] = useState(0);
-  const [page, setPage] = useState<Page<Tenant> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [open, setOpen] = useState(false);
   const [planCodes, setPlanCodes] = useState<Array<{code:string;name:string}>>([]);
 
-  async function reload() {
-    try {
-      setPage(await request<Page<Tenant>>(`/v1/admin/tenants?offset=${offset}&limit=${limit}`));
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
+  const tenantsData = useResource<Page<Tenant>>((signal) => request<Page<Tenant>>(`/v1/admin/tenants?offset=${offset}&limit=${limit}`, { signal }), [offset]);
+  const page = tenantsData.data;
+  const reload = async () => tenantsData.reload();
 
   useEffect(() => {
-    void reload();
     request<Page<{code:string;name:string;status:string}>>("/v1/admin/commerce/plans?limit=200").then((page) => setPlanCodes(Array.from(new Map(page.items.filter((row) => row.status === "published").map((row) => [row.code, {code: row.code, name: row.name}])).values()))).catch(() => undefined);
   }, [offset]);
 
@@ -49,12 +53,11 @@ export default function Tenants() {
     }
   }
 
-  if (!page) return <Loading />;
-  const tenants = page.items;
+  const tenants = page?.items ?? [];
 
   return (
     <div className="space-y-4">
-      <ErrorBox message={error} />
+      <ErrorBox message={tenantsData.error ?? error} />
       <div className="flex justify-between">
         <h1 className="text-lg font-bold">مشتریان</h1>
         <button className="btn" onClick={() => setOpen(!open)}>
@@ -134,7 +137,9 @@ export default function Tenants() {
       ) : null}
 
       <div className="card">
-        {tenants.length === 0 ? (
+        {tenantsData.loading ? (
+          <SkeletonTable columns={COLUMNS} rows={tenants.length ? Math.min(tenants.length, limit) : 8} />
+        ) : tenants.length === 0 ? (
           <Empty />
         ) : (
           <table className="table">
@@ -175,7 +180,7 @@ export default function Tenants() {
           </table>
         )}
       </div>
-      <Pagination offset={offset} limit={limit} total={page.total} onChange={setOffset} />
+      {page ? <Pagination offset={offset} limit={limit} total={page.total} onChange={setOffset} /> : null}
     </div>
   );
 }
