@@ -15,6 +15,8 @@ _SECRET_PATTERNS = (
         r"(?i)([?&](?:api[_-]?key|access[_-]?token|token|secret|password)=)[^&#\s]+"
     ),
     re.compile(r"(?i)(https?://[^\s:/]+:)[^@\s]+@"),
+    re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]{8,}"),
+    re.compile(r"(sk_(?:live|test)_)[A-Za-z0-9_-]+"),
 )
 
 
