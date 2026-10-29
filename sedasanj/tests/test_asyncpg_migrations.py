@@ -24,6 +24,9 @@ MIGRATIONS = (
     "0054_help_center.py",
     "0055_module_diagnostics.py",
     "0056_module_release_compat.py",
+    "0057_contacts.py",
+    "0058_transcript_chunks_any_dimension.py",
+    "0059_contact_geo.py",
 )
 
 

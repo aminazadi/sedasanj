@@ -259,6 +259,9 @@ async def retry_graph(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> 
     return graph_status == "ready"
 
 
+MAX_TRANSCRIPT_CHUNKS = 2000
+
+
 def _chunks(content: str, size: int = 1200, overlap: int = 200) -> list[str]:
     text_value = " ".join(content.split())
     if not text_value:
@@ -270,7 +273,27 @@ def _chunks(content: str, size: int = 1200, overlap: int = 200) -> list[str]:
         if cursor + size >= len(text_value):
             break
         cursor += size - overlap
-    return values[:100]
+    return values[:MAX_TRANSCRIPT_CHUNKS]
+
+
+async def _record_chunk_failure(
+    session: AsyncSession, tenant_id: UUID, call_id: UUID, failed: int, total: int, detail: str
+) -> None:
+    """Back the call off so the backfill does not retry the same call on every tick."""
+    await session.execute(
+        text(
+            "UPDATE call_knowledge SET attempt_count = attempt_count + 1, "
+            "last_attempt_at = now(), next_retry_at = now() + "
+            "(LEAST(3600, 30 * power(2, LEAST(attempt_count, 7))) * interval '1 second'), "
+            "error_detail = :error, updated_at = now() "
+            "WHERE call_id = :call_id AND tenant_id = :tenant_id"
+        ),
+        {
+            "call_id": call_id,
+            "tenant_id": tenant_id,
+            "error": f"chunks: {failed}/{total} failed: {detail}"[:4000],
+        },
+    )
 
 
 async def _index_transcript_chunks(
@@ -287,50 +310,58 @@ async def _index_transcript_chunks(
         text("DELETE FROM transcript_chunks WHERE call_id = :call_id AND tenant_id = :tenant_id"),
         {"call_id": call.id, "tenant_id": tenant_id},
     )
+    failed = 0
+    last_error = ""
     for ordinal, chunk in enumerate(chunks):
         digest = hashlib.sha256(chunk.encode()).hexdigest()
+        base = {
+            "tenant_id": tenant_id,
+            "call_id": call.id,
+            "ordinal": ordinal,
+            "content": chunk,
+            "digest": digest,
+            "revision_id": transcript.active_revision_id,
+        }
         try:
             vector, model = await embed(chunk)
-            embedding_provider = _embedding_provider(model)
-            await session.execute(
-                text(
-                    "INSERT INTO transcript_chunks "
-                    "(tenant_id, call_id, ordinal, content, content_sha256, embedding, "
-                    "source_revision_id, embedding_model, embedding_provider, vector_status, last_attempt_at) "
-                    "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, "
-                    "CAST(:embedding AS vector), :revision_id, :model, :provider, 'ready', now())"
-                ),
-                {
-                    "tenant_id": tenant_id,
-                    "call_id": call.id,
-                    "ordinal": ordinal,
-                    "content": chunk,
-                    "digest": digest,
-                    "embedding": _vector_literal(vector),
-                    "revision_id": transcript.active_revision_id,
-                    "model": model,
-                    "provider": embedding_provider,
-                },
-            )
+            # A savepoint keeps one bad row (for example a wrong dimension) from aborting
+            # the surrounding analysis transaction.
+            async with session.begin_nested():
+                await session.execute(
+                    text(
+                        "INSERT INTO transcript_chunks "
+                        "(tenant_id, call_id, ordinal, content, content_sha256, embedding, "
+                        "source_revision_id, embedding_model, embedding_provider, "
+                        "vector_status, last_attempt_at) "
+                        "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, "
+                        "CAST(:embedding AS vector), :revision_id, :model, :provider, "
+                        "'ready', now())"
+                    ),
+                    {
+                        **base,
+                        "embedding": _vector_literal(vector),
+                        "model": model,
+                        "provider": _embedding_provider(model),
+                    },
+                )
         except Exception as exc:
-            await session.execute(
-                text(
-                    "INSERT INTO transcript_chunks "
-                    "(tenant_id, call_id, ordinal, content, content_sha256, source_revision_id, "
-                    "vector_status, attempt_count, last_attempt_at, next_retry_at, error_detail) "
-                    "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, :revision_id, "
-                    "'failed', 1, now(), now() + interval '30 seconds', :error)"
-                ),
-                {
-                    "tenant_id": tenant_id,
-                    "call_id": call.id,
-                    "ordinal": ordinal,
-                    "content": chunk,
-                    "digest": digest,
-                    "revision_id": transcript.active_revision_id,
-                    "error": str(exc)[:1000],
-                },
-            )
+            failed += 1
+            last_error = str(exc)[:500]
+            async with session.begin_nested():
+                await session.execute(
+                    text(
+                        "INSERT INTO transcript_chunks "
+                        "(tenant_id, call_id, ordinal, content, content_sha256, "
+                        "source_revision_id, vector_status, attempt_count, last_attempt_at, "
+                        "next_retry_at, error_detail) "
+                        "VALUES (:tenant_id, :call_id, :ordinal, :content, :digest, "
+                        ":revision_id, 'failed', 1, now(), now() + interval '30 seconds', "
+                        ":error)"
+                    ),
+                    {**base, "error": last_error[:1000]},
+                )
+    if failed:
+        await _record_chunk_failure(session, tenant_id, call.id, failed, len(chunks), last_error)
 
 
 async def vector_call_ids(
@@ -476,15 +507,20 @@ async def vector_transcript_context(
     ]
 
 
-async def backfill_next() -> str:
-    async with session_scope(None, staff=True) as control_session:
-        models = await effective_models(control_session)
-    expected_model = (
+def expected_embedding(models: dict[str, str]) -> tuple[str, str]:
+    """The (model id, provider) pair that new vectors are written with right now."""
+    model = (
         f"ninerouter_direct:{models['ninerouter_embedding_model'].strip()}"
         if models["embedding_provider"] == "ninerouter_direct"
         else models["embedding_model"].strip()
     )
-    expected_provider = _embedding_provider(expected_model)
+    return model, _embedding_provider(model)
+
+
+async def backfill_next() -> str:
+    async with session_scope(None, staff=True) as control_session:
+        models = await effective_models(control_session)
+    expected_model, expected_provider = expected_embedding(models)
     for tenant_id in await operational_tenant_ids():
         async with session_scope(tenant_id) as session:
             call_id = (
@@ -498,10 +534,15 @@ async def backfill_next() -> str:
                         "OR k.embedding_model IS DISTINCT FROM :model "
                         "OR k.embedding_provider IS DISTINCT FROM :provider "
                         "OR (EXISTS (SELECT 1 FROM transcripts tr WHERE tr.call_id = i.call_id) "
-                        "AND NOT EXISTS (SELECT 1 FROM transcript_chunks t "
+                        "AND (NOT EXISTS (SELECT 1 FROM transcript_chunks t "
+                        "WHERE t.call_id = i.call_id AND t.tenant_id = i.tenant_id) "
+                        "OR EXISTS (SELECT 1 FROM transcript_chunks t "
+                        "JOIN transcripts tr ON tr.call_id = t.call_id "
                         "WHERE t.call_id = i.call_id AND t.tenant_id = i.tenant_id "
-                        "AND t.vector_status = 'ready' AND t.embedding_model = :model "
-                        "AND t.embedding_provider = :provider))) "
+                        "AND (t.vector_status <> 'ready' "
+                        "OR t.embedding_model IS DISTINCT FROM :model "
+                        "OR t.embedding_provider IS DISTINCT FROM :provider "
+                        "OR t.source_revision_id IS DISTINCT FROM tr.active_revision_id))))) "
                         "AND (k.next_retry_at IS NULL OR k.next_retry_at <= now()) "
                         "ORDER BY c.created_at DESC LIMIT 1"
                     ),
@@ -556,3 +597,118 @@ async def graph_context(session: AsyncSession, call_ids: list[UUID]) -> str:
         f"تماس {call_id}: رابطه {relation} با {properties}"
         for call_id, relation, properties in rows
     )
+
+
+# Tenant data that is never embedded today. Reported so the gap stays visible until each
+# source type gets a builder. Names are fixed constants, never user input.
+UNINDEXED_SOURCES: tuple[tuple[str, str], ...] = (
+    ("sales_insights", "sales_insights"),
+    ("crm_outcomes", "crm_outcomes"),
+    ("operator_scores", "operator_call_scores"),
+    ("follow_up_tasks", "follow_up_tasks"),
+    ("kpi_goals", "kpi_goals"),
+    ("teams", "teams"),
+    ("contacts", "contacts"),
+    ("organization_memories", "organization_memories"),
+    ("scheduled_report_runs", "scheduled_report_runs"),
+    ("chat_messages", "chat_messages"),
+)
+
+_SUMMARY_COVERAGE_SQL = (
+    "SELECT "
+    "count(*) FILTER (WHERE i.summary IS NOT NULL) AS with_summary, "
+    "count(*) FILTER (WHERE i.summary IS NULL) AS without_summary, "
+    "count(*) FILTER (WHERE i.summary IS NOT NULL AND k.call_id IS NULL) AS missing, "
+    "count(*) FILTER (WHERE k.vector_status = 'ready' AND k.embedding IS NOT NULL "
+    "AND k.embedding_model = :model AND k.embedding_provider = :provider) AS ready, "
+    "count(*) FILTER (WHERE k.vector_status = 'ready' AND k.embedding IS NOT NULL "
+    "AND (k.embedding_model IS DISTINCT FROM :model "
+    "OR k.embedding_provider IS DISTINCT FROM :provider)) AS wrong_model, "
+    "count(*) FILTER (WHERE k.vector_status = 'failed') AS failed, "
+    "count(*) FILTER (WHERE k.vector_status = 'pending') AS pending "
+    "FROM call_insights i "
+    "LEFT JOIN call_knowledge k ON k.call_id = i.call_id AND k.tenant_id = i.tenant_id "
+    "WHERE i.tenant_id = :tenant_id"
+)
+
+_TRANSCRIPT_COVERAGE_SQL = (
+    "WITH per_call AS ("
+    "SELECT tr.call_id, "
+    "count(ch.id) AS chunks, "
+    "count(ch.id) FILTER (WHERE ch.vector_status = 'ready' AND ch.embedding IS NOT NULL "
+    "AND ch.embedding_model = :model AND ch.embedding_provider = :provider) AS ok, "
+    "count(ch.id) FILTER (WHERE ch.source_revision_id IS DISTINCT FROM "
+    "tr.active_revision_id) AS stale "
+    "FROM transcripts tr "
+    "LEFT JOIN transcript_chunks ch ON ch.call_id = tr.call_id AND ch.tenant_id = tr.tenant_id "
+    "WHERE tr.tenant_id = :tenant_id GROUP BY tr.call_id) "
+    "SELECT count(*) AS total, "
+    "count(*) FILTER (WHERE chunks = 0) AS no_chunks, "
+    "count(*) FILTER (WHERE chunks > 0 AND ok = chunks AND stale = 0) AS complete, "
+    "count(*) FILTER (WHERE chunks > 0 AND ok < chunks) AS partial, "
+    "count(*) FILTER (WHERE chunks > 0 AND ok = chunks AND stale > 0) AS stale, "
+    "count(*) FILTER (WHERE chunks >= :max_chunks) AS possibly_truncated, "
+    "count(*) FILTER (WHERE chunks = 0 AND NOT EXISTS ("
+    "SELECT 1 FROM call_insights ci WHERE ci.call_id = per_call.call_id "
+    "AND ci.summary IS NOT NULL)) AS blocked_no_summary "
+    "FROM per_call"
+)
+
+
+async def coverage_for_tenant(
+    session: AsyncSession, tenant_id: UUID, model: str, provider: str
+) -> dict[str, object]:
+    """Read-only index coverage for one tenant, grouped by source type."""
+    params = {"tenant_id": tenant_id, "model": model, "provider": provider}
+    summary = (await session.execute(text(_SUMMARY_COVERAGE_SQL), params)).mappings().one()
+    transcript = (
+        (
+            await session.execute(
+                text(_TRANSCRIPT_COVERAGE_SQL),
+                {**params, "max_chunks": MAX_TRANSCRIPT_CHUNKS},
+            )
+        )
+        .mappings()
+        .one()
+    )
+    calls_total = int(
+        (
+            await session.execute(
+                text("SELECT count(*) FROM calls WHERE tenant_id = :tenant_id"),
+                {"tenant_id": tenant_id},
+            )
+        ).scalar_one()
+    )
+    unindexed: dict[str, int] = {}
+    for source_type, table in UNINDEXED_SOURCES:
+        unindexed[source_type] = int(
+            (
+                await session.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE tenant_id = :tenant_id"),
+                    {"tenant_id": tenant_id},
+                )
+            ).scalar_one()
+        )
+    return {
+        "calls_total": calls_total,
+        "call_summary": {key: int(value) for key, value in summary.items()},
+        "transcript": {key: int(value) for key, value in transcript.items()},
+        "unindexed_sources": unindexed,
+    }
+
+
+def merge_coverage(items: list[dict[str, object]]) -> dict[str, object]:
+    """Sum per-tenant coverage dictionaries produced by `coverage_for_tenant`."""
+    total: dict[str, object] = {
+        "calls_total": 0,
+        "call_summary": {},
+        "transcript": {},
+        "unindexed_sources": {},
+    }
+    for item in items:
+        total["calls_total"] = int(total["calls_total"]) + int(item["calls_total"])  # type: ignore[call-overload]
+        for section in ("call_summary", "transcript", "unindexed_sources"):
+            target: dict[str, int] = total[section]  # type: ignore[assignment]
+            for key, value in item[section].items():  # type: ignore[attr-defined]
+                target[key] = target.get(key, 0) + int(value)
+    return total

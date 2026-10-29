@@ -1087,6 +1087,35 @@ async def assistant_knowledge_status(
     }
 
 
+@router.get("/assistant/knowledge-coverage")
+async def assistant_knowledge_coverage(
+    staff: StaffDep, session: StaffSession, tenant_id: UUID | None = None
+) -> dict[str, object]:
+    """Per source type: how much data exists and how much of it the assistant can retrieve."""
+    del staff
+    model, provider = knowledge.expected_embedding(await effective_models(session))
+    tenant_ids = await operational_tenant_ids()
+    if tenant_id is not None:
+        if tenant_id not in tenant_ids:
+            raise ApiError("not_found", "tenant not found")
+        tenant_ids = [tenant_id]
+    per_tenant: list[dict[str, object]] = []
+    for current in tenant_ids:
+        async with session_scope(current) as tenant_session:
+            per_tenant.append(
+                {
+                    "tenant_id": str(current),
+                    **await knowledge.coverage_for_tenant(tenant_session, current, model, provider),
+                }
+            )
+    return {
+        "embedding_model": model,
+        "embedding_provider": provider,
+        "totals": knowledge.merge_coverage(per_tenant),
+        "tenants": per_tenant,
+    }
+
+
 @router.post("/assistant/knowledge-retry")
 async def retry_assistant_knowledge(
     payload: KnowledgeRetryRequest,

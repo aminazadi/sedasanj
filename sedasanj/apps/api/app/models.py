@@ -301,6 +301,38 @@ class Call(Base):
     )
 
 
+class Contact(Base):
+    """Tenant phonebook entry; `phone_number` is stored normalised (see `normalize_call_number`)."""
+
+    __tablename__ = "contacts"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    phone_number: Mapped[str] = mapped_column(String(15), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    company: Mapped[str | None] = mapped_column(String(200))
+    email: Mapped[str | None] = mapped_column(String(254))
+    province: Mapped[str | None] = mapped_column(String(60))
+    city: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "phone_number", name="contacts_tenant_phone_key"),
+        CheckConstraint("city IS NULL OR province IS NOT NULL", name="contacts_city_province_check"),
+        CheckConstraint("phone_number ~ '^[0-9]{3,15}$'", name="contacts_phone_check"),
+        Index("idx_contacts_tenant_name", "tenant_id", "name"),
+    )
+
+
 class CallOperatorAssignment(Base):
     __tablename__ = "call_operator_assignments"
 
@@ -2343,6 +2375,7 @@ TENANT_TABLES: tuple[str, ...] = (
     "audio_objects",
     "calls",
     "call_operator_assignments",
+    "contacts",
     "utterances",
     "transcripts",
     "analysis_runs",

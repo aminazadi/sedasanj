@@ -4,6 +4,7 @@ import base64
 import binascii
 import logging
 from datetime import UTC, date, datetime, time, timedelta
+from collections.abc import Mapping
 from typing import Annotated, Any
 from typing import cast as type_cast
 from uuid import UUID
@@ -62,6 +63,7 @@ from app.services import (
     analysis_runs,
     audit,
     billing,
+    contacts,
     entitlements,
     follow_up_tasks,
     operator_scope,
@@ -224,8 +226,14 @@ async def list_calls(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
+    assert principal.tenant_id is not None
+    names = await contacts.names_for_numbers(
+        session,
+        principal.tenant_id,
+        (number for call, _ in rows for number in (call.caller_number, call.dialed_number)),
+    )
     items = [
-        _summary(call, insight, hide_billing=operator_scope.is_operator(principal))
+        _summary(call, insight, hide_billing=operator_scope.is_operator(principal), names=names)
         for call, insight in rows
     ]
     next_cursor = (
@@ -301,7 +309,13 @@ async def upload_call(
     return result.accepted
 
 
-def _summary(call: Call, insight: CallInsight | None, *, hide_billing: bool = False) -> CallSummary:
+def _summary(
+    call: Call,
+    insight: CallInsight | None,
+    *,
+    hide_billing: bool = False,
+    names: Mapping[str, str] | None = None,
+) -> CallSummary:
     # Tenant API never exposes provider internals (VoiceSanj, empty-transcript, keys).
     progress_pct, public_detail, processing = resolve_progress(
         call.status, call.progress_pct, call.progress_detail
@@ -312,6 +326,8 @@ def _summary(call: Call, insight: CallInsight | None, *, hide_billing: bool = Fa
         asterisk_uniqueid=call.asterisk_uniqueid,
         caller_number=call.caller_number,
         dialed_number=call.dialed_number,
+        caller_name=contacts.name_for(names, call.caller_number) if names else None,
+        dialed_name=contacts.name_for(names, call.dialed_number) if names else None,
         direction=call.direction,
         agent_extension=call.agent_extension,
         started_at=call.started_at,
@@ -380,9 +396,14 @@ async def _load_call(
 async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) -> CallDetail:
     assert principal.tenant_id is not None
     call = await _load_call(session, call_id, principal.tenant_id, principal)
+    names = await contacts.names_for_numbers(
+        session, principal.tenant_id, (call.caller_number, call.dialed_number)
+    )
     if call.call_type not in {"answered", "voicemail"}:
         return CallDetail(
-            **_summary(call, None, hide_billing=operator_scope.is_operator(principal)).model_dump(),
+            **_summary(
+                call, None, hide_billing=operator_scope.is_operator(principal), names=names
+            ).model_dump(),
             audio_available=False,
             transcript=None,
             corrected_transcript=None,
@@ -557,7 +578,7 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         ]
 
     summary_payload = _summary(
-        call, insight, hide_billing=operator_scope.is_operator(principal)
+        call, insight, hide_billing=operator_scope.is_operator(principal), names=names
     ).model_dump()
     summary_payload["error_code"] = call.error_code
     task_pairs = await follow_up_tasks.list_for_call(

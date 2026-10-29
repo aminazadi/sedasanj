@@ -699,6 +699,8 @@ class CallSummary(BaseModel):
     sentiment: Sentiment | None = None
     sentiment_trajectory: SentimentTrajectory | None = None
     intent: str | None = None
+    caller_name: str | None = None
+    dialed_name: str | None = None
 
     @field_validator("sentiment", mode="before")
     @classmethod
@@ -1437,3 +1439,64 @@ class ModuleDiagnosticOut(BaseModel):
     failed_checks: int
     report: dict[str, Any]
     created_at: datetime
+
+
+class ContactIn(BaseModel):
+    name: str = Field(max_length=1000)
+    phone_number: str = Field(max_length=100)
+    company: str | None = Field(default=None, max_length=1000)
+    email: str | None = Field(default=None, max_length=1000)
+    province: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=10000)
+
+
+class ContactUpdate(BaseModel):
+    """Only the fields present in the request change; an explicit null clears an optional one."""
+
+    name: str | None = Field(default=None, max_length=1000)
+    phone_number: str | None = Field(default=None, max_length=100)
+    company: str | None = Field(default=None, max_length=1000)
+    email: str | None = Field(default=None, max_length=1000)
+    province: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=10000)
+
+
+class ContactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    phone_number: str
+    company: str | None = None
+    email: str | None = None
+    province: str | None = None
+    city: str | None = None
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContactPage(BaseModel):
+    items: list[ContactOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class ContactImportError(BaseModel):
+    row: int
+    message: str
+
+
+class ContactImportReport(BaseModel):
+    dry_run: bool
+    mode: Literal["skip", "update"]
+    total_rows: int
+    created: int
+    updated: int
+    skipped: int
+    error_count: int
+    errors: list[ContactImportError]
