@@ -55,6 +55,15 @@ const NAVIGATION: NavigationGroup[] = [
     ],
   },
   {
+    label: "مرکز راهنما",
+    items: [
+      { to: "/help/articles", label: "مقاله‌ها", icon: icons.book },
+      { to: "/help/error-codes", label: "کدهای خطا", icon: icons.file },
+      { to: "/help/categories", label: "دسته‌ها", icon: icons.package },
+      { to: "/help/media", label: "تصویر و ویدئو", icon: icons.upload },
+    ],
+  },
+  {
     label: "سیستم",
     items: [
       { to: "/jobs", label: "عملیات پردازش", icon: icons.jobs },
