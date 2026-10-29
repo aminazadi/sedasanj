@@ -118,6 +118,8 @@ function aru_main(array $argv): int
         return 1;
     }
 
+    // Queue jobs update the same state row as this process (keyed by the original path).
+    $metadata['_state_key'] = $opts['file'];
     [$outcome, $jobId, $error] = Pipeline::deliverStaged(
         $cfg, $stagedPath, $archivePath, $metadata, !$opts['no-spool'], $log
     );

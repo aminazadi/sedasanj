@@ -53,7 +53,7 @@ class Pipeline
     {
         $failedDir = $cfg['queue']['failed_dir'];
         if (!is_dir($failedDir) && !@mkdir($failedDir, 0755, true)) {
-            $log->error("Could not create failed folder {$failedDir}; leaving {$audioPath} in place");
+            $log->coded('SS-SYS-1007', "Could not create failed folder {$failedDir}; leaving {$audioPath} in place");
             return [];
         }
 
@@ -100,7 +100,7 @@ class Pipeline
             }
         }
         if ($moved) {
-            $log->error('Delivery failed for good; moved to the failed folder: ' . implode(', ', $moved));
+            $log->coded($details['error_code'] ?? 'SS-QUE-1004', 'Delivery failed for good; moved to the failed folder: ' . implode(', ', $moved), ['cause' => $details['error_code'] ?? '']);
         }
         return $moved;
     }
@@ -123,29 +123,34 @@ class Pipeline
         try {
             Uploader::uploadWithImmediateRetries($cfg, $stagedPath, $metadata, $log->asClosure('WARNING'));
         } catch (UploadError $exc) {
-            $log->error("Upload failed: {$exc->getMessage()}");
+            $ctx = ['uniqueid' => (string) ($metadata['uniqueid'] ?? $metadata['asterisk_uniqueid'] ?? '')] + $exc->context;
+            $log->coded($exc->errorCode, "Upload failed: {$exc->getMessage()}", $ctx);
             if (!$allowSpool || !$exc->retryable) {
                 self::moveToFailed($cfg, $stagedPath, $archivePath, $log, [
-                    'metadata' => $metadata, 'error' => $exc->getMessage(), 'attempts' => 0,
+                    'metadata' => $metadata, 'error' => $exc->getMessage(), 'error_code' => $exc->errorCode, 'attempts' => 0,
                 ]);
                 return ['failed', null, $exc->getMessage()];
             }
             try {
                 $queue = Queue::create($cfg);
                 $jobId = $queue->spool($stagedPath, $archivePath, $metadata, $exc->getMessage());
-                if ($exc->creditBlocked) {
+                if ($exc->creditBlocked || $exc->configBlocked) {
                     $job = $queue->get($jobId);
                     if ($job !== null) {
-                        $job['status'] = 'blocked_credit';
-                        $job['next_attempt_epoch'] = microtime(true) + (int) ($cfg['queue']['credit_retry_seconds'] ?? 3600);
+                        $job['status'] = $exc->creditBlocked ? 'blocked_credit' : 'blocked_config';
+                        $delay = $exc->creditBlocked
+                            ? (int) ($cfg['queue']['credit_retry_seconds'] ?? 3600)
+                            : (int) ($cfg['queue']['config_retry_seconds'] ?? 3600);
+                        $job['next_attempt_epoch'] = microtime(true) + $delay;
                         $queue->save($job);
                     }
                 }
             } catch (\Throwable $spoolExc) {
-                $log->error("Could not spool job either: {$spoolExc->getMessage()}");
+                $log->coded('SS-QUE-1002', "Could not spool job either: {$spoolExc->getMessage()}", $ctx);
                 self::moveToFailed($cfg, $stagedPath, $archivePath, $log, [
                     'metadata' => $metadata,
                     'error' => $spoolExc->getMessage(),
+                    'error_code' => 'SS-QUE-1002',
                     'attempts' => 0,
                 ]);
                 return ['failed', null, "upload failed and could not spool: {$spoolExc->getMessage()}"];

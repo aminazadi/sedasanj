@@ -328,7 +328,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	}
 
 	public function getQueueSummary() {
-		$summary = array('pending' => 0, 'blocked_credit' => 0, 'failed' => 0, 'last_error' => '');
+		$summary = array('pending' => 0, 'blocked_credit' => 0, 'blocked_config' => 0, 'failed' => 0, 'last_error' => '');
 		$sqlite = self::STATE_DIR . '/state.sqlite';
 		$loadedSqlite = false;
 		if (extension_loaded('pdo_sqlite') && is_file($sqlite)) {
@@ -352,14 +352,22 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 				if (!is_array($job)) {
 					continue;
 				}
-				$status = ($job['status'] ?? 'pending') === 'blocked_credit' ? 'blocked_credit' : 'pending';
+				$jobStatus = isset($job['status']) ? $job['status'] : 'pending';
+				$status = in_array($jobStatus, array('blocked_credit', 'blocked_config'), true) ? $jobStatus : 'pending';
 				$summary[$status]++;
 				if (($job['last_error'] ?? '') !== '') {
 					$summary['last_error'] = $this->safeError($job['last_error']);
 				}
 			}
 		}
-		$summary['failed'] = count(glob(self::SPOOL_DIR . '/failed/*.json') ?: array());
+		$failed = 0;
+		foreach (glob(self::SPOOL_DIR . '/failed/*.json') ?: array() as $manifest) {
+			// Only failure manifests (sha256 file names), not copied metadata sidecars.
+			if (preg_match('/^[0-9a-f]{64}\.json$/', basename($manifest))) {
+				$failed++;
+			}
+		}
+		$summary['failed'] = $failed;
 		return $summary;
 	}
 

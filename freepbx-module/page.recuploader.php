@@ -570,6 +570,7 @@ $helpIcon = function ($title, $content) {
 				<div class="row sj-stats">
 					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Pending"); ?></span><strong><?php echo (int) $queueSummary['pending']; ?></strong></div></div>
 					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Blocked by credit"); ?></span><strong><?php echo (int) $queueSummary['blocked_credit']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Paused: key or account"); ?></span><strong><?php echo (int) $queueSummary['blocked_config']; ?></strong></div></div>
 					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Failed"); ?></span><strong><?php echo (int) $queueSummary['failed']; ?></strong></div></div>
 				</div>
 				<?php if ($queueSummary['last_error'] !== ''): ?><div class="alert alert-warning"><strong><?php echo _("Last error"); ?>:</strong> <?php echo htmlspecialchars($queueSummary['last_error'], ENT_QUOTES, 'UTF-8'); ?></div><?php endif; ?>

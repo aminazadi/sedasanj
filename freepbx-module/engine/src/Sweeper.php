@@ -138,6 +138,7 @@ class Sweeper
             return 'failed';
         }
 
+        $metadata['_state_key'] = $filepath;
         [$outcome, $jobId, $error] = Pipeline::deliverStaged($cfg, $stagedPath, $archivePath, $metadata, true, $log);
 
         if ($outcome === 'uploaded') {

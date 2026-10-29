@@ -232,7 +232,10 @@ class Staging
             throw new UploadError(
                 "Staged file {$path} is {$size} bytes; API limit is " . Config::MAX_COMPRESSED_BYTES . ' bytes',
                 null,
-                false
+                false,
+                false,
+                'SS-STG-1005',
+                ['bytes' => $size]
             );
         }
     }
@@ -319,7 +322,8 @@ class Staging
         $archivePath = "{$directory}/{$stem}.{$format}";
 
         $stereo = Wav::read($originalStereoPath);
-        $mono = Wav::monoDownmix($stereo);
+        // The mono fallback of the recording hook delivers MixMonitor's own mono mix under a stereo_ name.
+        $mono = $stereo->channels === 1 ? $stereo : Wav::monoDownmix($stereo);
         if ($mono->data === '') {
             throw new StagingError("Recording has no audio samples: {$originalStereoPath}");
         }
