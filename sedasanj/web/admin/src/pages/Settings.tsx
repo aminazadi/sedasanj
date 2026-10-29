@@ -24,6 +24,7 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
   ["get_call_analytics", "آمار تماس‌ها"],
   ["get_operator_performance", "عملکرد اپراتورها"],
   ["visualize_statistics", "نمودارهای آماری"],
+  ["export_data", "دریافت فایل خروجی"],
 ];
 type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security" | "quick-demo" | "site-contact";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
@@ -366,6 +367,7 @@ export default function Settings() {
         Object.assign(body, {
           assistant_tool_mode: settings.assistant_tool_mode,
           assistant_max_tool_calls: settings.assistant_max_tool_calls,
+          assistant_export_ttl_minutes: settings.assistant_export_ttl_minutes,
           assistant_parallel_tools: settings.assistant_parallel_tools,
           assistant_enabled_tools: settings.assistant_enabled_tools,
         });
@@ -685,7 +687,7 @@ export default function Settings() {
       <section className={`${activeTab === "assistant" ? "" : "hidden"} space-y-5 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
           <h2 className="font-bold text-slate-900">عامل ابزارمحور دستیار</h2>
-          <p className="mt-1 text-xs leading-6 text-slate-500">مدل فقط ابزارهای خواندنی و محدود را انتخاب می‌کند؛ کنترل tenant و سطح دسترسی داخل سرور اعمال می‌شود.</p>
+          <p className="mt-1 text-xs leading-6 text-slate-500">دسترسی به داده‌ها و ساخت فایل خروجی در سرور کنترل می‌شود؛ ابزارها و مهلت اعتبار فایل را در این بخش مدیریت کنید.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           <div><label className="label">حالت فراخوانی ابزار</label><select className="input" value={settings.assistant_tool_mode} onChange={(event) => setSettings({ ...settings, assistant_tool_mode: event.target.value as PlatformSettings["assistant_tool_mode"] })}><option value="auto">خودکار</option><option value="native">Native</option><option value="structured">Structured JSON</option></select></div>
@@ -693,6 +695,7 @@ export default function Settings() {
           <div><label className="label">حداکثر اجرای هم‌زمان</label><input className="input" type="number" min="1" max="2" value={settings.assistant_parallel_tools} onChange={(event) => setSettings({ ...settings, assistant_parallel_tools: Number(event.target.value) })} /></div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div><label className="label">اعتبار فایل خروجی دستیار (دقیقه)</label><input className="input" type="number" min="1" max="1440" value={settings.assistant_export_ttl_minutes} onChange={(event) => setSettings({ ...settings, assistant_export_ttl_minutes: Number(event.target.value) })} /></div>
           {ASSISTANT_TOOLS.map(([id, label]) => <ToggleSwitch key={id} checked={settings.assistant_enabled_tools.includes(id)} onChange={(checked) => setSettings({ ...settings, assistant_enabled_tools: checked ? [...settings.assistant_enabled_tools, id] : settings.assistant_enabled_tools.filter((item) => item !== id) })} label={label} />)}
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

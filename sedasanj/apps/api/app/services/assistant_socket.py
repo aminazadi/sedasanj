@@ -20,6 +20,7 @@ from app.errors import ApiError
 from app.metrics import assistant_socket_connections_total, assistant_socket_events_total
 from app.models import AssistantRun, AssistantRunEvent, ChatConversation, ChatMessage, Tenant, User
 from app.security import decode_access_token
+from app.services.assistant_tool_runs import for_messages as tool_runs_for_messages
 from app.services.queue import QUEUE_LLM, get_queue
 
 logger = logging.getLogger(__name__)
@@ -199,6 +200,10 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
             .scalars()
             .all()
         )
+        tools_by_message = await tool_runs_for_messages(
+            session, tenant_id, conversation_id,
+            [row.id for row in messages if row.role == "assistant"],
+        )
         active_runs = (
             (
                 await session.execute(
@@ -271,6 +276,7 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                 "model": row.model,
                 "sources": row.sources,
                 "attachments": row.attachments,
+                "tool_runs": tools_by_message.get(row.id, []),
                 "created_at": row.created_at.isoformat(),
             }
             for row in messages
@@ -297,7 +303,7 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                     "model": message.model,
                     "sources": message.sources,
                     "attachments": message.attachments,
-                    "tool_runs": [],
+                    "tool_runs": tools_by_message.get(message.id, []),
                     "memory_drafts": [],
                     "created_at": message.created_at.isoformat(),
                 },

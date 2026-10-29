@@ -337,6 +337,12 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
         return "retry" if retried else "dead_letter"
 
 
+async def assistant_exports_cron(ctx: dict[str, Any]) -> str:
+    from app.services.assistant_exports import purge_expired
+
+    return f"assistant-exports:{await purge_expired()}"
+
+
 async def retention_cron(ctx: dict[str, Any]) -> str:
     deleted = await run_retention()
     purged = await outbox.purge_dispatched()
@@ -383,6 +389,7 @@ class WorkerSettings:
     functions = [deliver_event]
     cron_jobs = [
         cron(retention_cron, hour=2, minute=15),
+        cron(assistant_exports_cron, minute={0, 10, 20, 30, 40, 50}),
         cron(reconciler_cron, second=30),
     ]
     queue_name = queue.QUEUE_NOTIFY

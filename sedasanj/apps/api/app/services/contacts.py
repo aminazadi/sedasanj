@@ -16,12 +16,13 @@ from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
 from app.models import Contact
 from app.services import extensions, iran_geo
+from app.services.export_cells import safe_cell as _safe_cell
 from app.services.phone_numbers import normalize_call_number
 
 ImportMode = Literal["skip", "update"]
@@ -90,7 +91,6 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _SCIENTIFIC_RE = re.compile(r"^\d(?:[.,]\d+)?[eE][+-]?\d+$")
 _TRAILING_ZERO_DECIMAL_RE = re.compile(r"^(\d+)[.,]0+$")
 _PHONE_SEPARATORS = frozenset(" -()+./‌‎‏ ‪‬")
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
@@ -432,13 +432,6 @@ async def apply_import(
     return outcome
 
 
-def _safe_cell(value: str | None) -> str:
-    """Neutralise spreadsheet formula injection (OWASP CSV injection) in exported text."""
-    if not value:
-        return ""
-    return "'" + value if value.startswith(_FORMULA_PREFIXES) else value
-
-
 def _write_csv(rows: Iterable[Contact]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\r\n")
@@ -474,3 +467,18 @@ def template_csv() -> bytes:
         notes="مشتری ویژه",
     )
     return ("﻿" + _write_csv([sample])).encode("utf-8")
+
+
+def search_filter(q: str) -> object:
+    pattern = f"%{q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
+    digits = phone_key(q) if any(ch.isdigit() for ch in q) else None
+    clauses = [
+        Contact.name.ilike(pattern, escape="\\"),
+        Contact.company.ilike(pattern, escape="\\"),
+        Contact.email.ilike(pattern, escape="\\"),
+        Contact.province.ilike(pattern, escape="\\"),
+        Contact.city.ilike(pattern, escape="\\"),
+    ]
+    if digits is not None:
+        clauses.append(Contact.phone_number.like(f"%{digits.lstrip('0')}%"))
+    return or_(*clauses)

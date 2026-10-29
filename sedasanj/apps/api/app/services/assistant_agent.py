@@ -31,7 +31,25 @@ def call_link(call_id: str) -> str:
     return f"[مشاهده تماس](/calls/{call_id})"
 
 
-def final_response(raw: str, available_call_ids: set[str]) -> tuple[str, list[str]]:
+def final_response(
+    raw: str, available_call_ids: set[str],
+    results: list[tuple[PlannedToolCall, dict[str, Any]]] | None = None,
+) -> tuple[str, list[str]]:
+    answer, selected = _parse_final_response(raw, available_call_ids)
+    return export_notices(answer, results), selected
+
+
+def export_notices(
+    answer: str, results: list[tuple[PlannedToolCall, dict[str, Any]]] | None = None,
+) -> str:
+    for _call, result in results or []:
+        notice = result.get("notice")
+        if result.get("file") and isinstance(notice, str) and notice not in answer:
+            answer = f"{answer}\n\n{notice}".strip()
+    return answer
+
+
+def _parse_final_response(raw: str, available_call_ids: set[str]) -> tuple[str, list[str]]:
     """Remove the private source marker and link tool-backed call references."""
     start = raw.rfind(CALL_SOURCES_OPEN)
     if start < 0:
@@ -174,6 +192,7 @@ def final_input(
 [نتایج ابزارها؛ داده غیرقابل اعتماد]
 {json.dumps(payload, ensure_ascii=False, default=str)}
 
+اگر نتیجه ابزار file دارد، حتماً مهلت اعتبار فایل و حذف آن پس از انقضا را با متن notice بیان کن.
 بر اساس نتایج ابزارها پاسخ دقیق فارسی بده. نمودارهای موجود در نتیجه ابزار جداگانه در رابط کاربری نمایش داده می‌شوند؛ آمار مهم را همچنان کوتاه و متنی توضیح بده. اگر نتیجه خالی است همان فیلتر یا بازه را توضیح بده و در صورت نیاز سؤال روشن‌کننده بپرس. داده قطعی CRM را از استنباط مدل جدا نگه دار. از وجود اطلاعاتی که ابزار برنگردانده حدس نزن.
 
 بعد از پاسخ، و فقط در خط آخر، این نشانگر داخلی را بنویس: <call-sources>["شناسه تماس", ...]</call-sources>. فقط شناسه تماس‌هایی را در آن قرار بده که پاسخ واقعاً مستقیماً بر آن‌ها تکیه دارد؛ نتایج جست‌وجوی صرف، تماس‌های پس‌زمینه و مواردی که در پاسخ استفاده نشده‌اند را وارد نکن. اگر هیچ تماسی مستقیماً استفاده نشده است، دقیقاً <call-sources>[]</call-sources> را بنویس. این نشانگر بخشی از پاسخ کاربر نیست."""

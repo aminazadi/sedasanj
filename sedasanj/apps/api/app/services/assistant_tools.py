@@ -28,13 +28,19 @@ from app.models import (
     Transcript,
     User,
 )
-from app.services import knowledge, operator_scope
+from app.services import assistant_exports, knowledge, operator_scope
 
 MAX_RESULTS = 25
 
 
 class ToolArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ExportArguments(assistant_exports.ExportFilters, ToolArguments):
+    dataset: assistant_exports.Dataset
+    format: assistant_exports.ExportFormat
+    columns: list[str] | None = Field(default=None, min_length=1, max_length=30)
 
 
 class CurrentTimeArguments(ToolArguments):
@@ -109,6 +115,7 @@ class ToolContext:
     session: AsyncSession
     principal: Any
     bound_call_id: UUID | None
+    conversation_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -755,7 +762,27 @@ def _chart_payload(
     }
 
 
+async def _export_data(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
+    args = ExportArguments.model_validate(raw)
+    filters = assistant_exports.ExportFilters.model_validate(
+        args.model_dump(exclude={"dataset", "format", "columns"})
+    )
+    return await assistant_exports.create_export(
+        ctx.session, ctx.principal, args.dataset, args.format, filters, args.columns,
+        conversation_id=ctx.conversation_id, bound_call_id=ctx.bound_call_id,
+    )
+
+
 TOOLS = (
+    ToolDefinition(
+        "export_data", "دریافت فایل خروجی",
+        "Generate a downloadable file; default expiry is one hour. Use the returned expiry notice. "
+        "Contacts require an organization administrator; other datasets use visible calls. "
+        "Use filters to narrow rows; never claim a complete export if filters exclude data. "
+        "Available column keys by dataset: " + json.dumps(
+            {key: list(value.columns) for key, value in assistant_exports.DATASETS.items()}
+        ), ExportArguments, _export_data, 120,
+    ),
     ToolDefinition("get_current_time", "دریافت زمان فعلی", "Get the current server date and time in UTC.", CurrentTimeArguments, _get_current_time),
     ToolDefinition("search_calls", "جست‌وجوی تماس‌ها", "Find calls using safe filters.", SearchCallsArguments, _search_calls),
     ToolDefinition("get_call_details", "دریافت جزئیات تماس", "Get metadata for specific visible calls.", CallIdsArguments, _call_details),
@@ -808,6 +835,7 @@ def preview(result: dict[str, Any]) -> dict[str, Any]:
         "count": int(result.get("count", result.get("total_calls", 0)) or 0),
         "summary": result_summary(result),
         "charts": result.get("charts", []),
+        "files": result.get("files", []),
     }
 
 

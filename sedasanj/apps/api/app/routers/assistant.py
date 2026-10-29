@@ -59,6 +59,8 @@ from app.services import (
     organization_memory,
     ratelimit,
 )
+from app.services.assistant_tool_runs import for_messages as tool_runs_for_messages
+from app.services.assistant_tool_runs import payload as tool_run_payload
 from app.services.platform import (
     capability_model,
     effective_assistant_instructions,
@@ -388,18 +390,9 @@ async def list_messages(conversation_id: UUID, principal: OperatorDep, session: 
     _assert_conversation_role(conversation, getattr(principal, "role", "operator"))
     rows = (await session.execute(select(ChatMessage).where(ChatMessage.conversation_id == conversation_id, ChatMessage.tenant_id == principal.tenant_id).order_by(ChatMessage.ordinal))).scalars().all()
     message_ids = [row.id for row in rows if row.role == "assistant"]
-    tool_rows = (
-        await session.execute(
-            select(AssistantToolRun)
-            .where(AssistantToolRun.assistant_message_id.in_(message_ids))
-            .order_by(AssistantToolRun.started_at)
-        )
-    ).scalars().all() if message_ids else []
-    by_message: dict[UUID, list[dict[str, Any]]] = {}
-    for run in tool_rows:
-        if run.assistant_message_id is None:
-            continue
-        by_message.setdefault(run.assistant_message_id, []).append(_tool_run_payload(run))
+    by_message = await tool_runs_for_messages(
+        session, principal.tenant_id, conversation_id, message_ids
+    )
     return [
         ChatMessageOut.model_validate(row).model_copy(
             update={"tool_runs": by_message.get(row.id, [])}
@@ -965,6 +958,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
     )
     stored_runs: list[AssistantToolRun] = []
     sources: list[dict[str, Any]] = []
+    results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
     try:
         client = build_client(runtime, request_namespace=str(user_message.id), purpose="chat")
         try:
@@ -992,7 +986,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
             )
             plan = _apply_attachment_constraints(plan, payload.attachments) if conversation.mode == "normal" else plan
             if plan.tool_calls:
-                results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
+                results = []
                 seen: set[str] = set()
                 for planned in plan.tool_calls:
                     marker = assistant_tools.fingerprint(planned.name, planned.arguments)
@@ -1013,16 +1007,18 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                     stored_runs.append(run)
                     try:
                         result, duration_ms = await _execute_planned_tool(
-                            planned, principal, conversation.call_id
+                            planned, principal, conversation.call_id, conversation.id
                         )
                         results.append((planned, result))
                         run.status = "succeeded"
                         run.duration_ms = duration_ms
                         run.result_preview = assistant_tools.preview(result)
-                    except Exception:
+                    except Exception as exc:
+                        if isinstance(exc, ApiError):
+                            results.append((planned, {"error": exc.code, "message": exc.message}))
                         logger.exception("assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
                         run.status = "failed"
-                        run.error_code = "tool_failed"
+                        run.error_code = exc.code if isinstance(exc, ApiError) else "tool_failed"
                     run.completed_at = datetime.now(UTC)
                 raw_answer = await client.complete(
                     system_prompt,
@@ -1031,7 +1027,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                     model=model,
                 )
                 answer, selected_call_ids = assistant_agent.final_response(
-                    raw_answer, assistant_agent.result_call_ids(results)
+                    raw_answer, assistant_agent.result_call_ids(results), results
                 )
                 sources = await _tool_sources(session, principal, results, selected_call_ids)
             else:
@@ -1044,7 +1040,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
             await client.close()
         status_value = "succeeded"
     except Exception as exc:
-        answer = _assistant_error(exc)
+        answer = assistant_agent.export_notices(_assistant_error(exc), results)
         status_value = "failed"
     memory_drafts: list[OrganizationMemory] = []
     if status_value == "succeeded" and conversation.mode == "training":
@@ -1071,16 +1067,7 @@ def _sse(event: str, payload: dict[str, Any]) -> bytes:
 
 
 def _tool_run_payload(run: AssistantToolRun) -> dict[str, Any]:
-    return {
-        "tool_call_id": run.tool_call_id,
-        "name": run.tool_name,
-        "title": assistant_tools.title(run.tool_name),
-        "status": run.status,
-        "duration_ms": run.duration_ms,
-        "summary": (run.result_preview or {}).get("summary"),
-        "charts": (run.result_preview or {}).get("charts", []),
-        "error_code": run.error_code,
-    }
+    return tool_run_payload(run)
 
 
 async def _tool_sources(
@@ -1142,14 +1129,29 @@ async def _execute_planned_tool(
     planned: assistant_agent.PlannedToolCall,
     principal: Any,
     bound_call_id: UUID | None,
+    conversation_id: UUID | None = None,
 ) -> tuple[dict[str, Any], int]:
     assert principal.tenant_id is not None
-    async with session_scope(principal.tenant_id) as tool_session:
-        return await assistant_tools.execute(
-            planned.name,
-            planned.arguments,
-            assistant_tools.ToolContext(tool_session, principal, bound_call_id),
-        )
+    result: dict[str, Any] | None = None
+    try:
+        async with session_scope(principal.tenant_id) as tool_session:
+            result, duration = await assistant_tools.execute(
+                planned.name,
+                planned.arguments,
+                assistant_tools.ToolContext(tool_session, principal, bound_call_id, conversation_id),
+            )
+        return result, duration
+    except BaseException:
+        if planned.name == "export_data" and result is not None and result.get("file"):
+            from app.services.storage import get_storage
+
+            file = result["file"]
+            key = f"exports/{principal.tenant_id}/{UUID(file['export_id'])}.{file['format']}"
+            try:
+                await get_storage().delete(key)
+            except Exception:
+                logger.error("uncommitted assistant export cleanup failed; check object storage")
+        raise
 
 
 @router.post("/assistant/ephemeral/messages/stream")
@@ -1184,6 +1186,7 @@ async def stream_ephemeral_message(
         model: str | None = None
         sources: list[dict[str, Any]] = []
         public_runs: list[dict[str, Any]] = []
+        results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
         try:
             if refused:
                 answer = assistant_policy.PRIVACY_REFUSAL
@@ -1220,7 +1223,7 @@ async def stream_ephemeral_message(
                     plan = _apply_attachment_constraints(plan, payload.attachments)
                     if plan.tool_calls:
                         yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
-                        results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
+                        results = []
                         seen: set[str] = set()
                         for planned in plan.tool_calls:
                             marker = assistant_tools.fingerprint(planned.name, planned.arguments)
@@ -1246,12 +1249,22 @@ async def stream_ephemeral_message(
                                     "duration_ms": duration_ms,
                                     "summary": assistant_tools.result_summary(result),
                                     "charts": result.get("charts", []),
+                                    "files": result.get("files", []),
                                 }
                                 public_runs[-1] = completed
                                 yield _sse("tool_completed", completed)
-                            except Exception:
+                            except Exception as exc:
+                                if isinstance(exc, ApiError):
+                                    results.append(
+                                        (planned, {"error": exc.code, "message": exc.message})
+                                    )
                                 logger.exception("ephemeral assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
-                                failed = {**started, "status": "failed", "error_code": "tool_failed"}
+                                failed = {
+                                    **started, "status": "failed",
+                                    "error_code": (
+                                        exc.code if isinstance(exc, ApiError) else "tool_failed"
+                                    ),
+                                }
                                 public_runs[-1] = failed
                                 yield _sse("tool_failed", failed)
                         yield _sse("tool_batch_completed", {"count": len(public_runs)})
@@ -1265,7 +1278,7 @@ async def stream_ephemeral_message(
                             answer += chunk
                             yield _sse("delta", {"content": chunk})
                         answer, selected_call_ids = assistant_agent.final_response(
-                            answer, assistant_agent.result_call_ids(results)
+                            answer, assistant_agent.result_call_ids(results), results
                         )
                         sources = await _tool_sources(
                             session, principal, results, selected_call_ids
@@ -1282,7 +1295,7 @@ async def stream_ephemeral_message(
             if not answer.strip():
                 raise RuntimeError("empty assistant response")
         except Exception as exc:
-            answer = _assistant_error(exc)
+            answer = assistant_agent.export_notices(_assistant_error(exc), results)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         usage.status = "failed" if status_value == "failed" else "succeeded"
@@ -1348,6 +1361,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
         model: str | None = None
         sources: list[dict[str, Any]] = []
         stored_runs: list[AssistantToolRun] = []
+        results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
         try:
             if refused:
                 answer = assistant_policy.PRIVACY_REFUSAL
@@ -1382,7 +1396,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                     plan = _apply_attachment_constraints(plan, payload.attachments) if conversation.mode == "normal" else plan
                     if plan.tool_calls:
                         yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
-                        results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]] = []
+                        results = []
                         seen: set[str] = set()
                         for planned in plan.tool_calls:
                             marker = assistant_tools.fingerprint(planned.name, planned.arguments)
@@ -1404,16 +1418,22 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                             yield _sse("tool_started", _tool_run_payload(run))
                             try:
                                 result, duration_ms = await _execute_planned_tool(
-                                    planned, principal, conversation.call_id
+                                    planned, principal, conversation.call_id, conversation.id
                                 )
                                 results.append((planned, result))
                                 run.status = "succeeded"
                                 run.duration_ms = duration_ms
                                 run.result_preview = assistant_tools.preview(result)
-                            except Exception:
+                            except Exception as exc:
+                                if isinstance(exc, ApiError):
+                                    results.append(
+                                        (planned, {"error": exc.code, "message": exc.message})
+                                    )
                                 logger.exception("assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
                                 run.status = "failed"
-                                run.error_code = "tool_failed"
+                                run.error_code = (
+                                    exc.code if isinstance(exc, ApiError) else "tool_failed"
+                                )
                             run.completed_at = datetime.now(UTC)
                             await session.flush()
                             yield _sse(
@@ -1431,7 +1451,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                             answer += chunk
                             yield _sse("delta", {"content": chunk})
                         answer, selected_call_ids = assistant_agent.final_response(
-                            answer, assistant_agent.result_call_ids(results)
+                            answer, assistant_agent.result_call_ids(results), results
                         )
                         sources = await _tool_sources(
                             session, principal, results, selected_call_ids
@@ -1449,7 +1469,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             if not answer.strip():
                 raise RuntimeError("empty assistant response")
         except Exception as exc:
-            answer = _assistant_error(exc)
+            answer = assistant_agent.export_notices(_assistant_error(exc), results)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         assistant_run_id = getattr(request.state, "assistant_run_id", None)

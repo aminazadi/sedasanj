@@ -288,6 +288,16 @@ export interface AssistantCallSource {
   sentiment?: Sentiment | null;
 }
 
+export interface AssistantExportFile {
+  export_id: string;
+  name: string;
+  format: "csv" | "json" | "xlsx" | "pdf" | "md" | "txt";
+  size: number;
+  rows: number;
+  expires_at: string;
+  expires_in_minutes: number;
+}
+
 export interface AssistantToolRun {
   tool_call_id: string;
   name: string;
@@ -297,6 +307,7 @@ export interface AssistantToolRun {
   summary: string | null;
   error_code: string | null;
   charts?: AssistantChart[];
+  files?: AssistantExportFile[];
 }
 
 export interface AssistantChart {

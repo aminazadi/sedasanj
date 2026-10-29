@@ -24,6 +24,10 @@ dependencies = [
     "pyzipper==0.3.6",
     "cryptography>=43.0.0",
     "python-socketio>=5.11.0",
+    "openpyxl>=3.1.5",
+    "reportlab>=4.2.0",
+    "arabic-reshaper>=3.0.0",
+    "python-bidi>=0.6.0",
 ]
 
 [project.optional-dependencies]
@@ -89,7 +93,7 @@ mypy_path = "apps/api:apps/worker_asr:apps/worker_emotion:apps/worker_llm:apps/w
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = ["arq.*", "aioboto3.*", "onnxruntime.*", "asterisk.*", "funasr.*", "torch.*", "pyzipper.*", "cryptography.*"]
+module = ["arq.*", "aioboto3.*", "onnxruntime.*", "asterisk.*", "funasr.*", "torch.*", "pyzipper.*", "cryptography.*", "openpyxl.*", "reportlab.*", "arabic_reshaper.*", "bidi.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

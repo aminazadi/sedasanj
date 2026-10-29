@@ -449,7 +449,7 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
         )
         from app.routers.assistant import _enabled_assistant_tools
 
-        enabled = _enabled_assistant_tools(models) - {"get_current_time"}
+        enabled = _enabled_assistant_tools(models) - {"get_current_time", "export_data"}
         plan = await assistant_agent.plan(
             client,
             SYSTEM,

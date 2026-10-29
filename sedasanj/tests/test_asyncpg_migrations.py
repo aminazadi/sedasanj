@@ -27,6 +27,7 @@ MIGRATIONS = (
     "0057_contacts.py",
     "0058_transcript_chunks_any_dimension.py",
     "0059_contact_geo.py",
+    "0061_assistant_exports.py",
 )
 
 

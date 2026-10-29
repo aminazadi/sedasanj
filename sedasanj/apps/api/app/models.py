@@ -1027,6 +1027,38 @@ class ChatMessage(Base):
     __table_args__ = (Index("idx_chat_messages_conversation", "conversation_id", "ordinal"),)
 
 
+class AssistantExport(Base):
+    __tablename__ = "assistant_exports"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("chat_conversations.id", ondelete="SET NULL")
+    )
+    dataset: Mapped[str] = mapped_column(Text, nullable=False)
+    format: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    filters: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "idx_assistant_exports_expiry", "expires_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
 class AssistantRun(Base):
     __tablename__ = "assistant_runs"
 

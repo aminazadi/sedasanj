@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,21 +53,6 @@ async def _number_taken(
     return (await session.execute(query.limit(1))).first() is not None
 
 
-def _search_filter(q: str) -> object:
-    pattern = f"%{q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
-    digits = contacts.phone_key(q) if any(ch.isdigit() for ch in q) else None
-    clauses = [
-        Contact.name.ilike(pattern, escape="\\"),
-        Contact.company.ilike(pattern, escape="\\"),
-        Contact.email.ilike(pattern, escape="\\"),
-        Contact.province.ilike(pattern, escape="\\"),
-        Contact.city.ilike(pattern, escape="\\"),
-    ]
-    if digits is not None:
-        clauses.append(Contact.phone_number.like(f"%{digits.lstrip('0')}%"))
-    return or_(*clauses)
-
-
 @router.get("", response_model=ContactPage)
 async def list_contacts(
     principal: UserDep,
@@ -79,7 +64,7 @@ async def list_contacts(
     assert principal.tenant_id is not None
     stmt = select(Contact).where(Contact.tenant_id == principal.tenant_id)
     if q and q.strip():
-        stmt = stmt.where(_search_filter(q.strip()))  # type: ignore[arg-type]
+        stmt = stmt.where(contacts.search_filter(q.strip()))  # type: ignore[arg-type]
     total = int(
         (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     )

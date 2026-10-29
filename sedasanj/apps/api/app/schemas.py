@@ -627,7 +627,7 @@ class AssistantMessageAttachments(BaseModel):
     conversation_ids: list[UUID] = Field(default_factory=list, max_length=5)
     from_date: datetime | None = None
     to_date: datetime | None = None
-    tool_names: list[str] = Field(default_factory=list, max_length=7)
+    tool_names: list[str] = Field(default_factory=list, max_length=9)
 
     @model_validator(mode="after")
     def _validate_window(self) -> AssistantMessageAttachments:
@@ -1107,8 +1107,10 @@ class SettingsUpdate(BaseModel):
             "get_call_analytics",
             "get_operator_performance",
             "visualize_statistics",
+            "export_data",
         ]
-    ] | None = Field(default=None, min_length=1, max_length=8)
+    ] | None = Field(default=None, min_length=1, max_length=9)
+    assistant_export_ttl_minutes: int | None = Field(default=None, ge=1, le=1440)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
     correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
