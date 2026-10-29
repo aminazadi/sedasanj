@@ -32,6 +32,7 @@ interface JalaliDatePickerProps {
   value: string;
   onChange: (value: string) => void;
   includeTime?: boolean;
+  square?: boolean;
   placeholder?: string;
 }
 
@@ -79,6 +80,7 @@ export default function JalaliDatePicker({
   value,
   onChange,
   includeTime = false,
+  square = false,
   placeholder = "انتخاب تاریخ",
 }: JalaliDatePickerProps) {
   const root = useRef<HTMLDivElement>(null);
@@ -198,6 +200,8 @@ export default function JalaliDatePicker({
       {open ? createPortal(
         <div
           ref={panel}
+          data-date-picker-panel
+          data-square={square || undefined}
           role="dialog"
           aria-label="انتخاب تاریخ شمسی"
           dir="rtl"

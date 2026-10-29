@@ -1,0 +1,102 @@
+import type { ReactNode } from "react";
+import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
+import { fmt } from "../api";
+import type { AssistantContextOptions, AssistantMessageAttachments } from "../types";
+
+export type AssistantContextTab = "mentions" | "dates" | "tools";
+
+const toolHints: Record<string, string> = {
+  get_current_time: "تاریخ و ساعت فعلی",
+  search_calls: "پیدا کردن تماس‌های مرتبط",
+  get_call_details: "اطلاعات و مشخصات تماس",
+  search_transcripts: "جست‌وجو در متن مکالمه‌ها",
+  get_call_analysis: "خلاصه و تحلیل تماس‌ها",
+  get_call_analytics: "آمار دقیق تماس‌ها",
+  get_operator_performance: "بررسی عملکرد اپراتورها",
+  visualize_statistics: "نمایش آمار به‌صورت نمودار",
+  export_data: "ساخت فایل از داده‌های انتخاب‌شده",
+};
+
+const pad2 = (value: number) => String(value).padStart(2, "0");
+const localStamp = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+
+const datePresets: Array<{ key: string; label: string; range: () => [Date, Date] }> = [
+  { key: "today", label: "امروز", range: () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth(), now.getDate()), now]; } },
+  { key: "7d", label: "۷ روز اخیر", range: () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7), now]; } },
+  { key: "30d", label: "۳۰ روز اخیر", range: () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30), now]; } },
+  { key: "90d", label: "۳ ماه اخیر", range: () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90), now]; } },
+];
+
+function CloseIcon() {
+  return <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
+}
+
+export function AssistantAttachmentChips({ attachments, options, onChange }: {
+  attachments: AssistantMessageAttachments;
+  options: AssistantContextOptions | null;
+  onChange: (value: AssistantMessageAttachments) => void;
+}) {
+  const chips: Array<{ key: string; label: string; remove: () => void }> = [];
+  if (attachments.operator_id) chips.push({ key: "operator", label: `اپراتور: ${options?.operators.find((item) => item.id === attachments.operator_id)?.label || "انتخاب‌شده"}`, remove: () => onChange({ ...attachments, operator_id: null }) });
+  for (const id of attachments.conversation_ids) chips.push({ key: id, label: `گفتگو: ${options?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده"}`, remove: () => onChange({ ...attachments, conversation_ids: attachments.conversation_ids.filter((item) => item !== id) }) });
+  if (attachments.from_date || attachments.to_date) chips.push({ key: "dates", label: attachments.from_date && attachments.to_date ? `${fmt.date(attachments.from_date)} تا ${fmt.date(attachments.to_date)}` : attachments.from_date ? `شروع: ${fmt.date(attachments.from_date)}` : `پایان: ${fmt.date(attachments.to_date!)}`, remove: () => onChange({ ...attachments, from_date: null, to_date: null }) });
+  for (const name of attachments.tool_names) chips.push({ key: name, label: `ابزار: ${options?.tools.find((item) => item.name === name)?.title || name}`, remove: () => onChange({ ...attachments, tool_names: attachments.tool_names.filter((item) => item !== name) }) });
+  if (!chips.length) return null;
+  return <div className="assistant-attachment-list" aria-label="موارد انتخاب‌شده برای پیام">
+    {chips.map((chip) => <button key={chip.key} type="button" className="assistant-attachment-chip" onClick={chip.remove} aria-label={`حذف ${chip.label}`} title={`حذف ${chip.label}`}><span className="truncate">{chip.label}</span><CloseIcon /></button>)}
+  </div>;
+}
+
+export default function AssistantContextPicker({ tab, onTabChange, onClose, attachments, onChange, options, children }: {
+  tab: AssistantContextTab;
+  onTabChange: (tab: AssistantContextTab) => void;
+  onClose: () => void;
+  attachments: AssistantMessageAttachments;
+  onChange: (value: AssistantMessageAttachments) => void;
+  options: AssistantContextOptions | null;
+  children?: ReactNode;
+}) {
+  const hasDates = Boolean(attachments.from_date || attachments.to_date);
+  const incomplete = hasDates && (!attachments.from_date || !attachments.to_date);
+  const invalid = Boolean(attachments.from_date && attachments.to_date && new Date(attachments.from_date) >= new Date(attachments.to_date));
+  const dateHint = incomplete ? "برای تکمیل بازه، هر دو تاریخ را انتخاب کنید." : invalid ? "تاریخ پایان را پس از تاریخ شروع انتخاب کنید." : hasDates ? "فقط داده‌های این بازه در پاسخ بررسی می‌شوند." : "تاریخ شروع و پایان را انتخاب کنید.";
+  const title = tab === "tools" ? "انتخاب ابزارها" : tab === "dates" ? "بازه زمانی" : "انتخاب زمینه گفتگو";
+  return <div className="assistant-context-panel" role="dialog" aria-label={title} dir="rtl" onKeyDown={(event) => { if (event.key === "Escape" && !(event.target as Element).closest("[data-date-picker-panel]")) { event.stopPropagation(); onClose(); } }}>
+    <div className="assistant-context-heading"><h3>{title}</h3><button type="button" className="assistant-context-close" onClick={onClose} aria-label="بستن انتخاب زمینه"><CloseIcon /></button></div>
+    <div className="assistant-context-tabs" role="group" aria-label="نوع زمینه پیام">
+      {([["mentions", "زمینه‌ها"], ["dates", "بازه زمانی"], ["tools", "ابزارها"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => onTabChange(value)}>{label}{value === "tools" && attachments.tool_names.length ? <span>{fmt.int(attachments.tool_names.length)}</span> : null}</button>)}
+    </div>
+    <div className="assistant-context-body">
+      {tab === "mentions" ? children : null}
+      {tab === "tools" ? <>
+        <p className="assistant-context-hint">ابزارهای موردنیاز این پیام را انتخاب کنید.</p>
+        <div className="assistant-tool-options" role="group" aria-label="ابزارهای در دسترس">
+          {options?.tools.map((tool) => {
+            const selected = attachments.tool_names.includes(tool.name);
+            return <button key={tool.name} type="button" className="assistant-tool-option" aria-pressed={selected} onClick={() => onChange({ ...attachments, tool_names: selected ? attachments.tool_names.filter((name) => name !== tool.name) : [...attachments.tool_names, tool.name] })}>
+              <span className="assistant-tool-check" aria-hidden="true">{selected ? <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 8 3 3 7-7" /></svg> : null}</span>
+              <span className="min-w-0"><span className="block text-sm">{tool.title}</span><span className="mt-1 block text-xs text-[#73796C]">{toolHints[tool.name] || "استفاده در پاسخ به این پیام"}</span></span>
+            </button>;
+          })}
+        </div>
+        {!options ? <p className="assistant-context-hint" role="status">در حال دریافت ابزارها…</p> : !options.tools.length ? <p className="assistant-context-hint">ابزاری در دسترس نیست؛ فهرست را با بازکردن دوباره گفتگو دریافت کنید.</p> : null}
+      </> : null}
+      {tab === "dates" ? <>
+        <p className="assistant-context-hint">بازه بررسی تماس‌ها و اطلاعات مرتبط را مشخص کنید.</p>
+        <div className="assistant-date-presets" role="group" aria-label="بازه‌های آماده">
+          {datePresets.map((preset) => <button key={preset.key} type="button" onClick={() => { const [from, to] = preset.range(); onChange({ ...attachments, from_date: localStamp(from), to_date: localStamp(to) }); }}>{preset.label}</button>)}
+        </div>
+        <div className={`assistant-date-range${incomplete || invalid ? " is-warn" : hasDates ? " is-set" : ""}`}>
+          <div className="assistant-date-field"><p className="assistant-date-label">از تاریخ</p><JalaliDatePicker square includeTime value={attachments.from_date || ""} onChange={(value) => onChange({ ...attachments, from_date: value || null })} placeholder="انتخاب تاریخ شروع" /></div>
+          <span className="assistant-date-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M19 12H5m6-6-6 6 6 6" /></svg></span>
+          <div className="assistant-date-field"><p className="assistant-date-label">تا تاریخ</p><JalaliDatePicker square includeTime value={attachments.to_date || ""} onChange={(value) => onChange({ ...attachments, to_date: value || null })} placeholder="انتخاب تاریخ پایان" /></div>
+        </div>
+        <p className="assistant-date-hint" data-tone={incomplete || invalid ? "warn" : undefined} role="status"><span aria-hidden="true" />{dateHint}</p>
+      </> : null}
+    </div>
+    <div className="assistant-context-footer">
+      {tab === "tools" ? <button type="button" className="assistant-context-clear" disabled={!attachments.tool_names.length} onClick={() => onChange({ ...attachments, tool_names: [] })}>پاک‌کردن ابزارها</button> : tab === "dates" ? <button type="button" className="assistant-context-clear" disabled={!hasDates} onClick={() => onChange({ ...attachments, from_date: null, to_date: null })}>پاک‌کردن بازه</button> : <span />}
+      <button type="button" className="assistant-context-done" disabled={tab === "dates" && (incomplete || invalid)} onClick={onClose}>تأیید انتخاب</button>
+    </div>
+  </div>;
+}

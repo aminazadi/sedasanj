@@ -2,6 +2,9 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Redesigned the assistant tool and date dropdowns with shared selection cards, explicit date fields and inset removable context chips in both full and quick chat; preserved calendar interaction outside the composer and kept quick-chat context tabs in the URL.
+- Redesigned the assistant date-range tab with quick presets (today, last 7/30/90 days), a single range card with a from → to arrow that highlights when set or invalid, and a status hint with a tone marker.
+
 - Fixed the assistant stop button and loading state never clearing after a finished reply: the LLM worker's final run update waited on a row lock held by its own still-open stream transaction, so `message:completed` was never published; the bookkeeping now runs after that transaction commits, and terminal socket events are no longer held back while a conversation join is pending on the client.
 - Added scoped assistant exports for calls and analysis, contacts, follow-up tasks and transcripts in CSV, JSON, XLSX, PDF, Markdown and TXT, with authenticated owner/admin downloads, enforced expiry, tenant-aware cleanup, audited access, Persian expiry cards and administrator controls (migration `0061_assistant_exports`); restored file cards after socket reconnection, preserved expiry notices when answer generation fails, and compensated uploaded objects when their database commit fails.
 
