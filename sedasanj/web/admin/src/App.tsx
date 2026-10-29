@@ -12,6 +12,11 @@ import Subscriptions from "./pages/Subscriptions";
 import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
 import Login from "./pages/Login";
+import HelpArticleEditor from "./pages/HelpArticleEditor";
+import HelpArticles from "./pages/HelpArticles";
+import HelpCategories from "./pages/HelpCategories";
+import HelpErrorCodes from "./pages/HelpErrorCodes";
+import HelpMediaPage from "./pages/HelpMedia";
 import ModuleFleet from "./pages/ModuleFleet";
 import ModuleReleaseEditor from "./pages/ModuleReleaseEditor";
 import ModuleReleases from "./pages/ModuleReleases";
@@ -51,6 +56,12 @@ export default function App() {
         <Route path="/module-releases" element={<ModuleReleases />} />
         <Route path="/module-releases/:releaseId" element={<ModuleReleaseEditor />} />
         <Route path="/module-fleet" element={<ModuleFleet />} />
+        <Route path="/help" element={<Navigate to="/help/articles" replace />} />
+        <Route path="/help/articles" element={<HelpArticles />} />
+        <Route path="/help/articles/:articleId" element={<HelpArticleEditor />} />
+        <Route path="/help/error-codes" element={<HelpErrorCodes />} />
+        <Route path="/help/categories" element={<HelpCategories />} />
+        <Route path="/help/media" element={<HelpMediaPage />} />
         <Route path="/staff" element={<Staff />} />
         <Route path="/commerce-settings" element={<CommerceSettings />} />
         <Route path="/audit" element={<Audit />} />

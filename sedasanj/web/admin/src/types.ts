@@ -310,3 +310,57 @@ export interface ModuleInstallationStats {
   latest_version: string | null;
   failed_updates: number;
 }
+
+// --- help center ---
+export type HelpKind = "article" | "error" | "faq";
+export type HelpStatus = "draft" | "published";
+export type HelpSeverity = "info" | "warning" | "error" | "critical";
+
+export interface HelpCategory {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  position: number;
+  article_count: number;
+}
+
+export interface HelpArticleSummary {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  kind: HelpKind;
+  category_id: string | null;
+  status: HelpStatus;
+  position: number;
+  published_at: string | null;
+  updated_at: string;
+}
+
+export interface HelpArticle extends HelpArticleSummary {
+  body_html: string;
+  error_codes: string[];
+}
+
+export interface HelpErrorCode {
+  code: string;
+  source: "module" | "api" | "worker";
+  severity: HelpSeverity;
+  title: string;
+  quick_action: string;
+  article_slug: string | null;
+  article_title: string | null;
+  article_published: boolean;
+}
+
+export interface HelpMedia {
+  id: string;
+  kind: "image" | "video";
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  alt: string;
+  created_at: string;
+  url: string;
+}

@@ -5,6 +5,7 @@ import { isOperator, isOrgAdmin, useAuth } from "./auth";
 import Account from "./pages/Account";
 import AccountSettings from "./pages/AccountSettings";
 import About from "./pages/About";
+import { HelpArticlePage, HelpErrorPage, HelpHome } from "./pages/Help";
 import ApiDocs from "./pages/ApiDocs";
 import CallDetailPage from "./pages/CallDetail";
 import Calls from "./pages/Calls";
@@ -42,6 +43,9 @@ export default function App() {
     return (
       <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/help" element={<HelpHome framed />} />
+          <Route path="/help/errors/:code" element={<HelpErrorPage framed />} />
+          <Route path="/help/:slug" element={<HelpArticlePage framed />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/terms" element={<Legal title="قوانین استفاده" />} />
@@ -78,6 +82,9 @@ export default function App() {
         {operator ? null : <Route path="/install" element={<Install />} />}
         {operator ? null : <Route path="/module-changelog" element={<ModuleChangelog />} />}
         {orgAdmin ? <Route path="/freepbx-servers" element={<FreepbxServers />} /> : null}
+        <Route path="/help" element={<HelpHome framed={false} />} />
+        <Route path="/help/errors/:code" element={<HelpErrorPage framed={false} />} />
+        <Route path="/help/:slug" element={<HelpArticlePage framed={false} />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/terms" element={<Legal title="قوانین استفاده" />} />

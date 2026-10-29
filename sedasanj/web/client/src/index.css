@@ -1094,3 +1094,36 @@ html {
   .calls-filters-form .input { min-height: 38px; padding-block: 0.4rem; padding-inline: 0.6rem; font-size: 0.8rem; }
   .calls-filters-form select.input { padding-left: 2rem; background-position: left 0.5rem center; }
 }
+
+
+/* Help center */
+.help-page { padding: 2rem 0 4rem; max-width: 52rem; }
+.help-hero { text-align: center; margin-bottom: 2rem; }
+.help-hero h1 { font-size: 1.9rem; font-weight: 800; }
+.help-hero form { display: flex; gap: .5rem; margin-top: 1rem; }
+.help-hero input { flex: 1; border: 1px solid #cbd5e1; border-radius: .6rem; padding: .6rem .9rem; }
+.help-hero button { background: #0f766e; color: #fff; border-radius: .6rem; padding: .6rem 1.2rem; }
+.help-categories { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); margin-bottom: 2rem; }
+.help-categories .help-category { text-align: right; border: 1px solid #e2e8f0; border-radius: .75rem; padding: .9rem; background: #f8fafc; }
+.help-categories span { display: block; font-size: .85rem; color: #64748b; }
+.help-list ul { list-style: none; padding: 0; }
+.help-list li { padding: .75rem 0; border-bottom: 1px solid #e2e8f0; }
+.help-list li a { font-weight: 700; color: #0f766e; }
+.help-list li p { color: #64748b; font-size: .9rem; margin: .25rem 0 0; }
+.help-code { font-family: ui-monospace, monospace; background: #f1f5f9; border-radius: .35rem; padding: .05rem .4rem; margin-inline-end: .35rem; }
+.help-quick { background: #ecfeff; border: 1px solid #a5f3fc; border-radius: .6rem; padding: .7rem 1rem; }
+.help-empty, .help-error { color: #64748b; padding: 1rem 0; }
+.help-article h1 { font-size: 1.6rem; font-weight: 800; margin: .5rem 0 1rem; }
+.prose-help { line-height: 2; font-size: 15px; color: #1e293b; }
+.prose-help h2 { font-size: 1.25rem; font-weight: 800; margin: 1.5rem 0 .5rem; }
+.prose-help p { margin: .6rem 0; }
+.prose-help ul, .prose-help ol { margin: .6rem 1.5rem; }
+.prose-help ul { list-style: disc; }
+.prose-help ol { list-style: decimal; }
+.prose-help img, .prose-help video { max-width: 100%; height: auto; border-radius: .5rem; margin: .75rem 0; }
+.prose-help iframe { max-width: 100%; border: 0; border-radius: .5rem; aspect-ratio: 16 / 9; height: auto; width: 100%; }
+.prose-help pre, .prose-help code { direction: ltr; text-align: left; background: #f1f5f9; border-radius: .375rem; padding: .1rem .35rem; }
+.prose-help pre { padding: .75rem; overflow-x: auto; }
+.prose-help table { border-collapse: collapse; margin: .75rem 0; }
+.prose-help th, .prose-help td { border: 1px solid #e2e8f0; padding: .35rem .6rem; }
+.prose-help figcaption { font-size: .85rem; color: #64748b; text-align: center; }

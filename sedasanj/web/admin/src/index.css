@@ -197,3 +197,21 @@ body {
 @media (min-width: 768px) {
   .table-filters:not([open]) > .table-filters-content { display: block !important; }
 }
+
+
+/* Help-center article preview (matches the public page) */
+.prose-help { line-height: 2; font-size: 15px; color: #1e293b; }
+.prose-help h2 { font-size: 1.25rem; font-weight: 800; margin: 1.5rem 0 .5rem; }
+.prose-help h3 { font-size: 1.1rem; font-weight: 700; margin: 1.25rem 0 .4rem; }
+.prose-help p { margin: .6rem 0; }
+.prose-help ul, .prose-help ol { margin: .6rem 1.5rem; }
+.prose-help ul { list-style: disc; }
+.prose-help ol { list-style: decimal; }
+.prose-help img, .prose-help video { max-width: 100%; height: auto; border-radius: .5rem; margin: .75rem 0; }
+.prose-help iframe { max-width: 100%; border: 0; border-radius: .5rem; aspect-ratio: 16 / 9; height: auto; }
+.prose-help pre, .prose-help code { direction: ltr; text-align: left; background: #f1f5f9; border-radius: .375rem; padding: .1rem .35rem; }
+.prose-help pre { padding: .75rem; overflow-x: auto; }
+.prose-help table { border-collapse: collapse; margin: .75rem 0; }
+.prose-help th, .prose-help td { border: 1px solid #e2e8f0; padding: .35rem .6rem; }
+.prose-help figure { margin: 1rem 0; }
+.prose-help figcaption { font-size: .85rem; color: #64748b; text-align: center; }

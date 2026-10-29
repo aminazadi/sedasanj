@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-29 — AMINAZADIAN
+
+- Added the help center: staff manage articles, categories, error-code mappings and image/video media in the admin panel; readers open `/help`, and the FreePBX module links every error code to `/help/errors/<CODE>`. Article HTML is rebuilt from an allowlist, uploads are validated by content, and a seed script creates draft articles for the most common module errors.
+
 ## 2026-10-29 — AMINAZADI
 
 - Hardened FreePBX module 1.3.9: filtered all caller-controlled MixMonitor command arguments against shell injection, added CSRF tokens and POST-only enforcement to settings save, configuration import and update start, and validated the manual settings form server-side.

@@ -26,6 +26,7 @@ from app.routers import (
     calls,
     commerce,
     health,
+    help,
     ingest,
     kpi,
     module_updates,
@@ -156,6 +157,7 @@ def create_app() -> FastAPI:
         scheduled_reports,
         kpi,
         module_updates,
+        help,
         admin,
     ):
         app.include_router(module.router)
