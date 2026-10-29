@@ -19,6 +19,15 @@ case "$VERSION" in
 esac
 OUT="$ROOT/asterisk-module-$VERSION.zip"
 
+# A release must carry its own notes: module.xml, changelog.md and README.md have to agree.
+grep -q "^## $VERSION " "$MODULE/changelog.md" || { echo "ERROR: freepbx-module/changelog.md has no '## $VERSION' entry" >&2; exit 1; }
+grep -q "Module $VERSION" "$MODULE/README.md" || { echo "ERROR: freepbx-module/README.md title does not mention $VERSION" >&2; exit 1; }
+
+# Never ship a release that fails its tests (PHP 7.4 = FreePBX 16, 8.2 = FreePBX 17).
+if [ "${SEDA_SANJ_SKIP_TESTS:-0}" != 1 ]; then
+  "$ROOT/scripts/test-freepbx-module.sh" 7.4 8.2 || { echo "ERROR: module tests failed; fix them or set SEDA_SANJ_SKIP_TESTS=1 knowingly" >&2; exit 1; }
+fi
+
 if grep -q '^REPLACE_WITH_' "$MODULE/assets/release-signing.pub"; then
   echo "WARNING: assets/release-signing.pub is still the placeholder - automatic updates" >&2
   echo "         will be disabled on servers running this build (see README.md)." >&2
@@ -64,6 +73,8 @@ for required in 7zip/7zzs-x86_64 7zip/7zzs-aarch64 ffmpeg/ffmpeg-x86_64 ffmpeg/f
     exit 1
   fi
 done
+# Tests and VCS files are not needed on a PBX.
+rm -rf "$WORK/recuploader/tests" "$WORK/recuploader/.gitignore"
 chmod 755 "$WORK/recuploader/bin/sedasanj-recuploader-update.sh" "$WORK/recuploader"/*.sh
 
 rm -f "$OUT"

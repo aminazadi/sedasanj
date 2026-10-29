@@ -6,6 +6,9 @@ use Engine\Voicemail\VoicemailMessage;
 
 class VoicemailSweeper
 {
+    /** Minimum gap between retries of a voicemail message whose processing failed. */
+    const FAILURE_RETRY_SECONDS = 21600;
+
     private static function directories(string $path): array
     {
         if (!is_dir($path) || is_link($path)) {
@@ -100,6 +103,7 @@ class VoicemailSweeper
                         continue;
                     }
                     foreach (self::textFiles($folderPath) as $textPath) {
+                        $message = null;
                         try {
                             $message = VoicemailMessage::fromTextFile($root, $textPath, $preference);
                             if ($message === null) {
@@ -119,6 +123,14 @@ class VoicemailSweeper
                             if ($enabledAt > 0 && max($audioMtime, $textMtime) <= $enabledAt) {
                                 StateStore::record($cfg, $message['state_key'], 'ignored', ['source' => 'voicemail_sweeper', 'metadata' => ['mailbox' => $message['mailbox'], 'folder' => $message['folder']]]);
                                 $summary['ignored']++;
+                                continue;
+                            }
+                            // A message that failed (staging, conversion, permanent upload error) is
+                            // retried at most every FAILURE_RETRY_SECONDS instead of every sweep, which
+                            // used to re-run ffmpeg and the upload each minute and fill the failed folder.
+                            if (($state['status'] ?? '') === 'failed'
+                                && $now - (float) ($state['last_updated_epoch'] ?? 0) < self::FAILURE_RETRY_SECONDS) {
+                                $summary['quarantined'] = ($summary['quarantined'] ?? 0) + 1;
                                 continue;
                             }
                             if (($state['status'] ?? '') === 'spooled' && !empty($state['job_id']) && $queue->get($state['job_id']) !== null) {
@@ -160,7 +172,10 @@ class VoicemailSweeper
                             }
                         } catch (\Throwable $exc) {
                             $summary['problems'][] = ['file' => $textPath, 'error' => $exc->getMessage()];
-                            $log->error("Voicemail processing failed for {$textPath}: {$exc->getMessage()}");
+                            $log->coded('SS-VMX-1003', "Voicemail processing failed for {$textPath}: {$exc->getMessage()}");
+                            if (isset($message) && is_array($message)) {
+                                StateStore::record($cfg, $message['state_key'], 'failed', ['source' => 'voicemail_sweeper', 'last_error' => $exc->getMessage()]);
+                            }
                         }
                     }
                 }

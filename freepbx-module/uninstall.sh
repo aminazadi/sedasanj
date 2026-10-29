@@ -27,6 +27,21 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Removes the block between two marker lines. If the BEGIN marker has no END marker after it, the file
+# is left untouched: a sed range delete would otherwise run to the end of the file and truncate it.
+remove_block() {
+  local file="$1" begin="$2" end="$3" b e
+  [ -f "$file" ] || return 0
+  b="$(grep -nF -- "$begin" "$file" | head -n 1 | cut -d: -f1 || true)"
+  [ -n "$b" ] || return 0
+  e="$(awk -v s="$b" -v m="$end" 'NR > s && index($0, m) { print NR; exit }' "$file")"
+  if [ -z "$e" ]; then
+    echo "WARNING: $file has a BEGIN marker without a matching END marker; leaving it untouched." >&2
+    return 1
+  fi
+  sed -i "${b},${e}d" "$file"
+}
+
 PURGE=false
 if [ "${1:-}" = "--purge" ]; then
   PURGE=true
@@ -35,8 +50,10 @@ fi
 MODULE_DIR=/var/www/html/admin/modules/recuploader
 CALLRECORDING_FILE=/var/www/html/admin/modules/callrecording/functions.inc.php
 if [ -f "$MODULE_DIR/patch-callrecording.php" ] && command -v php >/dev/null 2>&1; then
+  # A failed restore (core file changed since we patched it) must not abort the uninstall half-way.
   php "$MODULE_DIR/patch-callrecording.php" restore "$CALLRECORDING_FILE" 0 \
-    /var/lib/asterisk-recording-uploader
+    /var/lib/asterisk-recording-uploader \
+    || echo "WARNING: could not restore $CALLRECORDING_FILE (it changed since the patch). Reinstall the callrecording module with: fwconsole ma downloadinstall callrecording" >&2
 fi
 
 # Best-effort: unregister the module from FreePBX first, mirroring what
@@ -84,17 +101,11 @@ MARKER_END="; END recuploader dialplan hook"
 # rewrite, but a box that was installed before then may still have this
 # block - clean it up here too so uninstall is thorough regardless of
 # which version was running.
-if [ -f /etc/asterisk/extensions_custom.conf ]; then
-  sed -i "/$(printf '%s' "$MARKER_BEGIN" | sed 's/[.[\*^$/]/\\&/g')/,/$(printf '%s' "$MARKER_END" | sed 's/[.[\*^$/]/\\&/g')/d" \
-    /etc/asterisk/extensions_custom.conf
-fi
+remove_block /etc/asterisk/extensions_custom.conf "$MARKER_BEGIN" "$MARKER_END" || true
 
 MIXMON_MARKER_BEGIN="; BEGIN recuploader mixmon globals - managed by the Recording Uploader module, do not edit by hand"
 MIXMON_MARKER_END="; END recuploader mixmon globals"
-if [ -f /etc/asterisk/globals_custom.conf ]; then
-  sed -i "/$(printf '%s' "$MIXMON_MARKER_BEGIN" | sed 's/[.[\*^$/]/\\&/g')/,/$(printf '%s' "$MIXMON_MARKER_END" | sed 's/[.[\*^$/]/\\&/g')/d" \
-    /etc/asterisk/globals_custom.conf
-fi
+remove_block /etc/asterisk/globals_custom.conf "$MIXMON_MARKER_BEGIN" "$MIXMON_MARKER_END" || true
 fwconsole reload || asterisk -rx "dialplan reload" || true
 
 rm -rf /usr/local/bin/asterisk-recording-uploader

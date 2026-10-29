@@ -237,18 +237,34 @@ $helpIcon = function ($title, $content) {
 				<span aria-hidden="true">&times;</span>
 			</button>
 			<strong><?php echo _("Settings NOT saved."); ?></strong>
-			<?php echo htmlspecialchars($saveError, ENT_QUOTES, 'UTF-8'); ?>
+			<?php echo $recuploader->linkifyErrorCodes($saveError); ?>
 			<?php echo _(" The service was left running on its previous configuration."); ?>
 		</div>
 	<?php endif; ?>
 	<?php if ($importMessage !== null): ?>
 		<div class="alert alert-success"><?php echo htmlspecialchars($importMessage, ENT_QUOTES, 'UTF-8'); ?></div>
 	<?php elseif (!$saved && $pageError !== null): ?>
-		<div class="alert alert-danger"><?php echo htmlspecialchars($pageError, ENT_QUOTES, 'UTF-8'); ?></div>
+		<div class="alert alert-danger"><?php echo $recuploader->linkifyErrorCodes($pageError); ?></div>
+	<?php endif; ?>
+
+	<?php $activation = $recuploader->getActivationStatus(); ?>
+	<?php if ($activation['state'] !== 'ok'): ?>
+		<div class="alert alert-warning" id="sj-activation" role="alert">
+			<strong><i class="fa fa-exclamation-triangle"></i> <?php echo $activation['state'] === 'failed' ? _("Activation failed") : _("Activation required"); ?></strong>
+			<span class="sj-code">[<?php echo htmlspecialchars($activation['code'], ENT_QUOTES, 'UTF-8'); ?>]</span>
+			<p style="margin: 8px 0;"><?php echo _("The module files are installed, but the background service, update helper and recording hook need one step as root (Module Admin cannot do this for you). Run this command on the PBX, then reload this page:"); ?></p>
+			<div class="input-group" style="max-width: 760px; direction: ltr;">
+				<input type="text" readonly class="form-control" id="sj-activation-cmd" value="<?php echo htmlspecialchars($activation['command'], ENT_QUOTES, 'UTF-8'); ?>">
+				<span class="input-group-btn"><button type="button" class="btn btn-default" id="sj-activation-copy"><i class="fa fa-clipboard"></i> <?php echo _("Copy"); ?></button></span>
+			</div>
+			<?php if ($activation['message'] !== ''): ?><p style="margin: 8px 0 0;"><small><?php echo htmlspecialchars($activation['message'], ENT_QUOTES, 'UTF-8'); ?></small></p><?php endif; ?>
+			<p style="margin: 8px 0 0;"><small><a href="<?php echo htmlspecialchars(\Engine\ErrorCatalog::helpUrl($activation['code']), ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener"><?php echo _("Help for this step"); ?></a></small></p>
+		</div>
 	<?php endif; ?>
 
 	<form method="post" action="config.php?display=recuploader" id="recuploader-form" class="form-horizontal" enctype="multipart/form-data">
 		<input type="hidden" name="display" value="recuploader">
+		<input type="hidden" name="sj_csrf" value="<?php echo htmlspecialchars($recuploader->csrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
 
 		<div class="sj-card">
 		<!-- ================= Tab navigation ================= -->
@@ -291,6 +307,11 @@ $helpIcon = function ($title, $content) {
 			<li role="presentation">
 				<a href="#tab-logging" aria-controls="tab-logging" role="tab" data-toggle="tab">
 					<i class="fa fa-list-alt"></i> <?php echo _("Logging"); ?>
+				</a>
+			</li>
+			<li role="presentation">
+				<a href="#tab-health" aria-controls="tab-health" role="tab" data-toggle="tab">
+					<i class="fa fa-heartbeat"></i> <?php echo _("Health &amp; Dependencies"); ?>
 				</a>
 			</li>
 			<li role="presentation">
@@ -569,9 +590,10 @@ $helpIcon = function ($title, $content) {
 				<div class="row sj-stats">
 					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Pending"); ?></span><strong><?php echo (int) $queueSummary['pending']; ?></strong></div></div>
 					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Blocked by credit"); ?></span><strong><?php echo (int) $queueSummary['blocked_credit']; ?></strong></div></div>
+					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Paused: key or account"); ?></span><strong><?php echo (int) $queueSummary['blocked_config']; ?></strong></div></div>
 					<div class="col-sm-3"><div class="sj-stat"><span><?php echo _("Failed"); ?></span><strong><?php echo (int) $queueSummary['failed']; ?></strong></div></div>
 				</div>
-				<?php if ($queueSummary['last_error'] !== ''): ?><div class="alert alert-warning"><strong><?php echo _("Last error"); ?>:</strong> <?php echo htmlspecialchars($queueSummary['last_error'], ENT_QUOTES, 'UTF-8'); ?></div><?php endif; ?>
+				<?php if ($queueSummary['last_error'] !== ''): ?><div class="alert alert-warning"><strong><?php echo _("Last error"); ?>:</strong> <?php echo $recuploader->linkifyErrorCodes($queueSummary['last_error']); ?></div><?php endif; ?>
 
 				<div class="form-group">
 					<label class="col-sm-3 control-label" for="max_retries"><?php echo _("Max Retries"); ?></label>
@@ -711,6 +733,20 @@ $helpIcon = function ($title, $content) {
 			</div><!-- /tab-logging -->
 
 			<!-- ================= Changelog (loaded on first open) ================= -->
+			<div role="tabpanel" class="tab-pane" id="tab-health">
+				<p class="help-block"><?php echo _("Everything the module needs on this PBX. Required items must be green for recordings to flow; yellow items only disable an optional feature."); ?></p>
+				<div class="alert alert-info" id="sj-health-summary" style="display:none;"></div>
+				<p>
+					<button type="button" class="btn btn-default" id="sj-health-refresh"><i class="fa fa-refresh"></i> <?php echo _("Re-check"); ?></button>
+					<button type="submit" name="recuploader_bundle" value="1" class="btn btn-default" title="<?php echo htmlspecialchars(_("Secrets and phone numbers are removed. Attach it to your support request."), ENT_QUOTES, 'UTF-8'); ?>"><i class="fa fa-download"></i> <?php echo _("Download support bundle"); ?></button>
+				</p>
+				<div id="sj-health-install" class="alert alert-info" style="display:none;"><pre style="max-height: 220px; overflow: auto; margin: 0;"></pre></div>
+				<div class="table-responsive"><table class="table table-striped table-condensed" id="sj-health-table">
+					<thead><tr><th><?php echo _("Group"); ?></th><th><?php echo _("Item"); ?></th><th><?php echo _("Status"); ?></th><th><?php echo _("Details"); ?></th><th></th></tr></thead>
+					<tbody><tr><td colspan="5"><?php echo _("Loading..."); ?></td></tr></tbody>
+				</table></div>
+			</div><!-- /tab-health -->
+
 			<div role="tabpanel" class="tab-pane sj-rtl" id="tab-changelog" dir="rtl">
 				<div id="sj-update-check-note" class="alert alert-warning" style="display: none;"></div>
 				<div id="sj-changelog"><p class="text-muted"><i class="fa fa-spinner fa-spin"></i> در حال دریافت تاریخچهٔ نسخه‌ها...</p></div>
@@ -776,7 +812,7 @@ $helpIcon = function ($title, $content) {
 	$(function () {
 		var sjTabNames = [
 			'endpoint', 'import', 'watcher', 'missed-calls', 'voicemail',
-			'post', 'retry', 'logging', 'changelog'
+			'post', 'retry', 'health', 'logging', 'changelog'
 		];
 
 		function sjTabNameFromHref(href) {
@@ -923,6 +959,7 @@ $helpIcon = function ($title, $content) {
 			['backup', 'پشتیبان‌گیری از نصب فعلی'],
 			['swap', 'جایگزینی فایل‌های ماژول'],
 			['install', 'نصب ماژول (fwconsole ma install)'],
+			['activate', 'فعال‌سازی سرویس و هوک ضبط (root)'],
 			['reload', 'اعمال تنظیمات FreePBX'],
 			['health', 'بررسی سلامت سرویس'],
 			['report', 'ارسال گزارش به سرور']
@@ -935,6 +972,12 @@ $helpIcon = function ($title, $content) {
 		};
 		var sjCurrentVersion = <?php echo json_encode($moduleVersion['files']); ?>;
 		var sjPollErrors = 0;
+		var sjCsrf = <?php echo json_encode($recuploader->csrfToken()); ?>;
+		$('#sj-activation-copy').on('click', function () {
+			var field = document.getElementById('sj-activation-cmd');
+			field.select();
+			try { document.execCommand('copy'); } catch (e) {}
+		});
 
 		function sjCall(command, data, method) {
 			return $.ajax({
@@ -942,9 +985,66 @@ $helpIcon = function ($title, $content) {
 				method: method || 'GET',
 				dataType: 'json',
 				timeout: command === 'startupdate' ? 330000 : 20000,
+				headers: { 'X-SJ-CSRF': sjCsrf },
 				data: $.extend({ module: 'recuploader', command: command }, data || {})
 			});
 		}
+
+		/* Health & Dependencies tab */
+		var sjHealthLoaded = false;
+		function sjHealthRender(r) {
+			var $body = $('#sj-health-table tbody').empty();
+			var badge = { ok: 'label-success', warn: 'label-warning', fail: 'label-danger' };
+			var text = { ok: <?php echo json_encode(_("OK")); ?>, warn: <?php echo json_encode(_("Optional")); ?>, fail: <?php echo json_encode(_("Fix needed")); ?> };
+			$.each(r.rows, function (_, row) {
+				var $tr = $('<tr>');
+				$tr.append($('<td>').text(row.group)).append($('<td>').text(row.label + (row.required ? '' : ' (optional)')));
+				$tr.append($('<td>').append($('<span class="label">').addClass(badge[row.status] || 'label-default').text(text[row.status] || row.status)));
+				var $detail = $('<td>').text(row.detail);
+				if (row.status !== 'ok' && row.action) { $detail.append($('<div class="text-muted">').append($('<small>').text(row.action))); }
+				if (row.status !== 'ok' && row.code) {
+					$detail.append(' ').append($('<small>').append($('<a target="_blank" rel="noopener">').attr('href', 'https://sedasanj.ir/help/errors/' + encodeURIComponent(row.code)).text('[' + row.code + ']')));
+				}
+				$tr.append($detail);
+				var $action = $('<td>');
+				if (row.status !== 'ok' && row.install_module) {
+					$action.append($('<button type="button" class="btn btn-xs btn-primary sj-dep-install">').attr('data-module', row.install_module).text(<?php echo json_encode(_("Install")); ?>));
+				}
+				$body.append($tr.append($action));
+			});
+			$('#sj-health-summary').removeClass('alert-info alert-success alert-danger alert-warning')
+				.addClass(r.ok ? (r.warnings ? 'alert-warning' : 'alert-success') : 'alert-danger')
+				.text(r.ok ? <?php echo json_encode(_("All required items are in place.")); ?> + (r.warnings ? ' (' + r.warnings + ' optional)' : '')
+					: r.blocking + ' ' + <?php echo json_encode(_("required item(s) need attention.")); ?>).show();
+		}
+		function sjHealthLoad() {
+			$('#sj-health-table tbody').html('<tr><td colspan="5">' + <?php echo json_encode(_("Checking...")); ?> + '</td></tr>');
+			sjCall('deps').done(function (r) {
+				if (r && r.rows) { sjHealthRender(r); sjHealthLoaded = true; }
+				else { $('#sj-health-table tbody').html('<tr><td colspan="5" class="text-danger">' + <?php echo json_encode(_("The check failed. Reload the page.")); ?> + '</td></tr>'); }
+			}).fail(function () {
+				$('#sj-health-table tbody').html('<tr><td colspan="5" class="text-danger">' + <?php echo json_encode(_("The check could not be run (connection error).")); ?> + '</td></tr>');
+			});
+		}
+		function sjDepPoll(job) {
+			sjCall('depstatus', { job: job }).done(function (r) {
+				var $box = $('#sj-health-install').show();
+				$box.find('pre').text(r.log_tail || '');
+				if (r.state === 'running') { setTimeout(function () { sjDepPoll(job); }, 2000); }
+				else { sjHealthLoad(); }
+			});
+		}
+		$(document).on('click', '.sj-dep-install', function () {
+			var module = $(this).attr('data-module');
+			if (!window.confirm(<?php echo json_encode(_("Download and install this FreePBX module from the Sangoma repository now?")); ?> + '\n' + module)) { return; }
+			$(this).prop('disabled', true);
+			sjCall('installdep', { module: module }, 'POST').done(function (r) {
+				if (r && r.status) { $('#sj-health-install').show().find('pre').text(<?php echo json_encode(_("Installing...")); ?>); sjDepPoll(r.job); }
+				else { window.alert((r && r.message) || <?php echo json_encode(_("Could not start the installation.")); ?>); sjHealthLoad(); }
+			});
+		});
+		$('#sj-health-refresh').on('click', sjHealthLoad);
+		$('a[href="#tab-health"]').on('shown.bs.tab', function () { if (!sjHealthLoaded) { sjHealthLoad(); } });
 
 		function sjSevBadge(sev) {
 			sev = sjSeverity[sev] ? sev : 'normal';
@@ -1148,6 +1248,7 @@ $helpIcon = function ($title, $content) {
 		});
 
 		$('a[href="#tab-' + requestedTab + '"]').tab('show');
+		if (requestedTab === 'health' && !sjHealthLoaded) { sjHealthLoad(); }
 		sjPersistActiveTab(requestedTab);
 
 	});

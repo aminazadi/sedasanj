@@ -74,7 +74,7 @@ LOG="$STATUS_DIR/update.log"
 : > "$LOG"
 chmod 0644 "$LOG"
 
-STEPS=(verify extract backup swap install reload health report)
+STEPS=(verify extract backup swap install activate reload health report)
 declare -A STEP_STATE
 for s in "${STEPS[@]}"; do STEP_STATE[$s]=pending; done
 STATE=running
@@ -150,6 +150,9 @@ case 'modxml':
     if ($x === false) { fail('module.xml is unreadable'); }
     echo trim((string) $x->rawname), "\n", trim((string) $x->version), "\n";
     break;
+case 'newer':
+    // exit 0 only when $a[0] is strictly newer than $a[1]: blocks downgrades and replays of old signed releases.
+    exit(version_compare($a[0], $a[1], '>') ? 0 : 1);
 case 'status':
     list($out, $job, $state, $step, $from, $to, $message, $logFile) = array_slice($a, 0, 8);
     $steps = array(); $done = 0;
@@ -260,8 +263,11 @@ rollback() {
     rm -rf -- "$MODULE_DIR"
     mv -- "$PREV_DIR" "$MODULE_DIR" || ok=0
   fi
-  if [ -n "$BACKUP_DIR" ] && [ -f "$WORK/restore-installation-backup.sh" ]; then
-    run bash "$WORK/restore-installation-backup.sh" "$BACKUP_DIR" || ok=0
+  # Prefer the restore script of the version we just put back; the new package's copy is the fallback.
+  RESTORE_SCRIPT="$MODULE_DIR/restore-installation-backup.sh"
+  [ -f "$RESTORE_SCRIPT" ] || RESTORE_SCRIPT="$WORK/restore-installation-backup.sh"
+  if [ -n "$BACKUP_DIR" ] && [ -f "$RESTORE_SCRIPT" ]; then
+    run bash "$RESTORE_SCRIPT" "$BACKUP_DIR" || ok=0
     SEDA_SANJ_PREINSTALL_BACKUP_DIR="$BACKUP_DIR" run fwconsole ma install "$MODULE_NAME" || ok=0
     run fwconsole chown || true
     run fwconsole reload || ok=0
@@ -329,6 +335,13 @@ HOST_UUID="${job_fields[5]}"
 log "Updating $MODULE_NAME ${FROM_VERSION:-?} -> $TO_VERSION (release $RELEASE_ID)"
 "$PHP_BIN" "$LIB" verify "$WORK/release.zip" "$SHA256" "$SIGNATURE" "$PUBKEY" >> "$LOG" 2>&1 \
   || fail "Release signature or checksum verification failed"
+CURRENT_VERSION=""
+if [ -f "$MODULE_DIR/module.xml" ]; then
+  CURRENT_VERSION="$("$PHP_BIN" "$LIB" modxml "$MODULE_DIR/module.xml" 2>/dev/null | sed -n 2p)"
+fi
+if [ -n "$CURRENT_VERSION" ] && ! "$PHP_BIN" "$LIB" newer "$TO_VERSION" "$CURRENT_VERSION"; then
+  fail "SS-UPD-1004: refusing to install $TO_VERSION over $CURRENT_VERSION (only newer releases are installed automatically)"
+fi
 end_step
 
 # ---- 2. extract --------------------------------------------------------------
@@ -404,6 +417,18 @@ end_step
 begin_step install
 SEDA_SANJ_PREINSTALL_BACKUP_DIR="$BACKUP_DIR" run fwconsole ma install "$MODULE_NAME" \
   || fail "fwconsole ma install failed"
+end_step
+
+# ---- 5b. activate -----------------------------------------------------------
+# fwconsole may drop to the asterisk user, in which case install() only registered the module.
+# Run the module's own root provisioning explicitly so a real update always ends fully activated,
+# restarts the service on the new code and refreshes the hook globals.
+begin_step activate
+SEDA_SANJ_PREINSTALL_BACKUP_DIR="$BACKUP_DIR" run "$PHP_BIN" -d display_errors=stderr -r '
+  $_SERVER["HTTP_HOST"] = "localhost";
+  require "/etc/freepbx.conf";
+  \FreePBX::Create()->Recuploader->provision();
+' || fail "SS-UPD-1005: module activation (root provisioning) failed"
 end_step
 
 # ---- 6. reload ---------------------------------------------------------------

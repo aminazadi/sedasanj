@@ -59,6 +59,17 @@ class StateStore
         return $store->upsert($filepath, $fields);
     }
 
+    /** Current status string for a state key, or null when unknown / the store is unreadable. */
+    public static function statusOf(array $cfg, string $filepath): ?string
+    {
+        try {
+            $row = self::create($cfg)->get($filepath);
+        } catch (\Throwable $exc) {
+            return null;
+        }
+        return is_array($row) && isset($row['status']) ? (string) $row['status'] : null;
+    }
+
     public static function jobIdFromPath(string $jobPath): string
     {
         return pathinfo($jobPath, PATHINFO_FILENAME);

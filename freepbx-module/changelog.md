@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.4.0 — AMINAZADI
+
+- Installation from FreePBX Module Admin now succeeds without root: it registers the module and shows an "Activation required" notice with the single root command (`activate.sh`) that creates the service, update helper and recording hook. `install.sh` and `fwconsole ma install` as root still provision everything in one step.
+- Declared `<depends>` (PHP 7.4+, curl/zlib/json/simplexml, core, callrecording, cdr) and `<supported>` FreePBX 15, 16 and 17 in `module.xml`, and replaced the file-name `<changelog>` with inline text. FreePBX version detection now reads the first version number only (15.0.17 is no longer mistaken for 17).
+- Added stable error codes (`SS-<AREA>-<NNNN>`, `ErrorCatalog`) and a structured, redacting logger: secrets, bearer tokens and configured passwords are removed, control characters cannot forge log lines, phone-like fields are masked, rotation is locked and new log files are mode 0640.
+- Upload failures are classified once: HTTP 401/403/404/405 and archive/key errors now pause the recording and its queue (shown as "Paused: key or account") instead of moving every queued recording to `failed/`; credit pauses are unchanged; per-recording data errors still fail permanently; proxy and unknown errors are retried. A tick stops early when the endpoint is down, uploads time out relative to file size, and the server request ID is logged.
+- A failed local archive copy (GSM encoder, ffmpeg, wideband audio) no longer blocks delivery. A failed stereo merge now logs `SS-HOOK-1003` and delivers the mono mix instead of leaving the call stranded. The merged file is created as `.part` and renamed only after its metadata sidecar exists.
+- Voicemail messages that fail are retried at most every six hours instead of every sweep. Queue jobs and the recording hook now share one state record per call.
+- `callrecording` patching now supports FreePBX 15, tolerates a core file that already contains the patch (upstream adoption) and is verified against the real 15, 16 and 17 sources.
+- Installation backups no longer archive the recording spool. Helper classes (`UploadError`, `StagingError`, `WavFile`, ...) are autoloadable.
+- Fixed the Failed counter counting metadata sidecars; added end-to-end tests that run the hook and uploader against a stub server on PHP 7.4 to 8.3 (`scripts/test-freepbx-module.sh`).
+
+
+## 1.3.9 — AMINAZADI
+
+- Security: every caller-controlled value in the MixMonitor post-recording command (`CALLFILENAME`, `UNIQUEID`, `CALLERID(num)`, `CDR(dnid)`, `CDR(duration)`, `CDR(dst)`, `FROM_DID`) is now passed through Asterisk `FILTER()` and revalidated by `mix-stereo.php`, closing a shell-injection path from crafted SIP user parts. The globals block is installed from the single shipped `dialplan/globals-custom-mixmon.conf` and replaced on upgrade when it differs.
+- Security: saving settings, importing a configuration and starting an update now require a POST request with a per-session security token (CSRF protection); the former GET-driven save is rejected.
+- Added server-side validation of the manual settings form (https endpoint, numeric ranges, enumerations, regular expressions, absolute paths, no line breaks) before anything is stored or written to config.ini.
+
 ## 1.3.8 — AMINAZADI
 
 - Fell back to the attributed agent extension when FreePBX supplies a nonnumeric dialplan label as the call destination, preventing valid recordings from being rejected by ingest validation.

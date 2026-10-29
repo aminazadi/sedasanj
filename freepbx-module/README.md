@@ -1,4 +1,4 @@
-# Seda Sanj FreePBX Module 1.3.8
+# Seda Sanj FreePBX Module 1.4.0
 
 Voicemail upload is disabled by default. Enable it in **Admin > Seda Sanj > Voicemail** after confirming the Asterisk service account can read `/var/spool/asterisk/voicemail`. The sweeper reads message metadata and audio without modifying mailbox files, skips `tmp`, and uploads only complete messages older than the recording settle interval. Existing messages are ignored on first activation unless backfill is explicitly enabled. GSM and wav49 inputs are converted to mono 8 kHz PCM in the private pending spool before upload; original voicemail files are never renamed, moved, or deleted.
 
@@ -10,11 +10,44 @@ Supported environments: FreePBX 16/17, PHP 7.4 through PHP 8.x, and Linux x86_64
 
 ## Install or upgrade
 
+Supported: FreePBX 15, 16 and 17 with a command-line PHP 7.4 or newer (FreePBX 15 needs PHP 7.4 installed next to its default PHP). Module Admin refuses the install when `<depends>` are not met and lists what is missing; the **Health & Dependencies** tab of the module repeats the check and can install missing FreePBX modules (`callrecording`, `cdr`, `core`, optional `voicemail`) with one click.
+
+### A. From the FreePBX panel (two steps)
+
+1. **Admin > Module Admin > Upload modules**, upload the release ZIP, then install the module. Module Admin runs as the web user, so this step only registers the module and checks the requirements; it never fails for lack of root.
+2. Open **Admin > Seda Sanj**. The *Activation required* notice shows the single command that finishes the installation (service, update helper, recording hook). Run it on the PBX as root and reload the page:
+
+```bash
+sudo bash /var/www/html/admin/modules/recuploader/activate.sh
+```
+
+### B. From SSH (one step)
+
 1. Extract the release ZIP and run `sudo ./recuploader/install.sh`.
-2. The installer creates a mandatory backup before its first mutation. It aborts if the backup cannot be completed or verified.
+2. The installer creates a mandatory backup before its first mutation. It aborts if the backup cannot be completed or verified. The recording spool is not part of this backup.
 3. Open **Admin > Seda Sanj > Import Configuration**.
 4. Upload `sedasanj-freepbx-config.json`, review the masked preview, and apply it.
 5. Place inbound and outbound canary calls and monitor the queue, disk space, and ingest status.
+
+### Diagnostics
+
+Every failure carries a stable code such as `SS-UPL-0401`; the module page and logs link it to its help article (`https://sedasanj.ir/help/errors/<CODE>`). On the PBX:
+
+```bash
+php /usr/local/bin/asterisk-recording-uploader/bin/doctor.php
+```
+
+```bash
+php /usr/local/bin/asterisk-recording-uploader/bin/support-bundle.php --out=/tmp/sedasanj-support.tar.gz
+```
+
+The bundle contains the doctor report, redacted configuration, recent logs and versions; secrets are removed and phone numbers masked. The same bundle can be downloaded from **Health & Dependencies**.
+
+### Behaviour worth knowing
+
+- HTTP 401/403/404/405 and archive-key mismatches **pause** queued recordings ("Paused: key or account") instead of failing them; fix the key or account and they resume by themselves. Credit exhaustion (402) also pauses. Only per-recording data errors move a recording to `failed/`.
+- If the stereo merge of a call fails, the mono mix is delivered instead and `SS-HOOK-1003` is logged.
+- Updates refuse any release that is not newer than the installed one.
 
 ## Installation backup and restore
 

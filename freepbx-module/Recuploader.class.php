@@ -111,8 +111,48 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * BMO lifecycle
 	 * ------------------------------------------------------------------ */
 
+	/**
+	 * FreePBX lifecycle hook. Module Admin runs this inside the web request as the web user
+	 * (no root), `fwconsole ma install` may run it as root, and the update helper always does.
+	 *
+	 * - As root: provisions the whole OS side (see provision()).
+	 * - Without root: registers the module and marks it "activation required". It never throws
+	 *   for lack of privileges, so the Module Admin install succeeds; the module page then
+	 *   shows the one root command (activate.sh) that finishes the job.
+	 */
 	public function install() {
 		$this->assertRuntimeRequirements();
+		$this->freePbxMajor();
+		if ($this->isRoot()) {
+			$this->provision();
+			return true;
+		}
+		$this->recordActivation('pending', 'SS-SYS-1004', 'Installed without root privileges; run activate.sh as root to finish.');
+		return true;
+	}
+
+	/** The CLI php, never the FPM/Apache binary that PHP_BINARY points at under the web GUI. */
+	protected function phpCli() {
+		if (PHP_SAPI === 'cli' && PHP_BINARY) {
+			return PHP_BINARY;
+		}
+		$found = trim((string) @shell_exec('command -v php 2>/dev/null'));
+		return $found !== '' ? $found : 'php';
+	}
+
+	protected function isRoot() {
+		return function_exists('posix_geteuid') && posix_geteuid() === 0;
+	}
+
+	/**
+	 * Root-only provisioning: mandatory backup, directories, engine, systemd unit, sudoers,
+	 * update helper, MixMonitor globals, FreePBX core patch, service start. Called by install()
+	 * when running as root and by activate.sh (through the FreePBX bootstrap) after a GUI install.
+	 */
+	public function provision() {
+		if (!$this->isRoot()) {
+			throw new \RuntimeException('Provisioning needs root. Run: sudo bash ' . __DIR__ . '/activate.sh');
+		}
 		$freePbxMajor = $this->freePbxMajor();
 		$this->createInstallationBackup();
 		$this->ensureDirectories();
@@ -128,12 +168,63 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			$this->removeLegacyDialplanHook();
 			$this->reloadDialplan();
 			$this->serviceControl('enable');
-			$this->serviceControl('start');
+			$this->serviceControl('restart');
 		} catch (\Throwable $exc) {
 			if (!$patchStateExisted) {
 				$this->patchCallRecording('restore', 0);
 			}
+			$this->recordActivation('failed', 'SS-SYS-1004', $exc->getMessage());
 			throw $exc;
+		}
+		$this->recordActivation('ok', '', '');
+	}
+
+	/**
+	 * Activation state shown on the module page: 'ok' only when the last root provisioning
+	 * finished for exactly the module version whose files are installed and the OS pieces exist.
+	 *
+	 * @return array{state:string,code:string,message:string,version:string,command:string}
+	 */
+	public function getActivationStatus() {
+		$recorded = json_decode((string) @file_get_contents(self::STATE_DIR . '/activation.json'), true);
+		if (!is_array($recorded)) {
+			$recorded = array();
+		}
+		$files = $this->getModuleVersion();
+		$state = isset($recorded['state']) ? (string) $recorded['state'] : 'pending';
+		$ok = $state === 'ok'
+			&& isset($recorded['version']) && $recorded['version'] === $files['files']
+			&& file_exists(self::SYSTEMD_UNIT) && file_exists(self::UPDATE_HELPER);
+		return array(
+			'state' => $ok ? 'ok' : ($state === 'failed' ? 'failed' : 'pending'),
+			'code' => isset($recorded['code']) ? (string) $recorded['code'] : 'SS-SYS-1004',
+			'message' => isset($recorded['message']) ? (string) $recorded['message'] : '',
+			'version' => isset($recorded['version']) ? (string) $recorded['version'] : '',
+			'command' => 'sudo bash ' . __DIR__ . '/activate.sh',
+		);
+	}
+
+	protected function recordActivation($state, $code, $message) {
+		$version = $this->getModuleVersion();
+		$payload = json_encode(array(
+			'state' => $state,
+			'code' => $code,
+			'message' => $message,
+			'version' => $version['files'],
+			'time' => gmdate('c'),
+		));
+		if (!is_dir(self::STATE_DIR)) {
+			// Without root (GUI install) the state directory may not exist yet; the status then
+			// simply stays "pending", which is the truth.
+			if (!@mkdir(self::STATE_DIR, 0755, true)) {
+				return;
+			}
+		}
+		$tmp = self::STATE_DIR . '/activation.json.tmp.' . getmypid();
+		if (@file_put_contents($tmp, $payload, LOCK_EX) !== false) {
+			if (!@rename($tmp, self::STATE_DIR . '/activation.json')) {
+				@unlink($tmp);
+			}
 		}
 	}
 
@@ -200,12 +291,27 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 		// them by hand (or with the bundled uninstall.sh --purge) if wanted.
 	}
 
+	/**
+	 * Major version of FreePBX (15, 16 or 17). Uses FreePBX's own getversion() when the framework is
+	 * loaded (always the case inside Module Admin) and `fwconsole --version` otherwise, and takes
+	 * the FIRST number only: a version such as 15.0.17 must never be read as 17.
+	 */
 	protected function freePbxMajor() {
-		$output = trim((string) @shell_exec('fwconsole --version 2>/dev/null'));
-		if (!preg_match('/\b(16|17)(?:\.|\b)/', $output, $match)) {
-			throw new \RuntimeException('Seda Sanj supports only FreePBX 16 and 17; detected version is unknown.');
+		$text = '';
+		if (function_exists('getversion')) {
+			$text = (string) getversion();
 		}
-		return (int) $match[1];
+		if (!preg_match('/^\s*(?:FreePBX\s+)?(\d+)\./i', $text)) {
+			$text = trim((string) @shell_exec('fwconsole --version 2>/dev/null'));
+		}
+		if (!preg_match('/(?:^|\s)(?:FreePBX\s+)?(\d+)\.\d+/i', $text, $match)) {
+			throw new \RuntimeException('Cannot determine the FreePBX version (SS-SYS-1003).');
+		}
+		$major = (int) $match[1];
+		if (!in_array($major, array(15, 16, 17), true)) {
+			throw new \RuntimeException("Seda Sanj supports FreePBX 15, 16 and 17; detected {$major} (SS-SYS-1003).");
+		}
+		return $major;
 	}
 
 	protected function patchCallRecording($action, $major) {
@@ -216,7 +322,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			}
 			return;
 		}
-		$command = escapeshellarg(PHP_BINARY ?: 'php') . ' ' . escapeshellarg($helper)
+		$command = escapeshellarg($this->phpCli()) . ' ' . escapeshellarg($helper)
 			. ' ' . escapeshellarg($action)
 			. ' ' . escapeshellarg('/var/www/html/admin/modules/callrecording/functions.inc.php')
 			. ' ' . escapeshellarg((string) $major)
@@ -243,7 +349,44 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * process the settings form post and to re-provision (config.ini +
 	 * service restart) whenever settings change.
 	 */
+	/**
+	 * Per-session anti-CSRF token. State-changing requests (settings save,
+	 * import preview/apply, update start) must be POST and carry it, so a
+	 * crafted link or cross-site form cannot redirect uploads or the API key.
+	 */
+	public function csrfToken() {
+		$this->ensureSession();
+		if (empty($_SESSION['recuploader_csrf']) || !is_string($_SESSION['recuploader_csrf'])) {
+			$_SESSION['recuploader_csrf'] = bin2hex(random_bytes(32));
+		}
+		return $_SESSION['recuploader_csrf'];
+	}
+
+	protected function csrfValid() {
+		if (!isset($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+			return false;
+		}
+		$sent = isset($_POST['sj_csrf']) ? (string) $_POST['sj_csrf'] : '';
+		if ($sent === '' && isset($_SERVER['HTTP_X_SJ_CSRF'])) {
+			$sent = (string) $_SERVER['HTTP_X_SJ_CSRF'];
+		}
+		return $sent !== '' && hash_equals($this->csrfToken(), $sent);
+	}
+
 	public function doConfigPageInit($page) {
+		// Start the session and mint the token before any page output, so the view
+		// never has to call session_start() after headers were sent.
+		$this->csrfToken();
+		if (isset($_REQUEST['recuploader_import_preview']) || isset($_REQUEST['recuploader_import_apply']) || isset($_REQUEST['recuploader_save']) || isset($_REQUEST['recuploader_bundle'])) {
+			if (!$this->csrfValid()) {
+				$this->lastSaveError = 'The request was rejected: it must be a POST with a valid security token. Reload the page and try again.';
+				return;
+			}
+		}
+		if (isset($_REQUEST['recuploader_bundle'])) {
+			$this->streamSupportBundle();
+			return;
+		}
 		if (isset($_REQUEST['recuploader_import_preview'])) {
 			$this->previewImportedProfile();
 			return;
@@ -253,6 +396,11 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			return;
 		}
 		if (isset($_REQUEST['recuploader_save'])) {
+			$invalid = $this->validateManualSettings($_POST);
+			if ($invalid !== null) {
+				$this->lastSaveError = $invalid . ' Nothing was saved.';
+				return;
+			}
 			$previous = $this->getSettings();
 			$this->saveSettingsFromRequest();
 			$settings = $this->getSettings();
@@ -290,7 +438,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	}
 
 	public function getQueueSummary() {
-		$summary = array('pending' => 0, 'blocked_credit' => 0, 'failed' => 0, 'last_error' => '');
+		$summary = array('pending' => 0, 'blocked_credit' => 0, 'blocked_config' => 0, 'failed' => 0, 'last_error' => '');
 		$sqlite = self::STATE_DIR . '/state.sqlite';
 		$loadedSqlite = false;
 		if (extension_loaded('pdo_sqlite') && is_file($sqlite)) {
@@ -314,14 +462,22 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 				if (!is_array($job)) {
 					continue;
 				}
-				$status = ($job['status'] ?? 'pending') === 'blocked_credit' ? 'blocked_credit' : 'pending';
+				$jobStatus = isset($job['status']) ? $job['status'] : 'pending';
+				$status = in_array($jobStatus, array('blocked_credit', 'blocked_config'), true) ? $jobStatus : 'pending';
 				$summary[$status]++;
 				if (($job['last_error'] ?? '') !== '') {
 					$summary['last_error'] = $this->safeError($job['last_error']);
 				}
 			}
 		}
-		$summary['failed'] = count(glob(self::SPOOL_DIR . '/failed/*.json') ?: array());
+		$failed = 0;
+		foreach (glob(self::SPOOL_DIR . '/failed/*.json') ?: array() as $manifest) {
+			// Only failure manifests (sha256 file names), not copied metadata sidecars.
+			if (preg_match('/^[0-9a-f]{64}\.json$/', basename($manifest))) {
+				$failed++;
+			}
+		}
+		$summary['failed'] = $failed;
 		return $summary;
 	}
 
@@ -356,6 +512,273 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	}
 
 	/* ------------------------------------------------------------------ *
+	 * Health & dependencies tab
+	 * ------------------------------------------------------------------ */
+
+	const DEP_JOB_DIR_FALLBACK = '/var/tmp/sedasanj-depjobs';
+
+	protected function runQuiet($command) {
+		if (!function_exists('shell_exec')) {
+			return null;
+		}
+		$out = @shell_exec($command . ' 2>/dev/null');
+		return is_string($out) ? trim($out) : null;
+	}
+
+	protected function findBinary($name) {
+		$found = $this->runQuiet('command -v ' . escapeshellarg($name));
+		if ($found === null || $found === '') {
+			foreach (array('/usr/sbin/', '/usr/local/sbin/', '/sbin/', '/usr/bin/', '/bin/') as $dir) {
+				if (@is_executable($dir . $name)) {
+					return $dir . $name;
+				}
+			}
+			return null;
+		}
+		return $found;
+	}
+
+	protected function moduleStatusName($status) {
+		$names = array(
+			'enabled' => defined('MODULE_STATUS_ENABLED') ? MODULE_STATUS_ENABLED : 2,
+			'disabled' => defined('MODULE_STATUS_DISABLED') ? MODULE_STATUS_DISABLED : 1,
+			'upgrade' => defined('MODULE_STATUS_NEEDUPGRADE') ? MODULE_STATUS_NEEDUPGRADE : 3,
+			'broken' => defined('MODULE_STATUS_BROKEN') ? MODULE_STATUS_BROKEN : -1,
+		);
+		foreach ($names as $label => $value) {
+			if ((int) $status === (int) $value) {
+				return $label;
+			}
+		}
+		return 'missing';
+	}
+
+	/** Collects the host inventory that \Engine\DependencyCheck::evaluate() turns into rows. */
+	protected function collectDependencyEnv() {
+		$names = array_merge(array_keys(\Engine\DependencyCheck::REQUIRED_MODULES), array_keys(\Engine\DependencyCheck::OPTIONAL_MODULES));
+		$modules = array();
+		foreach ($names as $name) {
+			$info = array();
+			try {
+				$all = $this->FreePBX->Modules->getInfo($name);
+				$info = isset($all[$name]) ? $all[$name] : array();
+			} catch (\Throwable $exc) {
+				$info = array();
+			}
+			$version = isset($info['dbversion']) && $info['dbversion'] !== '' ? $info['dbversion'] : (isset($info['version']) ? $info['version'] : '');
+			$modules[$name] = array(
+				'status' => isset($info['status']) ? $this->moduleStatusName($info['status']) : 'missing',
+				'version' => (string) $version,
+			);
+		}
+
+		$php = $this->phpCli();
+		$cliVersion = $this->runQuiet(escapeshellarg($php) . ' -r ' . escapeshellarg('echo PHP_VERSION;'));
+		$cliModules = $this->runQuiet(escapeshellarg($php) . ' -m');
+		$cliExtensions = null;
+		if ($cliModules !== null && $cliModules !== '') {
+			$cliExtensions = array();
+			foreach (preg_split('/\R/', strtolower($cliModules)) as $line) {
+				$line = trim($line);
+				if ($line !== '' && $line[0] !== '[') {
+					$cliExtensions[$line] = true;
+				}
+			}
+		}
+		$webExtensions = array();
+		foreach (\Engine\DependencyCheck::WEB_EXTENSIONS as $ext) {
+			$webExtensions[$ext] = extension_loaded($ext);
+		}
+
+		$arch = $this->runQuiet('uname -m') ?: 'x86_64';
+		$arch = $arch === 'arm64' ? 'aarch64' : $arch;
+		$bundled = function ($relative) use ($arch) {
+			$path = self::BIN_DIR . '/bin/' . str_replace('{arch}', $arch, $relative);
+			return @is_executable($path) ? $path : null;
+		};
+		$binaries = array(
+			'unzip' => $this->findBinary('unzip'),
+			'sudo' => $this->findBinary('sudo'),
+			'systemctl' => $this->findBinary('systemctl'),
+			'flock' => $this->findBinary('flock'),
+			'ffmpeg' => $bundled('ffmpeg/ffmpeg-{arch}') ?: $this->findBinary('ffmpeg'),
+			'gsm' => $bundled('gsm/gsm-encode-{arch}') ?: $this->findBinary('gsm-encode') ?: $this->findBinary('toast'),
+		);
+
+		$engine = null;
+		if (function_exists('engine_getinfo')) {
+			try {
+				$info = engine_getinfo();
+				$engine = trim((isset($info['engine']) ? $info['engine'] : 'asterisk') . ' ' . (isset($info['version']) ? $info['version'] : ''));
+			} catch (\Throwable $exc) {
+				$engine = null;
+			}
+		}
+		if ($engine === null) {
+			$engine = $this->runQuiet('asterisk -V') ?: null;
+		}
+
+		$webroot = (string) $this->FreePBX->Config->get('AMPWEBROOT');
+		$webroot = $webroot !== '' ? $webroot : '/var/www/html';
+		$patchState = 'unknown';
+		$helper = __DIR__ . '/patch-callrecording.php';
+		if (is_file($helper)) {
+			$state = $this->runQuiet(escapeshellarg($php) . ' ' . escapeshellarg($helper) . ' status '
+				. escapeshellarg($webroot . '/admin/modules/callrecording/functions.inc.php') . ' 0 ' . escapeshellarg(self::STATE_DIR));
+			$patchState = $state === 'patched' ? 'ok' : ($state === 'unpatched' ? 'drift' : 'unknown');
+		}
+
+		$writable = array();
+		foreach (array(self::STATE_DIR, self::SPOOL_DIR, self::LOG_DIR) as $dir) {
+			$writable[$dir] = is_dir($dir) && is_writable($dir);
+		}
+		$diskPath = is_dir(self::SPOOL_DIR) ? self::SPOOL_DIR : '/var/spool';
+		$free = @disk_free_space($diskPath);
+
+		$activation = $this->getActivationStatus();
+		$version = $this->getFreePbxVersionString();
+		return array(
+			'freepbx_version' => $version,
+			'php_web' => PHP_VERSION,
+			'php_cli' => $cliVersion,
+			'web_extensions' => $webExtensions,
+			'cli_extensions' => $cliExtensions,
+			'modules' => $modules,
+			'binaries' => $binaries,
+			'asterisk' => $engine,
+			'patch_state' => $patchState,
+			'globals_state' => $this->globalsState(),
+			'activation' => $activation['state'],
+			'service_active' => function_exists('exec') ? $this->serviceIsActive() : null,
+			'writable' => $writable,
+			'disk_free_mb' => $free === false ? null : (int) ($free / 1048576),
+		);
+	}
+
+	protected function getFreePbxVersionString() {
+		if (function_exists('getversion')) {
+			return (string) getversion();
+		}
+		return (string) $this->runQuiet('fwconsole --version');
+	}
+
+	/** 'ok' when globals_custom.conf holds exactly the shipped MixMonitor block, else 'outdated' or 'missing'. */
+	protected function globalsState() {
+		$shipped = trim((string) @file_get_contents(__DIR__ . '/dialplan/globals-custom-mixmon.conf'));
+		$existing = (string) @file_get_contents(self::GLOBALS_FILE);
+		$pattern = '/' . preg_quote(self::MIXMON_BEGIN, '/') . '.*?' . preg_quote(self::MIXMON_END, '/') . '/s';
+		if ($shipped === '' || preg_match($pattern, $existing, $match) !== 1) {
+			return 'missing';
+		}
+		return trim($match[0]) === $shipped ? 'ok' : 'outdated';
+	}
+
+	/** HTML-escapes $text and turns every [SS-AREA-NNNN] code into a link to its help article. */
+	public function linkifyErrorCodes($text) {
+		$escaped = htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+		return preg_replace_callback('/\(?\[?(SS-[A-Z]{3,4}-\d{4})\]?\)?/', function ($m) {
+			$url = \Engine\ErrorCatalog::helpUrl($m[1]);
+			return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener">[' . $m[1] . ']</a>';
+		}, $escaped);
+	}
+
+	/**
+	 * Builds the redacted support bundle with the engine's own script and sends it to the browser.
+	 * Runs from doConfigPageInit (before any output) and ends the request.
+	 */
+	protected function streamSupportBundle() {
+		$script = __DIR__ . '/engine/bin/support-bundle.php';
+		$tmp = tempnam(sys_get_temp_dir(), 'sjb');
+		if ($tmp === false || !is_file($script)) {
+			$this->lastSaveError = 'The support bundle could not be created (SS-SVC-1003).';
+			return;
+		}
+		$command = 'ARU_CONFIG=' . escapeshellarg(self::CONF_FILE) . ' ' . escapeshellarg($this->phpCli()) . ' ' . escapeshellarg($script) . ' --out=' . escapeshellarg($tmp . '.tar.gz') . ' 2>&1';
+		$output = array();
+		$status = 1;
+		@exec($command, $output, $status);
+		@unlink($tmp);
+		$bundle = $tmp . '.tar.gz';
+		if ($status !== 0 || !is_file($bundle)) {
+			@unlink($bundle);
+			$this->lastSaveError = 'The support bundle could not be created: ' . $this->safeError(implode(' ', $output)) . ' (SS-SVC-1003)';
+			return;
+		}
+		while (ob_get_level() > 0) {
+			@ob_end_clean();
+		}
+		header('Content-Type: application/gzip');
+		header('Content-Disposition: attachment; filename="sedasanj-support-' . gmdate('Ymd-His') . '.tar.gz"');
+		header('Content-Length: ' . filesize($bundle));
+		header('Cache-Control: no-store');
+		readfile($bundle);
+		@unlink($bundle);
+		exit;
+	}
+
+	public function getDependencyReport() {
+		return \Engine\DependencyCheck::evaluate($this->collectDependencyEnv());
+	}
+
+	protected function depJobDir() {
+		$dir = is_dir(self::STATE_DIR) && is_writable(self::STATE_DIR) ? self::STATE_DIR . '/depjobs' : self::DEP_JOB_DIR_FALLBACK;
+		if (!is_dir($dir)) {
+			@mkdir($dir, 0750, true);
+		}
+		return $dir;
+	}
+
+	/**
+	 * One-click install of a missing FreePBX module through Module Admin's own CLI. Only the
+	 * allow-listed modules can be requested, one job runs at a time, and the output is polled
+	 * with depstatus.
+	 */
+	protected function startDependencyInstall($module) {
+		$module = (string) $module;
+		if (!in_array($module, \Engine\DependencyCheck::INSTALLABLE_MODULES, true) || !preg_match('/^[a-z0-9_]+$/', $module)) {
+			return array('status' => false, 'message' => 'That module cannot be installed from here.', 'code' => 'SS-DEP-1001');
+		}
+		$fwconsole = $this->findBinary('fwconsole');
+		if ($fwconsole === null) {
+			return array('status' => false, 'message' => 'fwconsole was not found; run: fwconsole ma downloadinstall ' . $module, 'code' => 'SS-DEP-1001');
+		}
+		$dir = $this->depJobDir();
+		foreach (glob($dir . '/*.log') ?: array() as $existing) {
+			$tail = (string) @file_get_contents($existing);
+			if (strpos($tail, "\nEXIT:") === false && @filemtime($existing) > time() - 900) {
+				return array('status' => false, 'message' => 'Another module installation is still running.', 'code' => 'SS-DEP-1001');
+			}
+		}
+		$job = bin2hex(random_bytes(8));
+		$log = $dir . '/' . $job . '.log';
+		$setsid = $this->runQuiet('command -v setsid') ? 'setsid ' : '';
+		$inner = escapeshellarg($fwconsole) . ' ma downloadinstall ' . escapeshellarg($module) . '; echo; echo EXIT:$?';
+		@exec($setsid . 'nohup sh -c ' . escapeshellarg($inner) . ' > ' . escapeshellarg($log) . ' 2>&1 < /dev/null &');
+		return array('status' => true, 'job' => $job, 'module' => $module);
+	}
+
+	protected function getDependencyInstallStatus($job) {
+		$job = (string) $job;
+		if (!preg_match('/^[a-f0-9]{16}$/', $job)) {
+			return array('status' => false, 'message' => 'Invalid job.');
+		}
+		foreach (array($this->depJobDir(), self::STATE_DIR . '/depjobs', self::DEP_JOB_DIR_FALLBACK) as $dir) {
+			$log = $dir . '/' . $job . '.log';
+			if (!is_file($log)) {
+				continue;
+			}
+			$text = (string) @file_get_contents($log);
+			$done = preg_match('/EXIT:(\d+)\s*$/', $text, $m) === 1;
+			return array(
+				'status' => true,
+				'state' => !$done ? 'running' : ($m[1] === '0' ? 'succeeded' : 'failed'),
+				'log_tail' => \Engine\Logger::redact(substr($text, -4000)),
+			);
+		}
+		return array('status' => false, 'message' => 'Job not found.');
+	}
+
+	/* ------------------------------------------------------------------ *
 	 * AJAX (log viewer "Refresh Logs" button - see page.recuploader.php).
 	 *
 	 * Previously the log viewer was a standalone GET <form> that reloaded
@@ -368,7 +791,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * ------------------------------------------------------------------ */
 
 	public function ajaxRequest($req, &$setting) {
-		if (in_array($req, array('getlogs', 'checkupdate', 'releases', 'startupdate', 'updatestatus'), true)) {
+		if (in_array($req, array('getlogs', 'checkupdate', 'releases', 'startupdate', 'updatestatus', 'deps', 'installdep', 'depstatus'), true)) {
 			$setting['authenticate'] = true;
 			$setting['allowremote'] = false;
 			return true;
@@ -383,7 +806,19 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 				return $this->ajaxCheckUpdate(!empty($_REQUEST['force']));
 			case 'releases':
 				return $this->ajaxReleases();
+			case 'deps':
+				return array('status' => true) + $this->getDependencyReport();
+			case 'installdep':
+				if (!$this->csrfValid()) {
+					return array('status' => false, 'message' => 'Request rejected: POST with a valid security token is required.');
+				}
+				return $this->startDependencyInstall(isset($_REQUEST['module']) ? (string) $_REQUEST['module'] : '');
+			case 'depstatus':
+				return $this->getDependencyInstallStatus(isset($_REQUEST['job']) ? (string) $_REQUEST['job'] : '');
 			case 'startupdate':
+				if (!$this->csrfValid()) {
+					return array('status' => false, 'message' => 'Update request rejected: POST with a valid security token is required.');
+				}
 				return $this->startUpdate(isset($_REQUEST['release_id']) ? (string) $_REQUEST['release_id'] : '');
 			case 'updatestatus':
 				return $this->getUpdateStatus(isset($_REQUEST['job']) ? (string) $_REQUEST['job'] : '');
@@ -908,6 +1343,81 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			$out[$key] = ($val === false || $val === null) ? $default : $val;
 		}
 		return $out;
+	}
+
+	/**
+	 * Server-side validation of the manual settings form, mirroring the
+	 * limits ConfigProfile enforces for imports. Values are written raw into
+	 * config.ini, so a newline or NUL would inject extra keys, and a
+	 * non-numeric timeout silently became 0 (= no timeout).
+	 * Returns an error message, or null when the submitted values are valid.
+	 */
+	public function validateManualSettings(array $request) {
+		$ints = array(
+			'timeout_seconds' => array(1, 3600),
+			'immediate_retries' => array(0, 10),
+			'min_file_age_seconds' => array(0, 86400),
+			'max_retries' => array(0, 10000),
+			'retry_base_seconds' => array(0, 86400),
+			'retry_max_seconds' => array(0, 604800),
+			'credit_retry_seconds' => array(60, 86400),
+			'sweep_interval_seconds' => array(10, 86400),
+			'stale_processing_seconds' => array(60, 86400),
+			'retention_days' => array(0, 3650),
+			'missed_calls_poll_interval_seconds' => array(10, 3600),
+			'voicemail_sweep_interval_seconds' => array(10, 86400),
+		);
+		foreach ($this->defaults() as $key => $unused) {
+			if (!isset($request[$key])) {
+				continue;
+			}
+			$value = trim((string) $request[$key]);
+			if (preg_match('/[\r\n\0]/', $value)) {
+				return "Field {$key} must not contain line breaks.";
+			}
+			if (isset($ints[$key])) {
+				if (!preg_match('/^\d+$/', $value) || (int) $value < $ints[$key][0] || (int) $value > $ints[$key][1]) {
+					return "Field {$key} must be a whole number between {$ints[$key][0]} and {$ints[$key][1]}.";
+				}
+			}
+		}
+		if (isset($request['endpoint'])) {
+			$endpoint = trim((string) $request['endpoint']);
+			$parts = parse_url($endpoint);
+			if ($parts === false || !isset($parts['scheme'], $parts['host']) || strtolower($parts['scheme']) !== 'https') {
+				return 'The upload endpoint must be an https:// URL.';
+			}
+		}
+		$enums = array(
+			'on_success' => array('keep', 'move', 'delete'),
+			'log_level' => array('DEBUG', 'INFO', 'WARNING', 'ERROR'),
+			'upload_format' => array('wav', 'gzip', 'zip'),
+		);
+		foreach ($enums as $key => $allowed) {
+			if (isset($request[$key]) && !in_array(trim((string) $request[$key]), $allowed, true)) {
+				return "Field {$key} must be one of: " . implode(', ', $allowed) . '.';
+			}
+		}
+		if (isset($request['archive_format']) && !preg_match('/^[a-z0-9]{2,8}$/', trim((string) $request['archive_format']))) {
+			return 'Field archive_format must be a short file extension such as gsm, wav or mp3.';
+		}
+		foreach (array('filename_pattern', 'exclude_patterns') as $key) {
+			if (isset($request[$key])) {
+				$pattern = trim((string) $request[$key]);
+				if ($pattern !== '' && @preg_match('#' . str_replace('#', '\\#', $pattern) . '#', '') === false) {
+					return "Field {$key} is not a valid regular expression.";
+				}
+			}
+		}
+		foreach (array('watch_dir', 'move_dir', 'voicemail_spool_dir') as $key) {
+			if (isset($request[$key])) {
+				$path = trim((string) $request[$key]);
+				if ($path === '' || $path[0] !== '/' || strpos($path, '/../') !== false || substr($path, -3) === '/..') {
+					return "Field {$key} must be an absolute path without '..'.";
+				}
+			}
+		}
+		return null;
 	}
 
 	protected function saveSettingsFromRequest() {
@@ -1525,16 +2035,22 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * minimal $PATH and php-cli isn't always at a fixed location.
 	 */
 	protected function injectMixmonGlobals() {
-		$existing = file_exists(self::GLOBALS_FILE) ? file_get_contents(self::GLOBALS_FILE) : '';
-		if (strpos($existing, self::MIXMON_BEGIN) !== false) {
-			return; // already installed
+		// Single source of truth: the shipped dialplan/globals-custom-mixmon.conf
+		// (it uses the SS=$ indirection and FILTER() on every caller-controlled
+		// value). A previously installed block that differs - e.g. the unfiltered
+		// MIXMON_POST of releases before 1.3.9 - is replaced, not kept.
+		$source = __DIR__ . '/dialplan/globals-custom-mixmon.conf';
+		$shipped = is_file($source) ? trim((string) file_get_contents($source)) : '';
+		if ($shipped === '' || strpos($shipped, self::MIXMON_BEGIN) !== 0 || strpos($shipped, self::MIXMON_END) === false) {
+			throw new \RuntimeException('The bundled MixMonitor globals block is missing or malformed.');
 		}
-		$block = "\n" . self::MIXMON_BEGIN . "\n"
-			. "MIXMON_DIR=/var/spool/asterisk/monitor/\n"
-			. "MONITOR_REC_OPTION=br(\${MIXMON_DIR}\${YEAR}/\${MONTH}/\${DAY}/recv_\${CALLFILENAME}.\${MON_FMT})t(\${MIXMON_DIR}\${YEAR}/\${MONTH}/\${DAY}/trans_\${CALLFILENAME}.\${MON_FMT})\n"
-			. "MIXMON_POST=/bin/bash -c 'exec \"\$(command -v php)\" " . self::MIXMON_ENTRY_POINT . " \"\$@\"' _ \${MIXMON_DIR}\${YEAR}/\${MONTH}/\${DAY}/ \${CALLFILENAME} \${UNIQUEID} \${CALLERID(num)} \${CDR(dnid)} \${CDR(duration)} \${CDR(dst)} \${FROM_DID}\n"
-			. self::MIXMON_END . "\n";
-		if (@file_put_contents(self::GLOBALS_FILE, $existing . $block) === false) {
+		$existing = file_exists(self::GLOBALS_FILE) ? file_get_contents(self::GLOBALS_FILE) : '';
+		$pattern = '/\n?' . preg_quote(self::MIXMON_BEGIN, '/') . '.*?' . preg_quote(self::MIXMON_END, '/') . '\n?/s';
+		if (preg_match($pattern, $existing, $match) === 1 && trim($match[0]) === $shipped) {
+			return; // already current
+		}
+		$stripped = preg_replace($pattern, "\n", $existing);
+		if (@file_put_contents(self::GLOBALS_FILE, rtrim($stripped) . "\n\n" . $shipped . "\n") === false) {
 			error_log('recuploader: failed to write ' . self::GLOBALS_FILE . ' - check ownership/permissions');
 		}
 	}

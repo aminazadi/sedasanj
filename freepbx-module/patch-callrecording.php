@@ -44,8 +44,25 @@ function atomicReplace(string $path, string $content, int $mode): void
 }
 
 try {
+    if ($action === 'status') {
+        // Read-only report for the module page: patched | unpatched | unknown (mixed or unrecognised core file).
+        $content = @file_get_contents($path);
+        if ($content === false) {
+            echo "unknown\n";
+            exit(0);
+        }
+        $before = 0;
+        $after = 0;
+        foreach ($fixtures as $fixture) {
+            $before += substr_count($content, $fixture['before']) === 1 && substr_count($content, $fixture['after']) === 0 ? 1 : 0;
+            $after += substr_count($content, $fixture['after']) === 1 && substr_count($content, $fixture['before']) === 0 ? 1 : 0;
+        }
+        echo $after === count($fixtures) ? "patched\n" : ($before === count($fixtures) ? "unpatched\n" : "unknown\n");
+        exit(0);
+    }
+
     if ($action === 'apply' || $action === 'verify') {
-        if (!in_array($major, [16, 17], true)) {
+        if (!in_array($major, [15, 16, 17], true)) {
             throw new RuntimeException("Unsupported FreePBX major version: {$major}");
         }
         $content = @file_get_contents($path);
@@ -107,7 +124,27 @@ try {
                 }
             }
             if ($verifiedLegacyBackup === null) {
-                throw new RuntimeException('Callrecording is already patched, but no verified legacy rollback backup was found');
+                // Every fixture is already in its "after" form and we never patched this file:
+                // upstream adopted the same EVAL() wrapping (or an admin did it by hand). Nothing to
+                // roll back, so record that and let install/uninstall proceed instead of aborting.
+                if ($action === 'verify') {
+                    exit(0);
+                }
+                if (!is_dir($stateDir) && !mkdir($stateDir, 0750, true)) {
+                    throw new RuntimeException("Could not create {$stateDir}");
+                }
+                $encodedState = json_encode([
+                    'path' => $path,
+                    'freepbx_major' => $major,
+                    'upstream' => true,
+                    'patched_sha256' => hash('sha256', $content),
+                    'patched_at' => gmdate('c'),
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                if ($encodedState === false) {
+                    throw new RuntimeException('Could not encode patch state');
+                }
+                atomicReplace($statePath, $encodedState, 0600);
+                exit(0);
             }
             if ($action === 'verify') {
                 exit(0);
@@ -170,6 +207,10 @@ try {
 
     if ($action === 'restore') {
         $state = json_decode((string) @file_get_contents($statePath), true);
+        if (is_array($state) && !empty($state['upstream'])) {
+            @unlink($statePath); // the core file was already patched upstream; leave it alone
+            exit(0);
+        }
         if (!is_array($state) || !is_file($backupPath) || !is_file($path)) {
             exit(0);
         }
@@ -185,7 +226,7 @@ try {
         exit(0);
     }
 
-    throw new RuntimeException('Usage: patch-callrecording.php apply|restore [path] [major] [state-dir]');
+    throw new RuntimeException('Usage: patch-callrecording.php apply|verify|status|restore [path] [major] [state-dir]');
 } catch (Throwable $exc) {
     fwrite(STDERR, 'ERROR: ' . $exc->getMessage() . "\n");
     exit(2);

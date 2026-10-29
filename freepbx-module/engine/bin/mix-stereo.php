@@ -32,8 +32,28 @@ use Engine\Audio\Wav;
 use Engine\Audio\WavError;
 use Engine\AnsweredExtension;
 
+/**
+ * Logs a coded message to the module log (when the config can be loaded) and always to STDERR,
+ * which is the only channel that reaches Asterisk's console. Never throws.
+ */
+function mixstereo_say(string $code, string $message, array $ctx = []): void
+{
+    fwrite(STDERR, "mix-stereo.php: {$message} [{$code}]\n");
+    try {
+        static $log = false;
+        if ($log === false) {
+            $log = new Engine\Logger(Engine\Config::load(getenv('ARU_CONFIG') ?: null), 'aru.hook');
+        }
+        $log->coded($code, $message, $ctx);
+    } catch (\Throwable $exc) {
+        // no readable config yet: STDERR above is all we have
+    }
+}
+
 function mixstereo_main(array $argv): int
 {
+    // Long calls are merged in memory (two legs + the interleaved result).
+    @ini_set('memory_limit', '768M');
     $dir = $argv[1] ?? '';
     $name = $argv[2] ?? '';
     $uniqueId = $argv[3] ?? '';
@@ -42,6 +62,21 @@ function mixstereo_main(array $argv): int
     $cdrDuration = $argv[6] ?? '';
     $cdrDestination = $argv[7] ?? '';
     $fromDid = $argv[8] ?? '';
+    // Defence in depth behind the dialplan FILTER(): never trust an argument
+    // that still carries shell metacharacters or path tricks.
+    $safe = '/^[0-9A-Za-z*#+_.\-]*$/';
+    foreach (['name' => $name, 'caller' => $caller, 'dialed' => $dialed, 'dst' => $cdrDestination, 'did' => $fromDid] as $label => $value) {
+        if (!preg_match($safe, $value) || strpos($value, '..') !== false) {
+            mixstereo_say('SS-HOOK-1002', "rejected unsafe {$label} argument");
+            return 1;
+        }
+    }
+    if (!preg_match('#^/[A-Za-z0-9/_.\-]+/$#', $dir) || strpos($dir, '..') !== false
+        || ($uniqueId !== '' && !preg_match('/^\d+(\.\d+)?$/', $uniqueId))
+        || ($cdrDuration !== '' && !preg_match('/^[0-9.]+$/', $cdrDuration))) {
+        mixstereo_say('SS-HOOK-1002', 'rejected unsafe directory, uniqueid or duration argument');
+        return 1;
+    }
     if ($dialed === '') {
         $dialed = $fromDid !== '' ? $fromDid : $cdrDestination;
     }
@@ -49,7 +84,7 @@ function mixstereo_main(array $argv): int
         : (str_starts_with($name, 'out-') ? 'outbound' : '');
 
     if ($dir === '' || $name === '') {
-        fwrite(STDERR, "mix-stereo.php: missing required arguments (recording dir, CALLFILENAME)\n");
+        mixstereo_say('SS-HOOK-1001', 'missing required arguments (recording dir, CALLFILENAME)');
         return 1;
     }
 
@@ -58,26 +93,42 @@ function mixstereo_main(array $argv): int
     $out = "{$dir}trans_{$name}.wav"; // agent leg
     $destination = "{$dir}stereo_{$name}.wav";
 
+    // The merged file is built as <name>.part and renamed into place only after the metadata
+    // sidecar exists, so the sweeper never sees a half-written or metadata-less stereo file.
+    $part = $destination . '.part';
+    $mergedFrom = 'stereo';
+    $trace = ['uniqueid' => $uniqueId, 'file' => basename($destination)];
     try {
         $left = Wav::read($in);
         $right = Wav::read($out);
         $stereo = Wav::mergeStereo($left, $right);
-        Wav::write($destination, $stereo);
-    } catch (WavError $exc) {
-        fwrite(STDERR, "mix-stereo.php: could not merge legs into {$destination}: {$exc->getMessage()}\n");
-        return 1;
+        Wav::write($part, $stereo);
+        unset($left, $right, $stereo);
+    } catch (\Throwable $exc) {
+        @unlink($part);
+        mixstereo_say('SS-HOOK-1003', "could not merge legs ({$exc->getMessage()})", $trace);
+        // Fall back to the mono mix MixMonitor wrote alongside the legs: the call is still
+        // delivered (as a single channel) instead of being stranded in the monitor tree.
+        if (is_file($base) && filesize($base) > 44 && @copy($base, $part)) {
+            $mergedFrom = 'mono';
+            mixstereo_say('SS-HOOK-1003', 'delivering the mono mix instead of the stereo merge', $trace);
+        } else {
+            return 1;
+        }
     }
 
-    @unlink($in);
-    @unlink($out);
+    if ($mergedFrom === 'stereo') {
+        @unlink($in);
+        @unlink($out);
+    }
     @unlink($base);
 
     // Duration: read directly from the merged file (exact); CDR duration
     // is the last-resort fallback, same rationale as the old bash script.
     $durationFile = null;
-    if (is_file($destination)) {
+    if (is_file($part)) {
         try {
-            $durationFile = Wav::read($destination)->durationSeconds();
+            $durationFile = Wav::read($part)->durationSeconds();
         } catch (WavError $exc) {
             // fall through to CDR fallback below
         }
@@ -94,8 +145,8 @@ function mixstereo_main(array $argv): int
         $startIso = gmdate('Y-m-d\TH:i:s\Z', (int) $startEpochStr);
     }
     // Last-resort fallback for started_at: the stereo file's own mtime.
-    if ($startIso === null && is_file($destination)) {
-        $mtime = filemtime($destination);
+    if ($startIso === null && is_file($part)) {
+        $mtime = filemtime($part);
         if ($mtime !== false) {
             $startIso = gmdate('Y-m-d\TH:i:s\Z', $mtime);
         }
@@ -129,6 +180,7 @@ function mixstereo_main(array $argv): int
         'duration_seconds' => $durationFile,
         'direction' => $direction,
         'source_filename' => basename($destination),
+        'channels' => $mergedFrom === 'mono' ? 'mono' : '',
     ], function ($value) {
         return $value !== null && $value !== '';
     });
@@ -137,7 +189,8 @@ function mixstereo_main(array $argv): int
     $encoded = json_encode($metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     if ($encoded === false || file_put_contents($temporarySidecar, $encoded, LOCK_EX) === false || !@rename($temporarySidecar, $sidecar)) {
         @unlink($temporarySidecar);
-        fwrite(STDERR, "mix-stereo.php: could not atomically create metadata sidecar {$sidecar}\n");
+        @unlink($part);
+        mixstereo_say('SS-HOOK-1004', "could not atomically create metadata sidecar {$sidecar}", $trace);
         return 1;
     }
 
@@ -159,6 +212,11 @@ function mixstereo_main(array $argv): int
                 sleep(1);
             }
         }
+    }
+
+    if (!@rename($part, $destination)) {
+        mixstereo_say('SS-HOOK-1004', "could not move {$part} into place", $trace);
+        return 1;
     }
 
     $php = PHP_BINARY ?: 'php';

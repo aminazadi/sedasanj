@@ -118,6 +118,7 @@ class Config
             'retry_base_seconds' => 30,
             'retry_max_seconds' => 3600,
             'credit_retry_seconds' => 3600,
+            'config_retry_seconds' => 3600,
         ],
         'state' => [
             'state_file' => '/var/lib/asterisk-recording-uploader/state.json',
@@ -134,6 +135,8 @@ class Config
             'log_file' => '/var/log/asterisk-recording-uploader/uploader.log',
             'log_level' => 'INFO',
             'use_syslog' => true,
+            // Mask phone-like fields (src, dst, caller, ...) to their last 3 digits in log lines.
+            'mask_numbers' => true,
         ],
     ];
 

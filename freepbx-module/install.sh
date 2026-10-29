@@ -66,6 +66,21 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Removes the block between two marker lines. If the BEGIN marker has no END marker after it, the file
+# is left untouched: a sed range delete would otherwise run to the end of the file and truncate it.
+remove_block() {
+  local file="$1" begin="$2" end="$3" b e
+  [ -f "$file" ] || return 0
+  b="$(grep -nF -- "$begin" "$file" | head -n 1 | cut -d: -f1 || true)"
+  [ -n "$b" ] || return 0
+  e="$(awk -v s="$b" -v m="$end" 'NR > s && index($0, m) { print NR; exit }' "$file")"
+  if [ -z "$e" ]; then
+    echo "WARNING: $file has a BEGIN marker without a matching END marker; leaving it untouched." >&2
+    return 1
+  fi
+  sed -i "${b},${e}d" "$file"
+}
+
 MODULE_RAWNAME=recuploader
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # This script lives at <repo>/frontends/freepbx - the host-agnostic engine
@@ -193,10 +208,7 @@ cp -r "$STAGING_DIR" "$MODULE_DIR"
 chown -R asterisk:asterisk "$MODULE_DIR"
 
 echo "==> Registering module with FreePBX"
-# Best-effort first (documented path); known not to work in every
-# environment, so we don't depend on its success.
-fwconsole ma installlocal "$STAGING_DIR" >/dev/null 2>&1 || true
-
+# The module directory is already in place; `ma install` registers it and runs the module's install().
 if fwconsole ma list 2>/dev/null | grep -qi "\b${MODULE_RAWNAME}\b"; then
   echo "    Module already registered - re-running install to pick up changes."
 else
@@ -300,11 +312,10 @@ echo "    MONITOR_REC_OPTION/MIXMON_POST via bin/mix-stereo.php) -"
 echo "    module install() skips this once the marker block already"
 echo "    exists, so it's done explicitly here to pick up any changes"
 if [ -f "$GLOBALS_FILE" ] && grep -qF "$MIXMON_MARKER_BEGIN" "$GLOBALS_FILE"; then
-  sed -i "/$(printf '%s' "$MIXMON_MARKER_BEGIN" | sed 's/[.[\*^$/]/\\&/g')/,/$(printf '%s' "$MIXMON_MARKER_END" | sed 's/[.[\*^$/]/\\&/g')/d" \
-    "$GLOBALS_FILE"
+  remove_block "$GLOBALS_FILE" "$MIXMON_MARKER_BEGIN" "$MIXMON_MARKER_END" || true
 fi
 if [ -f "$MODULE_DIR/dialplan/globals-custom-mixmon.conf" ]; then
-  cat "$MODULE_DIR/dialplan/globals-custom-mixmon.conf" >> "$GLOBALS_FILE"
+  { echo; cat "$MODULE_DIR/dialplan/globals-custom-mixmon.conf"; } >> "$GLOBALS_FILE"
 fi
 
 echo "==> Applying verified FreePBX callrecording fixture patch"

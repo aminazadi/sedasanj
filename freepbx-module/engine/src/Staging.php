@@ -232,7 +232,10 @@ class Staging
             throw new UploadError(
                 "Staged file {$path} is {$size} bytes; API limit is " . Config::MAX_COMPRESSED_BYTES . ' bytes',
                 null,
-                false
+                false,
+                false,
+                'SS-STG-1005',
+                ['bytes' => $size]
             );
         }
     }
@@ -298,6 +301,17 @@ class Staging
         return rtrim($dir, '/') . '/' . basename($path);
     }
 
+    private static function archiveFailureCode(string $message): string
+    {
+        if (stripos($message, 'GSM encoding requires') !== false) {
+            return 'SS-STG-1006';
+        }
+        if (stripos($message, 'GSM') !== false || stripos($message, 'encoder') !== false) {
+            return 'SS-STG-1003';
+        }
+        return 'SS-STG-1002';
+    }
+
     /**
      * Produce the local mono archive copy from the merged stereo WAV.
      * archive.format = "wav" is written directly via the pure-PHP
@@ -319,7 +333,8 @@ class Staging
         $archivePath = "{$directory}/{$stem}.{$format}";
 
         $stereo = Wav::read($originalStereoPath);
-        $mono = Wav::monoDownmix($stereo);
+        // The mono fallback of the recording hook delivers MixMonitor's own mono mix under a stereo_ name.
+        $mono = $stereo->channels === 1 ? $stereo : Wav::monoDownmix($stereo);
         if ($mono->data === '') {
             throw new StagingError("Recording has no audio samples: {$originalStereoPath}");
         }
@@ -449,11 +464,14 @@ class Staging
     {
         $log = $log ?? function (string $msg) {};
         $stagedPath = self::stageRecording($cfg, $originalStereoPath, $log);
+        // The local mono archive copy is a convenience. If it cannot be produced (no GSM
+        // encoder, wideband audio, ffmpeg missing), the recording must still be delivered:
+        // the staged copy is what gets uploaded.
         try {
             $archivePath = self::transcodeArchive($cfg, $originalStereoPath, $log);
         } catch (\Throwable $e) {
-            @unlink($stagedPath);
-            throw $e;
+            $archivePath = null;
+            $log('Local archive copy skipped, uploading anyway: ' . $e->getMessage() . ' [' . self::archiveFailureCode($e->getMessage()) . ']');
         }
 
         $sourceSidecar = $originalStereoPath . '.metadata.json';
