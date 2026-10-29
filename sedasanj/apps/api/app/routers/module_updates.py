@@ -577,6 +577,7 @@ async def ingest_module_updates(
         )
         published = await _published(session, product)
     latest, changelog = releases.select_update(published, current, freepbx=freepbx, channel=channel)
+    manifest = releases.build_manifest(latest) if latest else None
     return ModuleUpdateCheckOut(
         update_available=latest is not None,
         current=current,
@@ -590,6 +591,8 @@ async def ingest_module_updates(
                 sha256=latest.artifact_sha256,
                 signature=latest.signature_b64,
                 published_at=latest.published_at,
+                manifest=manifest,
+                manifest_signature=releases.sign_manifest(manifest) if manifest else None,
             )
             if latest
             else None

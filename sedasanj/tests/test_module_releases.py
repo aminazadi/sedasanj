@@ -129,9 +129,7 @@ def test_signing_key_is_generated_once_and_persisted(
 ) -> None:
     key_file = tmp_path / "signing" / "private.seed"
     monkeypatch.setattr(get_settings(), "module_release_signing_key", None)
-    monkeypatch.setattr(
-        get_settings(), "module_release_signing_key_file", str(key_file)
-    )
+    monkeypatch.setattr(get_settings(), "module_release_signing_key_file", str(key_file))
 
     first_public_key = releases.public_key_b64()
     second_public_key = releases.public_key_b64()
@@ -153,9 +151,7 @@ def test_published_archive_contains_matching_public_key(
     signature = base64.b64decode(releases.sign_digest(inspection.sha256))
 
     with zipfile.ZipFile(path) as archive:
-        public_key_file = archive.read(
-            "recuploader/assets/release-signing.pub"
-        ).decode()
+        public_key_file = archive.read("recuploader/assets/release-signing.pub").decode()
     public_key_b64 = [
         line for line in public_key_file.splitlines() if line and not line.startswith("#")
     ][0]
@@ -223,3 +219,46 @@ def test_select_update_respects_freepbx_and_upgrade_floor() -> None:
     assert latest is not None and latest.version == "1.4.0"
     latest, _ = releases.select_update(rows, "1.4.0", freepbx="17.0.1")
     assert latest is not None and latest.version == "2.0.0"
+
+
+def test_manifest_is_canonical_signed_and_expires(monkeypatch: pytest.MonkeyPatch) -> None:
+    import base64
+    import json
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    from app.config import get_settings
+    from app.services import module_releases as releases
+
+    seed = base64.b64encode(bytes(range(32))).decode()
+    monkeypatch.setattr(get_settings(), "module_release_signing_key", seed)
+    release = SimpleNamespace(
+        product="freepbx-recuploader",
+        version="1.4.0",
+        artifact_sha256="a" * 64,
+        artifact_size=1234,
+        channel="stable",
+        min_freepbx_major=15,
+        min_from_version=None,
+    )
+    now = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
+    manifest = releases.build_manifest(release, now=now)  # type: ignore[arg-type]
+    data = json.loads(manifest)
+    assert data["version"] == "1.4.0" and data["sha256"] == "a" * 64 and data["size"] == 1234
+    assert (
+        data["issued_at"] == "2026-10-29T12:00:00Z" and data["expires_at"] == "2026-11-05T12:00:00Z"
+    )
+    assert manifest == releases.build_manifest(release, now=now)  # type: ignore[arg-type]
+    assert "\n" not in manifest
+
+    public = Ed25519PublicKey.from_public_bytes(base64.b64decode(releases.public_key_b64()))
+    signature = base64.b64decode(releases.sign_manifest(manifest))
+    public.verify(signature, releases.MANIFEST_DOMAIN + manifest.encode("ascii"))
+    # A digest signature must not verify as a manifest signature (domain separation).
+    from cryptography.exceptions import InvalidSignature
+
+    digest_signature = base64.b64decode(releases.sign_digest("a" * 64))
+    with pytest.raises(InvalidSignature):
+        public.verify(digest_signature, releases.MANIFEST_DOMAIN + manifest.encode("ascii"))

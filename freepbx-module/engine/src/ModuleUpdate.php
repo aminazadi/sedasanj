@@ -71,6 +71,31 @@ class ModuleUpdate
         return (bool) preg_match('/^\d+\.\d+\.\d+$/', $value);
     }
 
+    /**
+     * All trusted keys of the file (one per line, at most three): during a key rotation the old and
+     * the new key are valid together. Empty when the file is a placeholder or malformed.
+     *
+     * @return string[] raw 32-byte keys
+     */
+    public static function parsePublicKeys(string $text): array
+    {
+        $keys = array();
+        $lines = 0;
+        foreach (preg_split('/\r?\n/', $text) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') {
+                continue;
+            }
+            $lines++;
+            $raw = base64_decode($line, true);
+            if ($raw === false || strlen($raw) !== 32) {
+                return array();
+            }
+            $keys[] = $raw;
+        }
+        return $lines >= 1 && $lines <= 3 ? $keys : array();
+    }
+
     /** Returns the raw 32-byte key, or null when the file is a placeholder or malformed. */
     public static function parsePublicKey(string $text): ?string
     {

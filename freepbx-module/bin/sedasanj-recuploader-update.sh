@@ -113,6 +113,8 @@ case 'job':
         'sha256' => '/^[a-f0-9]{64}$/',
         'signature' => '/^[A-Za-z0-9+\/]{86}==$/',
         'host_uuid' => '/^[0-9a-f-]{36}$/',
+        'manifest' => '/^\{[\x20-\x7e]{2,2000}\}$/',
+        'manifest_signature' => '/^[A-Za-z0-9+\/]{86}==$/',
     );
     foreach ($checks as $k => $re) {
         $v = (string) ($j[$k] ?? '');
@@ -121,15 +123,36 @@ case 'job':
     }
     break;
 case 'verify':
-    list($zip, $sha, $sig, $pubFile) = $a;
+    list($zip, $sha, $sig, $pubFile, $manifest, $manifestSig, $toVersion) = $a;
     if (!function_exists('sodium_crypto_sign_verify_detached')) { fail('PHP sodium extension is missing'); }
+    // One public key per line; several lines allow a key rotation (old and new key valid together).
     $lines = array_values(array_filter(array_map('trim', file($pubFile) ?: array()), function ($l) { return $l !== '' && $l[0] !== '#'; }));
-    $pub = count($lines) === 1 ? base64_decode($lines[0], true) : false;
-    if ($pub === false || strlen($pub) !== 32) { fail('Release signing key is not configured on this server'); }
+    $keys = array();
+    foreach ($lines as $l) { $k = base64_decode($l, true); if ($k !== false && strlen($k) === 32) { $keys[] = $k; } }
+    if (!$keys || count($keys) !== count($lines) || count($keys) > 3) { fail('Release signing key is not configured on this server'); }
     $actual = hash_file('sha256', $zip);
     if (!hash_equals($sha, (string) $actual)) { fail('Release checksum does not match'); }
     $raw = base64_decode($sig, true);
-    if ($raw === false || strlen($raw) !== 64 || !sodium_crypto_sign_verify_detached($raw, $actual, $pub)) { fail('Release signature is invalid'); }
+    $okDigest = false;
+    foreach ($keys as $k) { if ($raw !== false && strlen($raw) === 64 && sodium_crypto_sign_verify_detached($raw, $actual, $k)) { $okDigest = true; } }
+    if (!$okDigest) { fail('Release signature is invalid'); }
+    // The signed manifest binds version, digest, size and an expiry to this exact download.
+    $mraw = base64_decode($manifestSig, true);
+    $okManifest = false;
+    foreach ($keys as $k) {
+        if ($mraw !== false && strlen($mraw) === 64 && sodium_crypto_sign_verify_detached($mraw, "sedasanj-module-manifest-v1\n" . $manifest, $k)) { $okManifest = true; }
+    }
+    if (!$okManifest) { fail('Release manifest signature is invalid'); }
+    $m = json_decode($manifest, true);
+    if (!is_array($m)) { fail('Release manifest is unreadable'); }
+    if (($m['rawname'] ?? '') !== 'recuploader') { fail('Release manifest is for another module'); }
+    if (($m['version'] ?? '') !== $toVersion) { fail('Release manifest version does not match the job'); }
+    if (!hash_equals((string) ($m['sha256'] ?? ''), $actual)) { fail('Release manifest digest does not match the download'); }
+    if ((int) ($m['size'] ?? -1) !== filesize($zip)) { fail('Release manifest size does not match the download'); }
+    $expires = strtotime((string) ($m['expires_at'] ?? ''));
+    $issued = strtotime((string) ($m['issued_at'] ?? ''));
+    if ($expires === false || $expires < time()) { fail('SS-UPD-1002: release manifest has expired'); }
+    if ($issued === false || $issued > time() + 600) { fail('Release manifest is dated in the future (check the PBX clock)'); }
     echo "ok\n";
     break;
 case 'zipnames':
@@ -325,15 +348,17 @@ if [ "$size" -le 0 ] || [ "$size" -gt "$MAX_BYTES" ]; then
   fail "Release archive has an invalid size"
 fi
 mapfile -t job_fields < <("$PHP_BIN" "$LIB" job "$WORK/job.json" 2>>"$LOG")
-[ "${#job_fields[@]}" -eq 6 ] || fail "job.json is invalid"
+[ "${#job_fields[@]}" -eq 8 ] || fail "job.json is invalid (a signed manifest is required)"
 RELEASE_ID="${job_fields[0]}"
 TO_VERSION="${job_fields[1]}"
 FROM_VERSION="${job_fields[2]}"
 SHA256="${job_fields[3]}"
 SIGNATURE="${job_fields[4]}"
 HOST_UUID="${job_fields[5]}"
+MANIFEST="${job_fields[6]}"
+MANIFEST_SIGNATURE="${job_fields[7]}"
 log "Updating $MODULE_NAME ${FROM_VERSION:-?} -> $TO_VERSION (release $RELEASE_ID)"
-"$PHP_BIN" "$LIB" verify "$WORK/release.zip" "$SHA256" "$SIGNATURE" "$PUBKEY" >> "$LOG" 2>&1 \
+"$PHP_BIN" "$LIB" verify "$WORK/release.zip" "$SHA256" "$SIGNATURE" "$PUBKEY" "$MANIFEST" "$MANIFEST_SIGNATURE" "$TO_VERSION" >> "$LOG" 2>&1 \
   || fail "Release signature or checksum verification failed"
 CURRENT_VERSION=""
 if [ -f "$MODULE_DIR/module.xml" ]; then

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import fcntl
 import hashlib
+import json
 import os
 import re
 import stat
@@ -12,6 +13,7 @@ import tempfile
 import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -155,6 +157,50 @@ def _signing_key() -> Ed25519PrivateKey:
 def sign_digest(sha256_hex: str) -> str:
     """Detached Ed25519 signature over the ASCII sha256 hex digest, base64-encoded."""
     return base64.b64encode(_signing_key().sign(sha256_hex.encode("ascii"))).decode("ascii")
+
+
+class ManifestSource(Protocol):
+    product: str
+    version: str
+    artifact_sha256: str
+    artifact_size: int
+    channel: str
+    min_freepbx_major: int | None
+    min_from_version: str | None
+
+
+MANIFEST_DOMAIN = b"sedasanj-module-manifest-v1\n"
+MANIFEST_TTL = timedelta(days=7)
+
+
+def build_manifest(release: ManifestSource, *, now: datetime | None = None) -> str:
+    """Canonical JSON describing exactly what a host may install.
+
+    The zip signature only proves "this file was published once"; the manifest binds the version,
+    digest, size, channel and compatibility floor, and expires, so an old signed zip cannot be
+    replayed as a new release and a captured offer stops working after a week.
+    """
+    issued = (now or datetime.now(UTC)).replace(microsecond=0)
+    payload = {
+        "product": release.product,
+        "rawname": MODULE_RAWNAME,
+        "version": release.version,
+        "sha256": release.artifact_sha256,
+        "size": int(release.artifact_size),
+        "channel": release.channel,
+        "min_freepbx_major": release.min_freepbx_major,
+        "min_from_version": release.min_from_version,
+        "issued_at": issued.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "expires_at": (issued + MANIFEST_TTL).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def sign_manifest(manifest: str) -> str:
+    """Ed25519 over a domain-separated manifest so it can never be confused with a digest signature."""
+    return base64.b64encode(_signing_key().sign(MANIFEST_DOMAIN + manifest.encode("ascii"))).decode(
+        "ascii"
+    )
 
 
 def public_key_b64() -> str:

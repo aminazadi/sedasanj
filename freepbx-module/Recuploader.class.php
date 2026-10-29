@@ -871,8 +871,14 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	}
 
 	protected function updatePublicKey() {
+		$keys = $this->updatePublicKeys();
+		return $keys ? $keys[0] : null;
+	}
+
+	/** Every key trusted for releases (several during a rotation). */
+	protected function updatePublicKeys() {
 		$text = is_readable(self::UPDATE_PUBKEY) ? @file_get_contents(self::UPDATE_PUBKEY) : false;
-		return $text === false ? null : \Engine\ModuleUpdate::parsePublicKey($text);
+		return $text === false ? array() : \Engine\ModuleUpdate::parsePublicKeys($text);
 	}
 
 	protected function hostUuid() {
@@ -965,6 +971,8 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 				'size' => (int) ($l['size'] ?? 0),
 				'sha256' => strtolower((string) ($l['sha256'] ?? '')),
 				'signature' => (string) ($l['signature'] ?? ''),
+				'manifest' => (string) ($l['manifest'] ?? ''),
+				'manifest_signature' => (string) ($l['manifest_signature'] ?? ''),
 				'published_at' => (string) ($l['published_at'] ?? ''),
 			);
 			if (!\Engine\ModuleUpdate::isReleaseId($latest['id']) || !\Engine\ModuleUpdate::isVersion($latest['version'])) {
@@ -1128,7 +1136,20 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			} finally {
 				fclose($handle);
 			}
-			\Engine\ModuleUpdate::verifyArtifact($zip . '.part', $release, $publicKey);
+			$verified = false;
+			$lastError = null;
+			foreach ($this->updatePublicKeys() ?: array($publicKey) as $candidateKey) {
+				try {
+					\Engine\ModuleUpdate::verifyArtifact($zip . '.part', $release, $candidateKey);
+					$verified = true;
+					break;
+				} catch (\Throwable $verifyError) {
+					$lastError = $verifyError;
+				}
+			}
+			if (!$verified) {
+				throw $lastError;
+			}
 			if (!@rename($zip . '.part', $zip)) {
 				throw new \RuntimeException('Cannot finalize the release download');
 			}
@@ -1140,6 +1161,8 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 				'from_version' => $from,
 				'sha256' => $release['sha256'],
 				'signature' => $release['signature'],
+				'manifest' => $release['manifest'],
+				'manifest_signature' => $release['manifest_signature'],
 				'size' => $release['size'],
 				'host_uuid' => $this->hostUuid(),
 				'created_at' => time(),

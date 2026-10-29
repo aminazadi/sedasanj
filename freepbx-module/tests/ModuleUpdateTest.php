@@ -76,19 +76,7 @@ $run = function (array $args) use ($lib) {
     exec($cmd . ' 2>&1', $out, $status);
     return array($status, implode("\n", $out));
 };
-list($status) = $run(array('verify', $zip, $sha, $signature, $dir . '/release.pub'));
-check($status === 0, 'helper accepts a valid release');
-list($status) = $run(array('verify', $zip, hash('sha256', 'x'), $signature, $dir . '/release.pub'));
-check($status !== 0, 'helper rejects a checksum mismatch');
-file_put_contents($dir . '/placeholder.pub', file_get_contents(__DIR__ . '/../assets/release-signing.pub'));
-if (ModuleUpdate::parsePublicKey(file_get_contents($dir . '/placeholder.pub')) === null) {
-    list($status) = $run(array('verify', $zip, $sha, $signature, $dir . '/placeholder.pub'));
-    check($status !== 0, 'helper rejects the placeholder key');
-}
-file_put_contents($dir . '/job.json', json_encode(array('release_id' => 'r1', 'version' => '1.3.1', 'from_version' => '1.3.0',
-    'sha256' => $sha, 'signature' => $signature, 'host_uuid' => '0f8fad5b-d9cb-469f-a165-70867728950e')));
-list($status, $out) = $run(array('job', $dir . '/job.json'));
-check($status === 0 && explode("\n", $out)[1] === '1.3.1', 'helper parses job.json');
+// Verification of the signed manifest, rotation and expiry is covered by UpdateHelperTest.php.
 file_put_contents($dir . '/job.json', json_encode(array('release_id' => 'r1; rm -rf /', 'version' => '1.3.1')));
 list($status) = $run(array('job', $dir . '/job.json'));
 check($status !== 0, 'helper rejects unsafe job.json fields');

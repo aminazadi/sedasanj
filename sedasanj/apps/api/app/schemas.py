@@ -1253,6 +1253,9 @@ class ModuleUpdateOffer(BaseModel):
     sha256: str
     signature: str
     published_at: datetime | None
+    # Signed manifest (new in module 1.4.0): binds version, digest, size, channel and an expiry.
+    manifest: str | None = None
+    manifest_signature: str | None = None
 
 
 class ModuleUpdateCheckOut(BaseModel):
