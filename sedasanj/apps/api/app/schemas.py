@@ -1401,3 +1401,33 @@ class HelpMediaOut(BaseModel):
     alt: str
     created_at: datetime
     url: str = ""
+
+
+class ModuleDiagnosticCheck(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    status: Literal["ok", "warn", "fail"]
+    code: str = Field(default="", max_length=40)
+    detail: str = Field(default="", max_length=300)
+
+
+class ModuleDiagnosticIn(BaseModel):
+    host_uuid: str = Field(min_length=8, max_length=64)
+    module_version: str = Field(pattern=r"^\d{1,4}\.\d{1,5}\.\d{1,6}$")
+    ok: bool
+    failed_checks: int = Field(default=0, ge=0, le=1000)
+    asterisk_version: str | None = Field(default=None, max_length=64)
+    os_name: str | None = Field(default=None, max_length=80)
+    checks: list[ModuleDiagnosticCheck] = Field(default_factory=list, max_length=80)
+    recent_codes: dict[str, int] = Field(default_factory=dict, max_length=40)
+    queue: dict[str, int] = Field(default_factory=dict, max_length=20)
+
+
+class ModuleDiagnosticOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    module_version: str
+    ok: bool
+    failed_checks: int
+    report: dict[str, Any]
+    created_at: datetime
