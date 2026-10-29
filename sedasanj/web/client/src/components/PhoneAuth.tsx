@@ -150,6 +150,7 @@ export default function PhoneAuth({ onSuccess, renderArtwork }: { onSuccess: (pa
   function reset() { setPending({ ...EMPTY, mobile: pending.mobile }); setCode(""); setTotp(""); setError(""); }
   const expiresIn = Math.max(0, Math.ceil((pending.expiresAt - now) / 1000));
   if (creating) return <div className="demo-progress" role="status"><span className="demo-spinner"/><h3>در حال ایجاد حساب سازمانی دمو</h3><p>فضای سازمان و پلن آزمایشی شما آماده می‌شود…</p></div>;
+  if (busy && step === "organization") return <div className="demo-progress" role="status"><span className="demo-spinner"/><h3>در حال ورود به سازمان</h3><p>حساب سازمانی شما در حال آماده‌سازی است…</p></div>;
   return <form className={`demo-phone-form${step === "code" && renderArtwork ? " has-otp-artwork" : ""}`} onSubmit={submit} noValidate dir="rtl">
     {renderArtwork?.(step)}
     <h2>{step === "phone" ? "" : step === "code" ? "تأیید شماره موبایل" : pending.accounts.length ? "ورود به سازمان" : "نام سازمان شما چیست؟"}</h2>
