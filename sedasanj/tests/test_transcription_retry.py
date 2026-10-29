@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -43,6 +44,16 @@ class _Session:
         for value in self.added:
             if isinstance(value, Job) and value.id is None:
                 value.id = uuid4()
+
+
+@pytest.fixture(autouse=True)
+def _effective_price(monkeypatch: pytest.MonkeyPatch) -> None:
+    """retry_transcription prices the retry from the tenant's entitlements (a database query)."""
+
+    async def effective(session: object, tenant_id: object) -> SimpleNamespace:
+        return SimpleNamespace(price_per_minute_toman=10_000)
+
+    monkeypatch.setattr(calls.entitlements, "effective", effective)
 
 
 def _rows(status: str = "failed_terminal") -> tuple[Call, AudioObject, Job, Tenant]:

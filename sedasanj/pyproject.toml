@@ -96,6 +96,7 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = [
+    ".",
     "apps/api",
     "apps/worker_asr",
     "apps/worker_emotion",
