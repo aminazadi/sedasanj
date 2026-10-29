@@ -3,10 +3,10 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
 import { BrandLogo } from "../components/BrandLogo";
 import { ErrorBox } from "../components/Widgets";
-import planDemoImage from "../assets/plan-demo.png";
-import planBronzeImage from "../assets/plan-bronze.png";
-import planSilverImage from "../assets/plan-silver.png";
-import planGoldImage from "../assets/plan-gold.png";
+import planDemoImage from "../assets/plan-demo.webp";
+import planBronzeImage from "../assets/plan-bronze.webp";
+import planSilverImage from "../assets/plan-silver.webp";
+import planGoldImage from "../assets/plan-gold.webp";
 
 type Step = "identity" | "code" | "account";
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-29 — AMINAZADI
+
+- Replaced oversized admin and client panel PNG artwork with display-sized high-quality WebP assets and deferred below-the-fold image decoding and loading.
+
 ## 2026-10-29 — AMINAZADIAN
 
 - Hardened automatic FreePBX module updates with a signed, expiring release manifest, refusal of older releases, and support for up to three trusted keys during key rotation.

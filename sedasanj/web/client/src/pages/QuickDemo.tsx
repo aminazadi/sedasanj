@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import { BrandLogo } from "../components/BrandLogo";
 import PhoneAuth from "../components/PhoneAuth";
 import { freePbxModuleConfig, pythonAgentConfig } from "../agentConfig";
-import voipIntegrationArtwork from "../assets/quick-demo-voip-integration.png";
+import voipIntegrationArtwork from "../assets/quick-demo-voip-integration.webp";
 import type { ApiKeyCreated } from "../types";
 import "../components/quick-demo.css";
 
@@ -144,7 +144,7 @@ export default function QuickDemo() {
       {error && <p className="demo-error" role="alert">{error}</p>}
         </div>}
         {activePath === "voip" && <div className="quick-demo-voip-content">
-          <img className="quick-demo-voip-artwork" src={voipIntegrationArtwork} alt="اتصال FreePBX و Issabel به صداسنج" />
+          <img className="quick-demo-voip-artwork" src={voipIntegrationArtwork} alt="اتصال FreePBX و Issabel به صداسنج" decoding="async" />
           {!voipKey ? <div className="grid justify-items-center gap-3 py-2 text-center">
             <p className="text-sm leading-7 text-slate-600">کلید API و فایل تنظیمات اتصال VoIP را دریافت کنید.</p>
             {voipKeyError ? <p className="demo-error" role="alert">{voipKeyError}</p> : null}

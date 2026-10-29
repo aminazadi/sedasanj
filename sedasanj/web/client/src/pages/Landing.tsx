@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
-import heroBackdrop from "../assets/manager-office-line-art.png";
-import integrationBanner from "../assets/telephony-integration-banner-desktop.png";
-import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.png";
-import planDemoImage from "../assets/plan-demo.png";
-import planBronzeImage from "../assets/plan-bronze.png";
-import planSilverImage from "../assets/plan-silver.png";
-import planGoldImage from "../assets/plan-gold.png";
+import heroBackdrop from "../assets/manager-office-line-art.webp";
+import integrationBanner from "../assets/telephony-integration-banner-desktop.webp";
+import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.webp";
+import planDemoImage from "../assets/plan-demo.webp";
+import planBronzeImage from "../assets/plan-bronze.webp";
+import planSilverImage from "../assets/plan-silver.webp";
+import planGoldImage from "../assets/plan-gold.webp";
 import "./Landing.css";
 import { fmt, request } from "../api";
 import type { PublicPlan } from "../types";
@@ -68,7 +68,7 @@ const planArt: Record<string, { className: string; image: string }> = {
 
 function PlanArtwork({ code, name }: { code: string; name: string }) {
   const art = planArt[code] ?? planArt.bronze;
-  return <img className={`site-plan-art ${art.className}`} src={art.image} alt={`تصویر پلن ${name}`} />;
+  return <img className={`site-plan-art ${art.className}`} src={art.image} alt={`تصویر پلن ${name}`} loading="lazy" decoding="async" />;
 }
 
 function AnimatedPrice({ value, formatted }: { value: number | null; formatted: string }) {
@@ -156,7 +156,7 @@ export default function Landing() {
           </div>
         </div>
       </section>
-      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div></section>
+      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div></section>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
         {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}>تلاش دوباره</button></div>}

@@ -2,9 +2,9 @@ import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
 import PhoneAuth from "./PhoneAuth";
-import phoneAuthDialogImage from "../assets/phone-auth-dialog.png";
-import phoneAuthOtpImage from "../assets/phone-auth-otp.png";
-import phoneAuthOrganizationImage from "../assets/phone-auth-organization.png";
+import phoneAuthDialogImage from "../assets/phone-auth-dialog.webp";
+import phoneAuthOtpImage from "../assets/phone-auth-otp.webp";
+import phoneAuthOrganizationImage from "../assets/phone-auth-organization.webp";
 
 export default function QuickDemoEntry() {
   const [params, setParams] = useSearchParams();

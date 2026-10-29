@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
-import logo from "../assets/logo-small-fa.png";
-import pattern from "../assets/pattern.png";
+import logo from "../assets/logo-small-fa.webp";
+import pattern from "../assets/pattern.webp";
 
 export default function Login() {
   const { login } = useAuth();

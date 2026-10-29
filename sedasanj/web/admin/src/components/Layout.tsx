@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
-import logo from "../assets/logo-small-fa.png";
+import logo from "../assets/logo-small-fa.webp";
 
 type NavigationGroup = {
   label: string;
