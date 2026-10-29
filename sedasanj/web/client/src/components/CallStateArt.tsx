@@ -75,10 +75,7 @@ function Stage({ kind, plinth = true }: Kind & { plinth?: boolean }) {
       </g>
       {plinth ? (
         <>
-          <path d="M144 246 240 224l96 22-96 22z" fill="#f6f8f3" stroke={G} strokeWidth="1.8" strokeLinejoin="round" />
-          <path d="M144 246v8l96 22 96-22v-8" fill={SIDE} stroke={G} strokeWidth="1.8" strokeLinejoin="round" />
-          <path d="M240 268v8" stroke={G} strokeWidth="1.8" />
-        </>
+                    </>
       ) : null}
       <g stroke={G} strokeWidth="2" strokeLinecap="round">
         <path d="M392 44v12M386 50h12" />
@@ -328,7 +325,6 @@ function Summary({ kind }: Kind) {
         <Lines x={298} y={166} widths={[78, 78, 52]} gap={12} ghost={ghost || kind === "failed"} animate={kind === "processing"} base={0.4} color={G} weight={4} />
       </Card>
       <path d="M200 160h14m-5-5 5 5-5 5M266 160h14m-5-5 5 5-5 5" stroke={ghost ? T : G} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M240 190l32 9-32 9-32-9z" fill="#f6f8f3" stroke={G} strokeWidth="1.8" strokeLinejoin="round" />
       <g>
         <circle cx="240" cy="148" r="38" fill="url(#csaCard)" stroke={ghost ? T : G} strokeWidth="2.6" strokeDasharray={ghost ? "6 5" : undefined} />
         <path

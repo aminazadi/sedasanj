@@ -441,6 +441,27 @@
         "action": "Check that MariaDB is running and FreePBX can reach it."
     },
     {
+        "code": "SS-EXT-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "FreePBX extension list is unavailable",
+        "action": "Run the sync from a FreePBX host with the core module enabled (needs /etc/freepbx.conf)."
+    },
+    {
+        "code": "SS-EXT-1002",
+        "severity": "warning",
+        "retryable": false,
+        "title": "FreePBX has no extensions to sync",
+        "action": "Create extensions in Applications > Extensions, then sync again."
+    },
+    {
+        "code": "SS-EXT-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Extension sync could not reach Seda Sanj",
+        "action": "Check the endpoint, API key and connectivity on the module page, then sync again."
+    },
+    {
         "code": "SS-SYS-1001",
         "severity": "error",
         "retryable": false,

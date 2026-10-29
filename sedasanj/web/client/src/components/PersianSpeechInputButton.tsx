@@ -16,12 +16,20 @@ interface SpeechRecognitionLike {
   interimResults: boolean;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: { error?: string }) => void) | null;
+  onspeechstart: (() => void) | null;
   start: () => void;
   stop: () => void;
 }
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+const SILENCE_AFTER_SPEECH_MS = 2500;
+const SILENCE_BEFORE_SPEECH_MS = 7000;
+
+function joinText(...parts: string[]): string {
+  return parts.map((part) => part.trim()).filter(Boolean).join(" ");
+}
 
 function recognitionConstructor(): SpeechRecognitionConstructor | undefined {
   const browserWindow = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
@@ -31,10 +39,14 @@ function recognitionConstructor(): SpeechRecognitionConstructor | undefined {
 export default function PersianSpeechInputButton({ onTranscript, onListeningChange, stopWhen = false, className = "" }: { onTranscript: (transcript: { final: string; interim: string }) => void; onListeningChange?: (listening: boolean) => void; stopWhen?: boolean; className?: string }) {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const shouldListenRef = useRef(false);
+  const committedRef = useRef("");
+  const sessionFinalRef = useRef("");
+  const silenceTimerRef = useRef<number | null>(null);
+  const spokeRef = useRef(false);
   const [listening, setListening] = useState(false);
   const supported = typeof window !== "undefined" && Boolean(recognitionConstructor());
 
-  useEffect(() => () => { shouldListenRef.current = false; recognitionRef.current?.stop(); }, []);
+  useEffect(() => () => { shouldListenRef.current = false; clearSilenceTimer(); recognitionRef.current?.stop(); }, []);
 
   useEffect(() => {
     if (!stopWhen || !shouldListenRef.current) return;
@@ -51,6 +63,19 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
     return () => window.removeEventListener("assistant-message-sent", stop);
   }, []);
 
+  function clearSilenceTimer() {
+    if (silenceTimerRef.current !== null) window.clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = null;
+  }
+
+  function armSilenceTimer() {
+    clearSilenceTimer();
+    silenceTimerRef.current = window.setTimeout(() => {
+      shouldListenRef.current = false;
+      recognitionRef.current?.stop();
+    }, spokeRef.current ? SILENCE_AFTER_SPEECH_MS : SILENCE_BEFORE_SPEECH_MS);
+  }
+
   function setActive(next: boolean) {
     setListening(next);
     onListeningChange?.(next);
@@ -63,21 +88,34 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
     recognition.lang = "fa-IR";
     recognition.continuous = true;
     recognition.interimResults = true;
+    sessionFinalRef.current = "";
     recognition.onresult = (event) => {
       const results = Array.from(event.results);
-      onTranscript({
-        final: results.filter((result) => result.isFinal).map((result) => result[0].transcript).join(" ").trim(),
-        interim: results.filter((result) => !result.isFinal).map((result) => result[0].transcript).join(" ").trim(),
-      });
+      const sessionFinal = joinText(...results.filter((result) => result.isFinal).map((result) => result[0].transcript));
+      let interim = joinText(...results.filter((result) => !result.isFinal).map((result) => result[0].transcript));
+      // Some engines re-emit the last final phrase as interim text; drop that echo.
+      if (interim && sessionFinal.endsWith(interim)) interim = "";
+      sessionFinalRef.current = sessionFinal;
+      if (sessionFinal || interim) spokeRef.current = true;
+      armSilenceTimer();
+      onTranscript({ final: joinText(committedRef.current, sessionFinal), interim });
     };
+    recognition.onspeechstart = () => { spokeRef.current = true; armSilenceTimer(); };
     recognition.onend = () => {
       recognitionRef.current = null;
+      // Restarting resets the results list, so keep what was already finalised.
+      committedRef.current = joinText(committedRef.current, sessionFinalRef.current);
+      sessionFinalRef.current = "";
       if (shouldListenRef.current) window.setTimeout(startListening, 150);
-      else setActive(false);
+      else { clearSilenceTimer(); setActive(false); }
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
+      // "no-speech" and "aborted" are routine; onend restarts or stops as appropriate.
+      const code = (event as { error?: string } | undefined)?.error;
+      if (code === "no-speech" || code === "aborted") return;
       shouldListenRef.current = false;
       recognitionRef.current = null;
+      clearSilenceTimer();
       setActive(false);
     };
     recognitionRef.current = recognition;
@@ -91,7 +129,10 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
       return;
     }
     shouldListenRef.current = true;
+    committedRef.current = "";
+    spokeRef.current = false;
     setActive(true);
+    armSilenceTimer();
     startListening();
   }
 

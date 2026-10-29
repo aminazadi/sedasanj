@@ -791,7 +791,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * ------------------------------------------------------------------ */
 
 	public function ajaxRequest($req, &$setting) {
-		if (in_array($req, array('getlogs', 'checkupdate', 'releases', 'startupdate', 'updatestatus', 'deps', 'installdep', 'depstatus'), true)) {
+		if (in_array($req, array('getlogs', 'syncextensions', 'checkupdate', 'releases', 'startupdate', 'updatestatus', 'deps', 'installdep', 'depstatus'), true)) {
 			$setting['authenticate'] = true;
 			$setting['allowremote'] = false;
 			return true;
@@ -802,6 +802,11 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	public function ajaxHandler() {
 		$command = isset($_REQUEST['command']) ? (string) $_REQUEST['command'] : '';
 		switch ($command) {
+			case 'syncextensions':
+				if (!$this->csrfValid()) {
+					return array('status' => false, 'message' => 'Request rejected: POST with a valid security token is required.');
+				}
+				return $this->syncExtensions();
 			case 'checkupdate':
 				return $this->ajaxCheckUpdate(!empty($_REQUEST['force']));
 			case 'releases':
@@ -899,6 +904,61 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			}
 		}
 		return $uuid;
+	}
+
+	/**
+	 * Reads the FreePBX extension list through core's own API (core_users_list(), the list
+	 * Admin > Extensions is built from; fallback Core()->getAllUsers()).
+	 * ⚠ needs lab confirmation on FreePBX 15, 16 and 17.
+	 */
+	protected function freepbxExtensionRows() {
+		if (!is_file('/etc/freepbx.conf')) {
+			return null;
+		}
+		global $amp_conf, $db, $freepbx_conf, $bootstrap_settings;
+		require_once '/etc/freepbx.conf';
+		if (function_exists('core_users_list')) {
+			$rows = core_users_list();
+			return is_array($rows) ? $rows : null;
+		}
+		if (class_exists('FreePBX')) {
+			$users = \FreePBX::Core()->getAllUsers();
+			if (is_array($users)) {
+				$rows = array();
+				foreach ($users as $user) {
+					$rows[] = array('extension' => isset($user['extension']) ? $user['extension'] : '', 'name' => isset($user['name']) ? $user['name'] : '');
+				}
+				return $rows;
+			}
+		}
+		return null;
+	}
+
+	protected function syncExtensions() {
+		try {
+			$rows = $this->freepbxExtensionRows();
+		} catch (\Throwable $exc) {
+			$rows = null;
+		}
+		if ($rows === null) {
+			return array('status' => false, 'code' => 'SS-EXT-1001', 'message' => 'The FreePBX extension list could not be read. Run the sync on the FreePBX host.');
+		}
+		$payload = \Engine\ExtensionSync::buildPayload($rows);
+		if (count($payload['extensions']) === 0) {
+			return array('status' => false, 'code' => 'SS-EXT-1002', 'message' => 'FreePBX has no extensions to sync. Create extensions first.');
+		}
+		try {
+			$result = $this->updateApiRequest(\Engine\ModuleUpdate::extensionsSyncUrl($this->getSettings()['endpoint']), 'POST', $payload, 20);
+		} catch (\Throwable $exc) {
+			return array('status' => false, 'code' => 'SS-EXT-1003', 'message' => $this->safeError($exc->getMessage()));
+		}
+		return array(
+			'status' => true,
+			'total' => count($payload['extensions']),
+			'created' => (int) (isset($result['created']) ? $result['created'] : 0),
+			'updated' => (int) (isset($result['updated']) ? $result['updated'] : 0),
+			'deactivated' => (int) (isset($result['deactivated']) ? $result['deactivated'] : 0),
+		);
 	}
 
 	protected function ajaxCheckUpdate($force) {

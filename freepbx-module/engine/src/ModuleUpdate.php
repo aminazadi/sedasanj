@@ -51,6 +51,11 @@ class ModuleUpdate
         return self::endpointFor($endpoint, '/module/releases/' . rawurlencode($releaseId) . '/download');
     }
 
+    public static function extensionsSyncUrl(string $endpoint): string
+    {
+        return self::endpointFor($endpoint, '/extensions/sync');
+    }
+
     public static function reportUrl(string $endpoint): string
     {
         return self::endpointFor($endpoint, '/module/update-report');

@@ -333,6 +333,44 @@ class Contact(Base):
     )
 
 
+class PbxExtension(Base):
+    """Internal extension synced from the PBX; optionally linked to a contact and an operator."""
+
+    __tablename__ = "pbx_extensions"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    extension: Mapped[str] = mapped_column(String(20), nullable=False)
+    pbx_name: Mapped[str | None] = mapped_column(String(200))
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), nullable=False)
+    contact_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL")
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    synced_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "extension", name="pbx_extensions_tenant_extension_key"),
+        CheckConstraint("extension ~ '^[0-9*#]{1,20}$'", name="pbx_extensions_extension_check"),
+        Index(
+            "pbx_extensions_tenant_user_key",
+            "tenant_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index("idx_pbx_extensions_contact", "contact_id"),
+    )
+
+
 class CallOperatorAssignment(Base):
     __tablename__ = "call_operator_assignments"
 

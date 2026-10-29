@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-30 — AMINAZADI
+
+- Added PBX extension sync from the FreePBX module: calls between two synced extensions are now recorded as internal, extension numbers show a contact, operator or PBX name, and each extension can be linked to a phonebook contact and an operator from the phonebook page (migration `0060_pbx_extensions`).
+
 ## 2026-10-29 — AMINAZADI
 
 - Fixed the existing-organization form flashing briefly while automatic phone login completes.

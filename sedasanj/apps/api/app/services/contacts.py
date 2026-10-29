@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
 from app.models import Contact
-from app.services import iran_geo
+from app.services import extensions, iran_geo
 from app.services.phone_numbers import normalize_call_number
 
 ImportMode = Literal["skip", "update"]
@@ -108,19 +108,25 @@ async def names_for_numbers(
     session: AsyncSession, tenant_id: UUID, numbers: Iterable[str | None]
 ) -> dict[str, str]:
     """Map normalised phone number -> contact name for the given raw call numbers."""
-    keys = {key for key in (phone_key(number) for number in numbers) if key is not None}
-    if not keys:
-        return {}
-    rows = await session.execute(
-        select(Contact.phone_number, Contact.name).where(
-            Contact.tenant_id == tenant_id, Contact.phone_number.in_(keys)
+    raw = list(numbers)
+    keys = {key for key in (phone_key(number) for number in raw) if key is not None}
+    names: dict[str, str] = {}
+    if keys:
+        rows = await session.execute(
+            select(Contact.phone_number, Contact.name).where(
+                Contact.tenant_id == tenant_id, Contact.phone_number.in_(keys)
+            )
         )
-    )
-    return dict(rows.all())  # type: ignore[arg-type]
+        names.update(dict(rows.all()))  # type: ignore[arg-type]
+    # Internal extensions label themselves (contact, operator or PBX name); a real phonebook
+    # number is never overridden.
+    for key, label in (await extensions.labels_for(session, tenant_id, raw)).items():
+        names.setdefault(key, label)
+    return names
 
 
 def name_for(names: Mapping[str, str], number: str | None) -> str | None:
-    key = phone_key(number)
+    key = phone_key(number) or extensions.extension_key(number)
     return names.get(key) if key is not None else None
 
 

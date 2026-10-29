@@ -7,7 +7,8 @@
  *
  * Areas: CFG config, SVC service, HOOK recording hook, AUD audio, STG staging
  * and archive, UPL upload and network, QUE queue, SWP sweeper, VMX voicemail,
- * MCP missed calls, CDR call records, SYS system, UPD updates, DEP dependencies.
+ * MCP missed calls, CDR call records, SYS system, UPD updates, DEP dependencies,
+ * EXT extension sync.
  * HTTP-status codes use SS-UPL-0<status> (e.g. SS-UPL-0401).
  */
 
@@ -100,6 +101,11 @@ class ErrorCatalog
         'SS-SYS-1005' => ['error', true, 'Disk is full or nearly full', 'Free space on the volume holding /var/spool and /var/lib.'],
         'SS-SYS-1006' => ['warning', false, 'System clock differs from the server', 'Fix NTP on the PBX; skew breaks TLS and scheduling.'],
         'SS-SYS-1007' => ['error', false, 'A required directory is not writable', 'Fix ownership: chown -R asterisk:asterisk on the module directories.'],
+        // Updates
+        // Extension sync
+        'SS-EXT-1001' => ['error', false, 'FreePBX extension list is unavailable', 'Run the sync from a FreePBX host with the core module enabled (needs /etc/freepbx.conf).'],
+        'SS-EXT-1002' => ['warning', false, 'FreePBX has no extensions to sync', 'Create extensions in Applications > Extensions, then sync again.'],
+        'SS-EXT-1003' => ['error', true, 'Extension sync could not reach Seda Sanj', 'Check the endpoint, API key and connectivity on the module page, then sync again.'],
         // Updates
         'SS-UPD-1001' => ['warning', false, 'Automatic update is unavailable on this host', 'See the reason shown on the module page (sodium, helper, signing key).'],
         'SS-UPD-1002' => ['error', false, 'Release signature or checksum is invalid', 'Do not install; contact support.'],

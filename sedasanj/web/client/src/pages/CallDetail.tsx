@@ -62,8 +62,8 @@ const SPEAKER_COLORS = [chart.primary, chart.secondary];
 /** Phone number with the phonebook title (when there is one) above it. */
 function CallParty({ number, name }: { number: string | null; name?: string | null }) {
   return (
-    <span className="inline-flex flex-col items-center leading-tight">
-      {name ? <bdi className="text-sm font-bold sm:text-base">{name}</bdi> : null}
+    <span className="inline-flex flex-col items-start leading-tight">
+      {name ? <bdi className="block w-full text-right text-sm font-bold sm:text-base">{name}</bdi> : null}
       <bdi dir="ltr">{number ? fmt.digits(number) : "—"}</bdi>
     </span>
   );

@@ -125,35 +125,35 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
 
   return (
     <div className="panel-sidebar flex h-full flex-col overflow-hidden text-white">
-      <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-[#B2AC88] px-5">
+      <div className="relative flex h-[96px] shrink-0 items-center justify-center border-b border-white/10 px-5">
         <BrandLogo animated className="panel-brand-logo w-36" color="#f2f0ef" title="صدا سنج" />
         {closeMenu && (
-          <button type="button" className="absolute left-4 p-2 text-[#F2F0EF] transition hover:bg-[#B2AC88] hover:text-[#4B6E48]" onClick={closeMenu} aria-label="بستن منو">
+          <button type="button" className="sb-round absolute left-4 p-2 text-[#F2F0EF] transition hover:bg-white/15" onClick={closeMenu} aria-label="بستن منو">
             <MenuIcon close />
           </button>
         )}
       </div>
 
-      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-5" aria-label="منوی اصلی">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-4" aria-label="منوی اصلی">
         {NAVIGATION.map((group) => {
           const items = group.items.filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin));
           if (!items.length) return null;
           return (
-            <div className="mb-5" key={group.label}>
-              <p className="mb-2 px-3 text-[11px] font-medium text-[#B2AC88]">{group.label}</p>
-              <div className="space-y-1">
+            <div className="mb-6" key={group.label}>
+              <p className="mb-2 px-3 text-[11px] font-medium tracking-wide text-[#D5D0AE]/80">{group.label}</p>
+              <div className="space-y-0.5">
                 {items.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
-                    className={({ isActive }) => `sidebar-nav-item group flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "bg-[#F2F0EF] font-bold text-[#4B6E48]" : "text-[#F2F0EF]"}`}
+                    className={({ isActive }) => `sidebar-nav-item sb-round group relative flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-200 ${isActive ? "is-active bg-white/15 font-bold text-white" : "text-[#F2F0EF]/85"}`}
                   >
                     {({ isActive }) => (
                       <>
-                        <Icon icon={item.icon} className={`h-5 w-5 shrink-0 ${isActive ? "text-[#4B6E48]" : "text-[#B2AC88] transition group-hover:text-[#F2F0EF]"}`} aria-hidden="true" />
+                        <Icon icon={item.icon} className={`h-5 w-5 shrink-0 ${isActive ? "text-[#E3E8B9]" : "text-[#F2F0EF]/65 transition group-hover:text-white"}`} aria-hidden="true" />
                         <span className="truncate">{item.label}</span>
-                        {isActive && <span className="mr-auto h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" />}
+                        {isActive && <span className="sb-round absolute inset-y-2 right-0 w-[3px] bg-[#E3E8B9]" />}
                       </>
                     )}
                   </NavLink>
@@ -164,16 +164,16 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-[#B2AC88] p-3">
-        <div className="flex items-center gap-3 p-3 text-[#F2F0EF]">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-[#F2F0EF] text-sm font-bold text-[#4B6E48]">{roleLabel?.slice(0, 2) || "کا"}</div>
+      <div className="shrink-0 border-t border-white/10 p-3">
+        <div className="sb-round flex items-center gap-3 bg-black/10 p-2.5 text-[#F2F0EF]">
+          <div className="sb-round flex h-10 w-10 shrink-0 items-center justify-center bg-gradient-to-br from-[#F2F0EF] to-[#D5D0AE] text-sm font-bold text-[#4B6E48]">{roleLabel?.slice(0, 2) || "کا"}</div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{roleLabel}</p>
-            <p className="truncate text-xs text-[#B2AC88]">شناسه: {session?.userId.slice(0, 8)}</p>
+            <p className="truncate text-xs text-[#F2F0EF]/55">شناسه: {session?.userId.slice(0, 8)}</p>
           </div>
           <button
             type="button"
-            className="p-2 text-[#F2F0EF] transition hover:bg-[#F2F0EF] hover:text-[#4B6E48]"
+            className="sb-round p-2 text-[#F2F0EF]/80 transition hover:bg-white/15 hover:text-white"
             aria-label="خروج از حساب کاربری"
             title="خروج"
             onClick={async () => {

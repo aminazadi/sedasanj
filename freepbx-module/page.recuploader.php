@@ -447,6 +447,15 @@ $helpIcon = function ($title, $content) {
 					</div>
 				</div>
 
+				<div class="form-group">
+					<label class="col-sm-3 control-label"><?php echo _("Extensions"); ?></label>
+					<div class="col-sm-6">
+						<button type="button" class="btn btn-default" id="sj-sync-extensions"><i class="fa fa-refresh"></i> <?php echo _("Sync extensions to Seda Sanj"); ?></button>
+						<div id="sj-sync-extensions-result" class="help-block" role="status" aria-live="polite"></div>
+						<span class="help-block"><?php echo _("Sends the FreePBX extension list so internal calls are recognised and each extension can be linked to a phonebook contact or an operator in the Seda Sanj panel. Save the settings first."); ?></span>
+					</div>
+				</div>
+
 			</div><!-- /tab-endpoint -->
 
 			<!-- ================= Recording Watcher ================= -->
@@ -989,6 +998,21 @@ $helpIcon = function ($title, $content) {
 				data: $.extend({ module: 'recuploader', command: command }, data || {})
 			});
 		}
+
+		$('#sj-sync-extensions').on('click', function () {
+			var $btn = $(this).prop('disabled', true);
+			var $out = $('#sj-sync-extensions-result').removeClass('text-danger text-success').text(<?php echo json_encode(_("Syncing...")); ?>);
+			sjCall('syncextensions', { sj_csrf: sjCsrf }, 'POST').done(function (r) {
+				if (r && r.status) {
+					$out.addClass('text-success').text(<?php echo json_encode(_("Synced")); ?> + ': ' + r.total + ' | +' + r.created + ' / ~' + r.updated + ' / -' + r.deactivated);
+				} else {
+					var msg = (r && r.message) ? r.message : <?php echo json_encode(_("Sync failed.")); ?>;
+					$out.addClass('text-danger').text(msg + (r && r.code ? ' [' + r.code + ']' : ''));
+				}
+			}).fail(function () {
+				$out.addClass('text-danger').text(<?php echo json_encode(_("The request failed. Check the connection and try again.")); ?>);
+			}).always(function () { $btn.prop('disabled', false); });
+		});
 
 		/* Health & Dependencies tab */
 		var sjHealthLoaded = false;

@@ -180,7 +180,7 @@ export default function FollowUpTaskCard({
               ) : null}
               {overdue ? <span className="badge bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700">عقب‌افتاده</span> : null}
             </div>
-            {canEdit ? (
+            {canEdit && !done ? (
               <button
                 type="button"
                 className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${
@@ -226,7 +226,7 @@ export default function FollowUpTaskCard({
             </div>
           ) : null}
           {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
-          {open && canEdit ? (
+          {open && canEdit && !done ? (
             <div className="mt-3 grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label className="label">عنوان</label>

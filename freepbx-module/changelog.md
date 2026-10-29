@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0 — AMINAZADI
+
+- Added the "Sync extensions to Seda Sanj" button (Endpoint tab) that sends the FreePBX extension list to `POST /v1/ingest/extensions/sync`, with error codes `SS-EXT-1001`..`1003`.
+
 ## 1.4.0 — AMINAZADI
 
 - Installation from FreePBX Module Admin now succeeds without root: it registers the module and shows an "Activation required" notice with the single root command (`activate.sh`) that creates the service, update helper and recording hook. `install.sh` and `fwconsole ma install` as root still provision everything in one step.

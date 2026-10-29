@@ -16,13 +16,37 @@ from app.db import control_session_scope
 from app.deps import ApiKeyDep, ApiKeySession
 from app.errors import ApiError
 from app.models import ApiKey, Call, CallOperatorAssignment, Tenant, User
-from app.schemas import IngestAccepted, IngestConfigValidation, MissedCallIngest
+from app.schemas import (
+    ExtensionSyncIn,
+    ExtensionSyncOut,
+    IngestAccepted,
+    IngestConfigValidation,
+    MissedCallIngest,
+)
 from app.security import verify_password
-from app.services import billing
+from app.services import billing, extensions, ratelimit
 from app.services.archives import prepare_agent_audio
 from app.services.ingest import DIRECTIONS, accept_upload
 
 router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
+
+
+@router.post("/extensions/sync", response_model=ExtensionSyncOut)
+async def sync_extensions(
+    principal: ApiKeyDep, session: ApiKeySession, payload: ExtensionSyncIn
+) -> ExtensionSyncOut:
+    """Replace the tenant's PBX extension list with the one sent by the FreePBX module."""
+    assert principal.tenant_id is not None
+    await ratelimit.enforce(f"extensions-sync:{principal.id}", 30)
+    outcome = await extensions.sync(
+        session, principal.tenant_id, ((item.extension, item.name) for item in payload.extensions)
+    )
+    return ExtensionSyncOut(
+        created=outcome.created,
+        updated=outcome.updated,
+        deactivated=outcome.deactivated,
+        total=len(payload.extensions),
+    )
 
 
 @router.post("/missed-calls", status_code=status.HTTP_201_CREATED)
@@ -36,14 +60,22 @@ async def ingest_missed_call(
     if not unique_id:
         raise ApiError("invalid_request", "asterisk_uniqueid is required")
     duration_ms = max(0, int((payload.ended_at - payload.started_at).total_seconds() * 1000))
+    direction, agent_extension = await extensions.internal_direction_fixup(
+        session,
+        tenant_id,
+        payload.caller_number,
+        payload.dialed_number,
+        payload.direction,
+        (payload.agent_extension or "").strip() or None,
+    )
     values = {
         "tenant_id": tenant_id,
         "audio_id": None,
         "asterisk_uniqueid": unique_id,
         "caller_number": payload.caller_number.strip(),
         "dialed_number": payload.dialed_number.strip(),
-        "direction": payload.direction if payload.direction in DIRECTIONS else None,
-        "agent_extension": (payload.agent_extension or "").strip() or None,
+        "direction": direction if direction in DIRECTIONS else None,
+        "agent_extension": agent_extension,
         "campaign_id": (payload.campaign_id or "").strip() or None,
         "source": (payload.source or "").strip() or None,
         "external_reference": (payload.external_reference or "").strip() or None,
@@ -200,6 +232,14 @@ async def ingest_call(
             password_configured,
             Path(tmp),
             get_settings(),
+        )
+        direction, agent_extension = await extensions.internal_direction_fixup(
+            session,
+            tenant_id,
+            caller_number,
+            dialed_number,
+            direction,
+            (agent_extension or "").strip() or None,
         )
         result = await accept_upload(
             tenant_id=tenant_id,

@@ -1478,6 +1478,45 @@ class ContactOut(BaseModel):
     updated_at: datetime
 
 
+class ExtensionSyncItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    extension: str = Field(min_length=1, max_length=20)
+    name: str | None = Field(default=None, max_length=200)
+
+
+class ExtensionSyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    extensions: list[ExtensionSyncItem] = Field(max_length=5000)
+
+
+class ExtensionSyncOut(BaseModel):
+    created: int
+    updated: int
+    deactivated: int
+    total: int
+
+
+class ExtensionOut(BaseModel):
+    id: UUID
+    extension: str
+    pbx_name: str | None = None
+    active: bool
+    contact_id: UUID | None = None
+    contact_name: str | None = None
+    user_id: UUID | None = None
+    user_name: str | None = None
+    synced_at: datetime
+
+
+class ExtensionUpdate(BaseModel):
+    """Omitted field = unchanged; explicit null = unlink."""
+
+    contact_id: UUID | None = None
+    user_id: UUID | None = None
+
+
 class ContactPage(BaseModel):
     items: list[ContactOut]
     total: int

@@ -628,3 +628,15 @@ export interface ContactImportReport {
 export interface IranGeo {
   provinces: Array<{ name: string; cities: string[] }>;
 }
+
+export interface PbxExtension {
+  id: string;
+  extension: string;
+  pbx_name: string | null;
+  active: boolean;
+  contact_id: string | null;
+  contact_name: string | null;
+  user_id: string | null;
+  user_name: string | null;
+  synced_at: string;
+}
