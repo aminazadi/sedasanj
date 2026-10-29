@@ -18,7 +18,7 @@ Rules for every coding agent working in this repository. Skills with details liv
 5. **Language:** user-facing UI and docs are Persian; identifiers, error codes, log messages, code comments and commit messages are English. Codes, commands and paths inside Persian text are LTR with Latin digits.
 6. **PHP must run on 7.4** in the engine: no `match`, nullsafe `?->`, named arguments, constructor promotion or union types. The FreePBX web layer targets PHP 5.6 where FreePBX 15 is supported (`skills/freepbx-php-compat`).
 7. **State and config files are written atomically** (write temp file in the same directory, then rename).
-8. **No root or destructive operation without a verified backup** (`skills/sedasanj-backup-restore`). Note that `sedasanj/scripts/restore.sh` drops the `public` schema.
+8. **No root or destructive operation without a verified backup** (`skills/sedasanj-backup-restore`). `sedasanj/scripts/restore.sh` restores into fresh databases and keeps the old ones as `_pre<stamp>`; it still stops all writers, so never run it on production without approval.
 9. **Before saying "it works", run the tests** and say plainly what you did not run (e.g. PHP is not installed on the maintainer's Mac; lab matrix not run).
 10. **Never leave the user without a next step:** every error message names an action.
 
@@ -55,7 +55,7 @@ Root `CHANGELOG.md` format:
 - Fixed <what> …
 ```
 
-English, one bullet per change, newest date first. A second changelog exists at `sedasanj/CHANGELOG.md`; which one is canonical is an open maintainer decision, so do not duplicate entries between them.
+English, one bullet per change, newest date first. A second changelog exists at `sedasanj/CHANGELOG.md`; which one is canonical is an open maintainer decision. Until it is decided, add one entry to the changelog of the area you changed (module/repo-wide: root; platform: `sedasanj/`) and do not copy it into the other.
 
 ## Skills index
 
