@@ -171,3 +171,30 @@ async def test_credit_block_does_not_consume_attempt(tmp_path: Path) -> None:
     reloaded = spool.all()[0]
     assert reloaded.attempts == 4
     assert reloaded.next_attempt_epoch >= before + 3599
+
+
+def test_source_legs_are_removed_after_delivery(tmp_path) -> None:
+    from cbi_agent.uploader import remove_source_legs
+
+    for name in ("1.1-in.wav", "1.1-out.wav", "1.1-stereo.wav", "1.1.wav", "2.2.wav"):
+        (tmp_path / name).write_bytes(b"x")
+    remove_source_legs(tmp_path / "1.1-stereo.wav")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["2.2.wav"]
+
+
+def test_start_time_comes_from_the_uniqueid_and_unknown_numbers_become_digits(tmp_path) -> None:
+    from pathlib import Path
+
+    from cbi_agent.main import _pending_from_event
+
+    class _Config: ...
+
+    event = {
+        "Uniqueid": "1730000000.5",
+        "CallerIDNum": "unknown",
+        "Exten": "s",
+        "Channel": "PJSIP/101-0001",
+    }
+    pending = _pending_from_event(_Config(), event, Path("/x.wav"))  # type: ignore[arg-type]
+    assert pending.started_at.startswith("2024-10-27T")
+    assert pending.caller_number == "0" and pending.dialed_number == "0"

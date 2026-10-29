@@ -32,16 +32,27 @@ def _agent_extension(event: dict[str, str]) -> str | None:
     return None
 
 
+def _digits_or_zero(value: str) -> str:
+    return value if any(ch.isdigit() for ch in value) else "0"
+
+
 def _pending_from_event(config: AgentConfig, event: dict[str, str], wav: Path) -> PendingCall:
-    duration = int(event.get("Duration") or event.get("BillableSeconds") or 0)
     ended = datetime.now(UTC)
-    started = ended - timedelta(seconds=duration)
+    # AMI Hangup events carry no duration; the Uniqueid's epoch part is the channel creation time.
+    uniqueid = event.get("Uniqueid", "")
+    epoch = uniqueid.split(".")[0]
+    if epoch.isdigit() and 0 < int(epoch) <= ended.timestamp():
+        started = datetime.fromtimestamp(int(epoch), UTC)
+    else:
+        duration = int(event.get("Duration") or event.get("BillableSeconds") or 0)
+        started = ended - timedelta(seconds=duration)
     channel = event.get("Channel", "")
     return PendingCall(
         asterisk_uniqueid=event.get("Uniqueid", ""),
         wav_path=str(wav),
-        caller_number=event.get("CallerIDNum", "") or "unknown",
-        dialed_number=event.get("Exten") or event.get("ConnectedLineNum", "") or "unknown",
+        # The ingest API needs digits; "unknown"/"s"/"h" would be rejected for good, so use a neutral "0".
+        caller_number=_digits_or_zero(event.get("CallerIDNum", "")),
+        dialed_number=_digits_or_zero(event.get("Exten") or event.get("ConnectedLineNum", "")),
         started_at=rfc3339(started),
         ended_at=rfc3339(ended),
         direction="inbound" if channel.startswith("PJSIP/trunk") else None,
@@ -74,8 +85,12 @@ async def _handle_hangup(
     elif result == UploadResult.PERMANENT:
         pending.last_error = "permanent rejection from ingest API"
         spool.dead_letter(pending)
-    elif result == UploadResult.BLOCKED_CREDIT:
-        pending.last_error = "blocked by insufficient credit"
+    elif result in (UploadResult.BLOCKED_CREDIT, UploadResult.BLOCKED_CONFIG):
+        pending.last_error = (
+            "blocked by insufficient credit"
+            if result == UploadResult.BLOCKED_CREDIT
+            else "paused: API key or account rejected"
+        )
         pending.next_attempt_epoch = (
             datetime.now(UTC).timestamp() + config.retry.credit_retry_seconds
         )
