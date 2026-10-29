@@ -36,14 +36,14 @@ export function AssistantAttachmentChips({ attachments, options, onChange }: {
   options: AssistantContextOptions | null;
   onChange: (value: AssistantMessageAttachments) => void;
 }) {
-  const chips: Array<{ key: string; label: string; remove: () => void }> = [];
-  if (attachments.operator_id) chips.push({ key: "operator", label: `اپراتور: ${options?.operators.find((item) => item.id === attachments.operator_id)?.label || "انتخاب‌شده"}`, remove: () => onChange({ ...attachments, operator_id: null }) });
-  for (const id of attachments.conversation_ids) chips.push({ key: id, label: `گفتگو: ${options?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده"}`, remove: () => onChange({ ...attachments, conversation_ids: attachments.conversation_ids.filter((item) => item !== id) }) });
-  if (attachments.from_date || attachments.to_date) chips.push({ key: "dates", label: attachments.from_date && attachments.to_date ? `${fmt.date(attachments.from_date)} تا ${fmt.date(attachments.to_date)}` : attachments.from_date ? `شروع: ${fmt.date(attachments.from_date)}` : `پایان: ${fmt.date(attachments.to_date!)}`, remove: () => onChange({ ...attachments, from_date: null, to_date: null }) });
-  for (const name of attachments.tool_names) chips.push({ key: name, label: `ابزار: ${options?.tools.find((item) => item.name === name)?.title || name}`, remove: () => onChange({ ...attachments, tool_names: attachments.tool_names.filter((item) => item !== name) }) });
+  const chips: Array<{ key: string; kind: string; label: string; remove: () => void }> = [];
+  if (attachments.operator_id) chips.push({ key: "operator", kind: "اپراتور", label: options?.operators.find((item) => item.id === attachments.operator_id)?.label || "انتخاب‌شده", remove: () => onChange({ ...attachments, operator_id: null }) });
+  for (const id of attachments.conversation_ids) chips.push({ key: id, kind: "گفتگو", label: options?.conversations.find((item) => item.id === id)?.label || "انتخاب‌شده", remove: () => onChange({ ...attachments, conversation_ids: attachments.conversation_ids.filter((item) => item !== id) }) });
+  if (attachments.from_date || attachments.to_date) chips.push({ key: "dates", kind: "بازه", label: attachments.from_date && attachments.to_date ? `${fmt.date(attachments.from_date)} تا ${fmt.date(attachments.to_date)}` : attachments.from_date ? `از ${fmt.date(attachments.from_date)}` : `تا ${fmt.date(attachments.to_date!)}`, remove: () => onChange({ ...attachments, from_date: null, to_date: null }) });
+  for (const name of attachments.tool_names) chips.push({ key: name, kind: "ابزار", label: options?.tools.find((item) => item.name === name)?.title || name, remove: () => onChange({ ...attachments, tool_names: attachments.tool_names.filter((item) => item !== name) }) });
   if (!chips.length) return null;
   return <div className="assistant-attachment-list" aria-label="موارد انتخاب‌شده برای پیام">
-    {chips.map((chip) => <button key={chip.key} type="button" className="assistant-attachment-chip" onClick={chip.remove} aria-label={`حذف ${chip.label}`} title={`حذف ${chip.label}`}><span className="truncate">{chip.label}</span><CloseIcon /></button>)}
+    {chips.map((chip) => <button key={chip.key} type="button" className="assistant-attachment-chip" onClick={chip.remove} aria-label={`حذف ${chip.kind}: ${chip.label}`} title={`حذف ${chip.kind}: ${chip.label}`} data-kind={chip.kind}><em>{chip.kind}</em><span className="truncate">{chip.label}</span><CloseIcon /></button>)}
   </div>;
 }
 
@@ -60,16 +60,19 @@ export default function AssistantContextPicker({ tab, onTabChange, onClose, atta
   const incomplete = hasDates && (!attachments.from_date || !attachments.to_date);
   const invalid = Boolean(attachments.from_date && attachments.to_date && new Date(attachments.from_date) >= new Date(attachments.to_date));
   const dateHint = incomplete ? "برای تکمیل بازه، هر دو تاریخ را انتخاب کنید." : invalid ? "تاریخ پایان را پس از تاریخ شروع انتخاب کنید." : hasDates ? "فقط داده‌های این بازه در پاسخ بررسی می‌شوند." : "تاریخ شروع و پایان را انتخاب کنید.";
+  const selectedCount = (attachments.operator_id ? 1 : 0) + attachments.conversation_ids.length + (hasDates ? 1 : 0) + attachments.tool_names.length;
+  const mentionCount = (attachments.operator_id ? 1 : 0) + attachments.conversation_ids.length;
+  const tabCounts: Record<AssistantContextTab, number> = { mentions: mentionCount, dates: hasDates ? 1 : 0, tools: attachments.tool_names.length };
   const title = tab === "tools" ? "انتخاب ابزارها" : tab === "dates" ? "بازه زمانی" : "انتخاب زمینه گفتگو";
   return <div className="assistant-context-panel" role="dialog" aria-label={title} dir="rtl" onKeyDown={(event) => { if (event.key === "Escape" && !(event.target as Element).closest("[data-date-picker-panel]")) { event.stopPropagation(); onClose(); } }}>
     <div className="assistant-context-heading"><h3>{title}</h3><button type="button" className="assistant-context-close" onClick={onClose} aria-label="بستن انتخاب زمینه"><CloseIcon /></button></div>
     <div className="assistant-context-tabs" role="group" aria-label="نوع زمینه پیام">
-      {([["mentions", "زمینه‌ها"], ["dates", "بازه زمانی"], ["tools", "ابزارها"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => onTabChange(value)}>{label}{value === "tools" && attachments.tool_names.length ? <span>{fmt.int(attachments.tool_names.length)}</span> : null}</button>)}
+      {([["mentions", "زمینه‌ها"], ["dates", "بازه زمانی"], ["tools", "ابزارها"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => onTabChange(value)}>{label}{tabCounts[value] ? <span>{fmt.int(tabCounts[value])}</span> : null}</button>)}
     </div>
     <div className="assistant-context-body">
       {tab === "mentions" ? children : null}
       {tab === "tools" ? <>
-        <p className="assistant-context-hint">ابزارهای موردنیاز این پیام را انتخاب کنید.</p>
+        <div className="assistant-tool-head"><p className="assistant-context-hint">ابزارهای موردنیاز این پیام را انتخاب کنید.</p>{options?.tools.length ? <button type="button" className="assistant-context-clear" onClick={() => onChange({ ...attachments, tool_names: attachments.tool_names.length === options.tools.length ? [] : options.tools.map((tool) => tool.name) })}>{attachments.tool_names.length === options.tools.length ? "لغو انتخاب همه" : "انتخاب همه"}</button> : null}</div>
         <div className="assistant-tool-options" role="group" aria-label="ابزارهای در دسترس">
           {options?.tools.map((tool) => {
             const selected = attachments.tool_names.includes(tool.name);
@@ -95,7 +98,8 @@ export default function AssistantContextPicker({ tab, onTabChange, onClose, atta
       </> : null}
     </div>
     <div className="assistant-context-footer">
-      {tab === "tools" ? <button type="button" className="assistant-context-clear" disabled={!attachments.tool_names.length} onClick={() => onChange({ ...attachments, tool_names: [] })}>پاک‌کردن ابزارها</button> : tab === "dates" ? <button type="button" className="assistant-context-clear" disabled={!hasDates} onClick={() => onChange({ ...attachments, from_date: null, to_date: null })}>پاک‌کردن بازه</button> : <span />}
+      <span className="assistant-context-summary" role="status">{selectedCount ? `${fmt.int(selectedCount)} مورد انتخاب‌شده` : "موردی انتخاب نشده"}</span>
+      {tab === "tools" ? <button type="button" className="assistant-context-clear" disabled={!attachments.tool_names.length} onClick={() => onChange({ ...attachments, tool_names: [] })}>پاک‌کردن ابزارها</button> : tab === "dates" ? <button type="button" className="assistant-context-clear" disabled={!hasDates} onClick={() => onChange({ ...attachments, from_date: null, to_date: null })}>پاک‌کردن بازه</button> : <span className="flex-1" />}
       <button type="button" className="assistant-context-done" disabled={tab === "dates" && (incomplete || invalid)} onClick={onClose}>تأیید انتخاب</button>
     </div>
   </div>;
