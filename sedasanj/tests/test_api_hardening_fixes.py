@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from pydantic import BaseModel
 
 from app.deps import client_ip
 from app.errors import ERROR_STATUS, ApiError
@@ -97,22 +98,21 @@ def test_new_error_codes_map_to_statuses() -> None:
     assert ApiError("worker_timeout", "x").status_code == 504
 
 
+class _SecretBody(BaseModel):
+    password: str
+    age: int
+
+
 def test_validation_errors_do_not_echo_submitted_values() -> None:
     import httpx
     from fastapi import FastAPI
-    from pydantic import BaseModel
-
     from app.errors import install_error_handlers
-
-    class Body(BaseModel):
-        password: str
-        age: int
 
     app = FastAPI()
     install_error_handlers(app)
 
     @app.post("/x")
-    async def x(body: Body) -> dict[str, bool]:  # pragma: no cover - never reached
+    async def x(body: _SecretBody) -> dict[str, bool]:  # pragma: no cover - never reached
         return {"ok": True}
 
     async def call() -> httpx.Response:
