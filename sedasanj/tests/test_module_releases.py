@@ -276,3 +276,38 @@ def test_publish_and_revoke_require_password_proof() -> None:
             body_fields = [f.name for f in route.dependant.body_params]  # type: ignore[attr-defined]
             assert body_fields, f"{endpoint.__name__} must take a StaffSensitiveAction body"
     assert found == wanted
+
+
+def _release(version: str, **kw):
+    from types import SimpleNamespace
+
+    major, minor, patch = (int(x) for x in version.split("."))
+    base = dict(
+        version=version,
+        version_major=major,
+        version_minor=minor,
+        version_patch=patch,
+        status="published",
+        channel="stable",
+        min_freepbx_major=None,
+        max_freepbx_major=None,
+        min_php_version=None,
+        min_from_version=None,
+    )
+    return SimpleNamespace(**{**base, **kw})
+
+
+def test_compatibility_bounds_fail_closed_and_respect_php_floor() -> None:
+    from app.services.module_releases import select_update
+
+    limited = _release("1.4.0", min_freepbx_major=16, max_freepbx_major=17, min_php_version="7.4")
+    assert select_update([limited], "1.3.9", freepbx="16.0.40", php="7.4.33")[0] is limited
+    assert select_update([limited], "1.3.9", freepbx="17.0.1", php="8.2.1")[0] is limited
+    assert select_update([limited], "1.3.9", freepbx="15.0.17", php="7.4.33")[0] is None  # too old
+    assert select_update([limited], "1.3.9", freepbx="18.0.1", php="8.2.1")[0] is None  # too new
+    assert select_update([limited], "1.3.9", freepbx=None, php="7.4.33")[0] is None  # unknown host
+    assert select_update([limited], "1.3.9", freepbx="16.0.40", php="7.3.2")[0] is None  # PHP floor
+    assert select_update([limited], "1.3.9", freepbx="16.0.40", php=None)[0] is None
+    # An older, compatible release is offered when the newest one does not fit.
+    older = _release("1.3.10")
+    assert select_update([limited, older], "1.3.9", freepbx="15.0.17", php="7.4.33")[0] is older

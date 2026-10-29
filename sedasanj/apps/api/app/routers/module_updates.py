@@ -262,6 +262,8 @@ async def admin_create_module_release(
     severity: Annotated[ModuleSeverity, Form()] = "normal",
     channel: Annotated[ModuleChannel, Form()] = "stable",
     min_freepbx_major: Annotated[int | None, Form(ge=13, le=99)] = None,
+    max_freepbx_major: Annotated[int | None, Form(ge=13, le=99)] = None,
+    min_php_version: Annotated[str | None, Form(pattern=r"^\d{1,2}\.\d{1,2}(\.\d{1,3})?$")] = None,
     min_from_version: Annotated[str | None, Form(max_length=32)] = None,
 ) -> ModuleReleaseOut:
     path = await _spool_upload(file)
@@ -304,6 +306,8 @@ async def admin_create_module_release(
         severity=severity,
         channel=channel,
         min_freepbx_major=min_freepbx_major,
+        max_freepbx_major=max_freepbx_major,
+        min_php_version=min_php_version,
         min_from_version=_check_metadata(min_from_version),
         artifact_key=key,
         artifact_sha256=inspection.sha256,
@@ -355,7 +359,7 @@ async def admin_update_module_release(
     if "min_from_version" in changes:
         release.min_from_version = _check_metadata(changes.pop("min_from_version"))
     for field, value in changes.items():
-        if value is not None or field == "min_freepbx_major":
+        if value is not None or field in {"min_freepbx_major", "max_freepbx_major", "min_php_version"}:
             setattr(release, field, value)
     release.updated_at = datetime.now(UTC)
     await audit.record(
@@ -603,9 +607,23 @@ async def ingest_module_updates(
             )
         )
         published = await _published(session, product)
-    latest, changelog = releases.select_update(published, current, freepbx=freepbx, channel=channel)
+        revoked_current = (
+            await session.execute(
+                select(func.count())
+                .select_from(ModuleRelease)
+                .where(
+                    ModuleRelease.product == product,
+                    ModuleRelease.version == current,
+                    ModuleRelease.status == "revoked",
+                )
+            )
+        ).scalar_one() > 0
+    latest, changelog = releases.select_update(
+        published, current, freepbx=freepbx, php=php, channel=channel
+    )
     manifest = releases.build_manifest(latest) if latest else None
     return ModuleUpdateCheckOut(
+        current_revoked=revoked_current,
         update_available=latest is not None,
         current=current,
         latest=(

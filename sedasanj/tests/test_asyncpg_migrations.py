@@ -23,6 +23,7 @@ MIGRATIONS = (
     "0052_scheduled_report_retries.py",
     "0054_help_center.py",
     "0055_module_diagnostics.py",
+    "0056_module_release_compat.py",
 )
 
 

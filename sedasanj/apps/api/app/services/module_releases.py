@@ -376,11 +376,20 @@ def freepbx_major(value: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _php_floor(value: str | None) -> str | None:
+    """'7.4' -> '7.4.0' so PHP versions compare like the module's x.y.z versions."""
+    if not value:
+        return None
+    parts = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?", value)
+    return f"{parts.group(1)}.{parts.group(2)}.{parts.group(3) or 0}" if parts else None
+
+
 def select_update[R: ReleaseLike](
     releases: Sequence[R],
     current: str,
     *,
     freepbx: str | None = None,
+    php: str | None = None,
     channel: str = "stable",
 ) -> tuple[R | None, list[R]]:
     """Pick the newest installable release above `current` and every release in between.
@@ -403,7 +412,19 @@ def select_update[R: ReleaseLike](
     )
     latest: R | None = None
     for release in newer:
-        if release.min_freepbx_major and host_major and host_major < release.min_freepbx_major:
+        # Compatibility fails closed: a host that does not report its FreePBX version cannot be
+        # shown a release that declares limits, and a release never reaches a PBX outside its range.
+        min_major = getattr(release, "min_freepbx_major", None)
+        max_major = getattr(release, "max_freepbx_major", None)
+        if (min_major or max_major) and not host_major:
+            continue
+        if min_major and host_major and host_major < min_major:
+            continue
+        if max_major and host_major and host_major > max_major:
+            continue
+        min_php = try_parse_version(_php_floor(getattr(release, "min_php_version", None)))
+        host_php = try_parse_version(_php_floor(php))
+        if min_php and (not host_php or host_php < min_php):
             continue
         floor = try_parse_version(release.min_from_version)
         if floor and current_key < floor:
