@@ -32,7 +32,7 @@ Everything below was verified only in containers (PHP 7.4 to 8.3, stub servers, 
 ## 5. Update and rollback
 - Publish a test release newer than the installed one from the admin panel (needs your password/TOTP), then **Update** in the module page. Expected steps: verify, extract, backup, swap, install, activate, reload, health, report.
 - Failure test: publish a release whose `module.xml` version differs from the manifest or whose zip is corrupt: the update must refuse and the old version keeps working.
-- Rollback test: make the activate step fail (for example `chmod 000` on the new `activate`-related path in a test copy) and confirm the previous version and the backup are restored.
+- Rollback test (optional, on a snapshot): in a copy of the release make `module.xml` valid but break `Recuploader.class.php` with a syntax error before zipping, publish it and update. Expected: the install/activate step fails, the helper reports `rolled_back`, and the previous version, service and hook work again (check the update log shown on the page).
 
 ## 6. Help center and fleet
 - Admin > مرکز راهنما > کدهای خطا > "افزودن کدهای ماژول", then create/publish an article for `SS-UPL-0401` and open `/help/errors/SS-UPL-0401` logged out.
