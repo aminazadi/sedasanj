@@ -50,6 +50,11 @@ _CONTROL_ONLY = {
     "tenant_backups",
     "identity_projection_state",
     "contact_leads",
+    # Module fleet telemetry is read and written through the control database only; copying it into
+    # a tenant database would also break on the foreign key to the global module_releases table.
+    "module_installations",
+    "module_update_events",
+    "module_diagnostics",
 }
 _GLOBAL_REFERENCE = {"plans", "plan_versions"}
 

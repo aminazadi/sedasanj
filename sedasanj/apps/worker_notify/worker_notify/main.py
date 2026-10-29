@@ -308,11 +308,32 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             call_id=call_id,
             kind="notify",
             error_code="notify_failed",
-            error_detail=repr(exc),
+            # Hook URLs often carry tokens and bodies echo customer endpoints: keep the
+            # tenant-visible detail short and generic; the full error goes to the log only.
+            error_detail="تحویل وب‌هوک ناموفق بود؛ نشانی و پاسخ سرور مقصد را بررسی کنید.",
             event=event,
+        )
+        logger.warning(
+            "webhook delivery failed",
+            extra={"extra_fields": {"call_id": str(call_id), "error": repr(exc)[:500]}},
         )
         if not retried:
             logger.error("webhook dead-lettered", extra={"extra_fields": {"call_id": str(call_id)}})
+            if event == "call.complete":
+                # The analysis is finished and billed; a dead webhook must not leave the call in
+                # "billed"/"notified", where the reconciler would re-queue it every minute.
+                async with session_scope(tenant_id) as session:
+                    call = (
+                        await session.execute(
+                            select(Call).where(Call.id == call_id, Call.tenant_id == tenant_id)
+                        )
+                    ).scalar_one_or_none()
+                    if call is not None and call.status in {"billed", "notified"}:
+                        call.status = "complete"
+                        complete = progress.values_for_status("complete")
+                        call.progress_pct = int(complete["progress_pct"])
+                        call.progress_detail = str(complete["progress_detail"])
+                        call.updated_at = datetime.now(UTC)
         return "retry" if retried else "dead_letter"
 
 

@@ -159,3 +159,44 @@ def test_successful_chat_content_may_contain_credit_words() -> None:
         {"choices": [{"delta": {"content": "اعتبار قرارداد تأیید شد"}}]},
         kind="llm",
     )
+
+
+def test_tenant_credit_error_is_not_reported_as_provider_credit() -> None:
+    from app.errors import ApiError
+    from app.services.provider_errors import classify_failure
+
+    code, detail, retryable = classify_failure(
+        ApiError("insufficient_credit", "not enough minutes"), kind="llm"
+    )
+    assert code == "insufficient_credit" and "VoiceSanj" not in detail
+    assert isinstance(retryable, bool)
+
+
+def test_silence_is_a_final_no_speech_error() -> None:
+    from app.services.provider_errors import classify_failure
+
+    for message in (
+        "ASR produced no text",
+        "voicesanj task failed: NoSpeechDetectedError: nothing",
+    ):
+        code, _, retryable = classify_failure(RuntimeError(message), kind="asr")
+        assert code == "asr_no_speech" and retryable is False, message
+
+
+def test_httpx_timeouts_are_retryable_provider_timeouts() -> None:
+    import httpx
+
+    from app.services.provider_errors import classify_failure
+
+    for exc in (httpx.ReadTimeout("x"), httpx.ConnectTimeout("x")):
+        assert classify_failure(exc, kind="asr")[::2] == ("asr_provider_timeout", True)
+
+
+def test_unknown_failures_do_not_leak_repr_or_secrets() -> None:
+    from app.services.provider_errors import classify_failure
+
+    code, detail, _ = classify_failure(
+        RuntimeError("boom at http://minio:9000 Bearer abcdefghijklmnop12345"), kind="asr"
+    )
+    assert code == "asr_failed" and "abcdefghijklmnop12345" not in detail
+    assert detail.startswith("RuntimeError:")

@@ -94,7 +94,7 @@ async def readyz(response: Response) -> dict[str, Any]:
     ready = True
     for name, result in zip(checks.keys(), results, strict=True):
         ok = result is True
-        report[name] = "ok" if ok else f"error: {result}"
+        report[name] = "ok" if ok else "unavailable"
         ready = ready and ok
     if not ready:
         response.status_code = 503

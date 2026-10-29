@@ -1,0 +1,36 @@
+# Alertmanager groups and routes the rules in prometheus/alerts.yml. It is not published outside the
+# Docker network; open it with `docker compose exec alertmanager wget -qO- localhost:9093/api/v2/alerts`
+# or add a receiver below so alerts reach a person.
+#
+# To notify: replace the `default` receiver's body with ONE of the examples and run
+#   docker compose up -d alertmanager
+# Example (generic webhook, e.g. a chat bridge):
+#   webhook_configs:
+#     - url: https://chat.example.com/hooks/XXXX
+#       send_resolved: true
+# Example (email):
+#   email_configs:
+#     - to: ops@example.com
+#       from: alerts@example.com
+#       smarthost: smtp.example.com:587
+#       auth_username: alerts@example.com
+#       auth_password_file: /etc/alertmanager/smtp_password   # mount the file; never inline secrets
+route:
+  receiver: default
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: default
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+
+inhibit_rules:
+  # A dead API makes every downstream alert noise.
+  - source_matchers: [alertname="ApiDown"]
+    target_matchers: [severity=~"warning|critical"]
+    equal: []

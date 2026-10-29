@@ -391,7 +391,7 @@ async def accept_upload(
                 status="failed_terminal",
                 message="ذخیره فایل صوتی ناموفق بود",
                 error_code="storage_unavailable",
-                error_detail=repr(exc),
+                error_detail="ذخیره‌سازی یا ثبت فایل صوتی ناموفق بود؛ دوباره تلاش می‌شود. کد مرجع: storage_unavailable",
             )
         ingest_total.labels(tenant=str(tenant_id), result="storage_error").inc()
         logger.exception(
@@ -487,7 +487,7 @@ async def accept_upload(
                 status="failed_terminal",
                 message="ثبت اطلاعات فایل صوتی ناموفق بود",
                 error_code="internal",
-                error_detail=repr(exc),
+                error_detail="ذخیره‌سازی یا ثبت فایل صوتی ناموفق بود؛ دوباره تلاش می‌شود. کد مرجع: storage_unavailable",
             )
         ingest_total.labels(tenant=str(tenant_id), result="metadata_error").inc()
         raise ApiError("internal", "could not record the upload") from exc

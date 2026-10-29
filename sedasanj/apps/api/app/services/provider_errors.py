@@ -191,6 +191,18 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
             f"جزئیات فنی: {str(exc)[:1500]}",
             False,
         )
+    # A tenant-side ApiError (e.g. the tenant's own credit running out) is not a provider failure:
+    # keep its own code so the customer is not told the platform's AI account needs recharging.
+    from app.errors import ApiError
+
+    if isinstance(exc, ApiError):
+        return exc.code, exc.message[:500], exc.retryable
+    if isinstance(exc, httpx.TimeoutException):
+        return (
+            f"{kind}_provider_timeout",
+            "پاسخ سرویس هوش مصنوعی به‌موقع نرسید. کار به‌صورت کنترل‌شده دوباره تلاش می‌شود.",
+            True,
+        )
     if isinstance(exc, TimeoutError):
         return (
             f"{kind}_timeout",
@@ -209,6 +221,20 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
     if any(
         marker in text.lower()
         for marker in (
+            "nospeechdetected",
+            "no speech",
+            "produced no text",
+        )
+    ):
+        return (
+            f"{kind}_no_speech",
+            "در این فایل گفتاری شناسایی نشد (سکوت، صدای بسیار ضعیف یا فقط نوار انتظار). "
+            "تلاش دوباره نتیجه را عوض نمی‌کند.",
+            False,
+        )
+    if any(
+        marker in text.lower()
+        for marker in (
             "empty text",
             "empty transcript",
             "did not contain text",
@@ -223,7 +249,10 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
     if looks_like_credit(text):
         credit = _credit(kind, 0, text)
         return credit.code, credit.detail, False
-    return f"{kind}_failed", (repr(exc) or str(exc))[:2000], None
+    from app.services.processing_events import sanitize_detail
+
+    detail = sanitize_detail(f"{type(exc).__name__}: {exc}"[:600]) or type(exc).__name__
+    return f"{kind}_failed", detail, None
 
 
 def _credit(kind: str, status_code: int, body: str) -> ProviderError:

@@ -4,6 +4,19 @@ import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { ModuleInstallation, ModuleInstallationStats, Page } from "../types";
 
+interface DiagnosticReport {
+  id: string;
+  module_version: string;
+  ok: boolean;
+  failed_checks: number;
+  created_at: string;
+  report: {
+    checks?: Array<{ id: string; status: "ok" | "warn" | "fail"; code: string; detail: string }>;
+    recent_codes?: Record<string, number>;
+    queue?: Record<string, number>;
+  };
+}
+
 const UPDATE_STATUS: Record<NonNullable<ModuleInstallation["last_update_status"]>, { label: string; className: string }> = {
   started: { label: "در حال اجرا", className: "bg-sky-50 text-sky-700" },
   succeeded: { label: "موفق", className: "bg-emerald-50 text-emerald-700" },
@@ -20,6 +33,16 @@ export default function ModuleFleet() {
   const [page, setPage] = useState<Page<ModuleInstallation> | null>(null);
   const [stats, setStats] = useState<ModuleInstallationStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diag, setDiag] = useState<{ item: ModuleInstallation; reports: DiagnosticReport[] } | null>(null);
+
+  async function openDiagnostics(item: ModuleInstallation) {
+    try {
+      const reports = await request<DiagnosticReport[]>(`/v1/admin/module-installations/${item.id}/diagnostics`);
+      setDiag({ item, reports });
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   const reload = useCallback(async () => {
     try {
@@ -105,6 +128,7 @@ export default function ModuleFleet() {
                   <th>سرویس</th>
                   <th>آخرین بازدید</th>
                   <th>آخرین به‌روزرسانی</th>
+                  <th>سلامت</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,6 +160,11 @@ export default function ModuleFleet() {
                           <div className="mt-1 max-w-xs truncate text-xs text-rose-700" title={item.last_update_error}>{item.last_update_error}</div>
                         ) : null}
                       </td>
+                      <td>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openDiagnostics(item)}>
+                          گزارش سلامت
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -145,6 +174,45 @@ export default function ModuleFleet() {
         )}
         {page ? <Pagination offset={offset} limit={limit} total={page.total} onChange={setOffset} /> : null}
       </div>
+      {diag ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-bold" dir="ltr">{diag.item.hostname ?? diag.item.host_uuid}</h2>
+              <button type="button" className="btn btn-ghost" onClick={() => setDiag(null)}>بستن</button>
+            </div>
+            {diag.reports.length === 0 ? (
+              <p className="text-sm text-slate-500">هنوز گزارشی ارسال نشده است. ماژول نسخهٔ ۱٫۴ به بالا هر ساعت گزارش می‌فرستد.</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  آخرین گزارش: {fmt.dateTime(diag.reports[0].created_at)} — {diag.reports[0].ok ? "همه‌چیز سالم" : `${diag.reports[0].failed_checks} مورد نیازمند اقدام`}
+                </p>
+                <table className="table">
+                  <thead><tr><th>مورد</th><th>وضعیت</th><th>توضیح</th></tr></thead>
+                  <tbody>
+                    {(diag.reports[0].report.checks ?? []).filter((c) => c.status !== "ok").map((c) => (
+                      <tr key={c.id}>
+                        <td dir="ltr" className="text-xs">{c.id}</td>
+                        <td>{c.status === "fail" ? "خطا" : "هشدار"}</td>
+                        <td className="text-sm">
+                          {c.detail}{" "}
+                          {c.code ? <a className="underline" dir="ltr" href={`/help/errors/${encodeURIComponent(c.code)}`} target="_blank" rel="noreferrer">[{c.code}]</a> : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {Object.keys(diag.reports[0].report.recent_codes ?? {}).length > 0 ? (
+                  <p className="text-xs text-slate-500" dir="ltr">
+                    {Object.entries(diag.reports[0].report.recent_codes ?? {}).map(([code, n]) => `${code} ×${n}`).join("  ")}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

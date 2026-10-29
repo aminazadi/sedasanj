@@ -2,6 +2,15 @@
 
 ## 2026-10-29 — AMINAZADIAN
 
+- Hardened automatic FreePBX module updates with a signed, expiring release manifest, refusal of older releases, and support for up to three trusted keys during key rotation.
+- Added module diagnostics reports (hourly doctor results) with an admin health view, the `requeue-failed` tool for recordings in `failed/`, and a CI workflow for the module (PHP 7.4 to 8.3), API and web apps.
+- Fixed ASR failure classification (silence, httpx timeouts, tenant credit errors), finished dead-lettered webhooks as complete calls, stopped echoing submitted values and internal errors in API responses, and made non-5xx HTTP errors non-retryable.
+- Added Alertmanager with alert rules for workers, provisioning, 5xx rates, ingest rejections and webhooks; applied no-new-privileges and dropped capabilities for the Python services.
+- Agent: key/account rejections now pause calls instead of dead-lettering them, the call start time comes from the Uniqueid, delivered MixMonitor legs are removed, and ffmpeg has a timeout.
+- Repaired stale tests so the full Python suite passes.
+
+## 2026-10-29 — AMINAZADIAN
+
 - Added the help center: staff manage articles, categories, error-code mappings and image/video media in the admin panel; readers open `/help`, and the FreePBX module links every error code to `/help/errors/<CODE>`. Article HTML is rebuilt from an allowlist, uploads are validated by content, and a seed script creates draft articles for the most common module errors.
 
 ## 2026-10-29 — AMINAZADI

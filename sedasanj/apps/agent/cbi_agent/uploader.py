@@ -73,7 +73,35 @@ def merge_legs(in_leg: Path, out_leg: Path, target: Path) -> None:
         ],
         check=True,
         capture_output=True,
+        timeout=300,  # a wedged ffmpeg must not stall the AMI loop forever
     )
+
+
+def remove_source_legs(wav: Path) -> None:
+    """Delete the MixMonitor files a delivered recording was built from (they never get re-read)."""
+    stem = wav.name.removesuffix("-stereo.wav").removesuffix(".wav")
+    for suffix in ("-in.wav", "-out.wav", "-stereo.wav", ".wav"):
+        (wav.parent / f"{stem}{suffix}").unlink(missing_ok=True)
+
+
+# Server codes meaning "the key/account/format is wrong": keep the call and pause, never dead-letter.
+CONFIG_BLOCKING_CODES = frozenset(
+    {
+        "unauthorized",
+        "forbidden",
+        "tenant_suspended",
+        "unsupported_archive",
+        "archive_password_required",
+        "archive_password_invalid",
+    }
+)
+
+
+def _server_error_code(response: httpx.Response) -> str:
+    try:
+        return str(response.json().get("error", {}).get("code", ""))
+    except (ValueError, AttributeError):
+        return ""
 
 
 def locate_recording(monitor_dir: Path, uniqueid: str) -> Path | None:
@@ -94,6 +122,7 @@ class UploadResult(StrEnum):
     ACCEPTED = "accepted"
     RETRYABLE = "retryable"
     BLOCKED_CREDIT = "blocked_credit"
+    BLOCKED_CONFIG = "blocked_config"
     PERMANENT = "permanent"
 
 
@@ -167,9 +196,7 @@ class Spool:
         failed = self.directory / "failed" / safe_id
         failed.mkdir(parents=True, exist_ok=True)
         original_paths = {
-            Path(value)
-            for value in (pending.wav_path, pending.archive_path)
-            if value is not None
+            Path(value) for value in (pending.wav_path, pending.archive_path) if value is not None
         }
         relocated: dict[Path, Path] = {}
         for source in original_paths:
@@ -272,6 +299,7 @@ class Uploader:
                 wav.unlink(missing_ok=True)
                 if upload_path != wav:
                     upload_path.unlink(missing_ok=True)
+                remove_source_legs(wav)
             else:
                 archive = wav.parent / "uploaded"
                 archive.mkdir(exist_ok=True)
@@ -284,7 +312,17 @@ class Uploader:
             logger.warning("upload blocked by credit for %s", pending.asterisk_uniqueid)
             return UploadResult.BLOCKED_CREDIT
 
-        if response.status_code in (400, 401, 403, 409, 413, 415, 422):
+        code = _server_error_code(response)
+        if code in CONFIG_BLOCKING_CODES or (not code and response.status_code in (401, 403, 404)):
+            logger.error(
+                "upload paused for %s: HTTP %s %s (fix the API key/account; the call is kept)",
+                pending.asterisk_uniqueid,
+                response.status_code,
+                code,
+            )
+            return UploadResult.BLOCKED_CONFIG
+
+        if response.status_code in (400, 413, 415, 422):
             logger.error(
                 "permanent rejection %s for %s: %s",
                 response.status_code,
@@ -319,8 +357,12 @@ class Uploader:
                     target,
                 )
                 continue
-            if result == UploadResult.BLOCKED_CREDIT:
-                pending.last_error = "blocked by insufficient credit"
+            if result in (UploadResult.BLOCKED_CREDIT, UploadResult.BLOCKED_CONFIG):
+                pending.last_error = (
+                    "blocked by insufficient credit"
+                    if result == UploadResult.BLOCKED_CREDIT
+                    else "paused: API key or account rejected"
+                )
                 pending.next_attempt_epoch = time.time() + self._config.retry.credit_retry_seconds
                 spool.update(pending)
                 continue

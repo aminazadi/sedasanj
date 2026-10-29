@@ -96,6 +96,7 @@ function service_main(array $argv): int
     $nextSweepTick = 0.0;
     $nextVoicemailTick = 0.0;
     $nextMissedCallsTick = 0.0;
+    $nextDiagnosticsTick = microtime(true) + 300.0; // first report five minutes after start, then hourly
 
     $log->info("Queue worker loop started, spool_dir={$cfg['queue']['spool_dir']}");
     $log->info("Sweeper loop started, watch_dir={$cfg['watcher']['watch_dir']} interval={$sweepIntervalSeconds}s");
@@ -148,7 +149,19 @@ function service_main(array $argv): int
             $nextMissedCallsTick = $now + $missedCallsIntervalSeconds;
         }
 
-        $sleepUntil = min($nextQueueTick, $nextSweepTick, $nextVoicemailTick, $nextMissedCallsTick);
+        if ($now >= $nextDiagnosticsTick) {
+            try {
+                require_once __DIR__ . '/doctor.php';
+                $report = doctor_run($cfg, false);
+                $log->info('Diagnostics: ' . ($report['ok'] ? 'all required checks passed' : $report['failed'] . ' required check(s) failed'), ['failed' => $report['failed']]);
+                doctor_report($cfg, $report);
+            } catch (\Throwable $exc) {
+                $log->warning('Diagnostics report skipped: ' . $exc->getMessage());
+            }
+            $nextDiagnosticsTick = $now + 3600.0;
+        }
+
+        $sleepUntil = min($nextQueueTick, $nextSweepTick, $nextVoicemailTick, $nextMissedCallsTick, $nextDiagnosticsTick);
         $sleepFor = max(0.0, min(1.0, $sleepUntil - microtime(true)));
         usleep((int) ($sleepFor * 1_000_000));
     }

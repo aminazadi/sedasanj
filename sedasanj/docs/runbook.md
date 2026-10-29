@@ -100,3 +100,12 @@ uv run python scripts/loadgen.py --base-url https://api.<domain> --api-key sk_li
 `JWT_SECRET` و `API_KEY_PEPPER` را فقط با برنامه‌ی مهاجرت عوض کنید؛ تغییر pepper همه‌ی
 کلیدهای API را باطل می‌کند و مشتری باید کلید جدید بسازد. رمز MinIO و Postgres را با
 `docker compose up -d --force-recreate` پس از به‌روزرسانی `.env` اعمال کنید.
+
+
+## ماژول FreePBX: آپدیت امن، کلید امضا و عیب‌یابی
+
+- **کلید امضا**: سرور هر پیشنهاد آپدیت را با یک *manifest* امضاشده (نسخه، sha256، اندازه، کانال، انقضای ۷ روزه) می‌دهد؛ helper ریشه‌ی PBX بدون manifest معتبر نصب نمی‌کند و هر نسخه‌ی غیر جدیدتر را رد می‌کند.
+- **چرخش کلید**: فایل `release-signing.pub` روی PBX تا سه کلید (هر کدام یک خط) می‌پذیرد. مراحل: (۱) کلید جدید بسازید و در یک نسخه‌ی منتشرشده با کلید قدیمی، هر دو کلید را داخل `assets/release-signing.pub` بگذارید؛ (۲) پس از رسیدن آن نسخه به ناوگان، `MODULE_RELEASE_SIGNING_KEY` سرور را به کلید جدید تغییر دهید؛ (۳) در نسخه‌ی بعد کلید قدیمی را حذف کنید. کلید خصوصی را همراه backup رمزگذاری‌شده نگه دارید (`scripts/backup.sh`)؛ گم‌شدنش یعنی هیچ PBX آپدیت نمی‌گیرد.
+- **گزارش سلامت**: ماژول ۱٫۴ به بالا هر ساعت نتیجه‌ی `doctor.php` را به `/v1/ingest/module/diagnostics` می‌فرستد؛ در ادمین > سرورهای FreePBX > «گزارش سلامت» دیده می‌شود. کدهای `SS-...` به `/help/errors/<کد>` لینک می‌شوند.
+- **هشدارها**: Alertmanager در compose هست (`deploy/alertmanager/alertmanager.yml`)؛ برای دریافت واقعی هشدار یک receiver (webhook/ایمیل) در آن فایل تنظیم کنید.
+- **بازگرداندن ضبط‌های failed**: روی PBX `php /usr/local/bin/asterisk-recording-uploader/bin/requeue-failed.php` (با `--dry-run` یا `--code=SS-...`).

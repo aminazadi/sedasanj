@@ -2,7 +2,8 @@ groups:
   - name: cbi-platform
     rules:
       - alert: LlamaServerDown
-        expr: up{job="llama"} == 0
+        # llm1/llm2 only run with the local-llm profile; absent targets must not page anyone.
+        expr: up{job="llama"} == 0 and on() (count(up{job="llama"}) > 0) and on() (max(up{job="llama"}) == 1)
         for: 2m
         labels: { severity: critical }
         annotations:
@@ -102,3 +103,67 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "multiple provider analysis steps have failed"
+
+  - name: cbi-workers-and-module
+    rules:
+      - alert: WorkerDown
+        expr: up{job="workers"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "worker {{ $labels.instance }} is down"
+          description: "worker-notify also runs the reconciler, retention, renewals and expiry; worker-asr/llm/emotion stop analysing calls."
+
+      - alert: ProvisionWorkerDown
+        expr: up{job="provision"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "worker-provision is down (tenant databases, backups and projections stop)"
+
+      - alert: ApiServerErrors
+        expr: |
+          sum(rate(cbi_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(cbi_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "more than 5% of API requests fail with 5xx"
+
+      - alert: IngestRejectedSpike
+        expr: sum(increase(cbi_ingest_total{result=~"storage_error|metadata_error"}[15m])) > 5
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "recordings are being rejected by the ingest API (storage or metadata errors)"
+          description: "FreePBX hosts keep their recordings and retry, but check MinIO/Postgres now."
+
+      - alert: IngestCreditRejects
+        expr: sum(increase(cbi_credit_rejects_total[1h])) > 20
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "many uploads rejected for insufficient credit"
+
+      - alert: WebhookFailures
+        expr: |
+          sum(increase(cbi_webhook_responses_total{status!~"2.."}[15m]))
+            / clamp_min(sum(increase(cbi_webhook_responses_total[15m])), 1) > 0.5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "more than half of the webhook deliveries fail"
+
+      - alert: OldestAsrJobDelayed
+        expr: cbi_oldest_job_seconds{kind="asr"} > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "oldest queued ASR job is older than 15 minutes"
+
+      - alert: OldestNotifyJobDelayed
+        expr: cbi_oldest_job_seconds{kind="notify"} > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "oldest queued notify job is older than 15 minutes"

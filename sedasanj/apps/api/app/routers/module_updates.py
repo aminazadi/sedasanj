@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -11,7 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,10 +29,18 @@ from app.deps import (
     require_staff_roles,
 )
 from app.errors import ApiError
-from app.models import ModuleInstallation, ModuleRelease, ModuleUpdateEvent, Tenant
+from app.models import (
+    ModuleDiagnostic,
+    ModuleInstallation,
+    ModuleRelease,
+    ModuleUpdateEvent,
+    Tenant,
+)
 from app.schemas import (
     ModuleChangelogEntry,
     ModuleChannel,
+    ModuleDiagnosticIn,
+    ModuleDiagnosticOut,
     ModuleInstallationOut,
     ModuleReleaseOut,
     ModuleReleaseUpdate,
@@ -41,8 +50,9 @@ from app.schemas import (
     ModuleUpdateReportIn,
     ModuleZipInspection,
 )
-from app.services import audit
+from app.services import audit, ratelimit
 from app.services import module_releases as releases
+from app.services.processing_events import sanitize_detail
 from app.services.storage import get_storage
 
 router = APIRouter(tags=["module-updates"])
@@ -577,6 +587,7 @@ async def ingest_module_updates(
         )
         published = await _published(session, product)
     latest, changelog = releases.select_update(published, current, freepbx=freepbx, channel=channel)
+    manifest = releases.build_manifest(latest) if latest else None
     return ModuleUpdateCheckOut(
         update_available=latest is not None,
         current=current,
@@ -590,6 +601,8 @@ async def ingest_module_updates(
                 sha256=latest.artifact_sha256,
                 signature=latest.signature_b64,
                 published_at=latest.published_at,
+                manifest=manifest,
+                manifest_signature=releases.sign_manifest(manifest) if manifest else None,
             )
             if latest
             else None
@@ -661,6 +674,88 @@ async def ingest_module_update_report(
         if payload.status == "succeeded":
             installation.module_version = payload.to_version
     return {"accepted": True}
+
+
+_CODE_RE = re.compile(r"^(SS-[A-Z]{3,4}-\d{4}|[a-z0-9_]{2,40})$")
+MAX_DIAGNOSTICS_KEPT = 20
+
+
+@router.post("/v1/ingest/module/diagnostics", status_code=status.HTTP_202_ACCEPTED)
+async def ingest_module_diagnostics(
+    payload: ModuleDiagnosticIn, principal: ApiKeyDep
+) -> dict[str, bool]:
+    """Doctor report from a FreePBX host: what is wrong there, with stable error codes."""
+    assert principal.tenant_id is not None
+    # Own bucket (not the call-upload budget): a host reports at most a dozen times per hour.
+    await ratelimit.enforce(f"module-diag:{principal.tenant_id}:{payload.host_uuid}", 12, 3600)
+    checks = [
+        {
+            "id": check.id,
+            "status": check.status,
+            "code": check.code if _CODE_RE.match(check.code) else "",
+            "detail": sanitize_detail(check.detail, limit=300) or "",
+        }
+        for check in payload.checks
+    ]
+    codes = {c: n for c, n in payload.recent_codes.items() if _CODE_RE.match(c) and 0 <= n <= 10**7}
+    first_failure = next((c["code"] for c in checks if c["status"] == "fail" and c["code"]), None)
+    now = datetime.now(UTC)
+    async with control_session_scope() as session:
+        installation = (
+            await session.execute(
+                select(ModuleInstallation).where(
+                    ModuleInstallation.tenant_id == principal.tenant_id,
+                    ModuleInstallation.product == releases.PRODUCT_FREEPBX,
+                    ModuleInstallation.host_uuid == payload.host_uuid,
+                )
+            )
+        ).scalar_one_or_none()
+        if installation is None:
+            raise ApiError("not_found", "unknown host; run an update check first")
+        installation.last_seen_at = now
+        installation.asterisk_version = payload.asterisk_version
+        installation.os_name = payload.os_name
+        installation.last_error_code = first_failure
+        session.add(
+            ModuleDiagnostic(
+                tenant_id=principal.tenant_id,
+                installation_id=installation.id,
+                module_version=payload.module_version,
+                ok=payload.ok,
+                failed_checks=payload.failed_checks,
+                report={"checks": checks, "recent_codes": codes, "queue": payload.queue},
+            )
+        )
+        await session.flush()
+        stale = (
+            await session.execute(
+                select(ModuleDiagnostic.id)
+                .where(ModuleDiagnostic.installation_id == installation.id)
+                .order_by(ModuleDiagnostic.created_at.desc())
+                .offset(MAX_DIAGNOSTICS_KEPT)
+            )
+        ).scalars().all()
+        if stale:
+            await session.execute(delete(ModuleDiagnostic).where(ModuleDiagnostic.id.in_(stale)))
+    return {"accepted": True}
+
+
+@router.get(
+    "/v1/admin/module-installations/{installation_id}/diagnostics",
+    response_model=list[ModuleDiagnosticOut],
+)
+async def admin_module_diagnostics(
+    installation_id: UUID, _: StaffDep, session: StaffSession
+) -> list[ModuleDiagnostic]:
+    rows = (
+        await session.execute(
+            select(ModuleDiagnostic)
+            .where(ModuleDiagnostic.installation_id == installation_id)
+            .order_by(ModuleDiagnostic.created_at.desc())
+            .limit(MAX_DIAGNOSTICS_KEPT)
+        )
+    ).scalars()
+    return list(rows)
 
 
 # --- tenant panel: /v1/module ----------------------------------------------------

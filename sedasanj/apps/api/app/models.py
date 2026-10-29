@@ -2006,6 +2006,9 @@ class ModuleInstallation(Base):
     last_update_status: Mapped[str | None] = mapped_column(String(16))
     last_update_error: Mapped[str | None] = mapped_column(Text)
     last_update_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    last_error_code: Mapped[str | None] = mapped_column(String(40))
+    asterisk_version: Mapped[str | None] = mapped_column(String(64))
+    os_name: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
@@ -2463,4 +2466,25 @@ class HelpMedia(Base):
     created_by: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
     )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class ModuleDiagnostic(Base):
+    """A doctor report sent by a FreePBX host; the last few per installation are kept."""
+
+    __tablename__ = "module_diagnostics"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    installation_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("module_installations.id", ondelete="CASCADE"), nullable=False
+    )
+    module_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    failed_checks: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'"))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)

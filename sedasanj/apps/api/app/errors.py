@@ -60,6 +60,15 @@ def _request_id(request: Request) -> str:
     return str(getattr(request.state, "request_id", "-"))
 
 
+def _validation_message(exc: RequestValidationError) -> str:
+    """Field names and reasons only: submitted values (which can be secrets) are never echoed."""
+    parts = []
+    for item in exc.errors()[:10]:
+        location = ".".join(str(p) for p in item.get("loc", ()) if p not in ("body", "query"))
+        parts.append(f"{location or 'request'}: {item.get('msg', 'invalid')}")
+    return "; ".join(parts) or "invalid request"
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
@@ -72,24 +81,29 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=422,
-            content=error_body("invalid_request", str(exc.errors()), False, _request_id(request)),
+            content=error_body("invalid_request", _validation_message(exc), False, _request_id(request)),
         )
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = {
+            400: "invalid_request",
             401: "unauthorized",
             403: "forbidden",
             404: "not_found",
+            405: "invalid_request",
             409: "conflict_idempotency",
+            413: "archive_too_large",
             415: "unsupported_audio",
+            422: "invalid_request",
             429: "rate_limited",
-        }.get(exc.status_code, "internal")
+        }.get(exc.status_code, "internal" if exc.status_code >= 500 else "invalid_request")
+        # Only genuine server-side failures (5xx) and rate limits are worth retrying; a malformed
+        # request or a missing route will fail the same way every time.
+        retryable = exc.status_code >= 500 or exc.status_code == 429
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_body(
-                code, str(exc.detail), code in RETRYABLE_CODES, _request_id(request)
-            ),
+            content=error_body(code, str(exc.detail), retryable, _request_id(request)),
         )
 
     @app.exception_handler(Exception)
