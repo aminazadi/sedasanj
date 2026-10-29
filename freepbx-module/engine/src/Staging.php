@@ -159,6 +159,19 @@ class Staging
         if (!is_dir($stagingDir)) {
             mkdir($stagingDir, 0755, true);
         }
+        // A full disk used to produce silently truncated .gz files that were then uploaded. Refuse to
+        // stage when there is not room for the copy plus a safety margin; the original stays untouched
+        // and the sweeper retries once space is freed.
+        $needed = (int) @filesize($sourcePath) * 2 + 50 * 1024 * 1024;
+        $free = @disk_free_space($stagingDir);
+        if ($free !== false && $free < $needed) {
+            throw new StagingError(sprintf(
+                'Not enough free disk space to stage %s (need about %d MB, %d MB free) [SS-SYS-1005]',
+                basename($sourcePath),
+                intdiv($needed, 1048576),
+                intdiv((int) $free, 1048576)
+            ));
+        }
         $basename = basename($sourcePath);
         $stagingName = substr(hash('sha256', realpath($sourcePath) ?: $sourcePath), 0, 16) . '-' . $basename;
         $password = $cfg['general']['archive_password'] ?? '';
@@ -181,11 +194,20 @@ class Staging
             if ($in === false || $out === false) {
                 throw new StagingError("Could not gzip {$sourcePath} -> {$dest}");
             }
+            $complete = true;
             while (!feof($in)) {
-                gzwrite($out, fread($in, 1024 * 1024));
+                $chunk = fread($in, 1024 * 1024);
+                if ($chunk === false || ($chunk !== '' && gzwrite($out, $chunk) === 0)) {
+                    $complete = false; // disk full or I/O error: never upload a truncated archive
+                    break;
+                }
             }
             fclose($in);
-            gzclose($out);
+            $closed = gzclose($out);
+            if (!$complete || !$closed) {
+                @unlink($dest);
+                throw new StagingError("Could not gzip {$sourcePath} -> {$dest} (disk full?) [SS-STG-1001]");
+            }
             self::checkStagedSize($dest);
         } else {
             $dest = "{$stagingDir}/{$stagingName}";
