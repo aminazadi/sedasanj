@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ReleaseTimeline, { SeverityBadge } from "@cbi/web-shared/components/ReleaseTimeline";
 import { ApiError, fmt, request, tokens } from "../api";
+import { useSensitiveAction } from "../components/SensitiveActionDialog";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import { formatBytes, sanitizeHtml } from "../sanitize";
 import type { ModuleInstallationStats, ModuleRelease, ModuleReleaseStatus, Page } from "../types";
@@ -51,6 +52,7 @@ export default function ModuleReleases() {
   const [published, setPublished] = useState<ModuleRelease[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [askProof, proofDialog] = useSensitiveAction();
 
   const reload = useCallback(async () => {
     try {
@@ -80,13 +82,19 @@ export default function ModuleReleases() {
       revoke: `انتشار نسخهٔ ${release.version} لغو شود؟ سرورها دیگر این نسخه را دریافت نمی‌کنند.`,
       delete: `پیش‌نویس ${release.version} و فایل آن برای همیشه حذف شود؟`,
     };
-    if (!window.confirm(prompts[action])) return;
+    let proof = null;
+    if (action === "delete") {
+      if (!window.confirm(prompts[action])) return;
+    } else {
+      proof = await askProof(prompts[action]);
+      if (!proof) return;
+    }
     setBusy(release.id);
     try {
       if (action === "delete") {
         await request(`/v1/admin/module-releases/${release.id}`, { method: "DELETE" });
       } else {
-        await request(`/v1/admin/module-releases/${release.id}/${action}`, { method: "POST" });
+        await request(`/v1/admin/module-releases/${release.id}/${action}`, { method: "POST", body: proof });
       }
       await reload();
     } catch (err) {
@@ -102,6 +110,7 @@ export default function ModuleReleases() {
 
   return (
     <div className="space-y-4">
+      {proofDialog}
       <ErrorBox message={error} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

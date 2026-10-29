@@ -86,7 +86,8 @@ class QueueWorker
                 return 'failed';
             }
 
-            $delay = Queue::backoffSeconds($cfg, $job['attempts']);
+            // Honour the server's Retry-After (rate limits) when it asks for more than our backoff.
+            $delay = max(Queue::backoffSeconds($cfg, $job['attempts']), (int) ($exc->context['retry_after'] ?? 0));
             $job['next_attempt_epoch'] = microtime(true) + $delay;
             $queue->save($job);
             $log->coded('SS-QUE-1003', "Job {$jobId} attempt {$job['attempts']} failed ({$exc->getMessage()}); retrying in {$delay}s", ['cause' => $exc->errorCode, 'retry_in_s' => $delay] + $ctx);

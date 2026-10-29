@@ -29,6 +29,7 @@ class ErrorCatalog
         'SS-SVC-1002' => ['warning', true, 'Persistent storage fell back to JSON files', 'Check that pdo_sqlite is loaded and that /var/lib/asterisk-recording-uploader is owned by asterisk.'],
         'SS-SVC-1003' => ['error', true, 'Unexpected error in a service loop', 'Read the message; if it repeats, run the doctor command and send the support bundle.'],
         'SS-SVC-1004' => ['warning', false, 'pcntl extension is missing', 'Install php-pcntl for a clean service stop, or accept a forced stop by systemd.'],
+        'SS-SVC-1005' => ['error', false, 'Another service instance is already running', 'Stop the duplicate: systemctl status asterisk-recording-uploader; only one instance may run.'],
         // Recording hook
         'SS-HOOK-1001' => ['error', false, 'Recording hook was called without required arguments', 'Re-run the module activation so the MixMonitor globals are rewritten.'],
         'SS-HOOK-1002' => ['error', false, 'Recording hook rejected an unsafe argument', 'Normally harmless (a caller ID with unusual characters). If it affects normal calls, check the MIXMON_POST globals.'],
