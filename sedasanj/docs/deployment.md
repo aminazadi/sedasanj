@@ -232,9 +232,9 @@ revision پیش‌فرض به نسخۀ اصلاح‌شدۀ رسمی مدل pin �
 1. `curl -fsS https://api.<domain>/healthz` و `/readyz`
 2. ورود به `https://admin.<domain>` و ساخت مشتری
 3. نصب `cbi-agent` روی سرور Asterisk (<../apps/agent/README.md>)
-4. فعال‌سازی پشتیبان‌گیری شبانه:
+4. فعال‌سازی پشتیبان‌گیری شبانه (ابتدا رمز بسته‌ی اسرار را بسازید و یک کپی از آن را جدا از سرور نگه دارید: `umask 077; openssl rand -base64 32 > /root/.cbi-backup-passphrase`؛ جزئیات و تمرین بازیابی در [runbook](runbook.md)):
    ```
-   0 2 * * * cd /srv/cbi/deploy && BACKUP_DIR=/srv/backup /srv/cbi/scripts/backup.sh >> /var/log/cbi-backup.log 2>&1
+   0 2 * * * BACKUP_DIR=/srv/backup BACKUP_PASSPHRASE_FILE=/root/.cbi-backup-passphrase BACKUP_OFFSITE_TARGET=backup@other-host:/srv/cbi /srv/cbi/scripts/backup.sh >> /var/log/cbi-backup.log 2>&1
    ```
 5. تعریف داشبورد Grafana (`pipeline.json` به‌صورت خودکار provision می‌شود) و بررسی هشدارها.
 

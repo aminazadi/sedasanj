@@ -31,11 +31,57 @@
 ## پشتیبان‌گیری و بازیابی
 
 ```bash
-BACKUP_DIR=/srv/backup ./scripts/backup.sh          # pg_dump + mirror MinIO
-./scripts/restore.sh /srv/backup/20260819T020000Z    # تمرین بازیابی
+export BACKUP_DIR=/srv/backup
+export BACKUP_PASSPHRASE_FILE=/root/.cbi-backup-passphrase   # رمز بسته‌ی اسرار؛ خارج از سرور هم نگه دارید
+export BACKUP_OFFSITE_TARGET=backup@other-host:/srv/cbi      # rsync؛ یا مسیر یک mount خارج از این هاست
+./scripts/backup.sh
 ```
 
-تمرین بازیابی را ماهانه روی یک محیط جدا اجرا کنید و زمان بازگشت را ثبت کنید.
+هر پشتیبان (`$BACKUP_DIR/<UTC stamp>/`) شامل این‌هاست:
+
+| فایل | محتوا |
+|---|---|
+| `cbi.dump` | پایگاه کنترل (`pg_dump -Fc`) |
+| `tenants/cbi_tenant_<uuid>.dump` | یک dump برای هر پایگاه مشتری |
+| `secrets.tar.enc` | رمزشده با AES‑256: `deploy/.env` (شامل `TENANT_DATABASE_MASTER_KEY`، `PLATFORM_SECRETS_KEY`، `JWT_SECRET`، `API_KEY_PEPPER`)، نقش‌های پایگاه (`pg_dumpall --roles-only`) و کلید امضای ماژول |
+| `SHA256SUMS`, `MANIFEST`, `audio.manifest` | یکپارچگی و فهرست اشیای صوتی |
+
+نکات:
+
+- هر dump با `pg_restore --list` بررسی می‌شود، ابتدا با نام موقت نوشته و سپس rename می‌شود؛ پوشه‌ی در حال ساخت `*.partial` است و هرگز برای restore استفاده نمی‌شود.
+- صوت به‌صورت افزایشی در `$BACKUP_DIR/audio-mirror` (دیسک هاست) mirror می‌شود، نه داخل کانتینر. این mirror snapshot نیست و حذف‌های retention را پاک نمی‌کند.
+- بدون کلیدهای داخل `secrets.tar.enc` دادهٔ پایگاه‌های مشتریان قابل رمزگشایی نیست. رمز بسته را جدا از خود پشتیبان نگه دارید.
+- پاک‌سازی: پشتیبان‌های کامل‌تر از `BACKUP_RETENTION_DAYS` (پیش‌فرض ۱۴) حذف می‌شوند، ولی همیشه `BACKUP_KEEP_LAST` (پیش‌فرض ۷) نسخه‌ی تازه می‌ماند.
+- فایل `$BACKUP_DIR/.last_success` زمان آخرین پشتیبان موفق است؛ برای هشدار «پشتیبان قدیمی» از آن استفاده کنید.
+- بدون `BACKUP_OFFSITE_TARGET` پشتیبان فقط روی همین هاست است و اسکریپت هشدار می‌دهد.
+
+### بازیابی کامل
+
+```bash
+./scripts/restore.sh /srv/backup/20260819T020000Z          # تأیید تعاملی: RESTORE <نام پشتیبان>
+./scripts/restore.sh --yes --restore-secrets <backup-dir>  # بدون پرسش؛ .env را در .env.from-backup می‌نویسد
+```
+
+ترتیب کار: بررسی checksum و dumpها ← توقف همهٔ writerها (api، asr، emotion، llm، notify، dispatch، provision) ← snapshot پیش از restore در `$BACKUP_DIR/pre-restore` ← restore هر پایگاه در یک پایگاه تازه (`--exit-on-error --single-transaction`) و جابه‌جایی با rename ← اجرای دوبارهٔ نقش و GRANTهای `cbi_app` و مشتریان ← بازگردانی صوت ← راه‌اندازی مجدد سرویس‌ها. اگر هر مرحله‌ی restore خطا بدهد، پایگاه فعلی دست‌نخورده می‌ماند. پایگاه‌های جایگزین‌شده با نام `<db>_pre<stamp>` می‌مانند؛ پس از راستی‌آزمایی با `DROP DATABASE` حذف کنید. برگشت: سرویس‌ها را متوقف و `ALTER DATABASE` معکوس بزنید.
+
+### بازیابی یک مشتری
+
+```bash
+./scripts/restore_tenant.sh /srv/backup/<stamp> <tenant-uuid>
+```
+
+فقط پایگاه همان مشتری جایگزین می‌شود (همان روش fresh‑DB + rename)، نقش مشتری باید وجود داشته باشد (روی سرور اصلی هست؛ روی سرور بازسازی‌شده از `--roles-file` استفاده کنید). داده‌های نوشته‌شده پس از زمان پشتیبان از دست می‌رود.
+
+### تمرین ماهانهٔ بازیابی (restore drill)
+
+روی یک هاست جدا (نه production) انجام شود:
+
+1. استک را با `.env` خالی/تست بالا بیاورید و `postgres` و `minio` را راه بیندازید.
+2. آخرین پشتیبان و `audio-mirror` را از مقصد خارج از هاست کپی کنید و `BACKUP_PASSPHRASE_FILE` را تنظیم کنید.
+3. `./scripts/restore.sh --restore-secrets <backup-dir>` را اجرا و زمان آن را ثبت کنید.
+4. `.env.from-backup` را با `.env` مقایسه یا جایگزین کنید و `docker compose up -d` بزنید.
+5. بررسی: `/healthz`، تعداد تماس‌ها در هر پایگاه در برابر `MANIFEST`، باز شدن یک مشتری نمونه، پخش یک فایل صوتی، ورود با کلید API.
+6. نتیجه و RTO را در گزارش ماهانه ثبت کنید؛ شکست تمرین یعنی پشتیبان‌ها معتبر نیستند و باید همان روز رفع شود.
 
 ## ظرفیت و بار
 
