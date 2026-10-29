@@ -243,7 +243,7 @@ Python 3.12, uv, SQLAlchemy 2 + Alembic, Pydantic v2, ARQ, httpx.
 }
 ```
 
-Codes: `unauthorized`, `forbidden`, `insufficient_credit`, `tenant_suspended`, `conflict_idempotency`, `unsupported_audio`, `not_found`, `rate_limited`, `internal`.
+Codes (source of truth: `ERROR_STATUS` in `apps/api/app/errors.py`): `unauthorized`, `forbidden`, `tenant_suspended`, `insufficient_credit`, `quota_exceeded`, `conflict_idempotency`, `conflict`, `unsupported_audio`, `unsupported_archive`, `archive_password_required`, `archive_password_invalid`, `archive_unsafe`, `archive_too_large`, `not_found`, `rate_limited`, `invalid_request`, `worker_timeout`, `internal`. `retryable` is true only for server-side failures and rate limits; the FreePBX module maps these (and its own `SS-<AREA>-<NNNN>` codes) to help articles at `/help/errors/<code>`.
 
 ### 7.4 Environment variables
 
