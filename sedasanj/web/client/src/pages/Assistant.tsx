@@ -1,3 +1,4 @@
+import AssistantExportFiles from "../components/AssistantExportFiles";
 import { CallStateArt } from "../components/CallStateArt";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
@@ -933,7 +934,7 @@ export default function Assistant() {
         const run: AssistantToolRun = { tool_call_id: payload.tool_call_id, name: payload.name, title: payload.title,
           status: payload.status || (event === "tool_started" ? "running" : event === "tool_failed" ? "failed" : "succeeded"),
           duration_ms: payload.duration_ms ?? null, summary: payload.summary ?? null,
-          error_code: payload.error_code ?? null, charts: payload.charts || [] };
+          error_code: payload.error_code ?? null, charts: payload.charts || [], files: payload.files || [] };
         setMessages((current) => {
           const existing = current.find((item) => item.id === draftId);
           const draft = existing || { id: draftId, role: "assistant" as const, content: "", status: "running" as const, model: null, sources: null, tool_runs: [], created_at: new Date().toISOString() };
@@ -1030,8 +1031,11 @@ export default function Assistant() {
     });
     socket.on("assistant:conversation:state", (state: any) => {
       const stateConversationId = String(state?.conversation_id || "");
-      if (stateConversationId !== selectedConversationIdRef.current) return;
-      const restored: ChatMessage[] = (state.messages || []).map((item: any) => ({ ...item, tool_runs: [], memory_drafts: [] }));
+      if (stateConversationId !== selectedConversationIdRef.current) {
+        joiningConversationIdsRef.current.delete(stateConversationId);
+        return;
+      }
+      const restored: ChatMessage[] = (state.messages || []).map((item: any) => ({ ...item, tool_runs: item.tool_runs || [], memory_drafts: item.memory_drafts || [] }));
       const completedDraftIds = new Set<string>(
         (state.completed_runs || []).map((run: any) => runDraftsRef.current.get(String(run.id))).filter(Boolean),
       );
@@ -1089,7 +1093,8 @@ export default function Assistant() {
       socket.on(`assistant:${event}`, (envelope: any) => {
         const conversationId = envelope?.conversation_id ? String(envelope.conversation_id) : null;
         const runId = String(envelope?.run_id || "");
-        if (conversationId && joiningConversationIdsRef.current.has(conversationId)) {
+        const terminal = event === "message:completed" || event === "done" || event === "cancelled";
+        if (!terminal && conversationId && joiningConversationIdsRef.current.has(conversationId)) {
           const buffered = bufferedRunEventsRef.current.get(runId) || [];
           buffered.push(envelope);
           bufferedRunEventsRef.current.set(runId, buffered);
@@ -1505,7 +1510,7 @@ export default function Assistant() {
               {user && attachedLabels.length ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="موارد متصل به پیام">{attachedLabels.map((label) => <span key={label} className="inline-flex min-h-6 items-center border border-[#D8D3B9] bg-[#F2F0EF] px-2 py-0.5 text-[11px] font-bold leading-5 text-[#365033]">{label}</span>)}</div> : null}
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
               {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
-              {!user ? <AssistantCharts charts={charts} /> : null}
+              {!user ? <AssistantCharts charts={charts} /> : null}{!user ? <AssistantExportFiles runs={message.tool_runs || []} /> : null}
               {message.sources?.length ? <CallSources sources={message.sources} expandedCallId={expandedCallId} onToggle={toggleCallSource} /> : null}
               </>}
           </ConversationBubble>;

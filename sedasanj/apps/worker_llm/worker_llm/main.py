@@ -726,27 +726,29 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
                 completion = json.loads(raw)
             elif event and raw:
                 await assistant_socket.publish(tenant_id, run_id, event, json.loads(raw))
-        if cancelled:
+    # The stream session holds a row lock on the run until it commits; finish the
+    # bookkeeping below only after leaving it, or the update waits on its own lock.
+    if cancelled:
+        return "cancelled"
+    if completion is None:
+        raise RuntimeError("assistant stream ended without completion")
+    message = completion["message"]
+    async with session_scope(tenant_id) as control:
+        run = await control.get(AssistantRun, run_id)
+        if run is not None and run.status == "cancelled":
             return "cancelled"
-        if completion is None:
-            raise RuntimeError("assistant stream ended without completion")
-        message = completion["message"]
-        async with session_scope(tenant_id) as control:
-            run = await control.get(AssistantRun, run_id)
-            if run is not None and run.status == "cancelled":
-                return "cancelled"
-            if (
-                run is not None
-                and run.status in {"failed", "cancelled"}
-                and run.assistant_message_id != UUID(message["id"])
-            ):
-                return "already failed"
-            if run is not None:
-                run.assistant_message_id = UUID(message["id"])
-                run.status = "succeeded" if message.get("status") != "failed" else "failed"
-                run.updated_at = datetime.now(UTC)
-        await assistant_socket.publish(tenant_id, run_id, "message:completed", completion)
-        return str(message.get("status", "succeeded"))
+        if (
+            run is not None
+            and run.status in {"failed", "cancelled"}
+            and run.assistant_message_id != UUID(message["id"])
+        ):
+            return "already failed"
+        if run is not None:
+            run.assistant_message_id = UUID(message["id"])
+            run.status = "succeeded" if message.get("status") != "failed" else "failed"
+            run.updated_at = datetime.now(UTC)
+    await assistant_socket.publish(tenant_id, run_id, "message:completed", completion)
+    return str(message.get("status", "succeeded"))
 
 
 async def startup(ctx: dict[str, Any]) -> None:
