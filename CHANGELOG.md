@@ -2,6 +2,7 @@
 
 ## 2026-10-29 — AMINAZADI
 
+- Added automatic login submission when a six-digit SMS or authenticator OTP is completed across client, organization and admin sign-in flows.
 - Replaced oversized admin and client panel PNG artwork with display-sized high-quality WebP assets and deferred below-the-fold image decoding and loading.
 
 ## 2026-10-29 — AMINAZADIAN

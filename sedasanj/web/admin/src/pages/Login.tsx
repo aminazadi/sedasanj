@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError } from "../api";
+import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
+import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
 import logo from "../assets/logo-small-fa.webp";
@@ -13,13 +14,25 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [totp, setTotp] = useState("");
+  const [step, setStep] = useState<"password" | "totp">("password");
+  const autoSubmittedOtp = useRef("");
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function authenticate() {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      await login(email, password);
+      if (step === "password") {
+        const result = await request<{ requires_totp: boolean }>("/v1/admin/auth/check", {
+          method: "POST", body: { email, password }, retry: false,
+        });
+        if (result.requires_totp) {
+          setStep("totp");
+          return;
+        }
+      }
+      await login(email, password, totp);
       navigate("/");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "ورود ناموفق بود");
@@ -27,6 +40,19 @@ export default function Login() {
       setBusy(false);
     }
   }
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    void authenticate();
+  }
+  useEffect(() => {
+    if (step !== "totp" || !isCompleteOtp(totp)) {
+      autoSubmittedOtp.current = "";
+      return;
+    }
+    if (busy || autoSubmittedOtp.current === totp) return;
+    autoSubmittedOtp.current = totp;
+    void authenticate();
+  }, [busy, step, totp]);
 
   return (
     <main
@@ -43,7 +69,7 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-slate-900">ورود به پنل</h1>
         </div>
         <ErrorBox message={error} />
-        <label className="label font-medium text-slate-700" htmlFor="email">
+        {step === "password" ? <><label className="label font-medium text-slate-700" htmlFor="email">
           ایمیل
         </label>
         <input
@@ -68,8 +94,25 @@ export default function Login() {
           onChange={(event) => setPassword(event.target.value)}
           required
         />
+        </> : <>
+        <label className="label font-medium text-slate-700" htmlFor="totp">کد گوگل آتنتیکیتور</label>
+        <input
+          id="totp"
+          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]{6}"
+          dir="ltr"
+          value={fmt.digits(totp)}
+          onChange={(event) => setTotp(normalizeOtp(event.target.value))}
+          autoFocus
+          required
+        />
+        <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}>بازگشت و ویرایش ایمیل یا گذرواژه</button>
+        </>}
         <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>
-          {busy ? "…" : "ورود"}
+          {busy ? "…" : step === "totp" ? "تأیید و ورود" : "ادامه"}
         </button>
       </form>
     </main>

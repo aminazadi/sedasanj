@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { isCompleteOtp } from "@cbi/web-shared/lib/otp";
 import { fmt, request } from "../api";
 import type { TokenPair } from "../types";
 import "./quick-demo.css";
@@ -74,6 +75,7 @@ export default function PhoneAuth({ onSuccess, renderArtwork }: { onSuccess: (pa
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  const autoSubmittedOtp = useRef("");
   const step = pending.grant ? "organization" : pending.otpId ? "code" : "phone";
   const account = pending.accounts.find((item) => item.user_id === selected) || pending.accounts[0];
   useEffect(() => {
@@ -84,6 +86,17 @@ export default function PhoneAuth({ onSuccess, renderArtwork }: { onSuccess: (pa
     }, { replace: true });
   }, [pending, step, setParams]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    const value = step === "code" ? code : step === "organization" && account?.requires_totp ? totp : "";
+    if (!isCompleteOtp(value)) {
+      autoSubmittedOtp.current = "";
+      return;
+    }
+    const key = `${step}:${account?.user_id || ""}:${value}`;
+    if (busy || autoSubmittedOtp.current === key) return;
+    autoSubmittedOtp.current = key;
+    void executeSubmit();
+  }, [account?.requires_totp, account?.user_id, busy, code, step, totp]);
 
   async function finish(grant: string, userId?: string, name?: string) {
     setCreating(!userId);
@@ -103,8 +116,7 @@ export default function PhoneAuth({ onSuccess, renderArtwork }: { onSuccess: (pa
       expiresAt: Date.now() + result.expires_in * 1000, resendAt: Date.now() + result.resend_after * 1000 });
     setCode("");
   }
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function executeSubmit() {
     if (busy) return;
     if (step === "phone" && !pending.mobile.trim()) { setError("شماره موبایل را وارد کنید."); return; }
     if (step === "code" && code.length !== 6) { setError("کد شش‌رقمی را کامل وارد کنید."); return; }
@@ -126,6 +138,10 @@ export default function PhoneAuth({ onSuccess, renderArtwork }: { onSuccess: (pa
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "درخواست انجام نشد؛ دوباره تلاش کنید."); }
     finally { setBusy(false); }
+  }
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    void executeSubmit();
   }
   async function resend() {
     setBusy(true); setError("");

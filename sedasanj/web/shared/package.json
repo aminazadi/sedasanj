@@ -8,6 +8,7 @@
     "./components/ReleaseTimeline": "./components/ReleaseTimeline.tsx",
     "./components/TableFilters": "./components/TableFilters.tsx",
     "./components/ToggleSwitch": "./components/ToggleSwitch.tsx",
+    "./lib/otp": "./lib/otp.ts",
     "./theme": "./theme.js"
   },
   "peerDependencies": {

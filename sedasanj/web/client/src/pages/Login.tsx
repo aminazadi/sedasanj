@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
 import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
@@ -19,9 +20,10 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<"password" | "totp">("password");
+  const autoSubmittedOtp = useRef("");
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function authenticate() {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -37,6 +39,19 @@ export default function Login() {
       setBusy(false);
     }
   }
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    void authenticate();
+  }
+  useEffect(() => {
+    if (step !== "totp" || !isCompleteOtp(totp)) {
+      autoSubmittedOtp.current = "";
+      return;
+    }
+    if (busy || autoSubmittedOtp.current === totp) return;
+    autoSubmittedOtp.current = totp;
+    void authenticate();
+  }, [busy, step, totp]);
 
   return (
     <main
@@ -93,7 +108,7 @@ export default function Login() {
           pattern="[0-9]{6}"
           required
                 value={fmt.digits(totp)}
-                onChange={(event) => setTotp(fmt.latinDigits(event.target.value).replace(/\D/g, "").slice(0, 6))}
+                onChange={(event) => setTotp(normalizeOtp(event.target.value))}
               />
               <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}>بازگشت و ویرایش ایمیل یا گذرواژه</button>
               </>)}
