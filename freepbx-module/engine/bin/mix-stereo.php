@@ -42,6 +42,21 @@ function mixstereo_main(array $argv): int
     $cdrDuration = $argv[6] ?? '';
     $cdrDestination = $argv[7] ?? '';
     $fromDid = $argv[8] ?? '';
+    // Defence in depth behind the dialplan FILTER(): never trust an argument
+    // that still carries shell metacharacters or path tricks.
+    $safe = '/^[0-9A-Za-z*#+_.\-]*$/';
+    foreach (['name' => $name, 'caller' => $caller, 'dialed' => $dialed, 'dst' => $cdrDestination, 'did' => $fromDid] as $label => $value) {
+        if (!preg_match($safe, $value) || strpos($value, '..') !== false) {
+            fwrite(STDERR, "mix-stereo.php: rejected unsafe {$label} argument\n");
+            return 1;
+        }
+    }
+    if (!preg_match('#^/[A-Za-z0-9/_.\-]+/$#', $dir) || strpos($dir, '..') !== false
+        || ($uniqueId !== '' && !preg_match('/^\d+(\.\d+)?$/', $uniqueId))
+        || ($cdrDuration !== '' && !preg_match('/^[0-9.]+$/', $cdrDuration))) {
+        fwrite(STDERR, "mix-stereo.php: rejected unsafe directory, uniqueid or duration argument\n");
+        return 1;
+    }
     if ($dialed === '') {
         $dialed = $fromDid !== '' ? $fromDid : $cdrDestination;
     }

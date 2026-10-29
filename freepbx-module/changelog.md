@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.9 — AMINAZADI
+
+- Security: every caller-controlled value in the MixMonitor post-recording command (`CALLFILENAME`, `UNIQUEID`, `CALLERID(num)`, `CDR(dnid)`, `CDR(duration)`, `CDR(dst)`, `FROM_DID`) is now passed through Asterisk `FILTER()` and revalidated by `mix-stereo.php`, closing a shell-injection path from crafted SIP user parts. The globals block is installed from the single shipped `dialplan/globals-custom-mixmon.conf` and replaced on upgrade when it differs.
+- Security: saving settings, importing a configuration and starting an update now require a POST request with a per-session security token (CSRF protection); the former GET-driven save is rejected.
+- Added server-side validation of the manual settings form (https endpoint, numeric ranges, enumerations, regular expressions, absolute paths, no line breaks) before anything is stored or written to config.ini.
+
 ## 1.3.8 — AMINAZADI
 
 - Fell back to the attributed agent extension when FreePBX supplies a nonnumeric dialplan label as the call destination, preventing valid recordings from being rejected by ingest validation.

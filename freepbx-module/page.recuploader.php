@@ -249,6 +249,7 @@ $helpIcon = function ($title, $content) {
 
 	<form method="post" action="config.php?display=recuploader" id="recuploader-form" class="form-horizontal" enctype="multipart/form-data">
 		<input type="hidden" name="display" value="recuploader">
+		<input type="hidden" name="sj_csrf" value="<?php echo htmlspecialchars($recuploader->csrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
 
 		<div class="sj-card">
 		<!-- ================= Tab navigation ================= -->
@@ -935,6 +936,7 @@ $helpIcon = function ($title, $content) {
 		};
 		var sjCurrentVersion = <?php echo json_encode($moduleVersion['files']); ?>;
 		var sjPollErrors = 0;
+		var sjCsrf = <?php echo json_encode($recuploader->csrfToken()); ?>;
 
 		function sjCall(command, data, method) {
 			return $.ajax({
@@ -942,6 +944,7 @@ $helpIcon = function ($title, $content) {
 				method: method || 'GET',
 				dataType: 'json',
 				timeout: command === 'startupdate' ? 330000 : 20000,
+				headers: { 'X-SJ-CSRF': sjCsrf },
 				data: $.extend({ module: 'recuploader', command: command }, data || {})
 			});
 		}

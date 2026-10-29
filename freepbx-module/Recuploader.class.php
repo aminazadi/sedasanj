@@ -243,7 +243,40 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * process the settings form post and to re-provision (config.ini +
 	 * service restart) whenever settings change.
 	 */
+	/**
+	 * Per-session anti-CSRF token. State-changing requests (settings save,
+	 * import preview/apply, update start) must be POST and carry it, so a
+	 * crafted link or cross-site form cannot redirect uploads or the API key.
+	 */
+	public function csrfToken() {
+		$this->ensureSession();
+		if (empty($_SESSION['recuploader_csrf']) || !is_string($_SESSION['recuploader_csrf'])) {
+			$_SESSION['recuploader_csrf'] = bin2hex(random_bytes(32));
+		}
+		return $_SESSION['recuploader_csrf'];
+	}
+
+	protected function csrfValid() {
+		if (!isset($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+			return false;
+		}
+		$sent = isset($_POST['sj_csrf']) ? (string) $_POST['sj_csrf'] : '';
+		if ($sent === '' && isset($_SERVER['HTTP_X_SJ_CSRF'])) {
+			$sent = (string) $_SERVER['HTTP_X_SJ_CSRF'];
+		}
+		return $sent !== '' && hash_equals($this->csrfToken(), $sent);
+	}
+
 	public function doConfigPageInit($page) {
+		// Start the session and mint the token before any page output, so the view
+		// never has to call session_start() after headers were sent.
+		$this->csrfToken();
+		if (isset($_REQUEST['recuploader_import_preview']) || isset($_REQUEST['recuploader_import_apply']) || isset($_REQUEST['recuploader_save'])) {
+			if (!$this->csrfValid()) {
+				$this->lastSaveError = 'The request was rejected: it must be a POST with a valid security token. Reload the page and try again.';
+				return;
+			}
+		}
 		if (isset($_REQUEST['recuploader_import_preview'])) {
 			$this->previewImportedProfile();
 			return;
@@ -253,6 +286,11 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			return;
 		}
 		if (isset($_REQUEST['recuploader_save'])) {
+			$invalid = $this->validateManualSettings($_POST);
+			if ($invalid !== null) {
+				$this->lastSaveError = $invalid . ' Nothing was saved.';
+				return;
+			}
 			$previous = $this->getSettings();
 			$this->saveSettingsFromRequest();
 			$settings = $this->getSettings();
@@ -384,6 +422,9 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			case 'releases':
 				return $this->ajaxReleases();
 			case 'startupdate':
+				if (!$this->csrfValid()) {
+					return array('status' => false, 'message' => 'Update request rejected: POST with a valid security token is required.');
+				}
 				return $this->startUpdate(isset($_REQUEST['release_id']) ? (string) $_REQUEST['release_id'] : '');
 			case 'updatestatus':
 				return $this->getUpdateStatus(isset($_REQUEST['job']) ? (string) $_REQUEST['job'] : '');
@@ -908,6 +949,81 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			$out[$key] = ($val === false || $val === null) ? $default : $val;
 		}
 		return $out;
+	}
+
+	/**
+	 * Server-side validation of the manual settings form, mirroring the
+	 * limits ConfigProfile enforces for imports. Values are written raw into
+	 * config.ini, so a newline or NUL would inject extra keys, and a
+	 * non-numeric timeout silently became 0 (= no timeout).
+	 * Returns an error message, or null when the submitted values are valid.
+	 */
+	public function validateManualSettings(array $request) {
+		$ints = array(
+			'timeout_seconds' => array(1, 3600),
+			'immediate_retries' => array(0, 10),
+			'min_file_age_seconds' => array(0, 86400),
+			'max_retries' => array(0, 10000),
+			'retry_base_seconds' => array(0, 86400),
+			'retry_max_seconds' => array(0, 604800),
+			'credit_retry_seconds' => array(60, 86400),
+			'sweep_interval_seconds' => array(10, 86400),
+			'stale_processing_seconds' => array(60, 86400),
+			'retention_days' => array(0, 3650),
+			'missed_calls_poll_interval_seconds' => array(10, 3600),
+			'voicemail_sweep_interval_seconds' => array(10, 86400),
+		);
+		foreach ($this->defaults() as $key => $unused) {
+			if (!isset($request[$key])) {
+				continue;
+			}
+			$value = trim((string) $request[$key]);
+			if (preg_match('/[\r\n\0]/', $value)) {
+				return "Field {$key} must not contain line breaks.";
+			}
+			if (isset($ints[$key])) {
+				if (!preg_match('/^\d+$/', $value) || (int) $value < $ints[$key][0] || (int) $value > $ints[$key][1]) {
+					return "Field {$key} must be a whole number between {$ints[$key][0]} and {$ints[$key][1]}.";
+				}
+			}
+		}
+		if (isset($request['endpoint'])) {
+			$endpoint = trim((string) $request['endpoint']);
+			$parts = parse_url($endpoint);
+			if ($parts === false || !isset($parts['scheme'], $parts['host']) || strtolower($parts['scheme']) !== 'https') {
+				return 'The upload endpoint must be an https:// URL.';
+			}
+		}
+		$enums = array(
+			'on_success' => array('keep', 'move', 'delete'),
+			'log_level' => array('DEBUG', 'INFO', 'WARNING', 'ERROR'),
+			'upload_format' => array('wav', 'gzip', 'zip'),
+		);
+		foreach ($enums as $key => $allowed) {
+			if (isset($request[$key]) && !in_array(trim((string) $request[$key]), $allowed, true)) {
+				return "Field {$key} must be one of: " . implode(', ', $allowed) . '.';
+			}
+		}
+		if (isset($request['archive_format']) && !preg_match('/^[a-z0-9]{2,8}$/', trim((string) $request['archive_format']))) {
+			return 'Field archive_format must be a short file extension such as gsm, wav or mp3.';
+		}
+		foreach (array('filename_pattern', 'exclude_patterns') as $key) {
+			if (isset($request[$key])) {
+				$pattern = trim((string) $request[$key]);
+				if ($pattern !== '' && @preg_match('#' . str_replace('#', '\\#', $pattern) . '#', '') === false) {
+					return "Field {$key} is not a valid regular expression.";
+				}
+			}
+		}
+		foreach (array('watch_dir', 'move_dir', 'voicemail_spool_dir') as $key) {
+			if (isset($request[$key])) {
+				$path = trim((string) $request[$key]);
+				if ($path === '' || $path[0] !== '/' || strpos($path, '/../') !== false || substr($path, -3) === '/..') {
+					return "Field {$key} must be an absolute path without '..'.";
+				}
+			}
+		}
+		return null;
 	}
 
 	protected function saveSettingsFromRequest() {
@@ -1525,16 +1641,22 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 	 * minimal $PATH and php-cli isn't always at a fixed location.
 	 */
 	protected function injectMixmonGlobals() {
-		$existing = file_exists(self::GLOBALS_FILE) ? file_get_contents(self::GLOBALS_FILE) : '';
-		if (strpos($existing, self::MIXMON_BEGIN) !== false) {
-			return; // already installed
+		// Single source of truth: the shipped dialplan/globals-custom-mixmon.conf
+		// (it uses the SS=$ indirection and FILTER() on every caller-controlled
+		// value). A previously installed block that differs - e.g. the unfiltered
+		// MIXMON_POST of releases before 1.3.9 - is replaced, not kept.
+		$source = __DIR__ . '/dialplan/globals-custom-mixmon.conf';
+		$shipped = is_file($source) ? trim((string) file_get_contents($source)) : '';
+		if ($shipped === '' || strpos($shipped, self::MIXMON_BEGIN) !== 0 || strpos($shipped, self::MIXMON_END) === false) {
+			throw new \RuntimeException('The bundled MixMonitor globals block is missing or malformed.');
 		}
-		$block = "\n" . self::MIXMON_BEGIN . "\n"
-			. "MIXMON_DIR=/var/spool/asterisk/monitor/\n"
-			. "MONITOR_REC_OPTION=br(\${MIXMON_DIR}\${YEAR}/\${MONTH}/\${DAY}/recv_\${CALLFILENAME}.\${MON_FMT})t(\${MIXMON_DIR}\${YEAR}/\${MONTH}/\${DAY}/trans_\${CALLFILENAME}.\${MON_FMT})\n"
-			. "MIXMON_POST=/bin/bash -c 'exec \"\$(command -v php)\" " . self::MIXMON_ENTRY_POINT . " \"\$@\"' _ \${MIXMON_DIR}\${YEAR}/\${MONTH}/\${DAY}/ \${CALLFILENAME} \${UNIQUEID} \${CALLERID(num)} \${CDR(dnid)} \${CDR(duration)} \${CDR(dst)} \${FROM_DID}\n"
-			. self::MIXMON_END . "\n";
-		if (@file_put_contents(self::GLOBALS_FILE, $existing . $block) === false) {
+		$existing = file_exists(self::GLOBALS_FILE) ? file_get_contents(self::GLOBALS_FILE) : '';
+		$pattern = '/\n?' . preg_quote(self::MIXMON_BEGIN, '/') . '.*?' . preg_quote(self::MIXMON_END, '/') . '\n?/s';
+		if (preg_match($pattern, $existing, $match) === 1 && trim($match[0]) === $shipped) {
+			return; // already current
+		}
+		$stripped = preg_replace($pattern, "\n", $existing);
+		if (@file_put_contents(self::GLOBALS_FILE, rtrim($stripped) . "\n\n" . $shipped . "\n") === false) {
 			error_log('recuploader: failed to write ' . self::GLOBALS_FILE . ' - check ownership/permissions');
 		}
 	}
