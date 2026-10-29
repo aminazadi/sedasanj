@@ -1,0 +1,548 @@
+[
+    {
+        "code": "SS-CFG-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "Configuration file not found",
+        "action": "Save the settings from Admin > Seda Sanj, or reinstall the module."
+    },
+    {
+        "code": "SS-CFG-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "Configuration file cannot be parsed",
+        "action": "Re-save the settings from the module page or restore config.ini.example."
+    },
+    {
+        "code": "SS-CFG-1003",
+        "severity": "error",
+        "retryable": false,
+        "title": "Configuration value is invalid",
+        "action": "Open the module page, correct the highlighted setting and save again."
+    },
+    {
+        "code": "SS-CFG-1004",
+        "severity": "error",
+        "retryable": false,
+        "title": "Upload endpoint is missing or not https",
+        "action": "Enter the https:// upload endpoint shown in your Seda Sanj panel."
+    },
+    {
+        "code": "SS-SVC-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "Service cannot start: configuration error",
+        "action": "Fix the configuration (see the preceding SS-CFG error) and restart the service."
+    },
+    {
+        "code": "SS-SVC-1002",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Persistent storage fell back to JSON files",
+        "action": "Check that pdo_sqlite is loaded and that /var/lib/asterisk-recording-uploader is owned by asterisk."
+    },
+    {
+        "code": "SS-SVC-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Unexpected error in a service loop",
+        "action": "Read the message; if it repeats, run the doctor command and send the support bundle."
+    },
+    {
+        "code": "SS-SVC-1004",
+        "severity": "warning",
+        "retryable": false,
+        "title": "pcntl extension is missing",
+        "action": "Install php-pcntl for a clean service stop, or accept a forced stop by systemd."
+    },
+    {
+        "code": "SS-HOOK-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "Recording hook was called without required arguments",
+        "action": "Re-run the module activation so the MixMonitor globals are rewritten."
+    },
+    {
+        "code": "SS-HOOK-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "Recording hook rejected an unsafe argument",
+        "action": "Normally harmless (a caller ID with unusual characters). If it affects normal calls, check the MIXMON_POST globals."
+    },
+    {
+        "code": "SS-HOOK-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Stereo merge of the call legs failed",
+        "action": "Check that MON_FMT is wav and that disk space is available; the recording is kept and retried."
+    },
+    {
+        "code": "SS-HOOK-1004",
+        "severity": "error",
+        "retryable": true,
+        "title": "Metadata sidecar could not be written",
+        "action": "Free disk space or fix ownership of the monitor directory."
+    },
+    {
+        "code": "SS-HOOK-1005",
+        "severity": "critical",
+        "retryable": false,
+        "title": "FreePBX callrecording patch is missing (updated by FreePBX?)",
+        "action": "Re-apply the module activation; recordings are not passing through the hook until you do."
+    },
+    {
+        "code": "SS-AUD-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "Audio file cannot be read",
+        "action": "Check that the file exists and is readable by the asterisk user."
+    },
+    {
+        "code": "SS-AUD-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "Audio file is not a valid or complete WAV",
+        "action": "The recording was cut off; nothing to fix unless it happens on every call."
+    },
+    {
+        "code": "SS-AUD-1003",
+        "severity": "error",
+        "retryable": false,
+        "title": "Audio format is not supported (needs 16-bit PCM WAV)",
+        "action": "Set the FreePBX recording format to WAV."
+    },
+    {
+        "code": "SS-AUD-1004",
+        "severity": "error",
+        "retryable": true,
+        "title": "Call legs do not match (rate or bit depth)",
+        "action": "Use one codec for both legs of the recording."
+    },
+    {
+        "code": "SS-AUD-1005",
+        "severity": "warning",
+        "retryable": false,
+        "title": "Recording has no audio samples",
+        "action": "The call was never bridged; the file is ignored."
+    },
+    {
+        "code": "SS-STG-1001",
+        "severity": "error",
+        "retryable": true,
+        "title": "Recording could not be staged (copy or gzip failed)",
+        "action": "Free disk space and check ownership of /var/spool/asterisk-recording-uploader."
+    },
+    {
+        "code": "SS-STG-1002",
+        "severity": "warning",
+        "retryable": false,
+        "title": "ffmpeg failed while creating the local archive copy",
+        "action": "Install ffmpeg or set the archive format to wav or gsm. Upload is not blocked."
+    },
+    {
+        "code": "SS-STG-1003",
+        "severity": "warning",
+        "retryable": false,
+        "title": "No GSM encoder is available for the local archive copy",
+        "action": "Install gsm-utils, use the bundled encoder for your CPU, or set the archive format to wav. Upload is not blocked."
+    },
+    {
+        "code": "SS-STG-1004",
+        "severity": "error",
+        "retryable": true,
+        "title": "ZIP encryption (7zip) failed",
+        "action": "Check that the bundled 7zzs binary is executable and not on a noexec mount, or use gzip uploads."
+    },
+    {
+        "code": "SS-STG-1005",
+        "severity": "error",
+        "retryable": false,
+        "title": "Staged file is larger than the API limit",
+        "action": "Shorten the recording or raise the limit on the server side."
+    },
+    {
+        "code": "SS-STG-1006",
+        "severity": "warning",
+        "retryable": false,
+        "title": "GSM archive needs an 8 kHz source",
+        "action": "Set archive format to wav for wideband recordings. Upload is not blocked."
+    },
+    {
+        "code": "SS-STG-1007",
+        "severity": "error",
+        "retryable": true,
+        "title": "Metadata sidecar for the staged file could not be written",
+        "action": "Free disk space or fix ownership of the spool directory."
+    },
+    {
+        "code": "SS-STG-1008",
+        "severity": "error",
+        "retryable": true,
+        "title": "Voicemail audio could not be converted",
+        "action": "Install ffmpeg or use the bundled binary; check the voicemail file."
+    },
+    {
+        "code": "SS-UPL-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "Required call metadata is missing",
+        "action": "Usually an unusual call (no caller or dialed number). The recording is kept in failed/."
+    },
+    {
+        "code": "SS-UPL-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "Recording file disappeared before upload",
+        "action": "Check for a second uploader instance or manual deletion."
+    },
+    {
+        "code": "SS-UPL-1003",
+        "severity": "info",
+        "retryable": false,
+        "title": "Server reported this call as already received",
+        "action": "No action; if the call is missing in the panel contact support with the call ID."
+    },
+    {
+        "code": "SS-UPL-2001",
+        "severity": "error",
+        "retryable": true,
+        "title": "Network error while uploading",
+        "action": "Check connectivity from the PBX to the endpoint (curl -v)."
+    },
+    {
+        "code": "SS-UPL-2002",
+        "severity": "error",
+        "retryable": true,
+        "title": "DNS lookup of the endpoint failed",
+        "action": "Fix the PBX DNS resolver or the endpoint host name."
+    },
+    {
+        "code": "SS-UPL-2003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Connection to the endpoint was refused or unreachable",
+        "action": "Check firewall rules and the endpoint URL and port."
+    },
+    {
+        "code": "SS-UPL-2004",
+        "severity": "error",
+        "retryable": true,
+        "title": "Upload timed out",
+        "action": "Check the uplink speed; raise the timeout for long recordings."
+    },
+    {
+        "code": "SS-UPL-2005",
+        "severity": "error",
+        "retryable": true,
+        "title": "TLS/certificate problem talking to the endpoint",
+        "action": "Fix the PBX clock and install current ca-certificates; do not disable verification in production."
+    },
+    {
+        "code": "SS-UPL-0400",
+        "severity": "error",
+        "retryable": false,
+        "title": "Endpoint rejected the request (HTTP 400)",
+        "action": "Check the endpoint URL and the upload format setting."
+    },
+    {
+        "code": "SS-UPL-0401",
+        "severity": "error",
+        "retryable": false,
+        "title": "API key rejected (HTTP 401)",
+        "action": "Create/rotate the key in the panel and re-import the configuration. Queued recordings are kept and resume automatically."
+    },
+    {
+        "code": "SS-UPL-0402",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Credit exhausted (HTTP 402)",
+        "action": "Top up the account; uploads resume automatically."
+    },
+    {
+        "code": "SS-UPL-0403",
+        "severity": "error",
+        "retryable": false,
+        "title": "Access denied or account suspended (HTTP 403)",
+        "action": "Contact support; queued recordings are kept and resume automatically."
+    },
+    {
+        "code": "SS-UPL-0404",
+        "severity": "error",
+        "retryable": false,
+        "title": "Endpoint path not found (HTTP 404)",
+        "action": "The endpoint must end with /v1/ingest/calls."
+    },
+    {
+        "code": "SS-UPL-0413",
+        "severity": "error",
+        "retryable": false,
+        "title": "Upload too large (HTTP 413)",
+        "action": "Raise the proxy body limit or shorten recordings."
+    },
+    {
+        "code": "SS-UPL-0415",
+        "severity": "error",
+        "retryable": false,
+        "title": "Upload format does not match the API key (HTTP 415)",
+        "action": "Set the upload format (gzip/zip) to the one configured for the key."
+    },
+    {
+        "code": "SS-UPL-0422",
+        "severity": "error",
+        "retryable": false,
+        "title": "Server rejected the data (HTTP 422)",
+        "action": "Check the archive password and the call numbers; see the message for the field."
+    },
+    {
+        "code": "SS-UPL-0429",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Rate limited (HTTP 429)",
+        "action": "No action; the module backs off automatically."
+    },
+    {
+        "code": "SS-UPL-0500",
+        "severity": "error",
+        "retryable": true,
+        "title": "Server error (HTTP 5xx)",
+        "action": "No action; the module retries. If it persists, check the Seda Sanj status page."
+    },
+    {
+        "code": "SS-UPL-0599",
+        "severity": "error",
+        "retryable": false,
+        "title": "Unexpected HTTP response",
+        "action": "Read the status and message; check proxies in front of the endpoint."
+    },
+    {
+        "code": "SS-QUE-1001",
+        "severity": "warning",
+        "retryable": false,
+        "title": "Queued recording no longer exists",
+        "action": "Usually raced with a manual cleanup; no action."
+    },
+    {
+        "code": "SS-QUE-1002",
+        "severity": "error",
+        "retryable": true,
+        "title": "Retry queue could not be written",
+        "action": "Free disk space and fix ownership of /var/lib/asterisk-recording-uploader."
+    },
+    {
+        "code": "SS-QUE-1003",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Upload attempt failed; will retry",
+        "action": "No action unless it keeps failing; see the attached cause code."
+    },
+    {
+        "code": "SS-QUE-1004",
+        "severity": "error",
+        "retryable": false,
+        "title": "Upload failed permanently; recording moved to failed/",
+        "action": "Fix the cause, then run requeue-failed to retry."
+    },
+    {
+        "code": "SS-QUE-1005",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Uploads are paused: credit exhausted",
+        "action": "Top up the account; the queue resumes automatically."
+    },
+    {
+        "code": "SS-QUE-1006",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Uploads are paused: configuration or account problem",
+        "action": "Fix the API key / account (see the attached cause code); the queue resumes automatically."
+    },
+    {
+        "code": "SS-SWP-1001",
+        "severity": "warning",
+        "retryable": false,
+        "title": "Orphan recording kept: metadata is incomplete",
+        "action": "Inspect the file; delete or re-queue it manually."
+    },
+    {
+        "code": "SS-SWP-1002",
+        "severity": "info",
+        "retryable": false,
+        "title": "Orphan recording recovered and queued",
+        "action": "No action."
+    },
+    {
+        "code": "SS-VMX-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "Voicemail spool is missing or unreadable",
+        "action": "Fix the spool path or give the asterisk user read access."
+    },
+    {
+        "code": "SS-VMX-1002",
+        "severity": "warning",
+        "retryable": true,
+        "title": "Voicemail metadata is incomplete",
+        "action": "Usually transient while Asterisk is still writing the message."
+    },
+    {
+        "code": "SS-VMX-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Voicemail processing failed",
+        "action": "See the attached cause code."
+    },
+    {
+        "code": "SS-MCP-1001",
+        "severity": "error",
+        "retryable": true,
+        "title": "Missed-call poll failed: CDR unavailable",
+        "action": "Check MariaDB access and cdr.conf (unanswered=yes)."
+    },
+    {
+        "code": "SS-MCP-1002",
+        "severity": "error",
+        "retryable": true,
+        "title": "Missed-call upload failed",
+        "action": "See the attached cause code."
+    },
+    {
+        "code": "SS-MCP-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Missed-call state could not be saved",
+        "action": "Free disk space and fix ownership of the state directory."
+    },
+    {
+        "code": "SS-CDR-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "FreePBX bootstrap (/etc/freepbx.conf) not found",
+        "action": "Missed calls and answered-extension lookup need a FreePBX host."
+    },
+    {
+        "code": "SS-CDR-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "CDR table is missing required columns",
+        "action": "Check the CDR database schema."
+    },
+    {
+        "code": "SS-CDR-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "CDR database connection failed",
+        "action": "Check that MariaDB is running and FreePBX can reach it."
+    },
+    {
+        "code": "SS-SYS-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "PHP version is too old",
+        "action": "Install PHP 7.4 or newer for the CLI engine."
+    },
+    {
+        "code": "SS-SYS-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "A required PHP extension is missing",
+        "action": "Install the extension named in the message and restart PHP/the service."
+    },
+    {
+        "code": "SS-SYS-1003",
+        "severity": "error",
+        "retryable": false,
+        "title": "FreePBX version is not supported",
+        "action": "Supported: FreePBX 15 (PHP 7.4 CLI), 16 and 17."
+    },
+    {
+        "code": "SS-SYS-1004",
+        "severity": "warning",
+        "retryable": false,
+        "title": "Root activation is required",
+        "action": "Run the activation command shown on the module page as root."
+    },
+    {
+        "code": "SS-SYS-1005",
+        "severity": "error",
+        "retryable": true,
+        "title": "Disk is full or nearly full",
+        "action": "Free space on the volume holding /var/spool and /var/lib."
+    },
+    {
+        "code": "SS-SYS-1006",
+        "severity": "warning",
+        "retryable": false,
+        "title": "System clock differs from the server",
+        "action": "Fix NTP on the PBX; skew breaks TLS and scheduling."
+    },
+    {
+        "code": "SS-SYS-1007",
+        "severity": "error",
+        "retryable": false,
+        "title": "A required directory is not writable",
+        "action": "Fix ownership: chown -R asterisk:asterisk on the module directories."
+    },
+    {
+        "code": "SS-UPD-1001",
+        "severity": "warning",
+        "retryable": false,
+        "title": "Automatic update is unavailable on this host",
+        "action": "See the reason shown on the module page (sodium, helper, signing key)."
+    },
+    {
+        "code": "SS-UPD-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "Release signature or checksum is invalid",
+        "action": "Do not install; contact support."
+    },
+    {
+        "code": "SS-UPD-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Release download failed",
+        "action": "Check connectivity and disk space, then retry."
+    },
+    {
+        "code": "SS-UPD-1004",
+        "severity": "error",
+        "retryable": false,
+        "title": "Downgrade or replay of an older release refused",
+        "action": "No action; only newer releases are installed automatically."
+    },
+    {
+        "code": "SS-UPD-1005",
+        "severity": "error",
+        "retryable": false,
+        "title": "Update helper failed",
+        "action": "Open the update log on the module page; the previous version is restored automatically."
+    },
+    {
+        "code": "SS-UPD-1006",
+        "severity": "critical",
+        "retryable": false,
+        "title": "Update failed and rollback was incomplete",
+        "action": "Restore from the backup path shown in the update log."
+    },
+    {
+        "code": "SS-DEP-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "A required FreePBX module is not installed",
+        "action": "Install it from the Dependencies tab or with fwconsole ma downloadinstall."
+    },
+    {
+        "code": "SS-DEP-1002",
+        "severity": "error",
+        "retryable": false,
+        "title": "A required PHP extension is missing",
+        "action": "Install the extension from your OS packages."
+    },
+    {
+        "code": "SS-DEP-1003",
+        "severity": "warning",
+        "retryable": false,
+        "title": "An optional tool is missing",
+        "action": "Install it only if you use the related feature."
+    }
+]

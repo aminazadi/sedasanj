@@ -2384,3 +2384,83 @@ TENANT_TABLES: tuple[str, ...] = (
     "webhooks",
     "webhook_deliveries",
 )
+
+
+class HelpCategory(Base):
+    """Help-center grouping; global (no tenant), edited by staff in the admin panel."""
+
+    __tablename__ = "help_categories"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class HelpArticle(Base):
+    """A help article or error explanation. `body_html` is allowlist-sanitised on write."""
+
+    __tablename__ = "help_articles"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    category_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("help_categories.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    body_html: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    body_plain: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="article")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    published_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class HelpErrorCode(Base):
+    """Maps a stable error code (SS-UPL-0401, unauthorized, ...) to its help article."""
+
+    __tablename__ = "help_error_codes"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    article_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("help_articles.id", ondelete="SET NULL")
+    )
+    source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="module")
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="error")
+    title: Mapped[str] = mapped_column(String(250), nullable=False, server_default="")
+    quick_action: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class HelpMedia(Base):
+    """An uploaded image or video used by help articles; bytes live in object storage."""
+
+    __tablename__ = "help_media"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    object_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    alt: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)

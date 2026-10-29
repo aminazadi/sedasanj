@@ -1290,3 +1290,111 @@ class ModuleInstallationOut(BaseModel):
     last_update_at: datetime | None
     update_available: bool = False
     latest_version: str | None = None
+
+
+# --- help center -------------------------------------------------------------
+
+HelpKind = Literal["article", "error", "faq"]
+HelpStatus = Literal["draft", "published"]
+HelpSeverity = Literal["info", "warning", "error", "critical"]
+HelpSource = Literal["module", "api", "worker"]
+
+
+class HelpCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    slug: str
+    title: str
+    description: str
+    position: int
+    article_count: int = 0
+
+
+class HelpCategoryIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    position: int = Field(default=0, ge=0, le=10000)
+
+
+class HelpArticleSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    slug: str
+    title: str
+    summary: str
+    kind: HelpKind
+    category_id: UUID | None
+    status: HelpStatus
+    position: int
+    published_at: datetime | None
+    updated_at: datetime
+
+
+class HelpArticleOut(HelpArticleSummary):
+    body_html: str
+    error_codes: list[str] = []
+
+
+class HelpArticleIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=120)
+    title: str = Field(min_length=1, max_length=250)
+    summary: str = Field(default="", max_length=1000)
+    body_html: str = Field(default="", max_length=400_000)
+    kind: HelpKind = "article"
+    category_id: UUID | None = None
+    position: int = Field(default=0, ge=0, le=10000)
+    error_codes: list[str] = Field(default_factory=list, max_length=40)
+
+
+class HelpArticleUpdate(BaseModel):
+    slug: str | None = Field(default=None, min_length=1, max_length=120)
+    title: str | None = Field(default=None, min_length=1, max_length=250)
+    summary: str | None = Field(default=None, max_length=1000)
+    body_html: str | None = Field(default=None, max_length=400_000)
+    kind: HelpKind | None = None
+    category_id: UUID | None = None
+    clear_category: bool = False
+    position: int | None = Field(default=None, ge=0, le=10000)
+    error_codes: list[str] | None = Field(default=None, max_length=40)
+
+
+class HelpArticleList(BaseModel):
+    items: list[HelpArticleSummary]
+    total: int
+
+
+class HelpErrorCodeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    source: HelpSource
+    severity: HelpSeverity
+    title: str
+    quick_action: str
+    article_slug: str | None = None
+    article_title: str | None = None
+    article_published: bool = False
+
+
+class HelpErrorCodeIn(BaseModel):
+    source: HelpSource = "module"
+    severity: HelpSeverity = "error"
+    title: str = Field(default="", max_length=250)
+    quick_action: str = Field(default="", max_length=2000)
+    article_id: UUID | None = None
+
+
+class HelpMediaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    kind: Literal["image", "video"]
+    filename: str
+    content_type: str
+    size_bytes: int
+    alt: str
+    created_at: datetime
+    url: str = ""

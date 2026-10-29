@@ -21,6 +21,7 @@ MIGRATIONS = (
     "0050_scheduled_reports.py",
     "0051_annual_plan_monthly_quotas.py",
     "0052_scheduled_report_retries.py",
+    "0054_help_center.py",
 )
 
 
