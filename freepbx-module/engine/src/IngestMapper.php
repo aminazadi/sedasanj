@@ -46,7 +46,12 @@ class IngestMapper
 
         $out['asterisk_uniqueid'] = $pick(['asterisk_uniqueid', 'uniqueid', 'linkedid']);
         $out['caller_number'] = $pick(['caller_number', 'src', 'callerid', 'from']) ?? $filenameCaller;
-        $out['dialed_number'] = $pick(['dialed_number', 'dst', 'extension', 'to']) ?? $filenameDialed;
+        $dialedNumber = $pick(['dialed_number', 'dst', 'extension', 'to']) ?? $filenameDialed;
+        $agentExt = $pick(['agent_extension', 'agent']);
+        if ($dialedNumber !== null && preg_match('/[\p{Nd}]/u', (string) $dialedNumber) !== 1 && $agentExt !== null) {
+            $dialedNumber = $agentExt;
+        }
+        $out['dialed_number'] = $dialedNumber;
 
         $startedRaw = $pick(['started_at', 'start_time', 'start']);
         $startedEpoch = null;
@@ -86,7 +91,6 @@ class IngestMapper
             $out['direction'] = (string) $direction;
         }
 
-        $agentExt = $pick(['agent_extension', 'agent']);
         if ($agentExt) {
             $out['agent_extension'] = (string) $agentExt;
         }

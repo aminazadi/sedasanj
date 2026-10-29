@@ -2,6 +2,7 @@
 
 ## 2026-10-29 — AMINAZADI
 
+- Fixed recording uploads whose FreePBX destination is a nonnumeric dialplan label by using the attributed agent extension as the dialed number.
 - Fixed missed-call API idempotency conflict handling to use the actual unique key columns in module ingestion.
 - Fixed FreePBX global database handle corruption during CDR lookups in module 1.3.7.
 - Fixed background FreePBX CDR bootstrap variable scope in module 1.3.6.

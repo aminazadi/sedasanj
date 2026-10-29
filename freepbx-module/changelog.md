@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.8 — AMINAZADI
+
+- Fell back to the attributed agent extension when FreePBX supplies a nonnumeric dialplan label as the call destination, preventing valid recordings from being rejected by ingest validation.
+
 ## 1.3.7 — AMINAZADI
 
 - Fixed CDR lookups overwriting the FreePBX global database handle and breaking administration page rendering.
