@@ -82,6 +82,12 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
 
+x-web-hardening: &web-hardening
+  # The static server binds port 80 as root; keep only that one capability.
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  cap_add: [NET_BIND_SERVICE]
+
 x-logging: &logging
   driver: json-file
   options:
@@ -115,6 +121,7 @@ services:
       - emotion-model-cache:/legacy-emotion-cache:ro
 
   client:
+    <<: *web-hardening
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
@@ -135,6 +142,7 @@ services:
         limits: { cpus: "0.5", memory: 256M }
 
   admin:
+    <<: *web-hardening
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web

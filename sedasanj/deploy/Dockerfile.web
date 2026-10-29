@@ -1,4 +1,4 @@
-FROM node:24-slim AS client-build
+FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS client-build
 WORKDIR /build
 
 COPY web/shared ./shared
@@ -7,7 +7,7 @@ RUN cd client && npm ci
 COPY web/client ./client
 RUN cd client && npm run build
 
-FROM node:24-slim AS admin-build
+FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS admin-build
 WORKDIR /build
 
 COPY web/shared ./shared
@@ -16,14 +16,14 @@ RUN cd admin && npm ci
 COPY web/admin ./admin
 RUN cd admin && npm run build
 
-FROM node:24-alpine AS client
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS client
 WORKDIR /app
 COPY deploy/web-server.mjs ./server.mjs
 COPY --from=client-build /build/client/dist ./dist
 EXPOSE 80
 CMD ["node", "server.mjs"]
 
-FROM node:24-alpine AS admin
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS admin
 WORKDIR /app
 COPY deploy/web-server.mjs ./server.mjs
 COPY --from=admin-build /build/admin/dist ./dist
