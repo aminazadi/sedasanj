@@ -56,6 +56,13 @@
         "action": "Install php-pcntl for a clean service stop, or accept a forced stop by systemd."
     },
     {
+        "code": "SS-SVC-1005",
+        "severity": "error",
+        "retryable": false,
+        "title": "Another service instance is already running",
+        "action": "Stop the duplicate: systemctl status asterisk-recording-uploader; only one instance may run."
+    },
+    {
         "code": "SS-HOOK-1001",
         "severity": "error",
         "retryable": false,
