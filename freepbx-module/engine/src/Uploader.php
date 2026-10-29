@@ -183,6 +183,9 @@ class Uploader
         if (isset($responseHeaders['x-request-id'])) {
             $info['server_request_id'] = $responseHeaders['x-request-id'];
         }
+        if (isset($responseHeaders['retry-after']) && ctype_digit($responseHeaders['retry-after'])) {
+            $info['retry_after'] = min(3600, (int) $responseHeaders['retry-after']);
+        }
         return [$status, (string) $body, $responseHeaders, $info];
     }
 

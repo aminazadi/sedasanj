@@ -21,6 +21,7 @@ $code = $parts[1] ?? '-';
 file_put_contents(dirname(__FILE__) . '/last.json', json_encode(['type' => $_SERVER['CONTENT_TYPE'] ?? '', 'len' => (int) ($_SERVER['CONTENT_LENGTH'] ?? 0), 'files' => array_keys($_FILES), 'uid' => $_POST['asterisk_uniqueid'] ?? null]));
 http_response_code($status);
 header('X-Request-ID: stub-' . $status);
+if ($status === 429) { header('Retry-After: 120'); }
 if ($status >= 200 && $status < 300) {
 	echo json_encode(['call_id' => 'x', 'replayed' => $code === 'replayed']);
 } elseif ($code === 'html') {
@@ -76,6 +77,13 @@ foreach ($cases as [$path, $retryable, $credit, $config, $code]) {
 		if (strpos($e->getMessage(), 'LEAKME') !== false) { $fail("$path: API key leaked into the error message"); }
 		if (!ErrorCatalog::exists($e->errorCode)) { $fail("$path: uncatalogued code {$e->errorCode}"); }
 	}
+}
+
+// 429 carries the server's Retry-After through to the queue.
+$cfg = $base;
+$cfg['general']['endpoint'] = "http://127.0.0.1:$port/429/rate_limited/calls";
+try { Uploader::uploadFile($cfg, $audio, $metadata); } catch (UploadError $e) {
+	if (($e->context['retry_after'] ?? 0) !== 120) { $fail('Retry-After lost: ' . json_encode($e->context)); }
 }
 
 // Success and server-side replay.

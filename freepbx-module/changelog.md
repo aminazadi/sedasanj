@@ -12,6 +12,8 @@
 - Installation backups no longer archive the recording spool. Helper classes (`UploadError`, `StagingError`, `WavFile`, ...) are autoloadable.
 - Fixed the Failed counter counting metadata sidecars; added end-to-end tests that run the hook and uploader against a stub server on PHP 7.4 to 8.3 (`scripts/test-freepbx-module.sh`).
 
+- Automatic updates now require a signed, expiring release manifest bound to the exact download (version, digest, size); older or replayed releases are refused and up to three public keys are trusted at once for key rotation.
+- Added `requeue-failed.php` (put recordings from `failed/` back into the queue), hourly diagnostics reports to the Seda Sanj API, a single-instance lock for the service, and `Retry-After` handling for HTTP 429.
 
 ## 1.3.9 — AMINAZADI
 

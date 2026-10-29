@@ -52,6 +52,15 @@ function service_main(array $argv): int
         return 1;
     }
     $log = new Logger($cfg, 'aru.service');
+
+    // Two copies of the service would upload every call twice and fight over the queue.
+    $lockPath = dirname(Config::sqlitePath($cfg)) . '/service.lock';
+    $lock = @fopen($lockPath, 'c');
+    if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+        $log->coded('SS-SVC-1005', 'Another asterisk-recording-uploader service is already running; exiting');
+        return 1;
+    }
+    $GLOBALS['aru_lock'] = $lock; // held for the life of the process
     $log->info('Starting combined asterisk-recording-uploader service (queue + sweeper)');
 
     // One-time JSON->SQLite backlog migration on startup (plan.md §3.5).
