@@ -21,6 +21,8 @@ ERROR_STATUS: dict[str, int] = {
     "not_found": status.HTTP_404_NOT_FOUND,
     "rate_limited": status.HTTP_429_TOO_MANY_REQUESTS,
     "invalid_request": 422,
+    "conflict": status.HTTP_409_CONFLICT,
+    "worker_timeout": status.HTTP_504_GATEWAY_TIMEOUT,
     "internal": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 

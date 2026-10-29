@@ -235,9 +235,9 @@ async def operator_scores(
         raise ApiError("not_found", "tenant not found")
     allowed = [principal.id] if principal.role == "operator" else None
     if (from_date is None) != (to_date is None):
-        raise ApiError("validation_error", "from and to must be provided together")
+        raise ApiError("invalid_request", "from and to must be provided together")
     if from_date and to_date and to_date < from_date:
-        raise ApiError("validation_error", "to must be greater than or equal to from")
+        raise ApiError("invalid_request", "to must be greater than or equal to from")
     report_from = from_date or (datetime.now(UTC) - timedelta(days=days) if days else None)
     report_to = to_date or datetime.now(UTC)
     ranked_scores = (

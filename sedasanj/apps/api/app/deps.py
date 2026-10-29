@@ -210,7 +210,5 @@ ControlSession = Annotated[AsyncSession, Depends(control_session)]
 
 
 def client_ip(request: Request) -> str | None:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # uvicorn --proxy-headers already resolves X-Forwarded-For from trusted proxies.
     return request.client.host if request.client else None

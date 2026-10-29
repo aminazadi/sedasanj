@@ -356,7 +356,9 @@ async def accept_upload(
     except IntegrityError:
         replay = await _replay(tenant_id, unique_id)
         if replay is None:
-            raise
+            raise ApiError(
+                "internal", "upload conflicted with a failed attempt; retry", retryable=True
+            ) from None
         ingest_total.labels(tenant=str(tenant_id), result="replay").inc()
         return IngestResult(accepted=replay, replayed=True)
 
@@ -520,6 +522,16 @@ async def _replay(tenant_id: UUID, unique_id: str) -> IngestAccepted | None:
             )
         ).scalar_one_or_none()
         if existing is None:
+            return None
+        if existing.status == "failed_terminal" and existing.audio_id is None:
+            # Upload-stage failure: no audio was stored, so a 200 replay would make the
+            # FreePBX module delete its only copy. Retire the dead row (its credit hold was
+            # already released) so this retry ingests the recording as a fresh call.
+            await session.execute(
+                update(Call)
+                .where(Call.id == existing.id, Call.status == "failed_terminal")
+                .values(asterisk_uniqueid=f"{unique_id}#failed-{existing.id}")
+            )
             return None
         return IngestAccepted(
             call_id=existing.id,
