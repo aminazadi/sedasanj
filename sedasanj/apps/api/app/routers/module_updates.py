@@ -37,6 +37,7 @@ from app.models import (
     Tenant,
 )
 from app.schemas import (
+    StaffSensitiveAction,
     ModuleChangelogEntry,
     ModuleChannel,
     ModuleDiagnosticIn,
@@ -372,8 +373,16 @@ async def admin_update_module_release(
 
 @router.post("/v1/admin/module-releases/{release_id}/publish", response_model=ModuleReleaseOut)
 async def admin_publish_module_release(
-    release_id: UUID, request: Request, staff: ReleaseAdminDep, session: StaffSession
+    release_id: UUID,
+    payload: StaffSensitiveAction,
+    request: Request,
+    staff: ReleaseAdminDep,
+    session: StaffSession,
 ) -> ModuleReleaseOut:
+    # Code pushed to every customer PBX needs the operator's password (and TOTP when enabled).
+    from app.routers.admin import _verify_sensitive_staff_action
+
+    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
     release = await session.get(ModuleRelease, release_id, with_for_update=True)
     if release is None:
         raise ApiError("not_found", "release not found")
@@ -406,8 +415,16 @@ async def admin_publish_module_release(
 
 @router.post("/v1/admin/module-releases/{release_id}/revoke", response_model=ModuleReleaseOut)
 async def admin_revoke_module_release(
-    release_id: UUID, request: Request, staff: ReleaseAdminDep, session: StaffSession
+    release_id: UUID,
+    payload: StaffSensitiveAction,
+    request: Request,
+    staff: ReleaseAdminDep,
+    session: StaffSession,
 ) -> ModuleReleaseOut:
+    # Code pushed to every customer PBX needs the operator's password (and TOTP when enabled).
+    from app.routers.admin import _verify_sensitive_staff_action
+
+    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
     release = await session.get(ModuleRelease, release_id, with_for_update=True)
     if release is None:
         raise ApiError("not_found", "release not found")

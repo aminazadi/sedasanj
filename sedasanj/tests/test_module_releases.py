@@ -262,3 +262,17 @@ def test_manifest_is_canonical_signed_and_expires(monkeypatch: pytest.MonkeyPatc
     digest_signature = base64.b64decode(releases.sign_digest("a" * 64))
     with pytest.raises(InvalidSignature):
         public.verify(digest_signature, releases.MANIFEST_DOMAIN + manifest.encode("ascii"))
+
+
+def test_publish_and_revoke_require_password_proof() -> None:
+    from app.routers.module_updates import router
+
+    wanted = {"admin_publish_module_release", "admin_revoke_module_release"}
+    found = set()
+    for route in router.routes:
+        endpoint = getattr(route, "endpoint", None)
+        if getattr(endpoint, "__name__", "") in wanted:
+            found.add(endpoint.__name__)
+            body_fields = [f.name for f in route.dependant.body_params]  # type: ignore[attr-defined]
+            assert body_fields, f"{endpoint.__name__} must take a StaffSensitiveAction body"
+    assert found == wanted

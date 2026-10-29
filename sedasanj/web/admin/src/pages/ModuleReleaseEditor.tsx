@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type React
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ReleaseTimeline, { SEVERITY_META } from "@cbi/web-shared/components/ReleaseTimeline";
 import { fmt, request, uploadWithProgress } from "../api";
+import { useSensitiveAction } from "../components/SensitiveActionDialog";
 import { ErrorBox, Loading } from "../components/Widgets";
 import { formatBytes, sanitizeHtml } from "../sanitize";
 import type { ModuleRelease, ModuleSeverity } from "../types";
@@ -112,6 +113,7 @@ export default function ModuleReleaseEditor() {
   const [form, setForm] = useState<Form | null>(null);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [saving, setSaving] = useState(false);
+  const [askProof, proofDialog] = useSensitiveAction();
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -167,12 +169,13 @@ export default function ModuleReleaseEditor() {
 
   async function publish() {
     if (!release) return;
-    if (!window.confirm(`نسخهٔ ${release.version} منتشر شود؟ سرورهای FreePBX در بارگذاری بعدی صفحه آن را می‌بینند.`)) return;
+    const proof = await askProof(`نسخهٔ ${release.version} منتشر شود؟ سرورهای FreePBX در بارگذاری بعدی صفحه آن را می‌بینند.`);
+    if (!proof) return;
     const saved = dirty ? await save() : release;
     if (!saved) return;
     setSaving(true);
     try {
-      const published = await request<ModuleRelease>(`/v1/admin/module-releases/${saved.id}/publish`, { method: "POST" });
+      const published = await request<ModuleRelease>(`/v1/admin/module-releases/${saved.id}/publish`, { method: "POST", body: proof });
       setRelease(published);
       setForm(toForm(published));
       setNotice(`نسخهٔ ${published.version} منتشر شد.`);
@@ -190,6 +193,7 @@ export default function ModuleReleaseEditor() {
 
   return (
     <div className="space-y-4">
+      {proofDialog}
       <Header version={release.version} status={release.status} />
       <ErrorBox message={error} />
       {notice ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{notice}</div> : null}
