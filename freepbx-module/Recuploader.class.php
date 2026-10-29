@@ -890,6 +890,14 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			$uuid = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
 			$this->setConfig('recuploader_host_uuid', $uuid);
 		}
+		// The engine (a separate process without FreePBX's KVStore) reports diagnostics under the same ID.
+		$file = self::STATE_DIR . '/host_uuid';
+		if (is_dir(self::STATE_DIR) && @file_get_contents($file) !== $uuid) {
+			$tmp = $file . '.tmp.' . getmypid();
+			if (@file_put_contents($tmp, $uuid) !== false && !@rename($tmp, $file)) {
+				@unlink($tmp);
+			}
+		}
 		return $uuid;
 	}
 

@@ -161,13 +161,53 @@ function doctor_run(array $cfg, bool $network): array
     ];
 }
 
+/**
+ * Sends a compact version of the report to the Seda Sanj API so support can see this host's state
+ * (checks, recent error codes, queue) without asking for a bundle. Contains no phone numbers or secrets.
+ */
+function doctor_report(array $cfg, array $report): bool
+{
+    $uuid = '';
+    $xml = dirname(__DIR__, 2) . '/module.xml';
+    $version = preg_match('#<version>([^<]+)</version>#', (string) @file_get_contents($xml), $m) ? $m[1] : '0.0.0';
+    $uuidFile = dirname(Config::sqlitePath($cfg)) . '/host_uuid';
+    if (is_readable($uuidFile)) {
+        $uuid = trim((string) file_get_contents($uuidFile));
+    }
+    if (strlen($uuid) < 8) {
+        return false; // the module page has not registered this host yet (no update check so far)
+    }
+    $checks = [];
+    foreach ($report['checks'] as $c) {
+        $checks[] = ['id' => $c['id'], 'status' => $c['status'], 'code' => $c['code'], 'detail' => mb_substr((string) $c['detail'], 0, 300)];
+    }
+    try {
+        Engine\Uploader::postJson($cfg, 'module/diagnostics', [
+            'host_uuid' => $uuid,
+            'module_version' => $version,
+            'ok' => (bool) $report['ok'],
+            'failed_checks' => (int) $report['failed'],
+            'os_name' => substr($report['host']['os'] ?? '', 0, 80),
+            'checks' => array_slice($checks, 0, 80),
+            'recent_codes' => array_slice($report['recent_codes'], 0, 40, true),
+            'queue' => array_map('intval', array_slice($report['queue'], 0, 20, true)),
+        ]);
+        return true;
+    } catch (\Throwable $exc) {
+        return false;
+    }
+}
+
 function doctor_main(array $argv): int
 {
     $configPath = null;
     $json = false;
     $network = true;
+    $send = false;
     foreach (array_slice($argv, 1) as $arg) {
-        if ($arg === '--json') {
+        if ($arg === '--report') {
+            $send = true;
+        } elseif ($arg === '--json') {
             $json = true;
         } elseif ($arg === '--no-network') {
             $network = false;
@@ -187,6 +227,10 @@ function doctor_main(array $argv): int
         return 2;
     }
     $report = doctor_run($cfg, $network);
+    if ($send) {
+        $sent = doctor_report($cfg, $report);
+        fwrite(STDERR, $sent ? "Report sent to Seda Sanj.\n" : "Report could not be sent (host not registered yet or endpoint unreachable).\n");
+    }
     if ($json) {
         echo json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
         return $report['ok'] ? 0 : 1;

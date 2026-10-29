@@ -315,6 +315,32 @@ class Uploader
         throw self::classifyHttpFailure($cfg, $statusCode, $body, $info, 'Endpoint');
     }
 
+    /**
+     * POSTs a small JSON document to a sibling of the calls endpoint (for example "module/diagnostics").
+     *
+     * @throws UploadError
+     * @return array{status_code:int,body:string}
+     */
+    public static function postJson(array $cfg, string $leaf, array $payload): array
+    {
+        $endpoint = self::siblingEndpoint($cfg['general']['endpoint'], $leaf);
+        $headers = self::authHeaders($cfg);
+        $headers['Content-Type'] = 'application/json';
+        $body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $headerLines = [];
+        foreach ($headers as $key => $value) {
+            $headerLines[] = $key . ': ' . $value;
+        }
+        [$status, $response, , $info] = self::send($cfg, $endpoint, [
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_TIMEOUT => 20,
+        ], $headerLines, $leaf);
+        if ($status >= 200 && $status < 300) {
+            return ['status_code' => $status, 'body' => $response];
+        }
+        throw self::classifyHttpFailure($cfg, $status, $response, $info, $leaf);
+    }
+
     public static function uploadMissedCall(array $cfg, array $event, ?\Closure $log = null): array
     {
         $log = $log ?? function (string $msg) {};

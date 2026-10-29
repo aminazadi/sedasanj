@@ -57,5 +57,19 @@ foreach ([$secret, 'hunter2hunter2', 'c2tfbGl2ZV9kaWFnbm9zdGljc2VjcmV0OTk=', '09
 	if (strpos($all, $leak) !== false) { $fail("bundle leaks $leak"); }
 }
 if (strpos(file_get_contents("$root/x/sedasanj-support/log-current.txt"), 'SS-UPL-0401') === false) { $fail('bundle log lost the error code'); }
+// --report: the compact report reaches the API with the host id from the state directory, no secrets in it.
+file_put_contents("$root/router.php", '<?php file_put_contents(__DIR__."/report.json", file_get_contents("php://input")); http_response_code(202); echo "{}";');
+$port = 21000 + (getmypid() % 1000);
+$srv = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", "$root/router.php"], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pp);
+for ($i = 0; $i < 50; $i++) { $sk = @fsockopen('127.0.0.1', $port); if ($sk) { fclose($sk); break; } usleep(100000); }
+file_put_contents("$root/config.ini", str_replace('https://127.0.0.1:9/v1/ingest/calls', "http://127.0.0.1:$port/v1/ingest/calls", file_get_contents("$root/config.ini")));
+file_put_contents("$root/state/host_uuid", '123e4567-e89b-42d3-a456-426614174000');
+exec($bin . 'doctor.php --report --no-network 2>&1', $rout, $rcode);
+$sent = json_decode((string) @file_get_contents("$root/report.json"), true);
+if (!is_array($sent) || $sent['host_uuid'] !== '123e4567-e89b-42d3-a456-426614174000' || !preg_match('/^\d+\.\d+\.\d+$/', $sent['module_version']) || !isset($sent['checks'][0]['id'])) {
+	$fail('diagnostics report not delivered: ' . implode("\n", $rout) . ' ' . json_encode($sent));
+}
+if (strpos(json_encode($sent), $secret) !== false || strpos(json_encode($sent), '09121234567') !== false) { $fail('report leaks secrets or numbers'); }
+proc_terminate($srv);
 exec('rm -rf ' . escapeshellarg($root));
 echo "Diagnostics passed.\n";
