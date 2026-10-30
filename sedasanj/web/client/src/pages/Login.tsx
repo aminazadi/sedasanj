@@ -1,3 +1,4 @@
+import { Icon } from "../components/SiteIcon";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
@@ -100,12 +101,12 @@ export default function Login() {
                 value={fmt.digits(totp)}
                 onChange={(event) => setTotp(normalizeOtp(event.target.value))}
               />
-              <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}>بازگشت و ویرایش ایمیل یا گذرواژه</button>
+              <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}><Icon name="back" size={18}/>بازگشت و ویرایش ایمیل یا گذرواژه</button>
               </>)}
               <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>
-                {busy ? "در حال ورود…" : step === "totp" ? "تأیید و ورود" : "ادامه"}
+                {busy ? "در حال ورود…" : step === "totp" ? <><Icon name="login" size={18}/>تأیید و ورود</> : <>ادامه<Icon name="arrow" size={18}/></>}
               </button>
-              <p className="mt-5 text-center text-sm text-slate-500">حساب ندارید؟ <Link className="font-bold text-brand-600" to="/signup?plan=demo">دموی رایگان را شروع کنید</Link></p>
+              <p className="auth-alt mt-5 text-center text-sm text-slate-500">حساب ندارید؟ <Link className="font-bold text-brand-600" to="/signup?plan=demo">دموی رایگان را شروع کنید</Link></p>
             </form>
             </>}
           </div>

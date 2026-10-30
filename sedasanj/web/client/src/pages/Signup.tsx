@@ -1,3 +1,4 @@
+import { Icon } from "../components/SiteIcon";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
@@ -83,8 +84,8 @@ export default function Signup() {
   return <AuthShell>
         <div className="auth-form">
           <div className="mb-5 flex items-center gap-4 border-b border-slate-100 pb-5">
-            <img className="h-24 w-24 shrink-0 object-contain" src={selectedPlan.image} alt={`تصویر پلن ${selectedPlan.name}`} />
-            <div><span className="text-xs font-bold text-brand-600">ثبت‌نام پلن {selectedPlan.name}</span><h1 className="mt-2 text-xl font-bold text-brand-800">حساب سازمانی خود را بسازید</h1><p className="mt-2 text-xs leading-6 text-slate-500">مرحله {fmt.digits(stepNumber[step])} از ۳</p></div>
+            <img className="h-16 w-16 shrink-0 object-contain" src={selectedPlan.image} alt={`تصویر پلن ${selectedPlan.name}`} />
+            <div><h1 className="auth-title">حساب سازمانی خود را بسازید</h1><p className="mt-2 text-xs leading-6 text-slate-500">پلن {selectedPlan.name} · مرحله {fmt.digits(stepNumber[step])} از ۳</p></div>
           </div>
           <form onSubmit={submit}>
             <ErrorBox message={error || null} />
@@ -107,8 +108,8 @@ export default function Signup() {
               <label className="label font-medium text-slate-700" htmlFor="signup-password">گذرواژه</label>
               <input id="signup-password" className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white" type="password" dir="ltr" minLength={8} required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
             </> : null}
-            <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>{busy ? "در حال انجام…" : step === "identity" ? "ارسال کد تأیید" : step === "code" ? "تأیید کد" : "ساخت حساب"}</button>
-            <p className="mt-5 text-center text-sm text-slate-500">حساب دارید؟ <Link className="font-bold text-brand-600" to="/login">وارد شوید</Link></p>
+            <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>{busy ? "در حال انجام…" : step === "identity" ? <><Icon name="send" size={18}/>ارسال کد تأیید</> : step === "code" ? <><Icon name="check" size={18}/>تأیید کد</> : <><Icon name="userPlus" size={18}/>ساخت حساب</>}</button>
+            <p className="auth-switch text-center text-sm text-slate-500">حساب دارید؟ <Link className="font-bold text-brand-600" to="/login">وارد شوید</Link></p>
           </form>
         </div>
   </AuthShell>;

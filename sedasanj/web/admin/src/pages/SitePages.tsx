@@ -3,7 +3,7 @@ import { request, uploadWithProgress } from "../api";
 import { ErrorBox, Loading } from "../components/Widgets";
 
 type Content = Record<string, unknown>;
-type Leaf = { key: string; label: string; hint?: string; kind: "text" | "area" | "link" | "select"; rows?: number; options?: Array<[string, string]> };
+type Leaf = { key: string; label: string; hint?: string; kind: "text" | "area" | "link" | "select" | "checkbox" | "image" | "video" | "number"; rows?: number; min?: number; max?: number; options?: Array<[string, string]> };
 type Field =
   | Leaf
   | { key: string; label: string; hint?: string; kind: "list"; itemLabel: string; max: number; area?: boolean }
@@ -61,14 +61,38 @@ const SCHEMAS: Record<string, { label: string; path: string; fields: Field[] }> 
   terms: { label: "قوانین استفاده", path: "/terms", fields: LEGAL },
   privacy: { label: "حریم خصوصی", path: "/privacy", fields: LEGAL },
   cancellation: { label: "لغو اشتراک", path: "/cancellation", fields: LEGAL },
-  landing_video: { label: "دکمه ویدئو صفحه اصلی", path: "/", fields: [
-    { key: "title", label: "متن دکمه", kind: "text", hint: "پیش‌فرض: «چرا صداسنج؟». خالی بگذارید تا همین متن نمایش داده شود." },
+  auth_aside: { label: "پنل صفحه ورود و ثبت‌نام", path: "/login", fields: [
+    { key: "messages", label: "پیام‌ها", kind: "objects", itemLabel: "پیام", max: 8, hint: "پیام‌ها یکی‌یکی تایپ می‌شوند و بعد از مکث، پیام بعدی جایگزین می‌شود. دکمه اختیاری است؛ متن و پیوند آن باید با هم پر شوند.", fields: [
+      { key: "text", label: "متن پیام", kind: "text" },
+      { key: "cta_text", label: "متن دکمه (اختیاری)", kind: "text" },
+      { key: "cta_link", label: "پیوند دکمه", kind: "link", hint: LINK_HINT },
+    ] },
+    { key: "type_speed_ms", label: "سرعت تایپ (میلی‌ثانیه برای هر حرف)", kind: "number", min: 20, max: 200, hint: "عدد کمتر یعنی تایپ سریع‌تر. پیش‌فرض ۵۵." },
+    { key: "hold_seconds", label: "مکث بعد از تایپ (ثانیه)", kind: "number", min: 1, max: 30, hint: "مدت نمایش هر پیام قبل از جایگزین‌شدن. پیش‌فرض ۴." },
+  ] },
+  landing_video: { label: "ویدئوی صفحه اصلی", path: "/", fields: [
+    { key: "title", label: "متن دکمه شناور", kind: "text", hint: "پیش‌فرض: «چرا صداسنج؟». خالی بگذارید تا همین متن نمایش داده شود." },
+    { key: "avatar_media_id", label: "آواتار (GIF یا تصویر)", kind: "image", hint: "تصویر کنار متن دکمه شناور و پشت دکمه پخش در بالای صفحه. اگر خالی باشد بدون آواتار نمایش داده می‌شود." },
+    { key: "video_media_id", label: "ویدئوی اصلی", kind: "video", hint: "با کلیک روی دکمه، در پنل ویدئو پخش می‌شود. تا زمانی که بارگذاری نشود، دکمه و پنل نمایش داده نمی‌شوند. فرمت MP4 یا WebM، حداکثر ۱۲۰ مگابایت." },
+    { key: "play_caption", label: "متن زیر دکمه پخش صفحه اصلی", kind: "text", hint: "زیر آیکن پخش در بالای صفحه اصلی نمایش داده می‌شود. خالی یعنی متنی نمایش داده نشود." },
+    { key: "autoplay", label: "پخش خودکار ویدئوی اصلی با باز شدن پنل", kind: "checkbox" },
+    { key: "panel_position", label: "جای پنل روی صفحه", kind: "select", options: [["start", "گوشه پایین، سمت راست صفحه"], ["end", "گوشه پایین، سمت چپ صفحه"]] },
+    { key: "questions", label: "سؤال‌های روی ویدئو", kind: "objects", itemLabel: "سؤال", max: 8, hint: "هر سؤال با ویدئوی پاسخ خودش روی پنل نمایش داده می‌شود؛ پس از دیدن پاسخ، سؤال از فهرست کنار می‌رود. هر سؤال هم متن و هم ویدئو لازم دارد.", fields: [
+      { key: "question", label: "متن سؤال", kind: "text" },
+      { key: "video_media_id", label: "ویدئوی پاسخ", kind: "video", hint: "فرمت MP4 یا WebM." },
+    ] },
+    { key: "cta_button_text", label: "متن دکمه پایانی", kind: "text", hint: "بعد از پایان آخرین پاسخ نمایش داده می‌شود. خالی یعنی دکمه نمایش داده نشود." },
+    { key: "cta_button_link", label: "پیوند دکمه پایانی", kind: "link", hint: LINK_HINT },
+    { key: "cta_phone_label", label: "متن کنار شماره تلفن", kind: "text", hint: "مثلاً «راهنمایی نیاز دارید؟»" },
+    { key: "cta_phone", label: "شماره تلفن", kind: "text", hint: "فقط رقم، + و فاصله. خالی یعنی نمایش داده نشود." },
   ] },
 };
-const ORDER = ["about", "contact", "terms", "privacy", "cancellation", "landing_video"];
+const ORDER = ["about", "contact", "terms", "privacy", "cancellation", "auth_aside", "landing_video"];
 
 /** Picks a file, uploads it to the media library and hands back the new media id. */
-function MediaField({ label, hint, accept, kind, value, onChange }: { label: string; hint: string; accept: string; kind: "image" | "video"; value: string; onChange: (id: string) => void }) {
+const MEDIA_ACCEPT = { image: "image/gif,image/png,image/jpeg,image/webp", video: "video/mp4,video/webm" } as const;
+
+function MediaField({ label, hint, kind, value, onChange }: { label: string; hint?: string; kind: "image" | "video"; value: string; onChange: (id: string) => void }) {
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   async function upload(file: File) {
@@ -89,10 +113,10 @@ function MediaField({ label, hint, accept, kind, value, onChange }: { label: str
   const url = value ? `/v1/help/media/${value}` : "";
   return <fieldset className="space-y-3 rounded-lg border border-slate-200 p-4">
     <legend className="label px-2">{label}</legend>
-    <p className="text-xs text-slate-500">{hint}</p>
+    {hint && <p className="text-xs text-slate-500">{hint}</p>}
     {url && (kind === "image" ? <img src={url} alt="" className="h-20 w-20 rounded-full border object-cover" /> : <video src={url} controls preload="metadata" className="max-h-56 rounded" />)}
     <div className="flex flex-wrap items-center gap-3">
-      <input type="file" accept={accept} disabled={progress !== null} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} />
+      <input type="file" accept={MEDIA_ACCEPT[kind]} disabled={progress !== null} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} />
       {progress !== null && <span className="text-xs text-slate-500" role="status">در حال بارگذاری… {Math.round(progress * 100)}٪</span>}
       {value && progress === null && <button type="button" className="btn-ghost text-red-700" onClick={() => onChange("")}>حذف</button>}
     </div>
@@ -106,6 +130,9 @@ function LeafInput({ field, value, onChange }: { field: Leaf; value: string; onC
   }
   if (field.kind === "area") {
     return <textarea className="input leading-7" rows={field.rows ?? 4} value={value} onChange={(event) => onChange(event.target.value)} />;
+  }
+  if (field.kind === "number") {
+    return <input className="input" type="number" dir="ltr" min={field.min} max={field.max} value={value} onChange={(event) => onChange(event.target.value)} />;
   }
   return <input className="input" dir={field.kind === "link" ? "ltr" : undefined} value={value} onChange={(event) => onChange(event.target.value)} />;
 }
@@ -150,10 +177,23 @@ function FieldEditor({ field, value, onChange }: { field: Field; value: unknown;
       {field.hint && <p className="text-xs text-slate-500">{field.hint}</p>}
       {items.map((item, index) => <div key={index} className="space-y-3 rounded-lg bg-slate-50 p-3">
         <div className="flex items-center justify-between"><strong className="text-sm">{field.itemLabel} {index + 1}</strong><RowTools index={index} count={items.length} onMove={(to) => onChange(move(items, index, to))} onRemove={() => onChange(items.filter((_, at) => at !== index))} /></div>
-        {field.fields.map((sub) => <Labeled key={sub.key} label={sub.label} hint={sub.hint}><LeafInput field={sub} value={item[sub.key] ?? ""} onChange={(next) => onChange(items.map((old, at) => at === index ? { ...old, [sub.key]: next } : old))} /></Labeled>)}
+        {field.fields.map((sub) => {
+          const set = (next: string) => onChange(items.map((old, at) => at === index ? { ...old, [sub.key]: next } : old));
+          if (sub.kind === "image" || sub.kind === "video") return <MediaField key={sub.key} label={sub.label} hint={sub.hint} kind={sub.kind} value={item[sub.key] ?? ""} onChange={set} />;
+          return <Labeled key={sub.key} label={sub.label} hint={sub.hint}><LeafInput field={sub} value={item[sub.key] ?? ""} onChange={set} /></Labeled>;
+        })}
       </div>)}
       <button type="button" className="btn-ghost" disabled={items.length >= field.max} onClick={() => onChange([...items, Object.fromEntries(field.fields.map((sub) => [sub.key, sub.options?.[0]?.[0] ?? ""]))])}>افزودن {field.itemLabel}</button>
     </fieldset>;
+  }
+  if (field.kind === "image" || field.kind === "video") {
+    return <MediaField label={field.label} hint={field.hint} kind={field.kind} value={String(value ?? "")} onChange={onChange} />;
+  }
+  if (field.kind === "checkbox") {
+    return <label className="flex items-center gap-2"><input type="checkbox" checked={value !== false} onChange={(event) => onChange(event.target.checked)} /><span className="label">{field.label}</span></label>;
+  }
+  if (field.kind === "number") {
+    return <Labeled label={field.label} hint={field.hint}><LeafInput field={field} value={String(value ?? "")} onChange={(next) => onChange(next === "" ? "" : Number(next))} /></Labeled>;
   }
   return <Labeled label={field.label} hint={field.hint}><LeafInput field={field} value={String(value ?? "")} onChange={onChange} /></Labeled>;
 }
@@ -239,10 +279,6 @@ export default function SitePages() {
       <ErrorBox message={error} />
       {notice && <p className="text-sm text-emerald-700" role="status">{notice}</p>}
       <form className="space-y-5" onSubmit={save}>
-        {active === "landing_video" && <>
-          <MediaField label="آواتار (GIF یا تصویر)" kind="image" accept="image/gif,image/png,image/jpeg,image/webp" value={String(draft.avatar_media_id ?? "")} onChange={(id) => setDraft({ ...draft, avatar_media_id: id })} hint="تصویر گرد کنار متن دکمه در پایین صفحه اصلی. اگر خالی باشد، دکمه بدون آواتار نمایش داده می‌شود." />
-          <MediaField label="ویدئوی لایت‌باکس" kind="video" accept="video/mp4,video/webm" value={String(draft.video_media_id ?? "")} onChange={(id) => setDraft({ ...draft, video_media_id: id })} hint="با کلیک روی دکمه در یک لایت‌باکس پخش می‌شود. تا زمانی که ویدئو بارگذاری نشده، دکمه نمایش داده نمی‌شود. فرمت MP4 یا WebM، حداکثر ۱۲۰ مگابایت." />
-        </>}
         {schema.fields.map((field) => <FieldEditor key={`${active}-${field.key}`} field={field} value={draft[field.key]} onChange={(next) => setDraft({ ...draft, [field.key]: next })} />)}
         <div className="flex flex-wrap gap-3"><button className="btn" disabled={busy || !dirty}>{busy ? "در حال ذخیره…" : "ذخیره و انتشار"}</button><button type="button" className="btn-ghost" disabled={busy || view.is_default} onClick={reset}>بازگرداندن متن پیش‌فرض</button></div>
       </form>

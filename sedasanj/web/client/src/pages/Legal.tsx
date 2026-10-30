@@ -14,7 +14,7 @@ export default function Legal({ slug }: { slug: "terms" | "privacy" | "cancellat
         {page.intro && <p>{page.intro}</p>}
         {page.updated_label && <small className="legal-updated">{page.updated_label}</small>}
         </div>
-        <HeroArt/>
+        <HeroArt page="legal"/>
       </div></section>
       {page.sections.length > 0 && <section className="site-section"><div className="site-container legal-text">
         {page.sections.map((section, index) => <section key={index}><h2>{section.title}</h2><Paragraphs text={section.body}/></section>)}

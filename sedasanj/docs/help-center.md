@@ -16,6 +16,7 @@ Articles, error-code explanations, images and videos managed by staff in the adm
 - Article HTML is rebuilt from an allowlist on every write (`app/services/help_content.py`).
   Images/videos must be platform media (`/v1/help/media/<uuid>`); iframes are limited to
   `youtube-nocookie.com/embed/...` and `aparat.com/.../embed/...` and always get a sandbox.
+- `GET /v1/help/media/{id}` honours a single `Range: bytes=…` header (206/416, `Accept-Ranges`), which Safari/iOS need to play video.
 - Uploads are validated by magic bytes (PNG, JPEG, WebP, GIF, MP4, WebM); SVG is refused.
   Limits: 8 MB images, 120 MB videos (reverse proxy `client_max_body_size` must allow it).
 

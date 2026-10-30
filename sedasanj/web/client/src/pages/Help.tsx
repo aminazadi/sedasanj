@@ -1,9 +1,12 @@
+import { Icon } from "../components/SiteIcon";
 import DOMPurify from "dompurify";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import PublicPageFrame from "../components/PublicPageFrame";
 import { HeroArt } from "../components/SitePageParts";
+import { EMPTY_STATE_ART } from "../components/pageArt";
 import { request } from "../api";
+import { useArticleSeo } from "../seo/useArticleSeo";
 
 interface Category { id: string; slug: string; title: string; description: string; article_count: number }
 interface Summary { id: string; slug: string; title: string; summary: string; kind: string; category_id: string | null; published_at: string | null }
@@ -56,12 +59,12 @@ export function HelpHome({ framed }: { framed: boolean }) {
   return (
     <Shell framed={framed}>
       <header className="help-hero">
-        {framed ? <HeroArt/> : null}
+        {framed ? <HeroArt page="help"/> : null}
         <h1>مرکز راهنمای صداسنج</h1>
         <p>نصب ماژول FreePBX، رفع خطاها و پرسش‌های متداول.</p>
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو؛ مثلاً SS-UPL-0401 یا کلید API" aria-label="جستجو" />
-          <button type="submit">جستجو</button>
+          <button type="submit"><Icon name="search" size={18}/>جستجو</button>
         </form>
       </header>
       {!query && categories.data && categories.data.length > 0 ? (
@@ -76,7 +79,12 @@ export function HelpHome({ framed }: { framed: boolean }) {
       <section className="help-list">
         <h2>{query ? `نتایج جستجو برای «${query}»` : "همهٔ مقاله‌ها"}</h2>
         {list.error ? <p className="help-error">بارگذاری ناموفق بود. کمی بعد دوباره تلاش کنید.</p> : null}
-        {list.data && list.data.items.length === 0 ? <p>موردی پیدا نشد.</p> : null}
+        {list.data && list.data.items.length === 0 ? <div className="help-empty" role="status">
+          <img src={EMPTY_STATE_ART} alt="" width={240} height={150} />
+          <b>{query ? "نتیجه‌ای برای جستجوی شما پیدا نشد" : "هنوز مقاله‌ای منتشر نشده است"}</b>
+          <span>{query ? "عبارت دیگری را امتحان کنید؛ مثلاً کد خطا یا نام بخش." : "کمی بعد دوباره سر بزنید."}</span>
+          {query ? <button type="button" onClick={() => { setQ(""); setQuery(""); }}><Icon name="refresh" size={18}/>نمایش همهٔ مقاله‌ها</button> : null}
+        </div> : null}
         <ul>
           {(list.data?.items ?? []).map((a) => (
             <li key={a.id}><Link to={`/help/${a.slug}`}>{a.title}</Link>{a.summary ? <p>{a.summary}</p> : null}</li>
@@ -93,12 +101,10 @@ export function HelpArticlePage({ framed }: { framed: boolean }) {
   const html = useMemo(() => (data ? cleanHtml(data.body_html) : ""), [data]);
   const more = useLoad<{ items: Summary[] }>(data ? "/v1/help/articles?kind=article&limit=4" : "/v1/help/articles?limit=1&q=__none__");
   const related = (more.data?.items ?? []).filter((a) => a.slug !== slug).slice(0, 3);
-  useEffect(() => {
-    if (data) document.title = `${data.title} | صداسنج`;
-  }, [data]);
+  useArticleSeo(data, error === "notfound");
   return (
     <Shell framed={framed}>
-      <p><Link to="/help">← مرکز راهنما</Link></p>
+      <p><Link className="help-back-link" to="/help"><Icon name="back" size={18}/>مرکز راهنما</Link></p>
       {error === "notfound" ? <NotFound /> : error ? <p className="help-error">بارگذاری ناموفق بود.</p> : null}
       {data ? (
         <article className="help-article">
@@ -126,7 +132,7 @@ export function HelpErrorPage({ framed }: { framed: boolean }) {
   const html = useMemo(() => (article.data && info.data?.article_slug ? cleanHtml(article.data.body_html) : ""), [article.data, info.data]);
   return (
     <Shell framed={framed}>
-      <p><Link to="/help">← مرکز راهنما</Link></p>
+      <p><Link className="help-back-link" to="/help"><Icon name="back" size={18}/>مرکز راهنما</Link></p>
       {info.error === "notfound" ? <NotFound /> : null}
       {info.data ? (
         <article className="help-article">

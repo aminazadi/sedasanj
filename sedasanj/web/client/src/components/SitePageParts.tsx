@@ -1,6 +1,10 @@
+import { Icon } from "./SiteIcon";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import heroArt from "../assets/page-hero-office.webp";
+import aboutArt from "../assets/page-hero-about.webp";
+import contactArt from "../assets/page-hero-contact.webp";
+import helpArt from "../assets/page-hero-help.webp";
+import legalArt from "../assets/page-hero-legal.webp";
 
 /** Internal paths use the router; https/tel/mailto links are plain anchors. */
 export function SafeLink({ href, className, children }: { href: string; className?: string; children: ReactNode }) {
@@ -11,11 +15,13 @@ export function SafeLink({ href, className, children }: { href: string; classNam
 
 export function PageStatus({ state, onRetry }: { state: "loading" | "error"; onRetry: () => void }) {
   return <main className="page-main"><section className="page-status" role={state === "error" ? "alert" : "status"}>
-    {state === "loading" ? <p>در حال بارگذاری…</p> : <><p>بارگذاری این صفحه انجام نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.</p><button className="site-button site-button-outline" type="button" onClick={onRetry}>تلاش دوباره</button></>}
+    {state === "loading" ? <p>در حال بارگذاری…</p> : <><p>بارگذاری این صفحه انجام نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.</p><button className="site-button site-button-outline" type="button" onClick={onRetry}><Icon name="refresh" size={18}/>تلاش دوباره</button></>}
   </section></main>;
 }
 
-/** Office illustration shown above the heading of every public page hero. */
-export function HeroArt() {
-  return <img className="page-hero-art" src={heroArt} alt="" width="1500" height="750" decoding="async"/>;
+const HERO_ART = { about: aboutArt, contact: contactArt, help: helpArt, legal: legalArt } as const;
+
+/** Per-page illustration shown above the heading of a public page hero (see docs/page-illustrations.md). */
+export function HeroArt({ page }: { page: keyof typeof HERO_ART }) {
+  return <img className="page-hero-art" src={HERO_ART[page]} alt="" width="1500" height="750" decoding="async"/>;
 }

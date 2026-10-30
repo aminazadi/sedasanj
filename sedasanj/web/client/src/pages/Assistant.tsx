@@ -1,4 +1,5 @@
 import AssistantContextPicker, { AssistantAttachmentChips } from "../components/AssistantContextPicker";
+import ProcessingIndicator from "../components/ProcessingIndicator";
 import AssistantExportFiles from "../components/AssistantExportFiles";
 import { CallStateArt } from "../components/CallStateArt";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
@@ -141,7 +142,7 @@ function ChatIcon({ active, className = "h-5 w-5" }: { active: boolean; classNam
 }
 
 function ConversationProcessingIndicator({ active }: { active: boolean }) {
-  return <span className={`assistant-conversation-processing ${active ? "is-active" : ""}`} role="status" aria-label="در حال پردازش پاسخ دستیار"><span /><span /><span /><span /></span>;
+  return <ProcessingIndicator active={active} />;
 }
 
 function PlusIcon() {

@@ -172,3 +172,30 @@ def test_public_article_list_accepts_kind_filter_only_from_known_kinds() -> None
     params = create_app().openapi()["paths"]["/v1/help/articles"]["get"]["parameters"]
     kind = next(p for p in params if p["name"] == "kind")
     assert kind["schema"]["anyOf"][0]["pattern"] == "^(article|error|faq)$"
+
+
+def test_parse_byte_range() -> None:
+    import pytest
+
+    from app.routers.help import parse_byte_range
+
+    assert parse_byte_range(None, 100) is None
+    assert parse_byte_range("bytes=0-9", 100) == (0, 9)
+    assert parse_byte_range("bytes=90-", 100) == (90, 99)
+    assert parse_byte_range("bytes=50-500", 100) == (50, 99)
+    assert parse_byte_range("bytes=-10", 100) == (90, 99)
+    assert parse_byte_range("bytes=-500", 100) == (0, 99)
+    assert parse_byte_range("bytes=0-1,5-6", 100) is None
+    assert parse_byte_range("items=0-1", 100) is None
+    for bad in ("bytes=100-", "bytes=9-5", "bytes=-0"):
+        with pytest.raises(ValueError):
+            parse_byte_range(bad, 100)
+
+
+async def test_memory_storage_byte_range() -> None:
+    from app.services.storage import MemoryStorage
+
+    storage = MemoryStorage()
+    await storage.put("k", b"0123456789")
+    assert b"".join([c async for c in storage.iter_chunks("k", byte_range=(2, 5))]) == b"2345"
+    assert b"".join([c async for c in storage.iter_chunks("k")]) == b"0123456789"

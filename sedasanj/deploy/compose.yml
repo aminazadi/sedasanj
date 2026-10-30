@@ -127,6 +127,8 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.web
       target: client
+      args:
+        SITE_URL: ${SITE_URL:-https://${APP_DOMAIN:?Set APP_DOMAIN}}
     restart: unless-stopped
     ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${APP_PORT:-3000}:80"]
     networks: [proxy]

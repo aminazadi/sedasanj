@@ -1,3 +1,4 @@
+import { Icon } from "../components/SiteIcon";
 import { useState, type FormEvent } from "react";
 import { ApiError, request } from "../api";
 import PublicPageFrame from "../components/PublicPageFrame";
@@ -54,7 +55,7 @@ export default function Contact() {
         <div>
         <h1 className="site-hero-title page-title"><RichTitle text={page.hero_title}/></h1><p>{page.hero_text}</p>
         </div>
-        <HeroArt/>
+        <HeroArt page="contact"/>
       </div></section>
 
       <section className="contact-content"><div className="site-container contact-layout">
@@ -77,7 +78,7 @@ export default function Contact() {
               <label className="contact-message"><span>موضوع و نیاز شما</span><textarea name="message" required rows={5} placeholder={page.form_message_placeholder}/></label>
             </div>
             {error ? <div className="contact-error" role="alert">{error}</div> : null}
-            <button className="site-button" type="submit" disabled={status === "busy"}>{status === "busy" ? "در حال ارسال…" : page.form_submit}</button>
+            <button className="site-button" type="submit" disabled={status === "busy"}>{status === "busy" ? "در حال ارسال…" : <><Icon name="send" size={18}/>{page.form_submit}</>}</button>
           </form>}
         </div>
       </div></section>

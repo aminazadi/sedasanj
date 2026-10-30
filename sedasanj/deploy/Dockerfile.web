@@ -5,6 +5,8 @@ COPY web/shared ./shared
 COPY web/client/package.json web/client/package-lock.json* ./client/
 RUN cd client && npm ci
 COPY web/client ./client
+ARG SITE_URL=https://sedasanj.ir
+ENV SITE_URL=$SITE_URL
 RUN cd client && npm run build
 
 FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS admin-build

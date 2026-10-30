@@ -25,7 +25,11 @@ class Storage(abc.ABC):
     async def get(self, key: str) -> bytes: ...
 
     @abc.abstractmethod
-    def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]: ...
+    def iter_chunks(
+        self, key: str, chunk_size: int = 1024 * 1024, byte_range: tuple[int, int] | None = None
+    ) -> AsyncIterator[bytes]:
+        """Stream the object; ``byte_range`` is an inclusive ``(first, last)`` byte window."""
+        ...
 
     @abc.abstractmethod
     async def delete(self, key: str) -> None: ...
@@ -86,9 +90,12 @@ class S3Storage(Storage):
             data: bytes = await response["Body"].read()
             return data
 
-    async def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]:
+    async def iter_chunks(
+        self, key: str, chunk_size: int = 1024 * 1024, byte_range: tuple[int, int] | None = None
+    ) -> AsyncIterator[bytes]:
         async with self._client() as client:
-            response = await client.get_object(Bucket=self.bucket, Key=key)
+            options = {"Range": f"bytes={byte_range[0]}-{byte_range[1]}"} if byte_range else {}
+            response = await client.get_object(Bucket=self.bucket, Key=key, **options)
             body = response["Body"]
             try:
                 # iter_chunks works across aiobotocore versions; `async with` yields a raw
@@ -136,8 +143,12 @@ class MemoryStorage(Storage):
     async def get(self, key: str) -> bytes:
         return self.objects[key]
 
-    async def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]:
+    async def iter_chunks(
+        self, key: str, chunk_size: int = 1024 * 1024, byte_range: tuple[int, int] | None = None
+    ) -> AsyncIterator[bytes]:
         data = self.objects[key]
+        if byte_range:
+            data = data[byte_range[0] : byte_range[1] + 1]
         for offset in range(0, len(data), chunk_size):
             yield data[offset : offset + chunk_size]
 

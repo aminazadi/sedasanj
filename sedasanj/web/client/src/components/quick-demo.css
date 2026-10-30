@@ -3,7 +3,7 @@
 .demo-landing-grid{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;min-height:clamp(320px,26vw,420px)}
 .demo-landing-copy{position:relative;isolation:isolate;grid-column:1;grid-row:1;width:min(44%,500px);margin-right:auto;padding:clamp(20px,3vw,36px)}
 .demo-landing-copy h2{text-align:right!important;margin:0 0 16px!important}
-.demo-landing-grid p{max-width:520px;line-height:1.9;color:#303a30;margin:0 0 24px;font-size:clamp(14px,1.4vw,17px)}
+.demo-landing-grid p{max-width:520px;line-height:1.9;color:#303a30;margin:0 0 36px!important;font-size:clamp(14px,1.4vw,17px)}
 .demo-landing-grid .site-button{max-width:100%;gap:10px;white-space:normal;text-align:center}
 .demo-landing-arrow{display:inline-block;line-height:1;flex:0 0 auto}
 .demo-dialog{width:min(94vw,460px);padding:36px 28px 28px;border:1px solid #dae3d7;color:#1e293b;background:#fff;max-height:90dvh;overflow:auto}

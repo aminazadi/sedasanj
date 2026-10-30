@@ -11,9 +11,11 @@ import json
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-PageSlug = Literal["about", "contact", "terms", "privacy", "cancellation", "landing_video"]
+PageSlug = Literal[
+    "about", "contact", "terms", "privacy", "cancellation", "landing_video", "auth_aside"
+]
 PAGE_SLUGS: tuple[str, ...] = (
     "about",
     "contact",
@@ -21,6 +23,7 @@ PAGE_SLUGS: tuple[str, ...] = (
     "privacy",
     "cancellation",
     "landing_video",
+    "auth_aside",
 )
 SETTING_KEY_PREFIX = "site_page_"
 
@@ -138,20 +141,90 @@ class LegalContent(_Model):
 _MEDIA_ID_RE = re.compile(r"^$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
+def _check_media_id(value: str) -> str:
+    value = value.strip().lower()
+    if not _MEDIA_ID_RE.match(value):
+        raise ValueError("must be the id of an uploaded media file or empty")
+    return value
+
+
+class StoryQuestion(_Model):
+    """One clickable question of the landing story panel and the video that answers it."""
+
+    question: str = _text(120)
+    video_media_id: str = _text(36)
+
+    @field_validator("video_media_id")
+    @classmethod
+    def _media_id(cls, value: str) -> str:
+        return _check_media_id(value)
+
+    @model_validator(mode="after")
+    def _complete(self) -> StoryQuestion:
+        if not self.question or not self.video_media_id:
+            raise ValueError("a question needs both its text and its answer video")
+        return self
+
+
+_PHONE_RE = re.compile(r"^[+0-9\u06f0-\u06f9\s-]{0,24}$")
+
+
 class LandingVideoContent(_Model):
-    """The floating "why Sedasanj?" button on the landing page: label, GIF avatar, video."""
+    """The landing "why Sedasanj?" story: button, intro video, questions and closing action."""
 
     title: str = _text(60)
     avatar_media_id: str = _text(36)
     video_media_id: str = _text(36)
+    play_caption: str = Field(default="نیاز به راهنمایی دارین؟", max_length=40)
+    autoplay: bool = True
+    panel_position: Literal["start", "end"] = "start"
+    questions: list[StoryQuestion] = Field(default_factory=list, max_length=8)
+    cta_button_text: str = _text(60)
+    cta_button_link: str = _text(300)
+    cta_phone_label: str = _text(60)
+    cta_phone: str = _text(24)
 
     @field_validator("avatar_media_id", "video_media_id")
     @classmethod
     def _media_id(cls, value: str) -> str:
-        value = value.strip().lower()
-        if not _MEDIA_ID_RE.match(value):
-            raise ValueError("must be the id of an uploaded media file or empty")
+        return _check_media_id(value)
+
+    @field_validator("cta_button_link")
+    @classmethod
+    def _link(cls, value: str) -> str:
+        return _check_link(value)
+
+    @field_validator("cta_phone")
+    @classmethod
+    def _phone(cls, value: str) -> str:
+        if not _PHONE_RE.match(value):
+            raise ValueError("phone may contain only digits, +, spaces and dashes")
         return value
+
+
+class AuthAsideMessage(_Model):
+    text: str = Field(min_length=1, max_length=200)
+    cta_text: str = _text(60)
+    cta_link: str = _text(300)
+
+    @field_validator("cta_link")
+    @classmethod
+    def _link(cls, value: str) -> str:
+        return _check_link(value)
+
+    @model_validator(mode="after")
+    def _cta_complete(self) -> AuthAsideMessage:
+        if bool(self.cta_text) != bool(self.cta_link):
+            raise ValueError("cta_text and cta_link must be filled together or both left empty")
+        return self
+
+
+class AuthAsideContent(_Model):
+    """Rotating typed messages on the decorative panel of the sign-in and sign-up pages."""
+
+    messages: list[AuthAsideMessage] = Field(min_length=1, max_length=8)
+    type_speed_ms: int = Field(default=55, ge=20, le=200)
+    hold_seconds: int = Field(default=4, ge=1, le=30)
 
 
 _MODELS: dict[str, type[BaseModel]] = {
@@ -161,6 +234,7 @@ _MODELS: dict[str, type[BaseModel]] = {
     "privacy": LegalContent,
     "cancellation": LegalContent,
     "landing_video": LandingVideoContent,
+    "auth_aside": AuthAsideContent,
 }
 
 _ABOUT_DEFAULT: dict[str, Any] = {
@@ -264,13 +338,44 @@ def _legal_default(title: str) -> dict[str, Any]:
     }
 
 
+_AUTH_ASIDE_DEFAULT: dict[str, Any] = {
+    "messages": [
+        {"text": "هر تماس، یک فرصت برای شنیده‌شدن", "cta_text": "", "cta_link": ""},
+        {
+            "text": "همه تماس‌ها را بشنوید، نه فقط چند نمونه را.",
+            "cta_text": "شروع دموی رایگان",
+            "cta_link": "/signup?plan=demo",
+        },
+        {
+            "text": "پرسش‌هایتان را بپرسید؛ تیم صداسنج کنار شماست.",
+            "cta_text": "تماس با ما",
+            "cta_link": "/contact",
+        },
+    ],
+    "type_speed_ms": 55,
+    "hold_seconds": 4,
+}
+
 DEFAULTS: dict[str, dict[str, Any]] = {
     "about": _ABOUT_DEFAULT,
     "contact": _CONTACT_DEFAULT,
     "terms": _legal_default("قوانین استفاده"),
     "privacy": _legal_default("حریم خصوصی"),
     "cancellation": _legal_default("سیاست لغو اشتراک"),
-    "landing_video": {"title": "چرا صداسنج؟", "avatar_media_id": "", "video_media_id": ""},
+    "auth_aside": _AUTH_ASIDE_DEFAULT,
+    "landing_video": {
+        "title": "چرا صداسنج؟",
+        "avatar_media_id": "",
+        "video_media_id": "",
+        "play_caption": "نیاز به راهنمایی دارین؟",
+        "autoplay": True,
+        "panel_position": "start",
+        "questions": [],
+        "cta_button_text": "ثبت درخواست مشاوره",
+        "cta_button_link": "/contact",
+        "cta_phone_label": "",
+        "cta_phone": "",
+    },
 }
 
 

@@ -16,7 +16,9 @@ from app.services import audit, ratelimit, site_pages
 
 router = APIRouter(prefix="/v1", tags=["site-pages"])
 
-Slug = Annotated[str, Path(pattern="^(about|contact|terms|privacy|cancellation|landing_video)$")]
+Slug = Annotated[
+    str, Path(pattern="^(about|contact|terms|privacy|cancellation|landing_video|auth_aside)$")
+]
 
 
 def _problem(error: ValidationError) -> str:
@@ -37,9 +39,12 @@ async def _view(session: Any, slug: str) -> dict[str, Any]:
 
 
 async def _check_media(session: Any, content: dict[str, Any]) -> None:
-    """The avatar must be an uploaded image and the video an uploaded video."""
-    for field, kind in (("avatar_media_id", "image"), ("video_media_id", "video")):
-        media_id = content[field]
+    """The avatar must be an uploaded image; the intro and every answer an uploaded video."""
+    checks = [("avatar_media_id", content["avatar_media_id"], "image")]
+    checks.append(("video_media_id", content["video_media_id"], "video"))
+    for index, item in enumerate(content["questions"]):
+        checks.append((f"questions.{index}.video_media_id", item["video_media_id"], "video"))
+    for field, media_id, kind in checks:
         if not media_id:
             continue
         media = await session.get(HelpMedia, UUID(media_id))

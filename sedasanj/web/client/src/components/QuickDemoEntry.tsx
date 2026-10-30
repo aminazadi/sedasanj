@@ -1,3 +1,4 @@
+import { Icon } from "./SiteIcon";
 import { cssUrl } from "../../../shared/lib/cssUrl";
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -26,7 +27,7 @@ export default function QuickDemoEntry() {
   }
   return <>
     <section className="site-section demo-landing-section" id="quick-test"><div className="site-container demo-landing-grid">
-      <div className="demo-landing-copy"><h2>همین حالا امتحان کنید</h2><p>با موبایل وارد شوید، یک پیام صوتی ضبط کنید و نتیجه تحلیل را در پنل سازمان خود ببینید.</p><button className="site-button" onClick={start}><span>تست سریع صداسنج</span><span className="demo-landing-arrow" aria-hidden="true">←</span></button></div>
+      <div className="demo-landing-copy"><h2>همین حالا امتحان کنید</h2><p>با موبایل وارد شوید، یک پیام صوتی ضبط کنید و نتیجه تحلیل را در پنل سازمان خود ببینید.</p><button className="site-button" onClick={start}><span>تست سریع صداسنج</span><Icon className="demo-landing-arrow" name="arrow" size={18}/></button></div>
     </div></section>
     <dialog className="demo-dialog" ref={dialog} aria-label="تست سریع صداسنج" onCancel={(e) => { e.preventDefault(); close(); }} onClick={(e) => { if (e.target === dialog.current) close(); }}>
       <button className="demo-dialog-close" aria-label="بستن" type="button" onClick={close}>×</button>

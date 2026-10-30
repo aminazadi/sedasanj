@@ -234,28 +234,71 @@ async def public_error_code(
     )
 
 
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """Single ``bytes=`` range as an inclusive ``(first, last)`` window.
+
+    ``None`` means serve the whole object (no header, or a form we do not support such as
+    multiple ranges); ``ValueError`` means the range cannot be satisfied (HTTP 416).
+    """
+    match = _RANGE_RE.match((header or "").strip())
+    if match is None:
+        return None
+    start, end = match.groups()
+    if not start and not end:
+        return None
+    if not start:  # suffix range: the last N bytes
+        length = int(end)
+        if length == 0:
+            raise ValueError("unsatisfiable range")
+        return max(size - length, 0), size - 1
+    first = int(start)
+    last = min(int(end), size - 1) if end else size - 1
+    if first >= size or first > last:
+        raise ValueError("unsatisfiable range")
+    return first, last
+
+
 @router.get("/v1/help/media/{media_id}")
 async def public_media(
     media_id: UUID, request: Request, session: PublicSession
 ) -> StreamingResponse:
+    """Serves uploaded media with ``Range`` support: Safari/iOS will not play video without it."""
     await _limit(request)
     media = await session.get(HelpMedia, media_id)
     if media is None:
         raise ApiError("not_found", "media not found")
+    headers = {
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Accept-Ranges": "bytes",
+    }
+    try:
+        window = parse_byte_range(request.headers.get("range"), media.size_bytes)
+    except ValueError:
+        return StreamingResponse(
+            iter(()),
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            headers={**headers, "Content-Range": f"bytes */{media.size_bytes}"},
+        )
 
     async def body() -> AsyncIterator[bytes]:
-        async for chunk in get_storage().iter_chunks(media.object_key):
+        async for chunk in get_storage().iter_chunks(media.object_key, byte_range=window):
             yield chunk
 
+    if window is None:
+        headers["Content-Length"] = str(media.size_bytes)
+        return StreamingResponse(body(), media_type=media.content_type, headers=headers)
+    headers["Content-Length"] = str(window[1] - window[0] + 1)
+    headers["Content-Range"] = f"bytes {window[0]}-{window[1]}/{media.size_bytes}"
     return StreamingResponse(
         body(),
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
         media_type=media.content_type,
-        headers={
-            "Cache-Control": "public, max-age=86400",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Length": str(media.size_bytes),
-            "Content-Security-Policy": "default-src 'none'; sandbox",
-        },
+        headers=headers,
     )
 
 

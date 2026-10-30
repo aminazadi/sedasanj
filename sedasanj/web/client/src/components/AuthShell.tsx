@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import AuthAside from "./AuthAside";
 import logo from "../assets/sedasanj-refined-master.svg";
 import "../pages/Landing.css";
 import "../pages/PublicPages.css";
@@ -13,7 +14,7 @@ export default function AuthShell({ children }: { children: ReactNode }) {
         <div className="auth-card">{children}</div>
         <nav className="auth-links" aria-label="پیوندهای کمکی"><Link to="/">صفحه اصلی</Link><Link to="/contact">تماس با ما</Link><Link to="/privacy">حریم خصوصی</Link></nav>
       </section>
-      <aside className="auth-aside" aria-hidden="true"><h2>هر تماس، یک فرصت برای شنیده‌شدن</h2></aside>
+      <AuthAside/>
     </main>
   </div>;
 }

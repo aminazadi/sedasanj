@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { request } from "../api";
+import { Icon } from "./SiteIcon";
 import logo from "../assets/sedasanj-refined-master.svg";
 import "../pages/Landing.css";
 import "../pages/PublicPages.css";
@@ -38,7 +39,7 @@ export default function PublicPageFrame({ children }: { children: ReactNode }) {
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
         <Link to="/#features">امکانات</Link><Link to="/#pricing">تعرفه‌ها</Link><Link to="/help" aria-current={current("/help")}>مقالات</Link><Link to="/about" aria-current={current("/about")}>درباره ما</Link><Link to="/contact" aria-current={current("/contact")}>تماس با ما</Link>
       </nav>
-      <div className="site-nav-actions"><Link className="site-button" to="/login">ورود به پنل</Link><button className="site-menu" type="button" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><MenuIcon close={menuOpen}/></button></div>
+      <div className="site-nav-actions"><Link className="site-button site-button-outline" to="/login"><Icon name="login" size={18}/>ورود به پنل</Link><button className="site-menu" type="button" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><MenuIcon close={menuOpen}/></button></div>
     </div></header>
 
     {children}

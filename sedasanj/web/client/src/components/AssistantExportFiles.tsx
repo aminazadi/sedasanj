@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, downloadFile, fmt } from "../api";
+import FileTypeIcon from "./FileTypeIcon";
 import type { AssistantExportFile, AssistantToolRun } from "../types";
 
 export function exportFiles(runs: AssistantToolRun[]): AssistantExportFile[] {
@@ -38,10 +39,13 @@ export function ExportFileCard({ file }: { file: AssistantExportFile }) {
 
   return <div className="my-3 border border-[#B2AC88] bg-white p-3 text-[#365033]" dir="rtl">
     <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+      <FileTypeIcon name={file.name} format={file.format} />
       <div className="min-w-0 space-y-1">
         <p className="break-all text-sm" dir="ltr">{file.name}</p>
         <p className="text-xs"><bdi dir="ltr">{file.format.toUpperCase()}</bdi> · {fmt.int(file.size / 1024)} کیلوبایت · {fmt.int(file.rows)} ردیف</p>
         <p className="text-xs" title={fmt.dateTime(file.expires_at)}>{expired ? "منقضی شد؛ از دستیار خروجی جدید بخواهید" : `تا ${fmt.int(minutes)} دقیقه دیگر معتبر است؛ سپس حذف می‌شود`}</p>
+      </div>
       </div>
       <button type="button" onClick={() => void download()} disabled={expired || busy} className="inline-flex items-center gap-2 border border-[#B2AC88] px-3 py-2 text-sm transition hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50" aria-label={`دریافت ${file.name}`}>
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></svg>

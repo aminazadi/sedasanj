@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
-import heroBackdrop from "../assets/hero-call-center.webp";
+import heroBackdrop from "../assets/hero-office.webp";
 import integrationBanner from "../assets/telephony-integration-banner-desktop.webp";
 import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.webp";
 import awarenessArt from "../assets/operator-awareness.svg";
@@ -19,7 +19,7 @@ import "./Landing.css";
 import { fmt, request, SENTIMENT_LABELS } from "../api";
 import type { PublicPlan } from "../types";
 import QuickDemoEntry from "../components/QuickDemoEntry";
-import WhyVideoButton from "../components/WhyVideoButton";
+import WhyVideoButton, { WhyVideoDialog, WhyVideoPlay, useWhyVideo } from "../components/WhyVideoButton";
 import { Icon, type IconName } from "../components/SiteIcon";
 
 const benefits: Array<{ icon: IconName; title: string; body: string }> = [
@@ -232,13 +232,23 @@ function LatestArticles() {
       {a.published_at ? <time dateTime={a.published_at}>{faDate.format(new Date(a.published_at))}</time> : null}
       <h3><Link to={`/help/${a.slug}`}>{a.title}</Link></h3>
       {a.summary ? <p>{a.summary}</p> : null}
-      <Link className="site-article-more" to={`/help/${a.slug}`}>ادامهٔ مطلب</Link>
+      <Link className="site-article-more" to={`/help/${a.slug}`}>ادامهٔ مطلب<Icon name="arrow" size={18}/></Link>
     </article>)}</div>
     <p className="site-pricing-note"><Link to="/help">همهٔ مقالات و آموزش‌ها</Link></p>
   </div></section>;
 }
 
 export default function Landing() {
+  const whyVideo = useWhyVideo();
+  const heroRef = useRef<HTMLElement>(null);
+  const [heroInView, setHeroInView] = useState(true);
+  useEffect(() => {
+    const node = heroRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(([entry]) => setHeroInView(entry.isIntersecting), { threshold: 0.4 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const [, setParams] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
   const [plans, setPlans] = useState<PublicPlan[]>([]);
@@ -269,12 +279,15 @@ export default function Landing() {
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
         <a href="#features" onClick={() => setMenuOpen(false)}>امکانات</a><a href="#usecases" onClick={() => setMenuOpen(false)}>کاربردها</a><a href="#pricing" onClick={() => setMenuOpen(false)}>تعرفه‌ها</a><Link to="/help">مقالات</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link>
       </nav>
-      <div className="site-nav-actions"><Link className="site-button" to="/login">ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
+      <div className="site-nav-actions"><Link className="site-button site-button-outline" to="/login"><Icon name="login" size={18}/>ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
     <main id="top">
-      <section className="site-hero" style={{ "--site-hero-art": `url(${heroBackdrop})` } as CSSProperties}><div className="site-container site-split">
-        <div><h1 className="site-hero-title"><span>مشتری‌هایتان در مکالمات حرف می‌زنند؛</span><span className="site-hero-title-accent">شما می‌شنوید؟<svg className="site-hero-wave" viewBox="0 0 300 16" preserveAspectRatio="none" aria-hidden="true" focusable="false"><defs><linearGradient id="site-wave-grad" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stopColor="#c62828" stopOpacity=".25"/><stop offset=".18" stopColor="#c62828"/><stop offset=".82" stopColor="#e2483f"/><stop offset="1" stopColor="#e2483f" stopOpacity=".25"/></linearGradient></defs><path className="site-wave-main" pathLength="1" d="M298 9C264 2 236 15 202 8S140 2 106 8 48 15 2 5"/></svg></span></h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}>تست رایگان</button><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
-      </div></section>
+      <section className="site-hero" ref={heroRef} style={{ "--site-hero-art": `url(${heroBackdrop})` } as CSSProperties}><div className="site-container site-split">
+        <div><h1 className="site-hero-title"><span className="site-hero-title-lead">شما فقط چند تماس از هزاران تماس را می‌شنوید.</span><span>بقیه‌اش چه؟</span><span className="site-hero-title-accent">همه را بشنوید.</span></h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}><Icon name="play" size={18}/>تست رایگان</button><a className="site-button site-button-outline" href="#features"><Icon name="layers" size={18}/>مشاهده امکانات</a></div></div>
+        <div className="site-hero-play"><WhyVideoPlay video={whyVideo}/></div>
+      </div>
+        <button className="site-scroll-down" type="button" aria-label="رفتن به بخش بعدی" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}><span className="site-scroll-text" dir="ltr">Scroll Down</span><span className="site-scroll-icon" aria-hidden="true"/></button>
+      </section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-awareness" id="awareness"><div className="site-container site-awareness-grid">
         <div>
@@ -306,19 +319,20 @@ export default function Landing() {
       </section>
       <UseCases/>
       <SatisfactionShowcase/>
-      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div></section>
+      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
       <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
         {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
-        {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}>تلاش دوباره</button></div>}
+        {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}><Icon name="refresh" size={18}/>تلاش دوباره</button></div>}
         {plansState === "ready" && !plans.length && <p className="site-status">در حال حاضر پلنی برای نمایش وجود ندارد.</p>}
-        <div className="site-plans">{plans.map((plan) => { const demo = plan.code === "demo"; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; return <article className={`site-plan${plan.code === "silver" ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={demo ? null : price} formatted={demo ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!demo && price != null && <span>تومان / سال</span>}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.intro_minutes)} دقیقه رایگان در ماه</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul><Link className={`site-button${plan.code === "silver" ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}</Link></article>; })}</div>
+        <div className="site-plans">{plans.map((plan) => { const demo = plan.code === "demo"; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; return <article className={`site-plan${plan.code === "silver" ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={demo ? null : price} formatted={demo ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!demo && price != null && <span>تومان / سال</span>}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.intro_minutes)} دقیقه رایگان در ماه</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul><Link className={`site-button${plan.code === "silver" ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}<Icon name="arrow" size={18}/></Link></article>; })}</div>
         <p className="site-pricing-note">نصب اولیه رایگان است. برای استقرار اختصاصی <Link to="/contact">با ما تماس بگیرید.</Link></p>
       </div></section>
       <LatestArticles/>
       <QuickDemoEntry />
     </main>
-    <WhyVideoButton/>
+    <WhyVideoButton video={whyVideo} hidden={heroInView}/>
+    <WhyVideoDialog video={whyVideo}/>
     <footer className="site-footer">
       <section className="site-footer-contact" aria-labelledby="site-footer-contact-title">
         <div className="site-container site-footer-contact-inner">

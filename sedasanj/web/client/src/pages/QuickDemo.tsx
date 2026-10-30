@@ -1,3 +1,4 @@
+import { Icon } from "../components/SiteIcon";
 import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -148,22 +149,22 @@ export default function QuickDemo() {
           {!voipKey ? <div className="grid justify-items-center gap-3 py-2 text-center">
             <p className="text-sm leading-7 text-slate-600">کلید API و فایل تنظیمات اتصال VoIP را دریافت کنید.</p>
             {voipKeyError ? <p className="demo-error" role="alert">{voipKeyError}</p> : null}
-            <div className="quick-demo-voip-actions"><button type="button" className="btn" onClick={() => void createVoipKey()} disabled={voipKeyBusy}>{voipKeyBusy ? "در حال ساخت…" : "ساخت کلید API"}</button><a className="btn-ghost" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div>
+            <div className="quick-demo-voip-actions"><button type="button" className="btn" onClick={() => void createVoipKey()} disabled={voipKeyBusy}>{voipKeyBusy ? "در حال ساخت…" : <><Icon name="key" size={18}/>ساخت کلید API</>}</button><a className="btn-ghost" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div>
           </div> : <div className="space-y-4 text-sm">
             <div className="border border-emerald-200 bg-emerald-50 p-4">
               <h2 className="font-bold text-emerald-900">کلید API ساخته شد</h2>
               <p className="mt-1 text-emerald-800">این کلید فقط همین‌بار نمایش داده می‌شود. آن را در جای امن نگه دارید.</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2" dir="ltr"><code className="min-w-0 flex-1 break-all bg-white p-3">{voipKey.secret}</code><button type="button" className="btn-ghost" onClick={() => void copyText(voipKey.secret)}>کپی کلید</button></div>
+              <div className="mt-3 flex flex-wrap items-center gap-2" dir="ltr"><code className="min-w-0 flex-1 break-all bg-white p-3">{voipKey.secret}</code><button type="button" className="btn-ghost" onClick={() => void copyText(voipKey.secret)}><Icon name="copy" size={18}/>کپی کلید</button></div>
               <p className="mt-2 text-xs text-slate-600">پیشوند: <bdi dir="ltr">{voipKey.key_prefix}</bdi> · فرمت ارسال: GZIP</p>
             </div>
             <div className="border border-slate-200 p-4">
               <h3 className="font-bold">فایل‌های تنظیمات اتصال</h3>
               <p className="mt-1 text-xs leading-6 text-slate-600">یکی از فایل‌ها را متناسب با روش نصب دانلود و در سامانه تلفنی وارد کنید.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" className="btn" onClick={() => downloadConfig("sedasanj-freepbx-config.json", freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}>دانلود تنظیمات FreePBX</button>
-                <button type="button" className="btn-ghost" onClick={() => downloadConfig("cbi-agent.toml", pythonAgentConfig(window.location.origin, voipKey.secret, voipKey.archive_format, ""))}>دانلود تنظیمات Python Agent</button>
-                <button type="button" className="btn-ghost" onClick={() => void copyText(freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}>کپی تنظیمات FreePBX</button>
-                <a className="btn-ghost" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a>
+                <button type="button" className="btn" onClick={() => downloadConfig("sedasanj-freepbx-config.json", freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}><Icon name="download" size={18}/>دانلود تنظیمات FreePBX</button>
+                <button type="button" className="btn-ghost" onClick={() => downloadConfig("cbi-agent.toml", pythonAgentConfig(window.location.origin, voipKey.secret, voipKey.archive_format, ""))}><Icon name="download" size={18}/>دانلود تنظیمات Python Agent</button>
+                <button type="button" className="btn-ghost" onClick={() => void copyText(freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}><Icon name="copy" size={18}/>کپی تنظیمات FreePBX</button>
+                <a className="btn-ghost" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a>
               </div>
             </div>
           </div>}

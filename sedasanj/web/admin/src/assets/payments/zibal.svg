@@ -1,1 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="زیبال"><rect width="120" height="120" rx="28" fill="#DDEBFF"/><rect x="14" y="14" width="92" height="92" rx="22" fill="#2F6FEB"/><path d="M34 82c10 0 14-6 18-14 4-8 8-14 18-14h14" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/><circle cx="60" cy="38" r="5" fill="#fff"/><circle cx="76" cy="38" r="5" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 120 120" role="img" aria-label="زیبال"><rect width="120" height="120" fill="#fff"/><svg x="16" y="16" width="88" height="88" viewBox="212 0 162 124" preserveAspectRatio="xMidYMid meet"><style>
+      .cls-1 {
+        fill: #172b4d;
+      }
+
+      .cls-2 {
+        fill: #0000b8;
+        fill-rule: evenodd;
+      }
+    </style>
+    <path class="cls-2" d="M342,26.8l27.7,27.7c1.7,1.7,1.7,4.4,0,6l-44.5,44.6c-1.7,1.7-4.4,1.7-6,0l-27.7-27.7c-1.7-1.7-1.7-4.4,0-6l44.5-44.6c1.7-1.7,4.4-1.7,6,0Z"/>
+    <path class="cls-2" d="M283.1,85.9l10.8,10.9c1.7,1.7,1.7,4.4,0,6l-19.3,19.2c-1.7,1.7-4.4,1.7-6,0l-10.8-10.9c-1.7-1.7-1.7-4.4,0-6l19.3-19.3c1.6-1.6,4.3-1.6,6,.1Z"/>
+    <path class="cls-2" d="M243.3,96.7l-27.7-27.7c-1.7-1.7-1.7-4.4,0-6l44.6-44.7c1.7-1.7,4.4-1.7,6,0l27.7,27.7c1.7,1.7,1.7,4.4,0,6l-44.5,44.6c-1.7,1.8-4.4,1.8-6.1.1Z"/>
+    <path class="cls-2" d="M302.3,37.6l-10.8-10.9c-1.7-1.7-1.7-4.4,0-6l19.3-19.3c1.7-1.7,4.4-1.7,6,0l10.8,10.9c1.7,1.7,1.7,4.4,0,6l-19.3,19.3c-1.6,1.7-4.3,1.7-6,0Z"/>
+  </svg></svg>

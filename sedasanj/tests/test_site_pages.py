@@ -77,3 +77,73 @@ def test_landing_video_defaults_and_media_ids() -> None:
         content["avatar_media_id"] = bad
         with pytest.raises(ValidationError):
             sp.validate_content("landing_video", content)
+
+
+def test_landing_story_defaults_and_questions() -> None:
+    content = sp.default_content("landing_video")
+    assert content["questions"] == []
+    assert content["autoplay"] is True
+    assert content["play_caption"] == "نیاز به راهنمایی دارین؟"
+    content["play_caption"] = "x" * 41
+    with pytest.raises(ValidationError):
+        sp.validate_content("landing_video", content)
+    content["play_caption"] = ""
+    assert sp.validate_content("landing_video", content)["play_caption"] == ""
+    content["play_caption"] = "نیاز به راهنمایی دارین؟"
+    assert content["panel_position"] == "start"
+    video = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    content["questions"] = [{"question": "چرا؟", "video_media_id": video}]
+    assert sp.validate_content("landing_video", content)["questions"][0]["video_media_id"] == video
+    for bad in (
+        {"question": "", "video_media_id": video},
+        {"question": "چرا؟", "video_media_id": ""},
+        {"question": "چرا؟", "video_media_id": "not-a-uuid"},
+    ):
+        content["questions"] = [bad]
+        with pytest.raises(ValidationError):
+            sp.validate_content("landing_video", content)
+    content["questions"] = [{"question": "q", "video_media_id": video}] * 9
+    with pytest.raises(ValidationError):
+        sp.validate_content("landing_video", content)
+
+
+def test_landing_story_call_to_action_validation() -> None:
+    content = sp.default_content("landing_video")
+    content["cta_phone"] = "021 78358"
+    content["cta_button_link"] = "https://example.com/demo"
+    assert sp.validate_content("landing_video", content)["cta_phone"] == "021 78358"
+    for field, bad in (
+        ("cta_phone", "021; rm -rf"),
+        ("cta_button_link", "javascript:alert(1)"),
+        ("panel_position", "top"),
+    ):
+        broken = dict(content, **{field: bad})
+        with pytest.raises(ValidationError):
+            sp.validate_content("landing_video", broken)
+
+
+def test_auth_aside_defaults_and_limits() -> None:
+    content = sp.default_content("auth_aside")
+    assert 1 <= len(content["messages"]) <= 8
+    assert content["type_speed_ms"] == 55
+    assert content["hold_seconds"] == 4
+    for field, bad in (("type_speed_ms", 5), ("hold_seconds", 0), ("messages", [])):
+        with pytest.raises(ValidationError):
+            sp.validate_content("auth_aside", dict(content, **{field: bad}))
+    with pytest.raises(ValidationError):
+        sp.validate_content("auth_aside", dict(content, messages=[{"text": "x"}] * 9))
+    with pytest.raises(ValidationError):
+        sp.validate_content("auth_aside", dict(content, messages=[{"text": ""}]))
+
+
+def test_auth_aside_call_to_action_pairing_and_links() -> None:
+    base = sp.default_content("auth_aside")
+    ok = {"text": "سلام", "cta_text": "شروع", "cta_link": "https://example.com/demo"}
+    assert sp.validate_content("auth_aside", dict(base, messages=[ok]))["messages"][0] == ok
+    for bad in (
+        {"text": "سلام", "cta_text": "شروع", "cta_link": ""},
+        {"text": "سلام", "cta_text": "", "cta_link": "/contact"},
+        {"text": "سلام", "cta_text": "شروع", "cta_link": "javascript:alert(1)"},
+    ):
+        with pytest.raises(ValidationError):
+            sp.validate_content("auth_aside", dict(base, messages=[bad]))

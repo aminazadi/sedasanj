@@ -15,7 +15,7 @@ export default function About() {
         <h1 className="site-hero-title page-title"><RichTitle text={page.hero_title}/></h1>
         <p>{page.hero_text}</p>
         </div>
-        <HeroArt/>
+        <HeroArt page="about"/>
       </div></section>
 
       <section className="site-section"><div className="site-container about-story">
@@ -31,7 +31,7 @@ export default function About() {
       <section className="site-cta"><div className="site-container">
         <h2><RichTitle text={page.outcome_title}/></h2>
         {page.outcome_text && <p>{page.outcome_text}</p>}
-        {page.outcome_button && (page.outcome_link ? <SafeLink className="site-button" href={page.outcome_link}>{page.outcome_button}</SafeLink> : <Link className="site-button" to="/contact">{page.outcome_button}</Link>)}
+        {page.outcome_button && (page.outcome_link ? <SafeLink className="site-button" href={page.outcome_link}>{page.outcome_button}<Icon name="arrow" size={18}/></SafeLink> : <Link className="site-button" to="/contact">{page.outcome_button}<Icon name="arrow" size={18}/></Link>)}
       </div></section>
     </main>
   </PublicPageFrame>;
