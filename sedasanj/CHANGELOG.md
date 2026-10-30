@@ -2,6 +2,17 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Standardized vertical spacing between marketing landing page sections to 72px (48px on mobile) and made the awareness illustration cards tilted and scattered, including mid-canvas positions, with the magnifier following them.
+- Swapped the order of the pricing and security sections on the marketing landing page so security now comes before pricing.
+- Added a slow periodic gloss sweep, a smooth hover scale with a refined glowing border, and a lighter hero backdrop to the solid buttons and hero on the marketing landing page.
+- Replaced the homepage hero backdrop with a call-center illustration showing operators on calls (`hero-call-center.webp`), blended into the page canvas with multiply so its white background matches.
+
+- Added an animated hand-drawn wavy underline (draw, hold, erase on a 6.5s interval) under the red hero headline.
+
+- Added a compact dark-green homepage "operator awareness" section: a yellow-highlighted headline, a sourced statistic in the subtitle (Pierce, Snow and McAfee, Management Science 2015: about 7% higher revenue after employee monitoring across 392 restaurants; the source line names the restaurant setting) and an dotted background that fades out behind the text, and an animated illustration with eight right-aligned call cards that change one at a time (position and tick/cross/warning status) while a black magnifier (1.9x zoom) inspects them and the rings rotate; animation is disabled under prefers-reduced-motion.
+
+- Changed the homepage hero headline to the hidden-pain wording «مشتری‌هایتان در مکالمات حرف می‌زنند؛ شما می‌شنوید؟» with balanced line breaks and the second sentence in red.
+
 - Fixed assistant export downloads hanging on "در حال دریافت": object-store streaming used a body API that failed mid-response; it now streams with `iter_chunks`. The server expiry notice is no longer appended when the reply already states the expiry.
 
 - Changed assistant tools to run through a signed internal webhook (`POST /v1/internal/tools/{name}`, HMAC with timestamp, nonce and per-call idempotency, in-process fallback) and removed manual tool selection from the assistant UI so the assistant always chooses tools by itself.

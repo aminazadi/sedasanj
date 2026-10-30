@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
-import heroBackdrop from "../assets/manager-office-line-art.webp";
+import heroBackdrop from "../assets/hero-call-center.webp";
 import integrationBanner from "../assets/telephony-integration-banner-desktop.webp";
 import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.webp";
+import awarenessArt from "../assets/operator-awareness.svg";
 import planDemoImage from "../assets/plan-demo.webp";
 import planBronzeImage from "../assets/plan-bronze.webp";
 import planSilverImage from "../assets/plan-silver.webp";
@@ -133,9 +134,17 @@ export default function Landing() {
     </div></header>
     <main id="top">
       <section className="site-hero" style={{ "--site-hero-art": `url(${heroBackdrop})` } as CSSProperties}><div className="site-container site-split">
-        <div><h1>بدون صداسنج،<br/>هیچ مرکز تماسی موثر نیست</h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}>تست رایگان</button><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
+        <div><h1 className="site-hero-title"><span>مشتری‌هایتان در مکالمات حرف می‌زنند؛</span><span className="site-hero-title-accent">شما می‌شنوید؟<svg className="site-hero-wave" viewBox="0 0 300 16" preserveAspectRatio="none" aria-hidden="true" focusable="false"><defs><linearGradient id="site-wave-grad" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stopColor="#c62828" stopOpacity=".25"/><stop offset=".18" stopColor="#c62828"/><stop offset=".82" stopColor="#e2483f"/><stop offset="1" stopColor="#e2483f" stopOpacity=".25"/></linearGradient></defs><path className="site-wave-main" pathLength="1" d="M298 9C264 2 236 15 202 8S140 2 106 8 48 15 2 5"/></svg></span></h1><p>هر روز، فرصت‌های فروش و نشانه‌های نارضایتی در مکالمات پنهان می‌مانند. صداسنج آن‌ها را به اقدام روشن برای بهبود تجربه مشتری و عملکرد تیم تبدیل می‌کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}>تست رایگان</button><a className="site-button site-button-outline" href="#features">مشاهده امکانات</a></div></div>
       </div></section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
+      <section className="site-awareness" id="awareness"><div className="site-container site-awareness-grid">
+        <div>
+          <h2>وقتی بدانند شنیده می‌شوند، <span className="site-awareness-hl">بهتر کار می‌کنند</span></h2>
+          <p>در پژوهشی، وقتی عملکرد کارکنان پایش شد، فروش حدود <mark>۷ درصد</mark> بالاتر رفت.</p>
+          <small>Management Science، ۲۰۱۵؛ بررسی ۳۹۲ رستوران · <a href="https://econpapers.repec.org/RePEc:inm:ormnsc:v:61:y:2015:i:10:p:2299-2319" target="_blank" rel="noopener noreferrer">منبع پژوهش</a></small>
+        </div>
+        <img src={awarenessArt} alt="هدست در مرکز موج‌های صدا و نتیجه‌ی بررسی مکالمات" loading="lazy" width="794" height="749"/>
+      </div></section>
       <section className="site-section" id="workflow">
         <div className="site-container">
           <h2>از مکالمه تا اقدام همه زیر ذره‌بین</h2>
@@ -157,6 +166,7 @@ export default function Landing() {
         </div>
       </section>
       <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div></section>
+      <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
         {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}>تلاش دوباره</button></div>}
@@ -164,7 +174,6 @@ export default function Landing() {
         <div className="site-plans">{plans.map((plan) => { const demo = plan.code === "demo"; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; return <article className={`site-plan${plan.code === "silver" ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={demo ? null : price} formatted={demo ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!demo && price != null && <span>تومان / سال</span>}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.intro_minutes)} دقیقه رایگان در ماه</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul><Link className={`site-button${plan.code === "silver" ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}</Link></article>; })}</div>
         <p className="site-pricing-note">نصب اولیه رایگان است. برای استقرار اختصاصی <Link to="/contact">با ما تماس بگیرید.</Link></p>
       </div></section>
-      <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <QuickDemoEntry />
     </main>
     <footer className="site-footer">
