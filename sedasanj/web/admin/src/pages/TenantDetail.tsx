@@ -224,7 +224,20 @@ export default function TenantDetailPage() {
           {fmt.int(tenant.max_operators)} مجاز
         </p>
       </div>
-      {commerce ? <div className="grid gap-4 md:grid-cols-2"><section className="card"><h2 className="mb-3 font-bold">اشتراک و مصرف</h2><p className="text-sm">پیام‌های موفق دستیار: {fmt.int(commerce.assistant_messages_total)}</p><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap text-xs" dir="ltr">{JSON.stringify(commerce.subscriptions, null, 2)}</pre></section><section className="card"><h2 className="mb-3 font-bold">اعتبارها و رزروها</h2><pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs" dir="ltr">{JSON.stringify({grants: commerce.credit_grants, reservations: commerce.reservations}, null, 2)}</pre></section><section className="card md:col-span-2"><h2 className="mb-3 font-bold">سفارش‌های سازمان</h2><pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs" dir="ltr">{JSON.stringify(commerce.orders, null, 2)}</pre></section></div> : null}
+      {commerce ? <div className="grid gap-4 md:grid-cols-2">
+        <section className="card md:col-span-2 overflow-x-auto"><h2 className="mb-3 font-bold">اشتراک و مصرف</h2><p className="mb-2 text-sm">پیام‌های موفق دستیار: {fmt.int(commerce.assistant_messages_total)}</p>
+          {commerce.subscriptions.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>وضعیت</th><th>دوره</th><th>شروع</th><th>پایان</th><th>ظرفیت</th><th>نرخ دقیقه</th><th>پیام دستیار</th></tr></thead><tbody>{commerce.subscriptions.map((row) => <tr key={String(row.id)}><td>{String(row.status)}{row.cancel_at_period_end ? <small className="block text-amber-600">لغو در پایان دوره</small> : null}</td><td>{String(row.billing_period)}</td><td>{fmt.date(String(row.period_start))}</td><td>{fmt.date(String(row.period_end))}</td><td>{fmt.int(Number(row.base_operators) + Number(row.extra_operators))}</td><td>{fmt.toman(Number(row.price_per_minute_toman))}</td><td>{fmt.int(Number(row.assistant_monthly_messages))}</td></tr>)}</tbody></table>}
+        </section>
+        <section className="card overflow-x-auto"><h2 className="mb-3 font-bold">اعتبارها</h2>
+          {commerce.credit_grants.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>منبع</th><th>کل</th><th>باقی‌مانده</th><th>انقضا</th></tr></thead><tbody>{commerce.credit_grants.map((row) => <tr key={String(row.id)}><td>{String(row.source)}</td><td>{fmt.minutes(Number(row.total_seconds))}</td><td>{fmt.minutes(Number(row.remaining_seconds))}</td><td>{row.expires_at ? fmt.date(String(row.expires_at)) : "—"}</td></tr>)}</tbody></table>}
+        </section>
+        <section className="card overflow-x-auto"><h2 className="mb-3 font-bold">رزروهای باز</h2>
+          {commerce.reservations.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>وضعیت</th><th>مدت</th><th>زمان</th></tr></thead><tbody>{commerce.reservations.map((row) => <tr key={String(row.id)}><td>{String(row.status)}</td><td>{fmt.minutes(Number(row.seconds))}</td><td>{fmt.dateTime(String(row.created_at))}</td></tr>)}</tbody></table>}
+        </section>
+        <section className="card md:col-span-2 overflow-x-auto"><h2 className="mb-3 font-bold">سفارش‌های سازمان</h2>
+          {commerce.orders.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>ایجاد</th><th>پرداخت</th></tr></thead><tbody>{commerce.orders.map((row) => <tr key={String(row.id)}><td dir="ltr">{String(row.number)}</td><td>{String(row.kind)}</td><td>{String(row.status)}</td><td>{fmt.toman(Number(row.amount_toman))}</td><td>{fmt.dateTime(String(row.created_at))}</td><td>{row.paid_at ? fmt.dateTime(String(row.paid_at)) : "—"}</td></tr>)}</tbody></table>}
+        </section>
+      </div> : null}
 
       <div className="card">
         <h2 className="mb-2 font-bold">تراکنش‌های اعتبار</h2>

@@ -216,27 +216,30 @@ export interface Page<T> {
 }
 
 export interface PlanVersion {
-  id: string;
+  /** Version id; null for a plan that has no version yet. */
+  id: string | null;
   plan_id: string;
   code: string;
   name: string;
   active: boolean;
   public: boolean;
+  is_trial: boolean;
+  sellable: boolean;
   sort_order: number;
-  version: number;
-  status: "draft" | "published" | "retired";
-  effective_at: string | null;
-  annual_price_toman: number | null;
-  base_operators: number;
-  intro_minutes: number;
-  overage_price_per_minute_toman: number;
-  assistant_tier: string;
-  assistant_monthly_messages: number;
-  assistant_source_limit: number;
-  assistant_model: string | null;
-  allows_extra_operators: boolean;
-  extra_operator_annual_toman: number | null;
-  trial_days: number | null;
+  version?: number;
+  status?: "draft" | "published" | "retired";
+  effective_at?: string | null;
+  annual_price_toman?: number | null;
+  base_operators?: number;
+  intro_minutes?: number;
+  overage_price_per_minute_toman?: number;
+  assistant_tier?: string;
+  assistant_monthly_messages?: number;
+  assistant_source_limit?: number;
+  assistant_model?: string | null;
+  allows_extra_operators?: boolean;
+  extra_operator_annual_toman?: number | null;
+  trial_days?: number | null;
   subscription_count: number;
 }
 
@@ -255,6 +258,7 @@ export interface SubscriptionAdmin {
   base_operators: number;
   extra_operators: number;
   assistant_monthly_messages: number;
+  next_plan_version_id?: string | null;
 }
 
 export type ModuleSeverity = "normal" | "recommended" | "critical" | "security";
