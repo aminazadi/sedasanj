@@ -352,8 +352,16 @@ async def retention_cron(ctx: dict[str, Any]) -> str:
 
 async def reconciler_cron(ctx: dict[str, Any]) -> str:
     requeued = await reconcile_stuck_calls()
-    expired_subscriptions, expired_grants = await expire_commerce_state()
-    renewal_orders = await prepare_renewal_orders()
+    try:
+        expired_subscriptions, expired_grants = await expire_commerce_state()
+    except Exception:  # noqa: BLE001 - commerce expiry must not stall other reconciliation
+        logger.exception("commerce expiry sweep failed")
+        expired_subscriptions, expired_grants = 0, 0
+    try:
+        renewal_orders = await prepare_renewal_orders()
+    except Exception:  # noqa: BLE001 - renewal preparation must not stall other reconciliation
+        logger.exception("renewal preparation sweep failed")
+        renewal_orders = 0
     try:
         payment_counts = await reconcile_pending()
     except Exception:  # noqa: BLE001 - the payment sweep must not stall other reconciliation

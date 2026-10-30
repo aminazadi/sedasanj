@@ -63,54 +63,74 @@ async def expire_commerce_state() -> tuple[int, int]:
     expired_subscriptions = 0
     expired_grants = 0
     for tenant_id in await operational_tenant_ids():
-        async with session_scope(tenant_id) as session:
-            subscriptions = (
-            await session.execute(
-                select(Subscription)
-                .where(
-                    Subscription.status.in_(("active", "trialing")),
-                    Subscription.period_end <= now,
-                )
-                .with_for_update()
+        try:
+            subscriptions, grants = await _expire_tenant_state(tenant_id, now)
+        except Exception:  # noqa: BLE001 - one tenant must not stop the others
+            logger.exception(
+                "commerce expiry failed", extra={"extra_fields": {"tenant_id": str(tenant_id)}}
             )
-            ).scalars().all()
-            for subscription in subscriptions:
-                subscription.status = (
-                    "canceled" if subscription.cancel_at_period_end else "expired"
-                )
-                subscription.updated_at = now
-                expired_subscriptions += 1
+            continue
+        expired_subscriptions += subscriptions
+        expired_grants += grants
+    return expired_subscriptions, expired_grants
 
-            grants = (
-            await session.execute(
-                select(CreditGrant)
-                .where(
-                    CreditGrant.expires_at.is_not(None),
-                    CreditGrant.expires_at <= now,
-                    CreditGrant.remaining_seconds > 0,
-                )
-                .with_for_update()
-            )
-            ).scalars().all()
-            for grant in grants:
-                amount = grant.remaining_seconds
-                cache = await session.get(
-                    TenantBalanceCache, grant.tenant_id, with_for_update=True
-                )
-                if cache is not None:
-                    cache.seconds = max(0, int(cache.seconds or 0) - amount)
-                grant.remaining_seconds = 0
-                session.add(
-                    LedgerEntry(
-                        tenant_id=grant.tenant_id,
-                        call_id=None,
-                        kind="expiration",
-                        seconds_delta=-amount,
-                        toman_delta=0,
-                        idempotency_key=f"expire:{grant.id}",
+
+async def _expire_tenant_state(tenant_id: UUID, now: datetime) -> tuple[int, int]:
+    expired_subscriptions = 0
+    expired_grants = 0
+    async with session_scope(tenant_id) as session:
+        subscriptions = (
+            (
+                await session.execute(
+                    select(Subscription)
+                    .where(
+                        Subscription.tenant_id == tenant_id,
+                        Subscription.status.in_(("active", "trialing")),
+                        Subscription.period_end <= now,
                     )
+                    .with_for_update()
                 )
-                expired_grants += 1
+            )
+            .scalars()
+            .all()
+        )
+        for subscription in subscriptions:
+            subscription.status = "canceled" if subscription.cancel_at_period_end else "expired"
+            subscription.updated_at = now
+            expired_subscriptions += 1
+
+        grants = (
+            (
+                await session.execute(
+                    select(CreditGrant)
+                    .where(
+                        CreditGrant.expires_at.is_not(None),
+                        CreditGrant.expires_at <= now,
+                        CreditGrant.remaining_seconds > 0,
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for grant in grants:
+            amount = grant.remaining_seconds
+            cache = await session.get(TenantBalanceCache, grant.tenant_id, with_for_update=True)
+            if cache is not None:
+                cache.seconds = max(0, int(cache.seconds or 0) - amount)
+            grant.remaining_seconds = 0
+            session.add(
+                LedgerEntry(
+                    tenant_id=grant.tenant_id,
+                    call_id=None,
+                    kind="expiration",
+                    seconds_delta=-amount,
+                    toman_delta=0,
+                    idempotency_key=f"expire:{grant.id}",
+                )
+            )
+            expired_grants += 1
     return expired_subscriptions, expired_grants
 
 
@@ -118,12 +138,25 @@ async def prepare_renewal_orders() -> int:
     now = datetime.now(UTC)
     created = 0
     for tenant_id in await operational_tenant_ids():
-        async with session_scope(tenant_id) as session:
-            settings = await get_commerce_settings(session)
-            until = now + timedelta(days=settings.renewal_lead_days)
-            subscriptions = (
+        try:
+            created += await _prepare_tenant_renewals(tenant_id, now)
+        except Exception:  # noqa: BLE001 - one tenant must not stop the others
+            logger.exception(
+                "renewal preparation failed", extra={"extra_fields": {"tenant_id": str(tenant_id)}}
+            )
+    return created
+
+
+async def _prepare_tenant_renewals(tenant_id: UUID, now: datetime) -> int:
+    created = 0
+    async with session_scope(tenant_id) as session:
+        settings = await get_commerce_settings(session)
+        until = now + timedelta(days=settings.renewal_lead_days)
+        subscriptions = (
+            (
                 await session.execute(
                     select(Subscription).where(
+                        Subscription.tenant_id == tenant_id,
                         Subscription.status == "active",
                         Subscription.billing_period.in_(("monthly", "annual")),
                         Subscription.cancel_at_period_end.is_(False),
@@ -131,101 +164,102 @@ async def prepare_renewal_orders() -> int:
                         Subscription.period_end <= until,
                     )
                 )
-            ).scalars().all()
-            for subscription in subscriptions:
-                idem = f"renewal:{subscription.id}:{subscription.period_end.isoformat()}"
-                exists = (
-                    await session.execute(
-                        select(Order.id).where(
-                            Order.tenant_id == subscription.tenant_id,
-                            Order.idempotency_key == idem,
-                        )
+            )
+            .scalars()
+            .all()
+        )
+        for subscription in subscriptions:
+            idem = f"renewal:{subscription.id}:{subscription.period_end.isoformat()}"
+            exists = (
+                await session.execute(
+                    select(Order.id).where(
+                        Order.tenant_id == subscription.tenant_id,
+                        Order.idempotency_key == idem,
                     )
-                ).scalar_one_or_none()
-                if exists is not None:
-                    continue
-                version_id = subscription.next_plan_version_id or subscription.plan_version_id
-                version = await session.get(PlanVersion, version_id)
-                if version is None:
-                    continue
-                plan = await session.get(Plan, version.plan_id)
-                if plan is None or plan.code == "demo":
-                    continue
-                extra = subscription.extra_operators
-                scheduled = (
-                    await session.execute(
-                        select(SubscriptionChange)
-                        .where(
-                            SubscriptionChange.subscription_id == subscription.id,
-                            SubscriptionChange.status == "scheduled",
-                        )
-                        .order_by(SubscriptionChange.created_at.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                if scheduled is not None and scheduled.requested_extra_operators is not None:
-                    extra = scheduled.requested_extra_operators
-                amount, extra_unit = commerce.subscription_amount(
-                    version, "annual", extra
                 )
-                admin = (
-                    await session.execute(
-                        select(User)
-                        .where(
-                            User.tenant_id == subscription.tenant_id,
-                            User.role == "org_admin",
-                        )
-                        .order_by(User.created_at)
-                        .limit(1)
+            ).scalar_one_or_none()
+            if exists is not None:
+                continue
+            version_id = subscription.next_plan_version_id or subscription.plan_version_id
+            version = await session.get(PlanVersion, version_id)
+            if version is None:
+                continue
+            plan = await session.get(Plan, version.plan_id)
+            if plan is None or plan.code == "demo":
+                continue
+            extra = subscription.extra_operators
+            scheduled = (
+                await session.execute(
+                    select(SubscriptionChange)
+                    .where(
+                        SubscriptionChange.subscription_id == subscription.id,
+                        SubscriptionChange.status == "scheduled",
                     )
-                ).scalar_one_or_none()
-                if admin is None:
-                    continue
-                order = Order(
+                    .order_by(SubscriptionChange.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if scheduled is not None and scheduled.requested_extra_operators is not None:
+                extra = scheduled.requested_extra_operators
+            amount, extra_unit = commerce.subscription_amount(version, "annual", extra)
+            admin = (
+                await session.execute(
+                    select(User)
+                    .where(
+                        User.tenant_id == subscription.tenant_id,
+                        User.role == "org_admin",
+                    )
+                    .order_by(User.created_at)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if admin is None:
+                continue
+            order = Order(
+                tenant_id=subscription.tenant_id,
+                number=f"RN-{now:%Y%m%d}-{secrets.token_hex(4).upper()}",
+                kind="renewal",
+                status="draft",
+                amount_toman=amount,
+                callback_token=secrets.token_urlsafe(32),
+                idempotency_key=idem,
+                customer_name=admin.display_name or admin.email,
+                customer_email=admin.email,
+                customer_mobile=admin.mobile_number or "",
+                invoice_profile={},
+            )
+            session.add(order)
+            await session.flush()
+            base_amount = amount - extra * extra_unit
+            session.add(
+                OrderItem(
+                    order_id=order.id,
                     tenant_id=subscription.tenant_id,
-                    number=f"RN-{now:%Y%m%d}-{secrets.token_hex(4).upper()}",
-                    kind="renewal",
-                    status="draft",
-                    amount_toman=amount,
-                    callback_token=secrets.token_urlsafe(32),
-                    idempotency_key=idem,
-                    customer_name=admin.display_name or admin.email,
-                    customer_email=admin.email,
-                    customer_mobile=admin.mobile_number or "",
-                    invoice_profile={},
+                    kind="subscription",
+                    description="تمدید اشتراک",
+                    quantity=1,
+                    unit_price_toman=base_amount,
+                    total_toman=base_amount,
+                    metadata_json={
+                        "plan_version_id": str(version.id),
+                        "billing_period": "annual",
+                    },
                 )
-                session.add(order)
-                await session.flush()
-                base_amount = amount - extra * extra_unit
+            )
+            if extra:
                 session.add(
                     OrderItem(
                         order_id=order.id,
                         tenant_id=subscription.tenant_id,
-                        kind="subscription",
-                        description="تمدید اشتراک",
-                        quantity=1,
-                        unit_price_toman=base_amount,
-                        total_toman=base_amount,
-                        metadata_json={
-                            "plan_version_id": str(version.id),
-                            "billing_period": "annual",
-                        },
+                        kind="extra_operator",
+                        description="اپراتور اضافه تمدید",
+                        quantity=extra,
+                        unit_price_toman=extra_unit,
+                        total_toman=extra * extra_unit,
+                        metadata_json={},
                     )
                 )
-                if extra:
-                    session.add(
-                        OrderItem(
-                            order_id=order.id,
-                            tenant_id=subscription.tenant_id,
-                            kind="extra_operator",
-                            description="اپراتور اضافه تمدید",
-                            quantity=extra,
-                            unit_price_toman=extra_unit,
-                            total_toman=extra * extra_unit,
-                            metadata_json={},
-                        )
-                    )
-                created += 1
+            created += 1
     return created
 
 
@@ -283,48 +317,48 @@ async def reconcile_stuck_calls() -> int:
     for tenant_id in await operational_tenant_ids():
         async with session_scope(tenant_id) as session:
             rows = (
-            (
-                await session.execute(
-                    select(Call).where(
-                        (
-                            Call.status.in_(tuple(QUEUED_STATES))
-                            & (Call.updated_at < queued_cutoff)
-                        )
-                        | (
-                            Call.status.in_(tuple(RUNNING_STATES))
-                            & (Call.updated_at < running_cutoff)
+                (
+                    await session.execute(
+                        select(Call).where(
+                            (
+                                Call.status.in_(tuple(QUEUED_STATES))
+                                & (Call.updated_at < queued_cutoff)
+                            )
+                            | (
+                                Call.status.in_(tuple(RUNNING_STATES))
+                                & (Call.updated_at < running_cutoff)
+                            )
                         )
                     )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
             call_ids = [call.id for call in rows]
             run_counts: dict[UUID, int] = {}
             if call_ids:
                 count_rows = (
-                await session.execute(
-                    select(AnalysisRun.call_id, func.count(AnalysisRun.id))
-                    .where(AnalysisRun.call_id.in_(call_ids))
-                    .group_by(AnalysisRun.call_id)
-                )
+                    await session.execute(
+                        select(AnalysisRun.call_id, func.count(AnalysisRun.id))
+                        .where(AnalysisRun.call_id.in_(call_ids))
+                        .group_by(AnalysisRun.call_id)
+                    )
                 ).all()
                 for call_id, count in count_rows:
                     run_counts[call_id] = count
             latest_runs: dict[UUID, AnalysisRun] = {}
             if call_ids:
                 analysis_runs = (
-                (
-                    await session.execute(
-                        select(AnalysisRun)
-                        .where(AnalysisRun.call_id.in_(call_ids))
-                        .order_by(AnalysisRun.call_id, AnalysisRun.created_at.desc())
+                    (
+                        await session.execute(
+                            select(AnalysisRun)
+                            .where(AnalysisRun.call_id.in_(call_ids))
+                            .order_by(AnalysisRun.call_id, AnalysisRun.created_at.desc())
+                        )
                     )
+                    .scalars()
+                    .all()
                 )
-                .scalars()
-                .all()
-            )
                 for run in analysis_runs:
                     latest_runs.setdefault(run.call_id, run)
             for call in rows:
@@ -344,17 +378,17 @@ async def reconcile_stuck_calls() -> int:
                     )
                 )
             overdue = (
-            (
-                await session.execute(
-                    select(Job).where(
-                        Job.status == "failed_retryable",
-                        Job.run_after < now,
+                (
+                    await session.execute(
+                        select(Job).where(
+                            Job.status == "failed_retryable",
+                            Job.run_after < now,
+                        )
                     )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
             known = {call_id for _, call_id, _, _, _, _, _ in stuck}
             stuck.extend(
                 (

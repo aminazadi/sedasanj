@@ -47,7 +47,8 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
         .limit(1)
     )
     if lock:
-        stmt = stmt.with_for_update()
+        # Lock the tenant's subscription only: plans and plan versions are shared rows.
+        stmt = stmt.with_for_update(of=Subscription)
     result = (await session.execute(stmt)).one_or_none()
     if result is None:
         price = 7_000
@@ -55,8 +56,7 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
     row, plan_code, plan_price = result
     status = row.status
     if status in {"active", "trialing"} and row.period_end <= datetime.now(UTC):
-        row.status = "expired"
-        row.updated_at = datetime.now(UTC)
+        # Reported only: the stored status is flipped by expire_commerce_state, never on a read.
         status = "expired"
     price = 7_000 if plan_code == "demo" else int(plan_price)
     return Entitlements(

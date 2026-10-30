@@ -980,13 +980,11 @@ async def admin_subscriptions(staff: StaffDep, session: StaffSession, q: str | N
             if subscription_status:
                 stmt = stmt.where(Subscription.status == subscription_status)
             rows = (await tenant_session.execute(stmt)).all()
-            for sub, plan, version in rows:
-                tenant_name = tenant_names.get(tenant_id, "")
-                if normalized_query and normalized_query not in (
-                    f"{tenant_name} {plan.name}".lower()
-                ):
-                    continue
-        items.append({"id": str(sub.id), "tenant_id": str(sub.tenant_id), "tenant_name": tenant_name, "plan_code": plan.code, "plan_name": plan.name, "plan_version": version.version, "status": sub.status, "billing_period": "legacy_monthly" if sub.billing_period == "monthly" else sub.billing_period, "period_start": sub.period_start, "period_end": sub.period_end, "cancel_at_period_end": sub.cancel_at_period_end, "base_operators": sub.base_operators, "extra_operators": sub.extra_operators, "assistant_monthly_messages": sub.assistant_monthly_messages, "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None, "created_at": sub.created_at})
+        tenant_name = tenant_names.get(tenant_id, "")
+        for sub, plan, version in rows:
+            if normalized_query and normalized_query not in f"{tenant_name} {plan.name}".lower():
+                continue
+            items.append({"id": str(sub.id), "tenant_id": str(sub.tenant_id), "tenant_name": tenant_name, "plan_code": plan.code, "plan_name": plan.name, "plan_version": version.version, "status": sub.status, "billing_period": "legacy_monthly" if sub.billing_period == "monthly" else sub.billing_period, "period_start": sub.period_start, "period_end": sub.period_end, "cancel_at_period_end": sub.cancel_at_period_end, "base_operators": sub.base_operators, "extra_operators": sub.extra_operators, "assistant_monthly_messages": sub.assistant_monthly_messages, "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None, "created_at": sub.created_at})
     items.sort(key=lambda item: item["created_at"], reverse=True)
     total = len(items)
     for item in items:

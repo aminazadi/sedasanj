@@ -1426,7 +1426,7 @@ class LedgerEntry(Base):
     call_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), ForeignKey("calls.id"))
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     seconds_delta: Mapped[int] = mapped_column(Integer, nullable=False)
-    toman_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    toman_delta: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reservation_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -1455,7 +1455,7 @@ class CreditReservation(Base):
         PgUUID(as_uuid=True), ForeignKey("calls.id"), nullable=False
     )
     seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
     price_per_minute_toman: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     free_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1475,7 +1475,7 @@ class TenantBalanceCache(Base):
         PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
     )
     seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    toman: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    toman: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
@@ -1515,7 +1515,9 @@ class PlanVersion(Base):
         PgUUID(as_uuid=True), ForeignKey("plans.id"), nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    monthly_price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    monthly_price_toman: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     annual_price_toman: Mapped[int | None] = mapped_column(Integer)
     base_operators: Mapped[int] = mapped_column(Integer, nullable=False)
     intro_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -1545,7 +1547,7 @@ class PlanVersion(Base):
             name="plan_versions_annual_price_nonnegative_check",
         ),
         CheckConstraint(
-            "base_operators >= 0 AND intro_minutes >= 0",
+            "monthly_price_toman >= 0 AND base_operators >= 0 AND intro_minutes >= 0",
             name="plan_versions_nonnegative_check",
         ),
         CheckConstraint(
@@ -1614,7 +1616,7 @@ class SubscriptionExtra(Base):
     )
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_price_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
     effective_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     ends_at: Mapped[datetime | None] = mapped_column(TSTZ)
 
@@ -1661,7 +1663,7 @@ class Order(Base):
     number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'draft'"))
-    amount_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
     callback_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     customer_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1678,6 +1680,7 @@ class Order(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "idempotency_key", name="orders_tenant_idem_key"),
+        CheckConstraint("amount_toman >= 0", name="orders_amount_nonnegative_check"),
         CheckConstraint(
             "status IN ('draft','pending_payment','paid','canceled',"
             "'partially_refunded','refunded')",
@@ -1701,8 +1704,8 @@ class OrderItem(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
-    total_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_price_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'")
     )
@@ -1764,9 +1767,13 @@ class Invoice(Base):
         PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
     number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
-    amount_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
     profile_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     issued_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("amount_toman >= 0", name="invoices_amount_nonnegative_check"),
+    )
 
 
 class Refund(Base):
@@ -1784,7 +1791,7 @@ class Refund(Base):
     tenant_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
-    amount_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     method: Mapped[str] = mapped_column(String(24), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
