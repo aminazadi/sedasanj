@@ -89,9 +89,14 @@ class S3Storage(Storage):
     async def iter_chunks(self, key: str, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]:
         async with self._client() as client:
             response = await client.get_object(Bucket=self.bucket, Key=key)
-            async with response["Body"] as body:
-                while chunk := await body.read(chunk_size):
+            body = response["Body"]
+            try:
+                # iter_chunks works across aiobotocore versions; `async with` yields a raw
+                # aiohttp response whose read() takes no size and broke the download mid-stream.
+                async for chunk in body.iter_chunks(chunk_size):
                     yield chunk
+            finally:
+                body.close()
 
     async def delete(self, key: str) -> None:
         async with self._client() as client:

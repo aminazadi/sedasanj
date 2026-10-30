@@ -2,6 +2,8 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Fixed assistant export downloads hanging on "در حال دریافت": object-store streaming used a body API that failed mid-response; it now streams with `iter_chunks`. The server expiry notice is no longer appended when the reply already states the expiry.
+
 - Changed assistant tools to run through a signed internal webhook (`POST /v1/internal/tools/{name}`, HMAC with timestamp, nonce and per-call idempotency, in-process fallback) and removed manual tool selection from the assistant UI so the assistant always chooses tools by itself.
 
 - Fixed the assistant answering file requests with a CSV pasted in chat: file export is now always enabled (no longer dependent on the saved tool list), accepts a newest-first `limit` such as "last 10 calls", and a file request that skips `export_data` is re-planned once before answering.

@@ -51,7 +51,8 @@ def export_notices(
 ) -> str:
     for _call, result in results or []:
         notice = result.get("notice")
-        if result.get("file") and isinstance(notice, str) and notice not in answer:
+        states_expiry = "معتبر" in answer and "حذف" in answer
+        if result.get("file") and isinstance(notice, str) and notice not in answer and not states_expiry:
             answer = f"{answer}\n\n{notice}".strip()
     return answer
 

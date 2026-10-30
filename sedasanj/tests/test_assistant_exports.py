@@ -666,3 +666,34 @@ async def test_export_storage_failure_is_actionable_and_redacted(monkeypatch, pr
     assert error.value.code == "assistant_export_unavailable"
     assert "مخزن" in error.value.message
     assert "private storage detail" not in error.value.message
+
+
+async def test_s3_storage_streams_with_iter_chunks(monkeypatch):
+    """aiobotocore's `async with body` yields a raw response whose read() takes no size."""
+    from contextlib import asynccontextmanager
+
+    from app.config import get_settings
+    from app.services.storage import S3Storage
+
+    closed = []
+
+    class Body:
+        async def iter_chunks(self, size):
+            for chunk in (b"ab", b"cd"):
+                yield chunk
+
+        def close(self):
+            closed.append(True)
+
+    class Client:
+        async def get_object(self, **kwargs):
+            return {"Body": Body()}
+
+    @asynccontextmanager
+    async def client():
+        yield Client()
+
+    storage = S3Storage(get_settings())
+    monkeypatch.setattr(storage, "_client", lambda **kwargs: client())
+    assert b"".join([chunk async for chunk in storage.iter_chunks("k")]) == b"abcd"
+    assert closed == [True]
