@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import routable_tenant_ids, session_scope
@@ -50,6 +52,7 @@ from app.services import (
     payments,
     ratelimit,
     smsir,
+    subscription_state,
 )
 from app.services.commerce_settings import (
     get_commerce_settings,
@@ -111,11 +114,11 @@ class SignupComplete(BaseModel):
     email: EmailStr
     mobile: str
     password: str = Field(min_length=8, max_length=128)
-    plan_code: str = Field(pattern=r"^(demo|bronze|silver|gold)$")
+    plan_code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
 
 
 class CheckoutCreate(BaseModel):
-    plan_code: str = Field(pattern=r"^(bronze|silver|gold)$")
+    plan_code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
     billing_period: Literal["annual"]
     extra_operators: int = Field(default=0, ge=0, le=500)
     customer_name: str = Field(min_length=2, max_length=120)
@@ -131,7 +134,7 @@ class CreditOrderCreate(BaseModel):
 
 
 class SubscriptionChangeCreate(BaseModel):
-    plan_code: str = Field(pattern=r"^(bronze|silver|gold)$")
+    plan_code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
     extra_operators: int = Field(default=0, ge=0, le=500)
 
 
@@ -153,7 +156,12 @@ class LeadUpdate(BaseModel):
 
 
 class InstallationUpdate(BaseModel):
-    status: Literal["requested", "paid", "reviewing", "scheduled", "in_progress", "completed", "canceled"] | None = None
+    status: (
+        Literal[
+            "requested", "paid", "reviewing", "scheduled", "in_progress", "completed", "canceled"
+        ]
+        | None
+    ) = None
     internal_notes: str | None = Field(default=None, max_length=3000)
     scheduled_at: datetime | None = None
 
@@ -227,6 +235,15 @@ class CommerceSettingsUpdate(BaseModel):
     terms_url: str | None = Field(default=None, max_length=500)
     tax_percent: int | None = Field(default=None, ge=0, le=100)
     automatic_discounts_enabled: bool | None = None
+    grace_days: int | None = Field(default=None, ge=0, le=30)
+    payment_window_days: int | None = Field(default=None, ge=1, le=60)
+    order_ttl_days: int | None = Field(default=None, ge=1, le=365)
+    renewal_price_policy: Literal["keep", "latest"] | None = None
+    max_order_toman: int | None = Field(default=None, ge=1_000_000, le=1_000_000_000_000)
+    credit_min_minutes: int | None = Field(default=None, ge=1, le=1_000_000)
+    credit_max_minutes: int | None = Field(default=None, ge=1, le=100_000_000)
+    credit_presets: str | None = Field(default=None, pattern=r"^[0-9]+(,[0-9]+){0,7}$")
+    featured_plan_code: str | None = Field(default=None, pattern=r"^[a-z0-9_]{0,32}$")
 
 
 def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
@@ -306,15 +323,30 @@ async def update_site_contact_settings(
 
 
 @router.post("/contact-leads", status_code=status.HTTP_201_CREATED)
-async def create_contact_lead(payload: ContactLeadCreate, request: Request, session: PublicSession) -> dict[str, str]:
+async def create_contact_lead(
+    payload: ContactLeadCreate, request: Request, session: PublicSession
+) -> dict[str, str]:
     if payload.website:
         return {"status": "accepted"}
     ip = client_ip(request) or "unknown"
     await ratelimit.enforce(f"contact:{ip}", 5, 3600)
-    lead = ContactLead(name=payload.name.strip(), organization=payload.organization.strip(), mobile=_mobile(payload.mobile), email=str(payload.email).lower(), message=payload.message.strip(), source=payload.source)
+    lead = ContactLead(
+        name=payload.name.strip(),
+        organization=payload.organization.strip(),
+        mobile=_mobile(payload.mobile),
+        email=str(payload.email).lower(),
+        message=payload.message.strip(),
+        source=payload.source,
+    )
     session.add(lead)
     await session.flush()
-    await audit.record(session, actor_type="public", action="contact_lead.created", payload={"lead_id": str(lead.id), "source": lead.source}, ip=ip)
+    await audit.record(
+        session,
+        actor_type="public",
+        action="contact_lead.created",
+        payload={"lead_id": str(lead.id), "source": lead.source},
+        ip=ip,
+    )
     return {"status": "accepted"}
 
 
@@ -323,25 +355,45 @@ async def _send_otp(mobile: str, code: str) -> None:
 
 
 @router.post("/signup/otp/request", status_code=status.HTTP_201_CREATED)
-async def request_signup_otp(payload: OtpRequest, request: Request, session: PublicSession) -> dict[str, Any]:
+async def request_signup_otp(
+    payload: OtpRequest, request: Request, session: PublicSession
+) -> dict[str, Any]:
     mobile = _mobile(payload.mobile)
     email = str(payload.email).strip().lower()
     ip = client_ip(request) or "unknown"
     await ratelimit.enforce(f"signup-otp-ip:{ip}", 10, 3600)
     await ratelimit.enforce(f"signup-otp-mobile:{mobile}", 5, 3600)
-    recent = (await session.execute(select(SignupOtp).where(SignupOtp.mobile == mobile).order_by(SignupOtp.created_at.desc()).limit(1))).scalar_one_or_none()
+    recent = (
+        await session.execute(
+            select(SignupOtp)
+            .where(SignupOtp.mobile == mobile)
+            .order_by(SignupOtp.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
     now = datetime.now(UTC)
     if recent and recent.created_at > now - timedelta(seconds=60):
         raise ApiError("rate_limited", "wait before requesting another code")
     code = f"{secrets.randbelow(1_000_000):06d}"
-    row = SignupOtp(mobile=mobile, email=email, code_hash=hash_password(code), expires_at=now + timedelta(minutes=2))
+    row = SignupOtp(
+        mobile=mobile,
+        email=email,
+        code_hash=hash_password(code),
+        expires_at=now + timedelta(minutes=2),
+    )
     session.add(row)
     await session.flush()
     sms_settings = await demo_settings.load(session)
     development_code = get_settings().environment != "production" and not sms_settings.smsir_api_key
     if not development_code:
         await smsir.send_verification(mobile, code, sms_settings)
-    await audit.record(session, actor_type="public", action="signup.otp_requested", payload={"otp_id": str(row.id)}, ip=ip)
+    await audit.record(
+        session,
+        actor_type="public",
+        action="signup.otp_requested",
+        payload={"otp_id": str(row.id)},
+        ip=ip,
+    )
     result: dict[str, Any] = {"otp_id": str(row.id), "expires_in": 120}
     if development_code:
         result["development_code"] = code
@@ -349,7 +401,9 @@ async def request_signup_otp(payload: OtpRequest, request: Request, session: Pub
 
 
 @router.post("/signup/otp/verify")
-async def verify_signup_otp(payload: OtpVerify, request: Request, session: PublicSession) -> dict[str, bool]:
+async def verify_signup_otp(
+    payload: OtpVerify, request: Request, session: PublicSession
+) -> dict[str, bool]:
     from app.security import verify_password
 
     row = await session.get(SignupOtp, payload.otp_id, with_for_update=True)
@@ -357,45 +411,112 @@ async def verify_signup_otp(payload: OtpVerify, request: Request, session: Publi
         raise ApiError("unauthorized", "verification code is not usable")
     row.attempts += 1
     if not verify_password(row.code_hash, payload.code):
-        await audit.record(session, actor_type="public", action="signup.otp_failed", payload={"otp_id": str(row.id), "attempt": row.attempts}, ip=client_ip(request))
+        await audit.record(
+            session,
+            actor_type="public",
+            action="signup.otp_failed",
+            payload={"otp_id": str(row.id), "attempt": row.attempts},
+            ip=client_ip(request),
+        )
         raise ApiError("unauthorized", "verification code is invalid")
     row.verified_at = datetime.now(UTC)
-    await audit.record(session, actor_type="public", action="signup.otp_verified", payload={"otp_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="public",
+        action="signup.otp_verified",
+        payload={"otp_id": str(row.id)},
+        ip=client_ip(request),
+    )
     return {"verified": True}
 
 
 @router.post("/signup/complete", status_code=status.HTTP_201_CREATED)
-async def complete_signup(payload: SignupComplete, request: Request, session: PublicSession) -> dict[str, Any]:
+async def complete_signup(
+    payload: SignupComplete, request: Request, session: PublicSession
+) -> dict[str, Any]:
     mobile = _mobile(payload.mobile)
     email = str(payload.email).strip().lower()
     otp = await session.get(SignupOtp, payload.otp_id, with_for_update=True)
-    if otp is None or otp.verified_at is None or otp.expires_at <= datetime.now(UTC) or otp.mobile != mobile or str(otp.email).lower() != email:
+    if (
+        otp is None
+        or otp.verified_at is None
+        or otp.expires_at <= datetime.now(UTC)
+        or otp.mobile != mobile
+        or str(otp.email).lower() != email
+    ):
         raise ApiError("unauthorized", "verified signup session is required")
     tenant, _ = await create_account(
-        session, mobile=mobile, email=email, organization_name=payload.organization_name,
-        manager_name=payload.manager_name, password=payload.password, plan_code=payload.plan_code,
+        session,
+        mobile=mobile,
+        email=email,
+        organization_name=payload.organization_name,
+        manager_name=payload.manager_name,
+        password=payload.password,
+        plan_code=payload.plan_code,
         ip=client_ip(request),
     )
-    return {"tenant_id": str(tenant.id), "requires_payment": payload.plan_code != "demo", "plan_code": payload.plan_code}
+    return {
+        "tenant_id": str(tenant.id),
+        "requires_payment": payload.plan_code != "demo",
+        "plan_code": payload.plan_code,
+    }
 
 
 @router.post("/checkout/quote")
-async def checkout_quote(payload: CheckoutCreate, principal: OrgAdminDep, session: TenantSession) -> dict[str, int]:
+async def checkout_quote(
+    payload: CheckoutCreate, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, int]:
     _, version = await commerce.plan_version_by_code(session, payload.plan_code)
-    total, extra_unit = commerce.subscription_amount(version, payload.billing_period, payload.extra_operators)
-    return {"base_toman": total - extra_unit * payload.extra_operators, "extra_operators_toman": extra_unit * payload.extra_operators, "total_toman": total}
+    total, extra_unit = commerce.subscription_amount(
+        version, payload.billing_period, payload.extra_operators
+    )
+    return {
+        "base_toman": total - extra_unit * payload.extra_operators,
+        "extra_operators_toman": extra_unit * payload.extra_operators,
+        "total_toman": total,
+    }
 
 
 @router.post("/orders", status_code=status.HTTP_201_CREATED)
-async def create_order(payload: CheckoutCreate, request: Request, principal: OrgAdminDep, session: TenantSession, idempotency_key: str = Header(alias="Idempotency-Key")) -> dict[str, Any]:
+async def create_order(
+    payload: CheckoutCreate,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
     if not payload.terms_accepted:
         raise ApiError("invalid_request", "terms must be accepted")
     assert principal.tenant_id is not None
     tenant = await session.get(Tenant, principal.tenant_id)
     assert tenant is not None
-    order = await commerce.create_subscription_order(session, tenant=tenant, plan_code=payload.plan_code, period=payload.billing_period, extra_operators=payload.extra_operators, customer_name=payload.customer_name, customer_email=str(payload.customer_email), customer_mobile=_mobile(payload.customer_mobile), invoice_profile=payload.invoice_profile, idempotency_key=idempotency_key)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="order.created", payload={"order_id": str(order.id), "kind": order.kind, "amount_toman": order.amount_toman}, ip=client_ip(request))
-    return {"id": str(order.id), "number": order.number, "amount_toman": order.amount_toman, "status": order.status}
+    order = await commerce.create_subscription_order(
+        session,
+        tenant=tenant,
+        plan_code=payload.plan_code,
+        period=payload.billing_period,
+        extra_operators=payload.extra_operators,
+        customer_name=payload.customer_name,
+        customer_email=str(payload.customer_email),
+        customer_mobile=_mobile(payload.customer_mobile),
+        invoice_profile=payload.invoice_profile,
+        idempotency_key=idempotency_key,
+    )
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="order.created",
+        payload={"order_id": str(order.id), "kind": order.kind, "amount_toman": order.amount_toman},
+        ip=client_ip(request),
+    )
+    return {
+        "id": str(order.id),
+        "number": order.number,
+        "amount_toman": order.amount_toman,
+        "status": order.status,
+    }
 
 
 class PayRequest(BaseModel):
@@ -439,11 +560,31 @@ async def pay_order(
     payload: PayRequest | None = None,
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    order = (await session.execute(select(Order).where(Order.id == order_id, Order.tenant_id == principal.tenant_id).with_for_update())).scalar_one_or_none()
+    order = (
+        await session.execute(
+            select(Order)
+            .where(Order.id == order_id, Order.tenant_id == principal.tenant_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if order is None:
         raise ApiError("not_found", "order not found")
-    attempt, redirect = await payments.initiate(session, order, payload.gateway if payload else None)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="payment.initiated", payload={"order_id": str(order.id), "payment_id": str(attempt.id), "gateway": attempt.gateway}, ip=client_ip(request))
+    attempt, redirect = await payments.initiate(
+        session, order, payload.gateway if payload else None
+    )
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="payment.initiated",
+        payload={
+            "order_id": str(order.id),
+            "payment_id": str(attempt.id),
+            "gateway": attempt.gateway,
+        },
+        ip=client_ip(request),
+    )
     return {
         "payment_id": str(attempt.id),
         "gateway": attempt.gateway,
@@ -457,12 +598,29 @@ async def order_payment_status(
     order_id: UUID, principal: OrgAdminDep, session: TenantSession
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    order = (await session.execute(select(Order).where(Order.id == order_id, Order.tenant_id == principal.tenant_id))).scalar_one_or_none()
+    order = (
+        await session.execute(
+            select(Order).where(Order.id == order_id, Order.tenant_id == principal.tenant_id)
+        )
+    ).scalar_one_or_none()
     if order is None:
         raise ApiError("not_found", "order not found")
     # The receipt shows the attempt that paid the order; otherwise the most recent one.
-    attempt = (await session.execute(select(PaymentAttempt).where(PaymentAttempt.order_id == order.id).order_by((PaymentAttempt.status == "verified").desc(), PaymentAttempt.created_at.desc()).limit(1))).scalar_one_or_none()
-    items = (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    attempt = (
+        await session.execute(
+            select(PaymentAttempt)
+            .where(PaymentAttempt.order_id == order.id)
+            .order_by(
+                (PaymentAttempt.status == "verified").desc(), PaymentAttempt.created_at.desc()
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    items = (
+        (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id)))
+        .scalars()
+        .all()
+    )
     credit_minutes = sum(item.quantity for item in items if item.kind == "credit")
     labels = {code: cls.label for code, cls in GATEWAYS.items()}
     return {
@@ -561,7 +719,40 @@ async def get_subscription(principal: OrgAdminDep, session: TenantSession) -> di
                 )
             ).scalar_one()
         )
+    scheduled_change: dict[str, Any] | None = None
+    if value.subscription_id:
+        open_change = (
+            await session.execute(
+                select(SubscriptionChange, Plan.code, Plan.name)
+                .join(PlanVersion, PlanVersion.id == SubscriptionChange.target_plan_version_id)
+                .join(Plan, Plan.id == PlanVersion.plan_id)
+                .where(
+                    SubscriptionChange.subscription_id == value.subscription_id,
+                    SubscriptionChange.status.in_(subscription_state.OPEN_CHANGE_STATUSES),
+                )
+                .order_by(SubscriptionChange.created_at.desc())
+                .limit(1)
+            )
+        ).one_or_none()
+        if open_change is not None:
+            change, target_code, target_name = open_change
+            scheduled_change = {
+                "id": str(change.id),
+                "kind": change.kind,
+                "status": change.status,
+                "target_plan_code": target_code,
+                "target_plan_name": target_name,
+                "extra_operators": change.requested_extra_operators,
+                "effective_at": change.effective_at,
+                "order_id": str(change.order_id) if change.order_id else None,
+            }
     return {
+        "scheduled_change": scheduled_change,
+        "grace_ends_at": (
+            subscription_state.grace_end(row, await subscription_state.grace_days(session))
+            if row is not None and value.status == "grace"
+            else None
+        ),
         "id": str(value.subscription_id) if value.subscription_id else None,
         "status": value.status,
         "plan_code": plan.code if plan else None,
@@ -590,61 +781,347 @@ async def get_subscription(principal: OrgAdminDep, session: TenantSession) -> di
 
 
 @router.post("/subscription/cancel-at-period-end")
-async def cancel_subscription(request: Request, principal: OrgAdminDep, session: TenantSession) -> dict[str, bool]:
+async def cancel_subscription(
+    request: Request, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, bool]:
     assert principal.tenant_id is not None
-    row = (await session.execute(select(Subscription).where(Subscription.tenant_id == principal.tenant_id, Subscription.status.in_(("active", "trialing"))).order_by(Subscription.created_at.desc()).limit(1).with_for_update())).scalar_one_or_none()
+    row = (
+        await session.execute(
+            select(Subscription)
+            .where(
+                Subscription.tenant_id == principal.tenant_id,
+                Subscription.status.in_(("active", "trialing")),
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if row is None:
         raise ApiError("not_found", "active subscription not found")
-    row.cancel_at_period_end = True
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="subscription.cancel_scheduled", payload={"subscription_id": str(row.id)}, ip=client_ip(request))
+    if not row.cancel_at_period_end:
+        row.cancel_at_period_end = True
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=principal.tenant_id,
+            action="subscription.cancel_scheduled",
+            payload={"subscription_id": str(row.id)},
+            ip=client_ip(request),
+        )
     return {"cancel_at_period_end": True}
 
 
 @router.post("/subscription/resume")
-async def resume_subscription(request: Request, principal: OrgAdminDep, session: TenantSession) -> dict[str, bool]:
+async def resume_subscription(
+    request: Request, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, bool]:
     assert principal.tenant_id is not None
-    row = (await session.execute(select(Subscription).where(Subscription.tenant_id == principal.tenant_id, Subscription.status == "active").order_by(Subscription.created_at.desc()).limit(1).with_for_update())).scalar_one_or_none()
+    row = (
+        await session.execute(
+            select(Subscription)
+            .where(
+                Subscription.tenant_id == principal.tenant_id,
+                Subscription.status.in_(("active", "trialing")),
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if row is None:
         raise ApiError("not_found", "active subscription not found")
-    row.cancel_at_period_end = False
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="subscription.resumed", payload={"subscription_id": str(row.id)}, ip=client_ip(request))
+    if row.cancel_at_period_end:
+        row.cancel_at_period_end = False
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=principal.tenant_id,
+            action="subscription.resumed",
+            payload={"subscription_id": str(row.id)},
+            ip=client_ip(request),
+        )
     return {"cancel_at_period_end": False}
 
 
+def _change_request_hash(payload: SubscriptionChangeCreate) -> str:
+    return hashlib.sha256(f"{payload.plan_code}:{payload.extra_operators}".encode()).hexdigest()
+
+
+async def _change_replay(session: AsyncSession, change: SubscriptionChange) -> dict[str, Any]:
+    if change.kind == "downgrade":
+        return {
+            "status": change.status,
+            "change_id": str(change.id),
+            "effective_at": change.effective_at,
+        }
+    order = await session.get(Order, change.order_id) if change.order_id else None
+    return {
+        "status": "payment_required" if change.status == "pending_payment" else change.status,
+        "change_id": str(change.id),
+        "order_id": str(order.id) if order else None,
+        "amount_toman": order.amount_toman if order else None,
+    }
+
+
 @router.post("/subscription/change")
-async def change_subscription(payload: SubscriptionChangeCreate, request: Request, principal: OrgAdminDep, session: TenantSession, idempotency_key: str = Header(alias="Idempotency-Key")) -> dict[str, Any]:
+async def change_subscription(
+    payload: SubscriptionChangeCreate,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
+) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    current = (await session.execute(select(Subscription).where(Subscription.tenant_id == principal.tenant_id, Subscription.status == "active").order_by(Subscription.created_at.desc()).limit(1).with_for_update())).scalar_one_or_none()
+    tenant_id = principal.tenant_id
+    request_hash = _change_request_hash(payload)
+    replay = (
+        await session.execute(
+            select(SubscriptionChange).where(
+                SubscriptionChange.tenant_id == tenant_id,
+                SubscriptionChange.idempotency_key == idempotency_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if replay is not None:
+        if replay.request_hash != request_hash:
+            raise ApiError(
+                "conflict_idempotency",
+                "this idempotency key was already used for a different change",
+            )
+        return await _change_replay(session, replay)
+    current = (
+        await session.execute(
+            select(Subscription)
+            .where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if current is None:
-        raise ApiError("not_found", "active subscription not found")
-    _, target = await commerce.plan_version_by_code(session, payload.plan_code)
-    operator_count = int((await session.execute(select(func.count(User.id)).where(User.tenant_id == principal.tenant_id, User.role == "operator"))).scalar_one())
+        raise ApiError(
+            "not_found",
+            "active subscription not found; a trial or unpaid plan is bought at checkout",
+        )
+    now = datetime.now(UTC)
+    if current.period_end <= now:
+        raise ApiError("change_conflict", "the paid period has ended; renew the subscription first")
+    plan, target = await commerce.plan_version_by_code(session, payload.plan_code)
+    if plan.code == "demo":
+        raise ApiError("plan_not_sellable", "the demo plan cannot be selected")
+    operator_count = int(
+        (
+            await session.execute(
+                select(func.count(User.id)).where(
+                    User.tenant_id == tenant_id, User.role == "operator"
+                )
+            )
+        ).scalar_one()
+    )
     if operator_count > target.base_operators + payload.extra_operators:
-        raise ApiError("quota_exceeded", "active operators exceed the target plan capacity")
+        raise ApiError(
+            "quota_exceeded",
+            "active operators exceed the target plan capacity; remove operators first",
+        )
     current_version = await session.get(PlanVersion, current.plan_version_id)
     if current_version is None:
         raise ApiError("internal", "current plan version is missing")
+    if current_version.id == target.id and current.extra_operators == payload.extra_operators:
+        raise ApiError(
+            "change_conflict", "the subscription already has this plan and operator count"
+        )
     period = "annual"
-    current_total, _ = commerce.subscription_amount(current_version, period, current.extra_operators)
+    current_total, _ = commerce.subscription_amount(
+        current_version, period, current.extra_operators
+    )
     target_total, _ = commerce.subscription_amount(target, period, payload.extra_operators)
+    open_changes = (
+        (
+            await session.execute(
+                select(SubscriptionChange)
+                .where(
+                    SubscriptionChange.subscription_id == current.id,
+                    SubscriptionChange.status.in_(subscription_state.OPEN_CHANGE_STATUSES),
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for old in open_changes:
+        old.status = "canceled"
+        old_order = (
+            await session.get(Order, old.order_id, with_for_update=True) if old.order_id else None
+        )
+        if old_order is not None and old_order.status == "draft":
+            old_order.status = "canceled"
+    current.next_plan_version_id = None
     if target_total <= current_total:
         current.next_plan_version_id = target.id
-        session.add(SubscriptionChange(tenant_id=principal.tenant_id, subscription_id=current.id, kind="downgrade", status="scheduled", target_plan_version_id=target.id, requested_extra_operators=payload.extra_operators, effective_at=current.period_end))
-        await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="subscription.change_scheduled", payload={"subscription_id": str(current.id), "target_plan_version_id": str(target.id), "extra_operators": payload.extra_operators}, ip=client_ip(request))
-        return {"status": "scheduled", "effective_at": current.period_end}
-    existing = (await session.execute(select(Order).where(Order.tenant_id == principal.tenant_id, Order.idempotency_key == idempotency_key))).scalar_one_or_none()
-    if existing is not None:
-        return {"status": existing.status, "order_id": str(existing.id), "amount_toman": existing.amount_toman}
-    amount = commerce.prorated_amount(target_total - current_total, current.period_start, current.period_end, datetime.now(UTC))
+        change = SubscriptionChange(
+            tenant_id=tenant_id,
+            subscription_id=current.id,
+            kind="downgrade",
+            status="scheduled",
+            target_plan_version_id=target.id,
+            requested_extra_operators=payload.extra_operators,
+            effective_at=current.period_end,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            previous_plan_version_id=current.plan_version_id,
+            previous_extra_operators=current.extra_operators,
+        )
+        session.add(change)
+        await session.flush()
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=tenant_id,
+            action="subscription.change_scheduled",
+            payload={
+                "subscription_id": str(current.id),
+                "target_plan_version_id": str(target.id),
+                "extra_operators": payload.extra_operators,
+            },
+            ip=client_ip(request),
+        )
+        return {
+            "status": "scheduled",
+            "change_id": str(change.id),
+            "effective_at": current.period_end,
+        }
+    amount = commerce.prorated_amount(
+        target_total - current_total, current.period_start, current.period_end, now
+    )
+    if amount <= 0:
+        raise ApiError(
+            "change_conflict",
+            "the remaining period is too short for an upgrade; renew the subscription",
+        )
+    if (
+        await session.execute(
+            select(Order.id).where(
+                Order.tenant_id == tenant_id, Order.idempotency_key == idempotency_key
+            )
+        )
+    ).scalar_one_or_none() is not None:
+        raise ApiError("conflict_idempotency", "this idempotency key was already used")
     admin = await session.get(User, principal.id)
     assert admin is not None
-    order = Order(tenant_id=principal.tenant_id, number=f"UP-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4).upper()}", kind="subscription_upgrade", status="draft", amount_toman=amount, callback_token=secrets.token_urlsafe(32), idempotency_key=idempotency_key, customer_name=admin.display_name or admin.email, customer_email=admin.email, customer_mobile=admin.mobile_number or "", invoice_profile={})
+    order = Order(
+        tenant_id=tenant_id,
+        number=f"UP-{now:%Y%m%d}-{secrets.token_hex(4).upper()}",
+        kind="subscription_upgrade",
+        status="draft",
+        amount_toman=amount,
+        callback_token=secrets.token_urlsafe(32),
+        idempotency_key=idempotency_key,
+        customer_name=admin.display_name or admin.email,
+        customer_email=admin.email,
+        customer_mobile=admin.mobile_number or "",
+        invoice_profile={},
+    )
     session.add(order)
     await session.flush()
-    session.add(OrderItem(order_id=order.id, tenant_id=principal.tenant_id, kind="subscription_upgrade", description="ارتقای اشتراک", quantity=1, unit_price_toman=amount, total_toman=amount, metadata_json={"subscription_id": str(current.id), "target_plan_version_id": str(target.id), "extra_operators": payload.extra_operators}))
-    session.add(SubscriptionChange(tenant_id=principal.tenant_id, subscription_id=current.id, kind="upgrade", status="pending_payment", target_plan_version_id=target.id, requested_extra_operators=payload.extra_operators, effective_at=datetime.now(UTC), order_id=order.id))
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="subscription.upgrade_requested", payload={"subscription_id": str(current.id), "order_id": str(order.id), "target_plan_version_id": str(target.id)}, ip=client_ip(request))
-    return {"status": "payment_required", "order_id": str(order.id), "amount_toman": amount}
+    session.add(
+        OrderItem(
+            order_id=order.id,
+            tenant_id=tenant_id,
+            kind="subscription_upgrade",
+            description="ارتقای اشتراک",
+            quantity=1,
+            unit_price_toman=amount,
+            total_toman=amount,
+            metadata_json={
+                "subscription_id": str(current.id),
+                "target_plan_version_id": str(target.id),
+                "extra_operators": payload.extra_operators,
+            },
+        )
+    )
+    change = SubscriptionChange(
+        tenant_id=tenant_id,
+        subscription_id=current.id,
+        kind="upgrade",
+        status="pending_payment",
+        target_plan_version_id=target.id,
+        requested_extra_operators=payload.extra_operators,
+        effective_at=now,
+        order_id=order.id,
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+        previous_plan_version_id=current.plan_version_id,
+        previous_extra_operators=current.extra_operators,
+    )
+    session.add(change)
+    await session.flush()
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=tenant_id,
+        action="subscription.upgrade_requested",
+        payload={
+            "subscription_id": str(current.id),
+            "order_id": str(order.id),
+            "target_plan_version_id": str(target.id),
+        },
+        ip=client_ip(request),
+    )
+    return {
+        "status": "payment_required",
+        "change_id": str(change.id),
+        "order_id": str(order.id),
+        "amount_toman": amount,
+    }
+
+
+@router.post("/subscription/changes/{change_id}/cancel")
+async def cancel_subscription_change(
+    change_id: UUID, request: Request, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, str]:
+    assert principal.tenant_id is not None
+    change = (
+        await session.execute(
+            select(SubscriptionChange)
+            .where(
+                SubscriptionChange.id == change_id,
+                SubscriptionChange.tenant_id == principal.tenant_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if change is None:
+        raise ApiError("not_found", "subscription change not found")
+    if change.status not in subscription_state.OPEN_CHANGE_STATUSES:
+        raise ApiError("change_conflict", "only a scheduled or unpaid change can be canceled")
+    change.status = "canceled"
+    subscription = await session.get(Subscription, change.subscription_id, with_for_update=True)
+    if (
+        subscription is not None
+        and subscription.next_plan_version_id == change.target_plan_version_id
+    ):
+        subscription.next_plan_version_id = None
+    order = (
+        await session.get(Order, change.order_id, with_for_update=True) if change.order_id else None
+    )
+    if order is not None and order.status == "draft":
+        order.status = "canceled"
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="subscription.change_canceled",
+        payload={"change_id": str(change.id), "kind": change.kind},
+        ip=client_ip(request),
+    )
+    return {"status": "canceled"}
 
 
 @router.get("/orders")
@@ -655,29 +1132,92 @@ async def list_orders(
     limit: int = Query(default=25, ge=1, le=100),
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    total = int((await session.execute(select(func.count(Order.id)).where(Order.tenant_id == principal.tenant_id))).scalar_one())
-    rows = (await session.execute(select(Order, Invoice.id).outerjoin(Invoice, Invoice.order_id == Order.id).where(Order.tenant_id == principal.tenant_id).order_by(Order.created_at.desc()).offset(offset).limit(limit))).all()
-    items = [{"id": str(row.id), "number": row.number, "kind": row.kind, "status": row.status, "amount_toman": row.amount_toman, "created_at": row.created_at, "paid_at": row.paid_at, "invoice_id": str(invoice_id) if invoice_id else None} for row, invoice_id in rows]
+    total = int(
+        (
+            await session.execute(
+                select(func.count(Order.id)).where(Order.tenant_id == principal.tenant_id)
+            )
+        ).scalar_one()
+    )
+    rows = (
+        await session.execute(
+            select(Order, Invoice.id)
+            .outerjoin(Invoice, Invoice.order_id == Order.id)
+            .where(Order.tenant_id == principal.tenant_id)
+            .order_by(Order.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()
+    items = [
+        {
+            "id": str(row.id),
+            "number": row.number,
+            "kind": row.kind,
+            "status": row.status,
+            "amount_toman": row.amount_toman,
+            "created_at": row.created_at,
+            "paid_at": row.paid_at,
+            "invoice_id": str(invoice_id) if invoice_id else None,
+        }
+        for row, invoice_id in rows
+    ]
     return _page(items, total, offset, limit)
 
 
 @router.get("/invoices/{invoice_id}")
-async def get_invoice(invoice_id: UUID, principal: OrgAdminDep, session: TenantSession) -> dict[str, Any]:
+async def get_invoice(
+    invoice_id: UUID, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    row = (await session.execute(select(Invoice).where(Invoice.id == invoice_id, Invoice.tenant_id == principal.tenant_id))).scalar_one_or_none()
+    row = (
+        await session.execute(
+            select(Invoice).where(
+                Invoice.id == invoice_id, Invoice.tenant_id == principal.tenant_id
+            )
+        )
+    ).scalar_one_or_none()
     if row is None:
         raise ApiError("not_found", "invoice not found")
-    return {"id": str(row.id), "number": row.number, "amount_toman": row.amount_toman, "profile": row.profile_snapshot, "issued_at": row.issued_at}
+    return {
+        "id": str(row.id),
+        "number": row.number,
+        "amount_toman": row.amount_toman,
+        "profile": row.profile_snapshot,
+        "issued_at": row.issued_at,
+    }
 
 
 @router.get("/billing/credit-packages")
 async def credit_packages(session: PublicSession) -> list[dict[str, Any]]:
-    rows = (await session.execute(select(Package).where(Package.active.is_(True)).order_by(Package.minutes))).scalars().all()
-    return [{"id": str(row.id), "name": row.name, "minutes": row.minutes, "price_toman": row.price_toman} for row in rows]
+    rows = (
+        (
+            await session.execute(
+                select(Package).where(Package.active.is_(True)).order_by(Package.minutes)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(row.id),
+            "name": row.name,
+            "minutes": row.minutes,
+            "price_toman": row.price_toman,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/billing/credit-orders", status_code=status.HTTP_201_CREATED)
-async def create_credit_order(payload: CreditOrderCreate, request: Request, principal: OrgAdminDep, session: TenantSession, idempotency_key: str = Header(alias="Idempotency-Key")) -> dict[str, Any]:
+async def create_credit_order(
+    payload: CreditOrderCreate,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
     assert principal.tenant_id is not None
     if bool(payload.minutes) == bool(payload.package_id):
         raise ApiError("invalid_request", "select a package or enter custom minutes")
@@ -698,15 +1238,52 @@ async def create_credit_order(payload: CreditOrderCreate, request: Request, prin
             raise ApiError("invalid_request", "credit amount is invalid")
     admin = await session.get(User, principal.id)
     assert admin is not None
-    existing = (await session.execute(select(Order).where(Order.tenant_id == principal.tenant_id, Order.idempotency_key == idempotency_key))).scalar_one_or_none()
+    existing = (
+        await session.execute(
+            select(Order).where(
+                Order.tenant_id == principal.tenant_id, Order.idempotency_key == idempotency_key
+            )
+        )
+    ).scalar_one_or_none()
     if existing:
         return {"id": str(existing.id), "amount_toman": existing.amount_toman}
-    order = Order(tenant_id=principal.tenant_id, number=f"CR-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4).upper()}", kind="credit", status="draft", amount_toman=amount, callback_token=secrets.token_urlsafe(32), idempotency_key=idempotency_key, customer_name=admin.display_name or admin.email, customer_email=admin.email, customer_mobile=admin.mobile_number or "", invoice_profile={})
+    order = Order(
+        tenant_id=principal.tenant_id,
+        number=f"CR-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4).upper()}",
+        kind="credit",
+        status="draft",
+        amount_toman=amount,
+        callback_token=secrets.token_urlsafe(32),
+        idempotency_key=idempotency_key,
+        customer_name=admin.display_name or admin.email,
+        customer_email=admin.email,
+        customer_mobile=admin.mobile_number or "",
+        invoice_profile={},
+    )
     session.add(order)
     await session.flush()
     unit_price = amount // minutes if minutes else 0
-    session.add(OrderItem(order_id=order.id, tenant_id=principal.tenant_id, kind="credit", description=f"{minutes} دقیقه اعتبار تحلیل", quantity=minutes, unit_price_toman=unit_price, total_toman=amount, metadata_json={}))
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="credit_order.created", payload={"order_id": str(order.id), "minutes": minutes, "amount_toman": amount}, ip=client_ip(request))
+    session.add(
+        OrderItem(
+            order_id=order.id,
+            tenant_id=principal.tenant_id,
+            kind="credit",
+            description=f"{minutes} دقیقه اعتبار تحلیل",
+            quantity=minutes,
+            unit_price_toman=unit_price,
+            total_toman=amount,
+            metadata_json={},
+        )
+    )
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="credit_order.created",
+        payload={"order_id": str(order.id), "minutes": minutes, "amount_toman": amount},
+        ip=client_ip(request),
+    )
     return {"id": str(order.id), "amount_toman": amount}
 
 
@@ -718,14 +1295,52 @@ async def list_installations(
     limit: int = Query(default=25, ge=1, le=100),
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    total = int((await session.execute(select(func.count(InstallationRequest.id)).where(InstallationRequest.tenant_id == principal.tenant_id))).scalar_one())
-    rows = (await session.execute(select(InstallationRequest).where(InstallationRequest.tenant_id == principal.tenant_id).order_by(InstallationRequest.created_at.desc()).offset(offset).limit(limit))).scalars().all()
-    items = [{"id": str(row.id), "kind": row.kind, "status": row.status, "pbx_type": row.pbx_type, "extension_count": row.extension_count, "scheduled_at": row.scheduled_at, "created_at": row.created_at, "order_id": str(row.order_id) if row.order_id else None} for row in rows]
+    total = int(
+        (
+            await session.execute(
+                select(func.count(InstallationRequest.id)).where(
+                    InstallationRequest.tenant_id == principal.tenant_id
+                )
+            )
+        ).scalar_one()
+    )
+    rows = (
+        (
+            await session.execute(
+                select(InstallationRequest)
+                .where(InstallationRequest.tenant_id == principal.tenant_id)
+                .order_by(InstallationRequest.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    items = [
+        {
+            "id": str(row.id),
+            "kind": row.kind,
+            "status": row.status,
+            "pbx_type": row.pbx_type,
+            "extension_count": row.extension_count,
+            "scheduled_at": row.scheduled_at,
+            "created_at": row.created_at,
+            "order_id": str(row.order_id) if row.order_id else None,
+        }
+        for row in rows
+    ]
     return _page(items, total, offset, limit)
 
 
 @router.post("/installation-requests", status_code=status.HTTP_201_CREATED)
-async def create_installation(payload: InstallationCreate, request: Request, principal: OrgAdminDep, session: TenantSession, idempotency_key: str = Header(alias="Idempotency-Key")) -> dict[str, Any]:
+async def create_installation(
+    payload: InstallationCreate,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
     assert principal.tenant_id is not None
     if payload.kind != "initial":
         existing_order = (
@@ -752,9 +1367,18 @@ async def create_installation(payload: InstallationCreate, request: Request, pri
                     "amount_toman": existing_order.amount_toman,
                 }
     if payload.kind == "initial":
-        previous = (await session.execute(select(InstallationRequest).where(InstallationRequest.tenant_id == principal.tenant_id, InstallationRequest.kind == "initial"))).scalar_one_or_none()
+        previous = (
+            await session.execute(
+                select(InstallationRequest).where(
+                    InstallationRequest.tenant_id == principal.tenant_id,
+                    InstallationRequest.kind == "initial",
+                )
+            )
+        ).scalar_one_or_none()
         if previous:
-            raise ApiError("conflict_idempotency", "initial installation has already been requested")
+            raise ApiError(
+                "conflict_idempotency", "initial installation has already been requested"
+            )
     commerce_config = await get_commerce_settings(session)
     amount = {
         "initial": commerce_config.installation_initial_toman,
@@ -765,10 +1389,33 @@ async def create_installation(payload: InstallationCreate, request: Request, pri
     if amount:
         admin = await session.get(User, principal.id)
         assert admin is not None
-        order = Order(tenant_id=principal.tenant_id, number=f"IN-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4).upper()}", kind="installation", status="draft", amount_toman=amount, callback_token=secrets.token_urlsafe(32), idempotency_key=idempotency_key, customer_name=admin.display_name or admin.email, customer_email=admin.email, customer_mobile=admin.mobile_number or "", invoice_profile={})
+        order = Order(
+            tenant_id=principal.tenant_id,
+            number=f"IN-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4).upper()}",
+            kind="installation",
+            status="draft",
+            amount_toman=amount,
+            callback_token=secrets.token_urlsafe(32),
+            idempotency_key=idempotency_key,
+            customer_name=admin.display_name or admin.email,
+            customer_email=admin.email,
+            customer_mobile=admin.mobile_number or "",
+            invoice_profile={},
+        )
         session.add(order)
         await session.flush()
-        session.add(OrderItem(order_id=order.id, tenant_id=principal.tenant_id, kind="installation", description="نصب اختصاصی" if payload.kind == "dedicated" else "نصب مجدد عادی", quantity=1, unit_price_toman=amount, total_toman=amount, metadata_json={"installation_kind": payload.kind}))
+        session.add(
+            OrderItem(
+                order_id=order.id,
+                tenant_id=principal.tenant_id,
+                kind="installation",
+                description="نصب اختصاصی" if payload.kind == "dedicated" else "نصب مجدد عادی",
+                quantity=1,
+                unit_price_toman=amount,
+                total_toman=amount,
+                metadata_json={"installation_kind": payload.kind},
+            )
+        )
     row = InstallationRequest(
         tenant_id=principal.tenant_id,
         order_id=order.id if order else None,
@@ -786,8 +1433,25 @@ async def create_installation(payload: InstallationCreate, request: Request, pri
     )
     session.add(row)
     await session.flush()
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="installation.created", payload={"installation_id": str(row.id), "order_id": str(order.id) if order else None, "kind": row.kind}, ip=client_ip(request))
-    return {"id": str(row.id), "status": row.status, "order_id": str(order.id) if order else None, "amount_toman": amount}
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="installation.created",
+        payload={
+            "installation_id": str(row.id),
+            "order_id": str(order.id) if order else None,
+            "kind": row.kind,
+        },
+        ip=client_ip(request),
+    )
+    return {
+        "id": str(row.id),
+        "status": row.status,
+        "order_id": str(order.id) if order else None,
+        "amount_toman": amount,
+    }
 
 
 def _page(items: list[dict[str, Any]], total: int, offset: int, limit: int) -> dict[str, Any]:
@@ -814,7 +1478,11 @@ async def _locate_tenant_record(model: Any, record_id: UUID) -> UUID:
 @router.get("/admin/commerce/overview")
 async def admin_commerce_overview(staff: StaffDep, session: StaffSession) -> dict[str, Any]:
     now = datetime.now(UTC)
-    month_start = now.astimezone(ZoneInfo("Asia/Tehran")).replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+    month_start = (
+        now.astimezone(ZoneInfo("Asia/Tehran"))
+        .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(UTC)
+    )
     revenue_month = 0
     pending_orders = 0
     payment_attention = 0
@@ -826,35 +1494,162 @@ async def admin_commerce_overview(staff: StaffDep, session: StaffSession) -> dic
     tenant_ids = await routable_tenant_ids()
     for tenant_id in tenant_ids:
         async with session_scope(tenant_id) as tenant_session:
-            revenue_month += int((await tenant_session.execute(select(func.coalesce(func.sum(Order.amount_toman), 0)).where(Order.tenant_id == tenant_id, Order.status.in_(("paid", "partially_refunded", "refunded")), Order.paid_at >= month_start))).scalar_one())
-            pending_orders += int((await tenant_session.execute(select(func.count(Order.id)).where(Order.tenant_id == tenant_id, Order.status.in_(("draft", "pending_payment"))))).scalar_one())
-            payment_attention += int((await tenant_session.execute(select(func.count(PaymentAttempt.id)).where(PaymentAttempt.tenant_id == tenant_id, PaymentAttempt.status == "pending_verification"))).scalar_one())
-            for subscription_status, count in (await tenant_session.execute(select(Subscription.status, func.count(Subscription.id)).where(Subscription.tenant_id == tenant_id).group_by(Subscription.status))).all():
-                subscription_counts[subscription_status] = subscription_counts.get(subscription_status, 0) + int(count)
+            revenue_month += int(
+                (
+                    await tenant_session.execute(
+                        select(func.coalesce(func.sum(Order.amount_toman), 0)).where(
+                            Order.tenant_id == tenant_id,
+                            Order.status.in_(("paid", "partially_refunded", "refunded")),
+                            Order.paid_at >= month_start,
+                        )
+                    )
+                ).scalar_one()
+            )
+            pending_orders += int(
+                (
+                    await tenant_session.execute(
+                        select(func.count(Order.id)).where(
+                            Order.tenant_id == tenant_id,
+                            Order.status.in_(("draft", "pending_payment")),
+                        )
+                    )
+                ).scalar_one()
+            )
+            payment_attention += int(
+                (
+                    await tenant_session.execute(
+                        select(func.count(PaymentAttempt.id)).where(
+                            PaymentAttempt.tenant_id == tenant_id,
+                            PaymentAttempt.status == "pending_verification",
+                        )
+                    )
+                ).scalar_one()
+            )
+            for subscription_status, count in (
+                await tenant_session.execute(
+                    select(Subscription.status, func.count(Subscription.id))
+                    .where(Subscription.tenant_id == tenant_id)
+                    .group_by(Subscription.status)
+                )
+            ).all():
+                subscription_counts[subscription_status] = subscription_counts.get(
+                    subscription_status, 0
+                ) + int(count)
                 tenants_with_subscription.add(tenant_id)
-            renewals_due += int((await tenant_session.execute(select(func.count(Subscription.id)).where(Subscription.tenant_id == tenant_id, Subscription.status == "active", Subscription.period_end <= now + timedelta(days=7), Subscription.period_end > now))).scalar_one())
-            refunds_total += int((await tenant_session.execute(select(func.coalesce(func.sum(Refund.amount_toman), 0)).where(Refund.tenant_id == tenant_id, Refund.status == "completed"))).scalar_one())
-            installations_open += int((await tenant_session.execute(select(func.count(InstallationRequest.id)).where(InstallationRequest.tenant_id == tenant_id, InstallationRequest.status.not_in(("completed", "canceled"))))).scalar_one())
-    leads_new = int((await session.execute(select(func.count(ContactLead.id)).where(ContactLead.status == "new"))).scalar_one())
+            renewals_due += int(
+                (
+                    await tenant_session.execute(
+                        select(func.count(Subscription.id)).where(
+                            Subscription.tenant_id == tenant_id,
+                            Subscription.status == "active",
+                            Subscription.period_end <= now + timedelta(days=7),
+                            Subscription.period_end > now,
+                        )
+                    )
+                ).scalar_one()
+            )
+            refunds_total += int(
+                (
+                    await tenant_session.execute(
+                        select(func.coalesce(func.sum(Refund.amount_toman), 0)).where(
+                            Refund.tenant_id == tenant_id, Refund.status == "completed"
+                        )
+                    )
+                ).scalar_one()
+            )
+            installations_open += int(
+                (
+                    await tenant_session.execute(
+                        select(func.count(InstallationRequest.id)).where(
+                            InstallationRequest.tenant_id == tenant_id,
+                            InstallationRequest.status.not_in(("completed", "canceled")),
+                        )
+                    )
+                ).scalar_one()
+            )
+    leads_new = int(
+        (
+            await session.execute(
+                select(func.count(ContactLead.id)).where(ContactLead.status == "new")
+            )
+        ).scalar_one()
+    )
     missing_subscriptions = len(set(tenant_ids) - tenants_with_subscription)
-    return {"revenue_month_toman": revenue_month, "pending_orders": pending_orders, "payments_need_attention": payment_attention, "subscriptions": subscription_counts, "renewals_due": renewals_due, "refunds_total_toman": refunds_total, "new_leads": leads_new, "open_installations": installations_open, "missing_subscriptions": missing_subscriptions}
+    return {
+        "revenue_month_toman": revenue_month,
+        "pending_orders": pending_orders,
+        "payments_need_attention": payment_attention,
+        "subscriptions": subscription_counts,
+        "renewals_due": renewals_due,
+        "refunds_total_toman": refunds_total,
+        "new_leads": leads_new,
+        "open_installations": installations_open,
+        "missing_subscriptions": missing_subscriptions,
+    }
 
 
 @router.get("/admin/commerce/leads")
-async def admin_leads(staff: StaffDep, session: StaffSession, q: str | None = None, lead_status: str | None = Query(default=None, alias="status"), cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_leads(
+    staff: StaffDep,
+    session: StaffSession,
+    q: str | None = None,
+    lead_status: str | None = Query(default=None, alias="status"),
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     stmt = select(ContactLead)
     if lead_status:
         stmt = stmt.where(ContactLead.status == lead_status)
     if q:
         term = f"%{q.strip()}%"
-        stmt = stmt.where(or_(ContactLead.name.ilike(term), ContactLead.organization.ilike(term), ContactLead.mobile.ilike(term), ContactLead.email.ilike(term)))
-    total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
-    rows = (await session.execute(stmt.order_by(ContactLead.created_at.desc()).offset(cursor).limit(limit))).scalars().all()
-    return _page([{"id": str(row.id), "name": row.name, "organization": row.organization, "mobile": row.mobile, "email": row.email, "message": row.message, "source": row.source, "status": row.status, "owner_id": str(row.owner_id) if row.owner_id else None, "internal_notes": row.internal_notes, "follow_up_at": row.follow_up_at, "created_at": row.created_at} for row in rows], total, cursor, limit)
+        stmt = stmt.where(
+            or_(
+                ContactLead.name.ilike(term),
+                ContactLead.organization.ilike(term),
+                ContactLead.mobile.ilike(term),
+                ContactLead.email.ilike(term),
+            )
+        )
+    total = int(
+        (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    )
+    rows = (
+        (
+            await session.execute(
+                stmt.order_by(ContactLead.created_at.desc()).offset(cursor).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return _page(
+        [
+            {
+                "id": str(row.id),
+                "name": row.name,
+                "organization": row.organization,
+                "mobile": row.mobile,
+                "email": row.email,
+                "message": row.message,
+                "source": row.source,
+                "status": row.status,
+                "owner_id": str(row.owner_id) if row.owner_id else None,
+                "internal_notes": row.internal_notes,
+                "follow_up_at": row.follow_up_at,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+        total,
+        cursor,
+        limit,
+    )
 
 
 @router.patch("/admin/commerce/leads/{lead_id}")
-async def update_admin_lead(lead_id: UUID, payload: LeadUpdate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def update_admin_lead(
+    lead_id: UUID, payload: LeadUpdate, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
     row = await session.get(ContactLead, lead_id, with_for_update=True)
     if row is None:
         raise ApiError("not_found", "contact lead not found")
@@ -862,7 +1657,20 @@ async def update_admin_lead(lead_id: UUID, payload: LeadUpdate, request: Request
     for field, value in changes.items():
         setattr(row, field, value)
     row.owner_id = staff.id
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="contact_lead.update", payload={"lead_id": str(row.id), "changes": {key: str(value) if isinstance(value, datetime) else value for key, value in changes.items()}}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="contact_lead.update",
+        payload={
+            "lead_id": str(row.id),
+            "changes": {
+                key: str(value) if isinstance(value, datetime) else value
+                for key, value in changes.items()
+            },
+        },
+        ip=client_ip(request),
+    )
     return {"id": str(row.id), "status": row.status}
 
 
@@ -874,8 +1682,14 @@ async def admin_plans(
     limit: int = Query(default=25, ge=1, le=200),
 ) -> dict[str, Any]:
     stmt = select(Plan, PlanVersion).join(PlanVersion, PlanVersion.plan_id == Plan.id)
-    total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
-    rows = (await session.execute(stmt.order_by(Plan.sort_order, PlanVersion.version.desc()).offset(cursor).limit(limit))).all()
+    total = int(
+        (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    )
+    rows = (
+        await session.execute(
+            stmt.order_by(Plan.sort_order, PlanVersion.version.desc()).offset(cursor).limit(limit)
+        )
+    ).all()
     counts: dict[UUID, int] = {}
     for tenant_id in await routable_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
@@ -887,48 +1701,127 @@ async def admin_plans(
                 )
             ).all():
                 counts[version_id] = counts.get(version_id, 0) + int(count)
-    items = [{"active": plan.active, "public": plan.public, "sort_order": plan.sort_order, "subscription_count": int(counts.get(version.id, 0)), **_plan_out(plan, version)} for plan, version in rows]
+    items = [
+        {
+            "active": plan.active,
+            "public": plan.public,
+            "sort_order": plan.sort_order,
+            "subscription_count": int(counts.get(version.id, 0)),
+            **_plan_out(plan, version),
+        }
+        for plan, version in rows
+    ]
     return _page(items, total, cursor, limit)
 
 
 @router.post("/admin/commerce/plans", status_code=status.HTTP_201_CREATED)
-async def create_plan(payload: PlanCreate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
-    if (await session.execute(select(Plan.id).where(Plan.code == payload.code))).scalar_one_or_none() is not None:
+async def create_plan(
+    payload: PlanCreate, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
+    if (
+        await session.execute(select(Plan.id).where(Plan.code == payload.code))
+    ).scalar_one_or_none() is not None:
         raise ApiError("conflict_idempotency", "plan code already exists")
     row = Plan(**payload.model_dump(), active=True)
     session.add(row)
     await session.flush()
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="plan.created", payload={"plan_id": str(row.id), "code": row.code}, ip=client_ip(request))
-    return {"id": str(row.id), "code": row.code, "name": row.name, "active": row.active, "public": row.public, "sort_order": row.sort_order}
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="plan.created",
+        payload={"plan_id": str(row.id), "code": row.code},
+        ip=client_ip(request),
+    )
+    return {
+        "id": str(row.id),
+        "code": row.code,
+        "name": row.name,
+        "active": row.active,
+        "public": row.public,
+        "sort_order": row.sort_order,
+    }
 
 
 @router.patch("/admin/commerce/plans/{plan_code}")
-async def update_plan(plan_code: str, payload: PlanUpdate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
-    row = (await session.execute(select(Plan).where(Plan.code == plan_code).with_for_update())).scalar_one_or_none()
+async def update_plan(
+    plan_code: str, payload: PlanUpdate, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
+    row = (
+        await session.execute(select(Plan).where(Plan.code == plan_code).with_for_update())
+    ).scalar_one_or_none()
     if row is None:
         raise ApiError("not_found", "plan not found")
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in changes.items():
         setattr(row, field, value)
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="plan.update", payload={"plan": plan_code, "changes": changes}, ip=client_ip(request))
-    return {"id": str(row.id), "code": row.code, "name": row.name, "active": row.active, "public": row.public, "sort_order": row.sort_order}
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="plan.update",
+        payload={"plan": plan_code, "changes": changes},
+        ip=client_ip(request),
+    )
+    return {
+        "id": str(row.id),
+        "code": row.code,
+        "name": row.name,
+        "active": row.active,
+        "public": row.public,
+        "sort_order": row.sort_order,
+    }
 
 
 @router.post("/admin/commerce/plans/{plan_code}/versions", status_code=status.HTTP_201_CREATED)
-async def create_plan_version(plan_code: str, payload: PlanVersionCreate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
-    plan = (await session.execute(select(Plan).where(Plan.code == plan_code).with_for_update())).scalar_one_or_none()
+async def create_plan_version(
+    plan_code: str,
+    payload: PlanVersionCreate,
+    request: Request,
+    staff: StaffDep,
+    session: StaffSession,
+) -> dict[str, Any]:
+    plan = (
+        await session.execute(select(Plan).where(Plan.code == plan_code).with_for_update())
+    ).scalar_one_or_none()
     if plan is None:
         raise ApiError("not_found", "plan not found")
-    next_version = int((await session.execute(select(func.coalesce(func.max(PlanVersion.version), 0)).where(PlanVersion.plan_id == plan.id))).scalar_one()) + 1
-    row = PlanVersion(plan_id=plan.id, version=next_version, status="draft", created_by=staff.id, **payload.model_dump())
+    next_version = (
+        int(
+            (
+                await session.execute(
+                    select(func.coalesce(func.max(PlanVersion.version), 0)).where(
+                        PlanVersion.plan_id == plan.id
+                    )
+                )
+            ).scalar_one()
+        )
+        + 1
+    )
+    row = PlanVersion(
+        plan_id=plan.id,
+        version=next_version,
+        status="draft",
+        created_by=staff.id,
+        **payload.model_dump(),
+    )
     session.add(row)
     await session.flush()
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="plan_version.created", payload={"plan": plan.code, "version": next_version}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="plan_version.created",
+        payload={"plan": plan.code, "version": next_version},
+        ip=client_ip(request),
+    )
     return _plan_out(plan, row)
 
 
 @router.post("/admin/commerce/plan-versions/{version_id}/publish")
-async def publish_plan_version(version_id: UUID, payload: PlanPublish, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def publish_plan_version(
+    version_id: UUID, payload: PlanPublish, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
     version = await session.get(PlanVersion, version_id, with_for_update=True)
     if version is None:
         raise ApiError("not_found", "plan version not found")
@@ -942,12 +1835,30 @@ async def publish_plan_version(version_id: UUID, payload: PlanPublish, request: 
     version.status = "published"
     version.published_at = now
     version.effective_at = payload.effective_at or now
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="plan_version.published", payload={"plan": plan.code, "version": version.version, "effective_at": version.effective_at.isoformat(), "reason": payload.reason}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="plan_version.published",
+        payload={
+            "plan": plan.code,
+            "version": version.version,
+            "effective_at": version.effective_at.isoformat(),
+            "reason": payload.reason,
+        },
+        ip=client_ip(request),
+    )
     return _plan_out(plan, version)
 
 
 @router.post("/admin/commerce/plan-versions/{version_id}/retire")
-async def retire_plan_version(version_id: UUID, payload: ReasonAction, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def retire_plan_version(
+    version_id: UUID,
+    payload: ReasonAction,
+    request: Request,
+    staff: StaffDep,
+    session: StaffSession,
+) -> dict[str, Any]:
     version = await session.get(PlanVersion, version_id, with_for_update=True)
     if version is None:
         raise ApiError("not_found", "plan version not found")
@@ -955,17 +1866,29 @@ async def retire_plan_version(version_id: UUID, payload: ReasonAction, request: 
         return {"id": str(version.id), "status": version.status}
     version.status = "retired"
     version.retired_at = datetime.now(UTC)
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="plan_version.retired", payload={"version_id": str(version.id), "reason": payload.reason}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="plan_version.retired",
+        payload={"version_id": str(version.id), "reason": payload.reason},
+        ip=client_ip(request),
+    )
     return {"id": str(version.id), "status": version.status}
 
 
 @router.get("/admin/commerce/subscriptions")
-async def admin_subscriptions(staff: StaffDep, session: StaffSession, q: str | None = None, subscription_status: str | None = Query(default=None, alias="status"), cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_subscriptions(
+    staff: StaffDep,
+    session: StaffSession,
+    q: str | None = None,
+    subscription_status: str | None = Query(default=None, alias="status"),
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     tenant_names: dict[UUID, str] = {
         tenant_id: name
-        for tenant_id, name in (
-            await session.execute(select(Tenant.id, Tenant.name))
-        ).all()
+        for tenant_id, name in (await session.execute(select(Tenant.id, Tenant.name))).all()
     }
     normalized_query = q.strip().lower() if q else None
     items: list[dict[str, Any]] = []
@@ -984,7 +1907,30 @@ async def admin_subscriptions(staff: StaffDep, session: StaffSession, q: str | N
         for sub, plan, version in rows:
             if normalized_query and normalized_query not in f"{tenant_name} {plan.name}".lower():
                 continue
-            items.append({"id": str(sub.id), "tenant_id": str(sub.tenant_id), "tenant_name": tenant_name, "plan_code": plan.code, "plan_name": plan.name, "plan_version": version.version, "status": sub.status, "billing_period": "legacy_monthly" if sub.billing_period == "monthly" else sub.billing_period, "period_start": sub.period_start, "period_end": sub.period_end, "cancel_at_period_end": sub.cancel_at_period_end, "base_operators": sub.base_operators, "extra_operators": sub.extra_operators, "assistant_monthly_messages": sub.assistant_monthly_messages, "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None, "created_at": sub.created_at})
+            items.append(
+                {
+                    "id": str(sub.id),
+                    "tenant_id": str(sub.tenant_id),
+                    "tenant_name": tenant_name,
+                    "plan_code": plan.code,
+                    "plan_name": plan.name,
+                    "plan_version": version.version,
+                    "status": sub.status,
+                    "billing_period": "legacy_monthly"
+                    if sub.billing_period == "monthly"
+                    else sub.billing_period,
+                    "period_start": sub.period_start,
+                    "period_end": sub.period_end,
+                    "cancel_at_period_end": sub.cancel_at_period_end,
+                    "base_operators": sub.base_operators,
+                    "extra_operators": sub.extra_operators,
+                    "assistant_monthly_messages": sub.assistant_monthly_messages,
+                    "next_plan_version_id": str(sub.next_plan_version_id)
+                    if sub.next_plan_version_id
+                    else None,
+                    "created_at": sub.created_at,
+                }
+            )
     items.sort(key=lambda item: item["created_at"], reverse=True)
     total = len(items)
     for item in items:
@@ -993,17 +1939,83 @@ async def admin_subscriptions(staff: StaffDep, session: StaffSession, q: str | N
 
 
 @router.get("/admin/commerce/tenants/{tenant_id}")
-async def admin_tenant_commerce(tenant_id: UUID, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def admin_tenant_commerce(
+    tenant_id: UUID, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
     tenant = await session.get(Tenant, tenant_id)
     if tenant is None:
         raise ApiError("not_found", "tenant not found")
     async with session_scope(tenant_id) as tenant_session:
-        subscriptions = (await tenant_session.execute(select(Subscription).where(Subscription.tenant_id == tenant_id).order_by(Subscription.created_at.desc()))).scalars().all()
-        orders = (await tenant_session.execute(select(Order).where(Order.tenant_id == tenant_id).order_by(Order.created_at.desc()).limit(100))).scalars().all()
-        grants = (await tenant_session.execute(select(CreditGrant).where(CreditGrant.tenant_id == tenant_id).order_by(CreditGrant.created_at.desc()))).scalars().all()
-        reservations = (await tenant_session.execute(select(CreditReservation).where(CreditReservation.tenant_id == tenant_id).order_by(CreditReservation.created_at.desc()).limit(100))).scalars().all()
-        ledger = (await tenant_session.execute(select(LedgerEntry).where(LedgerEntry.tenant_id == tenant_id).order_by(LedgerEntry.created_at.desc()).limit(100))).scalars().all()
-        audit_rows = (await tenant_session.execute(select(AuditEvent).where(AuditEvent.tenant_id == tenant_id).order_by(AuditEvent.created_at.desc()).limit(100))).scalars().all()
+        subscriptions = (
+            (
+                await tenant_session.execute(
+                    select(Subscription)
+                    .where(Subscription.tenant_id == tenant_id)
+                    .order_by(Subscription.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        orders = (
+            (
+                await tenant_session.execute(
+                    select(Order)
+                    .where(Order.tenant_id == tenant_id)
+                    .order_by(Order.created_at.desc())
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        grants = (
+            (
+                await tenant_session.execute(
+                    select(CreditGrant)
+                    .where(CreditGrant.tenant_id == tenant_id)
+                    .order_by(CreditGrant.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        reservations = (
+            (
+                await tenant_session.execute(
+                    select(CreditReservation)
+                    .where(CreditReservation.tenant_id == tenant_id)
+                    .order_by(CreditReservation.created_at.desc())
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        ledger = (
+            (
+                await tenant_session.execute(
+                    select(LedgerEntry)
+                    .where(LedgerEntry.tenant_id == tenant_id)
+                    .order_by(LedgerEntry.created_at.desc())
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        audit_rows = (
+            (
+                await tenant_session.execute(
+                    select(AuditEvent)
+                    .where(AuditEvent.tenant_id == tenant_id)
+                    .order_by(AuditEvent.created_at.desc())
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
         from app.services.quotas import calendar_month_start
 
         quota_start = calendar_month_start(datetime.now(UTC))
@@ -1019,18 +2031,78 @@ async def admin_tenant_commerce(tenant_id: UUID, staff: StaffDep, session: Staff
             ).scalar_one()
         )
     return {
-        "subscriptions": [{"id": str(row.id), "plan_version_id": str(row.plan_version_id), "status": row.status, "billing_period": row.billing_period, "period_start": row.period_start, "period_end": row.period_end, "cancel_at_period_end": row.cancel_at_period_end, "base_operators": row.base_operators, "extra_operators": row.extra_operators, "price_per_minute_toman": row.price_per_minute_toman, "assistant_monthly_messages": row.assistant_monthly_messages} for row in subscriptions],
+        "subscriptions": [
+            {
+                "id": str(row.id),
+                "plan_version_id": str(row.plan_version_id),
+                "status": row.status,
+                "billing_period": row.billing_period,
+                "period_start": row.period_start,
+                "period_end": row.period_end,
+                "cancel_at_period_end": row.cancel_at_period_end,
+                "base_operators": row.base_operators,
+                "extra_operators": row.extra_operators,
+                "price_per_minute_toman": row.price_per_minute_toman,
+                "assistant_monthly_messages": row.assistant_monthly_messages,
+            }
+            for row in subscriptions
+        ],
         "orders": [_order_summary(row) for row in orders],
-        "credit_grants": [{"id": str(row.id), "source": row.source, "source_id": str(row.source_id) if row.source_id else None, "total_seconds": row.total_seconds, "remaining_seconds": row.remaining_seconds, "expires_at": row.expires_at, "created_at": row.created_at} for row in grants],
-        "reservations": [{"id": str(row.id), "call_id": str(row.call_id), "seconds": row.seconds, "status": row.status, "created_at": row.created_at} for row in reservations],
-        "ledger": [{"id": str(row.id), "kind": row.kind, "seconds_delta": row.seconds_delta, "toman_delta": row.toman_delta, "created_at": row.created_at} for row in ledger],
+        "credit_grants": [
+            {
+                "id": str(row.id),
+                "source": row.source,
+                "source_id": str(row.source_id) if row.source_id else None,
+                "total_seconds": row.total_seconds,
+                "remaining_seconds": row.remaining_seconds,
+                "expires_at": row.expires_at,
+                "created_at": row.created_at,
+            }
+            for row in grants
+        ],
+        "reservations": [
+            {
+                "id": str(row.id),
+                "call_id": str(row.call_id),
+                "seconds": row.seconds,
+                "status": row.status,
+                "created_at": row.created_at,
+            }
+            for row in reservations
+        ],
+        "ledger": [
+            {
+                "id": str(row.id),
+                "kind": row.kind,
+                "seconds_delta": row.seconds_delta,
+                "toman_delta": row.toman_delta,
+                "created_at": row.created_at,
+            }
+            for row in ledger
+        ],
         "assistant_messages_total": assistant_used,
-        "audit": [{"id": str(row.id), "actor_type": row.actor_type, "actor_id": str(row.actor_id) if row.actor_id else None, "action": row.action, "payload": row.payload, "created_at": row.created_at} for row in audit_rows],
+        "audit": [
+            {
+                "id": str(row.id),
+                "actor_type": row.actor_type,
+                "actor_id": str(row.actor_id) if row.actor_id else None,
+                "action": row.action,
+                "payload": row.payload,
+                "created_at": row.created_at,
+            }
+            for row in audit_rows
+        ],
     }
 
 
 @router.post("/admin/commerce/subscriptions/{subscription_id}/actions")
-async def admin_subscription_action(subscription_id: UUID, payload: SubscriptionAdminAction, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def admin_subscription_action(
+    subscription_id: UUID,
+    payload: SubscriptionAdminAction,
+    request: Request,
+    staff: StaffDep,
+    session: StaffSession,
+) -> dict[str, Any]:
     tenant_id = await _locate_tenant_record(Subscription, subscription_id)
     async with session_scope(tenant_id) as tenant_session:
         row = await tenant_session.get(Subscription, subscription_id, with_for_update=True)
@@ -1064,21 +2136,55 @@ async def admin_subscription_action(subscription_id: UUID, payload: Subscription
                 raise ApiError("invalid_request", "only trial subscriptions can extend a trial")
             row.period_end += timedelta(days=payload.days)
         row.updated_at = now
-        await audit.record(tenant_session, actor_type="staff", actor_id=staff.id, tenant_id=row.tenant_id, action=f"subscription.{payload.action}", payload={"subscription_id": str(row.id), "days": payload.days, "reason": payload.reason}, ip=client_ip(request))
-        return {"id": str(row.id), "status": row.status, "period_end": row.period_end, "cancel_at_period_end": row.cancel_at_period_end}
+        await audit.record(
+            tenant_session,
+            actor_type="staff",
+            actor_id=staff.id,
+            tenant_id=row.tenant_id,
+            action=f"subscription.{payload.action}",
+            payload={
+                "subscription_id": str(row.id),
+                "days": payload.days,
+                "reason": payload.reason,
+            },
+            ip=client_ip(request),
+        )
+        return {
+            "id": str(row.id),
+            "status": row.status,
+            "period_end": row.period_end,
+            "cancel_at_period_end": row.cancel_at_period_end,
+        }
 
 
 def _order_summary(row: Order, tenant_name: str | None = None) -> dict[str, Any]:
-    return {"id": str(row.id), "tenant_id": str(row.tenant_id), "tenant_name": tenant_name, "number": row.number, "kind": row.kind, "status": row.status, "amount_toman": row.amount_toman, "customer_name": row.customer_name, "customer_mobile": row.customer_mobile, "created_at": row.created_at, "paid_at": row.paid_at}
+    return {
+        "id": str(row.id),
+        "tenant_id": str(row.tenant_id),
+        "tenant_name": tenant_name,
+        "number": row.number,
+        "kind": row.kind,
+        "status": row.status,
+        "amount_toman": row.amount_toman,
+        "customer_name": row.customer_name,
+        "customer_mobile": row.customer_mobile,
+        "created_at": row.created_at,
+        "paid_at": row.paid_at,
+    }
 
 
 @router.get("/admin/commerce/orders")
-async def admin_orders(staff: StaffDep, session: StaffSession, q: str | None = None, order_status: str | None = Query(default=None, alias="status"), cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_orders(
+    staff: StaffDep,
+    session: StaffSession,
+    q: str | None = None,
+    order_status: str | None = Query(default=None, alias="status"),
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     tenant_names: dict[UUID, str] = {
         tenant_id: name
-        for tenant_id, name in (
-            await session.execute(select(Tenant.id, Tenant.name))
-        ).all()
+        for tenant_id, name in (await session.execute(select(Tenant.id, Tenant.name))).all()
     }
     items: list[dict[str, Any]] = []
     normalized_query = q.strip().lower() if q else None
@@ -1102,21 +2208,102 @@ async def admin_orders(staff: StaffDep, session: StaffSession, q: str | None = N
 
 
 @router.get("/admin/commerce/orders/{order_id}")
-async def admin_order_detail(order_id: UUID, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def admin_order_detail(
+    order_id: UUID, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
     tenant_id = await _locate_tenant_record(Order, order_id)
     async with session_scope(tenant_id) as tenant_session:
         order = await tenant_session.get(Order, order_id)
         if order is None:
             raise ApiError("not_found", "order not found")
-        items = (await tenant_session.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
-        attempts = (await tenant_session.execute(select(PaymentAttempt).where(PaymentAttempt.order_id == order.id).order_by(PaymentAttempt.created_at.desc()))).scalars().all()
-        invoice = (await tenant_session.execute(select(Invoice).where(Invoice.order_id == order.id))).scalar_one_or_none()
-        refunds = (await tenant_session.execute(select(Refund).where(Refund.order_id == order.id).order_by(Refund.created_at.desc()))).scalars().all()
-    return {**_order_summary(order), "customer_email": order.customer_email, "invoice_profile": order.invoice_profile, "terms_version": order.terms_version, "items": [{"id": str(item.id), "kind": item.kind, "description": item.description, "quantity": item.quantity, "unit_price_toman": item.unit_price_toman, "total_toman": item.total_toman, "metadata": item.metadata_json} for item in items], "payments": [{"id": str(item.id), "status": item.status, "gateway": item.gateway, "amount_rial": item.amount_rial, "authority_hint": f"…{item.authority[-8:]}" if item.authority else None, "ref_id": item.ref_id, "created_at": item.created_at, "verified_at": item.verified_at} for item in attempts], "invoice": {"id": str(invoice.id), "number": invoice.number, "amount_toman": invoice.amount_toman, "profile": invoice.profile_snapshot, "issued_at": invoice.issued_at} if invoice else None, "refunds": [{"id": str(item.id), "amount_toman": item.amount_toman, "status": item.status, "method": item.method, "reason": item.reason, "gateway_reference": item.gateway_reference, "created_at": item.created_at} for item in refunds]}
+        items = (
+            (await tenant_session.execute(select(OrderItem).where(OrderItem.order_id == order.id)))
+            .scalars()
+            .all()
+        )
+        attempts = (
+            (
+                await tenant_session.execute(
+                    select(PaymentAttempt)
+                    .where(PaymentAttempt.order_id == order.id)
+                    .order_by(PaymentAttempt.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        invoice = (
+            await tenant_session.execute(select(Invoice).where(Invoice.order_id == order.id))
+        ).scalar_one_or_none()
+        refunds = (
+            (
+                await tenant_session.execute(
+                    select(Refund)
+                    .where(Refund.order_id == order.id)
+                    .order_by(Refund.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return {
+        **_order_summary(order),
+        "customer_email": order.customer_email,
+        "invoice_profile": order.invoice_profile,
+        "terms_version": order.terms_version,
+        "items": [
+            {
+                "id": str(item.id),
+                "kind": item.kind,
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price_toman": item.unit_price_toman,
+                "total_toman": item.total_toman,
+                "metadata": item.metadata_json,
+            }
+            for item in items
+        ],
+        "payments": [
+            {
+                "id": str(item.id),
+                "status": item.status,
+                "gateway": item.gateway,
+                "amount_rial": item.amount_rial,
+                "authority_hint": f"…{item.authority[-8:]}" if item.authority else None,
+                "ref_id": item.ref_id,
+                "created_at": item.created_at,
+                "verified_at": item.verified_at,
+            }
+            for item in attempts
+        ],
+        "invoice": {
+            "id": str(invoice.id),
+            "number": invoice.number,
+            "amount_toman": invoice.amount_toman,
+            "profile": invoice.profile_snapshot,
+            "issued_at": invoice.issued_at,
+        }
+        if invoice
+        else None,
+        "refunds": [
+            {
+                "id": str(item.id),
+                "amount_toman": item.amount_toman,
+                "status": item.status,
+                "method": item.method,
+                "reason": item.reason,
+                "gateway_reference": item.gateway_reference,
+                "created_at": item.created_at,
+            }
+            for item in refunds
+        ],
+    }
 
 
 @router.post("/admin/commerce/orders/{order_id}/cancel")
-async def cancel_admin_order(order_id: UUID, payload: ReasonAction, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def cancel_admin_order(
+    order_id: UUID, payload: ReasonAction, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
     tenant_id = await _locate_tenant_record(Order, order_id)
     async with session_scope(tenant_id) as tenant_session:
         order = await tenant_session.get(Order, order_id, with_for_update=True)
@@ -1125,12 +2312,26 @@ async def cancel_admin_order(order_id: UUID, payload: ReasonAction, request: Req
         if order.status not in {"draft", "pending_payment"}:
             raise ApiError("invalid_request", "paid or fulfilled orders cannot be canceled")
         order.status = "canceled"
-        await audit.record(tenant_session, actor_type="staff", actor_id=staff.id, tenant_id=order.tenant_id, action="order.canceled", payload={"order_id": str(order.id), "reason": payload.reason}, ip=client_ip(request))
+        await audit.record(
+            tenant_session,
+            actor_type="staff",
+            actor_id=staff.id,
+            tenant_id=order.tenant_id,
+            action="order.canceled",
+            payload={"order_id": str(order.id), "reason": payload.reason},
+            ip=client_ip(request),
+        )
         return {"id": str(order.id), "status": order.status}
 
 
 @router.get("/admin/commerce/payments")
-async def admin_payments(staff: StaffDep, session: StaffSession, payment_status: str | None = Query(default=None, alias="status"), cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_payments(
+    staff: StaffDep,
+    session: StaffSession,
+    payment_status: str | None = Query(default=None, alias="status"),
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     rows: list[PaymentAttempt] = []
     for tenant_id in await routable_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
@@ -1141,47 +2342,171 @@ async def admin_payments(staff: StaffDep, session: StaffSession, payment_status:
     rows.sort(key=lambda row: row.created_at, reverse=True)
     total = len(rows)
     page_rows = rows[cursor : cursor + limit]
-    return _page([{"id": str(row.id), "order_id": str(row.order_id), "tenant_id": str(row.tenant_id), "status": row.status, "gateway": row.gateway, "amount_rial": row.amount_rial, "authority_hint": f"…{row.authority[-8:]}" if row.authority else None, "ref_id": row.ref_id, "rrn": row.rrn, "card_pan": row.card_pan, "failure_code": row.failure_code, "order_ref": row.order_ref, "settled_at": row.settled_at, "gateway_label": GATEWAYS[row.gateway].label if row.gateway in GATEWAYS else row.gateway, "created_at": row.created_at, "verified_at": row.verified_at} for row in page_rows], total, cursor, limit)
+    return _page(
+        [
+            {
+                "id": str(row.id),
+                "order_id": str(row.order_id),
+                "tenant_id": str(row.tenant_id),
+                "status": row.status,
+                "gateway": row.gateway,
+                "amount_rial": row.amount_rial,
+                "authority_hint": f"…{row.authority[-8:]}" if row.authority else None,
+                "ref_id": row.ref_id,
+                "rrn": row.rrn,
+                "card_pan": row.card_pan,
+                "failure_code": row.failure_code,
+                "order_ref": row.order_ref,
+                "settled_at": row.settled_at,
+                "gateway_label": GATEWAYS[row.gateway].label
+                if row.gateway in GATEWAYS
+                else row.gateway,
+                "created_at": row.created_at,
+                "verified_at": row.verified_at,
+            }
+            for row in page_rows
+        ],
+        total,
+        cursor,
+        limit,
+    )
 
 
 @router.post("/admin/commerce/payments/{payment_id}/reconcile")
-async def reconcile_payment(payment_id: UUID, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, str]:
+async def reconcile_payment(
+    payment_id: UUID, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, str]:
     tenant_id = await _locate_tenant_record(PaymentAttempt, payment_id)
     async with session_scope(tenant_id) as tenant_session:
         order = await payments.reconcile_attempt(tenant_session, payment_id)
-        await audit.record(tenant_session, actor_type="staff", actor_id=staff.id, tenant_id=order.tenant_id, action="payment.reconciled", payload={"payment_id": str(payment_id), "order_id": str(order.id)}, ip=client_ip(request))
+        await audit.record(
+            tenant_session,
+            actor_type="staff",
+            actor_id=staff.id,
+            tenant_id=order.tenant_id,
+            action="payment.reconciled",
+            payload={"payment_id": str(payment_id), "order_id": str(order.id)},
+            ip=client_ip(request),
+        )
         return {"order_id": str(order.id), "status": order.status}
 
 
 @router.post("/admin/commerce/orders/{order_id}/refunds", status_code=status.HTTP_201_CREATED)
-async def create_admin_refund(order_id: UUID, payload: RefundCreate, request: Request, staff: StaffDep, session: StaffSession, idempotency_key: str = Header(alias="Idempotency-Key")) -> dict[str, Any]:
+async def create_admin_refund(
+    order_id: UUID,
+    payload: RefundCreate,
+    request: Request,
+    staff: StaffDep,
+    session: StaffSession,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
     tenant_id = await _locate_tenant_record(Order, order_id)
     async with session_scope(tenant_id) as tenant_session:
-        row = await payments.refund_order(tenant_session, order_id=order_id, amount_toman=payload.amount_toman, method=payload.method, reason=payload.reason, idempotency_key=idempotency_key, created_by=staff.id, payment_attempt_id=payload.payment_attempt_id, external_reference=payload.external_reference)
-        await audit.record(tenant_session, actor_type="staff", actor_id=staff.id, tenant_id=row.tenant_id, action="payment.refunded", payload={"refund_id": str(row.id), "order_id": str(row.order_id), "amount_toman": row.amount_toman, "method": row.method, "reason": row.reason}, ip=client_ip(request))
+        row = await payments.refund_order(
+            tenant_session,
+            order_id=order_id,
+            amount_toman=payload.amount_toman,
+            method=payload.method,
+            reason=payload.reason,
+            idempotency_key=idempotency_key,
+            created_by=staff.id,
+            payment_attempt_id=payload.payment_attempt_id,
+            external_reference=payload.external_reference,
+        )
+        await audit.record(
+            tenant_session,
+            actor_type="staff",
+            actor_id=staff.id,
+            tenant_id=row.tenant_id,
+            action="payment.refunded",
+            payload={
+                "refund_id": str(row.id),
+                "order_id": str(row.order_id),
+                "amount_toman": row.amount_toman,
+                "method": row.method,
+                "reason": row.reason,
+            },
+            ip=client_ip(request),
+        )
         return {"id": str(row.id), "status": row.status, "amount_toman": row.amount_toman}
 
 
 @router.get("/admin/commerce/invoices")
-async def admin_invoices(staff: StaffDep, session: StaffSession, cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_invoices(
+    staff: StaffDep,
+    session: StaffSession,
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     rows: list[Invoice] = []
     for tenant_id in await routable_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
-            rows.extend((await tenant_session.execute(select(Invoice).where(Invoice.tenant_id == tenant_id))).scalars())
+            rows.extend(
+                (
+                    await tenant_session.execute(
+                        select(Invoice).where(Invoice.tenant_id == tenant_id)
+                    )
+                ).scalars()
+            )
     rows.sort(key=lambda row: row.issued_at, reverse=True)
     total = len(rows)
-    return _page([{"id": str(row.id), "order_id": str(row.order_id), "tenant_id": str(row.tenant_id), "number": row.number, "amount_toman": row.amount_toman, "profile": row.profile_snapshot, "issued_at": row.issued_at} for row in rows[cursor : cursor + limit]], total, cursor, limit)
+    return _page(
+        [
+            {
+                "id": str(row.id),
+                "order_id": str(row.order_id),
+                "tenant_id": str(row.tenant_id),
+                "number": row.number,
+                "amount_toman": row.amount_toman,
+                "profile": row.profile_snapshot,
+                "issued_at": row.issued_at,
+            }
+            for row in rows[cursor : cursor + limit]
+        ],
+        total,
+        cursor,
+        limit,
+    )
 
 
 @router.get("/admin/commerce/refunds")
-async def admin_refunds(staff: StaffDep, session: StaffSession, cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_refunds(
+    staff: StaffDep,
+    session: StaffSession,
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     rows: list[Refund] = []
     for tenant_id in await routable_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
-            rows.extend((await tenant_session.execute(select(Refund).where(Refund.tenant_id == tenant_id))).scalars())
+            rows.extend(
+                (
+                    await tenant_session.execute(
+                        select(Refund).where(Refund.tenant_id == tenant_id)
+                    )
+                ).scalars()
+            )
     rows.sort(key=lambda row: row.created_at, reverse=True)
     total = len(rows)
-    return _page([{"id": str(row.id), "order_id": str(row.order_id), "tenant_id": str(row.tenant_id), "amount_toman": row.amount_toman, "status": row.status, "method": row.method, "reason": row.reason, "gateway_reference": row.gateway_reference, "created_at": row.created_at} for row in rows[cursor : cursor + limit]], total, cursor, limit)
+    return _page(
+        [
+            {
+                "id": str(row.id),
+                "order_id": str(row.order_id),
+                "tenant_id": str(row.tenant_id),
+                "amount_toman": row.amount_toman,
+                "status": row.status,
+                "method": row.method,
+                "reason": row.reason,
+                "gateway_reference": row.gateway_reference,
+                "created_at": row.created_at,
+            }
+            for row in rows[cursor : cursor + limit]
+        ],
+        total,
+        cursor,
+        limit,
+    )
 
 
 @router.get("/admin/commerce/settings")
@@ -1190,11 +2515,23 @@ async def admin_commerce_settings(staff: StaffDep, session: StaffSession) -> dic
 
 
 @router.patch("/admin/commerce/settings")
-async def patch_admin_commerce_settings(payload: CommerceSettingsUpdate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, object]:
+async def patch_admin_commerce_settings(
+    payload: CommerceSettingsUpdate, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, object]:
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
     saved = await update_commerce_settings(session, changes)
-    safe_changes = {key: ("configured" if key == "zarinpal_merchant_id" else value) for key, value in changes.items()}
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="commerce.settings_update", payload=safe_changes, ip=client_ip(request))
+    safe_changes = {
+        key: ("configured" if key == "zarinpal_merchant_id" else value)
+        for key, value in changes.items()
+    }
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="commerce.settings_update",
+        payload=safe_changes,
+        ip=client_ip(request),
+    )
     return commerce_settings_public_view(saved)
 
 
@@ -1239,9 +2576,31 @@ async def admin_gateways(staff: StaffDep, session: StaffSession) -> list[dict[st
 
 
 @router.patch("/admin/commerce/gateways/{code}")
-async def update_admin_gateway(code: str, payload: GatewayUpdate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
-    state = await gateway_settings.save(session, code, enabled=payload.enabled, sandbox=payload.sandbox, credentials=payload.credentials)
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="gateway.settings_changed", payload={"gateway": code, "enabled": state.enabled, "sandbox": state.sandbox, "credential_fields_changed": sorted(k for k, v in payload.credentials.items() if v.strip())}, ip=client_ip(request))
+async def update_admin_gateway(
+    code: str, payload: GatewayUpdate, request: Request, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
+    state = await gateway_settings.save(
+        session,
+        code,
+        enabled=payload.enabled,
+        sandbox=payload.sandbox,
+        credentials=payload.credentials,
+    )
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="gateway.settings_changed",
+        payload={
+            "gateway": code,
+            "enabled": state.enabled,
+            "sandbox": state.sandbox,
+            "credential_fields_changed": sorted(
+                k for k, v in payload.credentials.items() if v.strip()
+            ),
+        },
+        ip=client_ip(request),
+    )
     return _gateway_view(state)
 
 
@@ -1269,16 +2628,24 @@ async def test_admin_gateway(code: str, staff: StaffDep, session: StaffSession) 
         await gateway.request(context)
     except GatewayError as exc:
         return {"ok": False, "code": exc.code, "message": exc.message, "retryable": exc.retryable}
-    return {"ok": True, "mode": "sandbox" if state.sandbox else "live", "latency_ms": int((datetime.now(UTC) - started_at).total_seconds() * 1000)}
+    return {
+        "ok": True,
+        "mode": "sandbox" if state.sandbox else "live",
+        "latency_ms": int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+    }
 
 
 @router.get("/admin/commerce/installations")
-async def admin_installations(staff: StaffDep, session: StaffSession, installation_status: str | None = Query(default=None, alias="status"), cursor: int = 0, limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+async def admin_installations(
+    staff: StaffDep,
+    session: StaffSession,
+    installation_status: str | None = Query(default=None, alias="status"),
+    cursor: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
     tenant_names: dict[UUID, str] = {
         tenant_id: name
-        for tenant_id, name in (
-            await session.execute(select(Tenant.id, Tenant.name))
-        ).all()
+        for tenant_id, name in (await session.execute(select(Tenant.id, Tenant.name))).all()
     }
     rows: list[InstallationRequest] = []
     for tenant_id in await routable_tenant_ids():
@@ -1289,12 +2656,38 @@ async def admin_installations(staff: StaffDep, session: StaffSession, installati
             rows.extend((await tenant_session.execute(stmt)).scalars())
     rows.sort(key=lambda row: row.created_at, reverse=True)
     total = len(rows)
-    items = [{"id": str(row.id), "tenant_id": str(row.tenant_id), "tenant_name": tenant_names.get(row.tenant_id), "order_id": str(row.order_id) if row.order_id else None, "kind": row.kind, "status": row.status, "pbx_type": row.pbx_type, "pbx_version": row.pbx_version, "extension_count": row.extension_count, "connection_method": row.connection_method, "technical_contact": row.technical_contact, "preferred_time": row.preferred_time, "notes": row.notes, "internal_notes": row.internal_notes, "scheduled_at": row.scheduled_at, "created_at": row.created_at} for row in rows[cursor : cursor + limit]]
+    items = [
+        {
+            "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
+            "tenant_name": tenant_names.get(row.tenant_id),
+            "order_id": str(row.order_id) if row.order_id else None,
+            "kind": row.kind,
+            "status": row.status,
+            "pbx_type": row.pbx_type,
+            "pbx_version": row.pbx_version,
+            "extension_count": row.extension_count,
+            "connection_method": row.connection_method,
+            "technical_contact": row.technical_contact,
+            "preferred_time": row.preferred_time,
+            "notes": row.notes,
+            "internal_notes": row.internal_notes,
+            "scheduled_at": row.scheduled_at,
+            "created_at": row.created_at,
+        }
+        for row in rows[cursor : cursor + limit]
+    ]
     return _page(items, total, cursor, limit)
 
 
 @router.patch("/admin/commerce/installations/{installation_id}")
-async def update_admin_installation(installation_id: UUID, payload: InstallationUpdate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def update_admin_installation(
+    installation_id: UUID,
+    payload: InstallationUpdate,
+    request: Request,
+    staff: StaffDep,
+    session: StaffSession,
+) -> dict[str, Any]:
     tenant_id = await _locate_tenant_record(InstallationRequest, installation_id)
     async with session_scope(tenant_id) as tenant_session:
         row = await tenant_session.get(InstallationRequest, installation_id, with_for_update=True)
@@ -1311,10 +2704,28 @@ async def update_admin_installation(installation_id: UUID, payload: Installation
             "completed": set(),
             "canceled": set(),
         }
-        if next_status is not None and next_status != row.status and next_status not in allowed_transitions[row.status]:
+        if (
+            next_status is not None
+            and next_status != row.status
+            and next_status not in allowed_transitions[row.status]
+        ):
             raise ApiError("invalid_request", "installation status transition is not allowed")
         for field, value in changes.items():
             setattr(row, field, value)
         row.updated_at = datetime.now(UTC)
-        await audit.record(tenant_session, actor_type="staff", actor_id=staff.id, tenant_id=row.tenant_id, action="installation.update", payload={"installation_id": str(row.id), "changes": {key: str(value) if isinstance(value, datetime) else value for key, value in changes.items()}}, ip=client_ip(request))
+        await audit.record(
+            tenant_session,
+            actor_type="staff",
+            actor_id=staff.id,
+            tenant_id=row.tenant_id,
+            action="installation.update",
+            payload={
+                "installation_id": str(row.id),
+                "changes": {
+                    key: str(value) if isinstance(value, datetime) else value
+                    for key, value in changes.items()
+                },
+            },
+            ip=client_ip(request),
+        )
         return {"id": str(row.id), "status": row.status, "scheduled_at": row.scheduled_at}

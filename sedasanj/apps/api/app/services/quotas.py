@@ -38,6 +38,8 @@ def _anniversary_day(anchor: datetime, year: int, month: int) -> int:
 
 
 def calendar_month_start(now: datetime) -> datetime:
-    return now.astimezone(TEHRAN).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    ).astimezone(UTC)
+    return (
+        now.astimezone(TEHRAN)
+        .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(UTC)
+    )

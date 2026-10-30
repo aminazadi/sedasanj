@@ -6,8 +6,10 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import operational_tenant_ids, session_scope
+from app.db import operational_tenant_ids, routable_tenant_ids, session_scope
+from app.errors import ApiError
 from app.metrics import jobs_failed_retryable, oldest_job_seconds, provider_tasks, queue_depth
 from app.models import (
     AnalysisRun,
@@ -19,6 +21,7 @@ from app.models import (
     LedgerEntry,
     Order,
     OrderItem,
+    PaymentAttempt,
     Plan,
     PlanVersion,
     Subscription,
@@ -26,7 +29,7 @@ from app.models import (
     TenantBalanceCache,
     User,
 )
-from app.services import commerce, outbox, pipeline, queue
+from app.services import commerce, outbox, pipeline, queue, subscription_state
 from app.services.commerce_settings import get_commerce_settings
 from app.services.storage import get_storage
 
@@ -62,7 +65,8 @@ async def expire_commerce_state() -> tuple[int, int]:
     now = datetime.now(UTC)
     expired_subscriptions = 0
     expired_grants = 0
-    for tenant_id in await operational_tenant_ids():
+    # Suspended tenants must lapse too: enforcement alone would leave their rows active forever.
+    for tenant_id in await routable_tenant_ids():
         try:
             subscriptions, grants = await _expire_tenant_state(tenant_id, now)
         except Exception:  # noqa: BLE001 - one tenant must not stop the others
@@ -75,18 +79,37 @@ async def expire_commerce_state() -> tuple[int, int]:
     return expired_subscriptions, expired_grants
 
 
-async def _expire_tenant_state(tenant_id: UUID, now: datetime) -> tuple[int, int]:
-    expired_subscriptions = 0
-    expired_grants = 0
-    async with session_scope(tenant_id) as session:
-        subscriptions = (
+async def _cancel_stale_orders(
+    session: AsyncSession, tenant_id: UUID, now: datetime, ttl_days: int
+) -> int:
+    """Cancel never-paid draft orders (no payment attempt) older than the configured TTL."""
+    cutoff = now - timedelta(days=ttl_days)
+    attempted = select(PaymentAttempt.order_id).where(PaymentAttempt.tenant_id == tenant_id)
+    orders = (
+        (
+            await session.execute(
+                select(Order)
+                .where(
+                    Order.tenant_id == tenant_id,
+                    Order.status == "draft",
+                    Order.created_at < cutoff,
+                    Order.id.not_in(attempted),
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for order in orders:
+        order.status = "canceled"
+        changes = (
             (
                 await session.execute(
-                    select(Subscription)
+                    select(SubscriptionChange)
                     .where(
-                        Subscription.tenant_id == tenant_id,
-                        Subscription.status.in_(("active", "trialing")),
-                        Subscription.period_end <= now,
+                        SubscriptionChange.order_id == order.id,
+                        SubscriptionChange.status == "pending_payment",
                     )
                     .with_for_update()
                 )
@@ -94,10 +117,20 @@ async def _expire_tenant_state(tenant_id: UUID, now: datetime) -> tuple[int, int
             .scalars()
             .all()
         )
-        for subscription in subscriptions:
-            subscription.status = "canceled" if subscription.cancel_at_period_end else "expired"
-            subscription.updated_at = now
-            expired_subscriptions += 1
+        for change in changes:
+            change.status = "failed"
+    return len(orders)
+
+
+async def _expire_tenant_state(tenant_id: UUID, now: datetime) -> tuple[int, int]:
+    expired_subscriptions = 0
+    expired_grants = 0
+    async with session_scope(tenant_id) as session:
+        settings = await get_commerce_settings(session)
+        expired_subscriptions = await subscription_state.expire_due(
+            session, tenant_id, now, settings.grace_days
+        )
+        await _cancel_stale_orders(session, tenant_id, now, settings.order_ttl_days)
 
         grants = (
             (
@@ -185,8 +218,13 @@ async def _prepare_tenant_renewals(tenant_id: UUID, now: datetime) -> int:
             if version is None:
                 continue
             plan = await session.get(Plan, version.plan_id)
-            if plan is None or plan.code == "demo":
+            if plan is None or plan.code == "demo" or not plan.active:
                 continue
+            if settings.renewal_price_policy == "latest" and not subscription.next_plan_version_id:
+                try:
+                    _, version = await commerce.plan_version_by_code(session, plan.code)
+                except ApiError:
+                    continue
             extra = subscription.extra_operators
             scheduled = (
                 await session.execute(

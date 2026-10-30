@@ -65,15 +65,21 @@ async def active_rows(
     if scope not in ALLOWED_SCOPES:
         raise ValueError("invalid memory scope")
     rows = (
-        await session.execute(
-            select(OrganizationMemory).where(
-                OrganizationMemory.tenant_id == tenant_id,
-                OrganizationMemory.status == "active",
-                OrganizationMemory.applies_to.any(scope),
+        (
+            await session.execute(
+                select(OrganizationMemory).where(
+                    OrganizationMemory.tenant_id == tenant_id,
+                    OrganizationMemory.status == "active",
+                    OrganizationMemory.applies_to.any(scope),
+                )
             )
         )
-    ).scalars().all()
-    return sorted(rows, key=lambda row: (CATEGORY_ORDER[row.category], row.logical_key, row.version))
+        .scalars()
+        .all()
+    )
+    return sorted(
+        rows, key=lambda row: (CATEGORY_ORDER[row.category], row.logical_key, row.version)
+    )
 
 
 async def build_context(
@@ -97,7 +103,12 @@ async def build_context(
         rendered.append(block)
         used += len(block) + 2
         items.append(
-            {"id": str(row.id), "logical_key": row.logical_key, "version": row.version, "category": row.category}
+            {
+                "id": str(row.id),
+                "logical_key": row.logical_key,
+                "version": row.version,
+                "category": row.category,
+            }
         )
     text_value = "\n\n".join(rendered)
     digest = hashlib.sha256(text_value.encode()).hexdigest()
@@ -114,7 +125,9 @@ def append_untrusted_context(prompt: str, context: str, scope: str) -> str:
     return f"{prompt.rstrip()}\n\n[{boundary} scope={scope}]\n{context}"
 
 
-def conflicts(candidate: OrganizationMemory, active: list[OrganizationMemory]) -> list[OrganizationMemory]:
+def conflicts(
+    candidate: OrganizationMemory, active: list[OrganizationMemory]
+) -> list[OrganizationMemory]:
     candidate_tags = {tag.casefold() for tag in candidate.tags}
     candidate_terms = {
         term.casefold()
@@ -135,9 +148,7 @@ def conflicts(candidate: OrganizationMemory, active: list[OrganizationMemory]) -
             and len(
                 candidate_terms.intersection(
                     term.casefold()
-                    for term in re.findall(
-                        r"[\w\u0600-\u06ff]{3,}", f"{row.title} {row.content}"
-                    )
+                    for term in re.findall(r"[\w\u0600-\u06ff]{3,}", f"{row.title} {row.content}")
                 )
             )
             / len(candidate_terms)

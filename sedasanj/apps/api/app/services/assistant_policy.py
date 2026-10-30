@@ -25,6 +25,8 @@ def must_refuse(question: str, role: str) -> bool:
     normalized = " ".join(question.split())
     if _CROSS_TENANT.search(normalized):
         return True
-    return role == "operator" and (
-        _CROSS_OPERATOR.search(normalized) or _ORGANIZATION_WIDE.search(normalized)
-    ) is not None
+    return (
+        role == "operator"
+        and (_CROSS_OPERATOR.search(normalized) or _ORGANIZATION_WIDE.search(normalized))
+        is not None
+    )

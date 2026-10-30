@@ -1641,12 +1641,23 @@ class SubscriptionChange(Base):
     requested_extra_operators: Mapped[int | None] = mapped_column(Integer)
     effective_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     order_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    request_hash: Mapped[str | None] = mapped_column(String(64))
+    previous_plan_version_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    previous_extra_operators: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
         CheckConstraint(
             "status IN ('scheduled','pending_payment','applied','canceled','failed')",
             name="subscription_changes_status_check",
+        ),
+        Index(
+            "subscription_changes_tenant_idem_key",
+            "tenant_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
         ),
     )
 

@@ -30,42 +30,62 @@ def payload_for_job(
     retranscription: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     if kind == "asr":
-        return queue.QUEUE_ASR, queue.JOB_ASR, {
-            "call_id": str(call_id),
-            "recovery": recovery,
-            "asr_revision_id": str(asr_revision_id) if asr_revision_id else None,
-            "retranscription": retranscription,
-            "previous_status": previous_status,
-        }
+        return (
+            queue.QUEUE_ASR,
+            queue.JOB_ASR,
+            {
+                "call_id": str(call_id),
+                "recovery": recovery,
+                "asr_revision_id": str(asr_revision_id) if asr_revision_id else None,
+                "retranscription": retranscription,
+                "previous_status": previous_status,
+            },
+        )
     if kind == "emotion":
         if analysis_run_id is None:
             raise ValueError("emotion job requires analysis_run_id")
-        return queue.QUEUE_EMOTION, queue.JOB_EMOTION, {
-            "call_id": str(call_id),
-            "analysis_run_id": str(analysis_run_id),
-            "recovery": recovery,
-        }
+        return (
+            queue.QUEUE_EMOTION,
+            queue.JOB_EMOTION,
+            {
+                "call_id": str(call_id),
+                "analysis_run_id": str(analysis_run_id),
+                "recovery": recovery,
+            },
+        )
     if kind == "llm":
-        return queue.QUEUE_LLM, queue.JOB_LLM, {
-            "call_id": str(call_id),
-            "analysis_run_id": str(analysis_run_id) if analysis_run_id else None,
-            "reanalysis": reanalysis,
-            "previous_status": previous_status,
-            "recovery": recovery,
-        }
+        return (
+            queue.QUEUE_LLM,
+            queue.JOB_LLM,
+            {
+                "call_id": str(call_id),
+                "analysis_run_id": str(analysis_run_id) if analysis_run_id else None,
+                "reanalysis": reanalysis,
+                "previous_status": previous_status,
+                "recovery": recovery,
+            },
+        )
     if kind == "correction":
         if correction_run_id is None:
             raise ValueError("correction job requires correction_run_id")
-        return queue.QUEUE_LLM, queue.JOB_CORRECTION, {
-            "call_id": str(call_id),
-            "correction_run_id": str(correction_run_id),
-            "recovery": recovery,
-        }
+        return (
+            queue.QUEUE_LLM,
+            queue.JOB_CORRECTION,
+            {
+                "call_id": str(call_id),
+                "correction_run_id": str(correction_run_id),
+                "recovery": recovery,
+            },
+        )
     if kind == "notify":
-        return queue.QUEUE_NOTIFY, queue.JOB_NOTIFY, {
-            "call_id": str(call_id),
-            "event": event or "call.complete",
-        }
+        return (
+            queue.QUEUE_NOTIFY,
+            queue.JOB_NOTIFY,
+            {
+                "call_id": str(call_id),
+                "event": event or "call.complete",
+            },
+        )
     raise ValueError(f"unsupported job kind: {kind}")
 
 
@@ -142,9 +162,7 @@ async def _ready_tenant_ids(*, active_only: bool = True) -> list[UUID]:
         )
         if active_only:
             statement = statement.where(Tenant.status == "active")
-        return list(
-            (await session.execute(statement)).scalars()
-        )
+        return list((await session.execute(statement)).scalars())
 
 
 async def dispatch_one(outbox_id: UUID, tenant_id: UUID | None = None) -> bool:
@@ -166,9 +184,7 @@ async def dispatch_one(outbox_id: UUID, tenant_id: UUID | None = None) -> bool:
             )
             if candidate is None and ready_ids:
                 statement = statement.where(JobOutbox.tenant_id.not_in(ready_ids))
-            row = (
-                await session.execute(statement)
-            ).scalar_one_or_none()
+            row = (await session.execute(statement)).scalar_one_or_none()
             if row is None:
                 continue
             if row.dispatched_at is not None or row.available_at > datetime.now(UTC):
@@ -203,11 +219,7 @@ async def dispatch_pending(*, limit: int = 100) -> int:
     claimed: list[tuple[UUID, UUID | None]] = []
     async with session_scope(None, staff=True) as session:
         active_ids = list(
-            (
-                await session.execute(
-                    select(Tenant.id).where(Tenant.status == "active")
-                )
-            ).scalars()
+            (await session.execute(select(Tenant.id).where(Tenant.status == "active"))).scalars()
         )
         id_statement = (
             select(JobOutbox.id)
@@ -222,10 +234,7 @@ async def dispatch_pending(*, limit: int = 100) -> int:
         if ready_ids:
             id_statement = id_statement.where(JobOutbox.tenant_id.not_in(ready_ids))
         claimed.extend(
-            (outbox_id, None)
-            for outbox_id in (
-                await session.execute(id_statement)
-            ).scalars()
+            (outbox_id, None) for outbox_id in (await session.execute(id_statement)).scalars()
         )
     for tenant_id in ready_ids:
         if len(claimed) >= limit:
@@ -268,7 +277,9 @@ async def dispatch_pending(*, limit: int = 100) -> int:
                             JobOutbox.available_at <= datetime.now(UTC),
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
     outbox_pending.set(len(pending_dates))
     oldest = min(pending_dates) if pending_dates else None

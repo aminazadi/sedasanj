@@ -9,6 +9,7 @@ from app.errors import ApiError
 from app.models import Subscription, Tenant, TenantBalanceCache, TrialClaim, User
 from app.security import hash_password
 from app.services import audit, commerce, payments
+from app.services.commerce_settings import get_commerce_settings
 from app.services.phone_identity import mobile_lock
 
 
@@ -45,6 +46,7 @@ async def create_account(
             raise ApiError("conflict_idempotency", "دموی این شماره قبلاً فعال شده است.")
     _, version = await commerce.plan_version_by_code(session, plan_code)
     now = datetime.now(UTC)
+    payment_window = timedelta(days=(await get_commerce_settings(session)).payment_window_days)
     tenant = Tenant(
         name=organization_name.strip(),
         status="active",
@@ -75,14 +77,13 @@ async def create_account(
         status="trialing" if is_demo else "pending_payment",
         billing_period="trial" if is_demo else "annual",
         period_start=now,
+        # An unpaid sign-up lapses after the payment window; payment starts the real term.
         period_end=now + timedelta(days=version.trial_days or 7)
         if is_demo
-        else commerce.add_months(now, 12),
+        else now + payment_window,
         base_operators=version.base_operators,
         extra_operators=0,
-        price_per_minute_toman=(
-            7_000 if is_demo else version.overage_price_per_minute_toman
-        ),
+        price_per_minute_toman=(7_000 if is_demo else version.overage_price_per_minute_toman),
         assistant_tier=version.assistant_tier,
         assistant_monthly_messages=version.assistant_monthly_messages,
         assistant_source_limit=version.assistant_source_limit,

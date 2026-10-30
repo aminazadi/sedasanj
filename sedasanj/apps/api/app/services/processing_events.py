@@ -11,9 +11,7 @@ from app.models import ProcessingEvent
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"),
     re.compile(r"(?i)((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\s,;]+"),
-    re.compile(
-        r"(?i)([?&](?:api[_-]?key|access[_-]?token|token|secret|password)=)[^&#\s]+"
-    ),
+    re.compile(r"(?i)([?&](?:api[_-]?key|access[_-]?token|token|secret|password)=)[^&#\s]+"),
     re.compile(r"(?i)(https?://[^\s:/]+:)[^@\s]+@"),
     re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(r"(sk_(?:live|test)_)[A-Za-z0-9_-]+"),
@@ -77,9 +75,7 @@ async def record(
     if existing is not None:
         existing.level = level
         existing.status = status
-        existing.progress_pct = (
-            max(0, min(progress_pct, 100)) if progress_pct is not None else None
-        )
+        existing.progress_pct = max(0, min(progress_pct, 100)) if progress_pct is not None else None
         existing.message = message[:500]
         existing.error_code = error_code
         existing.error_detail = sanitize_detail(error_detail)

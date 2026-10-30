@@ -91,18 +91,22 @@ async def _ensure_monthly_plan_credit(session: AsyncSession, tenant_id: UUID, no
     ).scalar_one_or_none()
     if exists is None:
         old_grants = (
-            await session.execute(
-                select(CreditGrant)
-                .where(
-                    CreditGrant.tenant_id == tenant_id,
-                    CreditGrant.source == "monthly_plan",
-                    CreditGrant.remaining_seconds > 0,
-                    CreditGrant.expires_at.is_not(None),
-                    CreditGrant.expires_at <= now,
+            (
+                await session.execute(
+                    select(CreditGrant)
+                    .where(
+                        CreditGrant.tenant_id == tenant_id,
+                        CreditGrant.source == "monthly_plan",
+                        CreditGrant.remaining_seconds > 0,
+                        CreditGrant.expires_at.is_not(None),
+                        CreditGrant.expires_at <= now,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for grant in old_grants:
             cache.seconds -= grant.remaining_seconds
             amount = grant.remaining_seconds
@@ -257,9 +261,7 @@ async def accept_upload(
                     session,
                     tenant_id,
                     price_per_minute_toman=(
-                        plan_price
-                        if plan_price > 0
-                        else entitlement.price_per_minute_toman
+                        plan_price if plan_price > 0 else entitlement.price_per_minute_toman
                     ),
                 )
 
@@ -333,7 +335,9 @@ async def accept_upload(
                 except ApiError as exc:
                     if exc.code == "insufficient_credit":
                         credit_rejects_total.labels(tenant=str(tenant_id)).inc()
-                        ingest_total.labels(tenant=str(tenant_id), result="insufficient_credit").inc()
+                        ingest_total.labels(
+                            tenant=str(tenant_id), result="insufficient_credit"
+                        ).inc()
                     raise
 
                 call.status = "reserved"

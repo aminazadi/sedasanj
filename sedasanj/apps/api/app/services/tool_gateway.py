@@ -65,7 +65,9 @@ def _key() -> bytes:
 
 
 def _mac(timestamp: str, nonce: str, name: str, body: bytes) -> str:
-    message = b".".join([timestamp.encode(), nonce.encode(), name.encode(), hashlib.sha256(body).digest()])
+    message = b".".join(
+        [timestamp.encode(), nonce.encode(), name.encode(), hashlib.sha256(body).digest()]
+    )
     return hmac.new(_key(), message, hashlib.sha256).hexdigest()
 
 
@@ -143,7 +145,9 @@ async def execute_local(
             result, duration = await assistant_tools.execute(
                 name,
                 arguments,
-                assistant_tools.ToolContext(tool_session, principal, bound_call_id, conversation_id),
+                assistant_tools.ToolContext(
+                    tool_session, principal, bound_call_id, conversation_id
+                ),
             )
         return result, duration
     except BaseException:
@@ -200,19 +204,23 @@ async def dispatch(
     base = (settings.tool_gateway_url or "").rstrip("/")
     if not base:
         return await execute_local(name, arguments, principal, bound_call_id, conversation_id)
-    body = GatewayRequest(
-        tool_call_id=tool_call_id,
-        arguments=arguments,
-        principal=GatewayPrincipal(
-            id=principal.id,
-            tenant_id=principal.tenant_id,
-            role=principal.role,
-            mobile_number=principal.mobile_number,
-            extension=principal.extension,
-        ),
-        bound_call_id=bound_call_id,
-        conversation_id=conversation_id,
-    ).model_dump_json().encode()
+    body = (
+        GatewayRequest(
+            tool_call_id=tool_call_id,
+            arguments=arguments,
+            principal=GatewayPrincipal(
+                id=principal.id,
+                tenant_id=principal.tenant_id,
+                role=principal.role,
+                mobile_number=principal.mobile_number,
+                extension=principal.extension,
+            ),
+            bound_call_id=bound_call_id,
+            conversation_id=conversation_id,
+        )
+        .model_dump_json()
+        .encode()
+    )
     url = f"{base}/v1/internal/tools/{name}"
     last_error: Exception | None = None
     for attempt in range(2):

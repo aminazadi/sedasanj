@@ -25,6 +25,15 @@ class CommerceSettings:
     terms_url: str
     tax_percent: int
     automatic_discounts_enabled: bool
+    grace_days: int
+    payment_window_days: int
+    order_ttl_days: int
+    renewal_price_policy: str
+    max_order_toman: int
+    credit_min_minutes: int
+    credit_max_minutes: int
+    credit_presets: str
+    featured_plan_code: str
 
 
 def _bool(value: str) -> bool:
@@ -45,12 +54,25 @@ async def get_commerce_settings(session: AsyncSession) -> CommerceSettings:
         "terms_url": "",
         "tax_percent": 0,
         "automatic_discounts_enabled": False,
+        "grace_days": 3,
+        "payment_window_days": 7,
+        "order_ttl_days": 14,
+        "renewal_price_policy": "keep",
+        "max_order_toman": 5_000_000_000,
+        "credit_min_minutes": 10,
+        "credit_max_minutes": 1_000_000,
+        "credit_presets": "60,300,1000,3000",
+        "featured_plan_code": "silver",
     }
     rows = (
-        await session.execute(
-            select(PlatformSetting).where(PlatformSetting.key.like(f"{PREFIX}%"))
+        (
+            await session.execute(
+                select(PlatformSetting).where(PlatformSetting.key.like(f"{PREFIX}%"))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     values = {row.key.removeprefix(PREFIX): row.value for row in rows}
     bool_keys = {"gateway_enabled", "zarinpal_sandbox", "automatic_discounts_enabled"}
     int_keys = {
@@ -59,6 +81,12 @@ async def get_commerce_settings(session: AsyncSession) -> CommerceSettings:
         "installation_dedicated_toman",
         "renewal_lead_days",
         "tax_percent",
+        "grace_days",
+        "payment_window_days",
+        "order_ttl_days",
+        "max_order_toman",
+        "credit_min_minutes",
+        "credit_max_minutes",
     }
     for key, raw in values.items():
         if key in bool_keys:
@@ -93,3 +121,13 @@ def public_view(value: CommerceSettings) -> dict[str, object]:
     data["merchant_id_configured"] = bool(secret)
     data["merchant_id_hint"] = f"••••{secret[-4:]}" if secret else ""
     return data
+
+
+def credit_preset_minutes(value: CommerceSettings) -> list[int]:
+    """Parse the comma separated preset list, keeping only values inside the allowed range."""
+    presets: list[int] = []
+    for part in value.credit_presets.split(","):
+        part = part.strip()
+        if part.isdigit() and value.credit_min_minutes <= int(part) <= value.credit_max_minutes:
+            presets.append(int(part))
+    return presets

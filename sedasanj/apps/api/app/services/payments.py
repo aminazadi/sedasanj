@@ -32,7 +32,7 @@ from app.models import (
     Tenant,
     TenantBalanceCache,
 )
-from app.services import billing, gateway_settings
+from app.services import audit, billing, gateway_settings, subscription_state
 from app.services.commerce import add_months
 from app.services.gateways import (
     AttemptRef,
@@ -120,8 +120,9 @@ async def available_methods(amount_toman: int | None = None) -> list[dict[str, A
 
 
 def _callback_url(gateway: str, order: Order, attempt_id: UUID) -> str:
-    query = urlencode({"token": order.callback_token, "attempt": str(attempt_id),
-                       "t": str(order.tenant_id)})
+    query = urlencode(
+        {"token": order.callback_token, "attempt": str(attempt_id), "t": str(order.tenant_id)}
+    )
     return f"{get_settings().public_base_url.rstrip('/')}/v1/payments/{gateway}/callback?{query}"
 
 
@@ -244,58 +245,190 @@ def _organization_price_per_minute(
     return version.overage_price_per_minute_toman
 
 
-async def grant_credit(session: AsyncSession, *, tenant_id: UUID, seconds: int, source: str, source_id: UUID, expires_at: datetime | None, toman: int, idem: str) -> None:
-    existing = (await session.execute(select(LedgerEntry).where(LedgerEntry.tenant_id == tenant_id, LedgerEntry.idempotency_key == idem))).scalar_one_or_none()
+async def grant_credit(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    seconds: int,
+    source: str,
+    source_id: UUID,
+    expires_at: datetime | None,
+    toman: int,
+    idem: str,
+) -> None:
+    existing = (
+        await session.execute(
+            select(LedgerEntry).where(
+                LedgerEntry.tenant_id == tenant_id, LedgerEntry.idempotency_key == idem
+            )
+        )
+    ).scalar_one_or_none()
     if existing is not None:
         return
-    session.add(CreditGrant(tenant_id=tenant_id, source=source, source_id=source_id, total_seconds=seconds, remaining_seconds=seconds, expires_at=expires_at))
-    session.add(LedgerEntry(tenant_id=tenant_id, call_id=None, kind="subscription_credit" if source == "intro_bonus" else "credit_purchase", seconds_delta=seconds, toman_delta=toman, idempotency_key=idem))
+    session.add(
+        CreditGrant(
+            tenant_id=tenant_id,
+            source=source,
+            source_id=source_id,
+            total_seconds=seconds,
+            remaining_seconds=seconds,
+            expires_at=expires_at,
+        )
+    )
+    session.add(
+        LedgerEntry(
+            tenant_id=tenant_id,
+            call_id=None,
+            kind="subscription_credit" if source == "intro_bonus" else "credit_purchase",
+            seconds_delta=seconds,
+            toman_delta=toman,
+            idempotency_key=idem,
+        )
+    )
     cache = await _balance_cache(session, tenant_id)
     cache.seconds += seconds
     cache.toman += toman
 
 
+async def _apply_upgrade(
+    session: AsyncSession, order: Order, upgrade_item: OrderItem, now: datetime
+) -> None:
+    """Apply a paid upgrade; an unusable snapshot fails the change and leaves the order for staff."""
+    subscription = await session.get(
+        Subscription, UUID(str(upgrade_item.metadata_json["subscription_id"])), with_for_update=True
+    )
+    version = await session.get(
+        PlanVersion, UUID(str(upgrade_item.metadata_json["target_plan_version_id"]))
+    )
+    if subscription is None or version is None or subscription.tenant_id != order.tenant_id:
+        raise ApiError("internal", "subscription upgrade snapshot is invalid")
+    changes = (
+        (
+            await session.execute(
+                select(SubscriptionChange)
+                .where(SubscriptionChange.order_id == order.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    days = await subscription_state.grace_days(session)
+    usable = (
+        subscription.status == "active"
+        and subscription_state.is_consuming(subscription, now, days)
+        and version.status == "published"
+    )
+    if not usable:
+        for change in changes:
+            change.status = "failed"
+        await audit.record(
+            session,
+            actor_type="system",
+            tenant_id=order.tenant_id,
+            action="subscription.upgrade_failed",
+            payload={
+                "order_id": str(order.id),
+                "subscription_id": str(subscription.id),
+                "subscription_status": subscription.status,
+                "version_status": version.status,
+            },
+        )
+        logger.error(
+            "paid subscription upgrade could not be applied",
+            extra={"extra_fields": {"order_id": str(order.id)}},
+        )
+        return
+    tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
+    extra = int(upgrade_item.metadata_json.get("extra_operators", 0))
+    for change in changes:
+        change.previous_plan_version_id = subscription.plan_version_id
+        change.previous_extra_operators = subscription.extra_operators
+        change.status = "applied"
+    subscription.plan_version_id = version.id
+    subscription.base_operators = version.base_operators
+    subscription.extra_operators = extra
+    subscription.price_per_minute_toman = _organization_price_per_minute(
+        tenant, subscription, version
+    )
+    subscription.assistant_tier = version.assistant_tier
+    subscription.assistant_monthly_messages = version.assistant_monthly_messages
+    subscription.assistant_source_limit = version.assistant_source_limit
+    subscription.assistant_model = version.assistant_model
+    subscription.next_plan_version_id = None
+    subscription.updated_at = now
+    # A pending downgrade belongs to the old plan and no longer applies.
+    await subscription_state.close_open_changes(
+        session, subscription.id, status="canceled", kinds=("downgrade",)
+    )
+    if tenant is not None:
+        tenant.max_operators = version.base_operators + extra
+    await audit.record(
+        session,
+        actor_type="system",
+        tenant_id=order.tenant_id,
+        action="subscription.upgraded",
+        payload={
+            "order_id": str(order.id),
+            "subscription_id": str(subscription.id),
+            "plan_version_id": str(version.id),
+        },
+    )
+
+
 async def fulfill_order(session: AsyncSession, order: Order) -> None:
     if order.status in {"paid", "partially_refunded", "refunded"}:
         return
-    items = (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    items = (
+        (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id)))
+        .scalars()
+        .all()
+    )
     now = datetime.now(UTC)
     upgrade_item = next((item for item in items if item.kind == "subscription_upgrade"), None)
     if upgrade_item is not None:
-        subscription = await session.get(Subscription, UUID(str(upgrade_item.metadata_json["subscription_id"])), with_for_update=True)
-        version = await session.get(PlanVersion, UUID(str(upgrade_item.metadata_json["target_plan_version_id"])))
-        if subscription is None or version is None or subscription.tenant_id != order.tenant_id:
-            raise ApiError("internal", "subscription upgrade snapshot is invalid")
-        tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
-        extra = int(upgrade_item.metadata_json.get("extra_operators", 0))
-        subscription.plan_version_id = version.id
-        subscription.base_operators = version.base_operators
-        subscription.extra_operators = extra
-        subscription.price_per_minute_toman = _organization_price_per_minute(
-            tenant, subscription, version
-        )
-        subscription.assistant_tier = version.assistant_tier
-        subscription.assistant_monthly_messages = version.assistant_monthly_messages
-        subscription.assistant_source_limit = version.assistant_source_limit
-        subscription.assistant_model = version.assistant_model
-        subscription.updated_at = now
-        if tenant is not None:
-            tenant.max_operators = version.base_operators + extra
-        changes = (await session.execute(select(SubscriptionChange).where(SubscriptionChange.order_id == order.id).with_for_update())).scalars().all()
-        for change in changes:
-            change.status = "applied"
+        await _apply_upgrade(session, order, upgrade_item, now)
     subscription_item = next((item for item in items if item.kind == "subscription"), None)
     if subscription_item is not None:
-        version = await session.get(PlanVersion, UUID(str(subscription_item.metadata_json["plan_version_id"])))
+        version = await session.get(
+            PlanVersion, UUID(str(subscription_item.metadata_json["plan_version_id"]))
+        )
         if version is None:
             raise ApiError("internal", "plan version is missing")
         period = str(subscription_item.metadata_json["billing_period"])
         extra = sum(item.quantity for item in items if item.kind == "extra_operator")
-        current = (await session.execute(select(Subscription).where(Subscription.tenant_id == order.tenant_id, Subscription.status.in_(("active", "trialing", "expired", "pending_payment"))).order_by(Subscription.created_at.desc()).limit(1).with_for_update())).scalar_one_or_none()
+        current = (
+            await session.execute(
+                select(Subscription)
+                .where(
+                    Subscription.tenant_id == order.tenant_id,
+                    Subscription.status.in_(("active", "trialing", "expired", "pending_payment")),
+                )
+                .order_by(Subscription.created_at.desc())
+                .limit(1)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
         tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
         organization_price = _organization_price_per_minute(tenant, current, version)
-        start = current.period_end if current and current.status == "active" and current.period_end > now else now
-        end = add_months(start, 12)
+        current_version = (
+            await session.get(PlanVersion, current.plan_version_id) if current else None
+        )
+        # Early renewal of the same plan extends the paid term and keeps its anniversary, so
+        # monthly credits keep their dates; any other purchase starts a fresh term now.
+        extends_term = bool(
+            current
+            and current_version
+            and current.status == "active"
+            and current.period_end > now
+            and current_version.plan_id == version.plan_id
+        )
+        if extends_term and current is not None:
+            start = current.period_start
+            end = add_months(current.period_end, 12)
+        else:
+            start = now
+            end = add_months(now, 12)
         # A bonus belongs only to the first paid activation.  In particular,
         # migrated legacy subscriptions have no historical bonus timestamp but
         # must never receive one on their first renewal.
@@ -307,7 +440,21 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
         if current is None or current.billing_period == "trial":
             if current is not None:
                 current.status = "canceled"
-            current = Subscription(tenant_id=order.tenant_id, plan_version_id=version.id, status="active", billing_period=period, period_start=start, period_end=end, base_operators=version.base_operators, extra_operators=extra, price_per_minute_toman=organization_price, assistant_tier=version.assistant_tier, assistant_monthly_messages=version.assistant_monthly_messages, assistant_source_limit=version.assistant_source_limit, assistant_model=version.assistant_model)
+            current = Subscription(
+                tenant_id=order.tenant_id,
+                plan_version_id=version.id,
+                status="active",
+                billing_period=period,
+                period_start=start,
+                period_end=end,
+                base_operators=version.base_operators,
+                extra_operators=extra,
+                price_per_minute_toman=organization_price,
+                assistant_tier=version.assistant_tier,
+                assistant_monthly_messages=version.assistant_monthly_messages,
+                assistant_source_limit=version.assistant_source_limit,
+                assistant_model=version.assistant_model,
+            )
             session.add(current)
         else:
             current.plan_version_id = version.id
@@ -315,6 +462,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             current.billing_period = period
             current.period_start = start
             current.period_end = end
+            current.cancel_at_period_end = False
             current.base_operators = version.base_operators
             current.extra_operators = extra
             current.price_per_minute_toman = organization_price
@@ -324,7 +472,20 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             current.assistant_model = version.assistant_model
             if current.next_plan_version_id == version.id:
                 current.next_plan_version_id = None
-                scheduled_changes = (await session.execute(select(SubscriptionChange).where(SubscriptionChange.subscription_id == current.id, SubscriptionChange.status == "scheduled").with_for_update())).scalars().all()
+                scheduled_changes = (
+                    (
+                        await session.execute(
+                            select(SubscriptionChange)
+                            .where(
+                                SubscriptionChange.subscription_id == current.id,
+                                SubscriptionChange.status == "scheduled",
+                            )
+                            .with_for_update()
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
                 for change in scheduled_changes:
                     change.status = "applied"
             current.updated_at = now
@@ -338,21 +499,54 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             "period_end": current.period_end.isoformat(),
         }
         if extra:
-            session.add(SubscriptionExtra(tenant_id=order.tenant_id, subscription_id=current.id, kind="extra_operator", quantity=extra, unit_price_toman=next(item.unit_price_toman for item in items if item.kind == "extra_operator"), effective_at=start, ends_at=end))
+            session.add(
+                SubscriptionExtra(
+                    tenant_id=order.tenant_id,
+                    subscription_id=current.id,
+                    kind="extra_operator",
+                    quantity=extra,
+                    unit_price_toman=next(
+                        item.unit_price_toman for item in items if item.kind == "extra_operator"
+                    ),
+                    effective_at=start,
+                    ends_at=end,
+                )
+            )
         if first_paid and version.intro_minutes:
             current.intro_credit_issued_at = now
     credit_item = next((item for item in items if item.kind == "credit"), None)
     if credit_item is not None:
-        await grant_credit(session, tenant_id=order.tenant_id, seconds=credit_item.quantity * 60, source="prepaid", source_id=order.id, expires_at=None, toman=order.amount_toman, idem=f"credit-order:{order.id}")
+        await grant_credit(
+            session,
+            tenant_id=order.tenant_id,
+            seconds=credit_item.quantity * 60,
+            source="prepaid",
+            source_id=order.id,
+            expires_at=None,
+            toman=order.amount_toman,
+            idem=f"credit-order:{order.id}",
+        )
     install_item = next((item for item in items if item.kind == "installation"), None)
     if install_item is not None:
-        request = (await session.execute(select(InstallationRequest).where(InstallationRequest.order_id == order.id))).scalar_one_or_none()
+        request = (
+            await session.execute(
+                select(InstallationRequest).where(InstallationRequest.order_id == order.id)
+            )
+        ).scalar_one_or_none()
         if request is not None:
             request.status = "paid"
             request.updated_at = now
     order.status = "paid"
     order.paid_at = now
-    session.add(Invoice(order_id=order.id, tenant_id=order.tenant_id, number=f"INV-{order.number}", amount_toman=order.amount_toman, profile_snapshot=order.invoice_profile))
+    session.add(
+        Invoice(
+            order_id=order.id,
+            tenant_id=order.tenant_id,
+            number=f"INV-{order.number}",
+            amount_toman=order.amount_toman,
+            profile_snapshot=order.invoice_profile,
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -397,8 +591,9 @@ async def _best_effort_reverse(gateway: Gateway, attempt: AttemptRef) -> None:
     try:
         await gateway.reverse(attempt)
     except Exception:  # noqa: BLE001 - the bank also returns unverified payments by itself
-        logger.warning("automatic payment reverse failed", extra={"extra_fields": {
-            "gateway": gateway.code}})
+        logger.warning(
+            "automatic payment reverse failed", extra={"extra_fields": {"gateway": gateway.code}}
+        )
 
 
 async def handle_callback(
@@ -546,8 +741,11 @@ async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
 
 
 def _safe(verification: Verification) -> dict[str, Any]:
-    return {"code": verification.code, "already_verified": verification.already_verified,
-            "response": verification.response}
+    return {
+        "code": verification.code,
+        "already_verified": verification.already_verified,
+        "response": verification.response,
+    }
 
 
 async def settle_attempt(tenant_id: UUID, attempt_id: UUID) -> bool:
@@ -588,8 +786,9 @@ async def reconcile_attempt(session: AsyncSession, payment_id: UUID) -> Order:
     try:
         inquiry = await gateway.inquiry(_attempt_ref(attempt))
     except GatewayError as exc:
-        raise ApiError("payment_gateway_unavailable",
-                       "the gateway could not be reached; retry in a minute") from exc
+        raise ApiError(
+            "payment_gateway_unavailable", "the gateway could not be reached; retry in a minute"
+        ) from exc
     attempt.last_checked_at = datetime.now(UTC)
     attempt.check_count += 1
     if not inquiry.success:
@@ -598,8 +797,9 @@ async def reconcile_attempt(session: AsyncSession, payment_id: UUID) -> Order:
     try:
         verification = await gateway.verify(_attempt_ref(attempt))
     except GatewayError as exc:
-        raise ApiError("payment_gateway_unavailable",
-                       "verification could not be completed; retry in a minute") from exc
+        raise ApiError(
+            "payment_gateway_unavailable", "verification could not be completed; retry in a minute"
+        ) from exc
     attempt.response_json = {**(attempt.response_json or {}), "verify": _safe(verification)}
     if not verification.success or (
         verification.amount_rial is not None and verification.amount_rial != attempt.amount_rial
@@ -638,8 +838,13 @@ async def reconcile_pending() -> dict[str, int]:
         async with session_scope(tenant_id) as session:
             rows = (
                 await session.execute(
-                    select(PaymentAttempt.id, PaymentAttempt.status, PaymentAttempt.gateway,
-                           PaymentAttempt.created_at, PaymentAttempt.settled_at)
+                    select(
+                        PaymentAttempt.id,
+                        PaymentAttempt.status,
+                        PaymentAttempt.gateway,
+                        PaymentAttempt.created_at,
+                        PaymentAttempt.settled_at,
+                    )
                     .where(
                         (
                             (PaymentAttempt.check_count < MAX_CHECKS)
@@ -674,8 +879,10 @@ async def reconcile_pending() -> dict[str, int]:
                     )
             except Exception:  # noqa: BLE001 - one bad attempt must not stop the sweep
                 counts["errors"] += 1
-                logger.exception("payment reconciliation failed",
-                                 extra={"extra_fields": {"attempt_id": str(attempt_id)}})
+                logger.exception(
+                    "payment reconciliation failed",
+                    extra={"extra_fields": {"attempt_id": str(attempt_id)}},
+                )
     return counts
 
 
@@ -755,7 +962,11 @@ async def refund_order(
     if amount_toman > order.amount_toman - refunded:
         raise ApiError("invalid_request", "refund exceeds the remaining paid amount")
 
-    items = (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    items = (
+        (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id)))
+        .scalars()
+        .all()
+    )
     credit_item = next((item for item in items if item.kind == "credit"), None)
     seconds_to_revoke = 0
     grant: CreditGrant | None = None
@@ -779,7 +990,9 @@ async def refund_order(
     response: dict[str, Any] = {}
     if method == "reverse":
         if refunded or amount_toman != order.amount_toman:
-            raise ApiError("invalid_request", "gateway reverse must cover the full original payment")
+            raise ApiError(
+                "invalid_request", "gateway reverse must cover the full original payment"
+            )
         if payment_attempt_id is None:
             raise ApiError("invalid_request", "payment attempt is required for reverse")
         attempt = await session.get(PaymentAttempt, payment_attempt_id, with_for_update=True)

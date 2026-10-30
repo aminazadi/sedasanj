@@ -94,15 +94,19 @@ def classify_http(status_code: int, body: str, *, kind: str) -> ProviderError | 
             retryable=False,
         )
     lowered = body.lower()
-    if kind == "asr" and status_code in (400, 422) and any(
-        marker in lowered
-        for marker in (
-            "model or models",
-            "valid asr model",
-            "asr model",
-            "model ids",
-            '"model"',
-            '"models"',
+    if (
+        kind == "asr"
+        and status_code in (400, 422)
+        and any(
+            marker in lowered
+            for marker in (
+                "model or models",
+                "valid asr model",
+                "asr model",
+                "model ids",
+                '"model"',
+                '"models"',
+            )
         )
     ):
         provider_detail = _error_detail(body)
@@ -114,14 +118,18 @@ def classify_http(status_code: int, body: str, *, kind: str) -> ProviderError | 
             f"{suffix}",
             retryable=False,
         )
-    if kind == "llm" and status_code in (400, 422) and any(
-        marker in lowered
-        for marker in (
-            "extra inputs are not permitted",
-            "response_format",
-            "tool_choice",
-            '"tools"',
-            "max_completion_tokens",
+    if (
+        kind == "llm"
+        and status_code in (400, 422)
+        and any(
+            marker in lowered
+            for marker in (
+                "extra inputs are not permitted",
+                "response_format",
+                "tool_choice",
+                '"tools"',
+                "max_completion_tokens",
+            )
         )
     ):
         return ProviderError(
@@ -132,8 +140,7 @@ def classify_http(status_code: int, body: str, *, kind: str) -> ProviderError | 
     if status_code in (401, 403) or looks_like_auth(body):
         return ProviderError(
             f"{kind}_provider_auth",
-            "کلید API سرویس هوش مصنوعی نامعتبر است. "
-            "کلید را در تنظیمات مدل پنل ادمین بررسی کنید.",
+            "کلید API سرویس هوش مصنوعی نامعتبر است. کلید را در تنظیمات مدل پنل ادمین بررسی کنید.",
             retryable=False,
         )
     if status_code == 429:
@@ -163,15 +170,12 @@ def inspect_payload(payload: object, *, kind: str) -> None:
     blob = _payload_text(payload)
     if not blob:
         return
-    if looks_like_credit(blob) and (
-        _has_error_field(payload) or not _has_success_field(payload)
-    ):
+    if looks_like_credit(blob) and (_has_error_field(payload) or not _has_success_field(payload)):
         raise _credit(kind, 200, blob)
     if looks_like_auth(blob) and _has_error_field(payload):
         raise ProviderError(
             f"{kind}_provider_auth",
-            "کلید API سرویس هوش مصنوعی نامعتبر است. "
-            "کلید را در تنظیمات مدل پنل ادمین بررسی کنید.",
+            "کلید API سرویس هوش مصنوعی نامعتبر است. کلید را در تنظیمات مدل پنل ادمین بررسی کنید.",
             retryable=False,
         )
 
@@ -187,8 +191,7 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
     if isinstance(exc, AudioPreprocessingError):
         return (
             f"{kind}_preprocessing_failed",
-            "پیش‌پردازش صوت با تنظیمات انتخاب‌شده ناموفق بود. "
-            f"جزئیات فنی: {str(exc)[:1500]}",
+            f"پیش‌پردازش صوت با تنظیمات انتخاب‌شده ناموفق بود. جزئیات فنی: {str(exc)[:1500]}",
             False,
         )
     # A tenant-side ApiError (e.g. the tenant's own credit running out) is not a provider failure:

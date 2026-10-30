@@ -296,9 +296,7 @@ async def _record_chunk_failure(
     )
 
 
-async def _index_transcript_chunks(
-    session: AsyncSession, call: Call, tenant_id: UUID
-) -> None:
+async def _index_transcript_chunks(session: AsyncSession, call: Call, tenant_id: UUID) -> None:
     transcript = await session.get(Transcript, call.id)
     if transcript is None:
         return
@@ -590,9 +588,7 @@ async def graph_context(session: AsyncSession, call_ids: list[UUID]) -> str:
         + "] RETURN c.id, type(r), properties(n) LIMIT 100"
     )
     async with session.begin_nested():
-        rows = await execute_cypher(
-            session, query, ("call_id", "relation", "properties")
-        )
+        rows = await execute_cypher(session, query, ("call_id", "relation", "properties"))
     return "\n".join(
         f"تماس {call_id}: رابطه {relation} با {properties}"
         for call_id, relation, properties in rows

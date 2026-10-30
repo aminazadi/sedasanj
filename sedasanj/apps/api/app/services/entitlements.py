@@ -4,12 +4,12 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
 from app.models import Plan, PlanVersion, Subscription
-from app.services import billing
+from app.services import billing, subscription_state
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,8 @@ class Entitlements:
 
     @property
     def consumption_allowed(self) -> bool:
+        if self.status == "grace":
+            return True
         return self.status in {"active", "trialing"} and bool(
             self.period_end and self.period_end > datetime.now(UTC)
         )
@@ -43,7 +45,16 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
                 ("active", "trialing", "pending_payment", "expired", "canceled")
             ),
         )
-        .order_by(Subscription.created_at.desc())
+        .order_by(
+            case(
+                (Subscription.status == "active", 0),
+                (Subscription.status == "trialing", 1),
+                (Subscription.status == "pending_payment", 2),
+                (Subscription.status == "expired", 3),
+                else_=4,
+            ),
+            Subscription.created_at.desc(),
+        )
         .limit(1)
     )
     if lock:
@@ -54,10 +65,10 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
         price = 7_000
         return Entitlements(None, "missing", 0, price, "none", 0, 0, None, None, None)
     row, plan_code, plan_price = result
-    status = row.status
-    if status in {"active", "trialing"} and row.period_end <= datetime.now(UTC):
-        # Reported only: the stored status is flipped by expire_commerce_state, never on a read.
-        status = "expired"
+    # Reported only: the stored status is flipped by expire_commerce_state, never on a read.
+    status = subscription_state.effective_status(
+        row, datetime.now(UTC), await subscription_state.grace_days(session)
+    )
     price = 7_000 if plan_code == "demo" else int(plan_price)
     return Entitlements(
         row.id,

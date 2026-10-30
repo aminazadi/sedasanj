@@ -162,17 +162,21 @@ async def purge_expired() -> int:
     now = datetime.now(UTC)
     async with control_session_scope() as control:
         rows = (
-            await control.execute(
-                select(TenantBackup)
-                .where(
-                    TenantBackup.status == "succeeded",
-                    TenantBackup.expires_at.is_not(None),
-                    TenantBackup.expires_at < now,
+            (
+                await control.execute(
+                    select(TenantBackup)
+                    .where(
+                        TenantBackup.status == "succeeded",
+                        TenantBackup.expires_at.is_not(None),
+                        TenantBackup.expires_at < now,
+                    )
+                    .with_for_update(skip_locked=True)
+                    .limit(20)
                 )
-                .with_for_update(skip_locked=True)
-                .limit(20)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         targets = [(row.id, row.object_key) for row in rows if row.object_key]
     storage = get_storage()
     removed = 0

@@ -92,8 +92,10 @@ def _admin_url(database: str | None = None) -> URL:
 
 
 def _runtime_url(database: str, role: str, password: str) -> str:
-    return _admin_url(database).set(username=role, password=password).render_as_string(
-        hide_password=False
+    return (
+        _admin_url(database)
+        .set(username=role, password=password)
+        .render_as_string(hide_password=False)
     )
 
 
@@ -186,9 +188,7 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
                 )
             if not await _database_exists(admin_engine, database_name):
                 await connection.execute(
-                    text(
-                        f"CREATE DATABASE {database_name} ENCODING 'UTF8' TEMPLATE template0"
-                    )
+                    text(f"CREATE DATABASE {database_name} ENCODING 'UTF8' TEMPLATE template0")
                 )
             await connection.execute(text(f"REVOKE ALL ON DATABASE {database_name} FROM PUBLIC"))
             await connection.execute(
@@ -225,9 +225,7 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
                 await connection.execute(text("SELECT ag_catalog.create_graph('tenant_graph')"))
             await connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {runtime_role}"))
             await connection.execute(text(f"GRANT USAGE ON SCHEMA ag_catalog TO {runtime_role}"))
-            await connection.execute(
-                text(f"GRANT SELECT ON ag_catalog.ag_graph TO {runtime_role}")
-            )
+            await connection.execute(text(f"GRANT SELECT ON ag_catalog.ag_graph TO {runtime_role}"))
             await connection.execute(
                 text(f"GRANT USAGE, CREATE ON SCHEMA tenant_graph TO {runtime_role}")
             )
@@ -248,8 +246,7 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
             )
             await connection.execute(
                 text(
-                    f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph "
-                    f"TO {runtime_role}"
+                    f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph TO {runtime_role}"
                 )
             )
             await connection.execute(
@@ -349,18 +346,13 @@ async def copy_tenant_data(tenant_id: UUID, database_name: str) -> dict[str, int
                     and table.name != "tenants"
                     and "tenant_id" in table.c
                 ):
-                    await target.execute(
-                        table.delete().where(table.c.tenant_id == tenant_id)
-                    )
+                    await target.execute(table.delete().where(table.c.tenant_id == tenant_id))
             for table in Base.metadata.sorted_tables:
                 copied = await _copy_table(source, target, table, tenant_id, batch_size)
                 if (
                     table.name == "tenants"
                     or table.name in _GLOBAL_REFERENCE
-                    or (
-                        table.name not in _CONTROL_ONLY
-                        and "tenant_id" in table.c
-                    )
+                    or (table.name not in _CONTROL_ONLY and "tenant_id" in table.c)
                 ):
                     counts[table.name] = copied
             await target.commit()
@@ -583,9 +575,7 @@ async def migrate_tenant(tenant_id: UUID) -> None:
         _admin_url(database_name).render_as_string(hide_password=False)
     )
     try:
-        target_digests = await _database_digests(
-            target_engine, tenant_id, digest_tables
-        )
+        target_digests = await _database_digests(target_engine, tenant_id, digest_tables)
     finally:
         await target_engine.dispose()
     digest_mismatches = {
@@ -606,9 +596,7 @@ async def migrate_tenant(tenant_id: UUID) -> None:
                 .with_for_update()
             )
         ).scalar_one()
-        registry_row = await session.get(
-            TenantDatabaseRegistry, tenant_id, with_for_update=True
-        )
+        registry_row = await session.get(TenantDatabaseRegistry, tenant_id, with_for_update=True)
         tenant = await session.get(Tenant, tenant_id, with_for_update=True)
         assert registry_row is not None and tenant is not None
         migration.status = "completed"
@@ -648,12 +636,18 @@ async def seed_existing_migrations() -> int:
         return 0
     async with get_sessionmaker()() as session, session.begin():
         tenant_ids = (
-            await session.execute(
-                select(Tenant.id)
-                .outerjoin(TenantDatabaseRegistry, TenantDatabaseRegistry.tenant_id == Tenant.id)
-                .where(Tenant.status != "deleted", TenantDatabaseRegistry.tenant_id.is_(None))
+            (
+                await session.execute(
+                    select(Tenant.id)
+                    .outerjoin(
+                        TenantDatabaseRegistry, TenantDatabaseRegistry.tenant_id == Tenant.id
+                    )
+                    .where(Tenant.status != "deleted", TenantDatabaseRegistry.tenant_id.is_(None))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for tenant_id in tenant_ids:
             exists = (
                 await session.execute(
@@ -701,9 +695,7 @@ async def run_next_migration() -> str:
                     .limit(1)
                 )
             ).scalar_one_or_none()
-            exhausted = bool(
-                job and job.attempt >= get_settings().tenant_migration_max_attempts
-            )
+            exhausted = bool(job and job.attempt >= get_settings().tenant_migration_max_attempts)
             migration.status = "failed" if exhausted else "retryable"
             migration.error_detail = str(exc)[:4000]
             if job is not None:
@@ -714,9 +706,7 @@ async def run_next_migration() -> str:
                 source_status = str(
                     dict(migration.checkpoint or {}).get("source_tenant_status", "active")
                 )
-                tenant.status = (
-                    "active" if source_status == "active" else "migration_failed"
-                )
+                tenant.status = "active" if source_status == "active" else "migration_failed"
         raise
     return "migrated"
 
@@ -760,21 +750,15 @@ async def run_next_fleet_migration() -> str:
             tenant.status = "maintenance_readonly"
     await invalidate_tenant_engine(tenant_id)
     try:
-        await _run_alembic(
-            _admin_url(database_name).render_as_string(hide_password=False)
-        )
+        await _run_alembic(_admin_url(database_name).render_as_string(hide_password=False))
     except Exception:
         async with get_sessionmaker()() as session, session.begin():
-            registry = await session.get(
-                TenantDatabaseRegistry, tenant_id, with_for_update=True
-            )
+            registry = await session.get(TenantDatabaseRegistry, tenant_id, with_for_update=True)
             if registry is not None:
                 registry.status = "failed"
         raise
     async with get_sessionmaker()() as session, session.begin():
-        registry = await session.get(
-            TenantDatabaseRegistry, tenant_id, with_for_update=True
-        )
+        registry = await session.get(TenantDatabaseRegistry, tenant_id, with_for_update=True)
         if registry is not None:
             registry.status = "ready"
             registry.schema_revision = SCHEMA_HEAD
@@ -783,15 +767,11 @@ async def run_next_fleet_migration() -> str:
         if tenant is not None:
             migration = (
                 await session.execute(
-                    select(TenantDataMigration).where(
-                        TenantDataMigration.tenant_id == tenant_id
-                    )
+                    select(TenantDataMigration).where(TenantDataMigration.tenant_id == tenant_id)
                 )
             ).scalar_one_or_none()
             tenant.status = str(
-                dict(migration.checkpoint or {}).get(
-                    "fleet_source_tenant_status", "active"
-                )
+                dict(migration.checkpoint or {}).get("fleet_source_tenant_status", "active")
                 if migration is not None
                 else "active"
             )

@@ -82,7 +82,10 @@ class AnalyticsArguments(WindowArguments):
     direction: str | None = Field(default=None, max_length=30)
     sentiment: str | None = Field(default=None, max_length=30)
     topic: str | None = Field(default=None, max_length=120)
-    call_type: Literal["answered", "no_answer", "busy", "congestion", "failed", "canceled", "voicemail"] | None = None
+    call_type: (
+        Literal["answered", "no_answer", "busy", "congestion", "failed", "canceled", "voicemail"]
+        | None
+    ) = None
 
 
 class OperatorPerformanceArguments(WindowArguments):
@@ -234,7 +237,11 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
             {
                 "call_id": str(call.id),
                 "call_type": call.call_type,
-                "record_type": "voicemail" if call.call_type == "voicemail" else "conversation" if call.call_type == "answered" else "metadata_only",
+                "record_type": "voicemail"
+                if call.call_type == "voicemail"
+                else "conversation"
+                if call.call_type == "answered"
+                else "metadata_only",
                 "started_at": call.started_at.isoformat(),
                 "ended_at": call.ended_at.isoformat(),
                 "duration_seconds": round(call.duration_ms / 1000),
@@ -258,8 +265,7 @@ async def _search_calls(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "entities": insight.ner if insight else None,
                 "action_items": insight.action_items if insight else None,
                 "transcript": (
-                    (transcript.corrected_text or transcript.full_text)
-                    if transcript else None
+                    (transcript.corrected_text or transcript.full_text) if transcript else None
                 ),
             }
             for call, insight, transcript in rows
@@ -281,10 +287,14 @@ async def _call_details(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     args = CallIdsArguments.model_validate(raw)
     rows = await _visible_calls(ctx, args.call_ids)
     insight_rows = (
-        await ctx.session.execute(
-            select(CallInsight).where(CallInsight.call_id.in_([row.id for row in rows]))
+        (
+            await ctx.session.execute(
+                select(CallInsight).where(CallInsight.call_id.in_([row.id for row in rows]))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     insights = {row.call_id: row for row in insight_rows}
     transcripts = {
         row.call_id: row
@@ -315,7 +325,8 @@ async def _call_details(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
                 "summary": insights.get(call.id).summary if insights.get(call.id) else None,
                 "transcript": (
                     transcripts[call.id].corrected_text or transcripts[call.id].full_text
-                    if call.id in transcripts else None
+                    if call.id in transcripts
+                    else None
                 ),
             }
             for call in rows
@@ -340,15 +351,19 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
         select(Transcript.call_id, Transcript.full_text, Call.started_at)
         .join(Call, Call.id == Transcript.call_id)
         .join(call_stmt, call_stmt.c.id == Transcript.call_id)
-        .where(func.to_tsvector("simple", Transcript.full_text).op("@@")(
-            func.websearch_to_tsquery("simple", args.query)
-        ))
+        .where(
+            func.to_tsvector("simple", Transcript.full_text).op("@@")(
+                func.websearch_to_tsquery("simple", args.query)
+            )
+        )
     )
     if args.call_id is not None:
         if ctx.bound_call_id is not None and args.call_id != ctx.bound_call_id:
             raise ApiError("not_found", "call not found")
         stmt = stmt.where(Transcript.call_id == args.call_id)
-    rows = (await ctx.session.execute(stmt.order_by(Call.started_at.desc()).limit(args.limit))).all()
+    rows = (
+        await ctx.session.execute(stmt.order_by(Call.started_at.desc()).limit(args.limit))
+    ).all()
     items = [
         {
             "call_id": str(call_id),
@@ -377,13 +392,15 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
             call_id = str(row["call_id"])
             if call_id in known:
                 continue
-            items.append({
-                "call_id": call_id,
-                "started_at": row["started_at"].isoformat(),
-                "snippet": str(row["content"])[:500],
-                "match": "semantic_transcript",
-                "score": row.get("score"),
-            })
+            items.append(
+                {
+                    "call_id": call_id,
+                    "started_at": row["started_at"].isoformat(),
+                    "snippet": str(row["content"])[:500],
+                    "match": "semantic_transcript",
+                    "score": row.get("score"),
+                }
+            )
             if len(items) >= args.limit:
                 break
     return {"version": 1, "count": len(items), "items": items}
@@ -395,15 +412,21 @@ async def _call_analysis(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]
     ids = [row.id for row in calls]
     insights = {
         row.call_id: row
-        for row in (await ctx.session.execute(select(CallInsight).where(CallInsight.call_id.in_(ids)))).scalars()
+        for row in (
+            await ctx.session.execute(select(CallInsight).where(CallInsight.call_id.in_(ids)))
+        ).scalars()
     }
     sales = {
         row.call_id: row
-        for row in (await ctx.session.execute(select(SalesInsight).where(SalesInsight.call_id.in_(ids)))).scalars()
+        for row in (
+            await ctx.session.execute(select(SalesInsight).where(SalesInsight.call_id.in_(ids)))
+        ).scalars()
     }
     crm = {
         row.call_id: row
-        for row in (await ctx.session.execute(select(CrmOutcome).where(CrmOutcome.call_id.in_(ids)))).scalars()
+        for row in (
+            await ctx.session.execute(select(CrmOutcome).where(CrmOutcome.call_id.in_(ids)))
+        ).scalars()
         if row.call_id is not None
     }
     items = []
@@ -411,32 +434,38 @@ async def _call_analysis(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]
         insight = insights.get(call.id)
         sale = sales.get(call.id)
         outcome = crm.get(call.id)
-        items.append({
-            "call_id": str(call.id),
-            "started_at": call.started_at.isoformat(),
-            "summary": insight.summary if insight else None,
-            "intent": insight.intent if insight else None,
-            "topics": insight.topics if insight else [],
-            "keywords": insight.keywords if insight else [],
-            "sentiment": insight.sentiment if insight else None,
-            "sentiment_profile": insight.sentiment_profile if insight else None,
-            "entities": insight.ner if insight else None,
-            "action_items": insight.action_items if insight else None,
-            "sales_inference": {
-                "outcome": sale.outcome,
-                "certainty": sale.certainty,
-                "confidence": sale.confidence,
-                "product": sale.product,
-                "objections": sale.objections,
-                "next_action": sale.next_action,
-            } if sale else None,
-            "crm_outcome": {
-                "outcome": outcome.outcome,
-                "amount": outcome.amount,
-                "currency": outcome.currency,
-                "product": outcome.product,
-            } if outcome else None,
-        })
+        items.append(
+            {
+                "call_id": str(call.id),
+                "started_at": call.started_at.isoformat(),
+                "summary": insight.summary if insight else None,
+                "intent": insight.intent if insight else None,
+                "topics": insight.topics if insight else [],
+                "keywords": insight.keywords if insight else [],
+                "sentiment": insight.sentiment if insight else None,
+                "sentiment_profile": insight.sentiment_profile if insight else None,
+                "entities": insight.ner if insight else None,
+                "action_items": insight.action_items if insight else None,
+                "sales_inference": {
+                    "outcome": sale.outcome,
+                    "certainty": sale.certainty,
+                    "confidence": sale.confidence,
+                    "product": sale.product,
+                    "objections": sale.objections,
+                    "next_action": sale.next_action,
+                }
+                if sale
+                else None,
+                "crm_outcome": {
+                    "outcome": outcome.outcome,
+                    "amount": outcome.amount,
+                    "currency": outcome.currency,
+                    "product": outcome.product,
+                }
+                if outcome
+                else None,
+            }
+        )
     return {"version": 1, "count": len(items), "items": items}
 
 
@@ -446,11 +475,15 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     operator_id = await _validate_operator(ctx, args.operator_id)
     stmt = _apply_window(_base_calls(ctx), start, end)
     if operator_id is not None and not operator_scope.is_operator(ctx.principal):
-        stmt = stmt.where(select(CallOperatorAssignment.id).where(
-            CallOperatorAssignment.call_id == Call.id,
-            CallOperatorAssignment.operator_id == operator_id,
-            CallOperatorAssignment.superseded_at.is_(None),
-        ).exists())
+        stmt = stmt.where(
+            select(CallOperatorAssignment.id)
+            .where(
+                CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.operator_id == operator_id,
+                CallOperatorAssignment.superseded_at.is_(None),
+            )
+            .exists()
+        )
     for column, value in (
         (Call.campaign_id, args.campaign_id),
         (Call.call_type if args.status in CALL_TYPES else Call.status, args.status),
@@ -469,37 +502,58 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     filtered = stmt.subquery()
     query = select(
         func.count(filtered.c.id),
-        func.coalesce(func.sum(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"), 0),
-        func.coalesce(func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"), 0),
+        func.coalesce(
+            func.sum(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"), 0
+        ),
+        func.coalesce(
+            func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"), 0
+        ),
         func.count(filtered.c.id).filter(filtered.c.call_type == "voicemail"),
-        func.coalesce(func.sum(filtered.c.duration_ms).filter(filtered.c.call_type == "voicemail"), 0),
-        func.coalesce(func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "voicemail"), 0),
+        func.coalesce(
+            func.sum(filtered.c.duration_ms).filter(filtered.c.call_type == "voicemail"), 0
+        ),
+        func.coalesce(
+            func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "voicemail"), 0
+        ),
     )
-    total, duration, average, voicemail_total, voicemail_duration, voicemail_average = (await ctx.session.execute(query)).one()
-    status_rows = (await ctx.session.execute(
-        select(filtered.c.status, func.count()).where(filtered.c.call_type == "answered").group_by(filtered.c.status)
-    )).all()
-    call_type_rows = (await ctx.session.execute(
-        select(filtered.c.call_type, func.count()).group_by(filtered.c.call_type)
-    )).all()
+    total, duration, average, voicemail_total, voicemail_duration, voicemail_average = (
+        await ctx.session.execute(query)
+    ).one()
+    status_rows = (
+        await ctx.session.execute(
+            select(filtered.c.status, func.count())
+            .where(filtered.c.call_type == "answered")
+            .group_by(filtered.c.status)
+        )
+    ).all()
+    call_type_rows = (
+        await ctx.session.execute(
+            select(filtered.c.call_type, func.count()).group_by(filtered.c.call_type)
+        )
+    ).all()
     voicemail_transcribed = int(
         await ctx.session.scalar(
             select(func.count(func.distinct(Transcript.call_id)))
             .join(filtered, filtered.c.id == Transcript.call_id)
             .where(filtered.c.call_type == "voicemail")
-        ) or 0
+        )
+        or 0
     )
     return {
         "version": 1,
         "from_date": start.isoformat(),
         "to_date": end.isoformat(),
         "total_calls": int(total),
-        "missed_calls": sum(int(value) for key, value in call_type_rows if key in UNANSWERED_CALL_TYPES),
+        "missed_calls": sum(
+            int(value) for key, value in call_type_rows if key in UNANSWERED_CALL_TYPES
+        ),
         "voicemail_calls": int(voicemail_total),
         "voicemail_duration_minutes": round(int(voicemail_duration) / 60000, 1),
         "voicemail_average_duration_seconds": round(float(voicemail_average) / 1000, 1),
         "voicemail_transcribed_calls": voicemail_transcribed,
-        "voicemail_transcription_rate": round(voicemail_transcribed * 100 / int(voicemail_total), 1) if voicemail_total else 0,
+        "voicemail_transcription_rate": round(voicemail_transcribed * 100 / int(voicemail_total), 1)
+        if voicemail_total
+        else 0,
         "call_types": {str(key): int(value) for key, value in call_type_rows},
         "statuses": {str(key): int(value) for key, value in status_rows},
         "total_minutes": round(int(duration) / 60000, 1),
@@ -524,11 +578,13 @@ async def _operator_performance(ctx: ToolContext, raw: ToolArguments) -> dict[st
     )
     if operator_id is not None:
         stmt = stmt.where(OperatorCallScore.operator_id == operator_id)
-    rows = (await ctx.session.execute(
-        stmt.group_by(OperatorCallScore.operator_id, OperatorCallScore.operator_label)
-        .order_by(func.avg(OperatorCallScore.total_score).desc())
-        .limit(MAX_RESULTS)
-    )).all()
+    rows = (
+        await ctx.session.execute(
+            stmt.group_by(OperatorCallScore.operator_id, OperatorCallScore.operator_label)
+            .order_by(func.avg(OperatorCallScore.total_score).desc())
+            .limit(MAX_RESULTS)
+        )
+    ).all()
     return {
         "version": 1,
         "from_date": start.isoformat(),
@@ -602,11 +658,15 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         operator_id = await _validate_operator(ctx, args.operator_id)
         trend_stmt = _apply_window(_base_calls(ctx), start, end)
         if operator_id is not None and not operator_scope.is_operator(ctx.principal):
-            trend_stmt = trend_stmt.where(select(CallOperatorAssignment.id).where(
-                CallOperatorAssignment.call_id == Call.id,
-                CallOperatorAssignment.operator_id == operator_id,
-                CallOperatorAssignment.superseded_at.is_(None),
-            ).exists())
+            trend_stmt = trend_stmt.where(
+                select(CallOperatorAssignment.id)
+                .where(
+                    CallOperatorAssignment.call_id == Call.id,
+                    CallOperatorAssignment.operator_id == operator_id,
+                    CallOperatorAssignment.superseded_at.is_(None),
+                )
+                .exists()
+            )
         for column, value in (
             (Call.campaign_id, args.campaign_id),
             (Call.call_type if args.status in CALL_TYPES else Call.status, args.status),
@@ -624,18 +684,20 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
                 trend_stmt = trend_stmt.where(CallInsight.topics.any(args.topic))
         filtered = trend_stmt.subquery()
         day = func.date_trunc("day", filtered.c.started_at).label("day")
-        rows = (await ctx.session.execute(
-            select(
-                day,
-                func.count(),
-                func.coalesce(
-                    func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"),
-                    0,
-                ),
+        rows = (
+            await ctx.session.execute(
+                select(
+                    day,
+                    func.count(),
+                    func.coalesce(
+                        func.avg(filtered.c.duration_ms).filter(filtered.c.call_type == "answered"),
+                        0,
+                    ),
+                )
+                .group_by(day)
+                .order_by(day)
             )
-            .group_by(day)
-            .order_by(day)
-        )).all()
+        ).all()
         data = [
             {
                 "label": row[0].date().isoformat(),
@@ -659,7 +721,10 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
                     )
                     .exists()
                 )
-            for column, value in ((Call.campaign_id, args.campaign_id), (Call.direction, args.direction)):
+            for column, value in (
+                (Call.campaign_id, args.campaign_id),
+                (Call.direction, args.direction),
+            ):
                 if value:
                     missed_stmt = missed_stmt.where(column == value)
             if args.sentiment or args.topic:
@@ -708,8 +773,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         secondary_label = "میانگین مدت (دقیقه)"
     elif args.view == "call_status":
         data = [
-            {"label": str(label), "value": value}
-            for label, value in result["statuses"].items()
+            {"label": str(label), "value": value} for label, value in result["statuses"].items()
         ]
         data.extend(
             {"label": key, "value": value}
@@ -721,8 +785,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         secondary_label = None
     else:
         data = [
-            {"label": str(label), "value": value}
-            for label, value in result["statuses"].items()
+            {"label": str(label), "value": value} for label, value in result["statuses"].items()
         ]
         chart_types = args.chart_types or ["donut"]
         title = "توزیع وضعیت تماس‌ها"
@@ -768,29 +831,89 @@ async def _export_data(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
         args.model_dump(exclude={"dataset", "format", "columns"})
     )
     return await assistant_exports.create_export(
-        ctx.session, ctx.principal, args.dataset, args.format, filters, args.columns,
-        conversation_id=ctx.conversation_id, bound_call_id=ctx.bound_call_id,
+        ctx.session,
+        ctx.principal,
+        args.dataset,
+        args.format,
+        filters,
+        args.columns,
+        conversation_id=ctx.conversation_id,
+        bound_call_id=ctx.bound_call_id,
     )
 
 
 TOOLS = (
     ToolDefinition(
-        "export_data", "دریافت فایل خروجی",
+        "export_data",
+        "دریافت فایل خروجی",
         "Generate a downloadable file; default expiry is one hour. Use the returned expiry notice. "
         "Contacts require an organization administrator; other datasets use visible calls. "
         "Use filters to narrow rows; never claim a complete export if filters exclude data. "
-        "Available column keys by dataset: " + json.dumps(
+        "Available column keys by dataset: "
+        + json.dumps(
             {key: list(value.columns) for key, value in assistant_exports.DATASETS.items()}
-        ), ExportArguments, _export_data, 120,
+        ),
+        ExportArguments,
+        _export_data,
+        120,
     ),
-    ToolDefinition("get_current_time", "دریافت زمان فعلی", "Get the current server date and time in UTC.", CurrentTimeArguments, _get_current_time),
-    ToolDefinition("search_calls", "جست‌وجوی تماس‌ها", "Find calls using safe filters.", SearchCallsArguments, _search_calls),
-    ToolDefinition("get_call_details", "دریافت جزئیات تماس", "Get metadata for specific visible calls.", CallIdsArguments, _call_details),
-    ToolDefinition("search_transcripts", "جست‌وجوی متن مکالمات", "Search visible call transcripts and semantic summaries.", SearchTranscriptsArguments, _search_transcripts, 120),
-    ToolDefinition("get_call_analysis", "دریافت تحلیل تماس‌ها", "Get analysis, sales inference, and authoritative CRM outcome.", CallIdsArguments, _call_analysis),
-    ToolDefinition("get_call_analytics", "دریافت آمار تماس‌ها", "Calculate exact call statistics from the database.", AnalyticsArguments, _analytics),
-    ToolDefinition("get_operator_performance", "دریافت عملکرد اپراتورها", "Get access-controlled operator scoring statistics.", OperatorPerformanceArguments, _operator_performance),
-    ToolDefinition("visualize_statistics", "ترسیم نمودار آماری", "Create exact, access-controlled charts. Choose up to four suitable types from bar, horizontal_bar, line, area, pie, donut, radar, radial_bar, scatter, composed, treemap, and funnel. Use call_trend for time-based charts, call_status for distributions, and operator_performance for comparisons.", VisualizeStatisticsArguments, _visualize_statistics),
+    ToolDefinition(
+        "get_current_time",
+        "دریافت زمان فعلی",
+        "Get the current server date and time in UTC.",
+        CurrentTimeArguments,
+        _get_current_time,
+    ),
+    ToolDefinition(
+        "search_calls",
+        "جست‌وجوی تماس‌ها",
+        "Find calls using safe filters.",
+        SearchCallsArguments,
+        _search_calls,
+    ),
+    ToolDefinition(
+        "get_call_details",
+        "دریافت جزئیات تماس",
+        "Get metadata for specific visible calls.",
+        CallIdsArguments,
+        _call_details,
+    ),
+    ToolDefinition(
+        "search_transcripts",
+        "جست‌وجوی متن مکالمات",
+        "Search visible call transcripts and semantic summaries.",
+        SearchTranscriptsArguments,
+        _search_transcripts,
+        120,
+    ),
+    ToolDefinition(
+        "get_call_analysis",
+        "دریافت تحلیل تماس‌ها",
+        "Get analysis, sales inference, and authoritative CRM outcome.",
+        CallIdsArguments,
+        _call_analysis,
+    ),
+    ToolDefinition(
+        "get_call_analytics",
+        "دریافت آمار تماس‌ها",
+        "Calculate exact call statistics from the database.",
+        AnalyticsArguments,
+        _analytics,
+    ),
+    ToolDefinition(
+        "get_operator_performance",
+        "دریافت عملکرد اپراتورها",
+        "Get access-controlled operator scoring statistics.",
+        OperatorPerformanceArguments,
+        _operator_performance,
+    ),
+    ToolDefinition(
+        "visualize_statistics",
+        "ترسیم نمودار آماری",
+        "Create exact, access-controlled charts. Choose up to four suitable types from bar, horizontal_bar, line, area, pie, donut, radar, radial_bar, scatter, composed, treemap, and funnel. Use call_trend for time-based charts, call_status for distributions, and operator_performance for comparisons.",
+        VisualizeStatisticsArguments,
+        _visualize_statistics,
+    ),
 )
 TOOL_BY_NAME = {tool.name: tool for tool in TOOLS}
 # Not administrator-toggleable: file export and time are part of the assistant itself.
@@ -821,7 +944,9 @@ async def execute(
     started = time.perf_counter()
     try:
         async with ctx.session.begin_nested():
-            result = await asyncio.wait_for(tool.executor(ctx, parsed), timeout=tool.timeout_seconds)
+            result = await asyncio.wait_for(
+                tool.executor(ctx, parsed), timeout=tool.timeout_seconds
+            )
     except Exception:
         assistant_tool_calls_total.labels(tool=name, status="failed").inc()
         raise

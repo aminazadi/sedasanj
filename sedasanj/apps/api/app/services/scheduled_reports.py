@@ -101,7 +101,9 @@ async def create_run(session, report, until, timezone, trigger, key, actor_id=No
         status="queued",
         attempt_count=0,
         max_retries=3 if getattr(report, "max_retries", None) is None else int(report.max_retries),
-        retry_base_minutes=5 if getattr(report, "retry_base_minutes", None) is None else int(report.retry_base_minutes),
+        retry_base_minutes=5
+        if getattr(report, "retry_base_minutes", None) is None
+        else int(report.retry_base_minutes),
         next_attempt_at=None,
         memory_snapshot=[
             {

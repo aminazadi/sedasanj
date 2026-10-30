@@ -15,9 +15,7 @@ from app.services.provider_errors import ProviderError, classify_http, inspect_p
 
 logger = logging.getLogger(__name__)
 
-TERMINAL_STATUSES = frozenset(
-    {"succeeded", "partially_succeeded", "failed", "cancelled"}
-)
+TERMINAL_STATUSES = frozenset({"succeeded", "partially_succeeded", "failed", "cancelled"})
 TEXT_PROCESS_MAX_CHARS = 12_000
 SPEAKER_MARKER = re.compile(r"\[(caller|agent)\s+(\d+:\d{2})\]")
 
@@ -34,9 +32,7 @@ class VoiceSanjClient:
             raise RuntimeError("VOICESANJ_BASE_URL is empty")
         key = normalize_api_key(settings.voicesanj_api_key)
         if not key:
-            raise RuntimeError(
-                "VoiceSanj API key is required; save it in admin model settings"
-            )
+            raise RuntimeError("VoiceSanj API key is required; save it in admin model settings")
         self._headers = {
             "Authorization": f"Bearer {key}",
             "User-Agent": VOICESANJ_USER_AGENT,
@@ -60,9 +56,7 @@ class VoiceSanjClient:
             if classified is not None:
                 raise classified
             if response.status_code >= 400:
-                raise RuntimeError(
-                    f"voicesanj key rejected: HTTP {response.status_code}"
-                )
+                raise RuntimeError(f"voicesanj key rejected: HTTP {response.status_code}")
 
     async def list_models(self) -> list[dict[str, Any]]:
         """Build workload-specific picker rows from the user API and public health."""
@@ -78,9 +72,7 @@ class VoiceSanjClient:
             if classified is not None:
                 raise classified
             if models_response.status_code >= 400:
-                raise RuntimeError(
-                    f"voicesanj models rejected: HTTP {models_response.status_code}"
-                )
+                raise RuntimeError(f"voicesanj models rejected: HTTP {models_response.status_code}")
             try:
                 models_payload: Any = models_response.json()
             except ValueError as exc:
@@ -88,9 +80,7 @@ class VoiceSanjClient:
 
             health_response = await client.get(f"{self._base}/health")
             if health_response.status_code >= 400:
-                raise RuntimeError(
-                    f"voicesanj health rejected: HTTP {health_response.status_code}"
-                )
+                raise RuntimeError(f"voicesanj health rejected: HTTP {health_response.status_code}")
             try:
                 health_payload: Any = health_response.json()
             except ValueError as exc:
@@ -190,16 +180,14 @@ class VoiceSanjClient:
                 classified = classify_http(response.status_code, response.text, kind="asr")
                 if classified is not None:
                     raise classified
-                raise RuntimeError(
-                    f"voicesanj transcription rejected: HTTP {response.status_code}"
-                )
+                raise RuntimeError(f"voicesanj transcription rejected: HTTP {response.status_code}")
             task = response.json()
             inspect_payload(task, kind="asr")
             result = (
                 task
-                if response.status_code == 200 and isinstance(task, dict) and (
-                    "text" in task or "segments" in task
-                )
+                if response.status_code == 200
+                and isinstance(task, dict)
+                and ("text" in task or "segments" in task)
                 else await self._await_task(client, task, kind="asr")
             )
         return _unwrap_model_result(result)
@@ -239,9 +227,7 @@ class VoiceSanjClient:
                 classified = classify_http(response.status_code, response.text, kind="llm")
                 if classified is not None:
                     raise classified
-                raise RuntimeError(
-                    f"voicesanj text process rejected: HTTP {response.status_code}"
-                )
+                raise RuntimeError(f"voicesanj text process rejected: HTTP {response.status_code}")
             task = response.json()
             inspect_payload(task, kind="llm")
             result = await self._await_task(client, task, kind="llm")

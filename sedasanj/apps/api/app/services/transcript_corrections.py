@@ -69,9 +69,7 @@ def current_correction_model(revision: TranscriptRevision) -> str:
     return revision.text_models[index]
 
 
-def advance_correction_model(
-    revision: TranscriptRevision, *, error: str | None = None
-) -> str:
+def advance_correction_model(revision: TranscriptRevision, *, error: str | None = None) -> str:
     index = correction_model_index(revision)
     failures = list((revision.metrics or {}).get("text_model_failures") or [])
     failures.append(
@@ -344,9 +342,7 @@ class CorrectionClient:
         )
 
 
-def _normalize_monolithic_result(
-    source: list[dict[str, Any]], result: dict[str, Any]
-) -> None:
+def _normalize_monolithic_result(source: list[dict[str, Any]], result: dict[str, Any]) -> None:
     rows = result.get("segments")
     monolithic: str | None = None
     if isinstance(rows, str):
@@ -387,9 +383,7 @@ def _normalize_monolithic_result(
     normalized_rows = []
     normalized_uncertain = list(result.get("uncertain_items") or [])
     for original, piece in zip(source, pieces, strict=True):
-        normalized_rows.append(
-            {"id": original["id"], "corrected_text": piece, "uncertain": True}
-        )
+        normalized_rows.append({"id": original["id"], "corrected_text": piece, "uncertain": True})
         normalized_uncertain.append(
             {
                 "segment_id": original["id"],
@@ -439,8 +433,7 @@ def validate_result(
             raise ValueError("correction contains abnormal repetition")
         validated.append({**original, "corrected_text": text, "uncertain": is_uncertain})
     normalized_uncertain = [
-        item if isinstance(item, dict) else {"reason": str(item)}
-        for item in uncertain_items
+        item if isinstance(item, dict) else {"reason": str(item)} for item in uncertain_items
     ]
     ratio = sum(1 for item in validated if item["uncertain"]) / max(len(validated), 1)
     result["validation_metrics"] = {

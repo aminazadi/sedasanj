@@ -80,14 +80,13 @@ async def publish(
 ) -> dict[str, Any]:
     async with session_scope(tenant_id) as session:
         run = await session.scalar(
-            select(AssistantRun)
-            .where(AssistantRun.id == run_id)
-            .with_for_update()
+            select(AssistantRun).where(AssistantRun.id == run_id).with_for_update()
         )
         if run is None:
             raise ApiError("not_found", "assistant run not found")
         if run.status in {"succeeded", "failed", "cancelled"} and event not in {
-            "message:completed", "cancelled"
+            "message:completed",
+            "cancelled",
         }:
             return {}
         sequence = run.next_sequence
@@ -102,9 +101,7 @@ async def publish(
         envelope = {
             "conversation_id": str(run.conversation_id),
             "run_id": str(run.id),
-            "message_id": str(
-                payload.get("message", {}).get("id") or run.user_message_id
-            ),
+            "message_id": str(payload.get("message", {}).get("id") or run.user_message_id),
             "user_message_id": str(run.user_message_id),
             "sequence": sequence,
             "event": event,
@@ -201,7 +198,9 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
             .all()
         )
         tools_by_message = await tool_runs_for_messages(
-            session, tenant_id, conversation_id,
+            session,
+            tenant_id,
+            conversation_id,
             [row.id for row in messages if row.role == "assistant"],
         )
         active_runs = (
@@ -310,7 +309,11 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
                 "conversation_title": conversation.title,
             }
             for run in completed_runs
-            if (message := next((item for item in messages if item.id == run.assistant_message_id), None))
+            if (
+                message := next(
+                    (item for item in messages if item.id == run.assistant_message_id), None
+                )
+            )
         ],
         "sequence": latest,
     }
@@ -472,9 +475,7 @@ async def cancel_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "code": "invalid_request"}
     async with session_scope(identity["tenant_id"]) as session:
         run = await session.scalar(
-            select(AssistantRun)
-            .where(AssistantRun.id == run_id)
-            .with_for_update()
+            select(AssistantRun).where(AssistantRun.id == run_id).with_for_update()
         )
         if run is None:
             ephemeral = _ephemeral_tasks.get(str(run_id))
@@ -607,7 +608,13 @@ async def send_ephemeral(sid: str, data: dict[str, Any]) -> dict[str, Any]:
             sequence += 1
             await sio.emit(
                 "assistant:cancelled",
-                {"conversation_id": None, "run_id": str(ephemeral_id), "sequence": sequence, "event": "cancelled", "payload": {"status": "cancelled"}},
+                {
+                    "conversation_id": None,
+                    "run_id": str(ephemeral_id),
+                    "sequence": sequence,
+                    "event": "cancelled",
+                    "payload": {"status": "cancelled"},
+                },
                 to=sid,
             )
             raise
@@ -637,14 +644,18 @@ async def _recover_stale_runs(tenant_id: UUID) -> list[tuple[UUID, dict[str, Any
     cutoff = datetime.now(UTC) - timedelta(minutes=40)
     async with session_scope(tenant_id) as session:
         runs = (
-            await session.execute(
-                select(AssistantRun)
-                .where(AssistantRun.status == "running", AssistantRun.updated_at < cutoff)
-                .order_by(AssistantRun.updated_at)
-                .limit(100)
-                .with_for_update(skip_locked=True)
+            (
+                await session.execute(
+                    select(AssistantRun)
+                    .where(AssistantRun.status == "running", AssistantRun.updated_at < cutoff)
+                    .order_by(AssistantRun.updated_at)
+                    .limit(100)
+                    .with_for_update(skip_locked=True)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for run in runs:
             message = ChatMessage(
                 conversation_id=run.conversation_id,
@@ -692,9 +703,7 @@ async def _dispatch_pending() -> None:
                             days=get_settings().assistant_event_retention_days
                         )
                         await session.execute(
-                            delete(AssistantRunEvent).where(
-                                AssistantRunEvent.created_at < cutoff
-                            )
+                            delete(AssistantRunEvent).where(AssistantRunEvent.created_at < cutoff)
                         )
                     run_ids = (
                         (

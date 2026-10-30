@@ -18,8 +18,7 @@ from app.models import (
 
 def timestamp_source(rows: list[tuple[int, Any]]) -> str:
     sources = {
-        str((segment.metadata or {}).get("timestamp_source") or "native")
-        for _, segment in rows
+        str((segment.metadata or {}).get("timestamp_source") or "native") for _, segment in rows
     }
     if not sources:
         return "unknown"

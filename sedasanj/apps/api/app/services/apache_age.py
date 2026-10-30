@@ -27,15 +27,10 @@ def _cypher_sql(query: str, columns: tuple[str, ...]) -> str:
     )
 
 
-async def execute_cypher(
-    executor: Any, query: str, columns: tuple[str, ...]
-) -> list[Any]:
+async def execute_cypher(executor: Any, query: str, columns: tuple[str, ...]) -> list[Any]:
     try:
         await executor.execute(
-            text(
-                "SELECT set_config('search_path', "
-                "'ag_catalog, \"$user\", public', true)"
-            )
+            text("SELECT set_config('search_path', 'ag_catalog, \"$user\", public', true)")
         )
         result = await executor.execute(text(_cypher_sql(query, columns)))
     except Exception as exc:
@@ -52,10 +47,7 @@ async def assert_age_ready(executor: Any) -> None:
         extensions = set(
             (
                 await executor.execute(
-                    text(
-                        "SELECT extname FROM pg_extension "
-                        "WHERE extname IN ('vector', 'age')"
-                    )
+                    text("SELECT extname FROM pg_extension WHERE extname IN ('vector', 'age')")
                 )
             ).scalars()
         )
@@ -64,10 +56,7 @@ async def assert_age_ready(executor: Any) -> None:
 
         graph_exists = (
             await executor.execute(
-                text(
-                    "SELECT 1 FROM ag_catalog.ag_graph "
-                    "WHERE name = :graph_name"
-                ),
+                text("SELECT 1 FROM ag_catalog.ag_graph WHERE name = :graph_name"),
                 {"graph_name": GRAPH_NAME},
             )
         ).scalar_one_or_none()

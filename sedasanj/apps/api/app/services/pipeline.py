@@ -332,9 +332,7 @@ async def concurrency_slot_free(
     kind: str,
 ) -> bool:
     """Serialize capacity claims per tenant while keeping ASR and LLM quotas separate."""
-    await session.execute(
-        select(Tenant.id).where(Tenant.id == tenant_id).with_for_update()
-    )
+    await session.execute(select(Tenant.id).where(Tenant.id == tenant_id).with_for_update())
     running = (
         await session.execute(
             select(func.count(Job.id)).where(

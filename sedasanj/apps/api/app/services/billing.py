@@ -144,18 +144,22 @@ async def _allocate_grants(
     if seconds <= 0:
         return
     grants = (
-        await session.execute(
-            select(CreditGrant)
-            .where(
-                CreditGrant.tenant_id == tenant_id,
-                CreditGrant.remaining_seconds > 0,
-                (CreditGrant.expires_at.is_(None))
-                | (CreditGrant.expires_at > datetime.now(UTC)),
+        (
+            await session.execute(
+                select(CreditGrant)
+                .where(
+                    CreditGrant.tenant_id == tenant_id,
+                    CreditGrant.remaining_seconds > 0,
+                    (CreditGrant.expires_at.is_(None))
+                    | (CreditGrant.expires_at > datetime.now(UTC)),
+                )
+                .order_by(CreditGrant.expires_at.asc().nulls_last(), CreditGrant.created_at)
+                .with_for_update()
             )
-            .order_by(CreditGrant.expires_at.asc().nulls_last(), CreditGrant.created_at)
-            .with_for_update()
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     remaining = seconds
     for grant in grants:
         if remaining <= 0:
@@ -194,17 +198,21 @@ async def _restore_allocations(
     seconds: int,
 ) -> int:
     allocations = (
-        await session.execute(
-            select(ReservationAllocation)
-            .where(
-                ReservationAllocation.tenant_id == tenant_id,
-                ReservationAllocation.reservation_id == reservation_id,
-                ReservationAllocation.seconds > 0,
+        (
+            await session.execute(
+                select(ReservationAllocation)
+                .where(
+                    ReservationAllocation.tenant_id == tenant_id,
+                    ReservationAllocation.reservation_id == reservation_id,
+                    ReservationAllocation.seconds > 0,
+                )
+                .order_by(ReservationAllocation.id.desc())
+                .with_for_update()
             )
-            .order_by(ReservationAllocation.id.desc())
-            .with_for_update()
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     remaining = seconds
     restored = 0
     now = datetime.now(UTC)
@@ -287,18 +295,22 @@ async def reserve(
         )
     await _ensure_legacy_grant(session, tenant.id, cache)
     grants = (
-        await session.execute(
-            select(CreditGrant)
-            .where(
-                CreditGrant.tenant_id == tenant.id,
-                CreditGrant.source == "monthly_plan",
-                CreditGrant.remaining_seconds > 0,
-                CreditGrant.expires_at > datetime.now(UTC),
+        (
+            await session.execute(
+                select(CreditGrant)
+                .where(
+                    CreditGrant.tenant_id == tenant.id,
+                    CreditGrant.source == "monthly_plan",
+                    CreditGrant.remaining_seconds > 0,
+                    CreditGrant.expires_at > datetime.now(UTC),
+                )
+                .order_by(CreditGrant.expires_at.asc(), CreditGrant.created_at)
+                .with_for_update()
             )
-            .order_by(CreditGrant.expires_at.asc(), CreditGrant.created_at)
-            .with_for_update()
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     free_seconds = min(seconds, sum(grant.remaining_seconds for grant in grants))
     paid_seconds = seconds - free_seconds
     toman = seconds_to_toman(paid_seconds, price)

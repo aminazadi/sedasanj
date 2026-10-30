@@ -50,9 +50,7 @@ class AudioPreprocessingConfig:
 
     def validate(self) -> None:
         if self.denoiser_model not in DENOISER_MODELS:
-            raise AudioPreprocessingError(
-                f"unsupported denoiser model: {self.denoiser_model}"
-            )
+            raise AudioPreprocessingError(f"unsupported denoiser model: {self.denoiser_model}")
         if self.enhancement_model not in ENHANCEMENT_MODELS:
             raise AudioPreprocessingError(
                 f"unsupported enhancement model: {self.enhancement_model}"
@@ -180,9 +178,7 @@ async def preprocess_mono_audio(
             filters.append("afftdn=nr=20:nf=-45:tn=1")
 
         if config.enhancement_model == "speech-clarity-balanced":
-            filters.extend(
-                ["highpass=f=80", "lowpass=f=7600", "dynaudnorm=f=150:g=9:p=0.95"]
-            )
+            filters.extend(["highpass=f=80", "lowpass=f=7600", "dynaudnorm=f=150:g=9:p=0.95"])
         elif config.enhancement_model == "speech-clarity-strong":
             filters.extend(
                 [

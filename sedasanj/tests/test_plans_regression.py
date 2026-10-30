@@ -315,7 +315,7 @@ async def test_reading_entitlements_does_not_write_expiry(scratch: None) -> None
                 status="active",
                 billing_period="annual",
                 period_start=now - timedelta(days=400),
-                period_end=now - timedelta(days=1),
+                period_end=now - timedelta(days=10),
                 base_operators=version.base_operators,
                 price_per_minute_toman=2000,
                 assistant_tier=version.assistant_tier,

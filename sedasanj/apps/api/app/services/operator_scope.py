@@ -59,10 +59,7 @@ def call_visible_to_operator(
 ) -> bool:
     del mobile_number
     operator_extension = digits_only(extension)
-    return bool(
-        operator_extension
-        and digits_only(call.agent_extension) == operator_extension
-    )
+    return bool(operator_extension and digits_only(call.agent_extension) == operator_extension)
 
 
 def is_operator(principal: Principal) -> bool:

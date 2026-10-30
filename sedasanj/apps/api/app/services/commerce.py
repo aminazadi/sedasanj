@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
-from app.models import Order, OrderItem, Plan, PlanVersion, Tenant
+from app.models import Order, OrderItem, Plan, PlanVersion, Subscription, Tenant
 
 
 def add_months(value: datetime, months: int) -> datetime:
@@ -66,6 +66,33 @@ async def plan_version_by_code(session: AsyncSession, code: str) -> tuple[Plan, 
     return row[0], row[1]
 
 
+async def _reject_plan_switch_by_purchase(
+    session: AsyncSession, tenant_id: UUID, plan: Plan
+) -> None:
+    """A running paid plan changes through /subscription/change, never by buying another plan."""
+    now = datetime.now(UTC)
+    row = (
+        await session.execute(
+            select(Plan.id, Plan.code)
+            .join(PlanVersion, PlanVersion.plan_id == Plan.id)
+            .join(Subscription, Subscription.plan_version_id == PlanVersion.id)
+            .where(
+                Subscription.tenant_id == tenant_id,
+                Subscription.status == "active",
+                Subscription.billing_period != "trial",
+                Subscription.period_end > now,
+            )
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    if row is not None and row[0] != plan.id:
+        raise ApiError(
+            "subscription_exists",
+            "an active paid plan already exists; change plan from the subscription page",
+        )
+
+
 def subscription_amount(version: PlanVersion, period: str, extra_operators: int) -> tuple[int, int]:
     if period != "annual":
         raise ApiError("invalid_request", "billing period is invalid")
@@ -104,6 +131,7 @@ async def create_subscription_order(
     plan, version = await plan_version_by_code(session, plan_code)
     if plan.code == "demo":
         raise ApiError("invalid_request", "demo does not require payment")
+    await _reject_plan_switch_by_purchase(session, tenant.id, plan)
     total, extra_unit = subscription_amount(version, period, extra_operators)
     order = Order(
         tenant_id=tenant.id,
@@ -129,7 +157,11 @@ async def create_subscription_order(
             quantity=1,
             unit_price_toman=total - extra_operators * extra_unit,
             total_toman=total - extra_operators * extra_unit,
-            metadata_json={"plan_code": plan.code, "plan_version_id": str(version.id), "billing_period": period},
+            metadata_json={
+                "plan_code": plan.code,
+                "plan_version_id": str(version.id),
+                "billing_period": period,
+            },
         )
     )
     if extra_operators:
@@ -148,7 +180,24 @@ async def create_subscription_order(
     return order
 
 
-def prorated_amount(full_amount: int, period_start: datetime, period_end: datetime, now: datetime) -> int:
-    total = max(1, int((period_end - period_start).total_seconds()))
-    remaining = max(0, int((period_end - now).total_seconds()))
+def annual_window(
+    period_start: datetime, period_end: datetime, now: datetime
+) -> tuple[datetime, datetime]:
+    """The paid year containing ``now``; early renewals stack whole years on one anniversary."""
+    years = 0
+    while (
+        add_months(period_start, 12 * (years + 1)) <= now
+        and add_months(period_start, 12 * (years + 1)) < period_end
+    ):
+        years += 1
+    start = add_months(period_start, 12 * years)
+    return start, min(add_months(start, 12), period_end)
+
+
+def prorated_amount(
+    full_amount: int, period_start: datetime, period_end: datetime, now: datetime
+) -> int:
+    window_start, window_end = annual_window(period_start, period_end, now)
+    total = max(1, int((window_end - window_start).total_seconds()))
+    remaining = max(0, int((window_end - now).total_seconds()))
     return math.ceil(full_amount * remaining / total)

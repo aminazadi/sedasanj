@@ -145,7 +145,13 @@ def capability_model(values: dict[str, str], capability: str) -> str:
             "",
         )
     return values.get(
-        {"asr": "asr_model", "analysis": "llm_model", "assistant": "chat_model", "decision": "decision_model", "embedding": "embedding_model"}.get(capability, ""),
+        {
+            "asr": "asr_model",
+            "analysis": "llm_model",
+            "assistant": "chat_model",
+            "decision": "decision_model",
+            "embedding": "embedding_model",
+        }.get(capability, ""),
         "",
     )
 
@@ -306,16 +312,18 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "assistant_max_discovery_rounds": "2",
         "assistant_parallel_tools": "2",
         "assistant_export_ttl_minutes": str(settings.assistant_export_ttl_minutes),
-        "assistant_enabled_tools": json.dumps([
-            "search_calls",
-            "get_call_details",
-            "search_transcripts",
-            "get_call_analysis",
-            "get_call_analytics",
-            "get_operator_performance",
-            "visualize_statistics",
-            "export_data",
-        ]),
+        "assistant_enabled_tools": json.dumps(
+            [
+                "search_calls",
+                "get_call_details",
+                "search_transcripts",
+                "get_call_analysis",
+                "get_call_analytics",
+                "get_operator_performance",
+                "visualize_statistics",
+                "export_data",
+            ]
+        ),
         "correction_enabled": "true",
         "correction_mode": "two_stage",
         "correction_audio_models": json.dumps([_default_asr_model(settings)]),
@@ -552,21 +560,23 @@ async def resolve_provider_settings(
             "correction_text_models": correction_text_models,
             "correction_prompt": overrides["correction_prompt"],
             "correction_strictness": overrides["correction_strictness"],
-            "correction_max_uncertain_ratio": float(
-                overrides["correction_max_uncertain_ratio"]
-            ),
+            "correction_max_uncertain_ratio": float(overrides["correction_max_uncertain_ratio"]),
             "correction_timeout_seconds": int(overrides["correction_timeout_seconds"]),
             "correction_max_retries": int(overrides["correction_max_retries"]),
             "correction_failure_policy": overrides["correction_failure_policy"],
             "aiservice_asr_path": AISERVICE_ROUTES["asr_route"][overrides["asr_route"]],
-            "aiservice_analysis_path": AISERVICE_ROUTES["analysis_route"][overrides["analysis_route"]],
+            "aiservice_analysis_path": AISERVICE_ROUTES["analysis_route"][
+                overrides["analysis_route"]
+            ],
             "aiservice_chat_path": AISERVICE_ROUTES["chat_route"][overrides["chat_route"]],
-            "aiservice_decision_path": AISERVICE_ROUTES["decision_route"][overrides["decision_route"]],
-            "aiservice_embedding_path": AISERVICE_ROUTES["embedding_route"][overrides["embedding_route"]],
+            "aiservice_decision_path": AISERVICE_ROUTES["decision_route"][
+                overrides["decision_route"]
+            ],
+            "aiservice_embedding_path": AISERVICE_ROUTES["embedding_route"][
+                overrides["embedding_route"]
+            ],
             "ninerouter_asr_prompt": (
-                overrides["ninerouter_asr_prompt"]
-                if overrides["asr_route"] == "ninerouter"
-                else ""
+                overrides["ninerouter_asr_prompt"] if overrides["asr_route"] == "ninerouter" else ""
             ),
             "ninerouter_analysis_prompt": (
                 overrides["ninerouter_analysis_prompt"]
@@ -623,10 +633,14 @@ async def resolve_provider_settings(
             "embedding_provider": overrides["embedding_provider"],
             "ninerouter_base_url": direct_base,
             "ninerouter_api_key": direct_key,
-            "ninerouter_connect_timeout_seconds": float(overrides["ninerouter_connect_timeout_seconds"]),
+            "ninerouter_connect_timeout_seconds": float(
+                overrides["ninerouter_connect_timeout_seconds"]
+            ),
             "ninerouter_read_timeout_seconds": float(overrides["ninerouter_read_timeout_seconds"]),
             "ninerouter_direct_prompt": overrides.get(prompt_key, "") if prompt_key else "",
-            "llm_client": "ninerouter" if capability in {"analysis", "assistant", "correction"} else runtime.llm_client,
+            "llm_client": "ninerouter"
+            if capability in {"analysis", "assistant", "correction"}
+            else runtime.llm_client,
             "llm_model": direct_model or runtime.llm_model,
             "voicesanj_llm_model": direct_model or runtime.voicesanj_llm_model,
             "llama_server_urls": direct_base,
