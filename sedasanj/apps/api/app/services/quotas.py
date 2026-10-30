@@ -43,3 +43,13 @@ def calendar_month_start(now: datetime) -> datetime:
         .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         .astimezone(UTC)
     )
+
+
+def quota_period_start(subscription_start: datetime, now: datetime) -> datetime:
+    """Start of the monthly quota window; minutes and assistant messages share it.
+
+    A subscription that has not started yet reports its own start instead of a past window.
+    """
+    if subscription_start > now:
+        return subscription_start
+    return monthly_period_start(subscription_start, now)

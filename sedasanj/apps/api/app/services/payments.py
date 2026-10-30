@@ -33,7 +33,7 @@ from app.models import (
     Tenant,
     TenantBalanceCache,
 )
-from app.services import audit, billing, gateway_settings, subscription_state
+from app.services import audit, billing, gateway_settings, plan_credit, subscription_state
 from app.services.commerce import add_months
 from app.services.gateways import (
     AttemptRef,
@@ -280,7 +280,11 @@ async def grant_credit(
         LedgerEntry(
             tenant_id=tenant_id,
             call_id=None,
-            kind="subscription_credit" if source == "intro_bonus" else "credit_purchase",
+            kind=(
+                "subscription_credit"
+                if source in ("intro_bonus", "monthly_plan")
+                else "credit_purchase"
+            ),
             seconds_delta=seconds,
             toman_delta=toman,
             idempotency_key=idem,
@@ -342,6 +346,7 @@ async def _apply_upgrade(
         return
     tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
     extra = int(upgrade_item.metadata_json.get("extra_operators", 0))
+    old_version = await session.get(PlanVersion, subscription.plan_version_id)
     for change in changes:
         change.previous_plan_version_id = subscription.plan_version_id
         change.previous_extra_operators = subscription.extra_operators
@@ -358,6 +363,18 @@ async def _apply_upgrade(
     subscription.assistant_model = version.assistant_model
     subscription.next_plan_version_id = None
     subscription.updated_at = now
+    if old_version is not None:
+        await plan_credit.grant_upgrade_difference(
+            session,
+            order.tenant_id,
+            subscription_id=subscription.id,
+            subscription_start=subscription.period_start,
+            subscription_end=subscription.period_end,
+            old_minutes=old_version.intro_minutes,
+            new_minutes=version.intro_minutes,
+            now=now,
+            key=f"upgrade-credit:{order.id}",
+        )
     # A pending downgrade belongs to the old plan and no longer applies.
     await subscription_state.close_open_changes(
         session, subscription.id, status="canceled", kinds=("downgrade",)
@@ -1005,6 +1022,12 @@ async def _undo_subscription_effect(
         tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
         if tenant is not None:
             tenant.max_operators = previous.base_operators + extra
+        await plan_credit.revoke_upgrade_difference(
+            session,
+            order.tenant_id,
+            subscription_id=subscription.id,
+            key=f"upgrade-credit:{order.id}",
+        )
         return
     if subscription_item is None:
         return

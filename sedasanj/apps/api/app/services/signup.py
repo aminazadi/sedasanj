@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ApiError
 from app.models import Subscription, Tenant, TenantBalanceCache, TrialClaim, User
 from app.security import hash_password
-from app.services import audit, commerce, payments
+from app.services import audit, commerce, plan_credit
 from app.services.commerce_settings import get_commerce_settings
 from app.services.phone_identity import mobile_lock
 
@@ -45,6 +45,9 @@ async def create_account(
         if used is not None:
             raise ApiError("conflict_idempotency", "دموی این شماره قبلاً فعال شده است.")
     _, version = await commerce.plan_version_by_code(session, plan_code)
+    trial_days = version.trial_days or 0
+    if is_demo and not trial_days:
+        raise ApiError("plan_not_sellable", "مدت دوره آزمایشی این پلن تنظیم نشده است.")
     now = datetime.now(UTC)
     payment_window = timedelta(days=(await get_commerce_settings(session)).payment_window_days)
     tenant = Tenant(
@@ -52,9 +55,7 @@ async def create_account(
         status="active",
         timezone="Asia/Tehran",
         locale="fa",
-        price_per_minute_toman=(
-            7_000 if plan_code == "demo" else version.overage_price_per_minute_toman
-        ),
+        price_per_minute_toman=version.overage_price_per_minute_toman,
         max_concurrent_jobs=10,
         audio_retention_days=30,
         max_operators=version.base_operators,
@@ -78,12 +79,10 @@ async def create_account(
         billing_period="trial" if is_demo else "annual",
         period_start=now,
         # An unpaid sign-up lapses after the payment window; payment starts the real term.
-        period_end=now + timedelta(days=version.trial_days or 7)
-        if is_demo
-        else now + payment_window,
+        period_end=now + timedelta(days=trial_days) if is_demo else now + payment_window,
         base_operators=version.base_operators,
         extra_operators=0,
-        price_per_minute_toman=(7_000 if is_demo else version.overage_price_per_minute_toman),
+        price_per_minute_toman=version.overage_price_per_minute_toman,
         assistant_tier=version.assistant_tier,
         assistant_monthly_messages=version.assistant_monthly_messages,
         assistant_source_limit=version.assistant_source_limit,
@@ -93,15 +92,14 @@ async def create_account(
     await session.flush()
     if is_demo:
         session.add(TrialClaim(tenant_id=tenant.id, email=email, mobile=mobile))
-        await payments.grant_credit(
+        await plan_credit.ensure_period_credit(
             session,
-            tenant_id=tenant.id,
-            seconds=version.intro_minutes * 60,
-            source="monthly_plan",
-            source_id=subscription.id,
-            expires_at=subscription.period_end,
-            toman=0,
-            idem=f"trial:{subscription.id}",
+            tenant.id,
+            subscription_id=subscription.id,
+            subscription_start=subscription.period_start,
+            subscription_end=subscription.period_end,
+            minutes=version.intro_minutes,
+            now=now,
         )
         subscription.intro_credit_issued_at = now
     await audit.record(

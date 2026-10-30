@@ -57,8 +57,10 @@ async def effective_price_per_minute(
             .limit(1)
         )
     ).one_or_none()
-    if plan_price is None or plan_price[0] == "demo":
-        return 7_000
+    if plan_price is None:
+        from app.services.commerce_settings import get_commerce_settings
+
+        return (await get_commerce_settings(session)).default_price_per_minute_toman
     return int(plan_price[1])
 
 
@@ -258,6 +260,61 @@ async def _apply(
     return entry
 
 
+async def _plan_grants(session: AsyncSession, tenant_id: UUID) -> list[CreditGrant]:
+    """Unexpired monthly plan grants, soonest-expiring first, locked for allocation."""
+    return list(
+        (
+            await session.execute(
+                select(CreditGrant)
+                .where(
+                    CreditGrant.tenant_id == tenant_id,
+                    CreditGrant.source == "monthly_plan",
+                    CreditGrant.remaining_seconds > 0,
+                    CreditGrant.expires_at > datetime.now(UTC),
+                )
+                .order_by(CreditGrant.expires_at.asc(), CreditGrant.created_at)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _allocate_plan_grants(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    reservation_id: UUID,
+    grants: list[CreditGrant],
+    seconds: int,
+) -> None:
+    remaining = seconds
+    for grant in grants:
+        if remaining <= 0:
+            break
+        used = min(remaining, grant.remaining_seconds)
+        grant.remaining_seconds -= used
+        session.add(
+            ReservationAllocation(
+                tenant_id=tenant_id,
+                reservation_id=reservation_id,
+                grant_id=grant.id,
+                seconds=used,
+            )
+        )
+        remaining -= used
+
+
+async def _expire_plan_credit(
+    session: AsyncSession, tenant_id: UUID, cache: TenantBalanceCache
+) -> None:
+    """Drop lapsed monthly grants from the cache so a hold never counts unusable seconds."""
+    from app.services import plan_credit
+
+    await plan_credit.expire_lapsed_grants(session, tenant_id, cache, datetime.now(UTC))
+
+
 async def reserve(
     session: AsyncSession,
     *,
@@ -288,29 +345,14 @@ async def reserve(
         if price_per_minute_toman is None
         else price_per_minute_toman
     )
+    await _ensure_legacy_grant(session, tenant.id, cache)
+    await _expire_plan_credit(session, tenant.id, cache)
     if cache.seconds < seconds:
         raise ApiError(
             "insufficient_credit",
             f"Reservation requires {seconds} seconds; available {cache.seconds}",
         )
-    await _ensure_legacy_grant(session, tenant.id, cache)
-    grants = (
-        (
-            await session.execute(
-                select(CreditGrant)
-                .where(
-                    CreditGrant.tenant_id == tenant.id,
-                    CreditGrant.source == "monthly_plan",
-                    CreditGrant.remaining_seconds > 0,
-                    CreditGrant.expires_at > datetime.now(UTC),
-                )
-                .order_by(CreditGrant.expires_at.asc(), CreditGrant.created_at)
-                .with_for_update()
-            )
-        )
-        .scalars()
-        .all()
-    )
+    grants = await _plan_grants(session, tenant.id)
     free_seconds = min(seconds, sum(grant.remaining_seconds for grant in grants))
     paid_seconds = seconds - free_seconds
     toman = seconds_to_toman(paid_seconds, price)
@@ -326,21 +368,13 @@ async def reserve(
     )
     session.add(reservation)
     await session.flush()
-    remaining_free = free_seconds
-    for grant in grants:
-        if remaining_free <= 0:
-            break
-        used = min(remaining_free, grant.remaining_seconds)
-        grant.remaining_seconds -= used
-        session.add(
-            ReservationAllocation(
-                tenant_id=tenant.id,
-                reservation_id=reservation.id,
-                grant_id=grant.id,
-                seconds=used,
-            )
-        )
-        remaining_free -= used
+    await _allocate_plan_grants(
+        session,
+        tenant_id=tenant.id,
+        reservation_id=reservation.id,
+        grants=grants,
+        seconds=free_seconds,
+    )
     await _allocate_grants(
         session,
         tenant_id=tenant.id,
@@ -391,14 +425,18 @@ async def reserve_retry(
         if price_per_minute_toman is None
         else price_per_minute_toman
     )
-    toman = seconds_to_toman(seconds, price)
     cache = await _lock_cache(session, tenant.id)
+    await _ensure_legacy_grant(session, tenant.id, cache)
+    await _expire_plan_credit(session, tenant.id, cache)
     if cache.seconds < seconds:
         raise ApiError(
             "insufficient_credit",
             f"Reservation requires {seconds} seconds; available {cache.seconds}",
         )
-    await _ensure_legacy_grant(session, tenant.id, cache)
+    grants = await _plan_grants(session, tenant.id)
+    free_seconds = min(seconds, sum(grant.remaining_seconds for grant in grants))
+    paid_seconds = seconds - free_seconds
+    toman = seconds_to_toman(paid_seconds, price)
 
     reservation = CreditReservation(
         tenant_id=tenant.id,
@@ -406,16 +444,23 @@ async def reserve_retry(
         seconds=seconds,
         toman=toman,
         price_per_minute_toman=price,
-        free_seconds=0,
+        free_seconds=free_seconds,
         status="held",
     )
     session.add(reservation)
     await session.flush()
+    await _allocate_plan_grants(
+        session,
+        tenant_id=tenant.id,
+        reservation_id=reservation.id,
+        grants=grants,
+        seconds=free_seconds,
+    )
     await _allocate_grants(
         session,
         tenant_id=tenant.id,
         reservation_id=reservation.id,
-        seconds=seconds,
+        seconds=paid_seconds,
     )
     await _apply(
         session,

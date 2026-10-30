@@ -18,17 +18,15 @@ from app.metrics import credit_rejects_total, ingest_total
 from app.models import (
     AudioObject,
     Call,
-    CreditGrant,
     CreditReservation,
     Job,
-    LedgerEntry,
     Plan,
     PlanVersion,
     Subscription,
     Tenant,
 )
 from app.schemas import IngestAccepted
-from app.services import billing, entitlements, outbox, processing_events, progress
+from app.services import billing, entitlements, outbox, plan_credit, processing_events, progress
 from app.services.audio import probe_wav_bytes, probe_wav_file
 from app.services.phone_numbers import normalize_call_number
 from app.services.platform import capability_model, effective_models
@@ -74,77 +72,16 @@ async def _ensure_monthly_plan_credit(session: AsyncSession, tenant_id: UUID, no
         price_per_minute,
         plan_code,
     ) = row
-    from app.services.quotas import monthly_period_end, monthly_period_start
-
-    start = monthly_period_start(period_start, now)
-    end = monthly_period_end(start, period_end)
-    key = f"plan-credit:{subscription_id}:{start.isoformat()}"
-    cache = await billing._lock_cache(session, tenant_id)
-    await billing._ensure_legacy_grant(session, tenant_id, cache)
-    exists = (
-        await session.execute(
-            select(LedgerEntry.id).where(
-                LedgerEntry.tenant_id == tenant_id,
-                LedgerEntry.idempotency_key == key,
-            )
-        )
-    ).scalar_one_or_none()
-    if exists is None:
-        old_grants = (
-            (
-                await session.execute(
-                    select(CreditGrant)
-                    .where(
-                        CreditGrant.tenant_id == tenant_id,
-                        CreditGrant.source == "monthly_plan",
-                        CreditGrant.remaining_seconds > 0,
-                        CreditGrant.expires_at.is_not(None),
-                        CreditGrant.expires_at <= now,
-                    )
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for grant in old_grants:
-            cache.seconds -= grant.remaining_seconds
-            amount = grant.remaining_seconds
-            grant.remaining_seconds = 0
-            session.add(
-                LedgerEntry(
-                    tenant_id=tenant_id,
-                    call_id=None,
-                    kind="expiration",
-                    seconds_delta=-amount,
-                    toman_delta=0,
-                    idempotency_key=f"expire-monthly-plan:{grant.id}",
-                )
-            )
-        seconds = intro_minutes * 60
-        if seconds > 0:
-            session.add(
-                CreditGrant(
-                    tenant_id=tenant_id,
-                    source="monthly_plan",
-                    source_id=subscription_id,
-                    total_seconds=seconds,
-                    remaining_seconds=seconds,
-                    expires_at=end,
-                )
-            )
-            cache.seconds += seconds
-        session.add(
-            LedgerEntry(
-                tenant_id=tenant_id,
-                call_id=None,
-                kind="subscription_credit",
-                seconds_delta=seconds,
-                toman_delta=0,
-                idempotency_key=key,
-            )
-        )
-    return 7_000 if plan_code == "demo" else price_per_minute
+    await plan_credit.ensure_period_credit(
+        session,
+        tenant_id,
+        subscription_id=subscription_id,
+        subscription_start=period_start,
+        subscription_end=period_end,
+        minutes=intro_minutes,
+        now=now,
+    )
+    return int(price_per_minute)
 
 
 @dataclass(frozen=True)

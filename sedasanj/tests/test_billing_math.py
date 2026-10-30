@@ -87,6 +87,9 @@ async def test_retry_reservation_uses_a_distinct_idempotency_key(
     monkeypatch.setattr(billing, "_lock_cache", AsyncMock(return_value=cache))
     monkeypatch.setattr(billing, "_ensure_legacy_grant", AsyncMock())
     monkeypatch.setattr(billing, "_allocate_grants", AsyncMock())
+    monkeypatch.setattr(billing, "_expire_plan_credit", AsyncMock())
+    monkeypatch.setattr(billing, "_plan_grants", AsyncMock(return_value=[]))
+    monkeypatch.setattr(billing, "_allocate_plan_grants", AsyncMock())
     monkeypatch.setattr(billing, "effective_price_per_minute", AsyncMock(return_value=6_000))
 
     async def apply(*args: object, **kwargs: object) -> None:

@@ -97,6 +97,7 @@ from app.services import (
     ratelimit,
 )
 from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
+from app.services.commerce_settings import get_commerce_settings
 from app.services.ninerouter import NineRouterClient
 from app.services.platform import (
     EXTRACT_PROMPT_KEY,
@@ -140,7 +141,11 @@ async def check_login(payload: LoginRequest, session: PublicSession) -> LoginSte
     staff = (
         await session.execute(select(StaffUser).where(StaffUser.email == payload.email))
     ).scalar_one_or_none()
-    if staff is None or staff.disabled_at is not None or not verify_password(staff.password_hash, payload.password):
+    if (
+        staff is None
+        or staff.disabled_at is not None
+        or not verify_password(staff.password_hash, payload.password)
+    ):
         raise ApiError("unauthorized", "email or password is incorrect")
 
     return LoginStep(requires_totp=bool(staff.totp_secret))
@@ -198,7 +203,11 @@ async def staff_login(payload: LoginRequest, request: Request, session: PublicSe
     staff = (
         await session.execute(select(StaffUser).where(StaffUser.email == payload.email))
     ).scalar_one_or_none()
-    if staff is None or staff.disabled_at is not None or not verify_password(staff.password_hash, payload.password):
+    if (
+        staff is None
+        or staff.disabled_at is not None
+        or not verify_password(staff.password_hash, payload.password)
+    ):
         raise ApiError("unauthorized", "email or password is incorrect")
 
     if staff.totp_secret and not verify_totp(staff.totp_secret, payload.totp_code):
@@ -346,12 +355,14 @@ async def list_tenants(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
     base = select(Tenant).where(Tenant.status != "deleted")
-    total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
+    total = int(
+        (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    )
     rows = (
-        await session.execute(
-            base.order_by(Tenant.created_at.desc()).offset(offset).limit(limit)
-        )
-    ).scalars().all()
+        (await session.execute(base.order_by(Tenant.created_at.desc()).offset(offset).limit(limit)))
+        .scalars()
+        .all()
+    )
     items: list[TenantOut] = []
     for row in rows:
         output = TenantOut.model_validate(row)
@@ -370,7 +381,11 @@ async def list_tenant_databases(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
-    total = int((await session.execute(select(func.count(Tenant.id)).where(Tenant.status != "deleted"))).scalar_one())
+    total = int(
+        (
+            await session.execute(select(func.count(Tenant.id)).where(Tenant.status != "deleted"))
+        ).scalar_one()
+    )
     rows = (
         await session.execute(
             select(Tenant, TenantDatabaseRegistry, TenantDataMigration)
@@ -417,7 +432,11 @@ async def list_tenant_databases(
         }
         for tenant, registry, migration in rows
     ]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.post("/tenants/{tenant_id}/database-migration/retry", status_code=202)
@@ -439,11 +458,7 @@ async def retry_tenant_database_migration(
         migration = TenantDataMigration(tenant_id=tenant_id)
         session.add(migration)
     registry = await session.get(TenantDatabaseRegistry, tenant_id, with_for_update=True)
-    if (
-        migration.status == "completed"
-        and registry is not None
-        and registry.status == "failed"
-    ):
+    if migration.status == "completed" and registry is not None and registry.status == "failed":
         registry.status = "maintenance"
         tenant.status = "maintenance_readonly"
         await audit.record(
@@ -502,7 +517,9 @@ async def create_tenant(
 ) -> TenantOut:
     tenant = Tenant(
         name=payload.name,
-        price_per_minute_toman=7_000,
+        price_per_minute_toman=(
+            await get_commerce_settings(session)
+        ).default_price_per_minute_toman,
         timezone=payload.timezone,
         audio_retention_days=payload.audio_retention_days,
         max_concurrent_jobs=payload.max_concurrent_jobs,
@@ -534,11 +551,7 @@ async def create_tenant(
     else:
         period_end = period_start + timedelta(days=payload.subscription_days or 365)
     tenant.max_operators = plan_version.base_operators
-    tenant.price_per_minute_toman = (
-        7_000
-        if payload.plan_code == "demo"
-        else plan_version.overage_price_per_minute_toman
-    )
+    tenant.price_per_minute_toman = plan_version.overage_price_per_minute_toman
     session.add(
         Subscription(
             tenant_id=tenant.id,
@@ -595,9 +608,7 @@ async def get_tenant(tenant_id: UUID, staff: StaffDep, session: StaffSession) ->
                 )
             ).scalar_one()
         )
-    users = (
-        await session.execute(select(User).where(User.tenant_id == tenant_id))
-    ).scalars().all()
+    users = (await session.execute(select(User).where(User.tenant_id == tenant_id))).scalars().all()
     detail = TenantDetail.model_validate(tenant)
     async with session_scope(tenant_id) as tenant_session:
         value = await entitlements.effective(tenant_session, tenant_id)
@@ -703,10 +714,20 @@ async def tenant_users(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
     base = select(User).where(User.tenant_id == tenant_id)
-    total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
-    rows = (await session.execute(base.order_by(User.created_at).offset(offset).limit(limit))).scalars().all()
+    total = int(
+        (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    )
+    rows = (
+        (await session.execute(base.order_by(User.created_at).offset(offset).limit(limit)))
+        .scalars()
+        .all()
+    )
     items = [UserOut.model_validate(row) for row in rows]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.post("/tenants/{tenant_id}/suspend", response_model=TenantOut)
@@ -816,7 +837,11 @@ async def list_jobs(
                 stmt = stmt.where(Job.status == job_status)
             if kind:
                 stmt = stmt.where(Job.kind == kind)
-            total += int((await tenant_session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
+            total += int(
+                (
+                    await tenant_session.execute(select(func.count()).select_from(stmt.subquery()))
+                ).scalar_one()
+            )
             jobs.extend(
                 (
                     await tenant_session.execute(
@@ -826,7 +851,11 @@ async def list_jobs(
             )
     jobs.sort(key=lambda row: row.created_at, reverse=True)
     page_rows = jobs[offset : offset + limit]
-    return {"items": [JobOut.model_validate(row) for row in page_rows], "total": total, "next_cursor": str(offset + limit) if offset + len(page_rows) < total else None}
+    return {
+        "items": [JobOut.model_validate(row) for row in page_rows],
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(page_rows) < total else None,
+    }
 
 
 @router.get("/operations")
@@ -1020,9 +1049,7 @@ async def get_platform_settings(staff: StaffDep, session: StaffSession) -> dict[
 
 
 @router.get("/assistant/knowledge-status")
-async def assistant_knowledge_status(
-    staff: StaffDep, session: StaffSession
-) -> dict[str, object]:
+async def assistant_knowledge_status(staff: StaffDep, session: StaffSession) -> dict[str, object]:
     del staff
     settings = await effective_models(session)
     totals = {"ready": 0, "pending": 0, "failed": 0, "chunks": 0}
@@ -1048,18 +1075,14 @@ async def assistant_knowledge_status(
             ).label("index_status")
             rows = (
                 await tenant_session.execute(
-                    select(index_status, func.count(CallKnowledge.call_id)).group_by(
-                        index_status
-                    )
+                    select(index_status, func.count(CallKnowledge.call_id)).group_by(index_status)
                 )
             ).all()
             for state, count in rows:
                 if state in totals:
                     totals[state] += int(count)
             totals["chunks"] += int(
-                (
-                    await tenant_session.execute(select(func.count(TranscriptChunk.id)))
-                ).scalar_one()
+                (await tenant_session.execute(select(func.count(TranscriptChunk.id)))).scalar_one()
             )
             if latest_error is None:
                 latest_error = (
@@ -1166,8 +1189,7 @@ async def update_platform_settings(
 ) -> dict[str, object]:
     changes = payload.model_dump(exclude_none=True)
     embedding_configuration_changed = bool(
-        {"embedding_provider", "embedding_model", "ninerouter_embedding_model"}
-        & changes.keys()
+        {"embedding_provider", "embedding_model", "ninerouter_embedding_model"} & changes.keys()
     )
     api_key = changes.pop("api_key", None)
     asr_api_key = changes.pop("asr_api_key", None)
@@ -1301,7 +1323,12 @@ async def update_platform_settings(
             )
         if not effective_asr_key:
             raise ApiError("invalid_request", "ASR API key is required")
-    for url_key in ("voicesanj_base_url", "asr_base_url", "embedding_base_url", "ninerouter_base_url"):
+    for url_key in (
+        "voicesanj_base_url",
+        "asr_base_url",
+        "embedding_base_url",
+        "ninerouter_base_url",
+    ):
         if url_key not in changes:
             continue
         try:
@@ -1328,7 +1355,11 @@ async def update_platform_settings(
     for key in ninerouter_prompt_keys:
         if key in changes:
             changes[key] = str(changes[key]).strip()
-    for key in ("correction_audio_models", "correction_text_models", "ninerouter_correction_models"):
+    for key in (
+        "correction_audio_models",
+        "correction_text_models",
+        "ninerouter_correction_models",
+    ):
         if key not in changes:
             continue
         normalized = [str(item).strip() for item in changes[key] if str(item).strip()]
@@ -1373,9 +1404,7 @@ async def update_platform_settings(
         row = await session.get(PlatformSetting, "assistant-instructions")
         if row is None:
             session.add(
-                PlatformSetting(
-                    key="assistant-instructions", value=assistant_instructions.strip()
-                )
+                PlatformSetting(key="assistant-instructions", value=assistant_instructions.strip())
             )
         else:
             row.value = assistant_instructions.strip()
@@ -1700,8 +1729,20 @@ async def admin_list_packages(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
     total = int((await session.execute(select(func.count(Package.id)))).scalar_one())
-    rows = (await session.execute(select(Package).order_by(Package.minutes).offset(offset).limit(limit))).scalars().all()
-    return {"items": [PackageOut.model_validate(row) for row in rows], "total": total, "next_cursor": str(offset + limit) if offset + len(rows) < total else None}
+    rows = (
+        (
+            await session.execute(
+                select(Package).order_by(Package.minutes).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "items": [PackageOut.model_validate(row) for row in rows],
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(rows) < total else None,
+    }
 
 
 @router.post("/packages", response_model=PackageOut, status_code=status.HTTP_201_CREATED)
@@ -1784,9 +1825,23 @@ async def list_audit_events(
         stmt = stmt.where(AuditEvent.tenant_id == tenant_id)
     if action:
         stmt = stmt.where(AuditEvent.action == action)
-    total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
-    rows = (await session.execute(stmt.order_by(AuditEvent.created_at.desc()).offset(offset).limit(limit))).scalars().all()
-    return {"items": [AuditEventOut.model_validate(row) for row in rows], "total": total, "next_cursor": str(offset + limit) if offset + len(rows) < total else None}
+    total = int(
+        (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    )
+    rows = (
+        (
+            await session.execute(
+                stmt.order_by(AuditEvent.created_at.desc()).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "items": [AuditEventOut.model_validate(row) for row in rows],
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(rows) < total else None,
+    }
 
 
 @router.get("/tenants/{tenant_id}/ledger")
@@ -1797,7 +1852,13 @@ async def tenant_ledger(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
-    total = int((await session.execute(select(func.count(LedgerEntry.id)).where(LedgerEntry.tenant_id == tenant_id))).scalar_one())
+    total = int(
+        (
+            await session.execute(
+                select(func.count(LedgerEntry.id)).where(LedgerEntry.tenant_id == tenant_id)
+            )
+        ).scalar_one()
+    )
     rows = (
         await session.execute(
             select(LedgerEntry)
@@ -1818,7 +1879,11 @@ async def tenant_ledger(
         }
         for row in rows
     ]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.get("/tenants/{tenant_id}/transcripts/count")
@@ -1843,7 +1908,15 @@ async def list_staff(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
     total = int((await session.execute(select(func.count(StaffUser.id)))).scalar_one())
-    rows = (await session.execute(select(StaffUser).order_by(StaffUser.created_at).offset(offset).limit(limit))).scalars().all()
+    rows = (
+        (
+            await session.execute(
+                select(StaffUser).order_by(StaffUser.created_at).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
     items = [
         {
             "id": str(row.id),
@@ -1855,7 +1928,11 @@ async def list_staff(
         }
         for row in rows
     ]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.post("/staff", status_code=status.HTTP_201_CREATED)
@@ -1869,12 +1946,21 @@ async def create_staff(
         session, staff, payload.current_password, payload.totp_code
     )
     email = str(payload.email).strip().lower()
-    if (await session.execute(select(StaffUser.id).where(StaffUser.email == email))).scalar_one_or_none():
+    if (
+        await session.execute(select(StaffUser.id).where(StaffUser.email == email))
+    ).scalar_one_or_none():
         raise ApiError("conflict_idempotency", "staff email already exists")
     row = StaffUser(email=email, password_hash=hash_password(payload.password), role=payload.role)
     session.add(row)
     await session.flush()
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="staff.create", payload={"staff_id": str(row.id), "email": email, "role": row.role}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="staff.create",
+        payload={"staff_id": str(row.id), "email": email, "role": row.role},
+        ip=client_ip(request),
+    )
     return {"id": str(row.id), "email": row.email, "role": row.role, "disabled_at": None}
 
 
@@ -1886,15 +1972,28 @@ async def disable_staff(
     staff: StaffDep,
     session: StaffSession,
 ) -> dict[str, Any]:
-    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
     if staff_id == staff.id:
         raise ApiError("invalid_request", "you cannot disable your own account")
     row = await session.get(StaffUser, staff_id, with_for_update=True)
     if row is None:
         raise ApiError("not_found", "staff user not found")
     row.disabled_at = datetime.now(UTC)
-    await session.execute(update(StaffRefreshToken).where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None)).values(revoked_at=datetime.now(UTC)))
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="staff.disable", payload={"staff_id": str(row.id)}, ip=client_ip(request))
+    await session.execute(
+        update(StaffRefreshToken)
+        .where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="staff.disable",
+        payload={"staff_id": str(row.id)},
+        ip=client_ip(request),
+    )
     return {"id": str(row.id), "disabled_at": row.disabled_at}
 
 
@@ -1906,12 +2005,21 @@ async def activate_staff(
     staff: StaffDep,
     session: StaffSession,
 ) -> dict[str, Any]:
-    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
     row = await session.get(StaffUser, staff_id, with_for_update=True)
     if row is None:
         raise ApiError("not_found", "staff user not found")
     row.disabled_at = None
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="staff.activate", payload={"staff_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="staff.activate",
+        payload={"staff_id": str(row.id)},
+        ip=client_ip(request),
+    )
     return {"id": str(row.id), "disabled_at": None}
 
 
@@ -1923,13 +2031,26 @@ async def reset_staff_password(
     staff: StaffDep,
     session: StaffSession,
 ) -> dict[str, str]:
-    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
     row = await session.get(StaffUser, staff_id, with_for_update=True)
     if row is None:
         raise ApiError("not_found", "staff user not found")
     row.password_hash = hash_password(payload.password)
-    await session.execute(update(StaffRefreshToken).where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None)).values(revoked_at=datetime.now(UTC)))
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="staff.password_reset", payload={"staff_id": str(row.id)}, ip=client_ip(request))
+    await session.execute(
+        update(StaffRefreshToken)
+        .where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="staff.password_reset",
+        payload={"staff_id": str(row.id)},
+        ip=client_ip(request),
+    )
     return {"status": "updated"}
 
 
@@ -1941,12 +2062,25 @@ async def reset_staff_totp(
     staff: StaffDep,
     session: StaffSession,
 ) -> dict[str, str]:
-    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
     row = await session.get(StaffUser, staff_id, with_for_update=True)
     if row is None:
         raise ApiError("not_found", "staff user not found")
     row.totp_secret = None
     row.totp_pending_secret = None
-    await session.execute(update(StaffRefreshToken).where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None)).values(revoked_at=datetime.now(UTC)))
-    await audit.record(session, actor_type="staff", actor_id=staff.id, action="staff.totp_reset", payload={"staff_id": str(row.id)}, ip=client_ip(request))
+    await session.execute(
+        update(StaffRefreshToken)
+        .where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="staff.totp_reset",
+        payload={"staff_id": str(row.id)},
+        ip=client_ip(request),
+    )
     return {"status": "reset"}

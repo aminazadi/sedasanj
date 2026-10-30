@@ -20,7 +20,6 @@ from app.db import routable_tenant_ids, session_scope
 from app.deps import OrgAdminDep, PublicSession, StaffDep, StaffSession, TenantSession, client_ip
 from app.errors import ApiError
 from app.models import (
-    AssistantUsage,
     AuditEvent,
     ContactLead,
     CreditGrant,
@@ -44,6 +43,7 @@ from app.models import (
 )
 from app.security import hash_password
 from app.services import (
+    assistant_quota,
     audit,
     billing,
     commerce,
@@ -246,6 +246,7 @@ class CommerceSettingsUpdate(BaseModel):
     credit_max_minutes: int | None = Field(default=None, ge=1, le=100_000_000)
     credit_presets: str | None = Field(default=None, pattern=r"^[0-9]+(,[0-9]+){0,7}$")
     featured_plan_code: str | None = Field(default=None, pattern=r"^[a-z0-9_]{0,32}$")
+    default_price_per_minute_toman: int | None = Field(default=None, ge=1, le=1_000_000)
 
 
 def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
@@ -743,20 +744,8 @@ async def get_subscription(principal: OrgAdminDep, session: TenantSession) -> di
     quota_start = None
     used = 0
     if value.period_start:
-        from app.services.quotas import calendar_month_start
-
-        quota_start = calendar_month_start(datetime.now(UTC))
-        used = int(
-            (
-                await session.execute(
-                    select(func.count(AssistantUsage.id)).where(
-                        AssistantUsage.tenant_id == principal.tenant_id,
-                        AssistantUsage.period_start == quota_start,
-                        AssistantUsage.status.in_(("reserved", "succeeded")),
-                    )
-                )
-            ).scalar_one()
-        )
+        quota_start = assistant_quota.period_start(value.period_start, datetime.now(UTC))
+        used = await assistant_quota.used_messages(session, principal.tenant_id, quota_start)
     scheduled_change: dict[str, Any] | None = None
     if value.subscription_id:
         open_change = (
@@ -2075,19 +2064,18 @@ async def admin_tenant_commerce(
             .scalars()
             .all()
         )
-        from app.services.quotas import calendar_month_start
-
-        quota_start = calendar_month_start(datetime.now(UTC))
-        assistant_used = int(
-            (
-                await tenant_session.execute(
-                    select(func.count(AssistantUsage.id)).where(
-                        AssistantUsage.tenant_id == tenant_id,
-                        AssistantUsage.period_start == quota_start,
-                        AssistantUsage.status == "succeeded",
-                    )
-                )
-            ).scalar_one()
+        current_subscription = next(
+            (item for item in subscriptions if item.status in ("active", "trialing")), None
+        )
+        quota_start = (
+            assistant_quota.period_start(current_subscription.period_start, datetime.now(UTC))
+            if current_subscription
+            else None
+        )
+        assistant_used = (
+            await assistant_quota.used_messages(tenant_session, tenant_id, quota_start)
+            if quota_start
+            else 0
         )
     return {
         "subscriptions": [

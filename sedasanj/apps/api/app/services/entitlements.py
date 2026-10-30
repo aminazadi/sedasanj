@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ApiError
 from app.models import Plan, PlanVersion, Subscription
 from app.services import billing, subscription_state
+from app.services.commerce_settings import get_commerce_settings
 
 
 @dataclass(frozen=True)
@@ -62,14 +63,14 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
         stmt = stmt.with_for_update(of=Subscription)
     result = (await session.execute(stmt)).one_or_none()
     if result is None:
-        price = 7_000
+        price = (await get_commerce_settings(session)).default_price_per_minute_toman
         return Entitlements(None, "missing", 0, price, "none", 0, 0, None, None, None)
     row, plan_code, plan_price = result
     # Reported only: the stored status is flipped by expire_commerce_state, never on a read.
     status = subscription_state.effective_status(
         row, datetime.now(UTC), await subscription_state.grace_days(session)
     )
-    price = 7_000 if plan_code == "demo" else int(plan_price)
+    price = int(plan_price)
     return Entitlements(
         row.id,
         status,

@@ -49,6 +49,7 @@ from app.schemas import (
 from app.services import (
     assistant_agent,
     assistant_policy,
+    assistant_quota,
     assistant_tools,
     audit,
     entitlements,
@@ -72,11 +73,66 @@ router = APIRouter(prefix="/v1", tags=["call assistant"])
 logger = logging.getLogger(__name__)
 
 DEFAULT_CRITERIA = [
-    {"title": "برخورد حرفه‌ای", "description": "لحن محترمانه و حرفه‌ای", "weight": 20, "levels": ["رفتار نامناسب یا توهین‌آمیز", "لحن ضعیف و غیرحرفه‌ای", "رفتار قابل‌قبول اما معمولی", "محترمانه و حرفه‌ای", "کاملاً حرفه‌ای، محترمانه و مسئولانه"]},
-    {"title": "درک مسئله", "description": "فهم درست درخواست مشتری", "weight": 20, "levels": ["مسئله را درک نکرد", "برداشت نادرست داشت", "درک ناقص داشت", "مسئله را درست فهمید", "مسئله و جزئیات مؤثر آن را دقیق فهمید"]},
-    {"title": "دقت پاسخ", "description": "پاسخ روشن و درست", "weight": 20, "levels": ["پاسخ نادرست یا گمراه‌کننده", "پاسخ عمدتاً نادرست", "پاسخ ناقص", "پاسخ درست و روشن", "پاسخ دقیق، کامل و قابل اجرا"]},
-    {"title": "همدلی", "description": "همدلی و همراهی با مشتری", "weight": 20, "levels": ["بی‌توجه یا نامناسب", "همدلی بسیار کم", "همدلی محدود", "همدل و همراه", "همدلی فعال همراه با اطمینان‌بخشی مناسب"]},
-    {"title": "پیگیری", "description": "جمع‌بندی و گام بعدی", "weight": 20, "levels": ["بدون جمع‌بندی یا پیگیری", "گام بعدی نامشخص", "جمع‌بندی ناقص", "گام بعدی روشن", "جمع‌بندی کامل با مسئولیت و زمان‌بندی روشن"]},
+    {
+        "title": "برخورد حرفه‌ای",
+        "description": "لحن محترمانه و حرفه‌ای",
+        "weight": 20,
+        "levels": [
+            "رفتار نامناسب یا توهین‌آمیز",
+            "لحن ضعیف و غیرحرفه‌ای",
+            "رفتار قابل‌قبول اما معمولی",
+            "محترمانه و حرفه‌ای",
+            "کاملاً حرفه‌ای، محترمانه و مسئولانه",
+        ],
+    },
+    {
+        "title": "درک مسئله",
+        "description": "فهم درست درخواست مشتری",
+        "weight": 20,
+        "levels": [
+            "مسئله را درک نکرد",
+            "برداشت نادرست داشت",
+            "درک ناقص داشت",
+            "مسئله را درست فهمید",
+            "مسئله و جزئیات مؤثر آن را دقیق فهمید",
+        ],
+    },
+    {
+        "title": "دقت پاسخ",
+        "description": "پاسخ روشن و درست",
+        "weight": 20,
+        "levels": [
+            "پاسخ نادرست یا گمراه‌کننده",
+            "پاسخ عمدتاً نادرست",
+            "پاسخ ناقص",
+            "پاسخ درست و روشن",
+            "پاسخ دقیق، کامل و قابل اجرا",
+        ],
+    },
+    {
+        "title": "همدلی",
+        "description": "همدلی و همراهی با مشتری",
+        "weight": 20,
+        "levels": [
+            "بی‌توجه یا نامناسب",
+            "همدلی بسیار کم",
+            "همدلی محدود",
+            "همدل و همراه",
+            "همدلی فعال همراه با اطمینان‌بخشی مناسب",
+        ],
+    },
+    {
+        "title": "پیگیری",
+        "description": "جمع‌بندی و گام بعدی",
+        "weight": 20,
+        "levels": [
+            "بدون جمع‌بندی یا پیگیری",
+            "گام بعدی نامشخص",
+            "جمع‌بندی ناقص",
+            "گام بعدی روشن",
+            "جمع‌بندی کامل با مسئولیت و زمان‌بندی روشن",
+        ],
+    },
 ]
 ASSISTANT_SYSTEM_PROMPT = """تو دستیار شخصی کاربر در پنل مدیریت صداسنج هستی و به فارسی، گرم، صمیمی و محترمانه پاسخ می‌دهی.
 کاربر را با نام ثبت‌شده‌اش خطاب کن؛ این کار را طبیعی و بدون تکرار نام در هر جمله انجام بده.
@@ -115,12 +171,16 @@ async def assistant_context_options(
     operators: list[dict[str, Any]] = []
     if principal.role == "org_admin":
         rows = (
-            await session.execute(
-                select(User)
-                .where(User.tenant_id == principal.tenant_id, User.role == "operator")
-                .order_by(User.display_name.asc().nulls_last(), User.email.asc())
+            (
+                await session.execute(
+                    select(User)
+                    .where(User.tenant_id == principal.tenant_id, User.role == "operator")
+                    .order_by(User.display_name.asc().nulls_last(), User.email.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         operators = [
             {
                 "id": str(row.id),
@@ -130,17 +190,21 @@ async def assistant_context_options(
             for row in rows
         ]
     conversations = (
-        await session.execute(
-            select(ChatConversation)
-            .where(
-                ChatConversation.tenant_id == principal.tenant_id,
-                ChatConversation.owner_id == principal.id,
-                ChatConversation.mode == "normal",
+        (
+            await session.execute(
+                select(ChatConversation)
+                .where(
+                    ChatConversation.tenant_id == principal.tenant_id,
+                    ChatConversation.owner_id == principal.id,
+                    ChatConversation.mode == "normal",
+                )
+                .order_by(ChatConversation.updated_at.desc())
+                .limit(100)
             )
-            .order_by(ChatConversation.updated_at.desc())
-            .limit(100)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     enabled = _enabled_assistant_tools(await effective_models(session))
     return {
         "operators": operators,
@@ -155,7 +219,8 @@ async def assistant_context_options(
         ],
         "tools": [
             {"name": tool.name, "title": tool.title, "description": tool.description}
-            for tool in assistant_tools.TOOLS if tool.name in enabled
+            for tool in assistant_tools.TOOLS
+            if tool.name in enabled
         ],
     }
 
@@ -173,7 +238,9 @@ async def _active_rubric(
     ).scalar_one_or_none()
     if row is not None:
         return row
-    row = OperatorScoreRubric(tenant_id=tenant_id, version=1, criteria=DEFAULT_CRITERIA, active=True, created_by=owner_id)
+    row = OperatorScoreRubric(
+        tenant_id=tenant_id, version=1, criteria=DEFAULT_CRITERIA, active=True, created_by=owner_id
+    )
     session.add(row)
     await session.flush()
     return row
@@ -182,41 +249,84 @@ async def _active_rubric(
 @router.get("/operator-score-rubric", response_model=ScoreRubricOut)
 async def get_score_rubric(principal: OrgAdminDep, session: TenantSession) -> ScoreRubricOut:
     assert principal.tenant_id is not None
-    return ScoreRubricOut.model_validate(await _active_rubric(session, principal.tenant_id, principal.id))
+    return ScoreRubricOut.model_validate(
+        await _active_rubric(session, principal.tenant_id, principal.id)
+    )
 
 
-@router.post("/operator-score-rubric", response_model=ScoreRubricOut, status_code=status.HTTP_201_CREATED)
-async def create_score_rubric(payload: ScoreRubricCreate, request: Request, principal: OrgAdminDep, session: TenantSession) -> ScoreRubricOut:
+@router.post(
+    "/operator-score-rubric", response_model=ScoreRubricOut, status_code=status.HTTP_201_CREATED
+)
+async def create_score_rubric(
+    payload: ScoreRubricCreate, request: Request, principal: OrgAdminDep, session: TenantSession
+) -> ScoreRubricOut:
     assert principal.tenant_id is not None
     active = await _active_rubric(session, principal.tenant_id, principal.id)
     active.active = False
-    rubric = OperatorScoreRubric(tenant_id=principal.tenant_id, version=active.version + 1, criteria=[item.model_dump() for item in payload.criteria], active=True, created_by=principal.id)
+    rubric = OperatorScoreRubric(
+        tenant_id=principal.tenant_id,
+        version=active.version + 1,
+        criteria=[item.model_dump() for item in payload.criteria],
+        active=True,
+        created_by=principal.id,
+    )
     session.add(rubric)
     await session.flush()
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="operator_score.rubric_create", payload={"version": rubric.version}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="operator_score.rubric_create",
+        payload={"version": rubric.version},
+        ip=client_ip(request),
+    )
     return ScoreRubricOut.model_validate(rubric)
 
 
 @router.patch("/operator-ranking-visibility")
-async def set_ranking_visibility(payload: RankingVisibilityUpdate, request: Request, principal: OrgAdminDep, session: TenantSession) -> dict[str, bool]:
+async def set_ranking_visibility(
+    payload: RankingVisibilityUpdate,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> dict[str, bool]:
     assert principal.tenant_id is not None
     tenant = await session.get(Tenant, principal.tenant_id)
     if tenant is None:
         raise ApiError("not_found", "tenant not found")
     tenant.operator_ranking_visible = payload.operator_ranking_visible
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="operator_score.ranking_visibility", payload={"visible": payload.operator_ranking_visible}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="operator_score.ranking_visibility",
+        payload={"visible": payload.operator_ranking_visible},
+        ip=client_ip(request),
+    )
     return {"operator_ranking_visible": tenant.operator_ranking_visible}
 
 
 @router.get("/calls/{call_id}/operator-score", response_model=OperatorCallScoreOut | None)
-async def get_call_score(call_id: UUID, principal: UserDep, session: TenantSession) -> OperatorCallScoreOut | None:
+async def get_call_score(
+    call_id: UUID, principal: UserDep, session: TenantSession
+) -> OperatorCallScoreOut | None:
     assert principal.tenant_id is not None
     call = await session.get(Call, call_id)
     if call is None or call.tenant_id != principal.tenant_id:
         raise ApiError("not_found", "call not found")
     await operator_scope.assert_call_visible_canonical(session, call, principal)
     score = (
-        await session.execute(select(OperatorCallScore).where(OperatorCallScore.call_id == call_id, OperatorCallScore.tenant_id == principal.tenant_id).order_by(OperatorCallScore.created_at.desc()).limit(1))
+        await session.execute(
+            select(OperatorCallScore)
+            .where(
+                OperatorCallScore.call_id == call_id,
+                OperatorCallScore.tenant_id == principal.tenant_id,
+            )
+            .order_by(OperatorCallScore.created_at.desc())
+            .limit(1)
+        )
     ).scalar_one_or_none()
     return OperatorCallScoreOut.model_validate(score) if score else None
 
@@ -245,29 +355,57 @@ async def operator_scores(
     ranked_scores = (
         select(
             OperatorCallScore.id,
-            func.row_number().over(
+            func.row_number()
+            .over(
                 partition_by=OperatorCallScore.call_id,
                 order_by=OperatorCallScore.created_at.desc(),
-            ).label("position"),
+            )
+            .label("position"),
         )
-        .where(OperatorCallScore.tenant_id == principal.tenant_id, OperatorCallScore.status == "succeeded")
+        .where(
+            OperatorCallScore.tenant_id == principal.tenant_id,
+            OperatorCallScore.status == "succeeded",
+        )
         .subquery()
     )
-    stmt = select(OperatorCallScore.operator_id, OperatorCallScore.operator_label, func.avg(OperatorCallScore.total_score), func.count(OperatorCallScore.id)).join(ranked_scores, ranked_scores.c.id == OperatorCallScore.id).where(ranked_scores.c.position == 1)
+    stmt = (
+        select(
+            OperatorCallScore.operator_id,
+            OperatorCallScore.operator_label,
+            func.avg(OperatorCallScore.total_score),
+            func.count(OperatorCallScore.id),
+        )
+        .join(ranked_scores, ranked_scores.c.id == OperatorCallScore.id)
+        .where(ranked_scores.c.position == 1)
+    )
     if report_from:
         stmt = stmt.where(OperatorCallScore.created_at >= report_from)
     if to_date:
         stmt = stmt.where(OperatorCallScore.created_at <= to_date)
     if allowed is not None:
         stmt = stmt.where(OperatorCallScore.operator_id.in_(allowed))
-    rows = (await session.execute(stmt.group_by(OperatorCallScore.operator_id, OperatorCallScore.operator_label).order_by(func.avg(OperatorCallScore.total_score).desc()))).all()
+    rows = (
+        await session.execute(
+            stmt.group_by(OperatorCallScore.operator_id, OperatorCallScore.operator_label).order_by(
+                func.avg(OperatorCallScore.total_score).desc()
+            )
+        )
+    ).all()
     items: list[OperatorScoreSummary] = []
     rank = 0
     for operator_id, label, average, count in rows:
         eligible = count >= 5
         if eligible:
             rank += 1
-        items.append(OperatorScoreSummary(operator_id=operator_id, operator_label=label, average_score=round(float(average), 1), scored_calls=int(count), rank=rank if eligible else None))
+        items.append(
+            OperatorScoreSummary(
+                operator_id=operator_id,
+                operator_label=label,
+                average_score=round(float(average), 1),
+                scored_calls=int(count),
+                rank=rank if eligible else None,
+            )
+        )
     return OperatorScoreReport(
         from_date=report_from,
         to_date=report_to,
@@ -291,39 +429,76 @@ def _assert_conversation_role(row: ChatConversation, role: str) -> None:
         raise ApiError("forbidden", "assistant training is restricted to organization managers")
 
 
-def _assert_training_attachments(row: ChatConversation, attachments: AssistantMessageAttachments) -> None:
+def _assert_training_attachments(
+    row: ChatConversation, attachments: AssistantMessageAttachments
+) -> None:
     if row.mode != "training":
         return
-    if attachments.operator_id or attachments.conversation_ids or attachments.from_date or attachments.to_date or attachments.tool_names:
+    if (
+        attachments.operator_id
+        or attachments.conversation_ids
+        or attachments.from_date
+        or attachments.to_date
+        or attachments.tool_names
+    ):
         raise ApiError("invalid_request", "training conversations do not accept attachments")
 
 
 async def _memory_out(session: AsyncSession, row: OrganizationMemory) -> OrganizationMemoryOut:
     active = (
-        await session.execute(
-            select(OrganizationMemory).where(
-                OrganizationMemory.tenant_id == row.tenant_id,
-                OrganizationMemory.status == "active",
+        (
+            await session.execute(
+                select(OrganizationMemory).where(
+                    OrganizationMemory.tenant_id == row.tenant_id,
+                    OrganizationMemory.status == "active",
+                )
             )
         )
-    ).scalars().all()
-    conflict_ids = [item.id for item in organization_memory.conflicts(row, list(active))]
-    return OrganizationMemoryOut.model_validate(row).model_copy(
-        update={"conflicts": conflict_ids}
+        .scalars()
+        .all()
     )
+    conflict_ids = [item.id for item in organization_memory.conflicts(row, list(active))]
+    return OrganizationMemoryOut.model_validate(row).model_copy(update={"conflicts": conflict_ids})
 
 
 @router.get("/assistant/conversations", response_model=list[ChatConversationOut])
-async def list_conversations(principal: OperatorDep, session: TenantSession, mode: str = Query(default="normal", pattern="^(normal|training)$")) -> list[ChatConversationOut]:
+async def list_conversations(
+    principal: OperatorDep,
+    session: TenantSession,
+    mode: str = Query(default="normal", pattern="^(normal|training)$"),
+) -> list[ChatConversationOut]:
     assert principal.tenant_id is not None
     if mode == "training" and principal.role != "org_admin":
         raise ApiError("forbidden", "assistant training is restricted to organization managers")
-    rows = (await session.execute(select(ChatConversation).where(ChatConversation.tenant_id == principal.tenant_id, ChatConversation.owner_id == principal.id, ChatConversation.mode == mode).order_by(ChatConversation.pinned_at.desc().nulls_last(), ChatConversation.updated_at.desc()))).scalars().all()
+    rows = (
+        (
+            await session.execute(
+                select(ChatConversation)
+                .where(
+                    ChatConversation.tenant_id == principal.tenant_id,
+                    ChatConversation.owner_id == principal.id,
+                    ChatConversation.mode == mode,
+                )
+                .order_by(
+                    ChatConversation.pinned_at.desc().nulls_last(),
+                    ChatConversation.updated_at.desc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [ChatConversationOut.model_validate(row) for row in rows]
 
 
-@router.post("/assistant/conversations", response_model=ChatConversationOut, status_code=status.HTTP_201_CREATED)
-async def create_conversation(payload: ChatConversationCreate, principal: OperatorDep, session: TenantSession) -> ChatConversationOut:
+@router.post(
+    "/assistant/conversations",
+    response_model=ChatConversationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_conversation(
+    payload: ChatConversationCreate, principal: OperatorDep, session: TenantSession
+) -> ChatConversationOut:
     assert principal.tenant_id is not None
     if payload.mode == "training" and principal.role != "org_admin":
         raise ApiError("forbidden", "assistant training is restricted to organization managers")
@@ -334,14 +509,21 @@ async def create_conversation(payload: ChatConversationCreate, principal: Operat
         if call is None or call.tenant_id != principal.tenant_id:
             raise ApiError("not_found", "call not found")
         await operator_scope.assert_call_visible_canonical(session, call, principal)
-    row = ChatConversation(tenant_id=principal.tenant_id, owner_id=principal.id, call_id=payload.call_id, mode=payload.mode)
+    row = ChatConversation(
+        tenant_id=principal.tenant_id,
+        owner_id=principal.id,
+        call_id=payload.call_id,
+        mode=payload.mode,
+    )
     session.add(row)
     await session.flush()
     return ChatConversationOut.model_validate(row)
 
 
 @router.delete("/assistant/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_conversation(conversation_id: UUID, principal: OperatorDep, session: TenantSession) -> None:
+async def delete_conversation(
+    conversation_id: UUID, principal: OperatorDep, session: TenantSession
+) -> None:
     assert principal.tenant_id is not None
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
@@ -350,10 +532,12 @@ async def delete_conversation(conversation_id: UUID, principal: OperatorDep, ses
     row = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(row, getattr(principal, "role", "operator"))
     active_run = await session.scalar(
-        select(AssistantRun.id).where(
+        select(AssistantRun.id)
+        .where(
             AssistantRun.conversation_id == conversation_id,
             AssistantRun.status.in_(("queued", "running")),
-        ).limit(1)
+        )
+        .limit(1)
     )
     if active_run is not None:
         raise ApiError("conflict_idempotency", "conversation has an active assistant run")
@@ -361,7 +545,13 @@ async def delete_conversation(conversation_id: UUID, principal: OperatorDep, ses
 
 
 @router.patch("/assistant/conversations/{conversation_id}", response_model=ChatConversationOut)
-async def update_conversation(conversation_id: UUID, payload: ChatConversationUpdate, request: Request, principal: OperatorDep, session: TenantSession) -> ChatConversationOut:
+async def update_conversation(
+    conversation_id: UUID,
+    payload: ChatConversationUpdate,
+    request: Request,
+    principal: OperatorDep,
+    session: TenantSession,
+) -> ChatConversationOut:
     assert principal.tenant_id is not None
     row = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(row, getattr(principal, "role", "operator"))
@@ -378,17 +568,46 @@ async def update_conversation(conversation_id: UUID, payload: ChatConversationUp
             raise ApiError("invalid_request", "an archived conversation cannot be pinned")
         row.pinned_at = datetime.now(UTC) if payload.pinned else None
     row.updated_at = datetime.now(UTC)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.conversation_update", payload={"conversation_id": str(row.id), "archived": row.archived_at is not None, "pinned": row.pinned_at is not None}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.conversation_update",
+        payload={
+            "conversation_id": str(row.id),
+            "archived": row.archived_at is not None,
+            "pinned": row.pinned_at is not None,
+        },
+        ip=client_ip(request),
+    )
     await session.flush()
     return ChatConversationOut.model_validate(row)
 
 
-@router.get("/assistant/conversations/{conversation_id}/messages", response_model=list[ChatMessageOut])
-async def list_messages(conversation_id: UUID, principal: OperatorDep, session: TenantSession) -> list[ChatMessageOut]:
+@router.get(
+    "/assistant/conversations/{conversation_id}/messages", response_model=list[ChatMessageOut]
+)
+async def list_messages(
+    conversation_id: UUID, principal: OperatorDep, session: TenantSession
+) -> list[ChatMessageOut]:
     assert principal.tenant_id is not None
     conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(conversation, getattr(principal, "role", "operator"))
-    rows = (await session.execute(select(ChatMessage).where(ChatMessage.conversation_id == conversation_id, ChatMessage.tenant_id == principal.tenant_id).order_by(ChatMessage.ordinal))).scalars().all()
+    rows = (
+        (
+            await session.execute(
+                select(ChatMessage)
+                .where(
+                    ChatMessage.conversation_id == conversation_id,
+                    ChatMessage.tenant_id == principal.tenant_id,
+                )
+                .order_by(ChatMessage.ordinal)
+            )
+        )
+        .scalars()
+        .all()
+    )
     message_ids = [row.id for row in rows if row.role == "assistant"]
     by_message = await tool_runs_for_messages(
         session, principal.tenant_id, conversation_id, message_ids
@@ -417,9 +636,7 @@ async def delete_message_tail(
         text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
         {"key": f"assistant-conversation:{conversation_id}"},
     )
-    conversation = await _conversation(
-        session, conversation_id, principal.tenant_id, principal.id
-    )
+    conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(conversation, getattr(principal, "role", "operator"))
     message = await session.get(ChatMessage, message_id)
     if (
@@ -430,10 +647,12 @@ async def delete_message_tail(
     ):
         raise ApiError("not_found", "user message not found")
     active_run = await session.scalar(
-        select(AssistantRun.id).where(
+        select(AssistantRun.id)
+        .where(
             AssistantRun.conversation_id == conversation.id,
             AssistantRun.status.in_(("queued", "running")),
-        ).limit(1)
+        )
+        .limit(1)
     )
     if active_run is not None:
         raise ApiError("conflict_idempotency", "conversation has an active assistant run")
@@ -495,9 +714,7 @@ async def _sources(
     for row in rows:
         started_at = row["started_at"]
         started_at_value = (
-            started_at.isoformat()
-            if hasattr(started_at, "isoformat")
-            else str(started_at)
+            started_at.isoformat() if hasattr(started_at, "isoformat") else str(started_at)
         )
         call_id_value = str(row["call_id"])
         summary = str(row["summary"])
@@ -524,46 +741,58 @@ async def _chat_history(
 ) -> str:
     active = await _conversation(session, conversation_id, tenant_id, owner_id)
     conversations = (
-        await session.execute(
-            select(ChatConversation)
-            .where(
-                ChatConversation.tenant_id == tenant_id,
-                ChatConversation.owner_id == owner_id,
-                ChatConversation.archived_at.is_(None),
-                ChatConversation.mode == active.mode,
-            )
-            .order_by(ChatConversation.updated_at.desc())
-            .limit(OTHER_CONVERSATIONS + 1)
-        )
-    ).scalars().all()
-    terms = [term for term in question.split() if len(term) > 2][:8]
-    if terms:
-        related_ids = (
+        (
             await session.execute(
-                select(ChatMessage.conversation_id)
-                .join(ChatConversation, ChatConversation.id == ChatMessage.conversation_id)
+                select(ChatConversation)
                 .where(
-                    ChatMessage.tenant_id == tenant_id,
+                    ChatConversation.tenant_id == tenant_id,
                     ChatConversation.owner_id == owner_id,
                     ChatConversation.archived_at.is_(None),
                     ChatConversation.mode == active.mode,
-                    func.to_tsvector("simple", ChatMessage.content).op("@@")(
-                        func.websearch_to_tsquery("simple", " ".join(terms))
-                    ),
                 )
-                .group_by(ChatMessage.conversation_id)
-                .order_by(func.max(ChatMessage.ordinal).desc())
-                .limit(OTHER_CONVERSATIONS)
+                .order_by(ChatConversation.updated_at.desc())
+                .limit(OTHER_CONVERSATIONS + 1)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
+    )
+    terms = [term for term in question.split() if len(term) > 2][:8]
+    if terms:
+        related_ids = (
+            (
+                await session.execute(
+                    select(ChatMessage.conversation_id)
+                    .join(ChatConversation, ChatConversation.id == ChatMessage.conversation_id)
+                    .where(
+                        ChatMessage.tenant_id == tenant_id,
+                        ChatConversation.owner_id == owner_id,
+                        ChatConversation.archived_at.is_(None),
+                        ChatConversation.mode == active.mode,
+                        func.to_tsvector("simple", ChatMessage.content).op("@@")(
+                            func.websearch_to_tsquery("simple", " ".join(terms))
+                        ),
+                    )
+                    .group_by(ChatMessage.conversation_id)
+                    .order_by(func.max(ChatMessage.ordinal).desc())
+                    .limit(OTHER_CONVERSATIONS)
+                )
+            )
+            .scalars()
+            .all()
+        )
         known_ids = {item.id for item in conversations}
         missing_ids = [item_id for item_id in related_ids if item_id not in known_ids]
         if missing_ids:
             related = (
-                await session.execute(
-                    select(ChatConversation).where(ChatConversation.id.in_(missing_ids))
+                (
+                    await session.execute(
+                        select(ChatConversation).where(ChatConversation.id.in_(missing_ids))
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             conversations.extend(related)
     if not any(item.id == conversation_id for item in conversations):
         conversations.append(active)
@@ -583,23 +812,27 @@ async def _chat_history(
         .subquery()
     )
     rows = (
-        await session.execute(
-            select(ranked)
-            .where(
-                or_(
-                    ranked.c.conversation_id == conversation_id,
-                    ranked.c.position <= OTHER_HISTORY_MESSAGES,
+        (
+            await session.execute(
+                select(ranked)
+                .where(
+                    or_(
+                        ranked.c.conversation_id == conversation_id,
+                        ranked.c.position <= OTHER_HISTORY_MESSAGES,
+                    )
                 )
-            )
-            .where(
-                or_(
-                    ranked.c.conversation_id != conversation_id,
-                    ranked.c.position <= ACTIVE_HISTORY_MESSAGES,
+                .where(
+                    or_(
+                        ranked.c.conversation_id != conversation_id,
+                        ranked.c.position <= ACTIVE_HISTORY_MESSAGES,
+                    )
                 )
+                .order_by(ranked.c.conversation_id, ranked.c.ordinal)
             )
-            .order_by(ranked.c.conversation_id, ranked.c.ordinal)
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     history: list[str] = []
     current_id: UUID | None = None
     for row in rows:
@@ -628,15 +861,10 @@ async def _attachment_context(
         if principal.role != "org_admin":
             raise ApiError("forbidden", "only organization admins can mention operators")
         operator = await session.get(User, attachments.operator_id)
-        if (
-            operator is None
-            or operator.tenant_id != tenant_id
-            or operator.role != "operator"
-        ):
+        if operator is None or operator.tenant_id != tenant_id or operator.role != "operator":
             raise ApiError("not_found", "operator not found")
         context.append(
-            "[اپراتور انتخاب‌شده: "
-            f"{operator.display_name or operator.email}؛ شناسه {operator.id}]"
+            f"[اپراتور انتخاب‌شده: {operator.display_name or operator.email}؛ شناسه {operator.id}]"
         )
     if attachments.from_date is not None and attachments.to_date is not None:
         context.append(
@@ -645,15 +873,19 @@ async def _attachment_context(
         )
     if attachments.conversation_ids:
         rows = (
-            await session.execute(
-                select(ChatConversation).where(
-                    ChatConversation.id.in_(attachments.conversation_ids),
-                    ChatConversation.tenant_id == tenant_id,
-                    ChatConversation.owner_id == owner_id,
-                    ChatConversation.mode == "normal",
+            (
+                await session.execute(
+                    select(ChatConversation).where(
+                        ChatConversation.id.in_(attachments.conversation_ids),
+                        ChatConversation.tenant_id == tenant_id,
+                        ChatConversation.owner_id == owner_id,
+                        ChatConversation.mode == "normal",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if {row.id for row in rows} != set(attachments.conversation_ids):
             raise ApiError("not_found", "attached conversation not found")
         titles = {row.id: row.title or "گفتگوی بدون عنوان" for row in rows}
@@ -678,12 +910,16 @@ async def _attachment_context(
             .subquery()
         )
         messages = (
-            await session.execute(
-                select(ranked)
-                .where(ranked.c.position <= 8)
-                .order_by(ranked.c.conversation_id, ranked.c.ordinal)
+            (
+                await session.execute(
+                    select(ranked)
+                    .where(ranked.c.position <= 8)
+                    .order_by(ranked.c.conversation_id, ranked.c.ordinal)
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         current_id: UUID | None = None
         for message in messages:
             if message["conversation_id"] != current_id:
@@ -747,7 +983,9 @@ async def _assistant_system_prompt(
     memory = (
         await organization_memory.build_context(session, principal.tenant_id, "assistant")
         if hasattr(session, "execute")
-        else organization_memory.MemoryContext(text="", snapshot={"scope": "assistant", "items": []}, sha256="")
+        else organization_memory.MemoryContext(
+            text="", snapshot={"scope": "assistant", "items": []}, sha256=""
+        )
     )
     personalized = organization_memory.append_untrusted_context(
         personalized, memory.text, "assistant"
@@ -803,8 +1041,14 @@ async def _persist_training_drafts(
             category=category,
             title=title,
             content=content,
-            structured_payload=value.get("structured_payload") if isinstance(value.get("structured_payload"), dict) else {},
-            tags=list(dict.fromkeys(str(item).strip() for item in value.get("tags", []) if str(item).strip()))[:30],
+            structured_payload=value.get("structured_payload")
+            if isinstance(value.get("structured_payload"), dict)
+            else {},
+            tags=list(
+                dict.fromkeys(
+                    str(item).strip() for item in value.get("tags", []) if str(item).strip()
+                )
+            )[:30],
             applies_to=list(dict.fromkeys(applies_to)),
             status="draft",
             source_conversation_id=conversation.id,
@@ -897,20 +1141,8 @@ async def _reserve_assistant_usage(
     if entitlement.period_start is None:
         raise ApiError("quota_exceeded", "assistant quota period is unavailable")
     now = datetime.now(UTC)
-    from app.services.quotas import calendar_month_start
-
-    period_start = calendar_month_start(now)
-    used = int(
-        (
-            await session.execute(
-                select(func.count(AssistantUsage.id)).where(
-                    AssistantUsage.tenant_id == tenant_id,
-                    AssistantUsage.period_start == period_start,
-                    AssistantUsage.status.in_(("reserved", "succeeded")),
-                )
-            )
-        ).scalar_one()
-    )
+    period_start = assistant_quota.period_start(entitlement.period_start, now)
+    used = await assistant_quota.used_messages(session, tenant_id, period_start)
     if used >= entitlement.assistant_monthly_messages:
         raise ApiError("quota_exceeded", "assistant monthly message quota is exhausted")
     usage = AssistantUsage(
@@ -925,21 +1157,42 @@ async def _reserve_assistant_usage(
     return entitlement, usage
 
 
-@router.post("/assistant/conversations/{conversation_id}/messages", response_model=ChatMessageOut, status_code=status.HTTP_201_CREATED)
-async def send_message(conversation_id: UUID, payload: ChatMessageCreate, request: Request, principal: OperatorDep, session: TenantSession) -> ChatMessageOut:
+@router.post(
+    "/assistant/conversations/{conversation_id}/messages",
+    response_model=ChatMessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def send_message(
+    conversation_id: UUID,
+    payload: ChatMessageCreate,
+    request: Request,
+    principal: OperatorDep,
+    session: TenantSession,
+) -> ChatMessageOut:
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"assistant:{principal.id}", 20)
-    entitlement, usage = await _reserve_assistant_usage(
-        session, principal.tenant_id, principal.id
-    )
+    entitlement, usage = await _reserve_assistant_usage(session, principal.tenant_id, principal.id)
     conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(conversation, getattr(principal, "role", "operator"))
     _assert_training_attachments(conversation, payload.attachments)
-    user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content, attachments=payload.attachments.model_dump(mode="json"))
+    user_message = ChatMessage(
+        conversation_id=conversation.id,
+        tenant_id=principal.tenant_id,
+        role="user",
+        content=payload.content,
+        attachments=payload.attachments.model_dump(mode="json"),
+    )
     session.add(user_message)
     await session.flush()
     if assistant_policy.must_refuse(payload.content, principal.role):
-        assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=assistant_policy.PRIVACY_REFUSAL, status="insufficient_evidence", sources=[])
+        assistant_message = ChatMessage(
+            conversation_id=conversation.id,
+            tenant_id=principal.tenant_id,
+            role="assistant",
+            content=assistant_policy.PRIVACY_REFUSAL,
+            status="insufficient_evidence",
+            sources=[],
+        )
         session.add(assistant_message)
         usage.status = "succeeded"
         usage.message_id = assistant_message.id
@@ -973,7 +1226,9 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                 payload.content,
                 history,
                 model=model,
-                enabled=set() if conversation.mode == "training" else _attachment_tools(models, payload.attachments),
+                enabled=set()
+                if conversation.mode == "training"
+                else _attachment_tools(models, payload.attachments),
                 mode=models.get("assistant_tool_mode", "auto"),
                 discovery_rounds=int(models.get("assistant_max_discovery_rounds", "2")),
             )
@@ -981,7 +1236,11 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                 plan.answer,
                 plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
             )
-            plan = _apply_attachment_constraints(plan, payload.attachments) if conversation.mode == "normal" else plan
+            plan = (
+                _apply_attachment_constraints(plan, payload.attachments)
+                if conversation.mode == "normal"
+                else plan
+            )
             if plan.tool_calls:
                 results = []
                 seen: set[str] = set()
@@ -1013,7 +1272,9 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                     except Exception as exc:
                         if isinstance(exc, ApiError):
                             results.append((planned, {"error": exc.code, "message": exc.message}))
-                        logger.exception("assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
+                        logger.exception(
+                            "assistant tool failed", extra={"extra_fields": {"tool": planned.name}}
+                        )
                         run.status = "failed"
                         run.error_code = exc.code if isinstance(exc, ApiError) else "tool_failed"
                     run.completed_at = datetime.now(UTC)
@@ -1026,7 +1287,13 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                 answer, selected_call_ids = assistant_agent.final_response(
                     raw_answer, assistant_agent.result_call_ids(results), results
                 )
-                sources = await _tool_sources(session, principal, results, selected_call_ids)
+                sources = await _tool_sources(
+                    session,
+                    principal,
+                    results,
+                    selected_call_ids,
+                    entitlement.assistant_source_limit,
+                )
             else:
                 answer = plan.answer or ""
             if conversation.title is None and answer.strip():
@@ -1044,7 +1311,15 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         answer, memory_drafts = await _persist_training_drafts(
             session, conversation, user_message, principal, answer
         )
-    assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
+    assistant_message = ChatMessage(
+        conversation_id=conversation.id,
+        tenant_id=principal.tenant_id,
+        role="assistant",
+        content=answer.strip(),
+        status=status_value,
+        model=model,
+        sources=sources,
+    )
     conversation.updated_at = datetime.now(UTC)
     session.add(assistant_message)
     await session.flush()
@@ -1052,10 +1327,21 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
         run.assistant_message_id = assistant_message.id
     usage.status = "succeeded" if status_value == "succeeded" else "failed"
     usage.message_id = assistant_message.id
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.message", payload={"conversation_id": str(conversation.id), "sources": len(sources)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.message",
+        payload={"conversation_id": str(conversation.id), "sources": len(sources)},
+        ip=client_ip(request),
+    )
     await session.flush()
     return ChatMessageOut.model_validate(assistant_message).model_copy(
-        update={"tool_runs": [_tool_run_payload(run) for run in stored_runs], "memory_drafts": [await _memory_out(session, row) for row in memory_drafts]}
+        update={
+            "tool_runs": [_tool_run_payload(run) for run in stored_runs],
+            "memory_drafts": [await _memory_out(session, row) for row in memory_drafts],
+        }
     )
 
 
@@ -1072,7 +1358,9 @@ async def _tool_sources(
     principal: Any,
     results: list[tuple[assistant_agent.PlannedToolCall, dict[str, Any]]],
     selected_call_ids: list[str],
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
+    """Sources cited for an answer, capped at the plan's ``assistant_source_limit``."""
     sources: dict[str, dict[str, Any]] = {}
     for _call, result in results:
         for item in result.get("items", []):
@@ -1119,7 +1407,8 @@ async def _tool_sources(
             }
         )
     visible_ids = {str(call.id) for call, _insight in rows}
-    return [sources[call_id] for call_id in selected_call_ids if call_id in visible_ids]
+    visible = [sources[call_id] for call_id in selected_call_ids if call_id in visible_ids]
+    return visible[:limit] if limit is not None else visible
 
 
 async def _execute_planned_tool(
@@ -1147,9 +1436,7 @@ async def stream_ephemeral_message(
 ) -> StreamingResponse:
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"assistant:{principal.id}", 20)
-    entitlement, usage = await _reserve_assistant_usage(
-        session, principal.tenant_id, principal.id
-    )
+    entitlement, usage = await _reserve_assistant_usage(session, principal.tenant_id, principal.id)
     if payload.call_id is not None:
         call = await session.get(Call, payload.call_id)
         if call is None or call.tenant_id != principal.tenant_id:
@@ -1207,7 +1494,9 @@ async def stream_ephemeral_message(
                     )
                     plan = _apply_attachment_constraints(plan, payload.attachments)
                     if plan.tool_calls:
-                        yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
+                        yield _sse(
+                            "phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"}
+                        )
                         results = []
                         seen: set[str] = set()
                         for planned in plan.tool_calls:
@@ -1243,9 +1532,13 @@ async def stream_ephemeral_message(
                                     results.append(
                                         (planned, {"error": exc.code, "message": exc.message})
                                     )
-                                logger.exception("ephemeral assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
+                                logger.exception(
+                                    "ephemeral assistant tool failed",
+                                    extra={"extra_fields": {"tool": planned.name}},
+                                )
                                 failed = {
-                                    **started, "status": "failed",
+                                    **started,
+                                    "status": "failed",
                                     "error_code": (
                                         exc.code if isinstance(exc, ApiError) else "tool_failed"
                                     ),
@@ -1253,7 +1546,9 @@ async def stream_ephemeral_message(
                                 public_runs[-1] = failed
                                 yield _sse("tool_failed", failed)
                         yield _sse("tool_batch_completed", {"count": len(public_runs)})
-                        yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
+                        yield _sse(
+                            "phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"}
+                        )
                         async for chunk in client.stream(
                             system_prompt,
                             assistant_agent.final_input(payload.content, history, results),
@@ -1266,7 +1561,11 @@ async def stream_ephemeral_message(
                             answer, assistant_agent.result_call_ids(results), results
                         )
                         sources = await _tool_sources(
-                            session, principal, results, selected_call_ids
+                            session,
+                            principal,
+                            results,
+                            selected_call_ids,
+                            entitlement.assistant_source_limit,
                         )
                         yield _sse("replace", {"content": answer})
                     else:
@@ -1314,19 +1613,31 @@ async def stream_ephemeral_message(
 
 
 @router.post("/assistant/conversations/{conversation_id}/messages/stream")
-async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, request: Request, principal: OperatorDep, session: TenantSession) -> StreamingResponse:
+async def stream_message(
+    conversation_id: UUID,
+    payload: ChatMessageCreate,
+    request: Request,
+    principal: OperatorDep,
+    session: TenantSession,
+) -> StreamingResponse:
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"assistant:{principal.id}", 20)
-    entitlement, usage = await _reserve_assistant_usage(
-        session, principal.tenant_id, principal.id
-    )
+    entitlement, usage = await _reserve_assistant_usage(session, principal.tenant_id, principal.id)
     conversation = await _conversation(session, conversation_id, principal.tenant_id, principal.id)
     _assert_conversation_role(conversation, getattr(principal, "role", "operator"))
     _assert_training_attachments(conversation, payload.attachments)
     existing_message_id = getattr(request.state, "assistant_user_message_id", None)
-    user_message = await session.get(ChatMessage, existing_message_id) if existing_message_id else None
+    user_message = (
+        await session.get(ChatMessage, existing_message_id) if existing_message_id else None
+    )
     if user_message is None:
-        user_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="user", content=payload.content, attachments=payload.attachments.model_dump(mode="json"))
+        user_message = ChatMessage(
+            conversation_id=conversation.id,
+            tenant_id=principal.tenant_id,
+            role="user",
+            content=payload.content,
+            attachments=payload.attachments.model_dump(mode="json"),
+        )
         session.add(user_message)
         await session.flush()
     refused = assistant_policy.must_refuse(payload.content, principal.role)
@@ -1371,7 +1682,9 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                         payload.content,
                         chat_history,
                         model=model,
-                        enabled=set() if conversation.mode == "training" else _attachment_tools(models, payload.attachments),
+                        enabled=set()
+                        if conversation.mode == "training"
+                        else _attachment_tools(models, payload.attachments),
                         mode=models.get("assistant_tool_mode", "auto"),
                         discovery_rounds=int(models.get("assistant_max_discovery_rounds", "2")),
                     )
@@ -1379,9 +1692,15 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                         plan.answer,
                         plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))],
                     )
-                    plan = _apply_attachment_constraints(plan, payload.attachments) if conversation.mode == "normal" else plan
+                    plan = (
+                        _apply_attachment_constraints(plan, payload.attachments)
+                        if conversation.mode == "normal"
+                        else plan
+                    )
                     if plan.tool_calls:
-                        yield _sse("phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"})
+                        yield _sse(
+                            "phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"}
+                        )
                         results = []
                         seen: set[str] = set()
                         for planned in plan.tool_calls:
@@ -1415,7 +1734,10 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                                     results.append(
                                         (planned, {"error": exc.code, "message": exc.message})
                                     )
-                                logger.exception("assistant tool failed", extra={"extra_fields": {"tool": planned.name}})
+                                logger.exception(
+                                    "assistant tool failed",
+                                    extra={"extra_fields": {"tool": planned.name}},
+                                )
                                 run.status = "failed"
                                 run.error_code = (
                                     exc.code if isinstance(exc, ApiError) else "tool_failed"
@@ -1427,7 +1749,9 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                                 _tool_run_payload(run),
                             )
                         yield _sse("tool_batch_completed", {"count": len(stored_runs)})
-                        yield _sse("phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"})
+                        yield _sse(
+                            "phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"}
+                        )
                         async for chunk in client.stream(
                             system_prompt,
                             assistant_agent.final_input(payload.content, chat_history, results),
@@ -1440,7 +1764,11 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                             answer, assistant_agent.result_call_ids(results), results
                         )
                         sources = await _tool_sources(
-                            session, principal, results, selected_call_ids
+                            session,
+                            principal,
+                            results,
+                            selected_call_ids,
+                            entitlement.assistant_source_limit,
                         )
                         yield _sse("replace", {"content": answer})
                     else:
@@ -1464,9 +1792,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             from app.models import AssistantRun
 
             assistant_run = await session.scalar(
-                select(AssistantRun)
-                .where(AssistantRun.id == assistant_run_id)
-                .with_for_update()
+                select(AssistantRun).where(AssistantRun.id == assistant_run_id).with_for_update()
             )
             if assistant_run is not None and assistant_run.status in {"cancelled", "failed"}:
                 terminal_message = await session.get(
@@ -1477,9 +1803,9 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                     yield _sse(
                         "done",
                         {
-                            "message": ChatMessageOut.model_validate(
-                                terminal_message
-                            ).model_dump(mode="json"),
+                            "message": ChatMessageOut.model_validate(terminal_message).model_dump(
+                                mode="json"
+                            ),
                             "conversation_title": conversation.title,
                         },
                     )
@@ -1489,7 +1815,15 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             answer, memory_drafts = await _persist_training_drafts(
                 session, conversation, user_message, principal, answer
             )
-        assistant_message = ChatMessage(conversation_id=conversation.id, tenant_id=principal.tenant_id, role="assistant", content=answer.strip(), status=status_value, model=model, sources=sources)
+        assistant_message = ChatMessage(
+            conversation_id=conversation.id,
+            tenant_id=principal.tenant_id,
+            role="assistant",
+            content=answer.strip(),
+            status=status_value,
+            model=model,
+            sources=sources,
+        )
         conversation.updated_at = datetime.now(UTC)
         session.add(assistant_message)
         await session.flush()
@@ -1501,10 +1835,21 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             run.assistant_message_id = assistant_message.id
         usage.status = "failed" if status_value == "failed" else "succeeded"
         usage.message_id = assistant_message.id
-        await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.message", payload={"conversation_id": str(conversation.id), "sources": len(sources)}, ip=client_ip(request))
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=principal.tenant_id,
+            action="assistant.message",
+            payload={"conversation_id": str(conversation.id), "sources": len(sources)},
+            ip=client_ip(request),
+        )
         await session.flush()
         message = ChatMessageOut.model_validate(assistant_message).model_copy(
-            update={"tool_runs": [_tool_run_payload(run) for run in stored_runs], "memory_drafts": [await _memory_out(session, row) for row in memory_drafts]}
+            update={
+                "tool_runs": [_tool_run_payload(run) for run in stored_runs],
+                "memory_drafts": [await _memory_out(session, row) for row in memory_drafts],
+            }
         )
         yield _sse(
             "done",
@@ -1514,4 +1859,8 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
             },
         )
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

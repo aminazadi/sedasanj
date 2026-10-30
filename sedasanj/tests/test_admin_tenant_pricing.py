@@ -79,6 +79,12 @@ async def test_effective_price_uses_demo_rate_when_no_subscription() -> None:
         def one_or_none(self) -> None:
             return None
 
+        def scalars(self) -> "Result":
+            return self
+
+        def all(self) -> list[object]:
+            return []
+
     session = SimpleNamespace(execute=AsyncMock(return_value=Result()))
 
     assert await billing.effective_price_per_minute(session, uuid4()) == 7_000

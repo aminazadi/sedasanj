@@ -34,6 +34,7 @@ class CommerceSettings:
     credit_max_minutes: int
     credit_presets: str
     featured_plan_code: str
+    default_price_per_minute_toman: int
 
 
 def _bool(value: str) -> bool:
@@ -63,6 +64,7 @@ async def get_commerce_settings(session: AsyncSession) -> CommerceSettings:
         "credit_max_minutes": 1_000_000,
         "credit_presets": "60,300,1000,3000",
         "featured_plan_code": "silver",
+        "default_price_per_minute_toman": 7_000,
     }
     rows = (
         (
@@ -87,6 +89,7 @@ async def get_commerce_settings(session: AsyncSession) -> CommerceSettings:
         "max_order_toman",
         "credit_min_minutes",
         "credit_max_minutes",
+        "default_price_per_minute_toman",
     }
     for key, raw in values.items():
         if key in bool_keys:
