@@ -88,7 +88,7 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
 async def require_consumption(session: AsyncSession, tenant_id: UUID) -> Entitlements:
     value = await effective(session, tenant_id)
     if not value.consumption_allowed:
-        raise ApiError("quota_exceeded", "subscription is not active")
+        raise ApiError("subscription_inactive", "subscription is not active")
     return value
 
 
@@ -110,5 +110,7 @@ async def require_upload_consumption(
         return value
     balance = await billing.get_balance(session, tenant_id)
     if balance.seconds <= 0:
-        raise ApiError("quota_exceeded", "subscription is not active and no prepaid credit remains")
+        raise ApiError(
+            "subscription_inactive", "subscription is not active and no prepaid credit remains"
+        )
     return replace(value, price_per_minute_toman=price_per_minute_toman)

@@ -31,7 +31,10 @@ async def create_account(
     ).scalar_one_or_none()
     if existing is not None:
         raise ApiError("conflict_idempotency", "این ایمیل قبلاً ثبت شده است.")
-    is_demo = plan_code == "demo"
+    plan, version = await commerce.plan_version_by_code(session, plan_code)
+    is_demo = plan.is_trial
+    if not is_demo and not plan.sellable:
+        raise ApiError("plan_not_sellable", "این پلن برای خرید در دسترس نیست.")
     if is_demo:
         used = (
             await session.execute(
@@ -44,7 +47,6 @@ async def create_account(
         ).scalar_one_or_none()
         if used is not None:
             raise ApiError("conflict_idempotency", "دموی این شماره قبلاً فعال شده است.")
-    _, version = await commerce.plan_version_by_code(session, plan_code)
     trial_days = version.trial_days or 0
     if is_demo and not trial_days:
         raise ApiError("plan_not_sellable", "مدت دوره آزمایشی این پلن تنظیم نشده است.")

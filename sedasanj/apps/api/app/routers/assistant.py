@@ -1137,7 +1137,9 @@ async def _reserve_assistant_usage(
 ) -> tuple[entitlements.Entitlements, AssistantUsage]:
     entitlement = await entitlements.effective(session, tenant_id, lock=True)
     if not entitlement.consumption_allowed:
-        raise ApiError("quota_exceeded", "assistant is unavailable without an active subscription")
+        raise ApiError(
+            "subscription_inactive", "assistant is unavailable without an active subscription"
+        )
     if entitlement.period_start is None:
         raise ApiError("quota_exceeded", "assistant quota period is unavailable")
     now = datetime.now(UTC)

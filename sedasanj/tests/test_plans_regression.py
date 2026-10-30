@@ -143,13 +143,13 @@ async def test_admin_subscriptions_lists_every_row(scratch: None) -> None:
     try:
         async with db.session_scope(staff=True) as session:
             everything = await admin_subscriptions(
-                fake_staff(), session, q=None, subscription_status=None, cursor=0, limit=200
+                fake_staff(), session, q=None, subscription_status=None, plan_code=None, cursor=0, limit=200
             )
             mine = [i for i in everything["items"] if str(i["tenant_id"]) in map(str, tenant_ids)]
             assert len(mine) == 3
             assert {i["tenant_name"] for i in mine} == set(names[:2])
             filtered = await admin_subscriptions(
-                fake_staff(), session, q=names[1], subscription_status=None, cursor=0, limit=200
+                fake_staff(), session, q=names[1], subscription_status=None, plan_code=None, cursor=0, limit=200
             )
             assert {i["tenant_name"] for i in filtered["items"]} == {names[1]}
     finally:

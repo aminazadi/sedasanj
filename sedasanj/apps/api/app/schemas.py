@@ -1177,6 +1177,7 @@ class PackageUpdate(BaseModel):
     minutes: int | None = Field(default=None, gt=0)
     price_toman: int | None = Field(default=None, gt=0)
     active: bool | None = None
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class StaffCreate(BaseModel):

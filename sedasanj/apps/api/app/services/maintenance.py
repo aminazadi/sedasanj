@@ -218,7 +218,7 @@ async def _prepare_tenant_renewals(tenant_id: UUID, now: datetime) -> int:
             if version is None:
                 continue
             plan = await session.get(Plan, version.plan_id)
-            if plan is None or plan.code == "demo" or not plan.active:
+            if plan is None or plan.is_trial or not plan.sellable or not plan.active:
                 continue
             if settings.renewal_price_policy == "latest" and not subscription.next_plan_version_id:
                 try:

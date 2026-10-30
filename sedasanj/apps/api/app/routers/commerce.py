@@ -196,19 +196,29 @@ class PlanCreate(BaseModel):
     code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
     name: str = Field(min_length=2, max_length=120)
     public: bool = True
+    is_trial: bool = False
+    sellable: bool = True
     sort_order: int = Field(default=0, ge=0, le=10000)
 
 
 class PlanUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
+    reason: str = Field(min_length=3, max_length=500)
     name: str | None = Field(default=None, min_length=2, max_length=120)
     active: bool | None = None
     public: bool | None = None
+    sellable: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=10000)
 
 
 class PlanPublish(BaseModel):
     effective_at: datetime | None = None
     reason: str = Field(min_length=3, max_length=500)
+
+
+class PlanRetire(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+    force: bool = False
 
 
 class ReasonAction(BaseModel):
@@ -271,6 +281,22 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
         "allows_extra_operators": version.allows_extra_operators,
         "extra_operator_annual_toman": version.extra_operator_annual_toman,
         "trial_days": version.trial_days,
+        "monthly_included_minutes": version.intro_minutes,
+        "is_trial": plan.is_trial,
+        "sellable": plan.sellable,
+    }
+
+
+def _plan_summary(plan: Plan) -> dict[str, Any]:
+    return {
+        "id": str(plan.id),
+        "code": plan.code,
+        "name": plan.name,
+        "active": plan.active,
+        "public": plan.public,
+        "is_trial": plan.is_trial,
+        "sellable": plan.sellable,
+        "sort_order": plan.sort_order,
     }
 
 
@@ -448,6 +474,7 @@ async def complete_signup(
         or str(otp.email).lower() != email
     ):
         raise ApiError("unauthorized", "verified signup session is required")
+    plan, _version = await commerce.plan_version_by_code(session, payload.plan_code)
     tenant, _ = await create_account(
         session,
         mobile=mobile,
@@ -460,7 +487,7 @@ async def complete_signup(
     )
     return {
         "tenant_id": str(tenant.id),
-        "requires_payment": payload.plan_code != "demo",
+        "requires_payment": not plan.is_trial,
         "plan_code": payload.plan_code,
     }
 
@@ -937,8 +964,8 @@ async def change_subscription(
     if current.period_end <= now:
         raise ApiError("change_conflict", "the paid period has ended; renew the subscription first")
     plan, target = await commerce.plan_version_by_code(session, payload.plan_code)
-    if plan.code == "demo":
-        raise ApiError("plan_not_sellable", "the demo plan cannot be selected")
+    if plan.is_trial or not plan.sellable:
+        raise ApiError("plan_not_sellable", "this plan cannot be selected")
     operator_count = int(
         (
             await session.execute(
@@ -1722,23 +1749,20 @@ async def update_admin_lead(
     return {"id": str(row.id), "status": row.status}
 
 
-@router.get("/admin/commerce/plans")
-async def admin_plans(
-    staff: StaffDep,
-    session: StaffSession,
-    cursor: int = Query(default=0, ge=0),
-    limit: int = Query(default=25, ge=1, le=200),
-) -> dict[str, Any]:
-    stmt = select(Plan, PlanVersion).join(PlanVersion, PlanVersion.plan_id == Plan.id)
-    total = int(
-        (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-    )
-    rows = (
-        await session.execute(
-            stmt.order_by(Plan.sort_order, PlanVersion.version.desc()).offset(cursor).limit(limit)
-        )
-    ).all()
+async def _version_counts() -> dict[UUID, int]:
+    """Subscriptions per plan version; one query on a shared database, a walk otherwise."""
     counts: dict[UUID, int] = {}
+    if not get_settings().tenant_databases_enabled:
+        async with session_scope(staff=True) as staff_session:
+            for version_id, count in (
+                await staff_session.execute(
+                    select(Subscription.plan_version_id, func.count(Subscription.id)).group_by(
+                        Subscription.plan_version_id
+                    )
+                )
+            ).all():
+                counts[version_id] = int(count)
+        return counts
     for tenant_id in await routable_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
             for version_id, count in (
@@ -1749,17 +1773,41 @@ async def admin_plans(
                 )
             ).all():
                 counts[version_id] = counts.get(version_id, 0) + int(count)
+    return counts
+
+
+@router.get("/admin/commerce/plans")
+async def admin_plans(
+    staff: StaffDep,
+    session: StaffSession,
+    cursor: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=200),
+) -> dict[str, Any]:
+    # Outer join: a plan that has no version yet must still be listed so its first one can be made.
+    stmt = select(Plan, PlanVersion).outerjoin(PlanVersion, PlanVersion.plan_id == Plan.id)
+    total = int(
+        (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    )
+    rows = (
+        await session.execute(
+            stmt.order_by(Plan.sort_order, Plan.code, PlanVersion.version.desc().nulls_last())
+            .offset(cursor)
+            .limit(limit)
+        )
+    ).all()
+    counts = await _version_counts()
     items = [
         {
-            "active": plan.active,
-            "public": plan.public,
-            "sort_order": plan.sort_order,
-            "subscription_count": int(counts.get(version.id, 0)),
-            **_plan_out(plan, version),
+            **_plan_summary(plan),
+            "subscription_count": int(counts.get(version.id, 0)) if version else 0,
+            **(_plan_out(plan, version) if version else {"id": None, "plan_id": str(plan.id)}),
         }
         for plan, version in rows
     ]
     return _page(items, total, cursor, limit)
+
+
+PROTECTED_PLAN_CODES = ("demo", "legacy_custom")
 
 
 @router.post("/admin/commerce/plans", status_code=status.HTTP_201_CREATED)
@@ -1769,7 +1817,9 @@ async def create_plan(
     if (
         await session.execute(select(Plan.id).where(Plan.code == payload.code))
     ).scalar_one_or_none() is not None:
-        raise ApiError("conflict_idempotency", "plan code already exists")
+        raise ApiError("plan_code_exists", "plan code already exists; choose another code")
+    if payload.is_trial and payload.sellable:
+        raise ApiError("invalid_request", "a trial plan cannot be sellable")
     row = Plan(**payload.model_dump(), active=True)
     session.add(row)
     await session.flush()
@@ -1781,14 +1831,7 @@ async def create_plan(
         payload={"plan_id": str(row.id), "code": row.code},
         ip=client_ip(request),
     )
-    return {
-        "id": str(row.id),
-        "code": row.code,
-        "name": row.name,
-        "active": row.active,
-        "public": row.public,
-        "sort_order": row.sort_order,
-    }
+    return _plan_summary(row)
 
 
 @router.patch("/admin/commerce/plans/{plan_code}")
@@ -1801,6 +1844,25 @@ async def update_plan(
     if row is None:
         raise ApiError("not_found", "plan not found")
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    changes.pop("reason", None)
+    if row.code in PROTECTED_PLAN_CODES and changes.get("active") is False:
+        raise ApiError("plan_in_use", "this system plan cannot be deactivated")
+    if row.is_trial and changes.get("sellable"):
+        raise ApiError("invalid_request", "a trial plan cannot be sellable")
+    subscribers = 0
+    if changes.get("active") is False and row.active:
+        subscribers = int(
+            (
+                await session.execute(
+                    select(func.count(Subscription.id))
+                    .join(PlanVersion, PlanVersion.id == Subscription.plan_version_id)
+                    .where(
+                        PlanVersion.plan_id == row.id,
+                        Subscription.status.in_(("active", "trialing", "pending_payment")),
+                    )
+                )
+            ).scalar_one()
+        )
     for field, value in changes.items():
         setattr(row, field, value)
     await audit.record(
@@ -1808,17 +1870,15 @@ async def update_plan(
         actor_type="staff",
         actor_id=staff.id,
         action="plan.update",
-        payload={"plan": plan_code, "changes": changes},
+        payload={
+            "plan": plan_code,
+            "changes": changes,
+            "reason": payload.reason,
+            "live_subscriptions": subscribers,
+        },
         ip=client_ip(request),
     )
-    return {
-        "id": str(row.id),
-        "code": row.code,
-        "name": row.name,
-        "active": row.active,
-        "public": row.public,
-        "sort_order": row.sort_order,
-    }
+    return {**_plan_summary(row), "live_subscriptions": subscribers}
 
 
 @router.post("/admin/commerce/plans/{plan_code}/versions", status_code=status.HTTP_201_CREATED)
@@ -1880,9 +1940,35 @@ async def publish_plan_version(
     if plan.code == "legacy_custom":
         raise ApiError("invalid_request", "legacy custom plan versions cannot be published")
     now = datetime.now(UTC)
+    effective_at = payload.effective_at or now
+    if effective_at < now - timedelta(minutes=5):
+        raise ApiError("invalid_request", "effective_at cannot be in the past")
+    if plan.sellable and not plan.is_trial and (version.annual_price_toman or 0) <= 0:
+        raise ApiError("invalid_request", "a sellable plan needs an annual price above zero")
+    if plan.is_trial and not version.trial_days:
+        raise ApiError("invalid_request", "a trial plan version needs trial_days")
     version.status = "published"
     version.published_at = now
-    version.effective_at = payload.effective_at or now
+    version.effective_at = effective_at
+    if effective_at <= now + timedelta(minutes=5):
+        # The newer version takes over the catalog now; keep one live version per plan.
+        for previous in (
+            (
+                await session.execute(
+                    select(PlanVersion)
+                    .where(
+                        PlanVersion.plan_id == plan.id,
+                        PlanVersion.status == "published",
+                        PlanVersion.version < version.version,
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            previous.status = "retired"
+            previous.retired_at = now
     await audit.record(
         session,
         actor_type="staff",
@@ -1902,7 +1988,7 @@ async def publish_plan_version(
 @router.post("/admin/commerce/plan-versions/{version_id}/retire")
 async def retire_plan_version(
     version_id: UUID,
-    payload: ReasonAction,
+    payload: PlanRetire,
     request: Request,
     staff: StaffDep,
     session: StaffSession,
@@ -1912,6 +1998,35 @@ async def retire_plan_version(
         raise ApiError("not_found", "plan version not found")
     if version.status == "retired":
         return {"id": str(version.id), "status": version.status}
+    plan = await session.get(Plan, version.plan_id, with_for_update=True)
+    assert plan is not None
+    subscriptions = int(
+        (
+            await session.execute(
+                select(func.count(Subscription.id)).where(
+                    Subscription.plan_version_id == version.id,
+                    Subscription.status.in_(("active", "trialing", "pending_payment")),
+                )
+            )
+        ).scalar_one()
+    )
+    others = int(
+        (
+            await session.execute(
+                select(func.count(PlanVersion.id)).where(
+                    PlanVersion.plan_id == plan.id,
+                    PlanVersion.status == "published",
+                    PlanVersion.id != version.id,
+                )
+            )
+        ).scalar_one()
+    )
+    if version.status == "published" and plan.active and others == 0 and not payload.force:
+        raise ApiError(
+            "plan_in_use",
+            "this is the only published version of an active plan; publish a replacement "
+            "first or confirm the retirement with force",
+        )
     version.status = "retired"
     version.retired_at = datetime.now(UTC)
     await audit.record(
@@ -1919,10 +2034,39 @@ async def retire_plan_version(
         actor_type="staff",
         actor_id=staff.id,
         action="plan_version.retired",
-        payload={"version_id": str(version.id), "reason": payload.reason},
+        payload={
+            "version_id": str(version.id),
+            "reason": payload.reason,
+            "forced": payload.force,
+            "live_subscriptions": subscriptions,
+        },
         ip=client_ip(request),
     )
-    return {"id": str(version.id), "status": version.status}
+    return {"id": str(version.id), "status": version.status, "live_subscriptions": subscriptions}
+
+
+def _subscription_item(
+    sub: Subscription, plan: Plan, version: PlanVersion, tenant_name: str
+) -> dict[str, Any]:
+    return {
+        "id": str(sub.id),
+        "tenant_id": str(sub.tenant_id),
+        "tenant_name": tenant_name,
+        "plan_code": plan.code,
+        "plan_name": plan.name,
+        "plan_version": version.version,
+        "status": sub.status,
+        "billing_period": "legacy_monthly"
+        if sub.billing_period == "monthly"
+        else sub.billing_period,
+        "period_start": sub.period_start,
+        "period_end": sub.period_end,
+        "cancel_at_period_end": sub.cancel_at_period_end,
+        "base_operators": sub.base_operators,
+        "extra_operators": sub.extra_operators,
+        "assistant_monthly_messages": sub.assistant_monthly_messages,
+        "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None,
+    }
 
 
 @router.get("/admin/commerce/subscriptions")
@@ -1931,59 +2075,66 @@ async def admin_subscriptions(
     session: StaffSession,
     q: str | None = None,
     subscription_status: str | None = Query(default=None, alias="status"),
-    cursor: int = 0,
+    plan_code: str | None = Query(default=None, max_length=32),
+    cursor: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
+    needle = q.strip().lower() if q else None
+    if not get_settings().tenant_databases_enabled:
+        # One shared database: filter, count and page in SQL instead of walking tenants.
+        stmt = (
+            select(Subscription, Plan, PlanVersion, Tenant.name)
+            .join(PlanVersion, PlanVersion.id == Subscription.plan_version_id)
+            .join(Plan, Plan.id == PlanVersion.plan_id)
+            .join(Tenant, Tenant.id == Subscription.tenant_id)
+        )
+        if subscription_status:
+            stmt = stmt.where(Subscription.status == subscription_status)
+        if plan_code:
+            stmt = stmt.where(Plan.code == plan_code)
+        if needle:
+            like = f"%{needle.replace('%', '').replace('_', '')}%"
+            stmt = stmt.where(Tenant.name.ilike(like) | Plan.name.ilike(like))
+        total = int(
+            (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        )
+        rows = (
+            await session.execute(
+                stmt.order_by(Subscription.created_at.desc(), Subscription.id)
+                .offset(cursor)
+                .limit(limit)
+            )
+        ).all()
+        items = [_subscription_item(sub, plan, ver, name) for sub, plan, ver, name in rows]
+        return _page(items, total, cursor, limit)
+
     tenant_names: dict[UUID, str] = {
         tenant_id: name
         for tenant_id, name in (await session.execute(select(Tenant.id, Tenant.name))).all()
     }
-    normalized_query = q.strip().lower() if q else None
-    items: list[dict[str, Any]] = []
+    collected: list[tuple[datetime, dict[str, Any]]] = []
     for tenant_id in await routable_tenant_ids():
         async with session_scope(tenant_id) as tenant_session:
-            stmt = (
+            tenant_stmt = (
                 select(Subscription, Plan, PlanVersion)
                 .join(PlanVersion, PlanVersion.id == Subscription.plan_version_id)
                 .join(Plan, Plan.id == PlanVersion.plan_id)
                 .where(Subscription.tenant_id == tenant_id)
             )
             if subscription_status:
-                stmt = stmt.where(Subscription.status == subscription_status)
-            rows = (await tenant_session.execute(stmt)).all()
+                tenant_stmt = tenant_stmt.where(Subscription.status == subscription_status)
+            if plan_code:
+                tenant_stmt = tenant_stmt.where(Plan.code == plan_code)
+            tenant_rows = (await tenant_session.execute(tenant_stmt)).all()
         tenant_name = tenant_names.get(tenant_id, "")
-        for sub, plan, version in rows:
-            if normalized_query and normalized_query not in f"{tenant_name} {plan.name}".lower():
+        for sub, plan, version in tenant_rows:
+            if needle and needle not in f"{tenant_name} {plan.name}".lower():
                 continue
-            items.append(
-                {
-                    "id": str(sub.id),
-                    "tenant_id": str(sub.tenant_id),
-                    "tenant_name": tenant_name,
-                    "plan_code": plan.code,
-                    "plan_name": plan.name,
-                    "plan_version": version.version,
-                    "status": sub.status,
-                    "billing_period": "legacy_monthly"
-                    if sub.billing_period == "monthly"
-                    else sub.billing_period,
-                    "period_start": sub.period_start,
-                    "period_end": sub.period_end,
-                    "cancel_at_period_end": sub.cancel_at_period_end,
-                    "base_operators": sub.base_operators,
-                    "extra_operators": sub.extra_operators,
-                    "assistant_monthly_messages": sub.assistant_monthly_messages,
-                    "next_plan_version_id": str(sub.next_plan_version_id)
-                    if sub.next_plan_version_id
-                    else None,
-                    "created_at": sub.created_at,
-                }
-            )
-    items.sort(key=lambda item: item["created_at"], reverse=True)
-    total = len(items)
-    for item in items:
-        item.pop("created_at", None)
-    return _page(items[cursor : cursor + limit], total, cursor, limit)
+            collected.append((sub.created_at, _subscription_item(sub, plan, version, tenant_name)))
+    collected.sort(key=lambda pair: pair[0], reverse=True)
+    return _page(
+        [item for _, item in collected[cursor : cursor + limit]], len(collected), cursor, limit
+    )
 
 
 @router.get("/admin/commerce/tenants/{tenant_id}")

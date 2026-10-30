@@ -49,7 +49,7 @@ def test_extra_operator_capability_requires_annual_price() -> None:
 
 
 def test_plan_output_includes_lifecycle_and_assistant_model() -> None:
-    plan = SimpleNamespace(id="plan", code="gold", name="طلایی")
+    plan = SimpleNamespace(id="plan", code="gold", name="طلایی", is_trial=False, sellable=True)
     version = SimpleNamespace(
         id="version",
         version=3,

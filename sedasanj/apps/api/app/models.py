@@ -1501,6 +1501,8 @@ class Plan(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    is_trial: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    sellable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
@@ -1848,6 +1850,11 @@ class CreditGrant(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     __table_args__ = (
         Index("idx_credit_grants_available", "tenant_id", "expires_at", "created_at"),
+        CheckConstraint(
+            "source IN ('monthly_plan','credit_purchase','prepaid','legacy',"
+            "'admin_adjustment','intro_bonus')",
+            name="credit_grants_source_check",
+        ),
     )
 
 

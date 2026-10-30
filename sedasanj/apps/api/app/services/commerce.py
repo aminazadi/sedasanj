@@ -156,8 +156,10 @@ async def create_subscription_order(
     if existing is not None:
         return existing
     plan, version = await plan_version_by_code(session, plan_code)
-    if plan.code == "demo":
-        raise ApiError("invalid_request", "demo does not require payment")
+    if plan.is_trial:
+        raise ApiError("invalid_request", "a trial plan does not require payment")
+    if not plan.sellable:
+        raise ApiError("plan_not_sellable", "this plan is not available for purchase")
     await _reject_plan_switch_by_purchase(session, tenant.id, plan)
     total, extra_unit = subscription_amount(version, period, extra_operators)
     order = Order(

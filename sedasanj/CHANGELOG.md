@@ -2,6 +2,12 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Added the plan flags `is_trial` and `sellable` (migration `0067_plan_flags_grant_check`) and replaced every `code == "demo"` check with them, so a plan created in the admin can be a trial or be withdrawn from sale without code changes; sign-up now rejects a plan that is not sellable (`plan_not_sellable`).
+- Hardened the plan catalog: publishing needs a price above zero for a sellable plan and `trial_days` for a trial plan, rejects a past `effective_at`, and retires the previous live version; retiring the only live version of an active plan needs `force` (`plan_in_use`, 409); plan updates need a `reason`, cannot deactivate `demo`/`legacy_custom`, and audit the number of live subscriptions; a duplicate plan code returns `plan_code_exists` (409). `GET /v1/admin/commerce/plans` now lists plans that have no version yet.
+- Replaced the per-tenant walks in the admin plan and subscription lists with single SQL queries (filter, count and page in the database) when tenant databases are off; added a `plan_code` filter to the subscription list.
+- Split the 402 for an inactive subscription (`subscription_inactive`) from `quota_exceeded`/`insufficient_credit`; the agent still sees HTTP 402. Package updates now require a super admin, take an optional `reason`, and reject a name used by another active package. Added a CHECK on `credit_grants.source`.
+- Added `tests/test_plan_catalog.py`.
+
 - Made plan minutes one grant per quota window for every code path (`services/plan_credit.py`, key `plan-credit:{subscription}:{window}`): demo sign-up and the first upload can no longer both grant the trial, a mid-window upgrade grants the pro-rated extra minutes (and a refund takes the unused part back), and lapsed monthly grants are expired before a hold is checked so expired minutes never allow a call. Retried calls now spend plan minutes before charging the balance.
 - Unified the assistant message quota with the plan-minute window (the subscription anniversary month instead of the Tehran calendar month, counting reserved and succeeded messages) and enforced `assistant_source_limit` on cited sources.
 - Replaced the hard-coded 7 000 toman demo rate and the `trial_days or 7` fallback: the default overage price is the admin setting `commerce.default_price_per_minute_toman`, and a demo plan without `trial_days` now fails sign-up with `plan_not_sellable`. Added `tests/test_plan_credit.py`.

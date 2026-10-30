@@ -1791,13 +1791,27 @@ async def update_package(
     package_id: UUID,
     payload: PackageUpdate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> PackageOut:
     package = await session.get(Package, package_id, with_for_update=True)
     if package is None:
         raise ApiError("not_found", "package not found")
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    reason = changes.pop("reason", None)
+    renamed = changes.get("name")
+    if renamed is not None and renamed != package.name:
+        clash = (
+            await session.execute(
+                select(Package.id).where(
+                    func.lower(Package.name) == renamed.lower(),
+                    Package.active.is_(True),
+                    Package.id != package.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if clash is not None:
+            raise ApiError("conflict", "another active package already uses this name")
     for field, value in changes.items():
         setattr(package, field, value)
     await audit.record(
@@ -1805,7 +1819,7 @@ async def update_package(
         actor_type="staff",
         actor_id=staff.id,
         action="package.update",
-        payload={"package_id": str(package_id), "changes": changes},
+        payload={"package_id": str(package_id), "changes": changes, "reason": reason},
         ip=client_ip(request),
     )
     return PackageOut.model_validate(package)
