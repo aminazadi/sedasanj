@@ -446,33 +446,44 @@ async def handle_callback(
             return CallbackOutcome(order.id, tenant_id, _result_of(order, attempt), gateway_code)
         if attempt.status not in {"redirected", "pending_verification", "expired"}:
             return CallbackOutcome(order.id, tenant_id, _result_of(order, attempt), gateway_code)
+        # A return that does not match the stored attempt is ignored without touching it:
+        # a forged or replayed request must never be able to fail a payment that is real.
         if info.token and attempt.authority and info.token != attempt.authority:
-            attempt.status, attempt.failure_code = "failed", "token_mismatch"
             return CallbackOutcome(order.id, tenant_id, "failed", gateway_code)
         if info.order_ref is not None and info.order_ref != attempt.order_ref:
-            attempt.status, attempt.failure_code = "failed", "order_mismatch"
             return CallbackOutcome(order.id, tenant_id, "failed", gateway_code)
+        mismatch_ref: AttemptRef | None = None
+        superseded = False
+        order_id = order.id
         if order.status in PAID_STATES:
-            # Another attempt already paid this order; the bank returns this one itself.
+            # Another attempt already paid this order; never verify (and so never settle) this
+            # one.  The bank returns unverified money itself; the reverse below is best effort.
             attempt.status, attempt.failure_code = "superseded", "order_already_paid"
-            return CallbackOutcome(order.id, tenant_id, "superseded", gateway_code)
-        if info.outcome != "ok":
+            attempt.callback_json = info.reference
+            superseded = True
+            if info.outcome == "ok":
+                mismatch_ref = _attempt_ref(attempt)
+        elif info.outcome != "ok":
+            if attempt.status == "pending_verification":
+                # Already accepted for verification; a replayed failure must not undo that.
+                return CallbackOutcome(order.id, tenant_id, "pending", gateway_code)
             attempt.status = "canceled" if info.outcome == "canceled" else "failed"
             attempt.failure_code = info.failure_code
             attempt.callback_json = info.reference
             return CallbackOutcome(order.id, tenant_id, _result_of(order, attempt), gateway_code)
-        attempt.callback_json = info.reference
-        if info.amount_rial is not None and info.amount_rial != attempt.amount_rial:
-            attempt.status, attempt.failure_code = "failed", "amount_mismatch"
-            mismatch_ref = _attempt_ref(attempt)
-            order_id = order.id
         else:
-            attempt.status = "pending_verification"
-            mismatch_ref = None
-            order_id = order.id
+            attempt.callback_json = info.reference
+            if info.amount_rial is not None and info.amount_rial != attempt.amount_rial:
+                attempt.status, attempt.failure_code = "failed", "amount_mismatch"
+                mismatch_ref = _attempt_ref(attempt)
+            else:
+                attempt.status = "pending_verification"
     if mismatch_ref is not None:
         await _best_effort_reverse(gateway, mismatch_ref)
-        return CallbackOutcome(order_id, tenant_id, "failed", gateway_code)
+    if mismatch_ref is not None or superseded:
+        return CallbackOutcome(
+            order_id, tenant_id, "superseded" if superseded else "failed", gateway_code
+        )
 
     # Stage B: bank verification and fulfilment in one transaction.
     result = await verify_and_fulfill(tenant_id, attempt_pk)
@@ -630,19 +641,23 @@ async def reconcile_pending() -> dict[str, int]:
                     select(PaymentAttempt.id, PaymentAttempt.status, PaymentAttempt.gateway,
                            PaymentAttempt.created_at, PaymentAttempt.settled_at)
                     .where(
-                        PaymentAttempt.check_count < MAX_CHECKS,
                         (
-                            (PaymentAttempt.status == "pending_verification")
-                            | (
-                                (PaymentAttempt.status == "redirected")
-                                & (PaymentAttempt.created_at < now - REDIRECT_REUSE)
+                            (PaymentAttempt.check_count < MAX_CHECKS)
+                            & (
+                                (PaymentAttempt.status == "pending_verification")
+                                | (
+                                    (PaymentAttempt.status == "verified")
+                                    & PaymentAttempt.settled_at.is_(None)
+                                )
                             )
-                            | (
-                                (PaymentAttempt.status == "verified")
-                                & PaymentAttempt.settled_at.is_(None)
-                            )
-                        ),
+                        )
+                        # Open redirects are always visited so that they can expire.
+                        | (
+                            (PaymentAttempt.status == "redirected")
+                            & (PaymentAttempt.created_at < now - REDIRECT_REUSE)
+                        )
                     )
+                    .order_by(PaymentAttempt.created_at)
                     .limit(200)
                 )
             ).all()
@@ -681,9 +696,10 @@ async def _sweep_redirected(
                 attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
                 if attempt is None or attempt.status != "redirected":
                     return 0
-                attempt.check_count += 1
-                attempt.last_checked_at = now
-                paid = (await gateway.inquiry(_attempt_ref(attempt))).success
+                if attempt.check_count < MAX_CHECKS:
+                    attempt.check_count += 1
+                    attempt.last_checked_at = now
+                    paid = (await gateway.inquiry(_attempt_ref(attempt))).success
         except (GatewayError, ApiError):
             paid = False
     if paid:

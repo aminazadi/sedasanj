@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ApiError, fmt, request } from "../api";
+import { fmt, request } from "../api";
 import successArt from "../assets/payments/payment-success.svg";
 import failedArt from "../assets/payments/payment-failed.svg";
 import pendingArt from "../assets/payments/payment-pending.svg";
@@ -38,6 +38,8 @@ function outcomeOf(status: string | null, server: PaymentStatus | null): Outcome
     if (status === "pending" && server.payment?.status === "redirected") return "pending";
     return status === "canceled" ? "canceled" : "failed";
   }
+  // "superseded": another attempt already paid this order.
+  if (status === "superseded") return "paid";
   return status === "paid" || status === "pending" || status === "canceled" ? (status as Outcome) : "failed";
 }
 
@@ -53,9 +55,7 @@ export default function PaymentResult() {
     let alive = true;
     request<PaymentStatus>(`/v1/orders/${orderId}/payment-status`)
       .then((value) => alive && setServer(value))
-      .catch((reason) => {
-        if (!(reason instanceof ApiError)) return;
-      });
+      .catch(() => undefined); // the redirect status in the URL is shown instead
     return () => {
       alive = false;
     };

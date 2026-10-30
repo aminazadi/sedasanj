@@ -13,6 +13,8 @@ from app.services.gateways.base import (
     PaymentStart,
     RedirectSpec,
     Verification,
+    valid_email,
+    valid_mobile,
 )
 
 ERRORS = {
@@ -57,9 +59,9 @@ class ZarinpalGateway(Gateway):
 
     async def request(self, ctx: PaymentContext) -> PaymentStart:
         metadata: dict[str, str] = {"order_id": ctx.order_number}
-        if ctx.mobile:
+        if valid_mobile(ctx.mobile):
             metadata["mobile"] = ctx.mobile
-        if ctx.email:
+        if valid_email(ctx.email):
             metadata["email"] = ctx.email
         body = await self.post_json(
             f"{self._api}/pg/v4/payment/request.json",

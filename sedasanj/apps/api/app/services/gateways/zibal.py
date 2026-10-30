@@ -13,6 +13,7 @@ from app.services.gateways.base import (
     PaymentStart,
     RedirectSpec,
     Verification,
+    valid_mobile,
 )
 
 API = "https://gateway.zibal.ir"
@@ -44,7 +45,7 @@ class ZibalGateway(Gateway):
             "description": ctx.description,
             "orderId": str(ctx.order_ref),
         }
-        if ctx.mobile:
+        if valid_mobile(ctx.mobile):
             payload["mobile"] = ctx.mobile
         body = await self.post_json(f"{API}/v1/request", payload)
         result = body.get("result")

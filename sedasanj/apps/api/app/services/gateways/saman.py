@@ -17,6 +17,7 @@ from app.services.gateways.base import (
     PaymentStart,
     RedirectSpec,
     Verification,
+    valid_mobile,
 )
 
 TOKEN_URL = "https://sep.shaparak.ir/onlinepg/onlinepg"
@@ -48,17 +49,16 @@ class SamanGateway(Gateway):
         return self.credentials["terminal_id"]
 
     async def request(self, ctx: PaymentContext) -> PaymentStart:
-        body = await self.post_json(
-            TOKEN_URL,
-            {
-                "action": "token",
-                "TerminalId": self._terminal,
-                "Amount": ctx.amount_rial,
-                "ResNum": str(ctx.order_ref),
-                "RedirectUrl": ctx.callback_url,
-                "CellNumber": ctx.mobile,
-            },
-        )
+        payload: dict[str, Any] = {
+            "action": "token",
+            "TerminalId": self._terminal,
+            "Amount": ctx.amount_rial,
+            "ResNum": str(ctx.order_ref),
+            "RedirectUrl": ctx.callback_url,
+        }
+        if valid_mobile(ctx.mobile):
+            payload["CellNumber"] = ctx.mobile
+        body = await self.post_json(TOKEN_URL, payload)
         token = body.get("token")
         if body.get("status") != 1 or not token:
             code = str(body.get("errorCode", "unknown"))

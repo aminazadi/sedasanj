@@ -7,6 +7,7 @@ opens its own control session) instead of the tenant session.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -18,6 +19,8 @@ from app.errors import ApiError
 from app.models import PlatformSetting
 from app.services.gateways.registry import GATEWAY_ORDER, GATEWAYS
 from app.services.platform_secrets import decrypt_secret, encrypt_secret, secret_storage_error
+
+logger = logging.getLogger(__name__)
 
 PREFIX = "gateway."
 
@@ -78,7 +81,16 @@ def _state(code: str, rows: dict[str, str]) -> GatewayState:
     credentials: dict[str, str] = {}
     for name in CREDENTIAL_FIELDS[code]:
         raw = rows.get(prefix + name, "")
-        credentials[name] = decrypt_secret(raw) if raw else ""
+        try:
+            credentials[name] = decrypt_secret(raw) if raw else ""
+        except RuntimeError:
+            # Wrong or missing PLATFORM_SECRETS_KEY: treat the gateway as not configured
+            # instead of breaking every other payment method.
+            logger.error(
+                "gateway credential cannot be decrypted",
+                extra={"extra_fields": {"gateway": code, "field": name}},
+            )
+            credentials[name] = ""
     if explicit or code != "zarinpal":
         return GatewayState(
             code,
@@ -159,6 +171,9 @@ async def save(
                 "invalid_request",
                 "PLATFORM_SECRETS_KEY is not configured; set it in deploy/.env first",
             )
+    terminal = fresh.get("terminal_id")
+    if terminal is not None and not (terminal.isascii() and terminal.isdigit()):
+        raise ApiError("invalid_request", "the terminal number must contain digits only")
     if "merchant_id" in fresh and code == "zarinpal" and len(fresh["merchant_id"]) != 36:
         raise ApiError("invalid_request", "ZarinPal merchant id must be 36 characters")
 

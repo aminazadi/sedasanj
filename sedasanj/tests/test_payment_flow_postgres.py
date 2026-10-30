@@ -307,6 +307,16 @@ async def test_wrong_token_or_order_ref_is_refused(tenant, fake):  # type: ignor
         tenant_hint=tenant,
     )
     assert outcome.result == "failed" and (await balance(tenant))[0] == 0
+    # A mismatching return must not poison the attempt: the real bank return still pays.
+    assert (await attempt_state(tenant, attempt_id))[0] == "redirected"
+    outcome = await payments.handle_callback(
+        "behpardakht",
+        callback_params(order_ref),
+        token=token,
+        attempt_id=attempt_id,
+        tenant_hint=tenant,
+    )
+    assert outcome.result == "paid" and (await balance(tenant))[0] == 100 * 60
 
 
 async def test_user_cancel_keeps_order_payable(tenant, fake):  # type: ignore[no-untyped-def]
@@ -398,6 +408,8 @@ async def test_second_attempt_after_payment_is_superseded(tenant, fake):  # type
     async with db.session_scope(tenant) as session:
         assert (await session.get(Order, order_id)).status == "paid"
     assert (await attempt_state(tenant, second))[:2] == ("superseded", "order_already_paid")
+    assert fake.calls.count("verify") == 1  # the superseded attempt is never verified
+    assert "reverse" in fake.calls  # but the bank is asked to return the money
 
 
 async def test_gateway_choice_is_validated(tenant, fake):  # type: ignore[no-untyped-def]
@@ -463,3 +475,43 @@ async def test_gateway_reverse_refund_revokes_credit(tenant, fake):  # type: ign
         async with db.session_scope(staff=True) as session:
             await session.execute(text("DELETE FROM refunds WHERE tenant_id = :t"), {"t": tenant})
             await session.execute(text("DELETE FROM staff_users WHERE id = :i"), {"i": staff_id})
+
+
+async def test_replayed_cancel_cannot_undo_a_pending_verification(tenant, fake):  # type: ignore[no-untyped-def]
+    from app.services import payments
+
+    fake.behaviour["verify_error"] = True
+    order_id, token = await make_order(tenant, minutes=10)
+    attempt_id, order_ref, _ = await initiate(tenant, order_id)
+    first = await payments.handle_callback(
+        "behpardakht", callback_params(order_ref), token=token, attempt_id=attempt_id,
+        tenant_hint=tenant,
+    )
+    assert first.result == "pending"
+    replay = await payments.handle_callback(
+        "behpardakht", {"ResCode": "17", "RefId": "REF-" + str(order_ref)}, token=token,
+        attempt_id=attempt_id, tenant_hint=tenant,
+    )
+    assert replay.result == "pending"
+    assert (await attempt_state(tenant, attempt_id))[0] == "pending_verification"
+    fake.behaviour["verify_error"] = False
+    assert (await payments.reconcile_pending())["verified"] == 1
+    assert (await balance(tenant))[0] == 10 * 60
+
+
+async def test_stale_redirect_expires_even_after_many_checks(tenant, fake):  # type: ignore[no-untyped-def]
+    from datetime import UTC, datetime, timedelta
+
+    from app import db
+    from app.models import PaymentAttempt
+    from app.services import payments
+
+    order_id, _ = await make_order(tenant, minutes=10)
+    attempt_id, _, _ = await initiate(tenant, order_id)
+    async with db.session_scope(tenant) as session:
+        row = await session.get(PaymentAttempt, attempt_id)
+        row.created_at = datetime.now(UTC) - timedelta(hours=3)
+        row.check_count = payments.MAX_CHECKS
+    counts = await payments.reconcile_pending()
+    assert counts["expired"] == 1
+    assert (await attempt_state(tenant, attempt_id))[0] == "expired"

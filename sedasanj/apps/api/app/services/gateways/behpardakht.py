@@ -22,6 +22,7 @@ from app.services.gateways.base import (
     PaymentStart,
     RedirectSpec,
     Verification,
+    valid_mobile,
 )
 
 SOAP_URL = "https://bpm.shaparak.ir/pgwchannel/services/pgw"
@@ -118,7 +119,7 @@ class BehpardakhtGateway(Gateway):
         if code != "0" or not ref_id:
             raise GatewayError(code or "unknown", CODES.get(code, "payment request was rejected"))
         fields = {"RefId": ref_id}
-        if ctx.mobile:
+        if valid_mobile(ctx.mobile):
             fields["MobileNo"] = ctx.mobile
         return PaymentStart(ref_id, RedirectSpec("POST", PAY_URL, fields), {"return_code": code})
 
@@ -147,7 +148,7 @@ class BehpardakhtGateway(Gateway):
 
     async def verify(self, attempt: AttemptRef) -> Verification:
         code = await self.call("bpVerifyRequest", self._sale_fields(attempt))
-        if code in {"0", "43"}:
+        if code in {"0", "43", "45"}:  # 45: already settled, so verified earlier
             return Verification(
                 True,
                 code=code,
@@ -156,7 +157,7 @@ class BehpardakhtGateway(Gateway):
                 amount_rial=int(attempt.callback["FinalAmount"])
                 if attempt.callback.get("FinalAmount", "").isdigit()
                 else None,
-                already_verified=code == "43",
+                already_verified=code != "0",
                 response={"return_code": code},
             )
         return Verification(False, code=code, response={"return_code": code})

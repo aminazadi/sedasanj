@@ -7,6 +7,7 @@ rejected requests; an unpaid or canceled payment is a normal `Verification(succe
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -143,3 +144,16 @@ class Gateway(ABC):
 
     async def reverse(self, attempt: AttemptRef) -> bool:
         raise GatewayError("unsupported", "this gateway does not support reversal")
+
+
+_MOBILE = re.compile(r"^09\d{9}$")
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def valid_mobile(value: str) -> str:
+    """Iranian mobile in 09xxxxxxxxx form, else empty (banks reject malformed numbers)."""
+    return value if _MOBILE.match(value or "") else ""
+
+
+def valid_email(value: str) -> str:
+    return value if _EMAIL.match(value or "") else ""

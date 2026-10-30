@@ -6,6 +6,8 @@
 - Changed payments so every bank return is validated (token, attempt, order reference, amount), verified server-to-server, persisted before fulfilment and recovered by a per-minute reconciler (pending verification, Mellat settle, expiry); duplicate payments are superseded and gateway reversal is used for refunds where the bank supports it.
 - Added credit top-up by minutes at the organization's per-minute tariff with a live server quote, pay buttons for unpaid orders and installation fees, and payment result illustrations with receipt and automatic pending-status refresh.
 - Fixed bank callbacks answering the buyer with a JSON error: they now always redirect to the payment result page, and ZarinPal requests use the current `payment.zarinpal.com` endpoint.
+- Fixed payment-callback edge cases: mismatching or replayed bank returns no longer fail or downgrade a real payment, superseded attempts are reversed best-effort, stale redirects now expire after many checks, undecryptable gateway credentials disable only that gateway, malformed phone numbers and terminal numbers are no longer sent to banks, and the receipt shows the attempt that paid the order.
+- Fixed credit top-up creating a new draft order on every click and a stale price flashing while the minutes field changes.
 
 - Standardized vertical spacing between marketing landing page sections to 72px (48px on mobile) and made the awareness illustration cards tilted and scattered, including mid-canvas positions, with the magnifier following them.
 - Swapped the order of the pricing and security sections on the marketing landing page so security now comes before pricing.

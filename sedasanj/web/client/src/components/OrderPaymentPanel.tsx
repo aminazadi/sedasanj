@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmt } from "../api";
 import { startPayment, type GatewayCode } from "../lib/payment";
 import PaymentMethodPicker from "./PaymentMethodPicker";
@@ -16,6 +16,12 @@ export default function OrderPaymentPanel({ orderId, amountToman, title = "پر�
   const [gateway, setGateway] = useState<GatewayCode | null>(null);
   const [anyMethod, setAnyMethod] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const reset = (event: PageTransitionEvent) => event.persisted && setBusy(false);
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
 
   async function pay() {
     setBusy(true);

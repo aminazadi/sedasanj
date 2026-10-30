@@ -460,7 +460,8 @@ async def order_payment_status(
     order = (await session.execute(select(Order).where(Order.id == order_id, Order.tenant_id == principal.tenant_id))).scalar_one_or_none()
     if order is None:
         raise ApiError("not_found", "order not found")
-    attempt = (await session.execute(select(PaymentAttempt).where(PaymentAttempt.order_id == order.id).order_by(PaymentAttempt.created_at.desc()).limit(1))).scalar_one_or_none()
+    # The receipt shows the attempt that paid the order; otherwise the most recent one.
+    attempt = (await session.execute(select(PaymentAttempt).where(PaymentAttempt.order_id == order.id).order_by((PaymentAttempt.status == "verified").desc(), PaymentAttempt.created_at.desc()).limit(1))).scalar_one_or_none()
     items = (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
     credit_minutes = sum(item.quantity for item in items if item.kind == "credit")
     labels = {code: cls.label for code, cls in GATEWAYS.items()}

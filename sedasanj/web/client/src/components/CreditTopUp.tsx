@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmt, request } from "../api";
 import { startPayment, type GatewayCode } from "../lib/payment";
 import PaymentMethodPicker from "./PaymentMethodPicker";
@@ -30,6 +30,15 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
   const [gateway, setGateway] = useState<GatewayCode | null>(null);
   const [anyMethod, setAnyMethod] = useState(true);
   const [busy, setBusy] = useState(false);
+  // One order per distinct purchase: retrying after an error reuses it instead of piling up drafts.
+  const orderKey = useRef<{ signature: string; key: string } | null>(null);
+
+  useEffect(() => {
+    // Coming back from the bank with the back button restores this page with busy still set.
+    const reset = (event: PageTransitionEvent) => event.persisted && setBusy(false);
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
 
   const selectedPackage = packages.find((item) => item.id === packageId) ?? null;
   const valid = minutes >= MIN_MINUTES && minutes <= MAX_MINUTES;
@@ -51,7 +60,8 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
     };
   }, [mode, minutes, valid]);
 
-  const total = mode === "custom" ? (quote?.total_toman ?? minutes * pricePerMinute) : (selectedPackage?.price_toman ?? 0);
+  const quoted = quote && quote.minutes === minutes ? quote : null;
+  const total = mode === "custom" ? (quoted?.total_toman ?? minutes * pricePerMinute) : (selectedPackage?.price_toman ?? 0);
   const ready = anyMethod && gateway !== null && total > 0 && (mode === "custom" ? valid : selectedPackage !== null);
 
   async function pay() {
@@ -59,9 +69,13 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
     setBusy(true);
     onError(null);
     try {
+      const signature = mode === "custom" ? `m:${minutes}` : `p:${packageId}`;
+      if (orderKey.current?.signature !== signature) {
+        orderKey.current = { signature, key: crypto.randomUUID() };
+      }
       const order = await request<{ id: string }>("/v1/billing/credit-orders", {
         method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        headers: { "Idempotency-Key": orderKey.current.key },
         body: mode === "custom" ? { minutes } : { package_id: packageId },
       });
       await startPayment(order.id, gateway);
@@ -98,7 +112,7 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
           </div>
           {!valid ? <p className="field-hint">تعداد دقیقه باید بین {fmt.int(MIN_MINUTES)} و {fmt.int(MAX_MINUTES)} باشد.</p> : null}
           <dl className="topup-summary">
-            <div><dt>نرخ هر دقیقه</dt><dd>{fmt.toman(quote?.price_per_minute_toman ?? pricePerMinute)}</dd></div>
+            <div><dt>نرخ هر دقیقه</dt><dd>{fmt.toman(quoted?.price_per_minute_toman ?? pricePerMinute)}</dd></div>
             <div><dt>دقیقه‌های خریداری‌شده</dt><dd>{valid ? fmt.minutes(minutes * 60) : "—"}</dd></div>
           </dl>
         </div>
