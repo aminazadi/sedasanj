@@ -5,9 +5,9 @@ import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import FormDialog from "../components/FormDialog";
-import teamArt from "../assets/team.svg";
-import assignArt from "../assets/assign-operator.svg";
-import goalArt from "../assets/goal.svg";
+import teamArt from "../assets/team.webp";
+import assignArt from "../assets/assign-operator.webp";
+import goalArt from "../assets/goal.webp";
 import { PageHeader } from "../components/PageHeader";
 import type { Page, User } from "../types";
 

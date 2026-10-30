@@ -1,5 +1,5 @@
+import { cssImageSetFor } from "../lib/imageSources";
 import { Icon } from "./SiteIcon";
-import { cssUrl } from "../../../shared/lib/cssUrl";
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
@@ -31,7 +31,7 @@ export default function QuickDemoEntry() {
     </div></section>
     <dialog className="demo-dialog" ref={dialog} aria-label="تست سریع صداسنج" onCancel={(e) => { e.preventDefault(); close(); }} onClick={(e) => { if (e.target === dialog.current) close(); }}>
       <button className="demo-dialog-close" aria-label="بستن" type="button" onClick={close}>×</button>
-      {open && <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate("/quick-demo?step=connect", { replace: true }); }} renderArtwork={(step) => <div className={`demo-dialog-artwork${step === "code" ? " is-otp" : step === "organization" ? " is-organization" : ""}`} style={{ backgroundImage: cssUrl(step === "code" ? phoneAuthOtpImage : step === "organization" ? phoneAuthOrganizationImage : phoneAuthDialogImage) }} aria-hidden="true" />}/>}
+      {open && <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate("/quick-demo?step=connect", { replace: true }); }} renderArtwork={(step) => <div className={`demo-dialog-artwork${step === "code" ? " is-otp" : step === "organization" ? " is-organization" : ""}`} style={{ backgroundImage: cssImageSetFor(step === "code" ? phoneAuthOtpImage : step === "organization" ? phoneAuthOrganizationImage : phoneAuthDialogImage) }} aria-hidden="true" />}/>}
     </dialog>
   </>;
 }

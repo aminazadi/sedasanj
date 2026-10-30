@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import logo from "../assets/sedasanj-refined-master.svg";
+import logo from "../assets/sedasanj-refined-master.webp";
+import { srcSetFor } from "../lib/imageSources";
 import heroBackdrop from "../assets/hero-office.webp";
 import integrationBanner from "../assets/telephony-integration-banner-desktop.webp";
 import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.webp";
-import awarenessArt from "../assets/operator-awareness.svg";
-import ucGov from "../assets/usecases/gov.svg";
-import ucFinance from "../assets/usecases/finance.svg";
-import ucHealth from "../assets/usecases/health.svg";
-import ucSales from "../assets/usecases/sales.svg";
-import ucSupport from "../assets/usecases/support.svg";
-import ucCommerce from "../assets/usecases/commerce.svg";
+import awarenessArt from "../assets/operator-awareness.webp";
+import ucGov from "../assets/usecases/gov.webp";
+import ucFinance from "../assets/usecases/finance.webp";
+import ucHealth from "../assets/usecases/health.webp";
+import ucSales from "../assets/usecases/sales.webp";
+import ucSupport from "../assets/usecases/support.webp";
+import ucCommerce from "../assets/usecases/commerce.webp";
 import planDemoImage from "../assets/plan-demo.webp";
 import planBronzeImage from "../assets/plan-bronze.webp";
 import planSilverImage from "../assets/plan-silver.webp";
@@ -282,7 +283,7 @@ export default function Landing() {
       <div className="site-nav-actions"><Link className="site-button site-button-outline" to="/login"><Icon name="login" size={18}/>ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
     <main id="top">
-      <section className="site-hero" ref={heroRef} style={{ "--site-hero-art": `url(${heroBackdrop})` } as CSSProperties}><div className="site-container site-split">
+      <section className="site-hero" ref={heroRef}><img className="site-hero-backdrop" src={heroBackdrop} srcSet={srcSetFor(heroBackdrop)} sizes="max(100vw, 160svh)" alt="" aria-hidden="true" width={1774} height={887} fetchPriority="high" decoding="async"/><div className="site-container site-split">
         <div><h1 className="site-hero-title"><span className="site-hero-title-lead">شما فقط چند تماس از هزاران تماس را می‌شنوید.</span><span>بقیه‌اش چه؟</span><span className="site-hero-title-accent">همه را بشنوید.</span></h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}><Icon name="play" size={18}/>تست رایگان</button><a className="site-button site-button-outline" href="#features"><Icon name="layers" size={18}/>مشاهده امکانات</a></div></div>
         <div className="site-hero-play"><WhyVideoPlay video={whyVideo}/></div>
       </div>
@@ -295,7 +296,7 @@ export default function Landing() {
           <p>در پژوهشی، وقتی عملکرد کارکنان پایش شد، فروش حدود <mark>۷ درصد</mark> بالاتر رفت.</p>
           <small>Management Science، ۲۰۱۵؛ بررسی ۳۹۲ رستوران · <a href="https://econpapers.repec.org/RePEc:inm:ormnsc:v:61:y:2015:i:10:p:2299-2319" target="_blank" rel="noopener noreferrer">منبع پژوهش</a></small>
         </div>
-        <img src={awarenessArt} alt="هدست در مرکز موج‌های صدا و نتیجه‌ی بررسی مکالمات" loading="lazy" width="794" height="749"/>
+        <img src={awarenessArt} srcSet={srcSetFor(awarenessArt)} sizes="(max-width: 760px) calc(100vw - 48px), 550px" alt="هدست در مرکز موج‌های صدا و نتیجه‌ی بررسی مکالمات" loading="lazy" width="794" height="749"/>
       </div></section>
       <section className="site-section" id="workflow">
         <div className="site-container">
@@ -319,7 +320,7 @@ export default function Landing() {
       </section>
       <UseCases/>
       <SatisfactionShowcase/>
-      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
+      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={srcSetFor(integrationBannerMobile) || integrationBannerMobile} sizes="100vw"/><img src={integrationBanner} srcSet={srcSetFor(integrationBanner)} sizes="(max-width: 1160px) 100vw, 1160px" width={1600} height={536} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
       <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
         {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}

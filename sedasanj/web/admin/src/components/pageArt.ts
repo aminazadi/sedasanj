@@ -1,5 +1,5 @@
 import office from "../assets/manager-office-line-art.webp";
-import emptyState from "../assets/empty-state.svg";
+import emptyState from "../assets/empty-state.webp";
 
 export const EMPTY_STATE_ART = emptyState;
 

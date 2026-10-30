@@ -18,7 +18,7 @@ test("production SVG data URLs remain quoted in CSS backgrounds", async () => {
       name: "dialog-art-fixture",
       resolveId(id) { if (id.endsWith("dialog-art-fixture")) return id; },
       load(id) {
-        if (id.endsWith("dialog-art-fixture")) return `export { default } from ${JSON.stringify(new URL("../src/assets/add-user.svg", import.meta.url).pathname)}`;
+        if (id.endsWith("dialog-art-fixture")) return `export { default } from ${JSON.stringify(new URL("./fixtures/dialog-art.svg", import.meta.url).pathname)}`;
       },
     }],
     build: {

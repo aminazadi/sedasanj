@@ -2,6 +2,8 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Converted static site and panel images, payment artwork, public logos, social preview and favicon to WebP, preserved existing raster pixels and transparency, added responsive image variants and density-aware dialog backgrounds, prioritized the landing hero, and documented image delivery with asset integrity checks.
+
 - Seeded the help center with five plan and billing articles and one article plus `help_error_codes` row for each billing API error code (migration `0069_billing_help_content`), added `docs/plans-and-subscriptions.md` (plan and subscription lifecycle, quotas, notices, settings), documented the API error codes in the error-code skill, and updated the latest-migration pointer in `AGENTS.md`. Added `tests/test_billing_help_content.py`.
 
 - Made the staff `stop_now` action also clear a scheduled downgrade and cancel open plan changes (it only changed the status before), and added `tests/test_subscription_actions.py` (stop, extend, extend trial, customer cancel and resume). CI now runs the admin panel's unit tests.

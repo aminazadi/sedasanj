@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { fmt, request } from "../api";
 import { ErrorBox, Loading } from "../components/Widgets";
-import zarinpalLogo from "../assets/payments/zarinpal.svg";
-import zibalLogo from "../assets/payments/zibal.svg";
-import samanLogo from "../assets/payments/saman.svg";
-import behpardakhtLogo from "../assets/payments/behpardakht.svg";
+import zarinpalLogo from "../assets/payments/zarinpal.webp";
+import zibalLogo from "../assets/payments/zibal.webp";
+import samanLogo from "../assets/payments/saman.webp";
+import behpardakhtLogo from "../assets/payments/behpardakht.webp";
 
 interface Field { name: string; label: string; configured: boolean; hint: string }
 interface Gateway {

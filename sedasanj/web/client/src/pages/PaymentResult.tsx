@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
-import successArt from "../assets/payments/payment-success.svg";
-import failedArt from "../assets/payments/payment-failed.svg";
-import pendingArt from "../assets/payments/payment-pending.svg";
+import successArt from "../assets/payments/payment-success.webp";
+import failedArt from "../assets/payments/payment-failed.webp";
+import pendingArt from "../assets/payments/payment-pending.webp";
 
 interface PaymentStatus {
   order_id: string;

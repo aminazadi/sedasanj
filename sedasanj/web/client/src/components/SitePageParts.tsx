@@ -1,3 +1,4 @@
+import { srcSetFor } from "../lib/imageSources";
 import { Icon } from "./SiteIcon";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -23,5 +24,5 @@ const HERO_ART = { about: aboutArt, contact: contactArt, help: helpArt, legal: l
 
 /** Per-page illustration shown above the heading of a public page hero (see docs/page-illustrations.md). */
 export function HeroArt({ page }: { page: keyof typeof HERO_ART }) {
-  return <img className="page-hero-art" src={HERO_ART[page]} alt="" width="1500" height="750" decoding="async"/>;
+  return <img className="page-hero-art" src={HERO_ART[page]} srcSet={srcSetFor(HERO_ART[page])} sizes="(max-width: 760px) calc(100vw - 48px), 600px" alt="" width="1500" height="750" decoding="async"/>;
 }

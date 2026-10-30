@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
 import { GATEWAY_LOGOS, type GatewayCode, type PaymentMethod } from "../lib/payment";
-import secureArt from "../assets/payments/secure-payment.svg";
+import secureArt from "../assets/payments/secure-payment.webp";
 
 interface Props {
   amountToman?: number;

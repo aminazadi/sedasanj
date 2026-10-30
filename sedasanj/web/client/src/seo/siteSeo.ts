@@ -11,8 +11,8 @@ export const SITE_NAME_LATIN = "SedaSanj";
 export const SITE_LOCALE = "fa_IR";
 export const SITE_LANG = "fa-IR";
 export const DEFAULT_SITE_URL = "https://sedasanj.ir";
-export const OG_IMAGE = { path: "/og-image.jpg", width: 1200, height: 630, type: "image/jpeg", alt: "تحلیل هوشمند مکالمات مرکز تماس با صداسنج" };
-export const LOGO_PATH = "/logo.svg";
+export const OG_IMAGE = { path: "/og-image.webp", width: 1200, height: 630, type: "image/webp", alt: "تحلیل هوشمند مکالمات مرکز تماس با صداسنج" };
+export const LOGO_PATH = "/logo.webp";
 
 /** Bump `lastmod` on a route only when its visible content really changed. */
 export type RouteKind = "home" | "about" | "contact" | "help" | "legal" | "auth" | "demo";

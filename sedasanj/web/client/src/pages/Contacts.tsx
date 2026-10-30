@@ -14,8 +14,8 @@ import ExtensionsPanel from "../components/ExtensionsPanel";
 import FormDialog from "../components/FormDialog";
 import { PageHeader } from "../components/PageHeader";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
-import addUserArt from "../assets/add-user.svg";
-import importArt from "../assets/assign-operator.svg";
+import addUserArt from "../assets/add-user.webp";
+import importArt from "../assets/assign-operator.webp";
 import type { Contact, ContactImportReport, ContactPage, IranGeo } from "../types";
 
 const PAGE_SIZE = 25;

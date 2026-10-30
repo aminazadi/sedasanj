@@ -1355,7 +1355,7 @@ html {
   display: block;
   margin-top: 1.5rem;
   padding-top: 9.9rem;
-  background: url("./assets/empty-state.svg") center top / 15rem auto no-repeat;
+  background: url("./assets/empty-state.webp") center top / 15rem auto no-repeat;
   color: #4b6e48;
   content: "موردی یافت نشد.";
   font-size: 0.875rem;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
 import { ErrorBox } from "./Widgets";
-import twoFactorArt from "../assets/two-factor.svg";
+import twoFactorArt from "../assets/two-factor.webp";
 
 const endpoint = "/v1/auth/totp";
 

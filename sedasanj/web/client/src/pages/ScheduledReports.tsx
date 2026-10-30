@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import FormDialog from "../components/FormDialog";
-import reportArt from "../assets/scheduled-report.svg";
+import reportArt from "../assets/scheduled-report.webp";
 import MarkdownMessage from "../components/MarkdownMessage";
 import { PageHeader } from "../components/PageHeader";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";

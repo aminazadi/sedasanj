@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import AuthAside from "./AuthAside";
-import logo from "../assets/sedasanj-refined-master.svg";
+import logo from "../assets/sedasanj-refined-master.webp";
 import "../pages/Landing.css";
 import "../pages/PublicPages.css";
 

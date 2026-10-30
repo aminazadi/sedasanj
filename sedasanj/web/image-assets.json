@@ -1,0 +1,686 @@
+[
+  {
+    "path": "sedasanj/web/client/src/assets/add-user.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 9648,
+    "originalBytes": 2100,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/assign-operator.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 10124,
+    "originalBytes": 2499,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/empty-state.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 9650,
+    "originalBytes": 2281,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/goal.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 15448,
+    "originalBytes": 2015,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/hero-call-center.webp",
+    "width": 1620,
+    "height": 971,
+    "bytes": 478412,
+    "originalBytes": 478412,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/hero-call-center-480w.webp",
+        "width": 480,
+        "bytes": 89324
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/hero-call-center-768w.webp",
+        "width": 768,
+        "bytes": 196234
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/hero-office.webp",
+    "width": 1774,
+    "height": 887,
+    "bytes": 496142,
+    "originalBytes": 496142,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/hero-office-480w.webp",
+        "width": 480,
+        "bytes": 76288
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/hero-office-768w.webp",
+        "width": 768,
+        "bytes": 170568
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/logo-small-fa.webp",
+    "width": 520,
+    "height": 189,
+    "bytes": 3978,
+    "originalBytes": 3978,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/manager-office-line-art.webp",
+    "width": 1200,
+    "height": 720,
+    "bytes": 366228,
+    "originalBytes": 366228,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/manager-office-line-art-480w.webp",
+        "width": 480,
+        "bytes": 94524
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/manager-office-line-art-768w.webp",
+        "width": 768,
+        "bytes": 211338
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/operator-awareness.webp",
+    "width": 1588,
+    "height": 1498,
+    "bytes": 211442,
+    "originalBytes": 27312,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/operator-awareness-480w.webp",
+        "width": 480,
+        "bytes": 46684
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/operator-awareness-768w.webp",
+        "width": 768,
+        "bytes": 97294
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/page-hero-about.webp",
+    "width": 1500,
+    "height": 750,
+    "bytes": 286852,
+    "originalBytes": 286852,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-about-480w.webp",
+        "width": 480,
+        "bytes": 62158
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-about-768w.webp",
+        "width": 768,
+        "bytes": 130130
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/page-hero-contact.webp",
+    "width": 1500,
+    "height": 750,
+    "bytes": 297496,
+    "originalBytes": 297496,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-contact-480w.webp",
+        "width": 480,
+        "bytes": 60432
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-contact-768w.webp",
+        "width": 768,
+        "bytes": 128692
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/page-hero-help.webp",
+    "width": 1500,
+    "height": 750,
+    "bytes": 329052,
+    "originalBytes": 329052,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-help-480w.webp",
+        "width": 480,
+        "bytes": 65144
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-help-768w.webp",
+        "width": 768,
+        "bytes": 141420
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/page-hero-legal.webp",
+    "width": 1500,
+    "height": 750,
+    "bytes": 330400,
+    "originalBytes": 330400,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-legal-480w.webp",
+        "width": 480,
+        "bytes": 69068
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/page-hero-legal-768w.webp",
+        "width": 768,
+        "bytes": 145360
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/pattern.webp",
+    "width": 1440,
+    "height": 810,
+    "bytes": 10896,
+    "originalBytes": 10896,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/pattern-480w.webp",
+        "width": 480,
+        "bytes": 4134
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/pattern-768w.webp",
+        "width": 768,
+        "bytes": 7710
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/behpardakht.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 13210,
+    "originalBytes": 25360,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/payment-failed.webp",
+    "width": 640,
+    "height": 440,
+    "bytes": 5690,
+    "originalBytes": 705,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/payment-pending.webp",
+    "width": 640,
+    "height": 440,
+    "bytes": 5836,
+    "originalBytes": 748,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/payment-success.webp",
+    "width": 640,
+    "height": 440,
+    "bytes": 7946,
+    "originalBytes": 922,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/saman.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 2146,
+    "originalBytes": 15722,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/secure-payment.webp",
+    "width": 640,
+    "height": 400,
+    "bytes": 11970,
+    "originalBytes": 1062,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/zarinpal.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 7200,
+    "originalBytes": 4507,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/payments/zibal.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 1192,
+    "originalBytes": 1112,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/phone-auth-dialog.webp",
+    "width": 1000,
+    "height": 667,
+    "bytes": 99858,
+    "originalBytes": 99858,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/phone-auth-dialog-480w.webp",
+        "width": 480,
+        "bytes": 38664
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/phone-auth-dialog-768w.webp",
+        "width": 768,
+        "bytes": 73924
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/phone-auth-organization.webp",
+    "width": 1000,
+    "height": 667,
+    "bytes": 101748,
+    "originalBytes": 101748,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/phone-auth-organization-480w.webp",
+        "width": 480,
+        "bytes": 40098
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/phone-auth-organization-768w.webp",
+        "width": 768,
+        "bytes": 75536
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/phone-auth-otp.webp",
+    "width": 1000,
+    "height": 534,
+    "bytes": 100042,
+    "originalBytes": 100042,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/phone-auth-otp-480w.webp",
+        "width": 480,
+        "bytes": 38180
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/phone-auth-otp-768w.webp",
+        "width": 768,
+        "bytes": 72546
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/plan-bronze.webp",
+    "width": 368,
+    "height": 368,
+    "bytes": 26646,
+    "originalBytes": 26646,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/plan-demo.webp",
+    "width": 368,
+    "height": 368,
+    "bytes": 33384,
+    "originalBytes": 33384,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/plan-gold.webp",
+    "width": 368,
+    "height": 368,
+    "bytes": 35148,
+    "originalBytes": 35148,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/plan-silver.webp",
+    "width": 368,
+    "height": 368,
+    "bytes": 26616,
+    "originalBytes": 26616,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/quick-demo-agent.webp",
+    "width": 1200,
+    "height": 720,
+    "bytes": 362290,
+    "originalBytes": 362290,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/quick-demo-agent-480w.webp",
+        "width": 480,
+        "bytes": 92722
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/quick-demo-agent-768w.webp",
+        "width": 768,
+        "bytes": 202902
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/quick-demo-recording-review.webp",
+    "width": 1000,
+    "height": 667,
+    "bytes": 122580,
+    "originalBytes": 122580,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/quick-demo-recording-review-480w.webp",
+        "width": 480,
+        "bytes": 38744
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/quick-demo-recording-review-768w.webp",
+        "width": 768,
+        "bytes": 81866
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/quick-demo-voip-integration.webp",
+    "width": 1000,
+    "height": 667,
+    "bytes": 77076,
+    "originalBytes": 77076,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/quick-demo-voip-integration-480w.webp",
+        "width": 480,
+        "bytes": 30672
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/quick-demo-voip-integration-768w.webp",
+        "width": 768,
+        "bytes": 60338
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/scheduled-report.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 10414,
+    "originalBytes": 3331,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/sedasanj-refined-master.webp",
+    "width": 1040,
+    "height": 378,
+    "bytes": 7098,
+    "originalBytes": 7512,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/sedasanj-refined-master-480w.webp",
+        "width": 480,
+        "bytes": 5408
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/team.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 11108,
+    "originalBytes": 2347,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/telephony-integration-banner-desktop.webp",
+    "width": 1600,
+    "height": 536,
+    "bytes": 174000,
+    "originalBytes": 174000,
+    "variants": [
+      {
+        "path": "sedasanj/web/client/src/assets/telephony-integration-banner-desktop-480w.webp",
+        "width": 480,
+        "bytes": 33720
+      },
+      {
+        "path": "sedasanj/web/client/src/assets/telephony-integration-banner-desktop-768w.webp",
+        "width": 768,
+        "bytes": 66120
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/telephony-integration-banner-mobile.webp",
+    "width": 760,
+    "height": 1350,
+    "bytes": 185932,
+    "originalBytes": 185932,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/two-factor.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 11048,
+    "originalBytes": 2752,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/usecases/commerce.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 6148,
+    "originalBytes": 932,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/usecases/finance.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 4980,
+    "originalBytes": 1300,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/usecases/gov.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 5272,
+    "originalBytes": 1461,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/usecases/health.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 3938,
+    "originalBytes": 1344,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/usecases/sales.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 7716,
+    "originalBytes": 1339,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/src/assets/usecases/support.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 6020,
+    "originalBytes": 1229,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/empty-state.webp",
+    "width": 960,
+    "height": 600,
+    "bytes": 9650,
+    "originalBytes": 2281,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/logo-small-fa.webp",
+    "width": 520,
+    "height": 189,
+    "bytes": 3978,
+    "originalBytes": 3978,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/manager-office-line-art.webp",
+    "width": 1200,
+    "height": 720,
+    "bytes": 366228,
+    "originalBytes": 366228,
+    "variants": [
+      {
+        "path": "sedasanj/web/admin/src/assets/manager-office-line-art-480w.webp",
+        "width": 480,
+        "bytes": 94524
+      },
+      {
+        "path": "sedasanj/web/admin/src/assets/manager-office-line-art-768w.webp",
+        "width": 768,
+        "bytes": 211338
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/pattern.webp",
+    "width": 1440,
+    "height": 810,
+    "bytes": 10896,
+    "originalBytes": 10896,
+    "variants": [
+      {
+        "path": "sedasanj/web/admin/src/assets/pattern-480w.webp",
+        "width": 480,
+        "bytes": 4134
+      },
+      {
+        "path": "sedasanj/web/admin/src/assets/pattern-768w.webp",
+        "width": 768,
+        "bytes": 7710
+      }
+    ]
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/payments/behpardakht.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 13210,
+    "originalBytes": 25360,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/payments/saman.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 2146,
+    "originalBytes": 15722,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/payments/zarinpal.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 7200,
+    "originalBytes": 4507,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/admin/src/assets/payments/zibal.webp",
+    "width": 240,
+    "height": 240,
+    "bytes": 1192,
+    "originalBytes": 1112,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/public/favicon.webp",
+    "width": 64,
+    "height": 64,
+    "bytes": 96,
+    "originalBytes": 412,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/public/logo.webp",
+    "width": 1040,
+    "height": 378,
+    "bytes": 7098,
+    "originalBytes": 7512,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/web/client/public/og-image.webp",
+    "width": 1200,
+    "height": 630,
+    "bytes": 686076,
+    "originalBytes": 251457,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/assets/logo-larg-en.webp",
+    "width": 2073,
+    "height": 758,
+    "bytes": 290846,
+    "originalBytes": 277715,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/assets/logo-larg-fa.webp",
+    "width": 2078,
+    "height": 757,
+    "bytes": 308820,
+    "originalBytes": 289304,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/assets/logo-small/logo-small-en.webp",
+    "width": 518,
+    "height": 190,
+    "bytes": 22720,
+    "originalBytes": 21670,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/assets/logo-small/logo-small-fa.webp",
+    "width": 520,
+    "height": 189,
+    "bytes": 25042,
+    "originalBytes": 23746,
+    "variants": []
+  },
+  {
+    "path": "sedasanj/assets/pattern.webp",
+    "width": 1672,
+    "height": 941,
+    "bytes": 462512,
+    "originalBytes": 457430,
+    "variants": []
+  }
+]

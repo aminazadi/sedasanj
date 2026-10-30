@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { request } from "../api";
 import { Icon } from "./SiteIcon";
-import logo from "../assets/sedasanj-refined-master.svg";
+import logo from "../assets/sedasanj-refined-master.webp";
 import "../pages/Landing.css";
 import "../pages/PublicPages.css";
 

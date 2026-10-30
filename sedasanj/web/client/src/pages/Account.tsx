@@ -13,7 +13,7 @@ import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormDialog from "../components/FormDialog";
-import addUserArt from "../assets/add-user.svg";
+import addUserArt from "../assets/add-user.webp";
 import type {
   AccountInfo,
   ApiKey,

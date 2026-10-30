@@ -1,4 +1,4 @@
-import { cssUrl } from "../../../shared/lib/cssUrl";
+import { cssImageSetFor } from "../lib/imageSources";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import "./quick-demo.css";
 
@@ -45,7 +45,7 @@ export default function FormDialog({ open, title, description, art, submitLabel,
     >
       {open ? <>
         <button className="demo-dialog-close" aria-label="بستن" type="button" onClick={onClose} disabled={busy}>×</button>
-        {art ? <div className="demo-dialog-artwork" style={{ backgroundImage: cssUrl(art) }} aria-hidden="true" /> : null}
+        {art ? <div className="demo-dialog-artwork" style={{ backgroundImage: cssImageSetFor(art) }} aria-hidden="true" /> : null}
         <form className="demo-phone-form" dir="rtl" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
           <h2 id={titleId}>{title}</h2>
           {description ? <p>{description}</p> : null}
