@@ -24,6 +24,7 @@ import ModuleReleaseEditor from "./pages/ModuleReleaseEditor";
 import ModuleReleases from "./pages/ModuleReleases";
 import Packages from "./pages/Packages";
 import Settings from "./pages/Settings";
+import SitePages from "./pages/SitePages";
 import TenantDetailPage from "./pages/TenantDetail";
 import Tenants from "./pages/Tenants";
 import TenantDatabases from "./pages/TenantDatabases";
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/commerce-settings" element={<CommerceSettings />} />
         <Route path="/payment-gateways" element={<PaymentGateways />} />
         <Route path="/audit" element={<Audit />} />
+        <Route path="/site-pages" element={<SitePages />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

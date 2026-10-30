@@ -148,17 +148,24 @@ async def public_articles(
     session: PublicSession,
     category: Annotated[str | None, Query(max_length=80)] = None,
     q: Annotated[str | None, Query(max_length=120)] = None,
+    kind: Annotated[str | None, Query(pattern="^(article|error|faq)$")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0, le=5000)] = 0,
 ) -> HelpArticleList:
     await _limit(request)
     where = [HelpArticle.status == "published"]
+    if kind:
+        where.append(HelpArticle.kind == kind)
     if category:
         where.append(
             HelpArticle.category_id
             == select(HelpCategory.id).where(HelpCategory.slug == category).scalar_subquery()
         )
-    order = [HelpArticle.position, HelpArticle.title]
+    order = [
+        HelpArticle.published_at.desc().nulls_last(),
+        HelpArticle.position,
+        HelpArticle.title,
+    ]
     if q and q.strip():
         term = q.strip()
         tsquery = func.plainto_tsquery("simple", term)

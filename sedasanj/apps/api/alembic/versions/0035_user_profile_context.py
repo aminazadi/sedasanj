@@ -4,8 +4,9 @@ Revision ID: 0035_user_profile_context
 Revises: 0034_repair_processing_event_kinds
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0035_user_profile_context"
 down_revision = "0034_repair_processing_event_kinds"

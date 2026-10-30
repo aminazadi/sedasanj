@@ -10,8 +10,7 @@ from app.deps import PublicSession, TenantSession, UserDep
 from app.errors import ApiError
 from app.models import CreditGrant, LedgerEntry, Package, Tenant
 from app.schemas import BalanceOut, LedgerEntryOut, PackageOut
-from app.services import billing
-from app.services import entitlements
+from app.services import billing, entitlements
 
 router = APIRouter(prefix="/v1/billing", tags=["billing"])
 

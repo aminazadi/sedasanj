@@ -2,10 +2,11 @@ import DOMPurify from "dompurify";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import PublicPageFrame from "../components/PublicPageFrame";
+import { HeroArt } from "../components/SitePageParts";
 import { request } from "../api";
 
 interface Category { id: string; slug: string; title: string; description: string; article_count: number }
-interface Summary { id: string; slug: string; title: string; summary: string; kind: string; category_id: string | null }
+interface Summary { id: string; slug: string; title: string; summary: string; kind: string; category_id: string | null; published_at: string | null }
 interface Article extends Summary { body_html: string; error_codes: string[]; updated_at: string }
 interface ErrorCode { code: string; severity: string; title: string; quick_action: string; article_slug: string | null; article_title: string | null; article_published: boolean }
 
@@ -24,7 +25,7 @@ function Code({ children }: { children: string }) {
 }
 
 function Shell({ framed, children }: { framed: boolean; children: ReactNode }) {
-  const body = <main className="public-main"><div className="landing-container help-page" dir="rtl">{children}</div></main>;
+  const body = <main className="page-main"><div className="site-container help-page" dir="rtl">{children}</div></main>;
   return framed ? <PublicPageFrame>{body}</PublicPageFrame> : body;
 }
 
@@ -55,6 +56,7 @@ export function HelpHome({ framed }: { framed: boolean }) {
   return (
     <Shell framed={framed}>
       <header className="help-hero">
+        {framed ? <HeroArt/> : null}
         <h1>مرکز راهنمای صداسنج</h1>
         <p>نصب ماژول FreePBX، رفع خطاها و پرسش‌های متداول.</p>
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); }}>
@@ -89,6 +91,11 @@ export function HelpArticlePage({ framed }: { framed: boolean }) {
   const { slug = "" } = useParams();
   const { data, error } = useLoad<Article>(`/v1/help/articles/${encodeURIComponent(slug)}`);
   const html = useMemo(() => (data ? cleanHtml(data.body_html) : ""), [data]);
+  const more = useLoad<{ items: Summary[] }>(data ? "/v1/help/articles?kind=article&limit=4" : "/v1/help/articles?limit=1&q=__none__");
+  const related = (more.data?.items ?? []).filter((a) => a.slug !== slug).slice(0, 3);
+  useEffect(() => {
+    if (data) document.title = `${data.title} | صداسنج`;
+  }, [data]);
   return (
     <Shell framed={framed}>
       <p><Link to="/help">← مرکز راهنما</Link></p>
@@ -96,9 +103,16 @@ export function HelpArticlePage({ framed }: { framed: boolean }) {
       {data ? (
         <article className="help-article">
           <h1>{data.title}</h1>
+          {data.published_at ? <p className="help-date"><time dateTime={data.published_at}>{new Intl.DateTimeFormat("fa-IR", { year: "numeric", month: "long", day: "numeric" }).format(new Date(data.published_at))}</time></p> : null}
           {data.error_codes.length > 0 ? <p className="help-codes">{data.error_codes.map((c) => <Code key={c}>{c}</Code>)}</p> : null}
           <div className="prose-help" dangerouslySetInnerHTML={{ __html: html }} />
         </article>
+      ) : null}
+      {data && related.length > 0 ? (
+        <section className="help-list">
+          <h2>مقالات بیشتر</h2>
+          <ul>{related.map((a) => <li key={a.id}><Link to={`/help/${a.slug}`}>{a.title}</Link>{a.summary ? <p>{a.summary}</p> : null}</li>)}</ul>
+        </section>
       ) : null}
     </Shell>
   );

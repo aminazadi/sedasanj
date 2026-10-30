@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
-import { BrandLogo } from "../components/BrandLogo";
+import AuthShell from "../components/AuthShell";
 import { ErrorBox } from "../components/Widgets";
 import planDemoImage from "../assets/plan-demo.webp";
 import planBronzeImage from "../assets/plan-bronze.webp";
@@ -80,11 +80,8 @@ export default function Signup() {
     }
   }
 
-  return <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-8" dir="rtl" style={{ backgroundImage: "radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}>
-    <div className="relative w-full max-w-md">
-      <div className="mb-5 flex w-full justify-center"><Link to="/" aria-label="صفحه اصلی"><BrandLogo animated className="block w-48 sm:w-56" title="صدا سنج" /></Link></div>
-      <section className="relative w-full overflow-hidden border border-brand-200 bg-white/90 p-4 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-6">
-        <div className="mx-auto max-w-sm">
+  return <AuthShell>
+        <div className="auth-form">
           <div className="mb-5 flex items-center gap-4 border-b border-slate-100 pb-5">
             <img className="h-24 w-24 shrink-0 object-contain" src={selectedPlan.image} alt={`تصویر پلن ${selectedPlan.name}`} />
             <div><span className="text-xs font-bold text-brand-600">ثبت‌نام پلن {selectedPlan.name}</span><h1 className="mt-2 text-xl font-bold text-brand-800">حساب سازمانی خود را بسازید</h1><p className="mt-2 text-xs leading-6 text-slate-500">مرحله {fmt.digits(stepNumber[step])} از ۳</p></div>
@@ -114,7 +111,5 @@ export default function Signup() {
             <p className="mt-5 text-center text-sm text-slate-500">حساب دارید؟ <Link className="font-bold text-brand-600" to="/login">وارد شوید</Link></p>
           </form>
         </div>
-      </section>
-    </div>
-  </main>;
+  </AuthShell>;
 }

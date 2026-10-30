@@ -38,6 +38,7 @@ from app.routers import (
     phone_auth,
     quick_demo,
     scheduled_reports,
+    site_pages,
     tasks,
     webhooks,
 )
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
         kpi,
         module_updates,
         help,
+        site_pages,
         admin,
     ):
         app.include_router(module.router)

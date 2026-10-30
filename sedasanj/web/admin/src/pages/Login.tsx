@@ -1,4 +1,3 @@
-import { cssUrl } from "../../../shared/lib/cssUrl";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
@@ -6,7 +5,6 @@ import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
 import logo from "../assets/logo-small-fa.webp";
-import pattern from "../assets/pattern.webp";
 
 export default function Login() {
   const { login } = useAuth();
@@ -57,17 +55,19 @@ export default function Login() {
 
   return (
     <main
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-8"
-      style={{ backgroundImage: cssUrl(pattern), backgroundPosition: "center", backgroundSize: "cover" }}
+      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-8"
+      style={{ backgroundImage: "radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}
     >
-      <div className="absolute inset-0 bg-slate-950/10" />
-      <form
-        onSubmit={submit}
-        className="relative w-full max-w-md rounded-3xl border border-white/80 bg-white/95 p-7 shadow-2xl shadow-slate-950/10 backdrop-blur-sm sm:p-10"
-      >
-        <img className="mb-8 h-12 w-auto" src={logo} alt="صدا سنج" />
-        <div className="mb-8 border-r-4 border-brand-500 pr-3">
-          <h1 className="text-2xl font-bold text-slate-900">ورود به پنل</h1>
+      <div className="relative w-full max-w-md">
+        <div className="mb-5 flex w-full justify-center">
+          <img className="block h-14 w-auto sm:h-16" src={logo} alt="صدا سنج" />
+        </div>
+        <form
+          onSubmit={submit}
+          className="relative w-full overflow-hidden border border-brand-200 bg-white/90 p-6 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-8"
+        >
+        <div className="mb-6 border-r-4 border-brand-500 pr-3">
+          <h1 className="text-2xl font-bold text-slate-900">ورود به پنل مدیریت</h1>
         </div>
         <ErrorBox message={error} />
         {step === "password" ? <><label className="label font-medium text-slate-700" htmlFor="email">
@@ -115,7 +115,8 @@ export default function Login() {
         <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>
           {busy ? "…" : step === "totp" ? "تأیید و ورود" : "ادامه"}
         </button>
-      </form>
+        </form>
+      </div>
     </main>
   );
 }

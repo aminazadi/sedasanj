@@ -1,5 +1,24 @@
 import PublicPageFrame from "../components/PublicPageFrame";
+import { HeroArt, PageStatus } from "../components/SitePageParts";
+import { Paragraphs, useSitePage, type LegalContent } from "../lib/sitePages";
 
-export default function Legal({ title }: { title: string }) {
-  return <PublicPageFrame><main className="public-main"><section className="public-hero"><div className="landing-container"><span className="public-kicker">اسناد صداسنج</span><h1>{title}</h1><p>متن نهایی این سند پیش از فعال‌سازی پرداخت زنده توسط کسب‌وکار بازبینی و تأیید خواهد شد.</p></div></section></main></PublicPageFrame>;
+export default function Legal({ slug }: { slug: "terms" | "privacy" | "cancellation" }) {
+  const { state, reload } = useSitePage<LegalContent>(slug);
+  if (state.status !== "ready") return <PublicPageFrame><PageStatus state={state.status} onRetry={reload}/></PublicPageFrame>;
+  const page = state.content;
+  return <PublicPageFrame>
+    <main className="page-main">
+      <section className="site-hero page-hero"><div className="site-container site-split">
+        <div>
+        <h1 className="site-hero-title page-title">{page.title}</h1>
+        {page.intro && <p>{page.intro}</p>}
+        {page.updated_label && <small className="legal-updated">{page.updated_label}</small>}
+        </div>
+        <HeroArt/>
+      </div></section>
+      {page.sections.length > 0 && <section className="site-section"><div className="site-container legal-text">
+        {page.sections.map((section, index) => <section key={index}><h2>{section.title}</h2><Paragraphs text={section.body}/></section>)}
+      </div></section>}
+    </main>
+  </PublicPageFrame>;
 }

@@ -13,6 +13,12 @@ from sqlalchemy import func, select, text
 from app.db import operational_tenant_ids, session_scope
 from app.deps import Principal
 from app.errors import ApiError
+from app.metrics import (
+    scheduled_report_attempts_total,
+    scheduled_report_final_failures_total,
+    scheduled_report_retries_total,
+    scheduled_report_stuck,
+)
 from app.models import (
     AssistantUsage,
     Call,
@@ -25,12 +31,6 @@ from app.models import (
 from app.services import assistant_agent, assistant_tools, knowledge, outbox, queue
 from app.services.platform import capability_model, effective_models, resolve_provider_settings
 from worker_llm.client import build_client
-from app.metrics import (
-    scheduled_report_attempts_total,
-    scheduled_report_final_failures_total,
-    scheduled_report_retries_total,
-    scheduled_report_stuck,
-)
 
 logger = logging.getLogger(__name__)
 ACTIVE = ("queued", "running")

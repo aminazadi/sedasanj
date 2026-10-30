@@ -3,8 +3,8 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from datetime import UTC, date, datetime, time, timedelta
 from collections.abc import Mapping
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 from typing import cast as type_cast
 from uuid import UUID
@@ -22,12 +22,12 @@ from app.db import session_scope
 from app.deps import OperatorDep, OrgAdminDep, Principal, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
+    CALL_TYPES,
     AnalysisRun,
     AsrTranscriptRevision,
     AsrTranscriptRevisionSegment,
     AudioObject,
     Call,
-    CALL_TYPES,
     CallInsight,
     CreditReservation,
     Job,

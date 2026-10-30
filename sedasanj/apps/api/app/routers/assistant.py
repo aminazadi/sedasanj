@@ -14,7 +14,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import session_scope
 from app.deps import OperatorDep, OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
@@ -52,7 +51,6 @@ from app.services import (
     assistant_policy,
     assistant_tools,
     audit,
-    commerce,
     entitlements,
     knowledge,
     operator_scope,

@@ -4,7 +4,7 @@ import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
 import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox } from "../components/Widgets";
-import { BrandLogo } from "../components/BrandLogo";
+import AuthShell from "../components/AuthShell";
 import PhoneAuth from "../components/PhoneAuth";
 
 export default function Login() {
@@ -54,18 +54,8 @@ export default function Login() {
   }, [busy, step, totp]);
 
   return (
-    <main
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-8"
-      style={{ backgroundImage: "radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}
-    >
-      <div className="relative w-full max-w-md">
-        <div className="mb-5 flex w-full justify-center">
-          <Link to="/" aria-label="صفحه اصلی">
-            <BrandLogo animated className="block w-48 sm:w-56" title="صدا سنج" />
-          </Link>
-        </div>
-        <section className="relative w-full overflow-hidden border border-brand-200 bg-white/90 p-4 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-6">
-          <div className="mx-auto max-w-sm">
+    <AuthShell>
+          <div className="auth-form">
             <div className="demo-device-tabs login-method-tabs" role="group" aria-label="روش ورود">{([['phone', 'شماره موبایل'], ['password', 'ایمیل و رمز']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={method === value} onClick={() => setParams((current) => { const changed = new URLSearchParams(current); changed.set("method", value); return changed; }, { replace: true })}>{label}</button>)}</div>
             {method === "phone" ? <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate(destination); }}/> : <>
             <form onSubmit={submit}>
@@ -119,8 +109,6 @@ export default function Login() {
             </form>
             </>}
           </div>
-        </section>
-      </div>
-    </main>
+    </AuthShell>
   );
 }

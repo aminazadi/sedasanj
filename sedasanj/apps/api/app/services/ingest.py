@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,6 @@ from app.models import (
     PlanVersion,
     Subscription,
     Tenant,
-    TenantBalanceCache,
 )
 from app.schemas import IngestAccepted
 from app.services import billing, entitlements, outbox, processing_events, progress

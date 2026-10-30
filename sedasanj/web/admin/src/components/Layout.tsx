@@ -65,6 +65,12 @@ const NAVIGATION: NavigationGroup[] = [
     ],
   },
   {
+    label: "محتوای سایت",
+    items: [
+      { to: "/site-pages", label: "درباره، تماس و قوانین", icon: icons.file },
+    ],
+  },
+  {
     label: "سیستم",
     items: [
       { to: "/jobs", label: "عملیات پردازش", icon: icons.jobs },

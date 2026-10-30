@@ -164,3 +164,11 @@ def test_help_routes_are_registered_and_staff_writes_need_super_admin() -> None:
         assert any("require_staff_roles" in getattr(call, "__qualname__", "") for call in calls), (
             route.path
         )  # type: ignore[attr-defined]
+
+
+def test_public_article_list_accepts_kind_filter_only_from_known_kinds() -> None:
+    from app.main import create_app
+
+    params = create_app().openapi()["paths"]["/v1/help/articles"]["get"]["parameters"]
+    kind = next(p for p in params if p["name"] == "kind")
+    assert kind["schema"]["anyOf"][0]["pattern"] == "^(article|error|faq)$"

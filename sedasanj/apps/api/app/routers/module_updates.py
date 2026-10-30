@@ -37,7 +37,6 @@ from app.models import (
     Tenant,
 )
 from app.schemas import (
-    StaffSensitiveAction,
     ModuleChangelogEntry,
     ModuleChannel,
     ModuleDiagnosticIn,
@@ -50,6 +49,7 @@ from app.schemas import (
     ModuleUpdateOffer,
     ModuleUpdateReportIn,
     ModuleZipInspection,
+    StaffSensitiveAction,
 )
 from app.services import audit, ratelimit
 from app.services import module_releases as releases

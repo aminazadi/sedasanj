@@ -49,9 +49,9 @@ export default function App() {
           <Route path="/help/:slug" element={<HelpArticlePage framed />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
-          <Route path="/terms" element={<Legal title="قوانین استفاده" />} />
-          <Route path="/privacy" element={<Legal title="حریم خصوصی" />} />
-          <Route path="/cancellation" element={<Legal title="سیاست لغو اشتراک" />} />
+          <Route path="/terms" element={<Legal slug="terms" />} />
+          <Route path="/privacy" element={<Legal slug="privacy" />} />
+          <Route path="/cancellation" element={<Legal slug="cancellation" />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/quick-demo" element={<QuickDemo />} />
@@ -89,9 +89,9 @@ export default function App() {
         <Route path="/help/:slug" element={<HelpArticlePage framed={false} />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
-        <Route path="/terms" element={<Legal title="قوانین استفاده" />} />
-        <Route path="/privacy" element={<Legal title="حریم خصوصی" />} />
-        <Route path="/cancellation" element={<Legal title="سیاست لغو اشتراک" />} />
+        <Route path="/terms" element={<Legal slug="terms" />} />
+        <Route path="/privacy" element={<Legal slug="privacy" />} />
+        <Route path="/cancellation" element={<Legal slug="cancellation" />} />
         <Route path="/api-docs" element={<ApiDocs />} />
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

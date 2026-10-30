@@ -1,48 +1,26 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import logo from "../assets/sedasanj-refined-master.svg";
 import heroBackdrop from "../assets/hero-call-center.webp";
 import integrationBanner from "../assets/telephony-integration-banner-desktop.webp";
 import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.webp";
 import awarenessArt from "../assets/operator-awareness.svg";
+import ucGov from "../assets/usecases/gov.svg";
+import ucFinance from "../assets/usecases/finance.svg";
+import ucHealth from "../assets/usecases/health.svg";
+import ucSales from "../assets/usecases/sales.svg";
+import ucSupport from "../assets/usecases/support.svg";
+import ucCommerce from "../assets/usecases/commerce.svg";
 import planDemoImage from "../assets/plan-demo.webp";
 import planBronzeImage from "../assets/plan-bronze.webp";
 import planSilverImage from "../assets/plan-silver.webp";
 import planGoldImage from "../assets/plan-gold.webp";
 import "./Landing.css";
-import { fmt, request } from "../api";
+import { fmt, request, SENTIMENT_LABELS } from "../api";
 import type { PublicPlan } from "../types";
 import QuickDemoEntry from "../components/QuickDemoEntry";
-
-type IconName = "arrow" | "brain" | "chart" | "check" | "chevron" | "clock" | "headset" | "layers" | "lock" | "menu" | "message" | "phone" | "pulse" | "quote" | "shield" | "spark" | "target" | "tasks" | "trend" | "users" | "x";
-
-const paths: Record<IconName, ReactNode> = {
-  arrow: <><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></>,
-  brain: <><path d="M9.5 4A2.5 2.5 0 0 0 7 6.5v.2A3.5 3.5 0 0 0 5.5 13v.5A3.5 3.5 0 0 0 9 17h1V5.5A1.5 1.5 0 0 0 8.5 4Z"/><path d="M14.5 4A2.5 2.5 0 0 1 17 6.5v.2a3.5 3.5 0 0 1 1.5 6.3v.5A3.5 3.5 0 0 1 15 17h-1V5.5A1.5 1.5 0 0 1 15.5 4Z"/><path d="M7 9.5h3M14 9.5h3M7.5 14H10M14 14h2.5M10 20v-3M14 20v-3"/></>,
-  chart: <><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-4 3 2 5-7"/><path d="M16 6h2v2"/></>,
-  check: <path d="m5 12 4 4L19 6"/>,
-  chevron: <path d="m15 18-6-6 6-6"/>,
-  clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
-  headset: <><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M18 19c0 1.1-.9 2-2 2h-3"/><rect x="3" y="13" width="4" height="6" rx="2"/><rect x="17" y="13" width="4" height="6" rx="2"/></>,
-  layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></>,
-  lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
-  menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
-  message: <><path d="M21 12a8 8 0 0 1-8 8H6l-3 2 1-5a9 9 0 1 1 17-5Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></>,
-  phone: <path d="M6.6 2.8 9 8l-2.1 1.8a15.8 15.8 0 0 0 7.3 7.3L16 15l5.2 2.4c.5.2.8.8.6 1.3l-.8 2.2c-.2.7-.9 1.1-1.6 1.1A17.4 17.4 0 0 1 2 4.6c0-.7.4-1.4 1.1-1.6l2.2-.8c.5-.2 1.1.1 1.3.6Z"/>,
-  pulse: <path d="M3 12h4l2-7 4 14 2-7h6"/>,
-  quote: <><path d="M9 11H5a4 4 0 0 0 4 4V8a4 4 0 0 0-4 4"/><path d="M19 11h-4a4 4 0 0 0 4 4V8a4 4 0 0 0-4 4"/></>,
-  shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></>,
-  spark: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Z"/><path d="m18 14 .8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8L18 14ZM5 13l.7 1.8 1.8.7-1.8.7L5 18l-.7-1.8-1.8-.7 1.8-.7L5 13Z"/></>,
-  target: <><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></>,
-  tasks: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5h6M8.5 9l1.5 1.5L13 7.5M8.5 15l1.5 1.5 3-3M15 9h1M15 15h1"/></>,
-  trend: <><path d="m3 17 6-6 4 4 7-8"/><path d="M15 7h5v5"/></>,
-  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></>,
-  x: <><path d="m6 6 12 12M18 6 6 18"/></>,
-};
-
-function Icon({ name, size = 24 }: { name: IconName; size?: number }) {
-  return <svg aria-hidden="true" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
-}
+import WhyVideoButton from "../components/WhyVideoButton";
+import { Icon, type IconName } from "../components/SiteIcon";
 
 const benefits: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "chart", title: "داشبورد و گزارش‌های مدیریتی", body: "حجم تماس‌ها، روند کیفیت پاسخ‌گویی و وضعیت عملکرد تیم را در یک نگاه بررسی کنید و گزارش‌ها را بر اساس بازه زمانی و اپراتور فیلتر کنید." },
@@ -51,6 +29,16 @@ const benefits: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "pulse", title: "تحلیل موضوع، احساس و نتیجه تماس", body: "موضوعات پرتکرار، لحن مشتری و نتیجه مکالمات را بررسی کنید تا دلایل نارضایتی و تماس‌های نیازمند توجه مدیر را شناسایی کنید." },
   { icon: "tasks", title: "مدیریت پیگیری‌ها و تعهدات", body: "اقدام‌های بعدی استخراج‌شده از مکالمات را همراه با وضعیت و سررسید مدیریت کنید و برای بررسی جزئیات، مستقیماً به تماس مرتبط برگردید." },
   { icon: "headset", title: "دستیار هوشمند سازمان", body: "درباره تماس‌ها، تحلیل‌ها و عملکرد اپراتورها سؤال بپرسید و پاسخ مستند به داده‌های سازمان را همراه با ارجاع به مکالمات مرتبط دریافت کنید." },
+];
+
+type UseCase = { id: string; icon: IconName; label: string; title: string; body: string; source?: { label: string; url?: string } };
+const useCases: UseCase[] = [
+  { id: "gov", icon: "shield", label: "سازمان‌های دولتی", title: "پیش از آنکه شکایت به بازرسی برسد", body: "سازمان بازرسی کل کشور سالانه حدود ۱۰۰ هزار شکایت و گزارش از سامانهٔ ۱۳۶ دریافت می‌کند. اگر مدیر دستگاه بداند کدام موضوع و کدام واحد بیشترین تماس پیگیری را می‌سازد، گره را پیش از تبدیل‌شدن تماس به شکایت باز می‌کند؛ آن هم روی سرور خود سازمان.", source: { label: "سخنان رئیس سازمان بازرسی کل کشور، اختبار", url: "https://www.ekhtebar.ir/امکان-ثبت-شکایت-از-عملکرد-دستگاهها/" } },
+  { id: "finance", icon: "lock", label: "بانک، بیمه و مالی", title: "پیش از شکایت رسمی، تماس را بشنوید", body: "بیمهٔ مرکزی در نُه ماههٔ نخست ۱۴۰۳ بیش از ۵٬۸۰۰ شکایت از شرکت‌های بیمه ثبت کرده است. مدیر شعبه‌ای که قولی به مشتری داده و پیگیری نشده، نخستین حلقهٔ همین مسیر است؛ صداسنج تعهدها، سررسیدها و تماس‌های پرریسک را پیش از رسیدن به شکایت نشان می‌دهد.", source: { label: "آمار بیمهٔ مرکزی ایران، بازنشر در رسانه‌های بیمه‌ای" } },
+  { id: "health", icon: "pulse", label: "درمان و کلینیک‌ها", title: "هر نوبتِ خالی، هزینه‌ای است که دیده نمی‌شود", body: "در مطالعه‌ای روی کلینیک‌های سرپایی یک بیمارستان در تهران، حدود ۵۰ درصد نوبت‌ها بدون مراجعهٔ بیمار ماند. مدیر کلینیکی که دلیل لغو و ساعت‌های شلوغ تماس پذیرش را از متن تماس‌ها ببیند، یادآوری و ظرفیت نوبت را بر پایهٔ داده تنظیم می‌کند.", source: { label: "پژوهش Missed Appointments، بیمارستان‌های سرپایی تهران", url: "https://repository.brieflands.com/items/acabd84f-3dd1-4c7e-abab-7aa1420bd9ca" } },
+  { id: "sales", icon: "trend", label: "فروش و بازاریابی", title: "ساعت اول تعیین می‌کند فروش بماند یا برود", body: "پژوهش هاروارد بیزینس ریویو نشان داد شرکت‌هایی که ظرف یک ساعت به سرنخ آنلاین پاسخ می‌دهند، حدود هفت برابر بیشتر احتمال دارد آن را به مشتری بالقوهٔ واجد شرایط تبدیل کنند. صداسنج تماس‌های آمادهٔ خرید را که هنوز پیگیری نشده‌اند به مدیر فروش نشان می‌دهد.", source: { label: "Harvard Business Review، «The Short Life of Online Sales Leads»", url: "https://scholarsarchive.byu.edu/facpub/9711" } },
+  { id: "support", icon: "headset", label: "پشتیبانی و پس از فروش", title: "سومین تماس برای یک خرابی، فقط یک تماس نیست", body: "مشتری برای بار سوم دربارهٔ همان خرابی زنگ می‌زند و هر بار با کارشناسی تازه از صفر شروع می‌کند. صداسنج تماس‌های تکراری و بدترشدن لحن مشتری را کنار هم نشان می‌دهد تا مدیر پشتیبانی به‌جای پاسخ دوباره، علت ریشه‌ای را رفع کند." },
+  { id: "commerce", icon: "message", label: "فروشگاه و خدمات آنلاین", title: "سفارش دیر می‌رسد؛ مشتری اول زنگ می‌زند", body: "مشتری دو بار وضعیت سفارش را پرسیده و هنوز پاسخ روشنی نگرفته است. پیش از آنکه سفارش مرجوع شود یا مشتری برود، صداسنج از دل همین تماس‌ها نشان می‌دهد ارسال یا مرجوعی در کدام مرحله گیر کرده است." },
 ];
 const steps = [
   { icon: "phone" as const, title: "دریافت امن تماس", body: "تماس‌های مرکز تلفن به‌صورت خودکار و همراه با اطلاعات لازم وارد جریان تحلیل می‌شوند." },
@@ -99,6 +87,157 @@ function AnimatedPrice({ value, formatted }: { value: number | null; formatted: 
   return <strong aria-live="polite">{display}</strong>;
 }
 
+
+const ucPhotos: Record<string, { src: string; alt: string }> = {
+  gov: { src: ucGov, alt: "طراحی خطی ساختمان دولتی و سرور اختصاصی در محدودهٔ امن سازمان" },
+  finance: { src: ucFinance, alt: "طراحی خطی مکالمهٔ تلفنی و قراردادی که بند پرریسک آن علامت خورده است" },
+  health: { src: ucHealth, alt: "طراحی خطی تقویم نوبت‌دهی کلینیک و مکالمهٔ تلفنی" },
+  sales: { src: ucSales, alt: "طراحی خطی مکالمهٔ فروش که به هدف خرید می‌رسد" },
+  support: { src: ucSupport, alt: "طراحی خطی هدست پشتیبانی و تیکت تکراری با سه بار تماس" },
+  commerce: { src: ucCommerce, alt: "طراحی خطی بستهٔ سفارش در مسیر ارسال و پرسش مشتری دربارهٔ پیگیری" },
+};
+const ucNodes = useCases.map((_, i) => {
+  const angle = (-90 + (360 / useCases.length) * i) * (Math.PI / 180);
+  const x = 50 + 38 * Math.cos(angle);
+  const y = 50 + 38 * Math.sin(angle);
+  const mx = (50 + x) / 2 - Math.sin(angle) * 7;
+  const my = (50 + y) / 2 + Math.cos(angle) * 7;
+  return { x, y, d: `M50 50 Q${mx.toFixed(2)} ${my.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}` };
+});
+
+function UseCases() {
+  const [active, setActive] = useState(0);
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const current = useCases[active];
+  function onKey(event: ReactKeyboardEvent, index: number) {
+    const last = useCases.length - 1;
+    const forward = event.key === "ArrowDown" || event.key === "ArrowLeft";
+    const back = event.key === "ArrowUp" || event.key === "ArrowRight";
+    const next = forward ? (index === last ? 0 : index + 1) : back ? (index === 0 ? last : index - 1) : event.key === "Home" ? 0 : event.key === "End" ? last : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    setActive(next);
+    refs.current[next]?.focus();
+  }
+  return <section className="site-section site-usecases" id="usecases">
+    <div className="site-container">
+      <h2>مشتری‌تان چیزی می‌گوید که فقط تلفن می‌شنود</h2>
+      <p className="site-intro">صداسنج آن را می‌شنود و به تصمیم برای شما تبدیل می‌کند.</p>
+      <div className="uc-stage">
+        <div className="uc-orbit" role="tablist" aria-label="حوزه‌های کاربرد صداسنج" aria-orientation="vertical">
+          <svg className="uc-branches" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+            {ucNodes.map((n, i) => <path key={useCases[i].id} d={n.d} pathLength={1} className="uc-branch"/>)}
+            <path key={`on-${current.id}`} d={ucNodes[active].d} pathLength={1} className="uc-branch uc-branch-on"/>
+            <g key={`pulse-${current.id}`} className="uc-flow"><circle r="1.5" className="uc-flow-dot"/><circle r="1.5" className="uc-flow-ring"><animate attributeName="r" values="1.5;5" dur="1.1s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0" dur="1.1s" repeatCount="indefinite"/></circle><animateMotion dur="2.2s" repeatCount="indefinite" path={ucNodes[active].d}/></g>
+          </svg>
+          <div className="uc-core" aria-hidden="true"><span className="uc-ring"/><span className="uc-ring uc-ring-late"/><svg className="uc-pulse" viewBox="0 0 24 24" width="44" height="44" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path className="uc-pulse-base" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/><path className="uc-pulse-beat" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/></svg></div>
+          {useCases.map((item, index) => <button key={item.id} ref={(el) => { refs.current[index] = el; }} type="button" role="tab" id={`usecase-tab-${item.id}`} aria-selected={index === active} aria-controls="usecase-panel" tabIndex={index === active ? 0 : -1} className={`uc-node${ucNodes[index].y < 45 ? " is-above" : ""}${index === active ? " is-active" : ""}`} style={{ left: `${ucNodes[index].x}%`, top: `${ucNodes[index].y}%` }} onClick={() => setActive(index)} onMouseEnter={() => setActive(index)} onKeyDown={(event) => onKey(event, index)}>
+            <span className="uc-node-dot"><img src={ucPhotos[item.id].src} alt={ucPhotos[item.id].alt} width={120} height={120} loading="lazy" decoding="async"/></span><span className="uc-node-label">{item.label}</span>
+          </button>)}
+        </div>
+        <div className="uc-bubble" role="tabpanel" id="usecase-panel" aria-labelledby={`usecase-tab-${current.id}`} key={current.id}>
+          <img className="uc-bg" src={ucPhotos[current.id].src} alt="" aria-hidden="true" width={120} height={120} decoding="async"/>
+          <h3>{current.title}</h3>
+          <p>{current.body}</p>
+          {current.source ? <small className="uc-source">منبع: {current.source.url ? <a href={current.source.url} target="_blank" rel="noreferrer">{current.source.label}</a> : current.source.label}</small> : null}
+        </div>
+      </div>
+    </div>
+  </section>;
+}
+
+const SAT_ORDER = ["happy", "satisfied", "neutral", "sad", "angry"] as const;
+const SAT_EMOJI: Record<string, string> = { angry: "😡", sad: "😢", neutral: "😐", satisfied: "🙂", happy: "😄" };
+const SAT_TONES: Record<string, string> = { happy: "#176b34", satisfied: "#1c5aa3", neutral: "#4a5059", sad: "#b04a07", angry: "#b42318" };
+// Illustrative call counts per sentiment. The first picture has neutral and sad on top; afterwards a different sentiment leads on every tick.
+const SAT_START = [118, 162, 436, 318, 64];
+function nextSatCounts(previous: number[]): number[] {
+  const lead = (previous.indexOf(Math.max(...previous)) + 1 + Math.floor(Math.random() * (SAT_ORDER.length - 1))) % SAT_ORDER.length;
+  return SAT_ORDER.map((_, i) => (i === lead ? 380 + Math.floor(Math.random() * 90) : 60 + Math.floor(Math.random() * 230)));
+}
+
+function CountNumber({ value, format = fmt.int }: { value: number; format?: (value: number) => string }) {
+  const [shown, setShown] = useState(0);
+  const from = useRef(0);
+  useEffect(() => {
+    const start = performance.now();
+    const origin = from.current;
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / 1100, 1);
+      const next = origin + (value - origin) * (1 - (1 - progress) ** 3);
+      from.current = next;
+      setShown(next);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return <>{format(shown)}</>;
+}
+
+function SatisfactionShowcase() {
+  const ref = useRef<HTMLElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [values, setValues] = useState(SAT_START);
+  const calm = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") { setVisible(true); return; }
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.35 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!visible || calm) return;
+    const timer = window.setInterval(() => setValues(nextSatCounts), 3800);
+    return () => window.clearInterval(timer);
+  }, [visible, calm]);
+  useEffect(() => { if (!visible) setValues(SAT_START); }, [visible]);
+  const counts = visible ? values : SAT_START.map(() => 0);
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  const top = counts.indexOf(Math.max(...counts));
+  return <section className="site-section site-satisfaction" id="satisfaction" ref={ref}>
+    <div className="site-container">
+      <h2>پیش‌نمایشی از رضایت مشتریان شما</h2>
+      <p className="site-intro">همان نمایی که مدیر و اپراتورها در داشبورد صداسنج می‌بینند: احساس مشتری در هر تماس تحلیل و از «عصبانی» تا «خوشحال» شمرده می‌شود.</p>
+      <div className="sat-grid">
+        {SAT_ORDER.map((key, i) => <div className="sat-item" key={key} style={{ "--sat-tone": SAT_TONES[key] } as CSSProperties}>
+          <span className={`sat-emoji${i === top && visible ? " is-top" : ""}`} role="img" aria-label={SENTIMENT_LABELS[key]}>{SAT_EMOJI[key]}</span>
+          <strong className="sat-count"><CountNumber value={counts[i]}/></strong>
+          <span className="sat-label">{SENTIMENT_LABELS[key]}</span>
+          <span className="sat-share"><CountNumber value={total ? (counts[i] * 100) / total : 0} format={(v) => `${fmt.decimal(v)}٪`}/></span>
+        </div>)}
+      </div>
+    </div>
+  </section>;
+}
+
+interface ArticleCard { id: string; slug: string; title: string; summary: string; published_at: string | null }
+
+const faDate = new Intl.DateTimeFormat("fa-IR", { year: "numeric", month: "long", day: "numeric" });
+
+function LatestArticles() {
+  const [items, setItems] = useState<ArticleCard[] | null>(null);
+  useEffect(() => {
+    request<{ items: ArticleCard[] }>("/v1/help/articles?kind=article&limit=3")
+      .then((r) => setItems(r.items))
+      .catch(() => setItems([]));
+  }, []);
+  if (!items || items.length === 0) return null;
+  return <section className="site-section site-articles" id="articles"><div className="site-container">
+    <h2>مقالات و آموزش‌ها</h2>
+    <p className="site-intro">راهنمای نصب، نکات تحلیل مکالمات و پاسخ پرسش‌های متداول.</p>
+    <div className="site-article-grid">{items.map((a) => <article key={a.id}>
+      {a.published_at ? <time dateTime={a.published_at}>{faDate.format(new Date(a.published_at))}</time> : null}
+      <h3><Link to={`/help/${a.slug}`}>{a.title}</Link></h3>
+      {a.summary ? <p>{a.summary}</p> : null}
+      <Link className="site-article-more" to={`/help/${a.slug}`}>ادامهٔ مطلب</Link>
+    </article>)}</div>
+    <p className="site-pricing-note"><Link to="/help">همهٔ مقالات و آموزش‌ها</Link></p>
+  </div></section>;
+}
+
 export default function Landing() {
   const [, setParams] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -128,7 +267,7 @@ export default function Landing() {
     <header className="site-header"><div className="site-container site-nav">
       <a href="#top" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></a>
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
-        <a href="#features" onClick={() => setMenuOpen(false)}>امکانات</a><a href="#pricing" onClick={() => setMenuOpen(false)}>تعرفه‌ها</a><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link>
+        <a href="#features" onClick={() => setMenuOpen(false)}>امکانات</a><a href="#usecases" onClick={() => setMenuOpen(false)}>کاربردها</a><a href="#pricing" onClick={() => setMenuOpen(false)}>تعرفه‌ها</a><Link to="/help">مقالات</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link>
       </nav>
       <div className="site-nav-actions"><Link className="site-button" to="/login">ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
@@ -165,6 +304,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+      <UseCases/>
+      <SatisfactionShowcase/>
       <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={integrationBannerMobile}/><img src={integrationBanner} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer">دانلود ماژول</a></div></section>
       <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
@@ -174,8 +315,10 @@ export default function Landing() {
         <div className="site-plans">{plans.map((plan) => { const demo = plan.code === "demo"; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; return <article className={`site-plan${plan.code === "silver" ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={demo ? null : price} formatted={demo ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!demo && price != null && <span>تومان / سال</span>}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.intro_minutes)} دقیقه رایگان در ماه</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul><Link className={`site-button${plan.code === "silver" ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}</Link></article>; })}</div>
         <p className="site-pricing-note">نصب اولیه رایگان است. برای استقرار اختصاصی <Link to="/contact">با ما تماس بگیرید.</Link></p>
       </div></section>
+      <LatestArticles/>
       <QuickDemoEntry />
     </main>
+    <WhyVideoButton/>
     <footer className="site-footer">
       <section className="site-footer-contact" aria-labelledby="site-footer-contact-title">
         <div className="site-container site-footer-contact-inner">
