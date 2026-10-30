@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -483,10 +484,26 @@ async def create_export(
         created_at=now,
     )
     session.add(row)
-    await session.flush()
+    try:
+        await session.flush()
+    except ProgrammingError as exc:
+        if getattr(exc.orig, "sqlstate", None) in {"42P01", "42703"}:
+            raise ApiError(
+                "assistant_export_unavailable",
+                "ساخت فایل روی سرور آماده نیست؛ از مدیر سامانه بخواهید migration "
+                "0061_assistant_exports را روی دیتابیس سازمان اعمال و سرویس را به‌روز کند.",
+            ) from None
+        raise
     storage = get_storage()
     try:
-        await storage.put(key, body, MEDIA_TYPES[fmt])
+        try:
+            await storage.put(key, body, MEDIA_TYPES[fmt])
+        except Exception:
+            raise ApiError(
+                "assistant_export_unavailable",
+                "ذخیره فایل انجام نشد؛ از مدیر سامانه بخواهید دسترسی مخزن فایل را "
+                "بررسی کند و سپس خروجی جدید بگیرید.",
+            ) from None
         await audit.record(
             session,
             actor_type="user",
@@ -496,7 +513,10 @@ async def create_export(
             payload={"export_id": str(export_id), "dataset": dataset, "rows": len(rows)},
         )
     except BaseException:
-        await storage.delete(key)
+        try:
+            await storage.delete(key)
+        except Exception:
+            logger.error("assistant export rollback cleanup failed; check object storage")
         raise
     file = {
         "export_id": str(export_id),

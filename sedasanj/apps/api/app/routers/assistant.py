@@ -142,6 +142,7 @@ async def assistant_context_options(
             .limit(100)
         )
     ).scalars().all()
+    enabled = _enabled_assistant_tools(await effective_models(session))
     return {
         "operators": operators,
         "conversations": [
@@ -155,7 +156,7 @@ async def assistant_context_options(
         ],
         "tools": [
             {"name": tool.name, "title": tool.title, "description": tool.description}
-            for tool in assistant_tools.TOOLS
+            for tool in assistant_tools.TOOLS if tool.name in enabled
         ],
     }
 
@@ -703,10 +704,14 @@ def _attachment_tools(
         return enabled
     requested = set(attachments.tool_names)
     if not requested.issubset(assistant_tools.TOOL_BY_NAME):
-        raise ApiError("invalid_request", "unknown assistant tool")
+        raise ApiError("invalid_request", "ابزار انتخاب‌شده معتبر نیست؛ فهرست ابزارها را تازه کنید")
     selected = enabled & requested
     if selected != requested:
-        raise ApiError("invalid_request", "an attached assistant tool is disabled")
+        raise ApiError(
+            "assistant_tool_disabled",
+            "ابزار انتخاب‌شده غیرفعال است؛ آن را از پیام حذف کنید یا از مدیر سامانه بخواهید "
+            "در تنظیمات دستیار فعالش کند.",
+        )
     return selected
 
 
@@ -844,6 +849,8 @@ def _assistant_input(question: str, sources: str, history: str) -> str:
 def _assistant_error(exc: Exception) -> str:
     code = getattr(exc, "code", type(exc).__name__)
     logger.warning("assistant response failed", extra={"extra_fields": {"error_code": code}})
+    if isinstance(exc, ApiError):
+        return f"{exc.message} (کد: {exc.code})"
     return f"پاسخ سرویس هوش مصنوعی آماده نشد؛ دوباره تلاش کنید. (کد: {code})"
 
 
@@ -979,6 +986,7 @@ async def send_message(conversation_id: UUID, payload: ChatMessageCreate, reques
                 model=model,
                 enabled=set() if conversation.mode == "training" else _attachment_tools(models, payload.attachments),
                 mode=models.get("assistant_tool_mode", "auto"),
+                discovery_rounds=int(models.get("assistant_max_discovery_rounds", "2")),
             )
             plan = assistant_agent.AgentPlan(
                 plan.answer,
@@ -1215,6 +1223,7 @@ async def stream_ephemeral_message(
                         model=model,
                         enabled=_attachment_tools(models, payload.attachments),
                         mode=models.get("assistant_tool_mode", "auto"),
+                        discovery_rounds=int(models.get("assistant_max_discovery_rounds", "2")),
                     )
                     plan = assistant_agent.AgentPlan(
                         plan.answer,
@@ -1388,6 +1397,7 @@ async def stream_message(conversation_id: UUID, payload: ChatMessageCreate, requ
                         model=model,
                         enabled=set() if conversation.mode == "training" else _attachment_tools(models, payload.attachments),
                         mode=models.get("assistant_tool_mode", "auto"),
+                        discovery_rounds=int(models.get("assistant_max_discovery_rounds", "2")),
                     )
                     plan = assistant_agent.AgentPlan(
                         plan.answer,

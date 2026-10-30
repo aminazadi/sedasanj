@@ -627,3 +627,42 @@ async def test_transcript_export_prefers_corrected_text(principal):
     session = Session([(call, transcript)])
     rows = await exports.load_rows(session, principal, "transcripts", exports.ExportFilters())
     assert rows[0]["transcript"] == "متن اصلاح‌شده"
+
+
+async def test_missing_export_migration_is_actionable_and_never_echoes_database_values(
+    monkeypatch,
+    principal,
+    storage,
+):
+    from sqlalchemy.exc import ProgrammingError
+
+    class MissingTable(Exception):
+        sqlstate = "42P01"
+
+    monkeypatch.setattr(exports, "load_rows", AsyncMock(return_value=[]))
+    session = Session()
+    session.flush = AsyncMock(
+        side_effect=ProgrammingError("sensitive query", {}, MissingTable("private detail"))
+    )
+    with pytest.raises(ApiError) as error:
+        await exports.create_export(
+            session, principal, "transcripts", "json", exports.ExportFilters()
+        )
+    assert error.value.code == "assistant_export_unavailable"
+    assert "0061_assistant_exports" in error.value.message
+    assert "private detail" not in error.value.message
+    assert not storage.objects
+
+
+async def test_export_storage_failure_is_actionable_and_redacted(monkeypatch, principal, storage):
+    monkeypatch.setattr(exports, "load_rows", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        storage, "put", AsyncMock(side_effect=RuntimeError("private storage detail"))
+    )
+    with pytest.raises(ApiError) as error:
+        await exports.create_export(
+            Session(), principal, "transcripts", "json", exports.ExportFilters()
+        )
+    assert error.value.code == "assistant_export_unavailable"
+    assert "مخزن" in error.value.message
+    assert "private storage detail" not in error.value.message

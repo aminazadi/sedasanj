@@ -1096,6 +1096,7 @@ class SettingsUpdate(BaseModel):
     ninerouter_decision_prompt: str | None = Field(default=None, max_length=20_000)
     assistant_tool_mode: Literal["auto", "native", "structured"] | None = None
     assistant_max_tool_calls: int | None = Field(default=None, ge=1, le=4)
+    assistant_max_discovery_rounds: int | None = Field(default=None, ge=0, le=2)
     assistant_parallel_tools: int | None = Field(default=None, ge=1, le=2)
     assistant_enabled_tools: list[
         Literal[

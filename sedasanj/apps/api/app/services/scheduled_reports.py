@@ -458,6 +458,7 @@ async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
             model=model,
             enabled=enabled,
             mode=models.get("assistant_tool_mode", "auto"),
+            discovery_rounds=int(models.get("assistant_max_discovery_rounds", "2")),
         )
         results = []
         for planned in plan.tool_calls[: int(models.get("assistant_max_tool_calls", "4"))]:

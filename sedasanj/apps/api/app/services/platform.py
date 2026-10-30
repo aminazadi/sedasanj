@@ -56,6 +56,7 @@ OVERRIDE_KEYS = (
     "ninerouter_decision_prompt",
     "assistant_tool_mode",
     "assistant_max_tool_calls",
+    "assistant_max_discovery_rounds",
     "assistant_parallel_tools",
     "assistant_enabled_tools",
     "assistant_export_ttl_minutes",
@@ -302,6 +303,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "ninerouter_decision_prompt": "",
         "assistant_tool_mode": "auto",
         "assistant_max_tool_calls": "4",
+        "assistant_max_discovery_rounds": "2",
         "assistant_parallel_tools": "2",
         "assistant_export_ttl_minutes": str(settings.assistant_export_ttl_minutes),
         "assistant_enabled_tools": json.dumps([
@@ -445,6 +447,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "ninerouter_decision_prompt": values["ninerouter_decision_prompt"],
         "assistant_tool_mode": values["assistant_tool_mode"],
         "assistant_max_tool_calls": int(values["assistant_max_tool_calls"]),
+        "assistant_max_discovery_rounds": int(values["assistant_max_discovery_rounds"]),
         "assistant_parallel_tools": int(values["assistant_parallel_tools"]),
         "assistant_export_ttl_minutes": int(values["assistant_export_ttl_minutes"]),
         "assistant_enabled_tools": _string_list(values["assistant_enabled_tools"]),

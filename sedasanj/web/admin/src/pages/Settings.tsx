@@ -367,6 +367,7 @@ export default function Settings() {
         Object.assign(body, {
           assistant_tool_mode: settings.assistant_tool_mode,
           assistant_max_tool_calls: settings.assistant_max_tool_calls,
+          assistant_max_discovery_rounds: settings.assistant_max_discovery_rounds,
           assistant_export_ttl_minutes: settings.assistant_export_ttl_minutes,
           assistant_parallel_tools: settings.assistant_parallel_tools,
           assistant_enabled_tools: settings.assistant_enabled_tools,
@@ -692,6 +693,7 @@ export default function Settings() {
         <div className="grid gap-4 md:grid-cols-3">
           <div><label className="label">حالت فراخوانی ابزار</label><select className="input" value={settings.assistant_tool_mode} onChange={(event) => setSettings({ ...settings, assistant_tool_mode: event.target.value as PlatformSettings["assistant_tool_mode"] })}><option value="auto">خودکار</option><option value="native">Native</option><option value="structured">Structured JSON</option></select></div>
           <div><label className="label">حداکثر ابزار در هر پیام</label><input className="input" type="number" min="1" max="4" value={settings.assistant_max_tool_calls} onChange={(event) => setSettings({ ...settings, assistant_max_tool_calls: Number(event.target.value) })} /></div>
+          <div><label className="label">مراحل جست‌وجوی خودکار ابزار</label><input className="input" type="number" min="0" max="2" value={settings.assistant_max_discovery_rounds} onChange={(event) => setSettings({ ...settings, assistant_max_discovery_rounds: Number(event.target.value) })} /><p className="mt-1 text-xs text-slate-500">صفر: انتخاب مستقیم؛ یک یا دو: امکان جست‌وجو در ابزارهای فعال پیش از انتخاب.</p></div>
           <div><label className="label">حداکثر اجرای هم‌زمان</label><input className="input" type="number" min="1" max="2" value={settings.assistant_parallel_tools} onChange={(event) => setSettings({ ...settings, assistant_parallel_tools: Number(event.target.value) })} /></div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

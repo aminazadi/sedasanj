@@ -139,6 +139,7 @@ export interface PlatformSettings {
   ninerouter_decision_prompt: string;
   assistant_tool_mode: "auto" | "native" | "structured";
   assistant_max_tool_calls: number;
+  assistant_max_discovery_rounds: number;
   assistant_export_ttl_minutes: number;
   assistant_parallel_tools: number;
   assistant_enabled_tools: string[];

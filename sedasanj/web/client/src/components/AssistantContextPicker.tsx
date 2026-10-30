@@ -72,7 +72,7 @@ export default function AssistantContextPicker({ tab, onTabChange, onClose, atta
     <div className="assistant-context-body">
       {tab === "mentions" ? children : null}
       {tab === "tools" ? <>
-        <div className="assistant-tool-head"><p className="assistant-context-hint">ابزارهای موردنیاز این پیام را انتخاب کنید.</p>{options?.tools.length ? <button type="button" className="assistant-context-clear" onClick={() => onChange({ ...attachments, tool_names: attachments.tool_names.length === options.tools.length ? [] : options.tools.map((tool) => tool.name) })}>{attachments.tool_names.length === options.tools.length ? "لغو انتخاب همه" : "انتخاب همه"}</button> : null}</div>
+        <div className="assistant-tool-head"><p className="assistant-context-hint">انتخاب ابزار اختیاری است؛ دستیار می‌تواند خودش ابزار مناسب را پیدا کند.</p>{options?.tools.length ? <button type="button" className="assistant-context-clear" onClick={() => onChange({ ...attachments, tool_names: attachments.tool_names.length === options.tools.length ? [] : options.tools.map((tool) => tool.name) })}>{attachments.tool_names.length === options.tools.length ? "لغو انتخاب همه" : "انتخاب همه"}</button> : null}</div>
         <div className="assistant-tool-options" role="group" aria-label="ابزارهای در دسترس">
           {options?.tools.map((tool) => {
             const selected = attachments.tool_names.includes(tool.name);
