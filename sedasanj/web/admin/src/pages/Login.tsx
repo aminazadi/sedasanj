@@ -1,3 +1,4 @@
+import { cssUrl } from "../../../shared/lib/cssUrl";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
@@ -57,7 +58,7 @@ export default function Login() {
   return (
     <main
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-8"
-      style={{ backgroundImage: `url(${pattern})`, backgroundPosition: "center", backgroundSize: "cover" }}
+      style={{ backgroundImage: cssUrl(pattern), backgroundPosition: "center", backgroundSize: "cover" }}
     >
       <div className="absolute inset-0 bg-slate-950/10" />
       <form
