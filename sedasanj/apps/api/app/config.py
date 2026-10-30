@@ -182,6 +182,9 @@ class Settings(BaseSettings):
     support_email: str | None = None
 
     public_base_url: str = "http://localhost:8000"
+    # Internal base URL of the API that serves signed assistant-tool webhooks; unset runs tools in-process.
+    tool_gateway_url: str | None = None
+    tool_gateway_timeout_seconds: float = Field(default=130.0, ge=1, le=900)
     cors_origins: str = ""
     worker_metrics_port: int = 9100
     metrics_token: str | None = None

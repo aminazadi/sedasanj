@@ -5,6 +5,7 @@ x-external-dns: &external-dns
   - ${SECONDARY_DNS:-8.8.8.8}
 
 x-python-env: &python-env
+  TOOL_GATEWAY_URL: http://api:8000
   DATABASE_URL: postgresql+asyncpg://cbi_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}@postgres:5432/cbi
   TENANT_DATABASE_MASTER_KEY: ${TENANT_DATABASE_MASTER_KEY:?Set TENANT_DATABASE_MASTER_KEY}
   TENANT_DATABASES_ENABLED: ${TENANT_DATABASES_ENABLED:-true}

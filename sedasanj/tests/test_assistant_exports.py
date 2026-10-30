@@ -452,7 +452,7 @@ async def test_commit_failure_compensates_uploaded_export(monkeypatch, principal
         yield Session()
         raise RuntimeError("commit failed")
 
-    monkeypatch.setattr(assistant, "session_scope", failed_commit)
+    monkeypatch.setattr("app.services.tool_gateway.session_scope", failed_commit)
     monkeypatch.setattr(storage_module, "get_storage", lambda: storage)
     monkeypatch.setattr(assistant_tools, "execute", AsyncMock(return_value=({"file": file}, 1)))
     with pytest.raises(RuntimeError, match="commit failed"):

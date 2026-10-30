@@ -24,7 +24,6 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
   ["get_call_analytics", "آمار تماس‌ها"],
   ["get_operator_performance", "عملکرد اپراتورها"],
   ["visualize_statistics", "نمودارهای آماری"],
-  ["export_data", "دریافت فایل خروجی"],
 ];
 type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security" | "quick-demo" | "site-contact";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [

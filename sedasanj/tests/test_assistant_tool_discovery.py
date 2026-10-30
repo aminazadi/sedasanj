@@ -234,14 +234,13 @@ async def test_repeated_invalid_export_arguments_have_an_actionable_error_code()
     assert "سرویس هوش مصنوعی آماده نشد" not in assistant._assistant_error(error.value)
 
 
-def test_stale_selected_export_has_specific_error_instead_of_invalid_request():
-    with pytest.raises(ApiError) as error:
-        assistant._attachment_tools(
-            {"assistant_enabled_tools": json.dumps(["search_calls"])},
-            AssistantMessageAttachments(tool_names=["export_data"]),
-        )
-    assert error.value.code == "assistant_tool_disabled"
-    assert "تنظیمات" in assistant._assistant_error(error.value)
+def test_selected_tool_names_are_ignored_by_automatic_selection():
+    enabled = assistant._attachment_tools(
+        {"assistant_enabled_tools": json.dumps(["search_calls"])},
+        AssistantMessageAttachments(tool_names=["get_operator_performance"]),
+    )
+    assert "get_operator_performance" not in enabled
+    assert "search_calls" in enabled
 
 
 async def test_context_options_only_offer_enabled_tools(monkeypatch):
@@ -268,7 +267,36 @@ async def test_context_options_only_offer_enabled_tools(monkeypatch):
     assert {tool["name"] for tool in response["tools"]} == {
         "get_call_analytics",
         "get_current_time",
+        "export_data",
     }
+
+
+def test_export_stays_enabled_when_saved_tool_list_predates_it():
+    enabled = assistant._enabled_assistant_tools(
+        {"assistant_enabled_tools": json.dumps(["search_calls"])}
+    )
+    assert "export_data" in enabled
+
+
+async def test_file_request_without_export_call_is_replanned():
+    client = PlannerClient(
+        [
+            tool_plan(("search_calls", {"limit": 10})),
+            tool_plan(
+                ("export_data", {"dataset": "calls_analysis", "format": "xlsx", "limit": 10})
+            ),
+        ]
+    )
+    plan = await assistant_agent.plan(
+        client, "system", "۱۰ تماس آخر را در یک فایل اکسل بده", "", model="model"
+    )
+    assert [call.name for call in plan.tool_calls] == ["export_data"]
+    assert plan.tool_calls[0].arguments["limit"] == 10
+
+
+def test_file_intent_detection():
+    assert assistant_agent.wants_file("خروجی اکسل بده")
+    assert not assistant_agent.wants_file("آمار تماس‌های امروز چطور است؟")
 
 
 def test_discovery_budget_is_admin_validated():

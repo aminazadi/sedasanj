@@ -137,6 +137,7 @@ def test_current_time_is_available_with_legacy_explicit_tool_settings() -> None:
     settings = {"assistant_enabled_tools": json.dumps(["get_call_analytics"])}
     assert assistant._enabled_assistant_tools(settings) == {
         "get_current_time",
+        "export_data",
         "get_call_analytics",
     }
 
@@ -220,11 +221,13 @@ def test_selected_context_overrides_model_tool_scope() -> None:
     assert constrained.tool_calls[0].arguments["to_date"] == end.isoformat()
 
 
-def test_attached_tools_are_limited_to_enabled_settings() -> None:
+def test_attached_tool_names_never_narrow_automatic_selection() -> None:
     settings = {"assistant_enabled_tools": json.dumps(["search_calls", "get_call_analysis"])}
     attachments = AssistantMessageAttachments(tool_names=["get_call_analysis"])
 
-    assert assistant._attachment_tools(settings, attachments) == {"get_call_analysis"}
+    assert assistant._attachment_tools(settings, attachments) == assistant._enabled_assistant_tools(
+        settings
+    )
 
 
 def test_chat_message_output_preserves_attachments() -> None:

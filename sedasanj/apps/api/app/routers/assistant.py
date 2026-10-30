@@ -58,6 +58,7 @@ from app.services import (
     operator_scope,
     organization_memory,
     ratelimit,
+    tool_gateway,
 )
 from app.services.assistant_tool_runs import for_messages as tool_runs_for_messages
 from app.services.assistant_tool_runs import payload as tool_run_payload
@@ -699,20 +700,9 @@ async def _attachment_context(
 def _attachment_tools(
     settings: dict[str, str], attachments: AssistantMessageAttachments
 ) -> set[str]:
-    enabled = _enabled_assistant_tools(settings)
-    if not attachments.tool_names:
-        return enabled
-    requested = set(attachments.tool_names)
-    if not requested.issubset(assistant_tools.TOOL_BY_NAME):
-        raise ApiError("invalid_request", "ابزار انتخاب‌شده معتبر نیست؛ فهرست ابزارها را تازه کنید")
-    selected = enabled & requested
-    if selected != requested:
-        raise ApiError(
-            "assistant_tool_disabled",
-            "ابزار انتخاب‌شده غیرفعال است؛ آن را از پیام حذف کنید یا از مدیر سامانه بخواهید "
-            "در تنظیمات دستیار فعالش کند.",
-        )
-    return selected
+    # Tools are chosen by the assistant itself; `attachments.tool_names` is accepted only so
+    # older clients keep working and never narrows or fails the request.
+    return _enabled_assistant_tools(settings)
 
 
 def _apply_attachment_constraints(
@@ -894,8 +884,9 @@ def _enabled_assistant_tools(settings: dict[str, str]) -> set[str]:
     except json.JSONDecodeError:
         values = []
     enabled = {str(value) for value in values if str(value) in assistant_tools.TOOL_BY_NAME}
-    if values and "get_current_time" not in enabled:
-        enabled.add("get_current_time")
+    if values:
+        # Platform capabilities stay available even when an older saved list predates them.
+        enabled |= assistant_tools.ALWAYS_ENABLED
     return enabled or set(assistant_tools.TOOL_BY_NAME)
 
 
@@ -1139,27 +1130,14 @@ async def _execute_planned_tool(
     bound_call_id: UUID | None,
     conversation_id: UUID | None = None,
 ) -> tuple[dict[str, Any], int]:
-    assert principal.tenant_id is not None
-    result: dict[str, Any] | None = None
-    try:
-        async with session_scope(principal.tenant_id) as tool_session:
-            result, duration = await assistant_tools.execute(
-                planned.name,
-                planned.arguments,
-                assistant_tools.ToolContext(tool_session, principal, bound_call_id, conversation_id),
-            )
-        return result, duration
-    except BaseException:
-        if planned.name == "export_data" and result is not None and result.get("file"):
-            from app.services.storage import get_storage
-
-            file = result["file"]
-            key = f"exports/{principal.tenant_id}/{UUID(file['export_id'])}.{file['format']}"
-            try:
-                await get_storage().delete(key)
-            except Exception:
-                logger.error("uncommitted assistant export cleanup failed; check object storage")
-        raise
+    return await tool_gateway.dispatch(
+        planned.name,
+        planned.id,
+        planned.arguments,
+        principal,
+        bound_call_id,
+        conversation_id,
+    )
 
 
 @router.post("/assistant/ephemeral/messages/stream")

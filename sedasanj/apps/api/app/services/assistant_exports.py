@@ -51,6 +51,8 @@ class ExportFilters(BaseModel):
     province: str | None = Field(default=None, max_length=100)
     city: str | None = Field(default=None, max_length=100)
     query: str | None = Field(default=None, min_length=1, max_length=200)
+    # Newest-first row count, e.g. "the last 10 calls"; omit to export every matching row.
+    limit: int | None = Field(default=None, ge=1, le=5000)
 
     @field_validator("from_date", "to_date")
     @classmethod
@@ -147,7 +149,9 @@ async def load_rows(
             bound_call_id,
         )
     )
-    return await definition.loader(session, principal, filters, visible, definition.row_cap)
+    cap = min(filters.limit, definition.row_cap) if filters.limit else definition.row_cap
+    rows = await definition.loader(session, principal, filters, visible, cap)
+    return rows[:cap] if filters.limit else rows
 
 
 async def _visible_call_ids(
@@ -311,7 +315,10 @@ async def _load_calls_analysis(
         await session.execute(stmt.order_by(Call.started_at.desc(), Call.id).limit(limit + 1))
     ).all()
     if len(call_rows) > limit:
-        raise too_large(limit)
+        if filters.limit:
+            call_rows = call_rows[:limit]
+        else:
+            raise too_large(limit)
     outcomes: dict[UUID, list[dict[str, Any]]] = {}
     if call_rows:
         crm_rows = (

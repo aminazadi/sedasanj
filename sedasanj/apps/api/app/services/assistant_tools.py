@@ -793,6 +793,8 @@ TOOLS = (
     ToolDefinition("visualize_statistics", "ترسیم نمودار آماری", "Create exact, access-controlled charts. Choose up to four suitable types from bar, horizontal_bar, line, area, pie, donut, radar, radial_bar, scatter, composed, treemap, and funnel. Use call_trend for time-based charts, call_status for distributions, and operator_performance for comparisons.", VisualizeStatisticsArguments, _visualize_statistics),
 )
 TOOL_BY_NAME = {tool.name: tool for tool in TOOLS}
+# Not administrator-toggleable: file export and time are part of the assistant itself.
+ALWAYS_ENABLED = frozenset({"get_current_time", "export_data"})
 
 
 def schemas(enabled: set[str] | None = None) -> list[dict[str, Any]]:
