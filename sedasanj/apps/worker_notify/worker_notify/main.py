@@ -38,6 +38,7 @@ from app.services.maintenance import (
     run_retention,
 )
 from app.services.payments import reconcile_pending
+from app.services.subscription_notices import send_due_notices
 from app.services.urlguard import assert_safe_webhook_url_async
 from worker_notify.mailer import send_email
 
@@ -363,6 +364,13 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
         logger.exception("renewal preparation sweep failed")
         renewal_orders = 0
     try:
+        notices_sent = await send_due_notices(
+            lambda to, subject, body: send_email(get_settings(), to, subject, body)
+        )
+    except Exception:  # noqa: BLE001 - notices must not stall other reconciliation
+        logger.exception("subscription notice sweep failed")
+        notices_sent = 0
+    try:
         payment_counts = await reconcile_pending()
     except Exception:  # noqa: BLE001 - the payment sweep must not stall other reconciliation
         logger.exception("payment reconciliation sweep failed")
@@ -371,7 +379,7 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
     await refresh_queue_depth()
     return (
         f"reconciled:{requeued}:subscriptions:{expired_subscriptions}:"
-        f"grants:{expired_grants}:renewals:{renewal_orders}:"
+        f"grants:{expired_grants}:renewals:{renewal_orders}:notices:{notices_sent}:"
         f"payments:{payment_counts['verified']}/{payment_counts['settled']}/"
         f"{payment_counts['expired']}/{payment_counts['errors']}"
     )

@@ -2636,3 +2636,33 @@ class ModuleDiagnostic(Base):
     failed_checks: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'"))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class NotificationLog(Base):
+    __tablename__ = "notification_log"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    subscription_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("subscriptions.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    period_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'email'"))
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'")
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id", "kind", "period_key", "channel", name="notification_log_once"
+        ),
+    )
+

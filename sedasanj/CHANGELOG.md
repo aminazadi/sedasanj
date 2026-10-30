@@ -2,6 +2,8 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Added subscription notices by email (`services/subscription_notices.py`, run from the worker's reconciler cron): renewal due at 7 and 1 days, trial ending at 2 days, grace started and subscription expired, sent to the organization admins. A `notification_log` table (migration `0068_notification_log`) makes each notice go out once per subscription period, retries a failed send up to 3 times, and skips unpaid sign-ups that lapsed. SMS delivery is not included: it needs admin-managed SMS.ir template IDs per notice. Added `tests/test_subscription_notices.py`.
+
 - Added the plan flags `is_trial` and `sellable` (migration `0067_plan_flags_grant_check`) and replaced every `code == "demo"` check with them, so a plan created in the admin can be a trial or be withdrawn from sale without code changes; sign-up now rejects a plan that is not sellable (`plan_not_sellable`).
 - Hardened the plan catalog: publishing needs a price above zero for a sellable plan and `trial_days` for a trial plan, rejects a past `effective_at`, and retires the previous live version; retiring the only live version of an active plan needs `force` (`plan_in_use`, 409); plan updates need a `reason`, cannot deactivate `demo`/`legacy_custom`, and audit the number of live subscriptions; a duplicate plan code returns `plan_code_exists` (409). `GET /v1/admin/commerce/plans` now lists plans that have no version yet.
 - Replaced the per-tenant walks in the admin plan and subscription lists with single SQL queries (filter, count and page in the database) when tenant databases are off; added a `plan_code` filter to the subscription list.
