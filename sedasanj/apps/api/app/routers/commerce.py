@@ -2324,6 +2324,10 @@ async def admin_subscription_action(
                 raise ApiError("invalid_request", "subscription is not live")
             row.status = "canceled"
             row.period_end = now
+            row.next_plan_version_id = None
+            await subscription_state.close_open_changes(
+                tenant_session, row.id, status="canceled"
+            )
         elif payload.action == "extend":
             if not payload.days:
                 raise ApiError("invalid_request", "days are required")

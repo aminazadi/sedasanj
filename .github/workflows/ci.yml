@@ -45,3 +45,7 @@ jobs:
         working-directory: sedasanj/web/${{ matrix.app }}
       - run: npm run build
         working-directory: sedasanj/web/${{ matrix.app }}
+      # The client suite has a pre-existing failing asset-size test; run it once that is fixed.
+      - run: npm run test:unit
+        if: matrix.app == 'admin'
+        working-directory: sedasanj/web/${{ matrix.app }}
