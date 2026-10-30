@@ -2,6 +2,8 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Fixed module 1.5.1 metadata causing FreePBX bootstrap to pass an array to stristr() after upload; retained coded PHP-extension checks and documented backup-first panel recovery.
+
 - Replaced the outdated module 1.3.7 ZIP with a verified module 1.5.0 installation archive after passing PHP 7.4 and 8.2 lint and module tests; generated release archives remain outside version control.
 - Added PBX extension sync from the FreePBX module: calls between two synced extensions are now recorded as internal, extension numbers show a contact, operator or PBX name, and each extension can be linked to a phonebook contact and an operator from the phonebook page (migration `0060_pbx_extensions`).
 

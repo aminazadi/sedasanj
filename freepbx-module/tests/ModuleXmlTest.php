@@ -17,6 +17,13 @@ $op = '(lt|le|gt|ge|==|=|eq|!=|ne)';
 foreach ($xml->depends->module as $m) {
 	if (!preg_match('/^([a-z0-9_]+)(\s+' . $op . '?\s*(\d+(\.\d*[beta|alpha|rc|RC]*\d+)+))?$/i', trim((string) $m))) { $fail("bad <module> dependency '$m'"); }
 }
+// FreePBX 16 bootstrap and BMO autoload pass this value directly to stristr().
+// Repeated XML elements become an array in FreePBX's parser, even though checkdepends accepts it.
+$components = array();
+foreach ($xml->depends->phpcomponent as $c) { $components[] = (string) $c; }
+$parsedComponent = count($components) === 1 ? $components[0] : $components;
+if (!is_string($parsedComponent)) { $fail('phpcomponent must stay scalar for FreePBX bootstrap'); }
+if ($parsedComponent !== 'curl' || stristr($parsedComponent, 'zend') !== false) { $fail('unexpected bootstrap PHP component'); }
 foreach ($xml->depends->phpcomponent as $c) {
 	if (!preg_match('/^[a-z0-9_]+$/i', trim((string) $c))) { $fail("bad <phpcomponent> '$c'"); }
 }

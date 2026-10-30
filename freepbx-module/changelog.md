@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1 — AMINAZADI
+
+- Fixed the FreePBX bootstrap crash after module upload by declaring only one PHP component in module.xml; all required web PHP extensions remain enforced during installation with SS-DEP-1002.
+- Added regression coverage for scalar dependency metadata and a backup-first panel recovery procedure without changing signed FreePBX files or restarting Asterisk.
+
 ## 1.5.0 — AMINAZADI
 
 - Added the "Sync extensions to Seda Sanj" button (Endpoint tab) that sends the FreePBX extension list to `POST /v1/ingest/extensions/sync`, with error codes `SS-EXT-1001`..`1003`.

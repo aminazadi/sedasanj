@@ -232,9 +232,9 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 		if (PHP_VERSION_ID < 70400) {
 			throw new \RuntimeException('Seda Sanj requires PHP 7.4 or newer.');
 		}
-		foreach (array('curl', 'json', 'zlib') as $extension) {
+		foreach (\Engine\DependencyCheck::WEB_EXTENSIONS as $extension) {
 			if (!extension_loaded($extension)) {
-				throw new \RuntimeException("Seda Sanj requires the PHP {$extension} extension.");
+				throw new \RuntimeException("SS-DEP-1002: Install the PHP {$extension} extension and retry the module installation.");
 			}
 		}
 	}
