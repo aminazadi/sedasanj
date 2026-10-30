@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { Link } from "react-router-dom";
 import { request } from "../api";
+import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import { freePbxModuleConfig } from "../agentConfig";
 import { ErrorBox, Pagination } from "../components/Widgets";
 import { PageHeader } from "../components/PageHeader";
@@ -83,6 +84,7 @@ export default function Install() {
   const [key, setKey] = useState("");
   const [result, setResult] = useState<{ tenant: string | null; balance_minutes: number; archive_format: string; archive_password_configured: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number } | null>(null);
   const [installations, setInstallations] = useState<Array<{ id: string; kind: string; status: string; pbx_type: string; order_id: string | null }>>([]);
   const [installForm, setInstallForm] = useState({ kind: "initial", pbx_type: "Asterisk", pbx_version: "", extension_count: 1, connection_method: "API Agent", technical_contact: "", preferred_time: "", notes: "" });
 
@@ -98,10 +100,10 @@ export default function Install() {
     event.preventDefault();
     setError(null);
     try {
-      const result = await request<{ order_id: string | null }>("/v1/installation-requests", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: installForm });
+      const result = await request<{ order_id: string | null; amount_toman?: number }>("/v1/installation-requests", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: installForm });
       if (result.order_id) {
-        const payment = await request<{ redirect_url: string }>(`/v1/orders/${result.order_id}/pay`, { method: "POST" });
-        window.location.assign(payment.redirect_url);
+        setPayingOrder({ id: result.order_id, amount: result.amount_toman ?? 0 });
+        await reloadInstallations();
         return;
       }
       await reloadInstallations();
@@ -130,6 +132,7 @@ export default function Install() {
   return (
     <div className="space-y-4">
       <PageHeader title="راه‌اندازی" description="درخواست نصب، راهنمای اتصال سرور تلفنی و آزمون اتصال عامل" />
+      {payingOrder ? <OrderPaymentPanel orderId={payingOrder.id} amountToman={payingOrder.amount} title="پرداخت هزینه نصب" onClose={() => setPayingOrder(null)} onError={setError} /> : null}
       <section className="card">
         <h2 className="font-bold">درخواست نصب و استقرار</h2>
         <p className="section-hint mb-4">نصب اولیه عادی یک‌بار رایگان است؛ نصب مجدد ۳ میلیون و نصب اختصاصی ۲۰ میلیون تومان است.</p>

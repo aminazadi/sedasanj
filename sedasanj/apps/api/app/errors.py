@@ -27,11 +27,19 @@ ERROR_STATUS: dict[str, int] = {
     "export_expired": 410,
     "export_too_large": 422,
     "conflict": status.HTTP_409_CONFLICT,
+    "payment_gateway_unavailable": status.HTTP_502_BAD_GATEWAY,
+    "payment_method_unavailable": status.HTTP_409_CONFLICT,
     "worker_timeout": status.HTTP_504_GATEWAY_TIMEOUT,
     "internal": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
-RETRYABLE_CODES = {"insufficient_credit", "quota_exceeded", "rate_limited", "internal"}
+RETRYABLE_CODES = {
+    "insufficient_credit",
+    "quota_exceeded",
+    "rate_limited",
+    "internal",
+    "payment_gateway_unavailable",
+}
 
 
 class ApiError(Exception):

@@ -2,6 +2,11 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Added Zibal, SEP (Saman) and Behpardakht Mellat payment gateways next to ZarinPal, with encrypted per-gateway credentials, an admin "Payment gateways" page with connection test, and a client payment-method picker that lists only enabled gateways (migration `0062_payment_gateways`).
+- Changed payments so every bank return is validated (token, attempt, order reference, amount), verified server-to-server, persisted before fulfilment and recovered by a per-minute reconciler (pending verification, Mellat settle, expiry); duplicate payments are superseded and gateway reversal is used for refunds where the bank supports it.
+- Added credit top-up by minutes at the organization's per-minute tariff with a live server quote, pay buttons for unpaid orders and installation fees, and payment result illustrations with receipt and automatic pending-status refresh.
+- Fixed bank callbacks answering the buyer with a JSON error: they now always redirect to the payment result page, and ZarinPal requests use the current `payment.zarinpal.com` endpoint.
+
 - Standardized vertical spacing between marketing landing page sections to 72px (48px on mobile) and made the awareness illustration cards tilted and scattered, including mid-canvas positions, with the magnifier following them.
 - Swapped the order of the pricing and security sections on the marketing landing page so security now comes before pricing.
 - Added a slow periodic gloss sweep, a smooth hover scale with a refined glowing border, and a lighter hero backdrop to the solid buttons and hero on the marketing landing page.

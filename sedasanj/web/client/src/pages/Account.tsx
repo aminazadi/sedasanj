@@ -7,6 +7,8 @@ import { ROLE_LABELS, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import { PageHeader } from "../components/PageHeader";
 import ApiKeyManager from "../components/ApiKeyManager";
+import CreditTopUp from "../components/CreditTopUp";
+import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormDialog from "../components/FormDialog";
 import addUserArt from "../assets/add-user.svg";
@@ -85,6 +87,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [balance, setBalance] = useState<Balance | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+  const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number } | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [maxOperators, setMaxOperators] = useState<number | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -234,20 +237,6 @@ export default function Account({ section = "billing" }: { section?: AccountSect
     link.click();
   }
 
-  async function buyCredit(packageId: string) {
-    try {
-      const order = await request<{ id: string }>("/v1/billing/credit-orders", {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: { package_id: packageId },
-      });
-      const payment = await request<{ redirect_url: string }>(`/v1/orders/${order.id}/pay`, { method: "POST" });
-      window.location.assign(payment.redirect_url);
-    } catch (reason) {
-      setError((reason as Error).message);
-    }
-  }
-
   if (loading || (section === "billing" && !balance && !error)) return <Loading />;
   if (section === "billing" && !balance) return <ErrorBox message={error} />;
 
@@ -285,30 +274,11 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           </dl>
         </div>
         <div className="card md:col-span-2">
-          <h2 className="mb-2 font-bold">بسته‌ها</h2>
-          {packages.length === 0 ? (
-            <Empty />
+          <h2 className="mb-3 font-bold">شارژ اعتبار تحلیل</h2>
+          {isAdmin ? (
+            <CreditTopUp packages={packages} pricePerMinute={balance.price_per_minute_toman} onError={setError} />
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>نام</th>
-                  <th>دقیقه</th>
-                  <th>قیمت</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {packages.map((pkg) => (
-                  <tr key={pkg.id}>
-                    <td>{pkg.name}</td>
-                    <td>{fmt.int(pkg.minutes)}</td>
-                    <td>{fmt.toman(pkg.price_toman)}</td>
-                    <td><button className="btn-ghost" onClick={() => void buyCredit(pkg.id)}>خرید</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <p className="text-sm text-slate-500">خرید اعتبار فقط برای مدیر سازمان در دسترس است.</p>
           )}
         </div>
       </div>
@@ -323,7 +293,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
       ) : null}
 
       {isAdmin && orders.length ? (
-        <div className="card"><h2 className="mb-2 font-bold">سفارش‌ها و پرداخت‌ها</h2><table className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>زمان</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td dir="ltr">{order.number}</td><td>{ORDER_KIND_LABELS[order.kind] ?? order.kind}</td><td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td><td>{fmt.toman(order.amount_toman)}</td><td>{fmt.dateTime(order.created_at)}</td></tr>)}</tbody></table><Pagination page={Math.floor(orderOffset/limit)+1} hasPrevious={orderOffset>0} hasNext={orderOffset+limit<orderTotal} total={orderTotal} onPrevious={()=>setOrderOffset(Math.max(0,orderOffset-limit))} onNext={()=>setOrderOffset(orderOffset+limit)}/></div>
+        <>{payingOrder ? <OrderPaymentPanel orderId={payingOrder.id} amountToman={payingOrder.amount} onClose={() => setPayingOrder(null)} onError={setError} /> : null}<div className="card"><h2 className="mb-2 font-bold">سفارش‌ها و پرداخت‌ها</h2><table className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>زمان</th><th /></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td dir="ltr">{order.number}</td><td>{ORDER_KIND_LABELS[order.kind] ?? order.kind}</td><td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td><td>{fmt.toman(order.amount_toman)}</td><td>{fmt.dateTime(order.created_at)}</td><td>{["draft", "pending_payment"].includes(order.status) ? <button className="btn-ghost text-xs" onClick={() => setPayingOrder({ id: order.id, amount: order.amount_toman })}>پرداخت</button> : null}</td></tr>)}</tbody></table><Pagination page={Math.floor(orderOffset/limit)+1} hasPrevious={orderOffset>0} hasNext={orderOffset+limit<orderTotal} total={orderTotal} onPrevious={()=>setOrderOffset(Math.max(0,orderOffset-limit))} onNext={()=>setOrderOffset(orderOffset+limit)}/></div></>
       ) : null}
 
       <div className="card">

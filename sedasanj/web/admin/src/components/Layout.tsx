@@ -69,6 +69,7 @@ const NAVIGATION: NavigationGroup[] = [
     items: [
       { to: "/jobs", label: "عملیات پردازش", icon: icons.jobs },
       { to: "/audit", label: "گزارش رویدادها", icon: icons.file },
+      { to: "/payment-gateways", label: "درگاه‌های پرداخت", icon: icons.card },
       { to: "/commerce-settings", label: "تنظیمات تجاری", icon: icons.settings },
       { to: "/settings", label: "تنظیمات", icon: icons.settings },
     ],

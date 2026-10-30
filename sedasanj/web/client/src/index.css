@@ -1572,3 +1572,33 @@ html {
 .assistant-context-tabs > button:hover { background: #f2f0ef; }
 .assistant-context-tabs > button[aria-pressed="true"] { background: #4b6e48; color: #f2f0ef; }
 .assistant-context-tabs > button > span { display: grid; min-width: 16px; height: 16px; place-items: center; background: #e8f0e5; color: #365033; font-size: 10px; }
+
+/* Payment methods, credit top-up and receipt */
+.pay-methods { display: grid; gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.pay-legend { margin-bottom: 8px; padding: 0; font-size: 12px; font-weight: 700; color: #536377; }
+.pay-method { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--line, #dce4ec); border-radius: 12px; background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.pay-method:hover:not(.is-disabled) { border-color: #4B6E48; }
+.pay-method.is-selected { border-color: #4B6E48; background: #f4f8f3; box-shadow: 0 0 0 3px rgba(75, 110, 72, .14); }
+.pay-method.is-disabled { opacity: .55; cursor: not-allowed; }
+.pay-method input { position: absolute; opacity: 0; pointer-events: none; }
+.pay-method:focus-within { outline: 2px solid #4B6E48; outline-offset: 2px; }
+.pay-method img { flex: none; border-radius: 11px; }
+.pay-method-text { display: grid; gap: 2px; min-width: 0; }
+.pay-method-text strong { font-size: 14px; }
+.pay-method-text small { color: #718095; font-size: 11px; line-height: 1.7; }
+.pay-badge { margin-inline-start: auto; padding: 2px 8px; border-radius: 99px; background: #fff3cd; color: #7a5b00; font-size: 10px; font-style: normal; font-weight: 700; }
+.pay-empty { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px dashed #d8c9a0; border-radius: 12px; background: #fffaf0; color: #7a5b00; font-size: 12px; }
+.topup { display: grid; gap: 16px; }
+.topup-custom { display: grid; gap: 8px; }
+.topup-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.topup-summary { display: grid; gap: 6px; margin: 4px 0 0; font-size: 12px; }
+.topup-summary > div, .topup-total, .pay-receipt > div { display: flex; justify-content: space-between; gap: 12px; }
+.topup-summary dt, .pay-receipt dt { color: #718095; }
+.topup-packages { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.topup-package { display: grid; gap: 4px; padding: 14px; border: 1.5px solid var(--line, #dce4ec); border-radius: 12px; background: #fff; font: inherit; text-align: start; cursor: pointer; }
+.topup-package.is-selected { border-color: #4B6E48; background: #f4f8f3; box-shadow: 0 0 0 3px rgba(75, 110, 72, .14); }
+.topup-total { align-items: center; padding: 12px 14px; border-radius: 12px; background: #f4f8f3; font-size: 13px; }
+.topup-total strong { color: #4B6E48; font-size: 18px; }
+.order-pay-panel { display: grid; gap: 14px; }
+.pay-receipt { display: grid; gap: 8px; margin: 22px 0 0; padding: 14px; border-radius: 12px; background: #f7f8f6; font-size: 12px; text-align: start; }
+@media (max-width: 640px) { .pay-method { padding: 10px 12px; } .topup-packages { grid-template-columns: 1fr 1fr; } }

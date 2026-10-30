@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import logging
 import math
+import secrets
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
-from uuid import UUID
+from typing import Any
+from urllib.parse import urlencode
+from uuid import UUID, uuid4
 
-import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.db import routable_tenant_ids, session_scope
 from app.errors import ApiError
 from app.models import (
     CreditGrant,
@@ -28,112 +32,199 @@ from app.models import (
     Tenant,
     TenantBalanceCache,
 )
-from app.services import billing
+from app.services import billing, gateway_settings
 from app.services.commerce import add_months
-from app.services.commerce_settings import CommerceSettings, get_commerce_settings
+from app.services.gateways import (
+    AttemptRef,
+    Gateway,
+    GatewayError,
+    PaymentContext,
+    Verification,
+)
+from app.services.gateways.registry import GATEWAY_ORDER, GATEWAYS, build_gateway
+
+logger = logging.getLogger(__name__)
+
+PAID_STATES = {"paid", "partially_refunded", "refunded"}
+# A fresh redirect may be re-shown; after this the bank token is considered stale.
+REDIRECT_REUSE = timedelta(minutes=10)
+# Without a callback nothing can be recovered after this long; the attempt is closed.
+ATTEMPT_LIFETIME = timedelta(hours=2)
+MAX_CHECKS = 40
+CALLBACK_KEYS = ("token", "attempt", "t")
 
 
-@dataclass(frozen=True)
-class GatewayRequest:
-    authority: str
-    url: str
-    response: dict[str, Any]
+_last_order_ref = 0
 
 
-@dataclass(frozen=True)
-class GatewayVerification:
-    success: bool
-    ref_id: str | None
-    response: dict[str, Any]
+def new_order_ref() -> int:
+    """Numeric reference unique across tenants (Mellat orderId / SEP ResNum must be unique).
+
+    Milliseconds plus six random digits (< 2**63); strictly increasing inside one process.
+    """
+    global _last_order_ref
+    candidate = int(time.time() * 1000) * 1_000_000 + secrets.randbelow(1_000_000)
+    _last_order_ref = max(candidate, _last_order_ref + 1)
+    return _last_order_ref
 
 
-class PaymentGateway(Protocol):
-    async def request(self, *, amount_rial: int, description: str, callback_url: str, mobile: str, email: str) -> GatewayRequest: ...
-    async def verify(self, *, amount_rial: int, authority: str) -> GatewayVerification: ...
-    async def query(self, *, amount_rial: int, authority: str) -> GatewayVerification: ...
+def _attempt_ref(attempt: PaymentAttempt) -> AttemptRef:
+    callback = {k: str(v) for k, v in (attempt.callback_json or {}).items()}
+    return AttemptRef(
+        authority=attempt.authority or "",
+        order_ref=int(attempt.order_ref or 0),
+        amount_rial=int(attempt.amount_rial),
+        callback=callback,
+    )
 
 
-class ZarinpalGateway:
-    def __init__(self, settings: CommerceSettings | None = None) -> None:
-        runtime = get_settings()
-        merchant_id = settings.zarinpal_merchant_id if settings else (runtime.zarinpal_merchant_id or "")
-        sandbox = settings.zarinpal_sandbox if settings else runtime.zarinpal_sandbox
-        enabled = settings.gateway_enabled if settings else bool(merchant_id)
-        if not enabled or not merchant_id:
-            raise ApiError("invalid_request", "ZarinPal merchant id is not configured")
-        self.merchant_id = merchant_id
-        self.base = "https://sandbox.zarinpal.com" if sandbox else "https://api.zarinpal.com"
-        self.start = "https://sandbox.zarinpal.com" if sandbox else "https://www.zarinpal.com"
-
-    async def _post(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
-            response = await client.post(f"{self.base}/pg/v4/payment/{action}.json", json=payload)
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise ApiError("internal", "invalid response from payment gateway", retryable=True) from exc
-        if response.status_code >= 500:
-            raise ApiError("internal", "payment gateway is unavailable", retryable=True)
-        if not isinstance(body, dict):
-            raise ApiError("internal", "invalid response from payment gateway", retryable=True)
-        return body
-
-    async def request(self, *, amount_rial: int, description: str, callback_url: str, mobile: str, email: str) -> GatewayRequest:
-        body = await self._post("request", {"merchant_id": self.merchant_id, "amount": amount_rial, "description": description, "callback_url": callback_url, "metadata": {"mobile": mobile, "email": email}})
-        data = body.get("data") or {}
-        authority = data.get("authority")
-        if data.get("code") != 100 or not authority:
-            raise ApiError("invalid_request", str((body.get("errors") or {}).get("message") or "payment request failed"))
-        return GatewayRequest(str(authority), f"{self.start}/pg/StartPay/{authority}", body)
-
-    async def verify(self, *, amount_rial: int, authority: str) -> GatewayVerification:
-        body = await self._post("verify", {"merchant_id": self.merchant_id, "amount": amount_rial, "authority": authority})
-        data = body.get("data") or {}
-        code = data.get("code")
-        return GatewayVerification(code in {100, 101}, str(data.get("ref_id")) if data.get("ref_id") is not None else None, body)
-
-    async def query(self, *, amount_rial: int, authority: str) -> GatewayVerification:
-        body = await self._post("inquiry", {"merchant_id": self.merchant_id, "authority": authority})
-        data = body.get("data") or {}
-        status = str(data.get("status") or "")
-        return GatewayVerification(status in {"VERIFIED", "PAID"}, None, body)
-
-    async def reverse(self, *, authority: str) -> GatewayVerification:
-        body = await self._post("reverse", {"merchant_id": self.merchant_id, "authority": authority})
-        data = body.get("data") or {}
-        return GatewayVerification(data.get("code") == 100, None, body)
+async def _gateway_for(code: str, *, require_enabled: bool = False) -> Gateway:
+    """Adapter for a stored attempt; in-flight payments stay verifiable after disabling."""
+    if code not in GATEWAYS:
+        raise ApiError("not_found", "payment gateway not found")
+    state = await gateway_settings.load_one(code)
+    if not state.configured or (require_enabled and not state.enabled):
+        raise ApiError(
+            "payment_method_unavailable",
+            "this payment method is not configured; choose another method or contact support",
+        )
+    return build_gateway(code, state.credentials, sandbox=state.sandbox)
 
 
-async def initiate(session: AsyncSession, order: Order) -> tuple[PaymentAttempt, str]:
-    if order.status in {"paid", "partially_refunded", "refunded"}:
+async def available_methods(amount_toman: int | None = None) -> list[dict[str, Any]]:
+    """Enabled, fully configured gateways in display order (no credentials)."""
+    states = await gateway_settings.load_all()
+    methods: list[dict[str, Any]] = []
+    for code in GATEWAY_ORDER:
+        state = states[code]
+        if not state.usable:
+            continue
+        cls = GATEWAYS[code]
+        min_toman = math.ceil(cls.min_rial / 10)
+        max_toman = cls.max_rial // 10 if cls.max_rial else None
+        available = amount_toman is None or (
+            amount_toman >= min_toman and (max_toman is None or amount_toman <= max_toman)
+        )
+        methods.append(
+            {
+                "code": code,
+                "name": cls.label,
+                "description": gateway_settings.DESCRIPTIONS[code],
+                "min_toman": min_toman,
+                "max_toman": max_toman,
+                "available": available,
+                "sandbox": state.sandbox,
+            }
+        )
+    return methods
+
+
+def _callback_url(gateway: str, order: Order, attempt_id: UUID) -> str:
+    query = urlencode({"token": order.callback_token, "attempt": str(attempt_id),
+                       "t": str(order.tenant_id)})
+    return f"{get_settings().public_base_url.rstrip('/')}/v1/payments/{gateway}/callback?{query}"
+
+
+def redirect_payload(attempt: PaymentAttempt) -> dict[str, Any]:
+    spec = (attempt.response_json or {}).get("_redirect") or {}
+    return {
+        "method": spec.get("method", "GET"),
+        "url": spec.get("url", ""),
+        "fields": spec.get("fields", {}),
+    }
+
+
+async def initiate(
+    session: AsyncSession, order: Order, gateway_code: str | None = None
+) -> tuple[PaymentAttempt, dict[str, Any]]:
+    if order.status in PAID_STATES:
         raise ApiError("conflict_idempotency", "order is already fulfilled")
-    # Repeating the pay action before the customer returns from the gateway must
-    # not create another authority.  An authority is already sufficient to
-    # resume the same ZarinPal checkout URL.
+    if order.status == "canceled":
+        raise ApiError("conflict", "this order was canceled; create a new order")
+    states = await gateway_settings.load_all()
+    usable = [code for code in GATEWAY_ORDER if states[code].usable]
+    if not usable:
+        raise ApiError(
+            "payment_method_unavailable",
+            "no payment method is active; contact support to enable a payment gateway",
+        )
+    if gateway_code is None:
+        if len(usable) != 1:
+            raise ApiError("invalid_request", "select a payment method")
+        gateway_code = usable[0]
+    if gateway_code not in usable:
+        raise ApiError(
+            "payment_method_unavailable",
+            "this payment method is not active; choose another method",
+        )
+    state = states[gateway_code]
+    cls = GATEWAYS[gateway_code]
+    amount_rial = order.amount_toman * 10
+    if amount_rial < cls.min_rial or (cls.max_rial is not None and amount_rial > cls.max_rial):
+        raise ApiError(
+            "payment_method_unavailable",
+            f"the amount is outside the limits of {cls.label}; choose another payment method",
+        )
+    now = datetime.now(UTC)
     existing = (
         await session.execute(
             select(PaymentAttempt)
             .where(
                 PaymentAttempt.order_id == order.id,
-                PaymentAttempt.gateway == "zarinpal",
+                PaymentAttempt.gateway == gateway_code,
                 PaymentAttempt.status == "redirected",
-                PaymentAttempt.authority.is_not(None),
+                PaymentAttempt.created_at > now - REDIRECT_REUSE,
             )
             .order_by(PaymentAttempt.created_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
-    if existing is not None and existing.authority is not None:
-        gateway = ZarinpalGateway(await get_commerce_settings(session))
-        return existing, f"{gateway.start}/pg/StartPay/{existing.authority}"
-    amount_rial = order.amount_toman * 10
-    callback = f"{get_settings().public_base_url.rstrip('/')}/v1/payments/zarinpal/callback?token={order.callback_token}"
-    result = await ZarinpalGateway(await get_commerce_settings(session)).request(amount_rial=amount_rial, description=f"سفارش {order.number}", callback_url=callback, mobile=order.customer_mobile, email=order.customer_email)
-    attempt = PaymentAttempt(order_id=order.id, tenant_id=order.tenant_id, gateway="zarinpal", status="redirected", amount_rial=amount_rial, authority=result.authority, response_json=result.response)
+    if existing is not None and redirect_payload(existing)["url"]:
+        return existing, redirect_payload(existing)
+    gateway = build_gateway(gateway_code, state.credentials, sandbox=state.sandbox)
+    attempt_id = uuid4()
+    order_ref = new_order_ref()
+    context = PaymentContext(
+        amount_rial=amount_rial,
+        order_ref=order_ref,
+        order_number=order.number,
+        description=f"سفارش {order.number}",
+        callback_url=_callback_url(gateway_code, order, attempt_id),
+        mobile=order.customer_mobile,
+        email=order.customer_email,
+    )
+    try:
+        started = await gateway.request(context)
+    except GatewayError as exc:
+        logger.warning(
+            "payment request failed",
+            extra={"extra_fields": {"gateway": gateway_code, "code": exc.code}},
+        )
+        raise ApiError(
+            "payment_gateway_unavailable" if exc.retryable else "invalid_request",
+            f"{cls.label} rejected the request ({exc.message}); try again, "
+            "choose another payment method or contact support",
+        ) from exc
+    redirect = {
+        "method": started.redirect.method,
+        "url": started.redirect.url,
+        "fields": started.redirect.fields,
+    }
+    attempt = PaymentAttempt(
+        id=attempt_id,
+        order_id=order.id,
+        tenant_id=order.tenant_id,
+        gateway=gateway_code,
+        status="redirected",
+        amount_rial=amount_rial,
+        authority=started.token,
+        order_ref=order_ref,
+        response_json={**started.response, "_redirect": redirect},
+    )
     session.add(attempt)
     order.status = "pending_payment"
     await session.flush()
-    return attempt, result.url
+    return attempt, redirect
 
 
 async def _balance_cache(session: AsyncSession, tenant_id: UUID) -> TenantBalanceCache:
@@ -264,63 +355,350 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
     session.add(Invoice(order_id=order.id, tenant_id=order.tenant_id, number=f"INV-{order.number}", amount_toman=order.amount_toman, profile_snapshot=order.invoice_profile))
 
 
-async def verify_callback(session: AsyncSession, *, token: str, authority: str, status: str) -> Order:
-    order = (await session.execute(select(Order).where(Order.callback_token == token).with_for_update())).scalar_one_or_none()
-    if order is None:
-        raise ApiError("not_found", "order not found")
-    if order.status in {"paid", "partially_refunded", "refunded"}:
-        return order
-    attempt = (await session.execute(select(PaymentAttempt).where(PaymentAttempt.order_id == order.id, PaymentAttempt.authority == authority).order_by(PaymentAttempt.created_at.desc()).limit(1).with_for_update())).scalar_one_or_none()
-    if attempt is None:
-        raise ApiError("invalid_request", "payment authority does not match the order")
-    if status.upper() != "OK":
-        attempt.status = "canceled"
-        order.status = "canceled"
-        return order
+@dataclass(frozen=True)
+class CallbackOutcome:
+    order_id: UUID | None
+    tenant_id: UUID | None
+    result: str  # paid | pending | failed | canceled | superseded
+    gateway: str
+
+
+async def _locate_scope(token: str, tenant_hint: UUID | None) -> UUID | None:
+    candidates = [tenant_hint] if tenant_hint is not None else await routable_tenant_ids()
+    for tenant_id in candidates:
+        async with session_scope(tenant_id) as session:
+            found = (
+                await session.execute(select(Order.id).where(Order.callback_token == token))
+            ).scalar_one_or_none()
+        if found is not None:
+            return tenant_id
+    return None
+
+
+def _matches_token(order: Order, token: str) -> bool:
+    return secrets.compare_digest(order.callback_token.encode(), token.encode())
+
+
+def _result_of(order: Order, attempt: PaymentAttempt) -> str:
+    if order.status in PAID_STATES and attempt.status == "verified":
+        return "paid"
+    if attempt.status == "pending_verification":
+        return "pending"
+    if attempt.status == "canceled":
+        return "canceled"
+    if attempt.status == "superseded":
+        return "superseded"
+    return "failed"
+
+
+async def _best_effort_reverse(gateway: Gateway, attempt: AttemptRef) -> None:
+    if not gateway.supports_reverse:
+        return
     try:
-        result = await ZarinpalGateway(await get_commerce_settings(session)).verify(amount_rial=order.amount_toman * 10, authority=authority)
-    except ApiError:
-        attempt.status = "pending_verification"
-        raise
-    attempt.response_json = result.response
-    if not result.success:
-        attempt.status = "failed"
-        raise ApiError("invalid_request", "payment verification failed")
-    attempt.status = "verified"
-    attempt.ref_id = result.ref_id
-    attempt.verified_at = datetime.now(UTC)
-    await fulfill_order(session, order)
-    return order
+        await gateway.reverse(attempt)
+    except Exception:  # noqa: BLE001 - the bank also returns unverified payments by itself
+        logger.warning("automatic payment reverse failed", extra={"extra_fields": {
+            "gateway": gateway.code}})
+
+
+async def handle_callback(
+    gateway_code: str,
+    params: dict[str, str],
+    *,
+    token: str,
+    attempt_id: UUID | None,
+    tenant_hint: UUID | None,
+) -> CallbackOutcome:
+    """Bank return: record, verify, fulfil.  Never raises for payment outcomes."""
+    if gateway_code not in GATEWAYS:
+        raise ApiError("not_found", "payment gateway not found")
+    tenant_id = await _locate_scope(token, tenant_hint)
+    if tenant_id is None:
+        raise ApiError("not_found", "order not found")
+    gateway = await _gateway_for(gateway_code)
+    info = gateway.parse_callback(params)
+
+    # Stage A: validate the return and persist it before any bank call.
+    async with session_scope(tenant_id) as session:
+        order = (
+            await session.execute(
+                select(Order).where(Order.callback_token == token).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if order is None or not _matches_token(order, token):
+            raise ApiError("not_found", "order not found")
+        stmt = select(PaymentAttempt).where(
+            PaymentAttempt.order_id == order.id, PaymentAttempt.gateway == gateway_code
+        )
+        if attempt_id is not None:
+            stmt = stmt.where(PaymentAttempt.id == attempt_id)
+        elif info.token:
+            stmt = stmt.where(PaymentAttempt.authority == info.token)
+        else:
+            raise ApiError("invalid_request", "payment reference is missing")
+        attempt = (await session.execute(stmt.with_for_update())).scalar_one_or_none()
+        if attempt is None:
+            raise ApiError("not_found", "payment attempt not found")
+        attempt_pk = attempt.id
+        now = datetime.now(UTC)
+        attempt.updated_at = now
+        if attempt.status == "verified":
+            return CallbackOutcome(order.id, tenant_id, _result_of(order, attempt), gateway_code)
+        if attempt.status not in {"redirected", "pending_verification", "expired"}:
+            return CallbackOutcome(order.id, tenant_id, _result_of(order, attempt), gateway_code)
+        if info.token and attempt.authority and info.token != attempt.authority:
+            attempt.status, attempt.failure_code = "failed", "token_mismatch"
+            return CallbackOutcome(order.id, tenant_id, "failed", gateway_code)
+        if info.order_ref is not None and info.order_ref != attempt.order_ref:
+            attempt.status, attempt.failure_code = "failed", "order_mismatch"
+            return CallbackOutcome(order.id, tenant_id, "failed", gateway_code)
+        if order.status in PAID_STATES:
+            # Another attempt already paid this order; the bank returns this one itself.
+            attempt.status, attempt.failure_code = "superseded", "order_already_paid"
+            return CallbackOutcome(order.id, tenant_id, "superseded", gateway_code)
+        if info.outcome != "ok":
+            attempt.status = "canceled" if info.outcome == "canceled" else "failed"
+            attempt.failure_code = info.failure_code
+            attempt.callback_json = info.reference
+            return CallbackOutcome(order.id, tenant_id, _result_of(order, attempt), gateway_code)
+        attempt.callback_json = info.reference
+        if info.amount_rial is not None and info.amount_rial != attempt.amount_rial:
+            attempt.status, attempt.failure_code = "failed", "amount_mismatch"
+            mismatch_ref = _attempt_ref(attempt)
+            order_id = order.id
+        else:
+            attempt.status = "pending_verification"
+            mismatch_ref = None
+            order_id = order.id
+    if mismatch_ref is not None:
+        await _best_effort_reverse(gateway, mismatch_ref)
+        return CallbackOutcome(order_id, tenant_id, "failed", gateway_code)
+
+    # Stage B: bank verification and fulfilment in one transaction.
+    result = await verify_and_fulfill(tenant_id, attempt_pk)
+    return CallbackOutcome(order_id, tenant_id, result, gateway_code)
+
+
+async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
+    """Idempotent: safe to repeat from the sweeper.  Returns paid | pending | failed."""
+    mismatch_ref: AttemptRef | None = None
+    gateway: Gateway | None = None
+    needs_settle = False
+    async with session_scope(tenant_id) as session:
+        attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
+        if attempt is None:
+            raise ApiError("not_found", "payment attempt not found")
+        order = await session.get(Order, attempt.order_id, with_for_update=True)
+        if order is None:
+            raise ApiError("not_found", "order not found")
+        if attempt.status == "verified":
+            return "paid"
+        if attempt.status not in {"pending_verification", "redirected", "expired"}:
+            return "failed"
+        if order.status in PAID_STATES:
+            attempt.status, attempt.failure_code = "superseded", "order_already_paid"
+            return "failed"
+        gateway = await _gateway_for(attempt.gateway)
+        attempt.check_count += 1
+        attempt.last_checked_at = datetime.now(UTC)
+        try:
+            verification = await gateway.verify(_attempt_ref(attempt))
+        except GatewayError as exc:
+            attempt.status = "pending_verification"
+            attempt.failure_code = exc.code
+            return "pending"
+        attempt.response_json = {**(attempt.response_json or {}), "verify": _safe(verification)}
+        if not verification.success:
+            attempt.status = "failed"
+            attempt.failure_code = verification.code or "verify_failed"
+            return "failed"
+        if verification.amount_rial is not None and verification.amount_rial != attempt.amount_rial:
+            attempt.status, attempt.failure_code = "failed", "amount_mismatch"
+            mismatch_ref = _attempt_ref(attempt)
+        else:
+            now = datetime.now(UTC)
+            attempt.status = "verified"
+            attempt.failure_code = None
+            attempt.ref_id = verification.ref_id or attempt.ref_id
+            attempt.rrn = verification.rrn or attempt.rrn
+            attempt.card_pan = verification.card_pan or attempt.card_pan
+            attempt.verified_at = now
+            attempt.settled_at = None if gateway.needs_settle else now
+            needs_settle = gateway.needs_settle
+            await fulfill_order(session, order)
+    if mismatch_ref is not None and gateway is not None:
+        await _best_effort_reverse(gateway, mismatch_ref)
+        return "failed"
+    if needs_settle:
+        await settle_attempt(tenant_id, attempt_id)
+    return "paid"
+
+
+def _safe(verification: Verification) -> dict[str, Any]:
+    return {"code": verification.code, "already_verified": verification.already_verified,
+            "response": verification.response}
+
+
+async def settle_attempt(tenant_id: UUID, attempt_id: UUID) -> bool:
+    """Mellat bpSettleRequest; repeated until the bank accepts (idempotent)."""
+    async with session_scope(tenant_id) as session:
+        attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
+        if attempt is None or attempt.status != "verified" or attempt.settled_at is not None:
+            return True
+        gateway = await _gateway_for(attempt.gateway)
+        attempt.check_count += 1
+        attempt.last_checked_at = datetime.now(UTC)
+        try:
+            settled = await gateway.settle(_attempt_ref(attempt))
+        except GatewayError as exc:
+            attempt.failure_code = f"settle_{exc.code}"
+            return False
+        if settled:
+            attempt.settled_at = datetime.now(UTC)
+            attempt.failure_code = None
+        else:
+            attempt.failure_code = "settle_rejected"
+        return settled
 
 
 async def reconcile_attempt(session: AsyncSession, payment_id: UUID) -> Order:
+    """Admin action: re-check one attempt with the bank and fulfil when it was really paid."""
     attempt = await session.get(PaymentAttempt, payment_id, with_for_update=True)
     if attempt is None or attempt.authority is None:
         raise ApiError("not_found", "payment attempt not found")
     order = await session.get(Order, attempt.order_id, with_for_update=True)
     if order is None:
         raise ApiError("not_found", "order not found")
-    if order.status in {"paid", "partially_refunded", "refunded"}:
+    if order.status in PAID_STATES:
+        if attempt.status == "verified" and attempt.settled_at is None:
+            await _settle_in(session, attempt)
         return order
-    gateway = ZarinpalGateway(await get_commerce_settings(session))
-    inquiry = await gateway.query(
-        amount_rial=attempt.amount_rial,
-        authority=attempt.authority,
-    )
-    attempt.response_json = inquiry.response
+    gateway = await _gateway_for(attempt.gateway)
+    try:
+        inquiry = await gateway.inquiry(_attempt_ref(attempt))
+    except GatewayError as exc:
+        raise ApiError("payment_gateway_unavailable",
+                       "the gateway could not be reached; retry in a minute") from exc
+    attempt.last_checked_at = datetime.now(UTC)
+    attempt.check_count += 1
     if not inquiry.success:
-        attempt.status = "pending_verification"
-        raise ApiError("invalid_request", "payment is not verified")
-    result = await gateway.verify(amount_rial=attempt.amount_rial, authority=attempt.authority)
-    attempt.response_json = result.response
-    if not result.success:
+        attempt.status = "pending_verification" if attempt.status != "failed" else "failed"
+        raise ApiError("invalid_request", "payment is not verified by the gateway")
+    try:
+        verification = await gateway.verify(_attempt_ref(attempt))
+    except GatewayError as exc:
+        raise ApiError("payment_gateway_unavailable",
+                       "verification could not be completed; retry in a minute") from exc
+    attempt.response_json = {**(attempt.response_json or {}), "verify": _safe(verification)}
+    if not verification.success or (
+        verification.amount_rial is not None and verification.amount_rial != attempt.amount_rial
+    ):
         attempt.status = "pending_verification"
         raise ApiError("invalid_request", "payment verification failed")
+    now = datetime.now(UTC)
     attempt.status = "verified"
-    attempt.ref_id = result.ref_id
-    attempt.verified_at = datetime.now(UTC)
+    attempt.failure_code = None
+    attempt.ref_id = verification.ref_id or attempt.ref_id
+    attempt.rrn = verification.rrn or attempt.rrn
+    attempt.card_pan = verification.card_pan or attempt.card_pan
+    attempt.verified_at = now
+    attempt.settled_at = None if gateway.needs_settle else now
     await fulfill_order(session, order)
+    if gateway.needs_settle:
+        await _settle_in(session, attempt)
     return order
+
+
+async def _settle_in(session: AsyncSession, attempt: PaymentAttempt) -> None:
+    gateway = await _gateway_for(attempt.gateway)
+    try:
+        if await gateway.settle(_attempt_ref(attempt)):
+            attempt.settled_at = datetime.now(UTC)
+            attempt.failure_code = None
+    except GatewayError as exc:
+        attempt.failure_code = f"settle_{exc.code}"
+
+
+async def reconcile_pending() -> dict[str, int]:
+    """Cron: recover payments whose callback or verification never completed."""
+    counts = {"verified": 0, "settled": 0, "expired": 0, "errors": 0}
+    now = datetime.now(UTC)
+    for tenant_id in await routable_tenant_ids():
+        async with session_scope(tenant_id) as session:
+            rows = (
+                await session.execute(
+                    select(PaymentAttempt.id, PaymentAttempt.status, PaymentAttempt.gateway,
+                           PaymentAttempt.created_at, PaymentAttempt.settled_at)
+                    .where(
+                        PaymentAttempt.check_count < MAX_CHECKS,
+                        (
+                            (PaymentAttempt.status == "pending_verification")
+                            | (
+                                (PaymentAttempt.status == "redirected")
+                                & (PaymentAttempt.created_at < now - REDIRECT_REUSE)
+                            )
+                            | (
+                                (PaymentAttempt.status == "verified")
+                                & PaymentAttempt.settled_at.is_(None)
+                            )
+                        ),
+                    )
+                    .limit(200)
+                )
+            ).all()
+        for attempt_id, state, gateway_code, created_at, _settled in rows:
+            try:
+                if state == "verified":
+                    counts["settled"] += int(await settle_attempt(tenant_id, attempt_id))
+                elif state == "pending_verification":
+                    outcome = await verify_and_fulfill(tenant_id, attempt_id)
+                    counts["verified"] += int(outcome == "paid")
+                else:
+                    counts["verified"] += await _sweep_redirected(
+                        tenant_id, attempt_id, gateway_code, created_at, now, counts
+                    )
+            except Exception:  # noqa: BLE001 - one bad attempt must not stop the sweep
+                counts["errors"] += 1
+                logger.exception("payment reconciliation failed",
+                                 extra={"extra_fields": {"attempt_id": str(attempt_id)}})
+    return counts
+
+
+async def _sweep_redirected(
+    tenant_id: UUID,
+    attempt_id: UUID,
+    gateway_code: str,
+    created_at: datetime,
+    now: datetime,
+    counts: dict[str, int],
+) -> int:
+    """No callback seen: ask the bank by token where possible, else expire after 2 hours."""
+    paid = False
+    if gateway_code in {"zarinpal", "zibal"}:
+        try:
+            gateway = await _gateway_for(gateway_code)
+            async with session_scope(tenant_id) as session:
+                attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
+                if attempt is None or attempt.status != "redirected":
+                    return 0
+                attempt.check_count += 1
+                attempt.last_checked_at = now
+                paid = (await gateway.inquiry(_attempt_ref(attempt))).success
+        except (GatewayError, ApiError):
+            paid = False
+    if paid:
+        async with session_scope(tenant_id) as session:
+            attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
+            if attempt is not None and attempt.status == "redirected":
+                attempt.status = "pending_verification"
+        return int(await verify_and_fulfill(tenant_id, attempt_id) == "paid")
+    if now - created_at > ATTEMPT_LIFETIME:
+        async with session_scope(tenant_id) as session:
+            attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
+            if attempt is not None and attempt.status == "redirected":
+                attempt.status = "expired"
+                counts["expired"] += 1
+    return 0
 
 
 async def refund_order(
@@ -391,14 +769,28 @@ async def refund_order(
         attempt = await session.get(PaymentAttempt, payment_attempt_id, with_for_update=True)
         if attempt is None or attempt.order_id != order.id or attempt.authority is None:
             raise ApiError("not_found", "payment attempt not found")
-        if datetime.now(UTC) - attempt.created_at > timedelta(minutes=30):
+        if attempt.status != "verified":
+            raise ApiError("invalid_request", "only a verified payment can be reversed")
+        gateway = await _gateway_for(attempt.gateway)
+        if not gateway.supports_reverse:
+            raise ApiError(
+                "invalid_request",
+                "this gateway cannot reverse payments; use a manual refund instead",
+            )
+        if attempt.gateway == "zarinpal" and (
+            datetime.now(UTC) - (attempt.verified_at or attempt.created_at) > timedelta(minutes=30)
+        ):
             raise ApiError("invalid_request", "reverse window has expired")
-        result = await ZarinpalGateway(await get_commerce_settings(session)).reverse(
-            authority=attempt.authority
-        )
-        response = result.response
-        if not result.success:
+        try:
+            reversed_ok = await gateway.reverse(_attempt_ref(attempt))
+        except GatewayError as exc:
+            raise ApiError(
+                "payment_gateway_unavailable",
+                "gateway reverse could not be completed; retry or use a manual refund",
+            ) from exc
+        if not reversed_ok:
             raise ApiError("invalid_request", "gateway reverse failed")
+        response = {"reversed": True}
         external_reference = attempt.ref_id or attempt.authority
     elif method != "manual":
         raise ApiError("invalid_request", "refund method is invalid")

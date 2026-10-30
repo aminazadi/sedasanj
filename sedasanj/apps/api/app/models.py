@@ -1723,17 +1723,29 @@ class PaymentAttempt(Base):
     gateway: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     amount_rial: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    authority: Mapped[str | None] = mapped_column(String(64), unique=True)
-    ref_id: Mapped[str | None] = mapped_column(String(64))
+    authority: Mapped[str | None] = mapped_column(String(255))
+    ref_id: Mapped[str | None] = mapped_column(String(128))
+    order_ref: Mapped[int | None] = mapped_column(BigInteger)
+    rrn: Mapped[str | None] = mapped_column(String(64))
+    card_pan: Mapped[str | None] = mapped_column(String(32))
+    failure_code: Mapped[str | None] = mapped_column(String(64))
     response_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'")
     )
+    callback_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    check_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_checked_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    settled_at: Mapped[datetime | None] = mapped_column(TSTZ)
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('redirected','canceled','pending_verification','failed','verified')",
+            "status IN ('redirected','canceled','pending_verification','failed','verified',"
+            "'expired','superseded')",
             name="payment_attempts_status_check",
         ),
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -36,11 +37,22 @@ from app.models import (
     Subscription,
     SubscriptionChange,
     Tenant,
-    TenantDatabaseRegistry,
     User,
 )
 from app.security import hash_password
-from app.services import audit, commerce, demo_settings, entitlements, payments, ratelimit, smsir
+from app.services import (
+    audit,
+    billing,
+    commerce,
+    demo_settings,
+    entitlements,
+    gateway_settings,
+    payments,
+    ratelimit,
+    smsir,
+)
+from app.services.gateways import GatewayError, PaymentContext
+from app.services.gateways.registry import GATEWAY_ORDER, GATEWAYS, build_gateway
 from app.services.commerce_settings import (
     get_commerce_settings,
     update_commerce_settings,
@@ -50,6 +62,8 @@ from app.services.commerce_settings import (
 )
 from app.services.phone_identity import normalize_mobile as _mobile
 from app.services.signup import create_account
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["commerce"])
 SITE_CONTACT_PHONE_KEY = "site_contact_phone"
@@ -205,9 +219,6 @@ class RefundCreate(ReasonAction):
 
 class CommerceSettingsUpdate(BaseModel):
     model_config = {"extra": "forbid"}
-    gateway_enabled: bool | None = None
-    zarinpal_merchant_id: str | None = Field(default=None, min_length=36, max_length=64)
-    zarinpal_sandbox: bool | None = None
     installation_initial_toman: int | None = Field(default=None, ge=0)
     installation_reinstall_toman: int | None = Field(default=None, ge=0)
     installation_dedicated_toman: int | None = Field(default=None, ge=0)
@@ -387,62 +398,131 @@ async def create_order(payload: CheckoutCreate, request: Request, principal: Org
     return {"id": str(order.id), "number": order.number, "amount_toman": order.amount_toman, "status": order.status}
 
 
+class PayRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    gateway: Literal["zarinpal", "zibal", "saman", "behpardakht"] | None = None
+
+
+@router.get("/billing/payment-methods")
+async def payment_methods(
+    principal: OrgAdminDep, amount_toman: int | None = Query(default=None, ge=0)
+) -> list[dict[str, Any]]:
+    """Gateways the customer may choose: enabled and fully configured only."""
+    return await payments.available_methods(amount_toman)
+
+
+@router.get("/billing/credit-quote")
+async def credit_quote(
+    principal: OrgAdminDep,
+    session: TenantSession,
+    minutes: int = Query(ge=10, le=1_000_000),
+) -> dict[str, Any]:
+    assert principal.tenant_id is not None
+    price = await billing.effective_price_per_minute(
+        session, principal.tenant_id, include_pending=True
+    )
+    total = minutes * price
+    return {
+        "minutes": minutes,
+        "price_per_minute_toman": price,
+        "total_toman": total,
+        "methods": await payments.available_methods(total),
+    }
+
+
 @router.post("/orders/{order_id}/pay")
-async def pay_order(order_id: UUID, request: Request, principal: OrgAdminDep, session: TenantSession) -> dict[str, str]:
+async def pay_order(
+    order_id: UUID,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+    payload: PayRequest | None = None,
+) -> dict[str, Any]:
     assert principal.tenant_id is not None
     order = (await session.execute(select(Order).where(Order.id == order_id, Order.tenant_id == principal.tenant_id).with_for_update())).scalar_one_or_none()
     if order is None:
         raise ApiError("not_found", "order not found")
-    attempt, url = await payments.initiate(session, order)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="payment.initiated", payload={"order_id": str(order.id), "payment_id": str(attempt.id)}, ip=client_ip(request))
-    return {"payment_id": str(attempt.id), "redirect_url": url}
+    attempt, redirect = await payments.initiate(session, order, payload.gateway if payload else None)
+    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="payment.initiated", payload={"order_id": str(order.id), "payment_id": str(attempt.id), "gateway": attempt.gateway}, ip=client_ip(request))
+    return {
+        "payment_id": str(attempt.id),
+        "gateway": attempt.gateway,
+        "redirect": redirect,
+        "redirect_url": redirect["url"],
+    }
 
 
-@router.get("/payments/zarinpal/callback", include_in_schema=False)
-async def zarinpal_callback(
-    session: PublicSession,
-    token: str,
-    Authority: str = Query(alias="Authority"),
-    Status: str = Query(alias="Status"),
-) -> RedirectResponse:
-    ready_tenants = list(
-        (
-            await session.execute(
-                select(TenantDatabaseRegistry.tenant_id).where(
-                    TenantDatabaseRegistry.status == "ready"
-                )
-            )
-        ).scalars()
+@router.get("/orders/{order_id}/payment-status")
+async def order_payment_status(
+    order_id: UUID, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, Any]:
+    assert principal.tenant_id is not None
+    order = (await session.execute(select(Order).where(Order.id == order_id, Order.tenant_id == principal.tenant_id))).scalar_one_or_none()
+    if order is None:
+        raise ApiError("not_found", "order not found")
+    attempt = (await session.execute(select(PaymentAttempt).where(PaymentAttempt.order_id == order.id).order_by(PaymentAttempt.created_at.desc()).limit(1))).scalar_one_or_none()
+    items = (await session.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    credit_minutes = sum(item.quantity for item in items if item.kind == "credit")
+    labels = {code: cls.label for code, cls in GATEWAYS.items()}
+    return {
+        "order_id": str(order.id),
+        "number": order.number,
+        "kind": order.kind,
+        "status": order.status,
+        "amount_toman": order.amount_toman,
+        "credit_minutes": credit_minutes,
+        "paid_at": order.paid_at,
+        "payment": None
+        if attempt is None
+        else {
+            "gateway": attempt.gateway,
+            "gateway_label": labels.get(attempt.gateway, attempt.gateway),
+            "status": attempt.status,
+            "ref_id": attempt.ref_id,
+            "card_pan": attempt.card_pan,
+            "failure_code": attempt.failure_code,
+        },
+    }
+
+
+def _result_redirect(order_id: UUID | None, result: str, gateway: str) -> RedirectResponse:
+    query = f"status={result}&gateway={gateway}"
+    if order_id is not None:
+        query = f"order={order_id}&{query}"
+    return RedirectResponse(
+        f"{get_settings().public_app_url.rstrip('/')}/payment-result?{query}", status_code=303
     )
-    legacy_statement = select(Order.id).where(Order.callback_token == token)
-    if ready_tenants:
-        legacy_statement = legacy_statement.where(Order.tenant_id.not_in(ready_tenants))
-    legacy_order = (await session.execute(legacy_statement)).scalar_one_or_none()
-    if legacy_order is not None:
-        order = await payments.verify_callback(
-            session, token=token, authority=Authority, status=Status
+
+
+@router.api_route("/payments/{gateway}/callback", methods=["GET", "POST"], include_in_schema=False)
+async def gateway_callback(gateway: str, request: Request) -> RedirectResponse:
+    """Bank return URL.  Banks reach it with GET (ZarinPal, Zibal) or a form POST (SEP, Mellat)."""
+    query = dict(request.query_params)
+    token = query.pop("token", "")
+    raw_attempt = query.pop("attempt", "")
+    raw_tenant = query.pop("t", "")
+    params = dict(query)
+    if request.method == "POST":
+        form = await request.form()
+        params.update({k: v for k, v in form.items() if isinstance(v, str)})
+    params = {key[:64]: value[:512] for key, value in params.items()}
+    try:
+        attempt_id = UUID(raw_attempt) if raw_attempt else None
+        tenant_hint = UUID(raw_tenant) if raw_tenant else None
+    except ValueError:
+        return _result_redirect(None, "failed", gateway)
+    if gateway not in GATEWAYS or not token:
+        return _result_redirect(None, "failed", gateway)
+    try:
+        outcome = await payments.handle_callback(
+            gateway, params, token=token, attempt_id=attempt_id, tenant_hint=tenant_hint
         )
-    else:
-        order = None
-        for tenant_id in ready_tenants:
-            async with session_scope(tenant_id) as tenant_session:
-                candidate = (
-                    await tenant_session.execute(
-                        select(Order.id).where(Order.callback_token == token)
-                    )
-                ).scalar_one_or_none()
-                if candidate is not None:
-                    order = await payments.verify_callback(
-                        tenant_session,
-                        token=token,
-                        authority=Authority,
-                        status=Status,
-                    )
-                    break
-        if order is None:
-            raise ApiError("not_found", "order not found")
-    assert order is not None
-    return RedirectResponse(f"{get_settings().public_app_url.rstrip('/')}/payment-result?order={order.id}&status={order.status}", status_code=303)
+    except ApiError:
+        return _result_redirect(None, "failed", gateway)
+    except Exception:  # noqa: BLE001 - never show an error page to a buyer who may have paid
+        logger.exception("payment callback failed", extra={"extra_fields": {"gateway": gateway}})
+        return _result_redirect(None, "pending", gateway)
+    return _result_redirect(outcome.order_id, outcome.result, gateway)
 
 
 @router.get("/subscription")
@@ -1063,7 +1143,7 @@ async def admin_payments(staff: StaffDep, session: StaffSession, payment_status:
     rows.sort(key=lambda row: row.created_at, reverse=True)
     total = len(rows)
     page_rows = rows[cursor : cursor + limit]
-    return _page([{"id": str(row.id), "order_id": str(row.order_id), "tenant_id": str(row.tenant_id), "status": row.status, "gateway": row.gateway, "amount_rial": row.amount_rial, "authority_hint": f"…{row.authority[-8:]}" if row.authority else None, "ref_id": row.ref_id, "created_at": row.created_at, "verified_at": row.verified_at} for row in page_rows], total, cursor, limit)
+    return _page([{"id": str(row.id), "order_id": str(row.order_id), "tenant_id": str(row.tenant_id), "status": row.status, "gateway": row.gateway, "amount_rial": row.amount_rial, "authority_hint": f"…{row.authority[-8:]}" if row.authority else None, "ref_id": row.ref_id, "rrn": row.rrn, "card_pan": row.card_pan, "failure_code": row.failure_code, "order_ref": row.order_ref, "settled_at": row.settled_at, "gateway_label": GATEWAYS[row.gateway].label if row.gateway in GATEWAYS else row.gateway, "created_at": row.created_at, "verified_at": row.verified_at} for row in page_rows], total, cursor, limit)
 
 
 @router.post("/admin/commerce/payments/{payment_id}/reconcile")
@@ -1120,12 +1200,78 @@ async def patch_admin_commerce_settings(payload: CommerceSettingsUpdate, request
     return commerce_settings_public_view(saved)
 
 
-@router.post("/admin/commerce/settings/test")
-async def test_admin_commerce_settings(staff: StaffDep, session: StaffSession) -> dict[str, Any]:
-    current = await get_commerce_settings(session)
-    if not current.gateway_enabled or not current.zarinpal_merchant_id:
-        raise ApiError("invalid_request", "payment gateway is not fully configured")
-    return {"ok": True, "mode": "sandbox" if current.zarinpal_sandbox else "live"}
+class GatewayUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
+    enabled: bool | None = None
+    sandbox: bool | None = None
+    credentials: dict[str, str] = Field(default_factory=dict)
+
+
+def _gateway_view(state: gateway_settings.GatewayState) -> dict[str, Any]:
+    cls = GATEWAYS[state.code]
+    return {
+        "code": state.code,
+        "name": cls.label,
+        "description": gateway_settings.DESCRIPTIONS[state.code],
+        "enabled": state.enabled,
+        "sandbox": state.sandbox,
+        "supports_sandbox": state.code in gateway_settings.SANDBOX_GATEWAYS,
+        "configured": state.configured,
+        "usable": state.usable,
+        "min_toman": -(-cls.min_rial // 10),
+        "max_toman": cls.max_rial // 10 if cls.max_rial else None,
+        "supports_reverse": cls.supports_reverse,
+        "fields": [
+            {
+                "name": name,
+                "label": label,
+                "configured": bool(state.credentials.get(name)),
+                "hint": gateway_settings.hint(state.credentials.get(name, "")),
+            }
+            for name, label in gateway_settings.CREDENTIAL_FIELDS[state.code].items()
+        ],
+        "callback_url": f"{get_settings().public_base_url.rstrip('/')}/v1/payments/{state.code}/callback",
+    }
+
+
+@router.get("/admin/commerce/gateways")
+async def admin_gateways(staff: StaffDep, session: StaffSession) -> list[dict[str, Any]]:
+    states = await gateway_settings.load_with(session)
+    return [_gateway_view(states[code]) for code in GATEWAY_ORDER]
+
+
+@router.patch("/admin/commerce/gateways/{code}")
+async def update_admin_gateway(code: str, payload: GatewayUpdate, request: Request, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+    state = await gateway_settings.save(session, code, enabled=payload.enabled, sandbox=payload.sandbox, credentials=payload.credentials)
+    await audit.record(session, actor_type="staff", actor_id=staff.id, action="gateway.settings_changed", payload={"gateway": code, "enabled": state.enabled, "sandbox": state.sandbox, "credential_fields_changed": sorted(k for k, v in payload.credentials.items() if v.strip())}, ip=client_ip(request))
+    return _gateway_view(state)
+
+
+@router.post("/admin/commerce/gateways/{code}/test")
+async def test_admin_gateway(code: str, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+    """Asks the bank for a payment token (no money moves) to prove credentials, IP and mode."""
+    if code not in GATEWAYS:
+        raise ApiError("not_found", "payment gateway not found")
+    state = (await gateway_settings.load_with(session))[code]
+    if not state.configured:
+        raise ApiError("invalid_request", "enter the gateway credentials first")
+    cls = GATEWAYS[code]
+    gateway = build_gateway(code, state.credentials, sandbox=state.sandbox)
+    context = PaymentContext(
+        amount_rial=cls.min_rial,
+        order_ref=payments.new_order_ref(),
+        order_number="TEST",
+        description="تست اتصال",
+        callback_url=f"{get_settings().public_base_url.rstrip('/')}/v1/payments/{code}/callback",
+        mobile="",
+        email="",
+    )
+    started_at = datetime.now(UTC)
+    try:
+        await gateway.request(context)
+    except GatewayError as exc:
+        return {"ok": False, "code": exc.code, "message": exc.message, "retryable": exc.retryable}
+    return {"ok": True, "mode": "sandbox" if state.sandbox else "live", "latency_ms": int((datetime.now(UTC) - started_at).total_seconds() * 1000)}
 
 
 @router.get("/admin/commerce/installations")

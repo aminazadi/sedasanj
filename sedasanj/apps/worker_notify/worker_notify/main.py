@@ -37,6 +37,7 @@ from app.services.maintenance import (
     refresh_queue_depth,
     run_retention,
 )
+from app.services.payments import reconcile_pending
 from app.services.urlguard import assert_safe_webhook_url_async
 from worker_notify.mailer import send_email
 
@@ -353,11 +354,18 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
     requeued = await reconcile_stuck_calls()
     expired_subscriptions, expired_grants = await expire_commerce_state()
     renewal_orders = await prepare_renewal_orders()
+    try:
+        payment_counts = await reconcile_pending()
+    except Exception:  # noqa: BLE001 - the payment sweep must not stall other reconciliation
+        logger.exception("payment reconciliation sweep failed")
+        payment_counts = {"verified": 0, "settled": 0, "expired": 0, "errors": 1}
     await refresh_failure_gauge()
     await refresh_queue_depth()
     return (
         f"reconciled:{requeued}:subscriptions:{expired_subscriptions}:"
-        f"grants:{expired_grants}:renewals:{renewal_orders}"
+        f"grants:{expired_grants}:renewals:{renewal_orders}:"
+        f"payments:{payment_counts['verified']}/{payment_counts['settled']}/"
+        f"{payment_counts['expired']}/{payment_counts['errors']}"
     )
 
 

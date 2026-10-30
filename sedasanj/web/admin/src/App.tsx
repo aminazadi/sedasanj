@@ -5,6 +5,7 @@ import { AdminShellSkeleton } from "./components/Widgets";
 import Audit from "./pages/Audit";
 import Commerce from "./pages/Commerce";
 import CommerceSettings from "./pages/CommerceSettings";
+import PaymentGateways from "./pages/PaymentGateways";
 import Installations from "./pages/Installations";
 import Plans from "./pages/Plans";
 import Sales from "./pages/Sales";
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="/help/media" element={<HelpMediaPage />} />
         <Route path="/staff" element={<Staff />} />
         <Route path="/commerce-settings" element={<CommerceSettings />} />
+        <Route path="/payment-gateways" element={<PaymentGateways />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />

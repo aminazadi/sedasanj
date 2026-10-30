@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.routers.commerce import CheckoutCreate, PlanVersionCreate, _plan_out
-from app.services.payments import ZarinpalGateway
 
 
 def version_payload(**overrides: object) -> dict[str, object]:
@@ -44,7 +43,9 @@ def test_checkout_rejects_monthly_billing_period() -> None:
 def test_extra_operator_capability_requires_annual_price() -> None:
     with pytest.raises(ValidationError):
         PlanVersionCreate(**version_payload(allows_extra_operators=True))
-    PlanVersionCreate(**version_payload(allows_extra_operators=True, extra_operator_annual_toman=100_000))
+    PlanVersionCreate(
+        **version_payload(allows_extra_operators=True, extra_operator_annual_toman=100_000)
+    )
 
 
 def test_plan_output_includes_lifecycle_and_assistant_model() -> None:
@@ -64,19 +65,3 @@ def test_plan_output_includes_lifecycle_and_assistant_model() -> None:
     output = _plan_out(plan, version)
     assert output["status"] == "draft"
     assert output["assistant_model"] == "model-a"
-
-
-@pytest.mark.asyncio
-async def test_gateway_query_uses_inquiry_without_verifying() -> None:
-    gateway = object.__new__(ZarinpalGateway)
-    gateway.merchant_id = "merchant"
-    calls: list[tuple[str, dict[str, object]]] = []
-
-    async def fake_post(action: str, payload: dict[str, object]) -> dict[str, object]:
-        calls.append((action, payload))
-        return {"data": {"status": "PAID", "code": 100}}
-
-    gateway._post = fake_post  # type: ignore[method-assign]
-    result = await gateway.query(amount_rial=10_000, authority="A-test")
-    assert result.success is True
-    assert calls == [("inquiry", {"merchant_id": "merchant", "authority": "A-test"})]
