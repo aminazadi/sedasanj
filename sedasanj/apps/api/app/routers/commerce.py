@@ -302,7 +302,11 @@ def _plan_summary(plan: Plan) -> dict[str, Any]:
 
 @router.get("/plans")
 async def list_plans(session: PublicSession) -> list[dict[str, Any]]:
-    return [_plan_out(plan, version) for plan, version in await commerce.public_plans(session)]
+    featured = (await get_commerce_settings(session)).featured_plan_code
+    return [
+        {**_plan_out(plan, version), "featured": plan.code == featured}
+        for plan, version in await commerce.public_plans(session)
+    ]
 
 
 @router.get("/site/contact-settings")

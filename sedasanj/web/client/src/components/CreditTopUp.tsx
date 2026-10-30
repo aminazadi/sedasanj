@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { fmt, request } from "../api";
+import { useSearchParams } from "react-router-dom";
+import { ApiError, fmt, request } from "../api";
+import { billingErrorMessage } from "../lib/billingErrors.mjs";
 import { startPayment, type GatewayCode } from "../lib/payment";
 import PaymentMethodPicker from "./PaymentMethodPicker";
 import { Empty } from "./Widgets";
@@ -11,9 +13,20 @@ interface Quote {
   total_toman: number;
 }
 
-const PRESETS = [60, 300, 1000, 3000];
-const MIN_MINUTES = 10;
-const MAX_MINUTES = 1_000_000;
+function describe(reason: unknown): string {
+  const error = reason instanceof ApiError ? reason : null;
+  return billingErrorMessage(error?.code, error?.message, "انجام نشد؛ دوباره تلاش کنید.");
+}
+
+interface CreditSettings {
+  min_minutes: number;
+  max_minutes: number;
+  presets: number[];
+  tax_percent: number;
+}
+
+// Used only until the admin-managed limits arrive from the API.
+const DEFAULT_SETTINGS: CreditSettings = { min_minutes: 10, max_minutes: 1_000_000, presets: [60, 300, 1000, 3000], tax_percent: 0 };
 
 interface Props {
   packages: Package[];
@@ -23,10 +36,18 @@ interface Props {
 
 /** Credit purchase: ready packages or any number of minutes at the current per-minute tariff. */
 export default function CreditTopUp({ packages, pricePerMinute, onError }: Props) {
-  const [mode, setMode] = useState<"custom" | "package">("custom");
+  const [params, setParams] = useSearchParams();
+  const mode: "custom" | "package" = params.get("topup") === "package" ? "package" : "custom";
+  const setMode = (value: "custom" | "package") => {
+    const next = new URLSearchParams(params);
+    if (value === "package") next.set("topup", "package");
+    else next.delete("topup");
+    setParams(next, { replace: true });
+  };
   const [minutes, setMinutes] = useState(300);
   const [packageId, setPackageId] = useState<string | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [settings, setSettings] = useState<CreditSettings>(DEFAULT_SETTINGS);
   const [gateway, setGateway] = useState<GatewayCode | null>(null);
   const [anyMethod, setAnyMethod] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -40,6 +61,14 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
     return () => window.removeEventListener("pageshow", reset);
   }, []);
 
+  useEffect(() => {
+    request<CreditSettings>("/v1/billing/credit-settings")
+      .then(setSettings)
+      .catch(() => undefined);
+  }, []);
+
+  const MIN_MINUTES = settings.min_minutes;
+  const MAX_MINUTES = settings.max_minutes;
   const selectedPackage = packages.find((item) => item.id === packageId) ?? null;
   const valid = minutes >= MIN_MINUTES && minutes <= MAX_MINUTES;
 
@@ -52,7 +81,7 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
     const timer = window.setTimeout(() => {
       request<Quote>(`/v1/billing/credit-quote?minutes=${minutes}`)
         .then((result) => alive && setQuote(result))
-        .catch((reason) => alive && onError((reason as Error).message));
+        .catch((reason) => alive && onError(describe(reason)));
     }, 250);
     return () => {
       alive = false;
@@ -80,7 +109,7 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
       });
       await startPayment(order.id, gateway);
     } catch (reason) {
-      onError((reason as Error).message);
+      onError(describe(reason));
       setBusy(false);
     }
   }
@@ -104,7 +133,7 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
             onChange={(event) => setMinutes(Number(fmt.latinDigits(event.target.value).replace(/\D/g, "")) || 0)}
           />
           <div className="topup-presets">
-            {PRESETS.map((preset) => (
+            {settings.presets.map((preset) => (
               <button key={preset} type="button" className={minutes === preset ? "btn" : "btn-ghost"} onClick={() => setMinutes(preset)}>
                 {fmt.int(preset)} دقیقه
               </button>

@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import walletIcon from "@iconify-icons/lucide/wallet";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { ROLE_LABELS, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
@@ -9,6 +10,7 @@ import { PageHeader } from "../components/PageHeader";
 import ApiKeyManager from "../components/ApiKeyManager";
 import CreditTopUp from "../components/CreditTopUp";
 import OrderPaymentPanel from "../components/OrderPaymentPanel";
+import SubscriptionPanel from "../components/SubscriptionPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormDialog from "../components/FormDialog";
 import addUserArt from "../assets/add-user.svg";
@@ -19,6 +21,7 @@ import type {
   LedgerEntry,
   Package,
   Page,
+  SubscriptionInfo,
   User,
   Webhook,
   WebhookCreated,
@@ -44,20 +47,14 @@ const LEDGER_LABELS: Record<string, string> = {
   refund: "بازپرداخت",
 };
 
-const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
-  active: "فعال",
-  trialing: "آزمایشی",
-  pending_payment: "در انتظار پرداخت",
-  expired: "منقضی‌شده",
-  canceled: "لغوشده",
-};
-
 const ORDER_KIND_LABELS: Record<string, string> = {
   subscription: "اشتراک",
   credit: "خرید اعتبار",
   credit_purchase: "خرید اعتبار",
   installation: "نصب و استقرار",
   operator_addon: "اپراتور اضافه",
+  subscription_upgrade: "ارتقای اشتراک",
+  renewal: "تمدید اشتراک",
 };
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
@@ -76,6 +73,18 @@ const EMPTY_USER = {
   mobile_number: "",
   extension: "",
 };
+
+function offsetParam(params: URLSearchParams, name: string): number {
+  const value = Number(params.get(name));
+  return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+function withOffset(params: URLSearchParams, name: string, value: number): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (value > 0) next.set(name, String(value));
+  else next.delete(name);
+  return next;
+}
 
 export type AccountSection = "billing" | "users" | "integrations" | "data";
 
@@ -97,11 +106,14 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [hookSecret, setHookSecret] = useState<string | null>(null);
   const [dataDeletionOpen, setDataDeletionOpen] = useState(false);
   const [dataDeleting, setDataDeleting] = useState(false);
-  const [subscription, setSubscription] = useState<{ status: string; max_operators: number; assistant_monthly_messages: number; assistant_messages_used: number; assistant_messages_remaining: number; plan_monthly_minutes: number; period_end: string | null } | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [orders, setOrders] = useState<Array<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>([]);
-  const [ledgerOffset, setLedgerOffset] = useState(0);
+  const [params, setParams] = useSearchParams();
+  const ledgerOffset = offsetParam(params, "ledger");
+  const orderOffset = offsetParam(params, "orders");
+  const setLedgerOffset = (value: number) => setParams(withOffset(params, "ledger", value), { replace: true });
+  const setOrderOffset = (value: number) => setParams(withOffset(params, "orders", value), { replace: true });
   const [ledgerTotal, setLedgerTotal] = useState(0);
-  const [orderOffset, setOrderOffset] = useState(0);
   const [orderTotal, setOrderTotal] = useState(0);
   const [userOffset, setUserOffset] = useState(0);
   const [userTotal, setUserTotal] = useState(0);
@@ -145,7 +157,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
         setPackages(packagesData);
         if (isAdmin) {
           const [subscriptionData, orderData] = await Promise.all([
-            request<{ status: string; max_operators: number; assistant_monthly_messages: number; assistant_messages_used: number; assistant_messages_remaining: number; plan_monthly_minutes: number; period_end: string | null }>("/v1/subscription"),
+            request<SubscriptionInfo>("/v1/subscription"),
             request<Page<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>(`/v1/orders?limit=${limit}&offset=${orderOffset}`),
           ]);
           setSubscription(subscriptionData);
@@ -283,14 +295,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
         </div>
       </div>
 
-      {isAdmin && subscription ? (
-        <div className="card">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-bold">اشتراک سازمان</h2><p className="section-hint">وضعیت: {SUBSCRIPTION_STATUS_LABELS[subscription.status] ?? subscription.status} · ظرفیت {fmt.int(subscription.max_operators)} اپراتور · {fmt.int(subscription.plan_monthly_minutes)} دقیقه رایگان در ماه · پیام دستیار: {fmt.int(subscription.assistant_messages_used)} از {fmt.int(subscription.assistant_monthly_messages)} (باقی‌مانده {fmt.int(subscription.assistant_messages_remaining)})</p>{subscription.period_end ? <p className="field-hint">سررسید: {fmt.date(subscription.period_end)}</p> : null}</div>
-            <a className="btn" href="/#pricing">تغییر پلن</a>
-          </div>
-        </div>
-      ) : null}
+      {isAdmin && subscription ? <SubscriptionPanel subscription={subscription} onChanged={reload} onError={setError} /> : null}
 
       {isAdmin && orders.length ? (
         <>{payingOrder ? <OrderPaymentPanel orderId={payingOrder.id} amountToman={payingOrder.amount} onClose={() => setPayingOrder(null)} onError={setError} /> : null}<div className="card"><h2 className="mb-2 font-bold">سفارش‌ها و پرداخت‌ها</h2><table className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>زمان</th><th /></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td dir="ltr">{order.number}</td><td>{ORDER_KIND_LABELS[order.kind] ?? order.kind}</td><td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td><td>{fmt.toman(order.amount_toman)}</td><td>{fmt.dateTime(order.created_at)}</td><td>{["draft", "pending_payment"].includes(order.status) ? <button className="btn-ghost text-xs" onClick={() => setPayingOrder({ id: order.id, amount: order.amount_toman })}>پرداخت</button> : null}</td></tr>)}</tbody></table><Pagination page={Math.floor(orderOffset/limit)+1} hasPrevious={orderOffset>0} hasNext={orderOffset+limit<orderTotal} total={orderTotal} onPrevious={()=>setOrderOffset(Math.max(0,orderOffset-limit))} onNext={()=>setOrderOffset(orderOffset+limit)}/></div></>

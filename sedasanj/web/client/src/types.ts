@@ -493,7 +493,11 @@ export interface Balance {
 }
 
 export interface PublicPlan {
-  code: "demo" | "bronze" | "silver" | "gold";
+  code: string;
+  is_trial: boolean;
+  sellable: boolean;
+  featured: boolean;
+  monthly_included_minutes: number;
   name: string;
   version: number;
   annual_price_toman: number | null;
@@ -506,6 +510,35 @@ export interface PublicPlan {
   allows_extra_operators: boolean;
   extra_operator_annual_toman: number | null;
   trial_days: number | null;
+}
+
+export interface ScheduledChange {
+  id: string;
+  kind: "upgrade" | "downgrade";
+  status: string;
+  target_plan_code: string | null;
+  target_plan_name: string | null;
+  extra_operators: number;
+  effective_at: string | null;
+  order_id: string | null;
+}
+
+export interface SubscriptionInfo {
+  status: string;
+  plan_code: string | null;
+  plan_name: string | null;
+  billing_period: string | null;
+  cancel_at_period_end: boolean;
+  extra_operators: number;
+  max_operators: number;
+  assistant_monthly_messages: number;
+  assistant_messages_used: number;
+  assistant_messages_remaining: number;
+  assistant_quota_period_start: string | null;
+  plan_monthly_minutes: number;
+  period_end: string | null;
+  grace_ends_at: string | null;
+  scheduled_change: ScheduledChange | null;
 }
 
 export interface LedgerEntry {

@@ -1,9 +1,10 @@
 import { Icon } from "../components/SiteIcon";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, request } from "../api";
 import AuthShell from "../components/AuthShell";
 import { ErrorBox } from "../components/Widgets";
+import type { PublicPlan } from "../types";
 import planDemoImage from "../assets/plan-demo.webp";
 import planBronzeImage from "../assets/plan-bronze.webp";
 import planSilverImage from "../assets/plan-silver.webp";
@@ -11,11 +12,11 @@ import planGoldImage from "../assets/plan-gold.webp";
 
 type Step = "identity" | "code" | "account";
 
-const planDetails: Record<string, { name: string; image: string }> = {
-  demo: { name: "دمو", image: planDemoImage },
-  bronze: { name: "برنزی", image: planBronzeImage },
-  silver: { name: "نقره‌ای", image: planSilverImage },
-  gold: { name: "طلایی", image: planGoldImage },
+const planDetails: Record<string, { image: string }> = {
+  demo: { image: planDemoImage },
+  bronze: { image: planBronzeImage },
+  silver: { image: planSilverImage },
+  gold: { image: planGoldImage },
 };
 
 const stepNumber: Record<Step, number> = { identity: 1, code: 2, account: 3 };
@@ -23,11 +24,17 @@ const stepNumber: Record<Step, number> = { identity: 1, code: 2, account: 3 };
 export default function Signup() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const requestedPlan = params.get("plan") ?? "demo";
-  const plan = ["demo", "bronze", "silver", "gold"].includes(requestedPlan)
-    ? requestedPlan
-    : "demo";
-  const selectedPlan = planDetails[plan];
+  const requestedPlan = params.get("plan");
+  const [catalog, setCatalog] = useState<PublicPlan[] | null>(null);
+  useEffect(() => {
+    request<PublicPlan[]>("/v1/plans").then(setCatalog).catch(() => setCatalog([]));
+  }, []);
+  const listed = catalog?.find((item) => item.code === (requestedPlan ?? "demo")) ?? null;
+  const plan = listed?.code ?? "";
+  const selectedPlan = {
+    name: listed?.name ?? "",
+    image: (planDetails[plan] ?? planDetails.bronze).image,
+  };
   const [step, setStep] = useState<Step>("identity");
   const [otpId, setOtpId] = useState("");
   const [developmentCode, setDevelopmentCode] = useState("");
@@ -81,11 +88,25 @@ export default function Signup() {
     }
   }
 
+  if (catalog && !listed) {
+    return <AuthShell>
+      <div className="auth-form">
+        <h1 className="auth-title">پلن انتخاب‌شده پیدا نشد</h1>
+        <p className="mt-2 text-xs leading-6 text-slate-500">این پلن وجود ندارد یا دیگر عرضه نمی‌شود. یکی از پلن‌های فعلی را انتخاب کنید.</p>
+        <Link className="btn mt-4" to="/#pricing">مشاهده پلن‌ها</Link>
+      </div>
+    </AuthShell>;
+  }
+  const planSummary = listed
+    ? listed.is_trial
+      ? `${fmt.int(listed.trial_days ?? 0)} روز آزمایشی رایگان`
+      : `${fmt.toman(listed.annual_price_toman ?? 0)} در سال`
+    : "";
   return <AuthShell>
         <div className="auth-form">
           <div className="mb-5 flex items-center gap-4 border-b border-slate-100 pb-5">
             <img className="h-16 w-16 shrink-0 object-contain" src={selectedPlan.image} alt={`تصویر پلن ${selectedPlan.name}`} />
-            <div><h1 className="auth-title">حساب سازمانی خود را بسازید</h1><p className="mt-2 text-xs leading-6 text-slate-500">پلن {selectedPlan.name} · مرحله {fmt.digits(stepNumber[step])} از ۳</p></div>
+            <div><h1 className="auth-title">حساب سازمانی خود را بسازید</h1><p className="mt-2 text-xs leading-6 text-slate-500">پلن {selectedPlan.name}{planSummary ? ` (${planSummary})` : ""} · مرحله {fmt.digits(stepNumber[step])} از ۳</p></div>
           </div>
           <form onSubmit={submit}>
             <ErrorBox message={error || null} />

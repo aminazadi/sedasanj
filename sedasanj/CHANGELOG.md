@@ -2,6 +2,10 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Added the customer subscription controls to the client panel: `SubscriptionPanel` on the billing page (plan, state, grace deadline, scheduled change, cancel at period end, resume, cancel a scheduled change) and a new change-plan page `/billing/change-plan` (upgrade is paid with a stable idempotency key, downgrade is scheduled for renewal). Billing order lists keep their paging in the URL (`ledger`, `orders`) and the prepaid-credit mode in `topup`.
+- Made checkout, sign-up, landing and credit top-up data-driven: plan codes are no longer a fixed union, `GET /v1/plans` also returns `featured`, `is_trial`, `sellable` and `monthly_included_minutes`, an unknown or unsellable plan shows a message instead of silently falling back to the demo/bronze plan, the landing page shows trial days and a contact link for plans without a price, and the credit limits and presets come from `GET /v1/billing/credit-settings`. Checkout reuses one idempotency key per distinct purchase, shows the tax line, links the terms, and no longer puts a label above its heading.
+- Added `src/lib/billingErrors.mjs` (error code to Persian text with the next step) with unit tests.
+
 - Added subscription notices by email (`services/subscription_notices.py`, run from the worker's reconciler cron): renewal due at 7 and 1 days, trial ending at 2 days, grace started and subscription expired, sent to the organization admins. A `notification_log` table (migration `0068_notification_log`) makes each notice go out once per subscription period, retries a failed send up to 3 times, and skips unpaid sign-ups that lapsed. SMS delivery is not included: it needs admin-managed SMS.ir template IDs per notice. Added `tests/test_subscription_notices.py`.
 
 - Added the plan flags `is_trial` and `sellable` (migration `0067_plan_flags_grant_check`) and replaced every `code == "demo"` check with them, so a plan created in the admin can be a trial or be withdrawn from sale without code changes; sign-up now rejects a plan that is not sellable (`plan_not_sellable`).

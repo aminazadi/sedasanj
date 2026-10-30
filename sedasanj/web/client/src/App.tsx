@@ -12,6 +12,7 @@ import Calls from "./pages/Calls";
 import Contacts from "./pages/Contacts";
 import Contact from "./pages/Contact";
 import Checkout from "./pages/Checkout";
+import ChangePlan from "./pages/ChangePlan";
 import Install from "./pages/Install";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
+        {orgAdmin ? <Route path="/billing/change-plan" element={<ChangePlan />} /> : null}
         {orgAdmin ? <Route path="/account-settings" element={<AccountSettings />} /> : null}
         {orgAdmin ? <Route path="/kpi-settings" element={<Navigate to="/account-settings?tab=kpi" replace />} /> : null}
         {orgAdmin ? <Route path="/payment-result" element={<PaymentResult />} /> : null}

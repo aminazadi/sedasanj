@@ -179,3 +179,14 @@ async def test_inactive_subscription_has_its_own_error_code() -> None:
 
     assert ERROR_STATUS["subscription_inactive"] == 402
     assert "subscription_inactive" in RETRYABLE_CODES
+
+
+async def test_public_plans_mark_the_featured_plan(scratch: None) -> None:
+    from app import db
+    from app.routers.commerce import list_plans
+
+    async with db.session_scope(staff=True) as session:
+        plans = await list_plans(session)
+    featured = [plan["code"] for plan in plans if plan["featured"]]
+    assert len(featured) <= 1
+    assert all({"is_trial", "sellable", "monthly_included_minutes"} <= set(plan) for plan in plans)
