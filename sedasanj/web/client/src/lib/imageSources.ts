@@ -10,9 +10,6 @@ import image1_768 from "../assets/hero-office-768w.webp";
 import original2 from "../assets/manager-office-line-art.webp";
 import image2_480 from "../assets/manager-office-line-art-480w.webp";
 import image2_768 from "../assets/manager-office-line-art-768w.webp";
-import original3 from "../assets/operator-awareness.webp";
-import image3_480 from "../assets/operator-awareness-480w.webp";
-import image3_768 from "../assets/operator-awareness-768w.webp";
 import original4 from "../assets/page-hero-about.webp";
 import image4_480 from "../assets/page-hero-about-480w.webp";
 import image4_768 from "../assets/page-hero-about-768w.webp";
@@ -56,7 +53,6 @@ const sources = new Map<string, Array<[string, number]>>([
   [original0, [[image0_480, 480], [image0_768, 768], [original0, 1620]]],
   [original1, [[image1_480, 480], [image1_768, 768], [original1, 1774]]],
   [original2, [[image2_480, 480], [image2_768, 768], [original2, 1200]]],
-  [original3, [[image3_480, 480], [image3_768, 768], [original3, 1588]]],
   [original4, [[image4_480, 480], [image4_768, 768], [original4, 1500]]],
   [original5, [[image5_480, 480], [image5_768, 768], [original5, 1500]]],
   [original6, [[image6_480, 480], [image6_768, 768], [original6, 1500]]],

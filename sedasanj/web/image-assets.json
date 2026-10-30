@@ -97,23 +97,12 @@
     ]
   },
   {
-    "path": "sedasanj/web/client/src/assets/operator-awareness.webp",
-    "width": 1588,
-    "height": 1498,
-    "bytes": 211442,
+    "path": "sedasanj/web/client/src/assets/operator-awareness.svg",
+    "width": 794,
+    "height": 749,
+    "bytes": 27312,
     "originalBytes": 27312,
-    "variants": [
-      {
-        "path": "sedasanj/web/client/src/assets/operator-awareness-480w.webp",
-        "width": 480,
-        "bytes": 46684
-      },
-      {
-        "path": "sedasanj/web/client/src/assets/operator-awareness-768w.webp",
-        "width": 768,
-        "bytes": 97294
-      }
-    ]
+    "variants": []
   },
   {
     "path": "sedasanj/web/client/src/assets/page-hero-about.webp",

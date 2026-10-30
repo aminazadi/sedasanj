@@ -5,7 +5,7 @@ import { srcSetFor } from "../lib/imageSources";
 import heroBackdrop from "../assets/hero-office.webp";
 import integrationBanner from "../assets/telephony-integration-banner-desktop.webp";
 import integrationBannerMobile from "../assets/telephony-integration-banner-mobile.webp";
-import awarenessArt from "../assets/operator-awareness.webp";
+import awarenessArt from "../assets/operator-awareness.svg";
 import ucGov from "../assets/usecases/gov.webp";
 import ucFinance from "../assets/usecases/finance.webp";
 import ucHealth from "../assets/usecases/health.webp";
@@ -296,7 +296,7 @@ export default function Landing() {
           <p>در پژوهشی، وقتی عملکرد کارکنان پایش شد، فروش حدود <mark>۷ درصد</mark> بالاتر رفت.</p>
           <small>Management Science، ۲۰۱۵؛ بررسی ۳۹۲ رستوران · <a href="https://econpapers.repec.org/RePEc:inm:ormnsc:v:61:y:2015:i:10:p:2299-2319" target="_blank" rel="noopener noreferrer">منبع پژوهش</a></small>
         </div>
-        <img src={awarenessArt} srcSet={srcSetFor(awarenessArt)} sizes="(max-width: 760px) calc(100vw - 48px), 550px" alt="هدست در مرکز موج‌های صدا و نتیجه‌ی بررسی مکالمات" loading="lazy" width="794" height="749"/>
+        <img src={awarenessArt} alt="هدست در مرکز موج‌های صدا و نتیجه‌ی بررسی مکالمات" loading="lazy" width="794" height="749"/>
       </div></section>
       <section className="site-section" id="workflow">
         <div className="site-container">

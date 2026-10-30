@@ -26,10 +26,19 @@ async function files(directory) {
   return result;
 }
 
-test("static image inventory contains valid WebP dimensions and smaller responsive variants", async () => {
+test("image inventory preserves animated SVGs and validates responsive WebP dimensions", async () => {
   assert.ok(manifest.length > 40, "inventory must cover both panels and public images");
   for (const asset of manifest) {
     const buffer = await readFile(new URL(asset.path, repository));
+    if (asset.path.endsWith(".svg")) {
+      const svg = buffer.toString("utf8");
+      assert.match(svg, /@keyframes|<animate(?:Transform|Motion)?\b/);
+      const viewBox = svg.match(/viewBox="([^"]+)"/)?.[1].split(/\s+/).map(Number);
+      assert.deepEqual(viewBox?.slice(2), [asset.width, asset.height], asset.path);
+      assert.equal(buffer.length, asset.bytes, asset.path);
+      assert.deepEqual(asset.variants, [], "animated artwork must not have static alternatives");
+      continue;
+    }
     assert.deepEqual(webpDimensions(buffer), [asset.width, asset.height], asset.path);
     assert.equal(buffer.length, asset.bytes, asset.path);
     if (asset.path.includes("/src/assets/")) assert.ok(buffer.length <= 512 * 1024, `${asset.path} exceeds 512 KiB`);
@@ -45,12 +54,16 @@ test("static image inventory contains valid WebP dimensions and smaller responsi
   }
 });
 
-test("served image files use WebP across nested artwork and public assets", async () => {
+test("served images use WebP while preserving animated SVG assets", async () => {
   for (const relative of ["../src/assets/", "../../admin/src/assets/", "../public/"]) {
     for (const url of await files(new URL(relative, import.meta.url))) {
       // Vector geometry is source code for the animated logo, never an image URL.
       if (url.pathname.endsWith("/sedasanj-refined-master.svg")) continue;
-      assert.ok(!/\.(?:png|jpe?g|gif|svg|avif)$/i.test(url.pathname), `${url.pathname} is not WebP`);
+      if (url.pathname.endsWith(".svg")) {
+        assert.match(await readFile(url, "utf8"), /@keyframes|<animate(?:Transform|Motion)?\b/);
+        continue;
+      }
+      assert.ok(!/\.(?:png|jpe?g|gif|avif)$/i.test(url.pathname), `${url.pathname} is not WebP`);
     }
   }
 });
@@ -63,9 +76,24 @@ test("CSS and module artwork references resolve to existing files", async () => 
       const pattern = /["']((?:\.\.\/|\.\/)+assets\/[^"']+\.(?:webp|svg|png|jpe?g)(?:\?raw)?)["']/g;
       for (const [, reference] of source.matchAll(pattern)) {
         const file = new URL(reference.replace(/\?raw$/, ""), url);
-        await readFile(file);
-        assert.ok(reference.endsWith(".webp") || reference.endsWith(".svg?raw"), `${url.pathname}: ${reference}`);
+        const buffer = await readFile(file);
+        const animatedSvg = reference.endsWith(".svg") && /@keyframes|<animate(?:Transform|Motion)?\b/.test(buffer.toString("utf8"));
+        assert.ok(reference.endsWith(".webp") || reference.endsWith(".svg?raw") || animatedSvg, `${url.pathname}: ${reference}`);
       }
     }
   }
+});
+
+
+test("operator awareness retains moving cards, scanning lens and rotating rings", async () => {
+  const svg = await readFile(new URL("../src/assets/operator-awareness.svg", import.meta.url), "utf8");
+  for (const name of ["scan", "scan-inner", "spin", ...Array.from({ length: 8 }, (_, index) => `move${index}`)]) {
+    assert.ok(svg.includes(`@keyframes ${name} `), `missing animation ${name}`);
+  }
+  const landing = await readFile(new URL("../src/pages/Landing.tsx", import.meta.url), "utf8");
+  assert.match(landing, /import awarenessArt from "[^"]+operator-awareness\.svg"/);
+  const image = landing.match(/<img[^>]+src=\{awarenessArt\}[^>]*>/)?.[0];
+  assert.ok(image, "landing must render the animated artwork");
+  assert.ok(!image.includes("srcSet="), "static alternatives must never replace animated SVGs");
+  assert.ok(!manifest.some((asset) => /operator-awareness.*\.webp$/.test(asset.path)));
 });
