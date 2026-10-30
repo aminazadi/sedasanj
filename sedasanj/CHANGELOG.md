@@ -2,6 +2,8 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Seeded the help center with five plan and billing articles and one article plus `help_error_codes` row for each billing API error code (migration `0069_billing_help_content`), added `docs/plans-and-subscriptions.md` (plan and subscription lifecycle, quotas, notices, settings), documented the API error codes in the error-code skill, and updated the latest-migration pointer in `AGENTS.md`. Added `tests/test_billing_help_content.py`.
+
 - Made the staff `stop_now` action also clear a scheduled downgrade and cancel open plan changes (it only changed the status before), and added `tests/test_subscription_actions.py` (stop, extend, extend trial, customer cancel and resume). CI now runs the admin panel's unit tests.
 
 - Reworked the admin plan pages to match the new catalog API: the plan list shows plans without a version (so a new plan can get its first version), the new-version form starts from the plan's latest version and validates numbers before sending, publish/retire/visibility/sale-stop ask for a reason in a dialog (a forced retirement of the only live version needs a second confirmation), plan flags `sellable` and `is_trial` can be set, and the subscription count links to the filtered subscription list. Plan, subscription and package lists keep their filters and paging in the URL, subscription actions validate the day count (1..3660), packages are edited inline with a reason, the tenant page shows tables instead of raw JSON, and the commerce settings page gained grace days, payment window, order expiry, order cap, credit limits and presets, renewal price policy, featured plan and the default per-minute rate.
