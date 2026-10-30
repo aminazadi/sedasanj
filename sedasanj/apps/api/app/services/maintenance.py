@@ -297,6 +297,7 @@ async def _prepare_tenant_renewals(tenant_id: UUID, now: datetime) -> int:
                         metadata_json={},
                     )
                 )
+            await commerce.apply_tax(session, order, amount, settings.tax_percent)
             created += 1
     return created
 

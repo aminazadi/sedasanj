@@ -12,6 +12,7 @@ from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -55,6 +56,7 @@ from app.services import (
     subscription_state,
 )
 from app.services.commerce_settings import (
+    credit_preset_minutes,
     get_commerce_settings,
     update_commerce_settings,
 )
@@ -467,13 +469,18 @@ async def checkout_quote(
     payload: CheckoutCreate, principal: OrgAdminDep, session: TenantSession
 ) -> dict[str, int]:
     _, version = await commerce.plan_version_by_code(session, payload.plan_code)
-    total, extra_unit = commerce.subscription_amount(
+    net, extra_unit = commerce.subscription_amount(
         version, payload.billing_period, payload.extra_operators
     )
+    percent = (await get_commerce_settings(session)).tax_percent
+    tax = commerce.tax_for(net, percent)
     return {
-        "base_toman": total - extra_unit * payload.extra_operators,
+        "base_toman": net - extra_unit * payload.extra_operators,
         "extra_operators_toman": extra_unit * payload.extra_operators,
-        "total_toman": total,
+        "net_toman": net,
+        "tax_percent": percent,
+        "tax_toman": tax,
+        "total_toman": net + tax,
     }
 
 
@@ -532,20 +539,51 @@ async def payment_methods(
     return await payments.available_methods(amount_toman)
 
 
+@router.get("/billing/credit-settings")
+async def credit_settings(principal: OrgAdminDep, session: TenantSession) -> dict[str, Any]:
+    config = await get_commerce_settings(session)
+    return {
+        "min_minutes": config.credit_min_minutes,
+        "max_minutes": config.credit_max_minutes,
+        "presets": credit_preset_minutes(config),
+        "tax_percent": config.tax_percent,
+    }
+
+
+async def _credit_amount(
+    session: AsyncSession, tenant_id: UUID, minutes: int
+) -> tuple[int, int, int, int]:
+    """Net amount, tax, total and per-minute price for custom credit, within admin limits."""
+    config = await get_commerce_settings(session)
+    if not config.credit_min_minutes <= minutes <= config.credit_max_minutes:
+        raise ApiError(
+            "invalid_request",
+            f"minutes must be between {config.credit_min_minutes} and {config.credit_max_minutes}",
+        )
+    price = await billing.effective_price_per_minute(session, tenant_id, include_pending=True)
+    net = minutes * price
+    tax = commerce.tax_for(net, config.tax_percent)
+    if net + tax > config.max_order_toman:
+        raise ApiError(
+            "order_amount_too_large",
+            "this credit order exceeds the maximum order amount; buy fewer minutes",
+        )
+    return net, tax, net + tax, price
+
+
 @router.get("/billing/credit-quote")
 async def credit_quote(
     principal: OrgAdminDep,
     session: TenantSession,
-    minutes: int = Query(ge=10, le=1_000_000),
+    minutes: int = Query(ge=1),
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    price = await billing.effective_price_per_minute(
-        session, principal.tenant_id, include_pending=True
-    )
-    total = minutes * price
+    net, tax, total, price = await _credit_amount(session, principal.tenant_id, minutes)
     return {
         "minutes": minutes,
         "price_per_minute_toman": price,
+        "net_toman": net,
+        "tax_toman": tax,
         "total_toman": total,
         "methods": await payments.available_methods(total),
     }
@@ -1044,6 +1082,9 @@ async def change_subscription(
             },
         )
     )
+    await commerce.apply_tax(
+        session, order, amount, (await get_commerce_settings(session)).tax_percent
+    )
     change = SubscriptionChange(
         tenant_id=tenant_id,
         subscription_id=current.id,
@@ -1077,7 +1118,7 @@ async def change_subscription(
         "status": "payment_required",
         "change_id": str(change.id),
         "order_id": str(order.id),
-        "amount_toman": amount,
+        "amount_toman": order.amount_toman,
     }
 
 
@@ -1230,12 +1271,7 @@ async def create_credit_order(
         minutes, amount = package.minutes, package.price_toman
     else:
         minutes = int(payload.minutes or 0)
-        price_per_minute = await billing.effective_price_per_minute(
-            session, principal.tenant_id, include_pending=True
-        )
-        amount = minutes * price_per_minute
-        if amount < 0:
-            raise ApiError("invalid_request", "credit amount is invalid")
+        amount, _, _, _ = await _credit_amount(session, principal.tenant_id, minutes)
     admin = await session.get(User, principal.id)
     assert admin is not None
     existing = (
@@ -1260,9 +1296,24 @@ async def create_credit_order(
         customer_mobile=admin.mobile_number or "",
         invoice_profile={},
     )
-    session.add(order)
-    await session.flush()
-    unit_price = amount // minutes if minutes else 0
+    try:
+        async with session.begin_nested():
+            session.add(order)
+            await session.flush()
+    except IntegrityError:
+        replay = (
+            await session.execute(
+                select(Order).where(
+                    Order.tenant_id == principal.tenant_id,
+                    Order.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if replay is None:
+            raise
+        return {"id": str(replay.id), "amount_toman": replay.amount_toman}
+    # The line total is authoritative; the unit price is rounded for display only.
+    unit_price = (amount + minutes // 2) // minutes if minutes else 0
     session.add(
         OrderItem(
             order_id=order.id,
@@ -1275,16 +1326,23 @@ async def create_credit_order(
             metadata_json={},
         )
     )
+    await commerce.apply_tax(
+        session, order, amount, (await get_commerce_settings(session)).tax_percent
+    )
     await audit.record(
         session,
         actor_type="user",
         actor_id=principal.id,
         tenant_id=principal.tenant_id,
         action="credit_order.created",
-        payload={"order_id": str(order.id), "minutes": minutes, "amount_toman": amount},
+        payload={
+            "order_id": str(order.id),
+            "minutes": minutes,
+            "amount_toman": order.amount_toman,
+        },
         ip=client_ip(request),
     )
-    return {"id": str(order.id), "amount_toman": amount}
+    return {"id": str(order.id), "amount_toman": order.amount_toman}
 
 
 @router.get("/installation-requests")
@@ -1416,6 +1474,7 @@ async def create_installation(
                 metadata_json={"installation_kind": payload.kind},
             )
         )
+        await commerce.apply_tax(session, order, amount, commerce_config.tax_percent)
     row = InstallationRequest(
         tenant_id=principal.tenant_id,
         order_id=order.id if order else None,
@@ -1450,7 +1509,7 @@ async def create_installation(
         "id": str(row.id),
         "status": row.status,
         "order_id": str(order.id) if order else None,
-        "amount_toman": amount,
+        "amount_toman": order.amount_toman if order else 0,
     }
 
 

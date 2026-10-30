@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Select, and_, false, func, or_, select
+from sqlalchemy import Select, and_, false, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -221,6 +221,11 @@ async def assert_operator_quota(
             entitlement = await entitlements.require_consumption(tenant_session, tenant_id)
     else:
         entitlement = await entitlements.require_consumption(session, tenant_id)
+    # Serialize concurrent operator creation per tenant so two requests cannot both pass the cap.
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"operators:{tenant_id}"},
+    )
     stmt = (
         select(func.count())
         .select_from(User)

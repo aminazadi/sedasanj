@@ -7,10 +7,12 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
 from app.models import Order, OrderItem, Plan, PlanVersion, Subscription, Tenant
+from app.services.commerce_settings import get_commerce_settings
 
 
 def add_months(value: datetime, months: int) -> datetime:
@@ -19,6 +21,31 @@ def add_months(value: datetime, months: int) -> datetime:
     month = index % 12 + 1
     day = min(value.day, calendar.monthrange(year, month)[1])
     return value.replace(year=year, month=month, day=day)
+
+
+def tax_for(net: int, percent: int) -> int:
+    """Tax on a net amount, rounded half up to a whole toman."""
+    return (net * percent + 50) // 100
+
+
+async def apply_tax(session: AsyncSession, order: Order, net: int, percent: int) -> int:
+    """Set the payable total (net + tax) and add the tax line; returns the tax amount."""
+    tax = tax_for(net, percent)
+    order.amount_toman = net + tax
+    if tax:
+        session.add(
+            OrderItem(
+                order_id=order.id,
+                tenant_id=order.tenant_id,
+                kind="tax",
+                description=f"مالیات بر ارزش افزوده ({percent}٪)",
+                quantity=1,
+                unit_price_toman=tax,
+                total_toman=tax,
+                metadata_json={"percent": percent},
+            )
+        )
+    return tax
 
 
 async def public_plans(session: AsyncSession) -> list[tuple[Plan, PlanVersion]]:
@@ -146,8 +173,22 @@ async def create_subscription_order(
         customer_mobile=customer_mobile,
         invoice_profile=invoice_profile,
     )
-    session.add(order)
-    await session.flush()
+    try:
+        async with session.begin_nested():
+            session.add(order)
+            await session.flush()
+    except IntegrityError:
+        # A concurrent request with the same idempotency key won the race: replay it.
+        replay = (
+            await session.execute(
+                select(Order).where(
+                    Order.tenant_id == tenant.id, Order.idempotency_key == idempotency_key
+                )
+            )
+        ).scalar_one_or_none()
+        if replay is None:
+            raise
+        return replay
     session.add(
         OrderItem(
             order_id=order.id,
@@ -170,13 +211,14 @@ async def create_subscription_order(
                 order_id=order.id,
                 tenant_id=tenant.id,
                 kind="extra_operator",
-                description="اپراتور اضافه پلن طلایی",
+                description=f"اپراتور اضافه {plan.name}",
                 quantity=extra_operators,
                 unit_price_toman=extra_unit,
                 total_toman=extra_operators * extra_unit,
-                metadata_json={},
+                metadata_json={"plan_code": plan.code},
             )
         )
+    await apply_tax(session, order, total, (await get_commerce_settings(session)).tax_percent)
     return order
 
 

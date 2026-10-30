@@ -4,6 +4,7 @@ import logging
 import math
 import secrets
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -293,7 +294,7 @@ async def grant_credit(
 async def _apply_upgrade(
     session: AsyncSession, order: Order, upgrade_item: OrderItem, now: datetime
 ) -> None:
-    """Apply a paid upgrade; an unusable snapshot fails the change and leaves the order for staff."""
+    """Apply a paid upgrade; an unusable snapshot fails the change for staff review."""
     subscription = await session.get(
         Subscription, UUID(str(upgrade_item.metadata_json["subscription_id"])), with_for_update=True
     )
@@ -423,6 +424,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             and current.period_end > now
             and current_version.plan_id == version.plan_id
         )
+        previous_period_end = current.period_end if extends_term and current else None
         if extends_term and current is not None:
             start = current.period_start
             end = add_months(current.period_end, 12)
@@ -497,6 +499,8 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             "subscription_id": str(current.id),
             "period_start": current.period_start.isoformat(),
             "period_end": current.period_end.isoformat(),
+            "extended_term": extends_term,
+            "previous_period_end": previous_period_end.isoformat() if previous_period_end else None,
         }
         if extra:
             session.add(
@@ -523,7 +527,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             source="prepaid",
             source_id=order.id,
             expires_at=None,
-            toman=order.amount_toman,
+            toman=credit_item.total_toman,
             idem=f"credit-order:{order.id}",
         )
     install_item = next((item for item in items if item.kind == "installation"), None)
@@ -538,14 +542,42 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             request.updated_at = now
     order.status = "paid"
     order.paid_at = now
+    tax_items = [item for item in items if item.kind == "tax"]
+    tax_toman = sum(item.total_toman for item in tax_items)
+    tax_percent = int(tax_items[0].metadata_json.get("percent", 0)) if tax_items else 0
     session.add(
         Invoice(
             order_id=order.id,
             tenant_id=order.tenant_id,
             number=f"INV-{order.number}",
             amount_toman=order.amount_toman,
+            net_toman=order.amount_toman - tax_toman,
+            tax_toman=tax_toman,
+            tax_percent=tax_percent,
+            lines=[
+                {
+                    "kind": item.kind,
+                    "description": item.description,
+                    "quantity": item.quantity,
+                    "unit_price_toman": item.unit_price_toman,
+                    "total_toman": item.total_toman,
+                }
+                for item in items
+            ],
             profile_snapshot=order.invoice_profile,
         )
+    )
+    await audit.record(
+        session,
+        actor_type="system",
+        tenant_id=order.tenant_id,
+        action="order.fulfilled",
+        payload={
+            "order_id": str(order.id),
+            "kind": order.kind,
+            "amount_toman": order.amount_toman,
+            "item_kinds": sorted({item.kind for item in items}),
+        },
     )
 
 
@@ -924,6 +956,110 @@ async def _sweep_redirected(
     return 0
 
 
+async def _undo_subscription_effect(
+    session: AsyncSession, order: Order, items: Sequence[OrderItem]
+) -> None:
+    """Reverse what a fully refunded subscription order granted, without over-cancelling."""
+    now = datetime.now(UTC)
+    upgrade_item = next((item for item in items if item.kind == "subscription_upgrade"), None)
+    subscription_item = next((item for item in items if item.kind == "subscription"), None)
+    if upgrade_item is not None:
+        change = (
+            await session.execute(
+                select(SubscriptionChange)
+                .where(
+                    SubscriptionChange.order_id == order.id,
+                    SubscriptionChange.status == "applied",
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        subscription_id = upgrade_item.metadata_json.get("subscription_id")
+        subscription = (
+            await session.get(Subscription, UUID(str(subscription_id)), with_for_update=True)
+            if subscription_id
+            else None
+        )
+        previous = (
+            await session.get(PlanVersion, change.previous_plan_version_id)
+            if change and change.previous_plan_version_id
+            else None
+        )
+        if subscription is None or change is None or previous is None:
+            logger.error(
+                "refunded upgrade could not be reverted; staff must review the subscription",
+                extra={"extra_fields": {"order_id": str(order.id)}},
+            )
+            return
+        extra = int(change.previous_extra_operators or 0)
+        subscription.plan_version_id = previous.id
+        subscription.base_operators = previous.base_operators
+        subscription.extra_operators = extra
+        subscription.price_per_minute_toman = previous.overage_price_per_minute_toman
+        subscription.assistant_tier = previous.assistant_tier
+        subscription.assistant_monthly_messages = previous.assistant_monthly_messages
+        subscription.assistant_source_limit = previous.assistant_source_limit
+        subscription.assistant_model = previous.assistant_model
+        subscription.updated_at = now
+        change.status = "canceled"
+        tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
+        if tenant is not None:
+            tenant.max_operators = previous.base_operators + extra
+        return
+    if subscription_item is None:
+        return
+    subscription_id = subscription_item.metadata_json.get("subscription_id")
+    subscription = (
+        await session.get(Subscription, UUID(str(subscription_id)), with_for_update=True)
+        if subscription_id
+        else None
+    )
+    if subscription is None:
+        return
+    previous_end = subscription_item.metadata_json.get("previous_period_end")
+    if subscription_item.metadata_json.get("extended_term") and previous_end:
+        # An early renewal only added a year: drop it and keep the term that was already paid.
+        subscription.period_end = datetime.fromisoformat(str(previous_end))
+        subscription.updated_at = now
+        return
+    subscription.status = "canceled"
+    subscription.period_end = now
+    subscription.next_plan_version_id = None
+    subscription.updated_at = now
+    await subscription_state.close_open_changes(session, subscription.id, status="canceled")
+    grants = (
+        (
+            await session.execute(
+                select(CreditGrant)
+                .where(
+                    CreditGrant.tenant_id == order.tenant_id,
+                    CreditGrant.source == "monthly_plan",
+                    CreditGrant.remaining_seconds > 0,
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    revoked = sum(grant.remaining_seconds for grant in grants)
+    for grant in grants:
+        grant.remaining_seconds = 0
+    if revoked:
+        cache = await _balance_cache(session, order.tenant_id)
+        cache.seconds = max(0, cache.seconds - revoked)
+        session.add(
+            LedgerEntry(
+                tenant_id=order.tenant_id,
+                call_id=None,
+                kind="refund",
+                seconds_delta=-revoked,
+                toman_delta=0,
+                idempotency_key=f"refund-plan-credit:{order.id}",
+            )
+        )
+
+
 async def refund_order(
     session: AsyncSession,
     *,
@@ -937,8 +1073,9 @@ async def refund_order(
     external_reference: str | None = None,
 ) -> Refund:
     order = await session.get(Order, order_id, with_for_update=True)
-    if order is None or order.status not in {"paid", "partially_refunded"}:
-        raise ApiError("invalid_request", "only paid orders can be refunded")
+    if order is None:
+        raise ApiError("not_found", "order not found")
+    # Replays return the original refund even after the order became fully refunded.
     existing = (
         await session.execute(
             select(Refund).where(
@@ -949,6 +1086,8 @@ async def refund_order(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+    if order.status not in {"paid", "partially_refunded"}:
+        raise ApiError("invalid_request", "only paid orders can be refunded")
     refunded = int(
         (
             await session.execute(
@@ -1021,6 +1160,16 @@ async def refund_order(
             raise ApiError("invalid_request", "gateway reverse failed")
         response = {"reversed": True}
         external_reference = attempt.ref_id or attempt.authority
+        logger.warning(
+            "gateway reverse completed; refund record follows",
+            extra={
+                "extra_fields": {
+                    "order_id": str(order.id),
+                    "payment_attempt_id": str(attempt.id),
+                    "refund_idempotency_key": idempotency_key,
+                }
+            },
+        )
     elif method != "manual":
         raise ApiError("invalid_request", "refund method is invalid")
 
@@ -1057,18 +1206,6 @@ async def refund_order(
         )
     full_refund = refunded + amount_toman == order.amount_toman
     order.status = "refunded" if full_refund else "partially_refunded"
-    subscription_item = next(
-        (item for item in items if item.kind in {"subscription", "subscription_upgrade"}), None
-    )
-    if full_refund and subscription_item is not None:
-        subscription_id = subscription_item.metadata_json.get("subscription_id")
-        subscription = (
-            await session.get(Subscription, UUID(str(subscription_id)), with_for_update=True)
-            if subscription_id
-            else None
-        )
-        if subscription is not None:
-            subscription.status = "canceled"
-            subscription.period_end = datetime.now(UTC)
-            subscription.updated_at = datetime.now(UTC)
+    if full_refund:
+        await _undo_subscription_effect(session, order, items)
     return row

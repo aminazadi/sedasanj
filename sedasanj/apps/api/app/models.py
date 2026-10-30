@@ -1779,6 +1779,12 @@ class Invoice(Base):
     )
     number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     amount_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    net_toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    tax_toman: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    tax_percent: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lines: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'")
+    )
     profile_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     issued_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 

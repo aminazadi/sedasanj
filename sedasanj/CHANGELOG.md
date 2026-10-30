@@ -2,6 +2,12 @@
 
 ## 2026-10-30 — AMINAZADI
 
+- Applied the admin `tax_percent` to subscription, renewal, upgrade, prepaid-credit and installation orders as a separate `tax` line (rounded half up), exposed `net_toman`/`tax_percent`/`tax_toman`/`total_toman` on the checkout and credit quotes, and stored net, tax, percent and line items on invoices (migration `0066_invoice_tax_breakdown`). Prepaid credit balance now excludes tax. The default stays 0, so prices do not change until an admin sets it.
+- Added `GET /v1/billing/credit-settings` and made the prepaid-credit limits (`credit_min_minutes`, `credit_max_minutes`) and the order cap (`max_order_toman`, error `order_amount_too_large`) admin settings instead of constants; the credit line unit price is rounded and the line total is authoritative.
+- Made order creation race-safe (a concurrent request with the same idempotency key now replays the order instead of failing with a database error), wrote an audit event and the invoice breakdown when an order is fulfilled, and serialized operator-quota checks per tenant with an advisory lock.
+- Reworked refunds: a replay of a finished refund returns the original refund, refunding an upgrade restores the previous plan and operators, refunding an early renewal removes only the added year, and refunding a first purchase cancels the subscription and revokes unused plan minutes.
+- Added `tests/test_commerce_money.py` and moved the shared PostgreSQL fixtures to `tests/plan_helpers.py`.
+
 - Added a single owner for subscription status changes (`services/subscription_state.py`): a derived `grace` state (`commerce.grace_days`, default 3) keeps a paid plan working while its renewal order stays payable, lapsed unpaid sign-ups expire after `commerce.payment_window_days` (default 7), expiry now also covers suspended tenants and cancels open scheduled changes, and stale never-attempted draft orders are canceled after `commerce.order_ttl_days`.
 - Changed entitlement selection to prefer `active`, then `trialing`, `pending_payment`, `expired`, `canceled` (instead of the newest row), so an unpaid sign-up row can no longer shadow a paid plan.
 - Rejected buying a different plan while a paid plan is running (`subscription_exists`, 409): plan switches go through `POST /v1/subscription/change`. Early renewal of the same plan now extends the term and keeps the anniversary instead of moving `period_start` into the future; any other purchase starts a fresh term; proration uses the paid year containing today.
