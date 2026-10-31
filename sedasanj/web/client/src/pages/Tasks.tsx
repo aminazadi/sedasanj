@@ -1,208 +1,127 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { request } from "../api";
-import { CAN_EDIT_TASKS, isOperator, useAuth } from "../auth";
-import FollowUpTaskCard from "../components/FollowUpTaskCard";
-import { Empty, ErrorBox, Loading } from "../components/Widgets";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { FilterSelect, useFilterBar, type FilterBarField } from "@cbi/web-shared/components/FilterBar";
 import { PageHeader } from "../components/PageHeader";
-import type { TaskBoard } from "../types";
+import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
+import { fmt, request, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS } from "../api";
+import { CAN_EDIT_TASKS, useAuth } from "../auth";
+import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
+import TaskDetails from "../components/TaskDetails";
+import TaskCreateDialog from "../components/TaskCreateDialog";
+import { useTablePageSize } from "../lib/useTablePagination";
+import type { TaskPage, TaskPerson } from "../types";
 
-type View = "today" | "upcoming" | "open" | "done" | "all";
-
-const VIEWS: { id: View; label: string }[] = [
-  { id: "today", label: "امروز" },
-  { id: "upcoming", label: "روزهای دیگر" },
-  { id: "open", label: "انجام‌نشده" },
-  { id: "done", label: "انجام‌شده" },
-  { id: "all", label: "همه" },
-];
-
+const VIEWS = [{ id: "overdue", label: "عقب‌افتاده" }, { id: "today", label: "امروز" }, { id: "upcoming", label: "آینده" }, { id: "done", label: "انجام‌شده" }, { id: "all", label: "همه" }];
+const SORTS = [{ id: "due_date", label: "موعد" }, { id: "priority", label: "اولویت" }, { id: "created_at", label: "زمان ایجاد" }, { id: "updated_at", label: "آخرین تغییر" }];
+function numberParam(value: string | null) { const n = Number(value); return Number.isSafeInteger(n) && n >= 0 ? n : 0; }
 export default function Tasks() {
   const { session } = useAuth();
-  const operator = isOperator(session?.role);
   const canEdit = Boolean(session && CAN_EDIT_TASKS.includes(session.role));
-  const [view, setView] = useState<View>("today");
-  const [board, setBoard] = useState<TaskBoard | null>(null);
+  const isAdmin = session?.role === "org_admin";
+  const [params, setParams] = useSearchParams();
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const [pageSize] = useTablePageSize();
+  const view = VIEWS.some((v) => v.id === params.get("view")) ? params.get("view")! : "today";
+  const offset = numberParam(params.get("offset"));
+  const selected = params.get("task");
+  const [page, setPage] = useState<TaskPage | null>(null);
+  const [people, setPeople] = useState<TaskPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setBoard(await request<TaskBoard>("/v1/tasks"));
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function handleUpdated() {
-    try {
-      const next = await request<TaskBoard>("/v1/tasks");
-      setBoard(next);
-    } catch (err) {
-      setError((err as Error).message);
-    }
+  const [revision, setRevision] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState(params.get("q") ?? "");
+  const querySearch = params.get("q") ?? "";
+  useEffect(() => { setSearch(querySearch); }, [querySearch]);
+  function change(values: Record<string, string>, reset = true, replace = false) {
+    setParams(() => {
+      const next = new URLSearchParams(paramsRef.current);
+      if (reset) next.delete("offset");
+      Object.entries(values).forEach(([key, value]) => { if (value) next.set(key, value); else next.delete(key); });
+      paramsRef.current = next;
+      return next;
+    }, { replace });
   }
-
-  const counts = useMemo(
-    () => ({
-      today: board?.today_count ?? 0,
-      upcoming: board?.upcoming_count ?? 0,
-      open: board?.open_count ?? 0,
-      done: board?.completed_count ?? 0,
-      all: (board?.open_count ?? 0) + (board?.completed_count ?? 0),
-    }),
-    [board],
-  );
-
-  const showToday = view === "today" || view === "open" || view === "all";
-  const showUpcoming = view === "upcoming" || view === "open" || view === "all";
-  const showDone = view === "done" || view === "all";
-  const empty =
-    Boolean(board) &&
-    ((view === "today" && board!.today.length === 0) ||
-      (view === "upcoming" && board!.upcoming.length === 0) ||
-      (view === "open" && board!.open_count === 0) ||
-      (view === "done" && board!.completed.length === 0) ||
-      (view === "all" && counts.all === 0));
-
-  return (
-    <div className="space-y-4 text-[#000000]">
-      <PageHeader title="کارهای قابل پیگیری" description={`کارهای استخراج‌شده از مکالمات تا وقتی انجام نشوند هر روز به فهرست امروز منتقل می‌شوند.${operator ? " فقط کارهای تماس‌هایی را می‌بینید که شماره موبایل یا داخلی شما یکی از طرفین آن باشد." : ""}`} />
-
-      <div className="flex flex-wrap gap-2">
-        {VIEWS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-              view === item.id
-                ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-                : "border-[color:var(--line)] bg-[#F2F0EF] text-[#4B6E48] hover:bg-[#B2AC88] hover:text-black"
-            }`}
-            onClick={() => setView(item.id)}
-          >
-            {item.label}
-            <span className={`mr-1 text-xs ${view === item.id ? "text-[#F2F0EF]" : "text-[#898989]"}`}>
-              ({fmtCount(counts[item.id])})
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <ErrorBox message={error} />
-
-      {loading && !board ? (
-        <Loading />
-      ) : empty ? (
-        <div className="card">
-          <Empty>
-            {view === "today"
-              ? "برای امروز کار بازی باقی نمانده است."
-              : view === "upcoming"
-                ? "کار زمان‌بندی‌شده‌ای برای روزهای بعد نیست."
-                : view === "done"
-                  ? "هنوز کاری انجام‌شده ثبت نشده است."
-                  : "کاری ثبت نشده است."}
-          </Empty>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {showToday ? (
-            <section className="card overflow-visible">
-              <h2 className="mb-1 font-bold">امروز</h2>
-              <p className="mb-4 text-xs text-slate-400">
-                شامل کارهای بدون موعد و کارهای عقب‌افتاده که به امروز منتقل شده‌اند.
-              </p>
-              {board?.today.length ? (
-                <ul className="space-y-2">
-                  {board.today.map((task) => (
-                    <FollowUpTaskCard
-                      key={task.id}
-                      task={task}
-                      canEdit={canEdit}
-                      onUpdated={() => void handleUpdated()}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <Empty>کاری برای امروز نیست.</Empty>
-              )}
-            </section>
-          ) : null}
-
-          {showUpcoming ? (
-            <section className="card overflow-visible">
-              <h2 className="mb-1 font-bold">روزهای دیگر</h2>
-              <p className="mb-4 text-xs text-slate-400">کارهایی که موعدشان بعد از امروز است.</p>
-              {board?.upcoming.length ? (
-                <div className="space-y-5">
-                  {board.upcoming.map((day) => (
-                    <div key={day.date}>
-                      <h3 className="mb-2 text-sm font-semibold text-slate-600">{formatDay(day.date)}</h3>
-                      <ul className="space-y-2">
-                        {day.items.map((task) => (
-                          <FollowUpTaskCard
-                            key={task.id}
-                            task={task}
-                            canEdit={canEdit}
-                            onUpdated={() => void handleUpdated()}
-                          />
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <Empty>کار زمان‌بندی‌شده‌ای برای روزهای بعد نیست.</Empty>
-              )}
-            </section>
-          ) : null}
-
-          {showDone ? (
-            <section className="card overflow-visible">
-              <h2 className="mb-4 font-bold">انجام‌شده</h2>
-              {board?.completed.length ? (
-                <ul className="space-y-2">
-                  {board.completed.map((task) => (
-                    <FollowUpTaskCard
-                      key={task.id}
-                      task={task}
-                      canEdit={canEdit}
-                      onUpdated={() => void handleUpdated()}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <Empty>کاری انجام نشده است.</Empty>
-              )}
-            </section>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function fmtCount(value: number): string {
-  return new Intl.NumberFormat("fa-IR").format(value);
-}
-
-function formatDay(value: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!match) return value;
-  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
-  return utc.toLocaleDateString("fa-IR-u-ca-persian", {
-    timeZone: "UTC",
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
+  useEffect(() => {
+    if (search === querySearch) return;
+    const timer = setTimeout(() => change({ q: search.trim() }, true, true), 350);
+    return () => clearTimeout(timer);
+  }, [search, querySearch]);
+  useEffect(() => {
+    let active = true;
+    void request<TaskPerson[]>("/v1/tasks/people").then((next) => { if (active) setPeople(next); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const apiParams = new URLSearchParams({ view, limit: String(pageSize), offset: String(offset) });
+  for (const key of ["q", "status", "priority", "due_from", "due_to", "sort", "order"]) {
+    const value = params.get(key);
+    if (value) apiParams.set(key, value);
+  }
+  const assignee = params.get("assignee") ?? "";
+  if (assignee === "unassigned") apiParams.set("unassigned", "true");
+  else if (assignee) apiParams.set("assignee_id", assignee);
+  const query = apiParams.toString();
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setError(null);
+    void request<TaskPage>(`/v1/tasks?${query}`).then((next) => {
+      if (!active) return;
+      if (offset > 0 && !next.items.length) {
+        change({ offset: String(Math.max(0, Math.floor((next.total - 1) / pageSize) * pageSize)) }, false, true);
+        return;
+      }
+      setPage(next);
+    }).catch(() => { if (active) { setPage(null); setError("دریافت کارها ممکن نشد؛ فیلترها و اتصال را بررسی و دوباره تلاش کنید."); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [query, revision]);
+  const filterKeys = ["q", "status", "priority", "assignee", "due_from", "due_to", "sort", "order"];
+  const clearFilters = () => { setSearch(""); change(Object.fromEntries(filterKeys.map((key) => [key, ""]))); };
+  const selectField = (id: string, label: string, options: { value: string; label: string }[]): FilterBarField => ({
+    id, label, active: Boolean(params.get(id)), onRemove: () => change({ [id]: "" }),
+    control: <FilterSelect ariaLabel={label} value={params.get(id) ?? ""} onChange={(value) => change({ [id]: value })} options={options} />,
   });
+  const filterFields: FilterBarField[] = [
+    selectField("status", "وضعیت", Object.entries(TASK_STATUS_LABELS).map(([value, label]) => ({ value, label }))),
+    selectField("assignee", "مسئول", [{ value: "unassigned", label: "بدون مسئول" }, ...people.map((p) => ({ value: p.id, label: p.name })), ...(assignee && assignee !== "unassigned" && !people.some((p) => p.id === assignee) ? [{ value: assignee, label: "مسئول انتخاب‌شده" }] : [])]),
+    selectField("priority", "اولویت", Object.entries(TASK_PRIORITY_LABELS).map(([value, label]) => ({ value, label }))),
+    ...[{ id: "due_from", label: "موعد از" }, { id: "due_to", label: "موعد تا" }].map(({ id, label }) => ({
+      id, label, active: Boolean(params.get(id)), onRemove: () => change({ [id]: "" }),
+      control: <JalaliDatePicker value={params.get(id) ?? ""} onChange={(value) => change({ [id]: value })} placeholder="انتخاب تاریخ" />,
+    })),
+    { id: "sort", label: "مرتب‌سازی", pinned: true, active: Boolean(params.get("sort")), onRemove: () => {},
+      control: <FilterSelect ariaLabel="مرتب‌سازی" allLabel={null} value={params.get("sort") ?? "due_date"} onChange={(value) => change({ sort: value })} options={SORTS.map((s) => ({ value: s.id, label: s.label }))} /> },
+    { id: "order", label: "ترتیب", pinned: true, active: Boolean(params.get("order")), onRemove: () => {},
+      control: <FilterSelect ariaLabel="ترتیب" allLabel={null} value={params.get("order") ?? "asc"} onChange={(value) => change({ order: value })} options={[{ value: "asc", label: "صعودی" }, { value: "desc", label: "نزولی" }]} /> },
+  ];
+  const filterBar = useFilterBar({ fields: filterFields, hasActive: filterKeys.some((key) => Boolean(params.get(key))), onClear: clearFilters });
+  return <div className="space-y-4">
+    <PageHeader title="کارهای قابل پیگیری" description="مدیریت کارهای تماس، مسئول‌ها و روند پیگیری" actions={<div className="flex flex-wrap items-center justify-end gap-3">{filterBar.toolbar}<button type="button" className="btn-ghost" disabled={loading} onClick={() => setRevision((v) => v + 1)}>تازه‌سازی</button>{canEdit ? <button type="button" className="btn" onClick={() => setCreating(true)}>ثبت کار جدید</button> : null}</div>} />
+    {creating ? <TaskCreateDialog onCancel={() => setCreating(false)} onCreated={(task) => { setCreating(false); change({ task: task.id, history_offset: "" }, false); setRevision((v) => v + 1); }} /> : null}
+    <nav className="panel-tabs grid-cols-2 sm:grid-cols-5" aria-label="صف کارها">{VIEWS.map((item) => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} onClick={() => change({ view: item.id })} className="panel-tab"><span className="block text-lg font-light">{page ? fmt.int(page.counts[item.id] ?? 0) : "—"}</span><span className="text-sm">{item.label}</span></button>)}</nav>
+    <div className="card">
+      <label className="block max-w-lg"><span className="sr-only">جست‌وجو در کارها</span><input className="input" type="search" placeholder="جست‌وجوی عنوان، توضیحات یا شماره تماس" maxLength={200} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+    </div>
+    {filterBar.fields}
+    <ErrorBox message={error} />
+    <div className={`grid items-start gap-4 ${selected ? "lg:grid-cols-[minmax(0,1fr)_minmax(340px,42%)]" : ""}`}>
+      <section tabIndex={-1} className="card min-w-0" aria-label="فهرست کارها" aria-busy={loading}>
+        {loading ? <Loading /> : page?.items.length ? <div className="overflow-x-auto"><table className="table" dir="rtl"><thead><tr><th>عنوان کار</th><th>وضعیت</th>{!selected ? <><th>مسئول</th><th>اولویت</th><th>موعد</th><th>شماره تماس</th><th>آخرین تغییر</th></> : null}</tr></thead><tbody>{page.items.map((task) => {
+          const overdue = task.status !== "done" && task.due_date && task.due_date < page.today;
+          const open = () => change({ task: task.id, history_offset: "" }, false);
+          return <tr key={task.id} tabIndex={0} role="button" aria-label={task.title} aria-current={selected === task.id ? "true" : undefined} className={`table-row-link ${selected === task.id ? "bg-brand-50" : ""}`} onClick={open} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}>
+            <td><span className="block max-w-xs whitespace-normal leading-6">{task.title}</span>{selected ? <div className="mt-2 max-w-xs space-y-1 whitespace-normal text-xs text-slate-500"><p>مسئول: {task.assignee_name ?? "تعیین نشده"} · اولویت: {task.priority ? TASK_PRIORITY_LABELS[task.priority] : "—"}</p><p className={overdue ? "text-rose-700" : undefined}>موعد: {task.due_date ? fmt.calendarDate(task.due_date) : "بدون موعد"}{overdue ? " · عقب‌افتاده" : ""}</p><p><bdi dir="ltr">{task.source_phone ?? "—"}</bdi> · {fmt.dateTime(task.updated_at)}</p>{isAdmin && !task.assignee_access_valid ? <p className="text-rose-700">مسئول فاقد دسترسی به تماس</p> : null}</div> : null}</td>
+            <td><span className={`badge ${task.status === "done" ? "badge-success" : task.status === "in_progress" ? "badge-info" : "badge-neutral"}`}>{TASK_STATUS_LABELS[task.status]}</span></td>
+            {!selected ? <><td>{task.assignee_name ?? "تعیین نشده"}{isAdmin && !task.assignee_access_valid ? <span className="block text-xs text-rose-700">فاقد دسترسی به تماس</span> : null}</td>
+            <td>{task.priority ? TASK_PRIORITY_LABELS[task.priority] : "—"}</td>
+            <td className={overdue ? "text-rose-700" : undefined}>{task.due_date ? fmt.calendarDate(task.due_date) : "بدون موعد"}{overdue ? <span className="block text-xs">عقب‌افتاده</span> : null}</td>
+            <td><bdi dir="ltr">{task.source_phone ?? "—"}</bdi></td><td>{fmt.dateTime(task.updated_at)}</td></> : null}
+          </tr>;
+        })}</tbody></table></div> : !error ? <Empty>کاری در این نما نیست؛ فیلترها را تغییر دهید یا کار جدید ثبت کنید.</Empty> : null}
+        <Pagination page={Math.floor(offset / pageSize) + 1} total={page?.total} loading={loading} hasPrevious={offset > 0} hasNext={Boolean(page && offset + pageSize < page.total)} onPrevious={() => change({ offset: String(Math.max(0, offset - pageSize)) }, false)} onNext={() => change({ offset: String(offset + pageSize) }, false)} />
+      </section>
+      {selected ? <TaskDetails key={selected} id={selected} canEdit={canEdit} isAdmin={isAdmin} historyOffset={numberParam(params.get("history_offset"))} onHistoryOffset={(offset) => change({ history_offset: offset ? String(offset) : "" }, false)} onUpdated={() => setRevision((v) => v + 1)} onClose={() => change({ task: "", history_offset: "" }, false)} /> : null}
+    </div>
+  </div>;
 }

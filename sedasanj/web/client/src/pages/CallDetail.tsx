@@ -1,3 +1,4 @@
+import TaskCreateDialog from "../components/TaskCreateDialog";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -604,6 +605,8 @@ export default function CallDetailPage() {
   const selectedTranscriptVersion = searchParams.get("transcriptVersion");
   const { session } = useAuth();
   const [call, setCall] = useState<CallDetail | null>(null);
+  const [creatingTask, setCreatingTask] = useState(false);
+  useEffect(() => setCreatingTask(false), [callId]);
   const [transcriptVersions, setTranscriptVersions] = useState<AsrTranscriptRevision[]>([]);
   const [operatorScore, setOperatorScore] = useState<OperatorScore | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -876,7 +879,8 @@ export default function CallDetailPage() {
   const insights = call.insights;
   const tasks: FollowUpTask[] = [...(Array.isArray(call.tasks) ? call.tasks : [])].sort((left, right) => {
     if (left.status === right.status) return left.created_at.localeCompare(right.created_at);
-    return left.status === "open" ? -1 : 1;
+    const rank = { open: 0, in_progress: 1, done: 2 };
+    return rank[left.status] - rank[right.status];
   });
   const canEditTasks = Boolean(session && CAN_EDIT_TASKS.includes(session.role));
   const correctionActive = ["queued", "running", "validating"].includes(call.correction?.status ?? "");
@@ -1115,7 +1119,7 @@ export default function CallDetailPage() {
 
       {hasAudioAnalysis ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
 
-      {hasAudioAnalysis ? <section className="card overflow-visible">
+      {call.direction !== "internal" ? <section className="card overflow-visible">
         <SectionTitle
           title="کارهای قابل پیگیری"
           description="موارد عملیاتی استخراج‌شده از تماس؛ می‌توانید آن‌ها را ویرایش یا انجام‌شده کنید"
@@ -1125,6 +1129,8 @@ export default function CallDetailPage() {
             </Link>
           }
         />
+        {canEditTasks ? <button type="button" className="btn mb-3" onClick={() => setCreatingTask(true)}>ثبت کار جدید</button> : null}
+        {creatingTask ? <TaskCreateDialog callId={call.id} onCancel={() => setCreatingTask(false)} onCreated={(task) => { setCreatingTask(false); setCall((current) => current ? { ...current, tasks: [...current.tasks, task] } : current); }} /> : null}
         {tasks.length === 0 ? (
           <EmptyState icon="tasks" compact message="موردی ثبت نشده است." className="min-h-36" />
         ) : (

@@ -121,7 +121,7 @@ def validate_filters(dataset: str, filters: ExportFilters, bound_call_id: UUID |
         or bound_call_id
     ):
         raise ApiError("invalid_request", "برای مخاطبان از فیلتر جست‌وجو، استان و شهر استفاده کنید")
-    if dataset == "follow_up_tasks" and filters.status not in {None, "open", "done"}:
+    if dataset == "follow_up_tasks" and filters.status not in {None, "open", "in_progress", "done"}:
         raise ApiError("invalid_request", "وضعیت پیگیری را open یا done انتخاب کنید")
     if dataset == "contacts" and (filters.province or filters.city):
         _province, _city, reason = contacts.resolve_geo(filters.province, filters.city)
@@ -236,8 +236,11 @@ async def _load_tasks(
             stmt.order_by(FollowUpTask.created_at.desc(), FollowUpTask.id).limit(limit + 1)
         )
     ).all()
+    assert principal.tenant_id is not None
+    today, _ = await follow_up_tasks.tenant_today(session, principal.tenant_id)
     return [
-        follow_up_tasks.serialize(task, call).model_dump(mode="json") for task, call in task_rows
+        follow_up_tasks.serialize(task, call, today=today).model_dump(mode="json")
+        for task, call in task_rows
     ]
 
 

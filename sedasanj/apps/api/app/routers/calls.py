@@ -731,6 +731,7 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
     task_pairs = await follow_up_tasks.list_for_call(
         session, call, insight.action_items if insight else None
     )
+    task_today, _ = await follow_up_tasks.tenant_today(session, call.tenant_id)
     return CallDetail(
         **summary_payload,
         audio_available=audio_available,
@@ -816,7 +817,10 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
             if sales
             else None
         ),
-        tasks=[follow_up_tasks.serialize(task, related) for task, related in task_pairs],
+        tasks=[
+            follow_up_tasks.serialize(task, related, today=task_today)
+            for task, related in task_pairs
+        ],
         analysis_run_id=run.id if run else None,
         prompt_version=run.prompt_version if run else None,
         llm_model=run.llm_model if run else None,

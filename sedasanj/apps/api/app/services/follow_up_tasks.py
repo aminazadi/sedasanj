@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
-from app.models import Call, FollowUpTask, Tenant
+from app.models import Call, FollowUpTask, FollowUpTaskEvent, Tenant
 from app.schemas import TaskDay, TaskOut, TaskPriority, TaskStatus, TaskUpdate
 
 DEFAULT_TZ = "Asia/Tehran"
@@ -78,11 +78,17 @@ def effective_open_date(task: FollowUpTask, tz_name: str = DEFAULT_TZ) -> date:
 
 
 def is_today_bucket(task: FollowUpTask, today: date, tz_name: str = DEFAULT_TZ) -> bool:
-    return task.status == "open" and effective_open_date(task, tz_name) <= today
+    return task.status in {"open", "in_progress"} and (
+        task.due_date is None or task.due_date <= today
+    )
 
 
 def is_upcoming_bucket(task: FollowUpTask, today: date) -> bool:
-    return task.status == "open" and task.due_date is not None and task.due_date > today
+    return (
+        task.status in {"open", "in_progress"}
+        and task.due_date is not None
+        and task.due_date > today
+    )
 
 
 def _open_sort_key(task: FollowUpTask) -> tuple[int, date, datetime]:
@@ -93,8 +99,16 @@ def _open_sort_key(task: FollowUpTask) -> tuple[int, date, datetime]:
     )
 
 
-def serialize(task: FollowUpTask, call: Call) -> TaskOut:
+def serialize(task: FollowUpTask, call: Call, *, today: date | None = None) -> TaskOut:
     return TaskOut(
+        is_overdue=bool(
+            task.status != "done"
+            and task.due_date
+            and task.due_date < (today or today_in_timezone())
+        ),
+        assignee_id=getattr(task, "assignee_id", None),
+        origin=getattr(task, "origin", None) or "analysis",
+        version=getattr(task, "version", None) or 1,
         id=task.id,
         call_id=task.call_id,
         title=task.title,
@@ -184,6 +198,7 @@ async def sync_from_analysis(
         if title.casefold() in known:
             continue
         task = FollowUpTask(
+            id=uuid4(),
             tenant_id=call.tenant_id,
             call_id=call.id,
             title=title,
@@ -193,6 +208,15 @@ async def sync_from_analysis(
             updated_at=now,
         )
         session.add(task)
+        session.add(
+            FollowUpTaskEvent(
+                tenant_id=call.tenant_id,
+                task_id=task.id,
+                kind="created",
+                changes={},
+                created_at=now,
+            )
+        )
         known.add(title.casefold())
         created.append(task)
     return created

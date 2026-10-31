@@ -694,10 +694,28 @@ export interface AccountInfo {
   user: User;
 }
 
-export type TaskStatus = "open" | "done";
+export type TaskStatus = "open" | "in_progress" | "done";
 export type TaskPriority = "low" | "normal" | "high";
 
+export interface TaskPerson { id: string; name: string }
+export interface TaskPage {
+  items: FollowUpTask[]; total: number; limit: number; offset: number;
+  counts: Record<string, number>; today: string;
+}
+export interface TaskEvent {
+  id: string; actor_id: string | null; actor_name: string | null;
+  kind: string; changes: Record<string, { before: unknown; after: unknown }>;
+  note: string | null; created_at: string;
+}
+export interface TaskHistoryPage { items: TaskEvent[]; total: number; limit: number; offset: number }
+
 export interface FollowUpTask {
+  assignee_id: string | null;
+  assignee_name: string | null;
+  is_overdue: boolean;
+  assignee_access_valid: boolean;
+  origin: "analysis" | "manual";
+  version: number;
   id: string;
   call_id: string;
   title: string;

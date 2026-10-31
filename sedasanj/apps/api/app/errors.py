@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ERROR_STATUS: dict[str, int] = {
+    "task_version_conflict": 409,
+    "task_assignee_invalid": 422,
     "unauthorized": status.HTTP_401_UNAUTHORIZED,
     "forbidden": status.HTTP_403_FORBIDDEN,
     "insufficient_credit": status.HTTP_402_PAYMENT_REQUIRED,

@@ -237,7 +237,8 @@ export const INTENT_LABELS: Record<string, string> = {
 };
 
 export const TASK_STATUS_LABELS: Record<string, string> = {
-  open: "انجام نشده",
+  open: "باز",
+  in_progress: "در حال انجام",
   done: "انجام شده",
 };
 

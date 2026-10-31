@@ -1264,10 +1264,12 @@ async def dashboard(
         and item.completed_at <= previous_to
         and item.completed_at <= item.created_at + timedelta(hours=sla_hours)
     ]
-    open_tasks = [item for item in tasks if item.status == "open"]
+    open_tasks = [item for item in tasks if item.status in {"open", "in_progress"}]
     done_tasks = [item for item in tasks if item.status == "done"]
     overdue_tasks = [
-        item for item in open_tasks if item.due_date is not None and item.due_date < now.date()
+        item
+        for item in open_tasks
+        if item.due_date is not None and item.due_date < now.astimezone(tenant_zone).date()
     ]
     previous_done_tasks = [item for item in previous_tasks if item.status == "done"]
     improved = sum(
@@ -1389,7 +1391,9 @@ async def dashboard(
             "due_at": item.due_date,
         }
         for item in tasks
-        if item.status == "open" and item.due_date and item.due_date < now.date()
+        if item.status in {"open", "in_progress"}
+        and item.due_date
+        and item.due_date < now.astimezone(tenant_zone).date()
     ]
     review = [
         {

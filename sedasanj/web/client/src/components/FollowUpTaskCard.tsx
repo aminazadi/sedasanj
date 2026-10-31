@@ -1,3 +1,4 @@
+import { taskErrorText } from "../lib/taskErrors";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS } from "../api";
@@ -24,18 +25,6 @@ function toDraft(task: FollowUpTask): Draft {
     priority: task.priority ?? "",
     due_date: task.due_date ?? "",
   };
-}
-
-function tehranToday(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tehran",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const pick = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${pick("year")}-${pick("month")}-${pick("day")}`;
 }
 
 function parties(task: FollowUpTask): string {
@@ -73,7 +62,7 @@ export default function FollowUpTaskCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const done = task.status === "done";
-  const overdue = !done && Boolean(task.due_date) && task.due_date! < tehranToday();
+  const overdue = task.is_overdue;
   const dirty =
     draft.title !== task.title ||
     draft.description !== (task.description ?? "") ||
@@ -97,12 +86,12 @@ export default function FollowUpTaskCard({
     try {
       const next = await request<FollowUpTask>(`/v1/tasks/${task.id}`, {
         method: "PATCH",
-        body,
+        body: { ...body, version: task.version },
       });
       onUpdated(next);
       return next;
     } catch (err) {
-      setError((err as Error).message);
+      setError(taskErrorText(err));
       throw err;
     } finally {
       setSaving(false);
@@ -218,6 +207,10 @@ export default function FollowUpTaskCard({
               {task.description}
             </p>
           ) : null}
+          {canEdit ? <select className="input mt-2 !w-auto text-xs" aria-label="وضعیت کار" value={task.status} disabled={saving} onChange={(event) => void patch({ status: event.target.value as TaskStatus }).catch(() => {})}>
+            <option value="open">باز</option><option value="in_progress">در حال انجام</option><option value="done">انجام‌شده</option>
+          </select> : null}
+          <Link className="mt-2 block text-xs text-brand-700 underline" to={`/tasks?task=${task.id}`}>پیگیری و تاریخچه</Link>
           {showCallLink ? (
             <div className="mt-1.5 flex items-center">
               <Link className="text-xs text-brand-700 hover:underline" to={`/calls/${task.call_id}`}>
@@ -225,9 +218,9 @@ export default function FollowUpTaskCard({
               </Link>
             </div>
           ) : null}
-          {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
+          {error ? <div className="mt-2 text-xs text-rose-600">{error}<Link className="mr-2 underline" to={`/tasks?task=${task.id}`}>دریافت نسخه تازه</Link></div> : null}
           {open && canEdit && !done ? (
-            <div className="mt-3 grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
+            <div className="mt-3 grid gap-3 border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label className="label">عنوان</label>
                 <input

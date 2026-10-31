@@ -856,7 +856,7 @@ class ProcessingEventOut(BaseModel):
     created_at: datetime
 
 
-TaskStatus = Literal["open", "done"]
+TaskStatus = Literal["open", "in_progress", "done"]
 TaskPriority = Literal["low", "normal", "high"]
 
 
@@ -874,13 +874,70 @@ class TaskOut(BaseModel):
     caller_number: str | None = None
     dialed_number: str | None = None
     agent_extension: str | None = None
+    assignee_id: UUID | None = None
+    assignee_name: str | None = None
+    is_overdue: bool = False
+    assignee_access_valid: bool = True
+    origin: Literal["analysis", "manual"] = "analysis"
+    version: int = 1
     created_at: datetime
     completed_at: datetime | None = None
     updated_at: datetime
 
 
+class TaskPerson(BaseModel):
+    id: UUID
+    name: str
+
+
+class TaskPage(BaseModel):
+    items: list[TaskOut]
+    total: int
+    limit: int
+    offset: int
+    counts: dict[str, int]
+    today: date
+
+
+class TaskCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    call_id: UUID
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=4000)
+    priority: TaskPriority | None = None
+    due_date: date | None = None
+
+
+class TaskNote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(min_length=1, max_length=4000)
+    version: int = Field(ge=1)
+
+
+class TaskEventOut(BaseModel):
+    id: UUID
+    actor_id: UUID | None
+    actor_name: str | None
+    kind: str
+    changes: dict[str, Any]
+    note: str | None
+    created_at: datetime
+
+
+class TaskHistoryPage(BaseModel):
+    items: list[TaskEventOut]
+    total: int
+    limit: int
+    offset: int
+
+
 class TaskUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    version: int | None = Field(default=None, ge=1)
+    assignee_id: UUID | None = None
 
     title: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)

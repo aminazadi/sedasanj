@@ -2,7 +2,7 @@
 
 - Fixed the table row-count dropdown with an explicit clickable trigger and a portalled, keyboard-accessible menu that stays visible above clipped tables and near the bottom of the viewport.
 
-- Added a task follow-up workspace for organization administrators and operators with server-side filtering, sorting, counts and pagination; shared panel styling and URL-persisted views, filters and selected tasks.
+- Added a task follow-up workspace for organization administrators and operators with server-side filtering, sorting, counts and pagination; shared headers, filters, tables and an illustrated task-creation dialog with URL-persisted views, filters and selected tasks.
 - Added manual tasks on accessible customer calls, administrator-managed assignees constrained by current call access, an in-progress workflow, immutable follow-up notes, paginated activity history and version-based concurrent edit protection.
 - Updated task summaries, overdue alerts, call details and assistant exports for the expanded workflow and organization timezone; added tenant-isolated activity storage and Persian help for task conflicts and assignment errors.
 

@@ -1366,6 +1366,11 @@ class FollowUpTask(Base):
     priority: Mapped[str | None] = mapped_column(Text)
     due_date: Mapped[date | None] = mapped_column(Date)
     source_phone: Mapped[str | None] = mapped_column(Text)
+    assignee_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    origin: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'analysis'"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
     completed_by: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -1374,14 +1379,44 @@ class FollowUpTask(Base):
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("status IN ('open','done')", name="follow_up_tasks_status_check"),
+        CheckConstraint(
+            "status IN ('open','in_progress','done')", name="follow_up_tasks_status_check"
+        ),
         CheckConstraint(
             "priority IS NULL OR priority IN ('low','normal','high')",
             name="follow_up_tasks_priority_check",
         ),
         CheckConstraint("btrim(title) <> ''", name="follow_up_tasks_title_check"),
+        CheckConstraint("origin IN ('analysis','manual')", name="follow_up_tasks_origin_check"),
+        CheckConstraint("version >= 1", name="follow_up_tasks_version_check"),
+        Index("idx_tasks_assignee", "tenant_id", "assignee_id", "status", "due_date", "id"),
+        Index("idx_tasks_updated", "tenant_id", "updated_at", "id"),
         Index("idx_follow_up_tasks_call", "call_id", "created_at"),
         Index("idx_follow_up_tasks_tenant_status", "tenant_id", "status", "due_date"),
+    )
+
+
+class FollowUpTaskEvent(Base):
+    __tablename__ = "follow_up_task_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    task_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("follow_up_tasks.id", ondelete="CASCADE")
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    changes: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('created','updated','note')", name="task_events_kind_check"),
+        Index("idx_task_events_task", "tenant_id", "task_id", "created_at", "id"),
     )
 
 
@@ -2621,6 +2656,7 @@ TENANT_TABLES: tuple[str, ...] = (
     "transcript_chunks",
     "call_knowledge",
     "follow_up_tasks",
+    "follow_up_task_events",
     "jobs",
     "job_outbox",
     "processing_events",
