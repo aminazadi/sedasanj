@@ -80,8 +80,10 @@ function mixstereo_main(array $argv): int
     if ($dialed === '') {
         $dialed = $fromDid !== '' ? $fromDid : $cdrDestination;
     }
+    // FreePBX names extension-to-extension recordings with the "exten-" prefix.
     $direction = str_starts_with($name, 'in-') ? 'inbound'
-        : (str_starts_with($name, 'out-') ? 'outbound' : '');
+        : (str_starts_with($name, 'out-') ? 'outbound'
+        : (strncmp($name, 'exten-', 6) === 0 ? 'internal' : ''));
 
     if ($dir === '' || $name === '') {
         mixstereo_say('SS-HOOK-1001', 'missing required arguments (recording dir, CALLFILENAME)');
@@ -112,8 +114,10 @@ function mixstereo_main(array $argv): int
     } elseif (is_file($base)) {
         $name = pathinfo($base, PATHINFO_FILENAME);
     }
+    // FreePBX names extension-to-extension recordings with the "exten-" prefix.
     $direction = str_starts_with($name, 'in-') ? 'inbound'
-        : (str_starts_with($name, 'out-') ? 'outbound' : '');
+        : (str_starts_with($name, 'out-') ? 'outbound'
+        : (strncmp($name, 'exten-', 6) === 0 ? 'internal' : ''));
     if (in_array($argv[9] ?? '', ['inbound', 'outbound', 'internal'], true)) { $direction = $argv[9]; }
     $destination = "{$dir}stereo_{$name}.wav";
 
