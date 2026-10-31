@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2 — AMINAZADI
+
+- Documented the GPLv3+ license, third-party notices, signing-key requirement, and compatible source-protection practices.
+
 ## 1.5.1 — AMINAZADI
 
 - Fixed the FreePBX bootstrap crash after module upload by declaring only one PHP component in module.xml; all required web PHP extensions remain enforced during installation with SS-DEP-1002.

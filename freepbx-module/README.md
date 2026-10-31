@@ -1,5 +1,9 @@
 # Seda Sanj FreePBX Module 1.5.1
 
+## License and rights
+
+This module is distributed under GPLv3+ as declared in `module.xml`; see [RIGHTS.md](RIGHTS.md) for third-party attribution, release-integrity status, and the distinction between code licensing and brand protection. Keep `assets/fonts/OFL.txt` and upstream binary license notices with distributed assets. The bundled release-signing public key is currently a placeholder, so signed automatic updates remain disabled until configured with the matching API key pair.
+
 Voicemail upload is disabled by default. Enable it in **Admin > Seda Sanj > Voicemail** after confirming the Asterisk service account can read `/var/spool/asterisk/voicemail`. The sweeper reads message metadata and audio without modifying mailbox files, skips `tmp`, and uploads only complete messages older than the recording settle interval. Existing messages are ignored on first activation unless backfill is explicitly enabled. GSM and wav49 inputs are converted to mono 8 kHz PCM in the private pending spool before upload; original voicemail files are never renamed, moved, or deleted.
 
 Voicemail uses `POST /v1/ingest/voicemails`, shares the recording upload format and retry queue, and consumes no processing credit. To inspect or run one scan manually, use `php /var/lib/asterisk-recording-uploader/bin/sweeper.php --voicemail --once` or add `--report` for a dry run.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-31 — AMINAZADI
+
+- Documented FreePBX module licensing, third-party attribution, release-signing status, and GPL-compatible protection measures.
+
 ## 2026-10-30 — AMINAZADI
 
 - Fixed module 1.5.1 metadata causing FreePBX bootstrap to pass an array to stristr() after upload; retained coded PHP-extension checks and documented backup-first panel recovery.
