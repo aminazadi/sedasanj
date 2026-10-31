@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Released FreePBX module 1.5.5 with the existing internal-call direction mapping and synchronized release metadata; ZIP integrity passed, but PHP 7.4/8.2 tests could not run because the Docker daemon was unavailable, and PBX lab validation remains pending.
+
 - Marked FreePBX `exten-*` recordings as `internal` in the recording hook (`mix-stereo.php`) and the ingest mapper so extension-to-extension calls reach the platform with `direction=internal`; the platform still classifies calls from the synced extension list. The `exten-` filename prefix and `php -l` under 7.4/8.x are not yet lab-confirmed (⚠ needs lab confirmation); test added to `IngestDestinationTest.php`.
 - Added explicit Issabel-only installation guards, separated the module UI script, and recorded final beta validation with pending PBX lab certification.
 - Added the Issabel 4/5 beta module, shared PBX engine, legacy PHP gateway, original-recording preservation, generated-dialplan adapters, verified installation backups and rollback.

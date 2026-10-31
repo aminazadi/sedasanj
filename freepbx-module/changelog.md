@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.5 — AMINAZADI
+
+- Packaged internal-call direction mapping for exten-* recordings. PBX lab validation remains pending.
+
 ## 1.5.4 — AMINAZADI
 
 - Fixed horizontal overflow in the log viewer and added an ALL minimum-level filter.
