@@ -27,8 +27,6 @@ from app.services.phone_numbers import normalize_call_number
 
 ImportMode = Literal["skip", "update"]
 
-MAX_IMPORT_BYTES = 5 * 1024 * 1024
-MAX_IMPORT_ROWS = 20_000
 MAX_REPORTED_ERRORS = 100
 MIN_DIGITS = 3
 MAX_DIGITS = 15
@@ -324,11 +322,6 @@ def parse_import(raw: bytes) -> ParsedImport:
                     raise ApiError("invalid_request", _NO_HEADER_HELP)
                 continue
             result.total_rows += 1
-            if result.total_rows > MAX_IMPORT_ROWS:
-                raise ApiError(
-                    "invalid_request",
-                    f"حداکثر {MAX_IMPORT_ROWS} ردیف در هر بار ایمپورت مجاز است؛ فایل را تقسیم کنید",
-                )
             values = {
                 name: (row[index] if index < len(row) else "") for name, index in columns.items()
             }

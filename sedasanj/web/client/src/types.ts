@@ -751,6 +751,7 @@ export interface ContactPage {
 }
 
 export interface ContactImportReport {
+  accepted_numbers: string[];
   dry_run: boolean;
   mode: "skip" | "update";
   total_rows: number;

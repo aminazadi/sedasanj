@@ -144,12 +144,7 @@ async def import_contacts(
     await ratelimit.enforce(
         f"contacts-import:{principal.id}", get_settings().rate_limit_uploads_per_minute
     )
-    raw = await file.read(contacts.MAX_IMPORT_BYTES + 1)
-    if len(raw) > contacts.MAX_IMPORT_BYTES:
-        limit_mb = contacts.MAX_IMPORT_BYTES // (1024 * 1024)
-        raise ApiError(
-            "invalid_request", f"حجم فایل بیش از {limit_mb} مگابایت است؛ فایل را تقسیم کنید"
-        )
+    raw = await file.read()
     parsed = contacts.parse_import(raw)
     try:
         outcome = await contacts.apply_import(
@@ -188,6 +183,7 @@ async def import_contacts(
         updated=outcome.updated,
         skipped=outcome.skipped,
         error_count=parsed.error_count,
+        accepted_numbers=list(dict.fromkeys(row.fields.phone_number for row in parsed.rows)),
         errors=[ContactImportError(row=row, message=message) for row, message in parsed.errors],
     )
 

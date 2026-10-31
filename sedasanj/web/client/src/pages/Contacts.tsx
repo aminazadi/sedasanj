@@ -15,6 +15,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import addUserArt from "../assets/add-user.webp";
 import importArt from "../assets/assign-operator.webp";
+import { importContacts } from "../lib/contactImport.mjs";
 import type { Contact, ContactImportReport, ContactPage, IranGeo } from "../types";
 
 const PAGE_SIZE = 25;
@@ -109,6 +110,8 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
   const [step, setStep] = useState<ImportStep>("choose");
   const [report, setReport] = useState<ContactImportReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -125,19 +128,20 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
       setError("یک فایل CSV انتخاب کنید.");
       return;
     }
+    if (busy) return;
     setBusy(true);
+    setProgress(0);
     setError(null);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("mode", mode);
-      body.append("dry_run", String(dryRun));
-      const result = await request<ContactImportReport>("/v1/contacts/import", { method: "POST", body });
+      const result = await importContacts(file, mode, dryRun,
+        (body: FormData) => request<ContactImportReport>("/v1/contacts/import", { method: "POST", body }),
+        (percent: number, text: string) => { setProgress(percent); setProgressText(text); });
       setReport(result);
       setStep(dryRun ? "preview" : "done");
       if (!dryRun) onImported();
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${(err as Error).message}${!dryRun ? " ممکن است بخش‌هایی ثبت شده باشند؛ برای ادامه، فایل را با گزینهٔ نادیده گرفتن شماره‌های موجود دوباره وارد کنید." : ""}`);
+      if (!dryRun) { onImported(); setStep("choose"); }
     } finally {
       setBusy(false);
     }
@@ -171,15 +175,20 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
       onClose={onClose}
       onSubmit={() => void (nothingToSave ? reselect() : submit())}
     >
+      {busy ? <div role="status" className="space-y-2">
+        <p>{progressText} — {fmt.int(progress)}٪</p>
+        <progress className="w-full" max={100} value={progress} aria-label={progressText} />
+        <p className="text-sm">تا پایان عملیات این صفحه را باز نگه دارید.</p>
+      </div> : null}
       {step === "choose" ? (
         <>
           <label>
-            <span>فایل CSV (حداکثر ۵ مگابایت و ۲۰٬۰۰۰ ردیف)</span>
-            <input className="input" type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required />
+            <span>فایل CSV (ارسال مرحله‌ای بدون محدودیت حجم و تعداد ردیف)</span>
+            <input className="input" type="file" disabled={busy} accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required />
           </label>
           <label>
             <span>اگر شماره قبلاً ثبت شده بود</span>
-            <select className="input" value={mode} onChange={(event) => setMode(event.target.value as "skip" | "update")}>
+            <select className="input" disabled={busy} value={mode} onChange={(event) => setMode(event.target.value as "skip" | "update")}>
               <option value="skip">نادیده بگیر (اطلاعات فعلی حفظ شود)</option>
               <option value="update">به‌روزرسانی کن (فقط خانه‌های پرشده جایگزین شوند)</option>
             </select>

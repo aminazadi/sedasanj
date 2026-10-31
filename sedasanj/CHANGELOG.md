@@ -1,3 +1,7 @@
+## 2026-11-01 — AMINAZADI
+
+- Removed contact CSV file-size and row-count caps and added sequential, bounded browser uploads with separate validation/import percentages, automatic rate-limit pauses, cross-batch duplicate tracking, partial-failure guidance and a Persian help article.
+
 # Changelog
 
 ## 2026-10-31 — AMINAZADI

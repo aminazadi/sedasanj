@@ -99,10 +99,12 @@ def test_import_rejects_files_without_required_columns_or_content() -> None:
         contacts.parse_import(HEADER.encode())  # header only: nothing to import
 
 
-def test_import_enforces_row_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(contacts, "MAX_IMPORT_ROWS", 2)
-    with pytest.raises(ApiError):
-        contacts.parse_import(_csv("a,0912000001,,,\nb,0912000002,,,\nc,0912000003,,,\n"))
+def test_import_has_no_file_row_or_byte_cap() -> None:
+    body = "a,09121234567,,," + " " * 260 + "\n"
+    raw = _csv(body * 21_000)
+    assert len(raw) > 5 * 1024 * 1024
+    parsed = contacts.parse_import(raw)
+    assert parsed.total_rows == len(parsed.rows) == 21_000
 
 
 def test_import_error_list_is_capped_but_counted() -> None:

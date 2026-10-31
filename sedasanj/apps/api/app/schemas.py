@@ -1732,3 +1732,4 @@ class ContactImportReport(BaseModel):
     skipped: int
     error_count: int
     errors: list[ContactImportError]
+    accepted_numbers: list[str] = Field(default_factory=list)
