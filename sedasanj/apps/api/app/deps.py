@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -17,7 +17,10 @@ from app.errors import ApiError
 from app.logging import log_context
 from app.models import ApiKey, StaffUser, Tenant, User
 from app.security import decode_access_token, hash_api_key
-from app.services import ratelimit
+from app.services import audit, ratelimit
+from app.services.api_scopes import ip_allowed
+
+LAST_USED_WRITE_INTERVAL = timedelta(seconds=60)
 
 PrincipalKind = Literal["user", "staff", "api_key"]
 
@@ -30,6 +33,7 @@ class Principal:
     role: str
     mobile_number: str | None = None
     extension: str | None = None
+    scopes: frozenset[str] = frozenset()
 
 
 def settings_dep() -> Settings:
@@ -119,18 +123,82 @@ async def current_api_key(
         ).scalar_one_or_none()
         if api_key is None:
             raise ApiError("unauthorized", "invalid api key")
-        await session.execute(
-            update(ApiKey).where(ApiKey.id == api_key.id).values(last_used_at=datetime.now(UTC))
-        )
+        source_ip = client_ip(request)
+        now = datetime.now(UTC)
+        denial: ApiError | None = None
+        if api_key.expires_at is not None and api_key.expires_at <= now:
+            denial = ApiError(
+                "api_key_expired",
+                "این کلید API منقضی شده است؛ در بخش کلیدهای API کلید جدید بسازید",
+            )
+        elif not ip_allowed(list(api_key.allowed_cidrs), source_ip):
+            denial = ApiError(
+                "ip_not_allowed",
+                "آدرس درخواست‌دهنده مجاز نیست؛ فهرست IPهای کلید را اصلاح کنید",
+            )
+        if denial is not None:
+            await audit.record(
+                session,
+                actor_type="api_key",
+                actor_id=api_key.id,
+                tenant_id=api_key.tenant_id,
+                action=f"api_key.denied.{denial.code}",
+                payload={"api_key_id": str(api_key.id)},
+                ip=source_ip,
+            )
+            await session.commit()
+            raise denial
+        # Throttle the hot-path write: one update per key per minute is enough for "last used".
+        if api_key.last_used_at is None or now - api_key.last_used_at >= LAST_USED_WRITE_INTERVAL:
+            await session.execute(
+                update(ApiKey)
+                .where(ApiKey.id == api_key.id)
+                .values(last_used_at=now, last_used_ip=source_ip)
+            )
         tenant_id = api_key.tenant_id
         key_id = api_key.id
+        scopes = frozenset(api_key.scopes)
 
     await _assert_tenant_active(tenant_id)
     log_context(tenant_id=str(tenant_id))
-    principal = Principal(kind="api_key", id=key_id, tenant_id=tenant_id, role="agent")
+    principal = Principal(
+        kind="api_key", id=key_id, tenant_id=tenant_id, role="agent", scopes=scopes
+    )
     request.state.principal = principal
-    await ratelimit.enforce(f"key:{key_id}", get_settings().rate_limit_uploads_per_minute)
     return principal
+
+
+def require_scope(scope: str) -> Callable[..., Awaitable[Principal]]:
+    """API-key route guard. A key without `scope` is refused and the refusal is audited."""
+
+    async def dependency(
+        request: Request, principal: Annotated[Principal, Depends(current_api_key)]
+    ) -> Principal:
+        if scope not in principal.scopes:
+            async with session_scope(None, staff=True) as session:
+                await audit.record(
+                    session,
+                    actor_type="api_key",
+                    actor_id=principal.id,
+                    tenant_id=principal.tenant_id,
+                    action="api_key.denied.api_key_scope_denied",
+                    payload={"scope": scope, "path": request.url.path},
+                    ip=client_ip(request),
+                )
+            raise ApiError(
+                "api_key_scope_denied",
+                f"این کلید دسترسی {scope} ندارد؛ آن را به کلید اضافه کنید",
+            )
+        # Reads and writes have separate budgets so a polling CRM cannot starve call uploads.
+        settings = get_settings()
+        if scope.endswith(":read"):
+            bucket, limit = f"key-read:{principal.id}", settings.rate_limit_reads_per_minute
+        else:
+            bucket, limit = f"key:{principal.id}", settings.rate_limit_uploads_per_minute
+        await ratelimit.enforce(bucket, limit)
+        return principal
+
+    return dependency
 
 
 async def _assert_tenant_active(tenant_id: UUID) -> None:
@@ -202,6 +270,11 @@ OperatorDep = Annotated[Principal, Depends(require_roles("org_admin", "operator"
 StaffDep = Annotated[Principal, Depends(current_staff)]
 SuperAdminDep = StaffDep
 ApiKeyDep = Annotated[Principal, Depends(current_api_key)]
+IngestKeyDep = Annotated[Principal, Depends(require_scope("ingest:write"))]
+CrmKeyDep = Annotated[Principal, Depends(require_scope("crm:write"))]
+ModuleKeyDep = Annotated[Principal, Depends(require_scope("module:sync"))]
+CallsReadKeyDep = Annotated[Principal, Depends(require_scope("calls:read"))]
+ContactsReadKeyDep = Annotated[Principal, Depends(require_scope("contacts:read"))]
 TenantSession = Annotated[AsyncSession, Depends(tenant_session)]
 ApiKeySession = Annotated[AsyncSession, Depends(api_key_session)]
 StaffSession = Annotated[AsyncSession, Depends(staff_session)]

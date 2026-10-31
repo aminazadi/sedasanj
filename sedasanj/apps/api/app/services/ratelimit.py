@@ -33,15 +33,22 @@ async def enforce(bucket: str, limit: int, window_seconds: int = 60) -> None:
     """Fixed-window limiter (§13). Falls back to in-process counters without redis."""
     redis = _get_redis()
     now = time.time()
+    retry_after = window_seconds
     if redis is None:
         hits = [t for t in _memory[bucket] if now - t < window_seconds]
         hits.append(now)
         _memory[bucket] = hits
         count = len(hits)
+        retry_after = max(1, int(window_seconds - (now - hits[0])) + 1)
     else:
         key = f"rl:{bucket}:{int(now // window_seconds)}"
         count = int(await redis.incr(key))
         if count == 1:
             await redis.expire(key, window_seconds)
+        retry_after = max(1, window_seconds - int(now % window_seconds))
     if count > limit:
-        raise ApiError("rate_limited", f"limit of {limit} requests per {window_seconds}s exceeded")
+        raise ApiError(
+            "rate_limited",
+            f"limit of {limit} requests per {window_seconds}s exceeded",
+            retry_after=retry_after,
+        )

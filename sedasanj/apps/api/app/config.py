@@ -199,6 +199,9 @@ class Settings(BaseSettings):
 
     rate_limit_uploads_per_minute: int = 30
     rate_limit_reads_per_minute: int = 120
+    webhook_max_per_tenant: int = 10
+    webhook_auto_disable_failures: int = 10
+    webhook_delivery_retention_days: int = 30
 
     max_upload_bytes: int = 200 * 1024 * 1024
     max_extracted_audio_bytes: int = 512 * 1024 * 1024

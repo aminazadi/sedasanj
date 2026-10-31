@@ -5,9 +5,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import operational_tenant_ids, routable_tenant_ids, session_scope
 from app.errors import ApiError
 from app.metrics import jobs_failed_retryable, oldest_job_seconds, provider_tasks, queue_depth
@@ -28,6 +29,7 @@ from app.models import (
     SubscriptionChange,
     TenantBalanceCache,
     User,
+    WebhookDelivery,
 )
 from app.services import commerce, outbox, pipeline, queue, subscription_state
 from app.services.commerce_settings import get_commerce_settings
@@ -341,6 +343,14 @@ async def run_retention() -> int:
                 await storage.delete(audio.object_key)
                 audio.deleted_at = datetime.now(UTC)
                 deleted += 1
+            await session.execute(
+                delete(WebhookDelivery).where(
+                    WebhookDelivery.tenant_id == tenant_id,
+                    WebhookDelivery.created_at
+                    < datetime.now(UTC)
+                    - timedelta(days=get_settings().webhook_delivery_retention_days),
+                )
+            )
     if deleted:
         logger.info("retention deleted audio", extra={"extra_fields": {"objects": deleted}})
     return deleted

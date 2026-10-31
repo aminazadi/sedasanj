@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -13,7 +12,6 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import dispose_engine, resolve_tenant_for_call, session_scope
-from app.errors import ApiError
 from app.logging import configure_logging, log_context
 from app.metrics import start_metrics_server, webhook_responses_total
 from app.models import (
@@ -27,8 +25,7 @@ from app.models import (
     Webhook,
     WebhookDelivery,
 )
-from app.security import sign_webhook
-from app.services import outbox, pipeline, progress, queue
+from app.services import outbox, pipeline, progress, queue, webhook_delivery
 from app.services.maintenance import (
     expire_commerce_state,
     prepare_renewal_orders,
@@ -39,7 +36,6 @@ from app.services.maintenance import (
 )
 from app.services.payments import reconcile_pending
 from app.services.subscription_notices import send_due_notices
-from app.services.urlguard import assert_safe_webhook_url_async
 from worker_notify.mailer import send_email
 
 logger = logging.getLogger(__name__)
@@ -104,6 +100,7 @@ async def _build_payload(
         if event == "call.failed":
             data["error_code"] = call.error_code
         return call.tenant_id, {
+            "version": webhook_delivery.PAYLOAD_VERSION,
             "event": event,
             "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "tenant_id": str(call.tenant_id),
@@ -113,29 +110,22 @@ async def _build_payload(
 
 
 async def _post_webhook(
-    client: httpx.AsyncClient, hook: Webhook, payload: dict[str, Any]
-) -> tuple[int | None, str | None]:
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
-    timestamp = str(int(datetime.now(UTC).timestamp()))
-    headers = {
-        "Content-Type": "application/json",
-        "X-CBI-Timestamp": timestamp,
-        "X-CBI-Signature": sign_webhook(hook.secret, timestamp, body),
-        "X-CBI-Event": str(payload["event"]),
-    }
-    try:
-        # Re-checked at delivery time because DNS can be repointed after registration (§12).
-        await assert_safe_webhook_url_async(hook.url)
-        response = await client.post(hook.url, content=body, headers=headers)
-    except ApiError as exc:
-        webhook_responses_total.labels(status="blocked").inc()
-        return None, exc.message
-    except httpx.HTTPError as exc:
+    client: httpx.AsyncClient,
+    hook: Webhook,
+    payload: dict[str, Any],
+    *,
+    call_id: UUID | None,
+    attempt: int,
+) -> webhook_delivery.DeliveryResult:
+    delivery_id = webhook_delivery.delivery_id_for(hook.id, str(payload["event"]), call_id)
+    result = await webhook_delivery.post(
+        client, hook, payload, delivery_id=delivery_id, attempt=attempt
+    )
+    if result.status_code is None:
         webhook_responses_total.labels(status="error").inc()
-        return None, repr(exc)
-    bucket = f"{response.status_code // 100}xx"
-    webhook_responses_total.labels(status=bucket).inc()
-    return response.status_code, None if response.is_success else response.text[:500]
+    else:
+        webhook_responses_total.labels(status=f"{result.status_code // 100}xx").inc()
+    return result
 
 
 async def _active_hooks(tenant_id: UUID, event: str) -> list[Webhook]:
@@ -159,7 +149,7 @@ async def _record_delivery(
     event: str,
     body: dict[str, Any],
     attempt: int,
-    status_code: int | None,
+    result: webhook_delivery.DeliveryResult,
     next_retry_at: datetime | None,
 ) -> None:
     async with session_scope(tenant_id) as session:
@@ -171,9 +161,76 @@ async def _record_delivery(
                 event=event,
                 payload=body,
                 attempt=attempt,
-                status_code=status_code,
+                status_code=result.status_code,
                 next_retry_at=next_retry_at,
+                delivery_id=webhook_delivery.delivery_id_for(hook_id, event, call_id),
+                error=result.error,
+                latency_ms=result.latency_ms,
             )
+        )
+
+
+async def _already_delivered(tenant_id: UUID, hook_id: UUID, call_id: UUID, event: str) -> bool:
+    """A retried job must not call an endpoint that already accepted this event."""
+    async with session_scope(tenant_id) as session:
+        found = (
+            await session.execute(
+                select(WebhookDelivery.id)
+                .where(
+                    WebhookDelivery.tenant_id == tenant_id,
+                    WebhookDelivery.webhook_id == hook_id,
+                    WebhookDelivery.call_id == call_id,
+                    WebhookDelivery.event == event,
+                    WebhookDelivery.status_code >= 200,
+                    WebhookDelivery.status_code < 300,
+                )
+                .limit(1)
+            )
+        ).first()
+    return found is not None
+
+
+async def _track_outcome(tenant_id: UUID, hook: Webhook, ok: bool) -> None:
+    """Count consecutive failures; disable the webhook and tell the admins at the limit."""
+    limit = get_settings().webhook_auto_disable_failures
+    disabled = False
+    async with session_scope(tenant_id) as session:
+        row = await session.get(Webhook, hook.id)
+        if row is None:
+            return
+        if ok:
+            row.consecutive_failures = 0
+        else:
+            row.consecutive_failures += 1
+            if row.active and row.consecutive_failures >= limit:
+                row.active = False
+                row.disabled_at = datetime.now(UTC)
+                row.disabled_reason = "consecutive_failures"
+                disabled = True
+    if disabled:
+        await _notify_webhook_disabled(tenant_id, hook.url)
+
+
+async def _notify_webhook_disabled(tenant_id: UUID, url: str) -> None:
+    settings = get_settings()
+    async with session_scope(tenant_id) as session:
+        admins = (
+            (
+                await session.execute(
+                    select(User).where(User.tenant_id == tenant_id, User.role == "org_admin")
+                )
+            )
+            .scalars()
+            .all()
+        )
+    host = httpx.URL(url).host
+    for admin in admins:
+        await send_email(
+            settings,
+            admin.email,
+            "وب‌هوک غیرفعال شد — CBI Voice Analytics",
+            f"وب‌هوک {host} بعد از {settings.webhook_auto_disable_failures} شکست پیاپی غیرفعال شد. "
+            "نشانی و پاسخ سرور مقصد را بررسی کنید و سپس در بخش وب‌هوک‌ها دوباره فعالش کنید.",
         )
 
 
@@ -201,6 +258,7 @@ async def _notify_balance_low(client: httpx.AsyncClient, tenant_id: UUID) -> str
         return "missing"
 
     body: dict[str, Any] = {
+        "version": webhook_delivery.PAYLOAD_VERSION,
         "event": "balance.low",
         "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "tenant_id": str(tenant_id),
@@ -208,8 +266,9 @@ async def _notify_balance_low(client: httpx.AsyncClient, tenant_id: UUID) -> str
         "data": {"balance_seconds": cache.seconds, "balance_toman": cache.toman},
     }
     for hook in await _active_hooks(tenant_id, "balance.low"):
-        status_code, _ = await _post_webhook(client, hook, body)
-        await _record_delivery(tenant_id, hook.id, None, "balance.low", body, 1, status_code, None)
+        result = await _post_webhook(client, hook, body, call_id=None, attempt=1)
+        await _record_delivery(tenant_id, hook.id, None, "balance.low", body, 1, result, None)
+        await _track_outcome(tenant_id, hook, result.ok)
 
     subject = "هشدار اعتبار کم — CBI Voice Analytics"
     email_body = (
@@ -266,10 +325,14 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
 
         failures: list[str] = []
         for hook, delivery_event, delivery_body in deliveries:
-            status_code, error = await _post_webhook(client, hook, delivery_body)
+            if await _already_delivered(tenant_id, hook.id, call_id, delivery_event):
+                continue
+            result = await _post_webhook(
+                client, hook, delivery_body, call_id=call_id, attempt=attempt
+            )
             next_retry_at = (
                 datetime.now(UTC) + pipeline.backoff_for("notify", attempt)
-                if error is not None
+                if not result.ok
                 else None
             )
             await _record_delivery(
@@ -279,11 +342,12 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 delivery_event,
                 delivery_body,
                 attempt,
-                status_code,
+                result,
                 next_retry_at,
             )
-            if error is not None:
-                failures.append(f"{hook.url}: {error}")
+            await _track_outcome(tenant_id, hook, result.ok)
+            if not result.ok:
+                failures.append(f"{hook.url}: {result.error}")
 
         if failures:
             raise RuntimeError("; ".join(failures)[:1000])

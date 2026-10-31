@@ -121,7 +121,7 @@ async def publish(
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=[],
+    cors_allowed_origins=get_settings().cors_origin_list or None,
     client_manager=manager(),
     ping_timeout=30,
     ping_interval=20,

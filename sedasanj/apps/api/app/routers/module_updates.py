@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import control_session_scope
 from app.deps import (
-    ApiKeyDep,
+    ModuleKeyDep,
     OrgAdminDep,
     Principal,
     StaffDep,
@@ -671,7 +671,7 @@ async def admin_module_installation_stats(
 
 @router.get("/v1/ingest/module/updates", response_model=ModuleUpdateCheckOut)
 async def ingest_module_updates(
-    principal: ApiKeyDep,
+    principal: ModuleKeyDep,
     current: Annotated[str, Query(max_length=32)],
     host_uuid: Annotated[str, Query(min_length=8, max_length=64)],
     product: ModuleProduct = "freepbx-recuploader",
@@ -771,7 +771,7 @@ async def ingest_module_updates(
 
 @router.get("/v1/ingest/module/releases")
 async def ingest_module_releases(
-    principal: ApiKeyDep, product: ModuleProduct = "freepbx-recuploader"
+    principal: ModuleKeyDep, product: ModuleProduct = "freepbx-recuploader"
 ) -> dict[str, Any]:
     async with control_session_scope() as session:
         published = await _published(session, product)
@@ -783,7 +783,7 @@ async def ingest_module_releases(
 
 @router.get("/v1/ingest/module/releases/{release_id}/download")
 async def ingest_download_module_release(
-    release_id: UUID, principal: ApiKeyDep, product: ModuleProduct = "freepbx-recuploader"
+    release_id: UUID, principal: ModuleKeyDep, product: ModuleProduct = "freepbx-recuploader"
 ) -> StreamingResponse:
     async with control_session_scope() as session:
         release = await session.get(ModuleRelease, release_id)
@@ -794,7 +794,7 @@ async def ingest_download_module_release(
 
 @router.post("/v1/ingest/module/update-report", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_module_update_report(
-    payload: ModuleUpdateReportIn, principal: ApiKeyDep
+    payload: ModuleUpdateReportIn, principal: ModuleKeyDep
 ) -> dict[str, bool]:
     assert principal.tenant_id is not None
     now = datetime.now(UTC)
@@ -843,7 +843,7 @@ MAX_DIAGNOSTICS_KEPT = 20
 
 @router.post("/v1/ingest/module/diagnostics", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_module_diagnostics(
-    payload: ModuleDiagnosticIn, principal: ApiKeyDep
+    payload: ModuleDiagnosticIn, principal: ModuleKeyDep
 ) -> dict[str, bool]:
     """Doctor report from a FreePBX host: what is wrong there, with stable error codes."""
     assert principal.tenant_id is not None

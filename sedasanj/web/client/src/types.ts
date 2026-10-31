@@ -625,7 +625,12 @@ export interface ApiKey {
   label: string | null;
   archive_format: "wav" | "gzip" | "zip";
   archive_password_configured: boolean;
+  scopes: string[];
+  expires_at: string | null;
+  allowed_cidrs: string[];
   last_used_at: string | null;
+  last_used_ip: string | null;
+  revoked_at: string | null;
   created_at: string;
 }
 
@@ -638,6 +643,30 @@ export interface Webhook {
   url: string;
   events: string[];
   active: boolean;
+  description: string | null;
+  consecutive_failures: number;
+  disabled_at: string | null;
+  disabled_reason: string | null;
+  secret_rotated_at: string | null;
+  created_at: string | null;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  delivery_id: string | null;
+  event: string;
+  call_id: string | null;
+  attempt: number;
+  status_code: number | null;
+  error: string | null;
+  latency_ms: number | null;
+  next_retry_at: string | null;
+  created_at: string;
+}
+
+export interface WebhookTestResult {
+  delivery: WebhookDelivery;
+  ok: boolean;
 }
 
 export interface WebhookCreated extends Webhook {

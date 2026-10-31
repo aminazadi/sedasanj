@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -11,7 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import and_, false, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.deps import ApiKeyDep, ApiKeySession, OrgAdminDep, TenantSession, UserDep, client_ip
+from app.deps import ApiKeySession, CrmKeyDep, OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
     UNANSWERED_CALL_TYPES,
@@ -31,9 +32,14 @@ from app.models import (
     User,
     Utterance,
 )
+from app.routers.calls import _decode_cursor, _encode_cursor
 from app.services import audit, operator_scope
 
 router = APIRouter(prefix="/v1", tags=["sales KPI"])
+
+MAX_CRM_METADATA_KEYS = 20
+MAX_CRM_METADATA_CHARS = 4000
+MAX_CRM_BULK_ITEMS = 500
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "follow_up_sla_hours": 24,
@@ -148,6 +154,64 @@ class CrmOutcomeIn(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=8)
     product: str | None = Field(default=None, max_length=200)
     occurred_at: datetime
+    # Free-form key/value pairs echoed back to the integration; never interpreted.
+    metadata: dict[str, str | int | float | bool | None] | None = None
+    # When true, a call reference that matches no call is an error instead of an unlinked row.
+    strict_match: bool = False
+
+    @model_validator(mode="after")
+    def _limit_metadata(self) -> CrmOutcomeIn:
+        if self.metadata is not None:
+            if len(self.metadata) > MAX_CRM_METADATA_KEYS:
+                raise ValueError(f"metadata may hold at most {MAX_CRM_METADATA_KEYS} keys")
+            if len(json.dumps(self.metadata, ensure_ascii=False)) > MAX_CRM_METADATA_CHARS:
+                raise ValueError(f"metadata may hold at most {MAX_CRM_METADATA_CHARS} characters")
+        return self
+
+
+class CrmOutcomeResult(BaseModel):
+    id: UUID
+    status: Literal["upserted", "ignored_stale"]
+    call_id: UUID | None = None
+
+
+class CrmOutcomeBulkIn(BaseModel):
+    items: list[CrmOutcomeIn] = Field(min_length=1, max_length=MAX_CRM_BULK_ITEMS)
+
+
+class CrmOutcomeBulkItem(BaseModel):
+    index: int
+    result: CrmOutcomeResult | None = None
+    error: dict[str, str] | None = None
+
+
+class CrmOutcomeBulkOut(BaseModel):
+    items: list[CrmOutcomeBulkItem]
+    failed: int
+
+
+class CrmOutcomeOut(BaseModel):
+    id: UUID
+    external_lead_id: str
+    call_id: UUID | None = None
+    external_call_reference: str | None = None
+    customer_id: str | None = None
+    campaign_id: str | None = None
+    source: str | None = None
+    channel: str | None = None
+    owner_reference: str | None = None
+    funnel_stage: str | None = None
+    outcome: str
+    amount: int | None = None
+    currency: str | None = None
+    product: str | None = None
+    occurred_at: datetime
+    metadata: dict[str, Any] | None = None
+
+
+class CrmOutcomePage(BaseModel):
+    items: list[CrmOutcomeOut]
+    next_cursor: str | None = None
 
 
 async def _settings(session: Any, tenant_id: UUID) -> tuple[int, dict[str, Any]]:
@@ -399,12 +463,7 @@ async def list_goals(
     }
 
 
-@router.post("/crm/outcomes")
-async def upsert_crm_outcome(
-    payload: CrmOutcomeIn, principal: ApiKeyDep, session: ApiKeySession
-) -> dict[str, Any]:
-    tenant_id = principal.tenant_id
-    assert tenant_id is not None
+async def _upsert_outcome(session: Any, tenant_id: UUID, payload: CrmOutcomeIn) -> CrmOutcomeResult:
     call = None
     if payload.call_id is not None:
         call = await session.get(Call, payload.call_id)
@@ -422,11 +481,16 @@ async def upsert_crm_outcome(
                 )
             )
         ).scalar_one_or_none()
-    values = payload.model_dump(exclude={"call_id"})
+        if call is None and payload.strict_match:
+            raise ApiError("not_found", "no call matches external_call_reference")
+    elif payload.strict_match:
+        raise ApiError("invalid_request", "strict_match needs call_id or external_call_reference")
+    values = payload.model_dump(exclude={"call_id", "strict_match", "metadata"})
+    stored = payload.model_dump(mode="json", exclude={"strict_match"})
     values.update(
         tenant_id=tenant_id,
         call_id=call.id if call else None,
-        payload=payload.model_dump(mode="json"),
+        payload=stored,
         updated_at=datetime.now(UTC),
     )
     insert_stmt = pg_insert(CrmOutcome).values(**values)
@@ -450,16 +514,89 @@ async def upsert_crm_outcome(
                 )
             )
         ).one()
-        return {
-            "id": str(existing.id),
-            "status": "ignored_stale",
-            "call_id": str(existing.call_id) if existing.call_id else None,
-        }
-    return {
-        "id": str(result.id),
-        "status": "upserted",
-        "call_id": str(result.call_id) if result.call_id else None,
-    }
+        return CrmOutcomeResult(id=existing.id, status="ignored_stale", call_id=existing.call_id)
+    return CrmOutcomeResult(id=result.id, status="upserted", call_id=result.call_id)
+
+
+@router.post("/crm/outcomes", response_model=CrmOutcomeResult)
+async def upsert_crm_outcome(
+    payload: CrmOutcomeIn, principal: CrmKeyDep, session: ApiKeySession
+) -> CrmOutcomeResult:
+    """Idempotent per `external_lead_id`: replays and older `occurred_at` values are safe."""
+    assert principal.tenant_id is not None
+    return await _upsert_outcome(session, principal.tenant_id, payload)
+
+
+@router.post("/crm/outcomes/bulk", response_model=CrmOutcomeBulkOut)
+async def upsert_crm_outcomes_bulk(
+    payload: CrmOutcomeBulkIn, principal: CrmKeyDep, session: ApiKeySession
+) -> CrmOutcomeBulkOut:
+    """Each item succeeds or fails on its own; failures never roll back the others."""
+    assert principal.tenant_id is not None
+    items: list[CrmOutcomeBulkItem] = []
+    for index, item in enumerate(payload.items):
+        try:
+            async with session.begin_nested():
+                result = await _upsert_outcome(session, principal.tenant_id, item)
+            items.append(CrmOutcomeBulkItem(index=index, result=result))
+        except ApiError as exc:
+            items.append(
+                CrmOutcomeBulkItem(index=index, error={"code": exc.code, "message": exc.message})
+            )
+    return CrmOutcomeBulkOut(items=items, failed=sum(1 for item in items if item.error))
+
+
+@router.get("/crm/outcomes", response_model=CrmOutcomePage)
+async def list_crm_outcomes(
+    principal: CrmKeyDep,
+    session: ApiKeySession,
+    cursor: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    external_lead_id: Annotated[str | None, Query(max_length=200)] = None,
+) -> CrmOutcomePage:
+    assert principal.tenant_id is not None
+    stmt = (
+        select(CrmOutcome)
+        .where(CrmOutcome.tenant_id == principal.tenant_id)
+        .order_by(CrmOutcome.occurred_at.desc(), CrmOutcome.id.desc())
+    )
+    if external_lead_id:
+        stmt = stmt.where(CrmOutcome.external_lead_id == external_lead_id)
+    if cursor:
+        occurred_at, outcome_id = _decode_cursor(cursor)
+        stmt = stmt.where(
+            or_(
+                CrmOutcome.occurred_at < occurred_at,
+                and_(CrmOutcome.occurred_at == occurred_at, CrmOutcome.id < outcome_id),
+            )
+        )
+    rows = list((await session.execute(stmt.limit(limit + 1))).scalars())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    # `metadata` is a reserved attribute on SQLAlchemy models, so the value comes from payload.
+    items = [
+        CrmOutcomeOut(
+            id=row.id,
+            external_lead_id=row.external_lead_id,
+            call_id=row.call_id,
+            external_call_reference=row.external_call_reference,
+            customer_id=row.customer_id,
+            campaign_id=row.campaign_id,
+            source=row.source,
+            channel=row.channel,
+            owner_reference=row.owner_reference,
+            funnel_stage=row.funnel_stage,
+            outcome=row.outcome,
+            amount=row.amount,
+            currency=row.currency,
+            product=row.product,
+            occurred_at=row.occurred_at,
+            metadata=(row.payload or {}).get("metadata"),
+        )
+        for row in rows
+    ]
+    next_cursor = _encode_cursor(rows[-1].occurred_at, rows[-1].id) if has_more else None
+    return CrmOutcomePage(items=items, next_cursor=next_cursor)
 
 
 def _rate(numerator: int | float, denominator: int | float) -> dict[str, Any]:

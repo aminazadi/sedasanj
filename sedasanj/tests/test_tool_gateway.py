@@ -22,12 +22,32 @@ def memory_backend(monkeypatch):
     tool_gateway._seen_nonces.clear()
     tool_gateway._cached_results.clear()
 
+    async def known_user(user_id):
+        return SimpleNamespace(
+            id=user_id,
+            tenant_id=_USERS.get(user_id),
+            role=_ROLES.get(user_id, "operator"),
+            mobile_number=None,
+            extension=None,
+        )
+
+    monkeypatch.setattr(tool_gateway, "_load_user", known_user)
+    _USERS.clear()
+    _ROLES.clear()
+
+
+_USERS: dict = {}
+_ROLES: dict = {}
+
 
 def _request(role: str = "operator") -> tool_gateway.GatewayRequest:
+    user_id, tenant_id = uuid4(), uuid4()
+    _USERS[user_id] = tenant_id
+    _ROLES[user_id] = role
     return tool_gateway.GatewayRequest(
         tool_call_id="tool-1",
         arguments={"dataset": "calls_analysis", "format": "csv", "limit": 10},
-        principal=tool_gateway.GatewayPrincipal(id=uuid4(), tenant_id=uuid4(), role=role),
+        principal=tool_gateway.GatewayPrincipal(id=user_id, tenant_id=tenant_id, role=role),
     )
 
 
@@ -85,9 +105,13 @@ async def test_stale_timestamp_is_rejected(monkeypatch):
 
 async def test_staff_or_unknown_roles_and_tools_are_refused():
     body = _request("agent").model_dump_json().encode()
-    assert (await _post("get_current_time", body, tool_gateway.sign("get_current_time", body))).status_code == 403
+    assert (
+        await _post("get_current_time", body, tool_gateway.sign("get_current_time", body))
+    ).status_code == 403
     body = _request().model_dump_json().encode()
-    assert (await _post("drop_tables", body, tool_gateway.sign("drop_tables", body))).status_code == 404
+    assert (
+        await _post("drop_tables", body, tool_gateway.sign("drop_tables", body))
+    ).status_code == 404
 
 
 async def test_same_tool_call_id_is_idempotent(monkeypatch):
@@ -104,7 +128,9 @@ async def test_dispatch_runs_in_process_without_gateway_url(monkeypatch):
     monkeypatch.setattr(get_settings(), "tool_gateway_url", None)
     run = AsyncMock(return_value=({"ok": True}, 2))
     monkeypatch.setattr(tool_gateway, "execute_local", run)
-    principal = SimpleNamespace(id=uuid4(), tenant_id=uuid4(), role="operator", mobile_number=None, extension=None)
+    principal = SimpleNamespace(
+        id=uuid4(), tenant_id=uuid4(), role="operator", mobile_number=None, extension=None
+    )
     result = await tool_gateway.dispatch("get_current_time", "t1", {}, principal, None)
     assert result == ({"ok": True}, 2)
 
@@ -129,8 +155,13 @@ async def test_dispatch_posts_signed_webhook_and_maps_errors(monkeypatch):
         "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
     )
-    principal = SimpleNamespace(id=uuid4(), tenant_id=uuid4(), role="org_admin", mobile_number=None, extension=None)
-    assert await tool_gateway.dispatch("search_calls", "ok", {}, principal, None) == ({"count": 2}, 5)
+    principal = SimpleNamespace(
+        id=uuid4(), tenant_id=uuid4(), role="org_admin", mobile_number=None, extension=None
+    )
+    assert await tool_gateway.dispatch("search_calls", "ok", {}, principal, None) == (
+        {"count": 2},
+        5,
+    )
     assert seen == {"path": "/v1/internal/tools/search_calls", "signed": True}
     with pytest.raises(ApiError) as error:
         await tool_gateway.dispatch("search_calls", "bad", {}, principal, None)
@@ -151,5 +182,19 @@ async def test_dispatch_falls_back_in_process_when_gateway_is_unreachable(monkey
     )
     run = AsyncMock(return_value=({"local": True}, 1))
     monkeypatch.setattr(tool_gateway, "execute_local", run)
-    principal = SimpleNamespace(id=uuid4(), tenant_id=uuid4(), role="operator", mobile_number=None, extension=None)
-    assert (await tool_gateway.dispatch("search_calls", "t", {}, principal, None))[0] == {"local": True}
+    principal = SimpleNamespace(
+        id=uuid4(), tenant_id=uuid4(), role="operator", mobile_number=None, extension=None
+    )
+    assert (await tool_gateway.dispatch("search_calls", "t", {}, principal, None))[0] == {
+        "local": True
+    }
+
+
+async def test_signed_request_for_unknown_or_foreign_user_is_forbidden(monkeypatch):
+    run = AsyncMock(return_value=({}, 1))
+    monkeypatch.setattr(tool_gateway, "execute_local", run)
+    body = _request().model_dump_json().encode()
+    _USERS.clear()
+    response = await _post("get_current_time", body, tool_gateway.sign("get_current_time", body))
+    assert response.status_code == 403
+    run.assert_not_awaited()

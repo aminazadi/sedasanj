@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import get_settings
 from app.db import session_scope
 from app.errors import ApiError
+from app.models import User
 from app.services import assistant_tools, ratelimit
 
 if TYPE_CHECKING:
@@ -163,6 +164,11 @@ async def execute_local(
         raise
 
 
+async def _load_user(user_id: UUID) -> User | None:
+    async with session_scope(None, staff=True) as session:
+        return await session.get(User, user_id)
+
+
 async def handle(name: str, request: GatewayRequest) -> dict[str, Any]:
     """Server side of the webhook: idempotent per tool_call_id."""
     from app.deps import Principal
@@ -174,13 +180,22 @@ async def handle(name: str, request: GatewayRequest) -> dict[str, Any]:
     cached = await _cached(request.principal.tenant_id, request.tool_call_id)
     if cached is not None:
         return cached
+    # The signature proves the caller holds the gateway secret, not that the user still exists:
+    # rebuild the identity from the database so a stale or forged principal cannot gain access.
+    user = await _load_user(request.principal.id)
+    if (
+        user is None
+        or user.tenant_id != request.principal.tenant_id
+        or user.role not in ALLOWED_ROLES
+    ):
+        raise _forbidden()
     principal = Principal(
         kind="user",
-        id=request.principal.id,
-        tenant_id=request.principal.tenant_id,
-        role=request.principal.role,
-        mobile_number=request.principal.mobile_number,
-        extension=request.principal.extension,
+        id=user.id,
+        tenant_id=user.tenant_id,
+        role=user.role,
+        mobile_number=user.mobile_number,
+        extension=user.extension,
     )
     result, duration = await execute_local(
         name, request.arguments, principal, request.bound_call_id, request.conversation_id

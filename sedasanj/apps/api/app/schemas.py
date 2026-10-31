@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Any, Literal
+from datetime import UTC, date, datetime
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from pydantic import (
@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from app.sentiment import delta_and_trajectory, normalize_sentiment, valence
+from app.services.api_scopes import DEFAULT_NEW_KEY_SCOPES, MAX_ALLOWED_CIDRS, normalize_cidrs
 
 Sentiment = Literal["angry", "sad", "neutral", "satisfied", "happy"]
 SentimentTrajectory = Literal["improved", "worsened", "stable"]
@@ -78,15 +79,44 @@ class RefreshRequest(BaseModel):
 ArchiveFormat = Literal["wav", "gzip", "zip"]
 
 
+ApiKeyScope = Literal["ingest:write", "crm:write", "module:sync", "calls:read", "contacts:read"]
+
+
+def _validated_cidrs(values: list[str]) -> list[str]:
+    if len(values) > MAX_ALLOWED_CIDRS:
+        raise ValueError(f"at most {MAX_ALLOWED_CIDRS} allowed addresses")
+    try:
+        return normalize_cidrs(values)
+    except ValueError as exc:
+        raise ValueError("allowed_cidrs must contain IP addresses or CIDR ranges") from exc
+
+
+def _future(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is None:
+        raise ValueError("expires_at must include a timezone")
+    if value is not None and value <= datetime.now(UTC):
+        raise ValueError("expires_at must be in the future")
+    return value
+
+
 class ApiKeyCreate(BaseModel):
     label: str | None = Field(default=None, max_length=120)
     archive_format: Literal["gzip", "zip"] = "gzip"
     archive_password: str | None = Field(default=None, min_length=12, max_length=128)
+    scopes: list[ApiKeyScope] = Field(
+        default_factory=lambda: cast(list[ApiKeyScope], list(DEFAULT_NEW_KEY_SCOPES)),
+        min_length=1,
+    )
+    expires_at: datetime | None = None
+    allowed_cidrs: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_archive_password(self) -> ApiKeyCreate:
         if self.archive_format != "zip" and self.archive_password is not None:
             raise ValueError("archive_password is only supported for zip")
+        self.scopes = list(dict.fromkeys(self.scopes))
+        self.expires_at = _future(self.expires_at)
+        self.allowed_cidrs = _validated_cidrs(self.allowed_cidrs)
         return self
 
 
@@ -95,6 +125,9 @@ class ApiKeyUpdate(BaseModel):
     archive_format: Literal["gzip", "zip"] | None = None
     archive_password: str | None = Field(default=None, min_length=12, max_length=128)
     remove_archive_password: bool = False
+    scopes: list[ApiKeyScope] | None = Field(default=None, min_length=1)
+    expires_at: datetime | None = None
+    allowed_cidrs: list[str] | None = None
 
     @model_validator(mode="after")
     def _validate_archive_password(self) -> ApiKeyUpdate:
@@ -102,6 +135,12 @@ class ApiKeyUpdate(BaseModel):
             raise ValueError("cannot set and remove archive_password together")
         if self.archive_format == "gzip" and self.archive_password is not None:
             raise ValueError("archive_password is only supported for zip")
+        if self.scopes is not None:
+            self.scopes = list(dict.fromkeys(self.scopes))
+        # `expires_at: null` clears the expiry, so only a concrete value must be in the future.
+        self.expires_at = _future(self.expires_at)
+        if self.allowed_cidrs is not None:
+            self.allowed_cidrs = _validated_cidrs(self.allowed_cidrs)
         return self
 
 
@@ -113,7 +152,12 @@ class ApiKeyOut(BaseModel):
     label: str | None
     archive_format: ArchiveFormat
     archive_password_configured: bool = False
+    scopes: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
+    allowed_cidrs: list[str] = Field(default_factory=list)
     last_used_at: datetime | None
+    last_used_ip: str | None = None
+    revoked_at: datetime | None = None
     created_at: datetime
 
 
@@ -956,7 +1000,15 @@ class PackageOut(BaseModel):
 class WebhookCreate(BaseModel):
     url: HttpUrl
     events: list[WebhookEvent] = Field(min_length=1)
-    secret: str | None = None
+    secret: str | None = Field(default=None, min_length=16, max_length=200)
+    description: str | None = Field(default=None, max_length=200)
+
+
+class WebhookUpdate(BaseModel):
+    url: HttpUrl | None = None
+    events: list[WebhookEvent] | None = Field(default=None, min_length=1)
+    active: bool | None = None
+    description: str | None = Field(default=None, max_length=200)
 
 
 class WebhookOut(BaseModel):
@@ -966,10 +1018,36 @@ class WebhookOut(BaseModel):
     url: str
     events: list[str]
     active: bool
+    description: str | None = None
+    consecutive_failures: int = 0
+    disabled_at: datetime | None = None
+    disabled_reason: str | None = None
+    secret_rotated_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class WebhookCreated(WebhookOut):
     secret: str
+
+
+class WebhookDeliveryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    delivery_id: UUID | None = None
+    event: str
+    call_id: UUID | None = None
+    attempt: int
+    status_code: int | None = None
+    error: str | None = None
+    latency_ms: int | None = None
+    next_retry_at: datetime | None = None
+    created_at: datetime
+
+
+class WebhookTestResult(BaseModel):
+    delivery: WebhookDeliveryOut
+    ok: bool
 
 
 def _blank_to_none(value: object) -> object:

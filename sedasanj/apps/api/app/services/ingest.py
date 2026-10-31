@@ -148,7 +148,13 @@ async def accept_upload(
             extra={"extra_fields": {"asterisk_uniqueid": unique_id}},
         )
 
-    replay = await _replay(tenant_id, unique_id)
+    # A caller that sends an Idempotency-Key opted in to payload binding: replaying the same
+    # unique ID with different parties is a client bug, not a retry.
+    replay = await _replay(
+        tenant_id,
+        unique_id,
+        parties=(caller_number, dialed_number) if idempotency_key else None,
+    )
     if replay is not None:
         ingest_total.labels(tenant=str(tenant_id), result="replay").inc()
         return IngestResult(accepted=replay, replayed=True)
@@ -453,8 +459,16 @@ async def _reservation_id(session: AsyncSession, call_id: UUID) -> UUID | None:
     return result.scalar_one_or_none()
 
 
-async def _replay(tenant_id: UUID, unique_id: str) -> IngestAccepted | None:
-    """§4.4: the same `asterisk_uniqueid` always resolves to the original call."""
+async def _replay(
+    tenant_id: UUID,
+    unique_id: str,
+    parties: tuple[str | None, str] | None = None,
+) -> IngestAccepted | None:
+    """§4.4: the same `asterisk_uniqueid` always resolves to the original call.
+
+    With `parties` (caller, dialed), a replay whose numbers differ from the stored call raises
+    `conflict_idempotency` instead of silently returning the original call.
+    """
     async with session_scope(tenant_id) as session:
         existing = (
             await session.execute(
@@ -473,6 +487,11 @@ async def _replay(tenant_id: UUID, unique_id: str) -> IngestAccepted | None:
                 .values(asterisk_uniqueid=f"{unique_id}#failed-{existing.id}")
             )
             return None
+        if parties is not None and (existing.caller_number, existing.dialed_number) != parties:
+            raise ApiError(
+                "conflict_idempotency",
+                "این شناسه تماس قبلاً با شماره‌های دیگری ثبت شده؛ برای تماس جدید شناسه جدید بفرستید",
+            )
         return IngestAccepted(
             call_id=existing.id,
             status=existing.status,

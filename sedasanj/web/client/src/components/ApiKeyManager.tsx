@@ -6,6 +6,23 @@ import type { ApiKey, ApiKeyCreated } from "../types";
 
 type ArchiveFormat = "gzip" | "zip";
 
+const SCOPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "ingest:write", label: "ارسال تماس و داخلی‌ها" },
+  { value: "module:sync", label: "به‌روزرسانی و گزارش ماژول مرکز تلفن" },
+  { value: "crm:write", label: "ثبت نتیجه CRM" },
+  { value: "calls:read", label: "خواندن تماس‌ها و نتایج تحلیل" },
+  { value: "contacts:read", label: "جست‌وجوی مخاطب با شماره" },
+];
+const DEFAULT_SCOPES = ["ingest:write", "module:sync"];
+
+function parseCidrs(value: string): string[] {
+  return value.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function toIsoOrNull(value: string): string | null {
+  return value ? new Date(`${value}T23:59:59`).toISOString() : null;
+}
+
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!#$%&()*+,-.:;<=>?@[]^_{|}~";
 
 function strongPassword(): string {
@@ -46,6 +63,9 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
   const [exportSecret, setExportSecret] = useState("");
   const [exportPassword, setExportPassword] = useState("");
   const [editLabel, setEditLabel] = useState("");
+  const [scopes, setScopes] = useState<string[]>(DEFAULT_SCOPES);
+  const [expiresOn, setExpiresOn] = useState("");
+  const [cidrText, setCidrText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => () => setCreated(null), []);
@@ -98,10 +118,20 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
       const archivePassword = format === "zip" && protectedZip ? password : null;
       const key = await request<ApiKeyCreated>("/v1/auth/api-keys", {
         method: "POST",
-        body: { label: label || null, archive_format: format, archive_password: archivePassword },
+        body: {
+          label: label || null,
+          archive_format: format,
+          archive_password: archivePassword,
+          scopes,
+          expires_at: toIsoOrNull(expiresOn),
+          allowed_cidrs: parseCidrs(cidrText),
+        },
       });
       setCreated({ id: key.id, prefix: key.key_prefix, secret: key.secret, archiveFormat: key.archive_format === "zip" ? "zip" : "gzip", password: archivePassword ?? "", title: "اطلاعات یک‌باره اتصال" });
       setLabel("");
+      setScopes(DEFAULT_SCOPES);
+      setExpiresOn("");
+      setCidrText("");
       resetSecretFields();
       await reload();
     } catch (caught) {
@@ -120,10 +150,24 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
           archive_format: nextFormat,
           archive_password: archivePassword,
           remove_archive_password: nextFormat === "gzip" || (nextFormat === "zip" && !protectedZip),
+          scopes,
+          expires_at: toIsoOrNull(expiresOn),
+          allowed_cidrs: parseCidrs(cidrText),
         },
       });
       setEditing(null);
       resetSecretFields();
+      await reload();
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }
+
+  async function rotateKey(key: ApiKey): Promise<void> {
+    setError(null);
+    try {
+      const next = await request<ApiKeyCreated>(`/v1/auth/api-keys/${key.id}/rotate?grace_hours=24`, { method: "POST" });
+      setCreated({ id: next.id, prefix: next.key_prefix, secret: next.secret, archiveFormat: next.archive_format === "zip" ? "zip" : "gzip", password: "", title: "کلید جایگزین؛ کلید قبلی تا ۲۴ ساعت دیگر معتبر است" });
       await reload();
     } catch (caught) {
       setError((caught as Error).message);
@@ -181,18 +225,21 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
         </div>
       ) : null}
       <div className="overflow-x-auto">
-        <table className="table min-w-[700px]">
-          <thead><tr><th>پیشوند</th><th>برچسب</th><th>فرمت</th><th>رمز ZIP</th><th>آخرین استفاده</th><th /></tr></thead>
+        <table className="table min-w-[900px]">
+          <thead><tr><th>پیشوند</th><th>برچسب</th><th>فرمت</th><th>رمز ZIP</th><th>دسترسی‌ها</th><th>انقضا</th><th>آخرین استفاده</th><th /></tr></thead>
           <tbody>
             {keys.map((key) => (
               <tr key={key.id}>
                 <td dir="ltr">{key.key_prefix}…</td><td>{key.label ?? "—"}</td>
                 <td>{key.archive_format === "wav" ? "WAV قدیمی" : key.archive_format.toUpperCase()}</td>
                 <td>{key.archive_password_configured ? "فعال" : "بدون رمز"}</td>
+                <td dir="ltr">{key.scopes.join(", ")}{key.allowed_cidrs.length ? ` · IP: ${key.allowed_cidrs.join(", ")}` : ""}</td>
+                <td>{key.expires_at ? new Date(key.expires_at).toLocaleDateString("fa-IR") : "بدون انقضا"}</td>
                 <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString("fa-IR") : "—"}</td>
                 <td className="space-x-1 space-x-reverse whitespace-nowrap">
-                  <button className="btn-ghost text-xs" onClick={() => { setEditing(key.id); setEditLabel(key.label ?? ""); setFormat(key.archive_format === "zip" ? "zip" : "gzip"); setProtectedZip(key.archive_password_configured); resetSecretFields(); }}>ویرایش</button>
+                  <button className="btn-ghost text-xs" onClick={() => { setEditing(key.id); setEditLabel(key.label ?? ""); setScopes(key.scopes); setExpiresOn(key.expires_at ? key.expires_at.slice(0, 10) : ""); setCidrText(key.allowed_cidrs.join("\n")); setFormat(key.archive_format === "zip" ? "zip" : "gzip"); setProtectedZip(key.archive_password_configured); resetSecretFields(); }}>ویرایش</button>
                   <button className="btn-ghost text-xs" onClick={() => { setExporting(key); setExportSecret(""); setExportPassword(""); }}>فایل FreePBX</button>
+                  <button className="btn-ghost text-xs" onClick={() => void rotateKey(key)}>چرخش کلید</button>
                   <button className="btn-ghost text-xs text-rose-700" onClick={async () => { await request<void>(`/v1/auth/api-keys/${key.id}`, { method: "DELETE" }); await reload(); }}>لغو</button>
                 </td>
               </tr>
@@ -215,13 +262,15 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 font-medium">ویرایش کلید</div>
           <label className="mb-3 block"><span className="label">برچسب کلید</span><input className="input" value={editLabel} onChange={(event) => setEditLabel(event.target.value)} placeholder="مثلاً مرکز تماس تهران" /></label>
+          <AccessFields scopes={scopes} setScopes={setScopes} expiresOn={expiresOn} setExpiresOn={setExpiresOn} cidrText={cidrText} setCidrText={setCidrText} />
           <ArchiveFields format={format} setFormat={setFormat} protectedZip={protectedZip} setProtectedZip={setProtectedZip} password={password} setPassword={setPassword} confirmation={confirmation} setConfirmation={setConfirmation} showPassword={showPassword} setShowPassword={setShowPassword} generated={generated} confirmedCopy={confirmedCopy} generate={generate} copyPassword={copyPassword} passwordOptional={keepingExistingPassword} />
-          <div className="mt-3 flex gap-2"><button className="btn" disabled={!maySubmit} onClick={() => void updateKey(keys.find((item) => item.id === editing)!, format)}>ذخیره تغییرات</button><button className="btn-ghost" onClick={() => { setEditing(null); resetSecretFields(); }}>انصراف</button></div>
+          <div className="mt-3 flex gap-2"><button className="btn" disabled={!maySubmit || scopes.length === 0} onClick={() => void updateKey(keys.find((item) => item.id === editing)!, format)}>ذخیره تغییرات</button><button className="btn-ghost" onClick={() => { setEditing(null); resetSecretFields(); }}>انصراف</button></div>
         </div>
       ) : (
         <form className="space-y-3 border-t border-slate-100 pt-4" onSubmit={submit}>
           <div className="grid gap-3 md:grid-cols-2"><label><span className="label">برچسب کلید</span><input className="input" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="مثلاً مرکز تماس تهران" /></label><ArchiveFields format={format} setFormat={setFormat} protectedZip={protectedZip} setProtectedZip={setProtectedZip} password={password} setPassword={setPassword} confirmation={confirmation} setConfirmation={setConfirmation} showPassword={showPassword} setShowPassword={setShowPassword} generated={generated} confirmedCopy={confirmedCopy} generate={generate} copyPassword={copyPassword} /></div>
-          <button className="btn" disabled={!maySubmit}>ایجاد کلید جدید</button>
+          <AccessFields scopes={scopes} setScopes={setScopes} expiresOn={expiresOn} setExpiresOn={setExpiresOn} cidrText={cidrText} setCidrText={setCidrText} />
+          <button className="btn" disabled={!maySubmit || scopes.length === 0}>ایجاد کلید جدید</button>
         </form>
       )}
     </div>
@@ -239,5 +288,31 @@ function ArchiveFields(props: ArchiveFieldsProps) {
   return <div className="space-y-3 md:col-span-2">
     <label><span className="label">فرمت ارسالی agent</span><select className="input" value={props.format} onChange={(event) => { const value = event.target.value as ArchiveFormat; props.setFormat(value); if (value === "gzip") props.setProtectedZip(false); }}><option value="gzip">GZIP — سریع و بدون رمز</option><option value="zip">ZIP — با امکان رمز AES-256</option></select></label>
     {props.format === "zip" ? <><ToggleSwitch checked={props.protectedZip} onChange={props.setProtectedZip} label="ZIP با رمز AES-256" labelClassName="text-sm" />{props.protectedZip ? <div className="grid gap-2 md:grid-cols-2">{props.passwordOptional ? <p className="text-xs text-slate-500 md:col-span-2">برای حفظ رمز فعلی، فیلدها را خالی بگذارید.</p> : null}<input className="input" dir="ltr" type={props.showPassword ? "text" : "password"} minLength={12} maxLength={128} value={props.password} onChange={(event) => props.setPassword(event.target.value)} placeholder={props.passwordOptional ? "رمز جدید (اختیاری)" : "رمز ۱۲ تا ۱۲۸ کاراکتر"} /><input className="input" dir="ltr" type={props.showPassword ? "text" : "password"} value={props.confirmation} onChange={(event) => props.setConfirmation(event.target.value)} placeholder="تکرار رمز" /><div className="flex flex-wrap gap-2 md:col-span-2"><button type="button" className="btn-ghost" onClick={props.generate}>تولید رمز قوی</button><button type="button" className="btn-ghost" onClick={() => void props.copyPassword()} disabled={!props.password}>کپی رمز</button><button type="button" className="btn-ghost" onClick={() => props.setShowPassword(!props.showPassword)}>{props.showPassword ? "مخفی‌کردن" : "نمایش رمز"}</button></div>{props.generated && !props.confirmedCopy ? <p className="text-xs text-amber-700 md:col-span-2">برای فعال‌شدن ذخیره، رمز تولیدشده را کپی کنید.</p> : null}</div> : null}</> : null}
+  </div>;
+}
+
+type AccessFieldsProps = {
+  scopes: string[]; setScopes: (value: string[]) => void; expiresOn: string; setExpiresOn: (value: string) => void;
+  cidrText: string; setCidrText: (value: string) => void;
+};
+
+function AccessFields(props: AccessFieldsProps) {
+  return <div className="space-y-3">
+    <div className="space-y-2">
+      <span className="label">دسترسی‌های کلید</span>
+      {SCOPE_OPTIONS.map((option) => (
+        <ToggleSwitch
+          key={option.value}
+          checked={props.scopes.includes(option.value)}
+          onChange={(on) => props.setScopes(on ? [...props.scopes, option.value] : props.scopes.filter((item) => item !== option.value))}
+          label={option.label}
+          labelClassName="text-sm"
+        />
+      ))}
+    </div>
+    <div className="grid gap-3 md:grid-cols-2">
+      <label><span className="label">تاریخ انقضا (اختیاری)</span><input className="input" type="date" dir="ltr" value={props.expiresOn} min={new Date().toISOString().slice(0, 10)} onChange={(event) => props.setExpiresOn(event.target.value)} /></label>
+      <label><span className="label">IPهای مجاز (اختیاری، هر خط یک آدرس یا CIDR)</span><textarea className="input" dir="ltr" rows={2} value={props.cidrText} onChange={(event) => props.setCidrText(event.target.value)} placeholder="203.0.113.10" /></label>
+    </div>
   </div>;
 }
