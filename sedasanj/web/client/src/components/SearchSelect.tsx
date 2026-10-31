@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import chevronDownUrl from "@cbi/web-shared/assets/chevron-down.svg";
 import { selectPosition } from "../lib/selectPosition";
 
 import { searchSelectOptions, type SearchSelectOption } from "../lib/searchSelectOptions";
@@ -123,7 +124,7 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
         onClick={toggle}
       >
         <span className={(selected || selectedLabel) ? "truncate" : "truncate text-slate-500"}>{selected?.label ?? selectedLabel ?? (emptyLabel || "—")}</span>
-        <span aria-hidden="true" className="text-xs text-slate-400">▾</span>
+        <img src={chevronDownUrl} alt="" aria-hidden="true" width={20} height={20} className="h-5 w-5 shrink-0" />
       </button>
       {open ? createPortal(
         <div

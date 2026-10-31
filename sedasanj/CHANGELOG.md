@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Replaced dropdown arrows across client and admin native selects, searchable selects and table page-size controls with the shared Lucide chevron-down icon at a consistent 20px size.
+
 - Replaced task call selection with the shared searchable dropdown, including server-side search and pagination, retained selection, retry feedback and native-dialog-safe menu rendering without a duplicated selection prompt.
 
 - Fixed the table row-count dropdown with an explicit clickable trigger and a portalled, keyboard-accessible menu that stays visible above clipped tables and near the bottom of the viewport.

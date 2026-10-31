@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
+    "./assets/chevron-down.svg": "./assets/chevron-down.svg",
     "./components/JalaliDatePicker": "./components/JalaliDatePicker.tsx",
     "./components/ReleaseTimeline": "./components/ReleaseTimeline.tsx",
     "./components/FilterBar": "./components/FilterBar.tsx",

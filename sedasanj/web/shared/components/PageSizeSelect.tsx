@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import chevronDownUrl from "../assets/chevron-down.svg";
 import { PAGE_SIZES } from "../lib/tablePagination.mjs";
 
 const useMenuLayoutEffect = typeof document === "undefined" ? useEffect : useLayoutEffect;
@@ -71,7 +72,7 @@ export function PageSizeSelect({ value, onChange }: { value: number; onChange: (
     >
       <span>تعداد نمایش</span>
       <span>{value.toLocaleString("fa-IR")}</span>
-      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><path d={open ? "m5 12 5-5 5 5" : "m5 8 5 5 5-5"} /></svg>
+      <img src={chevronDownUrl} alt="" aria-hidden="true" width={20} height={20} className="h-5 w-5 shrink-0" />
     </button>
     {open && createPortal(
       <div
