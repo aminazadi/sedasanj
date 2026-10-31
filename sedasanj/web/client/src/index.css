@@ -181,6 +181,32 @@ select {
   max-width: 100%;
 }
 
+/* Secondary dashboard panels share the executive card rhythm. */
+.dashboard-details__summary {
+  cursor: pointer;
+  position: relative;
+  padding-inline-end: 3rem !important;
+  list-style: none;
+  background-image: radial-gradient(circle, rgb(137 137 137 / 0.12) 0 1px, transparent 1.15px);
+  background-size: 7px 7px;
+}
+.dashboard-details__summary::-webkit-details-marker { display: none; }
+.dashboard-details__summary::after {
+  content: "+";
+  position: absolute;
+  inset-inline-end: 1rem;
+  top: 1rem;
+  color: #4b6e48;
+  font-size: 1.25rem;
+  line-height: 1.5rem;
+}
+.dashboard-details[open] > .dashboard-details__summary::after { content: "−"; }
+.dashboard-details__summary:focus-visible { outline: 2px solid #4b6e48; outline-offset: 3px; }
+.dashboard-details .exec-split { align-items: stretch; }
+.dashboard-details .exec-card { min-width: 0; }
+.dashboard-details .panel-empty { min-height: 9rem; padding: 1rem; }
+.dashboard-details .panel-empty__art { width: 8rem; }
+
 /* Executive dashboard (Overview) */
 .exec-hero {
   position: relative;
