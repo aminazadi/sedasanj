@@ -30,7 +30,13 @@ def cell_text(value: Any) -> str:
     return str(value)
 
 
-def render(fmt: str, columns: dict[str, str], rows: list[dict[str, Any]]) -> bytes:
+def render(
+    fmt: str,
+    columns: dict[str, str],
+    rows: list[dict[str, Any]],
+    *,
+    sheet_title: str = "خروجی دستیار",
+) -> bytes:
     if fmt == "json":
         return json.dumps(
             [{key: row.get(key) for key in columns} for row in rows],
@@ -49,7 +55,7 @@ def render(fmt: str, columns: dict[str, str], rows: list[dict[str, Any]]) -> byt
         book = Workbook()
         sheet = book.active
         assert sheet is not None
-        sheet.title = "خروجی دستیار"
+        sheet.title = sheet_title
         sheet.sheet_view.rightToLeft = True
         sheet.freeze_panes = "A2"
         sheet.append(list(columns.values()))

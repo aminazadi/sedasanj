@@ -5,6 +5,7 @@ import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import FormDialog from "../components/FormDialog";
+import SearchSelect from "../components/SearchSelect";
 import teamArt from "../assets/team.webp";
 import assignArt from "../assets/assign-operator.webp";
 import goalArt from "../assets/goal.webp";
@@ -80,7 +81,7 @@ export default function KpiSettings({ embedded = false }: { embedded?: boolean }
     </FormDialog>
     <FormDialog open={dialog === "assign"} title="تخصیص اپراتور به تیم" description="عضویت از لحظهٔ ثبت شروع می‌شود و در گزارش‌ها زمان‌دار نگه داشته می‌شود." art={assignArt} submitLabel="تخصیص" busy={dialogBusy} error={dialogError} onClose={closeDialog} onSubmit={() => void submitDialog(assign)}>
       <label><span>تیم</span><select className="input" value={member.team_id} onChange={(e) => setMember({ ...member, team_id: e.target.value })} required><option value="">انتخاب تیم</option>{teams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label><span>اپراتور</span><select className="input" value={member.operator_id} onChange={(e) => setMember({ ...member, operator_id: e.target.value })} required><option value="">انتخاب اپراتور</option>{users.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
+      <label><span>اپراتور</span><SearchSelect ariaLabel="اپراتور" emptyLabel="انتخاب اپراتور" searchPlaceholder="جستجوی اپراتور…" options={users.map((item) => ({ value: item.id, label: item.display_name ?? item.email, keywords: item.email }))} value={member.operator_id} onChange={(value) => setMember({ ...member, operator_id: value })} /></label>
     </FormDialog>
     <FormDialog open={dialog === "goal"} title="ثبت هدف جدید" description="هدف برای کل سازمان یا یک تیم در بازهٔ زمانی مشخص تعریف می‌شود." art={goalArt} submitLabel="ثبت هدف" busy={dialogBusy} error={dialogError} onClose={closeDialog} onSubmit={() => void submitDialog(createGoal)}>
       <div className="grid gap-[18px] sm:grid-cols-2">

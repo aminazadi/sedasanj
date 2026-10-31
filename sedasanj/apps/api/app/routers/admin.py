@@ -100,6 +100,7 @@ from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
 from app.services.commerce_settings import get_commerce_settings
 from app.services.ninerouter import NineRouterClient
 from app.services.platform import (
+    COACH_PROMPT_KEY,
     EXTRACT_PROMPT_KEY,
     effective_models,
     normalize_provider_base_url,
@@ -1197,7 +1198,12 @@ async def update_platform_settings(
     embedding_api_key = changes.pop("embedding_api_key", None)
     ninerouter_api_key = changes.pop("ninerouter_api_key", None)
     assistant_instructions = changes.pop("assistant_instructions", None)
+    coach_prompt = changes.pop("coach_prompt", None)
     optional_blank_keys = {
+        "coach_model",
+        "ninerouter_coach_model",
+        "ninerouter_coach_prompt",
+        "ninerouter_direct_coach_prompt",
         "ninerouter_asr_prompt",
         "ninerouter_analysis_prompt",
         "ninerouter_chat_prompt",
@@ -1265,6 +1271,7 @@ async def update_platform_settings(
         "correction_provider": "ninerouter_correction_models",
         "decision_provider": "ninerouter_decision_model",
         "embedding_provider": "ninerouter_embedding_model",
+        "coach_provider": "ninerouter_coach_model",
     }
     for provider_key, model_key in direct_provider_keys.items():
         if not {provider_key, model_key, "ninerouter_api_key"}.intersection(changes):
@@ -1409,7 +1416,17 @@ async def update_platform_settings(
         else:
             row.value = assistant_instructions.strip()
             row.updated_at = datetime.now(UTC)
+    if coach_prompt is not None:
+        # A blank value reverts to the packaged default prompt.
+        row = await session.get(PlatformSetting, COACH_PROMPT_KEY)
+        if row is None:
+            session.add(PlatformSetting(key=COACH_PROMPT_KEY, value=coach_prompt.strip()))
+        else:
+            row.value = coach_prompt.strip()
+            row.updated_at = datetime.now(UTC)
     changed_settings = set(changes)
+    if coach_prompt is not None:
+        changed_settings.add("coach_prompt")
     if extract_prompt is not None:
         changed_settings.add("extract_prompt")
     if assistant_instructions is not None:

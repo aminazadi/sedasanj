@@ -159,6 +159,7 @@ class Settings(BaseSettings):
     active_ai_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     analysis_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     assistant_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    coach_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     correction_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     decision_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     embedding_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"

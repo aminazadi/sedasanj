@@ -10,7 +10,6 @@ import { useResource } from "@cbi/web-shared/lib/useResource";
 import { downloadFile, fmt, query, request } from "../api";
 import { isOrgAdmin, useAuth } from "../auth";
 import ConfirmDialog from "../components/ConfirmDialog";
-import ExtensionsPanel from "../components/ExtensionsPanel";
 import FormDialog from "../components/FormDialog";
 import { PageHeader } from "../components/PageHeader";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
@@ -362,8 +361,6 @@ export default function Contacts() {
           onNext={() => setPageIndex(pageIndex + 1)}
         />
       </div>
-
-      <ExtensionsPanel canEdit={canEdit} />
 
       <FormDialog
         open={formOpen}

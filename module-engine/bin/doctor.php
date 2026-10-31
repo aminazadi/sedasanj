@@ -170,6 +170,8 @@ function doctor_report(array $cfg, array $report): bool
     $uuid = '';
     $xml = dirname(__DIR__, 2) . '/module.xml';
     $version = preg_match('#<version>([^<]+)</version>#', (string) @file_get_contents($xml), $m) ? $m[1] : '0.0.0';
+    $issabelHost = json_decode((string) @file_get_contents('/etc/sedasanj-recuploader-update/host.json'), true);
+    if (is_array($issabelHost) && ($issabelHost['product'] ?? '') === 'issabel-recuploader') { $version = $issabelHost['version']; }
     $uuidFile = dirname(Config::sqlitePath($cfg)) . '/host_uuid';
     if (is_readable($uuidFile)) {
         $uuid = trim((string) file_get_contents($uuidFile));
@@ -179,10 +181,11 @@ function doctor_report(array $cfg, array $report): bool
     }
     $checks = [];
     foreach ($report['checks'] as $c) {
-        $checks[] = ['id' => $c['id'], 'status' => $c['status'], 'code' => $c['code'], 'detail' => mb_substr((string) $c['detail'], 0, 300)];
+        $checks[] = ['id' => $c['id'], 'status' => $c['status'], 'code' => $c['code'], 'detail' => (function_exists('mb_substr') ? mb_substr((string) $c['detail'], 0, 300) : substr((string) $c['detail'], 0, 300))];
     }
     try {
         Engine\Uploader::postJson($cfg, 'module/diagnostics', [
+            'product' => is_array($issabelHost) ? ($issabelHost['product'] ?? 'freepbx-recuploader') : 'freepbx-recuploader',
             'host_uuid' => $uuid,
             'module_version' => $version,
             'ok' => (bool) $report['ok'],

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { request } from "../api";
-import { freePbxModuleConfig, pythonAgentConfig } from "../agentConfig";
+import { freePbxModuleConfig, issabelModuleConfig, pythonAgentConfig } from "../agentConfig";
 import type { ApiKey, ApiKeyCreated } from "../types";
 
 type ArchiveFormat = "gzip" | "zip";
@@ -130,7 +130,7 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
     }
   }
 
-  async function validateAndDownloadExisting(): Promise<void> {
+  async function validateAndDownloadExisting(product: "freepbx" | "issabel" = "freepbx"): Promise<void> {
     if (!exporting || !exportSecret) return;
     setError(null);
     try {
@@ -145,8 +145,8 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
         throw new Error("تنظیمات واردشده با کلید ذخیره‌شده مطابقت ندارد.");
       }
       downloadText(
-        "sedasanj-freepbx-config.json",
-        freePbxModuleConfig(window.location.origin, exporting.id, exporting.key_prefix, exportSecret, exporting.archive_format, exportPassword),
+        product === "issabel" ? "sedasanj-issabel-config.json" : "sedasanj-freepbx-config.json",
+        (product === "issabel" ? issabelModuleConfig : freePbxModuleConfig)(window.location.origin, exporting.id, exporting.key_prefix, exportSecret, exporting.archive_format, exportPassword),
       );
       setExportSecret("");
       setExportPassword("");
@@ -173,6 +173,7 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button className="btn" onClick={() => configs && downloadText("sedasanj-freepbx-config.json", configs.freepbx)}>دانلود تنظیمات FreePBX</button>
+            <button className="btn" onClick={() => created && downloadText("sedasanj-issabel-config.json", issabelModuleConfig(window.location.origin, created.id, created.prefix, created.secret, created.archiveFormat, created.password))}>دانلود تنظیمات ایزابل</button>
             <button className="btn-ghost" onClick={() => configs && downloadText("cbi-agent.toml", configs.python)}>دانلود تنظیمات Python Agent</button>
             <button className="btn-ghost" onClick={() => configs && void navigator.clipboard.writeText(configs.freepbx)}>کپی تنظیمات FreePBX</button>
             <button className="btn-ghost" onClick={() => setCreated(null)}>بستن و پاک‌کردن</button>
@@ -201,13 +202,13 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
       </div>
       {exporting ? (
         <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
-          <div className="mb-1 font-medium">ساخت محلی فایل FreePBX برای {exporting.key_prefix}…</div>
+          <div className="mb-1 font-medium">ساخت فایل تنظیمات مرکز تلفن برای {exporting.key_prefix}…</div>
           <p className="mb-3 text-xs text-slate-600">secret فعلی فقط برای اعتبارسنجی مستقیم کلید استفاده می‌شود و در حساب شما ذخیره یا بازیابی نمی‌شود.</p>
           <div className="grid gap-2 md:grid-cols-2">
             <input className="input" dir="ltr" type="password" value={exportSecret} onChange={(event) => setExportSecret(event.target.value)} placeholder="sk_live_…" autoComplete="off" />
             {exporting.archive_password_configured ? <input className="input" dir="ltr" type="password" value={exportPassword} onChange={(event) => setExportPassword(event.target.value)} placeholder="رمز فعلی ZIP" autoComplete="off" /> : <div />}
           </div>
-          <div className="mt-3 flex gap-2"><button className="btn" disabled={!exportSecret || (exporting.archive_password_configured && !exportPassword)} onClick={() => void validateAndDownloadExisting()}>اعتبارسنجی و دانلود</button><button className="btn-ghost" onClick={() => { setExporting(null); setExportSecret(""); setExportPassword(""); }}>انصراف</button></div>
+          <div className="mt-3 flex gap-2"><button className="btn" disabled={!exportSecret || (exporting.archive_password_configured && !exportPassword)} onClick={() => void validateAndDownloadExisting()}>دانلود FreePBX</button><button className="btn" disabled={!exportSecret || (exporting.archive_password_configured && !exportPassword)} onClick={() => void validateAndDownloadExisting("issabel")}>دانلود ایزابل</button><button className="btn-ghost" onClick={() => { setExporting(null); setExportSecret(""); setExportPassword(""); }}>انصراف</button></div>
         </div>
       ) : null}
       {editing ? (

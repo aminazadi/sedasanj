@@ -68,3 +68,12 @@ export function freePbxModuleConfig(
     2,
   ) + "\n";
 }
+
+export function issabelModuleConfig(...args: Parameters<typeof freePbxModuleConfig>): string {
+  const profile = JSON.parse(freePbxModuleConfig(...args));
+  profile.schema = "sedasanj.issabel.recuploader.config";
+  profile.target = "issabel-module";
+  profile.settings.watcher.watch_dir = "/var/spool/asterisk-recording-uploader/recordings";
+  profile.settings.archive.format = "wav";
+  return JSON.stringify(profile, null, 2) + "\n";
+}

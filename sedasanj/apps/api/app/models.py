@@ -969,6 +969,49 @@ class OperatorCallScore(Base):
     )
 
 
+class OperatorCallCoaching(Base):
+    __tablename__ = "operator_call_coachings"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    call_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
+    )
+    analysis_run_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="SET NULL")
+    )
+    operator_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    operator_label: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    model: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    prompt_hash: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    narrative: Mapped[str | None] = mapped_column(Text)
+    embed_text: Mapped[str | None] = mapped_column(Text)
+    embedding: Mapped[Any | None] = mapped_column(VectorType())
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    vector_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'pending'")
+    )
+    skip_reason: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        UniqueConstraint("call_id", "analysis_run_id", name="operator_call_coachings_call_run_key"),
+        Index("idx_operator_call_coachings_operator", "tenant_id", "operator_id", "created_at"),
+    )
+
+
 class ChatConversation(Base):
     __tablename__ = "chat_conversations"
 
@@ -2099,6 +2142,11 @@ class ModuleRelease(Base):
     changelog_plain: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    lab_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    lab_evidence: Mapped[str | None] = mapped_column(Text)
+    archive_format: Mapped[str] = mapped_column(String(8), nullable=False, server_default="zip")
+    min_issabel_major: Mapped[int | None] = mapped_column(Integer)
+    max_issabel_major: Mapped[int | None] = mapped_column(Integer)
     min_freepbx_major: Mapped[int | None] = mapped_column(Integer)
     max_freepbx_major: Mapped[int | None] = mapped_column(Integer)
     min_php_version: Mapped[str | None] = mapped_column(String(16))
@@ -2145,6 +2193,9 @@ class ModuleInstallation(Base):
     product: Mapped[str] = mapped_column(String(64), nullable=False)
     host_uuid: Mapped[str] = mapped_column(String(64), nullable=False)
     hostname: Mapped[str | None] = mapped_column(String(255))
+    issabel_version: Mapped[str | None] = mapped_column(String(64))
+    framework_version: Mapped[str | None] = mapped_column(String(64))
+    php_web_version: Mapped[str | None] = mapped_column(String(32))
     freepbx_version: Mapped[str | None] = mapped_column(String(64))
     php_version: Mapped[str | None] = mapped_column(String(32))
     module_version: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -2502,6 +2553,7 @@ TENANT_TABLES: tuple[str, ...] = (
     "crm_outcomes",
     "operator_score_rubrics",
     "operator_call_scores",
+    "operator_call_coachings",
     "chat_conversations",
     "chat_messages",
     "assistant_runs",

@@ -6,6 +6,7 @@ export type CallStateSection =
   | "transcript"
   | "tasks"
   | "summary"
+  | "coach"
   | "entities"
   | "assistant"
   | "training"
@@ -419,6 +420,38 @@ function Tasks({ kind }: Kind) {
   );
 }
 
+/* ---------- operator coach ---------- */
+
+function Coach({ kind }: Kind) {
+  const ghost = kind === "empty";
+  const ink = ghost ? T : G;
+  return (
+    <>
+      <Card x={138} y={66} w={150} h={148} tilt={-2} ghost={ghost} bar>
+        <rect x="156" y="98" width="86" height="22" rx="8" fill={ghost ? "none" : SOFT} stroke={ink} strokeWidth="2" strokeDasharray={ghost ? "3 3" : undefined} />
+        <Lines x={166} y={109} widths={[62]} gap={0} ghost={ghost} weight={4} />
+        <rect x="184" y="128" width="86" height="22" rx="8" fill="none" stroke={ink} strokeWidth="2" strokeDasharray={ghost ? "3 3" : undefined} />
+        <Lines x={194} y={139} widths={[56]} gap={0} ghost={ghost} weight={4} />
+        <g stroke={ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" strokeDasharray={ghost ? "3 3" : undefined}>
+          <path d="M156 170h28l6-8 8 18 8-12 6 2h26" />
+        </g>
+        <Lines x={156} y={196} widths={[100, 60]} gap={10} ghost={ghost} weight={4} />
+      </Card>
+      <Card x={310} y={96} w={92} h={92} r={9} ghost={ghost}>
+        <g fill={ghost ? T : BAR}>
+          {[0, 1, 2, 3].map((i) => (
+            <rect key={i} x={324 + i * 18} y={170 - (i + 1) * 17} width="11" height={(i + 1) * 17} rx="2" opacity={ghost ? 0.7 : 1} />
+          ))}
+        </g>
+        <path d="M322 130l18-14 16 8 28-24" stroke={ink} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" strokeDasharray={ghost ? "3 3" : undefined} />
+      </Card>
+      <Card x={90} y={150} w={46} h={46} r={9} ghost={ghost}>
+        <path d="m113 160 4.4 9 9.6 1.3-7 6.8 1.7 9.6-8.7-4.6-8.7 4.6 1.7-9.6-7-6.8 9.6-1.3z" fill={ghost ? "none" : SOFT} stroke={ink} strokeWidth="2.2" strokeLinejoin="round" strokeDasharray={ghost ? "3 3" : undefined} />
+      </Card>
+    </>
+  );
+}
+
 /* ---------- assistant ---------- */
 
 function Assistant({ kind }: Kind) {
@@ -529,6 +562,7 @@ const SCENES: Record<CallStateSection, (props: Kind) => ReactNode> = {
   conversation: Conversation,
   transcript: Transcript,
   summary: Summary,
+  coach: Coach,
   entities: Entities,
   tasks: Tasks,
   assistant: Assistant,

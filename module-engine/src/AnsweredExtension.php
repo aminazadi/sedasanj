@@ -22,24 +22,11 @@ class AnsweredExtension
 
     public static function lookup(string $uniqueId): ?string
     {
-        if ($uniqueId === '' || !is_file('/etc/freepbx.conf')) {
+        if ($uniqueId === '') {
             return null;
         }
         try {
-            global $amp_conf, $db, $freepbx_conf, $bootstrap_settings;
-            require_once '/etc/freepbx.conf';
-            if (!class_exists('FreePBX')) {
-                return null;
-            }
-            $cdr = \FreePBX::Cdr();
-            if (!is_object($cdr) || !method_exists($cdr, 'getCdrDbHandle')) {
-                return null;
-            }
-            $cdrDb = $cdr->getCdrDbHandle();
-            $table = (string) \FreePBX::Config()->get('CDRDBTABLENAME');
-            if ($table === '') {
-                $table = 'cdr';
-            }
+            [$cdrDb, $table] = \Engine\Host\Factory::create()->cdr();
             if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table) !== 1) {
                 return null;
             }

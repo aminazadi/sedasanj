@@ -18,6 +18,9 @@ from worker_llm.client import load_prompt
 
 EXTRACT_PROMPT_KEY = "extract-fa-v3-prompt"
 ASSISTANT_INSTRUCTIONS_KEY = "assistant-instructions"
+COACH_PROMPT_KEY = "operator-coach-prompt"
+# Lives in a subfolder so it is not offered as an analysis prompt_version.
+COACH_PROMPT_VERSION = "coach/operator-coach-fa-v1"
 OVERRIDE_KEYS = (
     "asr_model",
     "llm_provider",
@@ -91,6 +94,15 @@ OVERRIDE_KEYS = (
     "ninerouter_direct_assistant_prompt",
     "ninerouter_direct_correction_prompt",
     "ninerouter_direct_decision_prompt",
+    "coach_enabled",
+    "coach_provider",
+    "coach_route",
+    "coach_model",
+    "coach_history_limit",
+    "coach_min_duration_seconds",
+    "ninerouter_coach_model",
+    "ninerouter_coach_prompt",
+    "ninerouter_direct_coach_prompt",
 )
 
 AISERVICE_ROUTES = {
@@ -103,6 +115,11 @@ AISERVICE_ROUTES = {
         "ninerouter": "/v1/ninerouter/chat/completions",
     },
     "chat_route": {
+        "durable": "/v1/chat/tasks",
+        "synchronous": "/v1/chat/completions",
+        "ninerouter": "/v1/ninerouter/chat/completions",
+    },
+    "coach_route": {
         "durable": "/v1/chat/tasks",
         "synchronous": "/v1/chat/completions",
         "ninerouter": "/v1/ninerouter/chat/completions",
@@ -124,6 +141,7 @@ __all__ = (
     "capability_model",
     "effective_extract_prompt",
     "effective_assistant_instructions",
+    "effective_coach_prompt",
     "mask_api_key",
     "normalize_api_key",
     "resolve_provider_settings",
@@ -139,6 +157,7 @@ def capability_model(values: dict[str, str], capability: str) -> str:
                 "asr": "ninerouter_asr_model",
                 "analysis": "ninerouter_analysis_model",
                 "assistant": "ninerouter_assistant_model",
+                "coach": "ninerouter_coach_model",
                 "decision": "ninerouter_decision_model",
                 "embedding": "ninerouter_embedding_model",
             }.get(capability, ""),
@@ -149,6 +168,7 @@ def capability_model(values: dict[str, str], capability: str) -> str:
             "asr": "asr_model",
             "analysis": "llm_model",
             "assistant": "chat_model",
+            "coach": "coach_model",
             "decision": "decision_model",
             "embedding": "embedding_model",
         }.get(capability, ""),
@@ -197,6 +217,18 @@ async def effective_assistant_instructions(session: AsyncSession) -> str:
     else:
         row = await session.get(PlatformSetting, ASSISTANT_INSTRUCTIONS_KEY)
     return row.value.strip() if row is not None else ""
+
+
+async def effective_coach_prompt(session: AsyncSession) -> str:
+    """Return the admin-managed coach prompt, falling back to the packaged default."""
+    if get_settings().tenant_databases_enabled:
+        async with get_sessionmaker()() as control:
+            row = await control.get(PlatformSetting, COACH_PROMPT_KEY)
+    else:
+        row = await session.get(PlatformSetting, COACH_PROMPT_KEY)
+    if row is not None and row.value.strip():
+        return row.value.strip()
+    return load_prompt(COACH_PROMPT_VERSION)
 
 
 def _default_asr_model(settings: Settings) -> str:
@@ -301,6 +333,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "asr_route": "native",
         "analysis_route": "durable",
         "chat_route": "durable",
+        "coach_route": "durable",
         "decision_route": "native",
         "embedding_route": "native",
         "ninerouter_asr_prompt": "",
@@ -355,6 +388,14 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "ninerouter_direct_assistant_prompt": "",
         "ninerouter_direct_correction_prompt": "",
         "ninerouter_direct_decision_prompt": "",
+        "coach_enabled": "true",
+        "coach_provider": "aiservice",
+        "coach_model": "",
+        "coach_history_limit": "8",
+        "coach_min_duration_seconds": "30",
+        "ninerouter_coach_model": "",
+        "ninerouter_coach_prompt": "",
+        "ninerouter_direct_coach_prompt": "",
     }
     settings_session = session
     if get_settings().tenant_databases_enabled:
@@ -400,6 +441,8 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
     values["embedding_base_url"] = normalize_provider_base_url(values["embedding_base_url"])
     if "chat_model" not in row_keys:
         values["chat_model"] = values["llm_model"]
+    if "coach_model" not in row_keys:
+        values["coach_model"] = values["chat_model"]
     return values
 
 
@@ -418,6 +461,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "prompt_version": values["prompt_version"],
         "extract_prompt": await effective_extract_prompt(session, values["prompt_version"]),
         "assistant_instructions": await effective_assistant_instructions(session),
+        "coach_prompt": await effective_coach_prompt(session),
         "api_key_configured": bool(api_key.strip()),
         "api_key_hint": mask_api_key(api_key),
         "voicesanj_base_url": values["voicesanj_base_url"],
@@ -495,6 +539,15 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "ninerouter_direct_assistant_prompt": values["ninerouter_direct_assistant_prompt"],
         "ninerouter_direct_correction_prompt": values["ninerouter_direct_correction_prompt"],
         "ninerouter_direct_decision_prompt": values["ninerouter_direct_decision_prompt"],
+        "coach_enabled": _as_bool(values["coach_enabled"]),
+        "coach_provider": values["coach_provider"],
+        "coach_route": values["coach_route"],
+        "coach_model": values["coach_model"],
+        "coach_history_limit": int(values["coach_history_limit"]),
+        "coach_min_duration_seconds": int(values["coach_min_duration_seconds"]),
+        "ninerouter_coach_model": values["ninerouter_coach_model"],
+        "ninerouter_coach_prompt": values["ninerouter_coach_prompt"],
+        "ninerouter_direct_coach_prompt": values["ninerouter_direct_coach_prompt"],
     }
 
 
@@ -595,6 +648,19 @@ async def resolve_provider_settings(
             ),
         }
     )
+    if capability == "coach":
+        runtime = runtime.model_copy(
+            update={
+                "llm_model": overrides["coach_model"] or runtime.llm_model,
+                "voicesanj_llm_model": overrides["coach_model"] or runtime.voicesanj_llm_model,
+                "aiservice_chat_path": AISERVICE_ROUTES["coach_route"][overrides["coach_route"]],
+                "ninerouter_chat_prompt": (
+                    overrides["ninerouter_coach_prompt"]
+                    if overrides["coach_route"] == "ninerouter"
+                    else ""
+                ),
+            }
+        )
     if capability is None:
         return runtime
     provider_key = "asr_ai_provider" if capability == "asr" else f"{capability}_provider"
@@ -611,6 +677,7 @@ async def resolve_provider_settings(
         "asr": "ninerouter_asr_model",
         "analysis": "ninerouter_analysis_model",
         "assistant": "ninerouter_assistant_model",
+        "coach": "ninerouter_coach_model",
         "decision": "ninerouter_decision_model",
         "embedding": "ninerouter_embedding_model",
     }.get(capability)
@@ -620,6 +687,7 @@ async def resolve_provider_settings(
         "asr": "ninerouter_direct_asr_prompt",
         "analysis": "ninerouter_direct_analysis_prompt",
         "assistant": "ninerouter_direct_assistant_prompt",
+        "coach": "ninerouter_direct_coach_prompt",
         "correction": "ninerouter_direct_correction_prompt",
         "decision": "ninerouter_direct_decision_prompt",
     }.get(capability)
@@ -628,6 +696,7 @@ async def resolve_provider_settings(
             "active_ai_provider": "ninerouter_direct",
             "analysis_provider": overrides["analysis_provider"],
             "assistant_provider": overrides["assistant_provider"],
+            "coach_provider": overrides["coach_provider"],
             "correction_provider": overrides["correction_provider"],
             "decision_provider": overrides["decision_provider"],
             "embedding_provider": overrides["embedding_provider"],
@@ -639,7 +708,7 @@ async def resolve_provider_settings(
             "ninerouter_read_timeout_seconds": float(overrides["ninerouter_read_timeout_seconds"]),
             "ninerouter_direct_prompt": overrides.get(prompt_key, "") if prompt_key else "",
             "llm_client": "ninerouter"
-            if capability in {"analysis", "assistant", "correction"}
+            if capability in {"analysis", "assistant", "coach", "correction"}
             else runtime.llm_client,
             "llm_model": direct_model or runtime.llm_model,
             "voicesanj_llm_model": direct_model or runtime.voicesanj_llm_model,

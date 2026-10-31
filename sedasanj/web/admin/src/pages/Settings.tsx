@@ -318,6 +318,14 @@ export default function Settings() {
           asr_route: settings.asr_route,
           analysis_route: settings.analysis_route,
           chat_route: settings.chat_route,
+          coach_route: settings.coach_route,
+          coach_enabled: settings.coach_enabled,
+          coach_provider: settings.coach_provider,
+          coach_model: settings.coach_model,
+          coach_history_limit: settings.coach_history_limit,
+          coach_min_duration_seconds: settings.coach_min_duration_seconds,
+          ninerouter_coach_model: settings.ninerouter_coach_model,
+          ninerouter_direct_coach_prompt: settings.ninerouter_direct_coach_prompt,
           decision_route: settings.decision_route,
           embedding_route: settings.embedding_route,
           asr_ai_provider: settings.asr_ai_provider,
@@ -343,6 +351,9 @@ export default function Settings() {
         }
         if (settings.chat_route === "ninerouter") {
           body.ninerouter_chat_prompt = settings.ninerouter_chat_prompt;
+        }
+        if (settings.coach_route === "ninerouter") {
+          body.ninerouter_coach_prompt = settings.ninerouter_coach_prompt;
         }
         if (settings.decision_route === "ninerouter") {
           body.ninerouter_decision_prompt = settings.ninerouter_decision_prompt;
@@ -390,6 +401,7 @@ export default function Settings() {
       } else if (activeTab === "prompts") {
         body.extract_prompt = settings.extract_prompt;
         body.assistant_instructions = settings.assistant_instructions;
+        body.coach_prompt = settings.coach_prompt;
       }
       // Persist only this tab's changed fields, including explicit blank values.
       for (const key of Object.keys(body)) {
@@ -934,6 +946,49 @@ export default function Settings() {
 
       <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
+          <h2 className="font-bold text-slate-900">مربی ارتباط با مشتری</h2>
+          <p className="mt-1 text-xs leading-6 text-slate-500">پس از تحلیل هر تماس پاسخ‌داده‌شده، مربی نقاط ضعف دقیق اپراتور را همراه با نقل‌قول و جمله‌های پیشنهادی تولید می‌کند. پرامپت آن در برگهٔ «پرامپت‌ها» ویرایش می‌شود.</p>
+        </div>
+        <ToggleSwitch checked={settings.coach_enabled} onChange={(coach_enabled) => setSettings({ ...settings, coach_enabled })} label="فعال بودن مربی" />
+        <div>
+          <label className="label">مسیر مربی</label>
+          <select className="input mb-2" value={settings.coach_provider} onChange={(event) => setSettings({ ...settings, coach_provider: event.target.value as PlatformSettings["coach_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select>
+          <ModelSelect
+            id="coach-model"
+            label="مدل مربی"
+            value={settings.coach_provider === "ninerouter_direct" ? settings.ninerouter_coach_model : settings.coach_model}
+            models={settings.coach_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels}
+            sourceLabel={settings.coach_provider === "ninerouter_direct" ? "9Router" : "AISERVICE"}
+            onChange={(value) => setSettings(settings.coach_provider === "ninerouter_direct" ? { ...settings, ninerouter_coach_model: value } : { ...settings, coach_model: value })}
+          />
+          <select className="input mt-2" disabled={settings.coach_provider === "ninerouter_direct"} value={settings.coach_route} onChange={(event) => setSettings({ ...settings, coach_route: event.target.value as PlatformSettings["coach_route"] })}>
+            <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
+            <option value="synchronous">/v1/chat/completions — پاسخ مستقیم AISERVICE</option>
+            <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
+          </select>
+        </div>
+        {settings.coach_provider === "aiservice" && settings.coach_route === "ninerouter" ? (
+          <div>
+            <label className="label" htmlFor="ninerouter-coach-prompt">دستور تکمیلی مربی در 9Router</label>
+            <textarea id="ninerouter-coach-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_coach_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_coach_prompt: event.target.value })} />
+          </div>
+        ) : null}
+        {settings.coach_provider === "ninerouter_direct" ? <div><label className="label">پرامپت مستقیم مربی</label><textarea className="input min-h-40" value={settings.ninerouter_direct_coach_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_coach_prompt: event.target.value })} /></div> : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="coach-history-limit">تعداد سابقهٔ مربیگری اپراتور برای هر تحلیل</label>
+            <input id="coach-history-limit" className="input" type="number" min="0" max="30" value={settings.coach_history_limit} onChange={(event) => setSettings({ ...settings, coach_history_limit: Number(event.target.value) })} />
+            <p className="field-hint">۰ یعنی مربی سابقهٔ اپراتور را نبیند. سابقه با شباهت معنایی و آخرین موارد انتخاب می‌شود.</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="coach-min-duration">حداقل مدت تماس برای مربیگری (ثانیه)</label>
+            <input id="coach-min-duration" className="input" type="number" min="0" max="3600" value={settings.coach_min_duration_seconds} onChange={(event) => setSettings({ ...settings, coach_min_duration_seconds: Number(event.target.value) })} />
+          </div>
+        </div>
+      </section>
+
+      <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div>
           <h2 className="font-bold text-slate-900">تصمیم‌گیری محلی AISERVICE</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">مدل اصلی و fallback را از مدل‌های واقعاً قابل دسترس AISERVICE انتخاب کنید.</p>
         </div>
@@ -1003,6 +1058,25 @@ export default function Settings() {
           spellCheck={false}
           value={settings.assistant_instructions}
           onChange={(event) => setSettings({ ...settings, assistant_instructions: event.target.value })}
+        />
+      </section>
+      <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-slate-900">پرامپت مربی ارتباط با مشتری</h2>
+            <p className="mt-1 text-xs leading-6 text-slate-500">
+              نقش، قواعد و نکاتی که مربی باید بررسی کند. قالب خروجی JSON توسط سیستم ثابت اضافه می‌شود و با ویرایش این متن خراب نمی‌شود. خالی‌کردن متن و ذخیره، پرامپت پیش‌فرض را برمی‌گرداند.
+            </p>
+          </div>
+          <button type="button" className="btn-ghost shrink-0 text-xs" onClick={() => setSettings({ ...settings, coach_prompt: "" })}>بازگردانی پیش‌فرض</button>
+        </div>
+        <textarea
+          className="input min-h-96 resize-y font-mono text-sm leading-6"
+          dir="rtl"
+          spellCheck={false}
+          maxLength={100000}
+          value={settings.coach_prompt}
+          onChange={(event) => setSettings({ ...settings, coach_prompt: event.target.value })}
         />
       </section>
       <button className="btn">

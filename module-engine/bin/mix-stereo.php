@@ -114,6 +114,7 @@ function mixstereo_main(array $argv): int
     }
     $direction = str_starts_with($name, 'in-') ? 'inbound'
         : (str_starts_with($name, 'out-') ? 'outbound' : '');
+    if (in_array($argv[9] ?? '', ['inbound', 'outbound', 'internal'], true)) { $direction = $argv[9]; }
     $destination = "{$dir}stereo_{$name}.wav";
 
     // The merged file is built as <name>.part and renamed into place only after the metadata

@@ -24,15 +24,16 @@ class CdrSource
         if ($source instanceof self) {
             return $source;
         }
-        $bootstrap = '/etc/freepbx.conf';
-        if (!is_file($bootstrap)) {
-            throw new \RuntimeException('FreePBX bootstrap not found at /etc/freepbx.conf');
-        }
-        require_once $bootstrap;
-        $table = \FreePBX::Config()->get('CDRDBTABLENAME') ?: 'cdr';
-        $cdrDb = \FreePBX::Cdr()->getCdrDbHandle();
+        [$cdrDb, $table] = \Engine\Host\Factory::create()->cdr();
         $cdrDb->exec("SET time_zone = 'SYSTEM'");
         return $source = new self($cdrDb, (string) $table);
+    }
+
+    public function recordingRows(string $uniqueId): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM `' . $this->table . '` WHERE uniqueid = :id LIMIT 50');
+        $stmt->execute(['id' => $uniqueId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     public function diagnostics(): array

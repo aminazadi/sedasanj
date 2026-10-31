@@ -23,7 +23,7 @@ $serviceStatus = $recuploader->getServiceStatus();
 $moduleVersion = $recuploader->getModuleVersion();
 $logoSvg = @file_get_contents(__DIR__ . '/assets/images/sedasanj-logo.svg');
 
-$logLevels   = array('DEBUG', 'INFO', 'WARNING', 'ERROR');
+$logLevels   = array('ALL', 'DEBUG', 'INFO', 'WARNING', 'ERROR');
 $logMinLevel = (isset($_REQUEST['log_min_level']) && in_array($_REQUEST['log_min_level'], $logLevels, true))
 	? $_REQUEST['log_min_level']
 	: 'INFO';
@@ -132,7 +132,7 @@ $helpIcon = function ($title, $content) {
 	.sedasanj-panel .table > tbody > tr > th, .sedasanj-panel .table > tbody > tr > td { border-top-color: #e2e8f0; }
 	.sedasanj-panel .table-striped > tbody > tr:nth-of-type(odd) { background: rgb(242 240 239 / 0.6); }
 	.sedasanj-panel code { border: 1px solid rgb(178 172 136 / 0.75); background: rgb(242 240 239 / 0.75); padding: 1px 5px; color: #334155; font-size: .85em; }
-	.sedasanj-panel .sj-log { max-height: 500px; overflow: auto; margin: 0 0 10px; padding: 12px; border: 1px solid var(--sj-sand); background: #1e293b; color: var(--sj-canvas); font-size: 12px; line-height: 1.6; }
+	.sedasanj-panel .sj-log { display: block; box-sizing: border-box; width: 100%; max-width: 100%; max-height: 500px; overflow: auto; margin: 0 0 10px; padding: 12px; border: 1px solid var(--sj-sand); background: #1e293b; color: var(--sj-canvas); font-size: 12px; line-height: 1.6; white-space: pre; overflow-wrap: normal; }
 
 	/* ---- Service information & footer ---- */
 	.sedasanj-panel .sj-info { margin-top: 20px; }

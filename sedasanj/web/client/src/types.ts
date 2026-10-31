@@ -208,6 +208,58 @@ export interface OperatorScore {
   completed_at: string | null;
 }
 
+export type CoachSeverity = "high" | "medium" | "low";
+export type CoachPattern = "new" | "recurring" | "improving";
+
+export interface CoachDimension {
+  key: string;
+  label_fa: string;
+  score: number | null;
+  verdict: string;
+}
+
+export interface CoachIssue {
+  severity: CoachSeverity;
+  title: string;
+  evidence_quote: string;
+  turn_ref: string;
+  why_it_hurts: string;
+  better_phrase: string;
+  pattern: CoachPattern;
+  pattern_note: string;
+  dimension: string;
+  evidence_verified: boolean | null;
+}
+
+export interface CoachResult {
+  insufficient_evidence: boolean;
+  insufficient_reason: string;
+  headline: string;
+  narrative: string;
+  dimensions: CoachDimension[];
+  issues: CoachIssue[];
+  strengths: Array<{ title: string; evidence_quote: string }>;
+  missed_opportunities: string[];
+  next_call_drills: string[];
+  confidence: "low" | "medium" | "high";
+}
+
+export interface OperatorCoach {
+  id: string;
+  call_id: string;
+  operator_id: string | null;
+  operator_label: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "skipped";
+  model: string;
+  provider: string;
+  result: CoachResult | null;
+  skip_reason: string | null;
+  error_code: string | null;
+  error_detail: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface OperatorScoreReport {
   from_date: string | null;
   to_date: string | null;

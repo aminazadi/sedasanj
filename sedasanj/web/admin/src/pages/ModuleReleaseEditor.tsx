@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ReleaseTimeline, { SEVERITY_META } from "@cbi/web-shared/components/ReleaseTimeline";
 import { fmt, request, uploadWithProgress } from "../api";
 import { useSensitiveAction } from "../components/SensitiveActionDialog";
@@ -16,6 +16,8 @@ interface Form {
   severity: ModuleSeverity;
   channel: "stable" | "beta";
   min_freepbx_major: string;
+  min_issabel_major: string;
+  max_issabel_major: string;
   max_freepbx_major: string;
   min_php_version: string;
   min_from_version: string;
@@ -27,6 +29,8 @@ function toForm(release: ModuleRelease): Form {
     changelog_html: release.changelog_html,
     severity: release.severity,
     channel: release.channel,
+    min_issabel_major: String(release.min_issabel_major ?? ""),
+    max_issabel_major: String(release.max_issabel_major ?? ""),
     min_freepbx_major: release.min_freepbx_major ? String(release.min_freepbx_major) : "",
     max_freepbx_major: release.max_freepbx_major ? String(release.max_freepbx_major) : "",
     min_php_version: release.min_php_version ?? "",
@@ -42,8 +46,8 @@ function UploadStep() {
   const [error, setError] = useState<string | null>(null);
 
   async function upload(file: File) {
-    if (!file.name.toLowerCase().endsWith(".zip")) {
-      setError("فقط فایل zip ماژول قابل قبول است.");
+    if (!/\.(zip|tgz|tar\.gz)$/i.test(file.name)) {
+      setError("فایل ZIP فری‌پی‌بی‌ایکس یا TGZ ایزابل را انتخاب کنید.");
       return;
     }
     setError(null);
@@ -82,7 +86,7 @@ function UploadStep() {
         <input
           ref={input}
           type="file"
-          accept=".zip,application/zip"
+          accept=".zip,.tgz,.tar.gz,application/zip,application/gzip"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -91,7 +95,7 @@ function UploadStep() {
         />
         {progress === null ? (
           <>
-            <div className="text-lg font-bold text-slate-800">فایل zip ماژول را اینجا رها کنید</div>
+            <div className="text-lg font-bold text-slate-800">بستهٔ FreePBX یا ایزابل را اینجا رها کنید</div>
             <div className="text-sm text-slate-500">
               یا کلیک کنید. نسخه از <code dir="ltr">recuploader/module.xml</code> خوانده، فایل بررسی و امضا می‌شود.
             </div>
@@ -115,7 +119,10 @@ export default function ModuleReleaseEditor() {
   const { releaseId } = useParams();
   const [release, setRelease] = useState<ModuleRelease | null>(null);
   const [form, setForm] = useState<Form | null>(null);
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "preview" ? "preview" : "edit";
+  const setTab = (value: "edit" | "preview") => setParams((old) => { const next = new URLSearchParams(old); next.set("tab", value); return next; });
+  const [labEvidence, setLabEvidence] = useState("");
   const [saving, setSaving] = useState(false);
   const [askProof, proofDialog] = useSensitiveAction();
   const [notice, setNotice] = useState<string | null>(null);
@@ -155,6 +162,8 @@ export default function ModuleReleaseEditor() {
           changelog_html: form.changelog_html,
           severity: form.severity,
           channel: form.channel,
+          min_issabel_major: form.min_issabel_major ? Number(form.min_issabel_major) : null,
+          max_issabel_major: form.max_issabel_major ? Number(form.max_issabel_major) : null,
           min_freepbx_major: form.min_freepbx_major ? Number(fmt.latinDigits(form.min_freepbx_major)) : null,
           max_freepbx_major: form.max_freepbx_major ? Number(fmt.latinDigits(form.max_freepbx_major)) : null,
           min_php_version: form.min_php_version.trim() || null,
@@ -265,16 +274,16 @@ export default function ModuleReleaseEditor() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="label">حداکثر FreePBX</label>
-                <input className="input" dir="ltr" inputMode="numeric" placeholder="17" value={form.max_freepbx_major} onChange={(e) => set("max_freepbx_major", e.target.value)} />
+                <label className="label">{release.product === "issabel-recuploader" ? "حداکثر ایزابل" : "حداکثر FreePBX"}</label>
+                <input className="input" dir="ltr" inputMode="numeric" placeholder="17" value={release.product === "issabel-recuploader" ? form.max_issabel_major : form.max_freepbx_major} onChange={(e) => set(release.product === "issabel-recuploader" ? "max_issabel_major" : "max_freepbx_major", e.target.value)} />
               </div>
               <div>
                 <label className="label">حداقل PHP (CLI)</label>
                 <input className="input" dir="ltr" placeholder="7.4" value={form.min_php_version} onChange={(e) => set("min_php_version", e.target.value)} />
               </div>
               <div>
-                <label className="label">حداقل FreePBX</label>
-                <input className="input" dir="ltr" inputMode="numeric" placeholder="16" value={form.min_freepbx_major} onChange={(e) => set("min_freepbx_major", e.target.value)} />
+                <label className="label">{release.product === "issabel-recuploader" ? "حداقل ایزابل" : "حداقل FreePBX"}</label>
+                <input className="input" dir="ltr" inputMode="numeric" placeholder="16" value={release.product === "issabel-recuploader" ? form.min_issabel_major : form.min_freepbx_major} onChange={(e) => set(release.product === "issabel-recuploader" ? "min_issabel_major" : "min_freepbx_major", e.target.value)} />
               </div>
               <div>
                 <label className="label">ارتقا از نسخهٔ</label>
@@ -289,6 +298,19 @@ export default function ModuleReleaseEditor() {
             </div>
           </div>
 
+          {release.product === "issabel-recuploader" ? <div className="card space-y-3">
+            <h2 className="font-light">تأیید آزمایش ایزابل ۴ و ۵</h2>
+            <p>{release.lab_verified ? "نتایج آزمایش ثبت و انتشار stable مجاز شده است." : "انتشار stable نیازمند تأیید نصب، تماس و بازگردانی در هر دو نسخه ایزابل است."}</p>
+            <textarea className="input" value={labEvidence || release.lab_evidence || ""} onChange={(event) => setLabEvidence(event.target.value)} placeholder="نسخه‌های OS، PHP و Asterisk و نتیجه نصب، تماس و بازگردانی" />
+            <button className="btn" disabled={saving || (labEvidence || release.lab_evidence || "").trim().length < 20} onClick={async () => {
+              const proof = await askProof("نتایج نصب، تماس و بازگردانی همین بسته روی ایزابل ۴ و ۵ تأیید شود؟");
+              if (!proof) return;
+              setSaving(true);
+              try { const saved = await request<ModuleRelease>(`/v1/admin/module-releases/${release.id}/certify`, { method: "POST", body: { ...proof, evidence: labEvidence || release.lab_evidence } }); setRelease(saved); }
+              catch (error) { setError((error as Error).message); }
+              finally { setSaving(false); }
+            }}>ثبت تأیید آزمایش</button>
+          </div> : null}
           <div className="card space-y-2 text-sm">
             <div className="font-bold text-slate-800">فایل ماژول</div>
             <Row label="نسخه"><span className="font-mono" dir="ltr">{release.version}</span></Row>
@@ -300,7 +322,7 @@ export default function ModuleReleaseEditor() {
               <div className="text-slate-500">SHA-256</div>
               <code className="block break-all rounded bg-slate-50 p-2 text-xs" dir="ltr">{release.artifact_sha256}</code>
             </div>
-            <button className="btn-ghost w-full text-sm" onClick={() => downloadRelease(release).catch((err) => setError(err.message))}>دانلود zip</button>
+            <button className="btn-ghost w-full text-sm" onClick={() => downloadRelease(release).catch((err) => setError(err.message))}>دانلود بسته</button>
           </div>
         </div>
       </div>

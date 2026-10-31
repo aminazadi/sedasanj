@@ -137,7 +137,7 @@ export const SEO_ROUTES: SeoRoute[] = [
  * meta tag). Keep in sync with the routes in App.tsx.
  */
 export const PRIVATE_PATHS = [
-  "/calls", "/contacts", "/tasks", "/assistant", "/scheduled-reports", "/operator-scores", "/profile",
+  "/calls", "/contacts", "/extensions", "/tasks", "/assistant", "/scheduled-reports", "/operator-scores", "/profile",
   "/account", "/account-settings", "/kpi-settings", "/checkout", "/payment-result", "/install",
   "/module-changelog", "/freepbx-servers", "/api-docs", "/demo",
 ];

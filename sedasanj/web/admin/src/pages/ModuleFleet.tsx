@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { ModuleInstallation, ModuleInstallationStats, Page } from "../types";
@@ -28,8 +28,12 @@ const STALE_MS = 7 * 24 * 3600 * 1000;
 
 export default function ModuleFleet() {
   const limit = 50;
-  const [offset, setOffset] = useState(0);
-  const [outdatedOnly, setOutdatedOnly] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const outdatedOnly = params.get("outdated") === "true";
+  const product = params.get("product") === "issabel-recuploader" ? "issabel-recuploader" : "freepbx-recuploader";
+  const setOffset = (value: number) => setParams((old) => { const next = new URLSearchParams(old); next.set("offset", String(value)); return next; });
+  const setOutdatedOnly = (value: boolean) => setParams((old) => { const next = new URLSearchParams(old); next.set("outdated", String(value)); next.delete("offset"); return next; });
   const [page, setPage] = useState<Page<ModuleInstallation> | null>(null);
   const [stats, setStats] = useState<ModuleInstallationStats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +50,11 @@ export default function ModuleFleet() {
 
   const reload = useCallback(async () => {
     try {
-      const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      const query = new URLSearchParams({ offset: String(offset), limit: String(limit), product });
       if (outdatedOnly) query.set("outdated", "true");
       const [list, summary] = await Promise.all([
         request<Page<ModuleInstallation>>(`/v1/admin/module-installations?${query}`),
-        request<ModuleInstallationStats>("/v1/admin/module-installations/stats"),
+        request<ModuleInstallationStats>(`/v1/admin/module-installations/stats?product=${product}`),
       ]);
       setPage(list);
       setStats(summary);
@@ -58,7 +62,7 @@ export default function ModuleFleet() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [offset, outdatedOnly]);
+  }, [offset, outdatedOnly, product]);
 
   useEffect(() => {
     void reload();
@@ -99,14 +103,17 @@ export default function ModuleFleet() {
 
       <div className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-bold text-slate-900">سرورهای FreePBX</h2>
+          <h2 className="font-bold text-slate-900">سرورهای تلفنی</h2>
+          <select className="input" aria-label="نوع مرکز تلفن" value={product} onChange={(event) => setParams({ product: event.target.value })}>
+            <option value="freepbx-recuploader">FreePBX</option><option value="issabel-recuploader">ایزابل</option>
+          </select>
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
               checked={outdatedOnly}
               onChange={(event) => {
                 setOutdatedOnly(event.target.checked);
-                setOffset(0);
+
               }}
             />
             فقط سرورهای قدیمی
@@ -149,7 +156,7 @@ export default function ModuleFleet() {
                           <span className="badge mr-1 bg-emerald-50 text-emerald-700">به‌روز</span>
                         )}
                       </td>
-                      <td className="text-xs" dir="ltr">{item.freepbx_version ?? "?"} / {item.php_version ?? "?"}</td>
+                      <td className="text-xs" dir="ltr">{item.product === "issabel-recuploader" ? `Issabel ${item.issabel_version ?? "?"}` : item.freepbx_version ?? "?"} / {item.php_version ?? "?"}</td>
                       <td>{item.service_status === "running" ? "فعال" : item.service_status === "stopped" ? "متوقف" : item.service_status ?? "—"}</td>
                       <td className={stale ? "text-rose-700" : ""}>{fmt.dateTime(item.last_seen_at)}</td>
                       <td>

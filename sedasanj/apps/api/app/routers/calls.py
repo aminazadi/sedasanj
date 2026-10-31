@@ -29,6 +29,7 @@ from app.models import (
     AudioObject,
     Call,
     CallInsight,
+    Contact,
     CreditReservation,
     Job,
     LedgerEntry,
@@ -61,6 +62,7 @@ from app.schemas import (
 from app.sentiment import SENTIMENT_SET, caller_trajectory, normalize_sentiment
 from app.services import (
     analysis_runs,
+    call_export,
     audit,
     billing,
     contacts,
@@ -117,6 +119,20 @@ def _parse_date_boundary(value: str | None, *, end: bool) -> datetime | None:
         raise ApiError("invalid_request", "invalid date filter") from exc
 
 
+_SEARCH_FOLD = str.maketrans("يكۀ٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "یکه01234567890123456789")
+
+
+def _fold_search_text(value: str) -> str:
+    """Unify Arabic/Persian letter and digit variants so typed text matches stored text."""
+    return " ".join(value.translate(_SEARCH_FOLD).split())
+
+
+def _like_pattern(value: str) -> str:
+    """Contains-pattern for `ilike(..., escape="\\")` with the LIKE wildcards in `value` escaped."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def _apply_filters(
     stmt: Select[Any],
     *,
@@ -126,6 +142,7 @@ def _apply_filters(
     intent: str | None,
     sentiment: str | None,
     number: str | None,
+    tenant_id: UUID | None = None,
 ) -> Select[Any]:
     if from_date is not None:
         stmt = stmt.where(Call.started_at >= from_date)
@@ -140,19 +157,98 @@ def _apply_filters(
             mapped = sentiment
         stmt = stmt.where(CallInsight.sentiment == mapped)
     if number:
-        pattern = f"%{number}%"
-        stmt = stmt.where(or_(Call.caller_number.ilike(pattern), Call.dialed_number.ilike(pattern)))
-    if q:
-        tsquery = func.websearch_to_tsquery("simple", q)
-        pattern = f"%{q}%"
+        pattern = _like_pattern(_fold_search_text(number))
         stmt = stmt.where(
             or_(
-                cast(Transcript.search, TSVECTOR).op("@@")(tsquery),
-                Call.caller_number.ilike(pattern),
-                Call.dialed_number.ilike(pattern),
-                CallInsight.summary.ilike(pattern),
+                Call.caller_number.ilike(pattern, escape="\\"),
+                Call.dialed_number.ilike(pattern, escape="\\"),
             )
         )
+    q = _fold_search_text(q) if q else q
+    if q:
+        tsquery = func.websearch_to_tsquery("simple", q)
+        pattern = _like_pattern(q)
+        clauses = [
+            cast(Transcript.search, TSVECTOR).op("@@")(tsquery),
+            Call.caller_number.ilike(pattern, escape="\\"),
+            Call.dialed_number.ilike(pattern, escape="\\"),
+            CallInsight.summary.ilike(pattern, escape="\\"),
+        ]
+        if tenant_id is not None:
+            clauses.extend(_contact_name_clauses(q, tenant_id))
+        stmt = stmt.where(or_(*clauses))
+    return stmt
+
+
+def _contact_name_clauses(q: str, tenant_id: UUID) -> list[Any]:
+    """Match calls whose caller or dialed number belongs to a phonebook contact matching `q`.
+
+    Contacts store the normalised 11-digit number (09xxxxxxxxx) while calls keep the raw dialled
+    form (+98…, 98…, 09…), so the match is on the 10 digits after the leading zero.
+    """
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    clauses: list[Any] = []
+    for column in (Call.caller_number, Call.dialed_number):
+        clauses.append(
+            select(Contact.id)
+            .where(
+                Contact.tenant_id == tenant_id,
+                or_(
+                    Contact.name.ilike(f"%{escaped}%", escape="\\"),
+                    Contact.company.ilike(f"%{escaped}%", escape="\\"),
+                ),
+                column.like(func.concat("%", func.substr(Contact.phone_number, 2))),
+            )
+            .exists()
+        )
+    return clauses
+
+
+def _filtered_calls_stmt(
+    principal: Principal,
+    *,
+    from_: str | None,
+    to: str | None,
+    q: str | None,
+    intent: str | None,
+    sentiment: str | None,
+    number: str | None,
+    direction: str | None,
+    status_filter: str | None,
+) -> Select[Any]:
+    """Operator-scoped, filtered calls query shared by the list and the export."""
+    stmt = (
+        select(Call, CallInsight)
+        .outerjoin(
+            CallInsight,
+            (CallInsight.call_id == Call.id) & (CallInsight.tenant_id == principal.tenant_id),
+        )
+        .outerjoin(
+            Transcript,
+            (Transcript.call_id == Call.id) & (Transcript.tenant_id == principal.tenant_id),
+        )
+        .where(Call.tenant_id == principal.tenant_id)
+        .order_by(Call.started_at.desc(), Call.id.desc())
+    )
+    stmt = operator_scope.apply_operator_scope(stmt, principal)
+    stmt = _apply_filters(
+        stmt,
+        from_date=_parse_date_boundary(from_, end=False),
+        to_date=_parse_date_boundary(to, end=True),
+        q=q,
+        intent=intent,
+        sentiment=sentiment,
+        number=number,
+        tenant_id=principal.tenant_id,
+    )
+    if status_filter:
+        stmt = stmt.where(
+            Call.call_type == status_filter
+            if status_filter in CALL_TYPES
+            else Call.status == status_filter
+        )
+    if direction:
+        stmt = stmt.where(Call.direction == direction)
     return stmt
 
 
@@ -172,38 +268,17 @@ async def list_calls(
     direction: Annotated[str | None, Query()] = None,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
 ) -> CallPage:
-    stmt = (
-        select(Call, CallInsight)
-        .outerjoin(
-            CallInsight,
-            (CallInsight.call_id == Call.id) & (CallInsight.tenant_id == principal.tenant_id),
-        )
-        .outerjoin(
-            Transcript,
-            (Transcript.call_id == Call.id) & (Transcript.tenant_id == principal.tenant_id),
-        )
-        .where(Call.tenant_id == principal.tenant_id)
-        .order_by(Call.started_at.desc(), Call.id.desc())
-        .limit(limit + 1)
-    )
-    stmt = operator_scope.apply_operator_scope(stmt, principal)
-    stmt = _apply_filters(
-        stmt,
-        from_date=_parse_date_boundary(from_, end=False),
-        to_date=_parse_date_boundary(to, end=True),
+    stmt = _filtered_calls_stmt(
+        principal,
+        from_=from_,
+        to=to,
         q=q,
         intent=intent,
         sentiment=sentiment,
         number=number,
-    )
-    if status_filter:
-        stmt = stmt.where(
-            Call.call_type == status_filter
-            if status_filter in CALL_TYPES
-            else Call.status == status_filter
-        )
-    if direction:
-        stmt = stmt.where(Call.direction == direction)
+        direction=direction,
+        status_filter=status_filter,
+    ).limit(limit + 1)
     total = int(
         (
             await session.execute(
@@ -248,6 +323,73 @@ async def list_calls(
         page=page,
         page_size=limit,
         pages=pages,
+    )
+
+
+@router.get("/calls/export")
+async def export_calls(
+    request: Request,
+    principal: UserDep,
+    session: TenantSession,
+    columns: Annotated[str, Query(max_length=400)],
+    export_format: Annotated[str, Query(alias="format")] = "xlsx",
+    from_: Annotated[str | None, Query(alias="from")] = None,
+    to: Annotated[str | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    intent: Annotated[str | None, Query()] = None,
+    sentiment: Annotated[str | None, Query()] = None,
+    number: Annotated[str | None, Query()] = None,
+    direction: Annotated[str | None, Query()] = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+) -> Response:
+    """Download the calls matching the list filters with the caller-chosen columns."""
+    assert principal.tenant_id is not None
+    if export_format not in call_export.FORMATS:
+        raise ApiError("invalid_request", "قالب خروجی معتبر نیست؛ CSV یا XLSX را انتخاب کنید")
+    keys = call_export.parse_columns(
+        columns, include_billing=not operator_scope.is_operator(principal)
+    )
+    await ratelimit.enforce(f"calls-export:{principal.id}", 10)
+    stmt = _filtered_calls_stmt(
+        principal,
+        from_=from_,
+        to=to,
+        q=q,
+        intent=intent,
+        sentiment=sentiment,
+        number=number,
+        direction=direction,
+        status_filter=status_filter,
+    ).limit(call_export.MAX_ROWS + 1)
+    rows = (await session.execute(stmt)).all()
+    if len(rows) > call_export.MAX_ROWS:
+        raise ApiError(
+            "export_too_large",
+            f"تعداد تماس‌ها از {call_export.MAX_ROWS} بیشتر است؛ بازهٔ تاریخ یا فیلترها را محدودتر کنید",
+        )
+    names = await contacts.names_for_numbers(
+        session,
+        principal.tenant_id,
+        (number for call, _ in rows for number in (call.caller_number, call.dialed_number)),
+    )
+    summaries = [
+        _summary(call, insight, hide_billing=operator_scope.is_operator(principal), names=names)
+        for call, insight in rows
+    ]
+    body = call_export.render(export_format, keys, summaries)
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="calls.export",
+        payload={"count": len(rows), "format": export_format, "columns": keys},
+        ip=client_ip(request),
+    )
+    return Response(
+        body,
+        media_type=call_export.MEDIA_TYPES[export_format],
+        headers={"Content-Disposition": f'attachment; filename="calls.{export_format}"'},
     )
 
 
@@ -620,8 +762,7 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
         speaker_labels=(
             {0: "گوینده ۱", 1: "گوینده ۲"}
             if active_asr_revision and (active_asr_revision.speaker_mode or "").startswith("mono")
-            else
-            {0: "مشتری", 1: "اپراتور"}
+            else {0: "مشتری", 1: "اپراتور"}
             if call.direction == "inbound"
             else {0: "اپراتور", 1: "مشتری"}
             if call.direction == "outbound"
@@ -748,7 +889,9 @@ async def retry_transcription(
                 tenant=tenant,
                 call_id=call_id,
                 duration_ms=audio.duration_ms,
-                price_per_minute_toman=(await entitlements.effective(session, tenant_id)).price_per_minute_toman,
+                price_per_minute_toman=(
+                    await entitlements.effective(session, tenant_id)
+                ).price_per_minute_toman,
             )
 
         models = await effective_models(session)
@@ -947,7 +1090,7 @@ async def transcript_versions(
                     )
                     .order_by(AsrTranscriptRevisionSegment.position)
                 )
-        ).scalars()
+            ).scalars()
         )
         correction = (
             await session.execute(
@@ -1506,10 +1649,10 @@ async def analytics_summary(
         )
     ).all()
     voicemail_ids = (
-        await session.execute(
-            select(Call.id).where(type_window, Call.call_type == "voicemail")
-        )
-    ).scalars().all()
+        (await session.execute(select(Call.id).where(type_window, Call.call_type == "voicemail")))
+        .scalars()
+        .all()
+    )
     voicemail_transcribed = 0
     if voicemail_ids:
         voicemail_transcribed = int(
@@ -1518,7 +1661,8 @@ async def analytics_summary(
                     Transcript.tenant_id == principal.tenant_id,
                     Transcript.call_id.in_(voicemail_ids),
                 )
-            ) or 0
+            )
+            or 0
         )
 
     trend: dict[str, AnalyticsTrendPoint] = {}
@@ -1552,7 +1696,9 @@ async def analytics_summary(
         voicemail_calls=int(totals[3]),
         voicemail_duration_ms=int(totals[4]),
         voicemail_transcribed=voicemail_transcribed,
-        voicemail_transcription_rate=round(voicemail_transcribed * 100 / totals[3], 1) if totals[3] else 0,
+        voicemail_transcription_rate=round(voicemail_transcribed * 100 / totals[3], 1)
+        if totals[3]
+        else 0,
         call_types=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in type_rows],
         total_minutes=round(int(totals[1]) / 60000, 1),
         intents=[AnalyticsBucket(key=str(key), count=int(count)) for key, count in intents],

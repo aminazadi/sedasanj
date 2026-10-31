@@ -10,7 +10,7 @@ status=0
 # unreadable right after a write), which shows up as spurious lint failures.
 SNAPSHOT=$(mktemp -d)
 trap 'rm -rf "$SNAPSHOT"' EXIT HUP INT TERM
-cp -R "$ROOT/freepbx-module" "$SNAPSHOT/m"
+cp -RL "$ROOT/freepbx-module" "$SNAPSHOT/m"
 for v in $VERSIONS; do
   echo "=== PHP $v"
   docker run --rm -v "$SNAPSHOT/m":/m:ro "php:$v-cli" sh -c '

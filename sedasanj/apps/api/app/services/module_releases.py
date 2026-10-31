@@ -5,10 +5,12 @@ from __future__ import annotations
 import base64
 import fcntl
 import hashlib
+import io
 import json
 import os
 import re
 import stat
+import tarfile
 import tempfile
 import zipfile
 from collections.abc import Sequence
@@ -27,6 +29,8 @@ from app.config import get_settings
 from app.errors import ApiError
 
 PRODUCT_FREEPBX = "freepbx-recuploader"
+PRODUCT_ISSABEL = "issabel-recuploader"
+PRODUCTS = (PRODUCT_FREEPBX, PRODUCT_ISSABEL)
 MODULE_RAWNAME = "recuploader"
 SEVERITIES = ("normal", "recommended", "critical", "security")
 CHANNELS = ("stable", "beta")
@@ -58,6 +62,8 @@ class ZipInspection:
     version: str
     sha256: str
     size: int
+    product: str = PRODUCT_FREEPBX
+    archive_format: str = "zip"
 
 
 def inspect_zip(path: Path) -> ZipInspection:
@@ -76,10 +82,14 @@ def inspect_zip(path: Path) -> ZipInspection:
         if not entries or len(entries) > _MAX_ZIP_ENTRIES:
             raise ApiError("archive_unsafe", "zip has no entries or too many entries")
         total = 0
+        seen: set[str] = set()
         prefix = f"{MODULE_RAWNAME}/"
         for entry in entries:
             name = entry.filename
             parts = name.split("/")
+            if name in seen:
+                raise ApiError("archive_unsafe", "duplicate module archive entry")
+            seen.add(name)
             if name.startswith("/") or "\\" in name or ".." in parts or ":" in parts[0]:
                 raise ApiError("archive_unsafe", f"unsafe path in zip: {name}")
             if not name.startswith(prefix):
@@ -103,6 +113,63 @@ def inspect_zip(path: Path) -> ZipInspection:
         raise ApiError("invalid_request", f"module.xml rawname must be {MODULE_RAWNAME}")
     parse_version(version)
     return ZipInspection(rawname=rawname, version=version, sha256=digest.hexdigest(), size=size)
+
+
+def inspect_artifact(path: Path) -> ZipInspection:
+    if zipfile.is_zipfile(path):
+        result = inspect_zip(path)
+        with zipfile.ZipFile(path) as archive:
+            root = ElementTree.fromstring(archive.read(f"{MODULE_RAWNAME}/module.xml"))
+        if root.findtext("product") not in (None, PRODUCT_FREEPBX):
+            raise ApiError("invalid_request", "Issabel packages must use tgz")
+        return result
+    total = 0
+    names: set[str] = set()
+    xml: bytes | None = None
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            for entry in archive:
+                parts = entry.name.rstrip("/").split("/")
+                if (
+                    len(names) >= _MAX_ZIP_ENTRIES
+                    or entry.name in names
+                    or parts[0] != MODULE_RAWNAME
+                    or any(part in ("", ".", "..") for part in parts)
+                    or "\\" in entry.name
+                    or any(ord(char) < 32 for char in entry.name)
+                    or not (entry.isfile() or entry.isdir())
+                    or entry.mode & 0o7000
+                ):
+                    raise ApiError("archive_unsafe", "unsafe or duplicate entry in module tgz")
+                names.add(entry.name)
+                total += entry.size
+                if total > _MAX_UNCOMPRESSED_BYTES:
+                    raise ApiError("archive_too_large", "module expands beyond the allowed size")
+                if entry.name == f"{MODULE_RAWNAME}/module.xml":
+                    if entry.size > 65536:
+                        raise ApiError("archive_unsafe", "module.xml is too large")
+                    handle = archive.extractfile(entry)
+                    xml = handle.read() if handle else None
+        if xml is None:
+            raise ApiError("invalid_request", "tgz has no recuploader/module.xml")
+        root = ElementTree.fromstring(xml)
+    except (tarfile.TarError, OSError, EOFError, ElementTree.ParseError) as exc:
+        raise ApiError("unsupported_archive", "invalid module tgz") from exc
+    if root.findtext("rawname") != MODULE_RAWNAME or root.findtext("product") != PRODUCT_ISSABEL:
+        raise ApiError("invalid_request", "tgz must identify the issabel-recuploader product")
+    version = root.findtext("version") or ""
+    parse_version(version)
+    with path.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    return ZipInspection(
+        MODULE_RAWNAME, version, digest, path.stat().st_size, PRODUCT_ISSABEL, "tgz"
+    )
+
+
+def validate_product(product: str) -> str:
+    if product not in PRODUCTS:
+        raise ApiError("invalid_request", "unknown module product")
+    return product
 
 
 def _signing_key() -> Ed25519PrivateKey:
@@ -193,11 +260,20 @@ def build_manifest(release: ManifestSource, *, now: datetime | None = None) -> s
         "issued_at": issued.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "expires_at": (issued + MANIFEST_TTL).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if release.product == PRODUCT_ISSABEL:
+        payload.update(
+            {
+                "archive_format": "tgz",
+                "min_issabel_major": getattr(release, "min_issabel_major", None),
+                "max_issabel_major": getattr(release, "max_issabel_major", None),
+                "min_php_version": getattr(release, "min_php_version", None),
+            }
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def sign_manifest(manifest: str) -> str:
-    """Ed25519 over a domain-separated manifest so it can never be confused with a digest signature."""
+    """Sign a domain-separated manifest independently of artifact digests."""
     return base64.b64encode(_signing_key().sign(MANIFEST_DOMAIN + manifest.encode("ascii"))).decode(
         "ascii"
     )
@@ -223,6 +299,27 @@ def embed_signing_public_key(path: Path) -> None:
     os.close(descriptor)
     temporary = Path(temporary_name)
     found = False
+    if not zipfile.is_zipfile(path):
+        inspect_artifact(path)
+        try:
+            with (
+                tarfile.open(path, "r:gz") as source,
+                tarfile.open(temporary, "w:gz", format=tarfile.USTAR_FORMAT) as target,
+            ):
+                for tar_entry in source:
+                    if tar_entry.name == _PUBLIC_KEY_ENTRY:
+                        continue
+                    target.addfile(
+                        tar_entry, source.extractfile(tar_entry) if tar_entry.isfile() else None
+                    )
+                key_entry = tarfile.TarInfo(_PUBLIC_KEY_ENTRY)
+                key_entry.size = len(payload)
+                key_entry.mode = 0o644
+                target.addfile(key_entry, io.BytesIO(payload))
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return
     try:
         with zipfile.ZipFile(path) as source, zipfile.ZipFile(temporary, "w") as target:
             for entry in source.infolist():
@@ -239,7 +336,7 @@ def embed_signing_public_key(path: Path) -> None:
 
 
 def artifact_key(product: str, version: str) -> str:
-    return f"module-releases/{product}/{version}.zip"
+    return f"module-releases/{product}/{version}.{'tgz' if product == PRODUCT_ISSABEL else 'zip'}"
 
 
 # --- changelog sanitising -------------------------------------------------
@@ -391,6 +488,8 @@ def select_update[R: ReleaseLike](
     freepbx: str | None = None,
     php: str | None = None,
     channel: str = "stable",
+    product: str = PRODUCT_FREEPBX,
+    issabel: str | None = None,
 ) -> tuple[R | None, list[R]]:
     """Pick the newest installable release above `current` and every release in between.
 
@@ -403,7 +502,8 @@ def select_update[R: ReleaseLike](
         (
             release
             for release in releases
-            if release.status == "published"
+            if getattr(release, "product", PRODUCT_FREEPBX) == product
+            and release.status == "published"
             and release.channel in allowed_channels
             and _key(release) > current_key
         ),
@@ -414,8 +514,15 @@ def select_update[R: ReleaseLike](
     for release in newer:
         # Compatibility fails closed: a host that does not report its FreePBX version cannot be
         # shown a release that declares limits, and a release never reaches a PBX outside its range.
-        min_major = getattr(release, "min_freepbx_major", None)
-        max_major = getattr(release, "max_freepbx_major", None)
+        if product == PRODUCT_ISSABEL:
+            host_major = freepbx_major(issabel)
+            if host_major not in (4, 5):
+                continue
+            min_major = getattr(release, "min_issabel_major", None) or 4
+            max_major = getattr(release, "max_issabel_major", None) or 5
+        else:
+            min_major = getattr(release, "min_freepbx_major", None)
+            max_major = getattr(release, "max_freepbx_major", None)
         if (min_major or max_major) and not host_major:
             continue
         if min_major and host_major and host_major < min_major:

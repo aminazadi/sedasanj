@@ -518,6 +518,84 @@ class OperatorCallScoreOut(BaseModel):
     completed_at: datetime | None = None
 
 
+CoachSeverity = Literal["high", "medium", "low"]
+CoachPattern = Literal["new", "recurring", "improving"]
+COACH_DIMENSION_KEYS = (
+    "opening",
+    "listening",
+    "empathy",
+    "discovery",
+    "clarity",
+    "ownership",
+    "objection",
+    "closing",
+    "tone",
+)
+
+
+class CoachDimension(BaseModel):
+    key: str = Field(max_length=40)
+    label_fa: str = Field(default="", max_length=80)
+    score: int | None = Field(default=None, ge=0, le=100)
+    verdict: str = Field(default="", max_length=400)
+
+
+class CoachIssue(BaseModel):
+    severity: CoachSeverity = "medium"
+    title: str = Field(min_length=3, max_length=200)
+    evidence_quote: str = Field(min_length=3, max_length=800)
+    turn_ref: str = Field(default="", max_length=80)
+    why_it_hurts: str = Field(default="", max_length=800)
+    better_phrase: str = Field(default="", max_length=800)
+    pattern: CoachPattern = "new"
+    pattern_note: str = Field(default="", max_length=400)
+    dimension: str = Field(default="", max_length=40)
+    evidence_verified: bool | None = None
+
+
+class CoachStrength(BaseModel):
+    title: str = Field(min_length=2, max_length=200)
+    evidence_quote: str = Field(default="", max_length=800)
+
+
+class CoachResult(BaseModel):
+    """Validated LLM output of the operator coach (see the packaged coach prompt)."""
+
+    insufficient_evidence: bool = False
+    insufficient_reason: str = Field(default="", max_length=600)
+    headline: str = Field(default="", max_length=400)
+    narrative: str = Field(default="", max_length=6000)
+    dimensions: list[CoachDimension] = Field(default_factory=list, max_length=12)
+    issues: list[CoachIssue] = Field(default_factory=list, max_length=6)
+    strengths: list[CoachStrength] = Field(default_factory=list, max_length=5)
+    missed_opportunities: list[str] = Field(default_factory=list, max_length=5)
+    next_call_drills: list[str] = Field(default_factory=list, max_length=3)
+    confidence: Literal["low", "medium", "high"] = "medium"
+
+    @model_validator(mode="after")
+    def _require_substance(self) -> CoachResult:
+        if not self.insufficient_evidence and not (self.headline.strip() and self.narrative.strip()):
+            raise ValueError("headline and narrative are required")
+        return self
+
+
+class OperatorCoachOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    call_id: UUID
+    operator_id: UUID | None
+    operator_label: str
+    status: Literal["queued", "running", "succeeded", "failed", "skipped"]
+    model: str = ""
+    provider: str = "aiservice"
+    result: CoachResult | None = None
+    skip_reason: str | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
 class OperatorScoreSummary(BaseModel):
     operator_id: UUID | None
     operator_label: str
@@ -1064,6 +1142,7 @@ class SettingsUpdate(BaseModel):
     prompt_version: str | None = None
     extract_prompt: str | None = Field(default=None, max_length=100_000)
     assistant_instructions: str | None = Field(default=None, max_length=100_000)
+    coach_prompt: str | None = Field(default=None, max_length=100_000)
     api_key: str | None = None
     voicesanj_base_url: str | None = None
     asr_provider: Literal["local", "voicesanj", "openai_compatible"] | None = None
@@ -1088,6 +1167,7 @@ class SettingsUpdate(BaseModel):
     asr_route: Literal["native", "ninerouter"] | None = None
     analysis_route: Literal["durable", "ninerouter"] | None = None
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
+    coach_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     decision_route: Literal["native", "ninerouter", "typed"] | None = None
     embedding_route: Literal["native", "ninerouter"] | None = None
     ninerouter_asr_prompt: str | None = Field(default=None, max_length=20_000)
@@ -1126,6 +1206,7 @@ class SettingsUpdate(BaseModel):
     analysis_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     assistant_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     correction_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    coach_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     decision_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     embedding_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     ninerouter_base_url: str | None = None
@@ -1143,6 +1224,13 @@ class SettingsUpdate(BaseModel):
     ninerouter_direct_assistant_prompt: str | None = Field(default=None, max_length=20_000)
     ninerouter_direct_correction_prompt: str | None = Field(default=None, max_length=20_000)
     ninerouter_direct_decision_prompt: str | None = Field(default=None, max_length=20_000)
+    coach_enabled: bool | None = None
+    coach_model: str | None = Field(default=None, max_length=200)
+    coach_history_limit: int | None = Field(default=None, ge=0, le=30)
+    coach_min_duration_seconds: int | None = Field(default=None, ge=0, le=3600)
+    ninerouter_coach_model: str | None = Field(default=None, max_length=200)
+    ninerouter_coach_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_direct_coach_prompt: str | None = Field(default=None, max_length=20_000)
 
 
 class KnowledgeRetryRequest(BaseModel):
@@ -1197,6 +1285,7 @@ class StaffPasswordReset(StaffSensitiveAction):
     password: str = Field(min_length=8, max_length=128)
 
 
+ModuleProduct = Literal["freepbx-recuploader", "issabel-recuploader"]
 ModuleSeverity = Literal["normal", "recommended", "critical", "security"]
 ModuleChannel = Literal["stable", "beta"]
 ModuleUpdateStatus = Literal["started", "succeeded", "failed", "rolled_back"]
@@ -1212,6 +1301,11 @@ class ModuleReleaseOut(BaseModel):
     changelog_html: str
     severity: ModuleSeverity
     channel: ModuleChannel
+    min_issabel_major: int | None = Field(default=None, ge=4, le=5)
+    max_issabel_major: int | None = Field(default=None, ge=4, le=5)
+    archive_format: str = "zip"
+    lab_verified: bool = False
+    lab_evidence: str | None = None
     min_freepbx_major: int | None
     max_freepbx_major: int | None = None
     min_php_version: str | None = None
@@ -1225,11 +1319,17 @@ class ModuleReleaseOut(BaseModel):
     installations: int = 0
 
 
+class ModuleLabCertification(StaffSensitiveAction):
+    evidence: str = Field(min_length=20, max_length=4000)
+
+
 class ModuleReleaseUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     changelog_html: str | None = Field(default=None, max_length=200_000)
     severity: ModuleSeverity | None = None
     channel: ModuleChannel | None = None
+    min_issabel_major: int | None = Field(default=None, ge=4, le=5)
+    max_issabel_major: int | None = Field(default=None, ge=4, le=5)
     min_freepbx_major: int | None = Field(default=None, ge=13, le=99)
     max_freepbx_major: int | None = Field(default=None, ge=13, le=99)
     min_php_version: str | None = Field(default=None, pattern=r"^\d{1,2}\.\d{1,2}(\.\d{1,3})?$")
@@ -1237,6 +1337,8 @@ class ModuleReleaseUpdate(BaseModel):
 
 
 class ModuleZipInspection(BaseModel):
+    product: ModuleProduct = "freepbx-recuploader"
+    archive_format: str = "zip"
     rawname: str
     version: str
     sha256: str
@@ -1279,6 +1381,7 @@ class ModuleUpdateCheckOut(BaseModel):
 
 
 class ModuleUpdateReportIn(BaseModel):
+    product: ModuleProduct = "freepbx-recuploader"
     host_uuid: str = Field(min_length=8, max_length=64)
     release_id: UUID | None = None
     from_version: str | None = Field(default=None, max_length=32)
@@ -1290,6 +1393,10 @@ class ModuleUpdateReportIn(BaseModel):
 class ModuleInstallationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    product: ModuleProduct = "freepbx-recuploader"
+    issabel_version: str | None = None
+    framework_version: str | None = None
+    php_web_version: str | None = None
     id: UUID
     tenant_id: UUID
     tenant_name: str | None = None
@@ -1423,6 +1530,7 @@ class ModuleDiagnosticCheck(BaseModel):
 
 
 class ModuleDiagnosticIn(BaseModel):
+    product: ModuleProduct = "freepbx-recuploader"
     host_uuid: str = Field(min_length=8, max_length=64)
     module_version: str = Field(pattern=r"^\d{1,4}\.\d{1,5}\.\d{1,6}$")
     ok: bool

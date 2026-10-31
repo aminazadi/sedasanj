@@ -100,6 +100,7 @@ export interface PlatformSettings {
   prompt_version: string;
   extract_prompt: string;
   assistant_instructions: string;
+  coach_prompt: string;
   api_key_configured: boolean;
   api_key_hint: string;
   voicesanj_base_url: string;
@@ -131,6 +132,7 @@ export interface PlatformSettings {
   asr_route: "native" | "ninerouter";
   analysis_route: "durable" | "ninerouter";
   chat_route: "durable" | "synchronous" | "ninerouter";
+  coach_route: "durable" | "synchronous" | "ninerouter";
   decision_route: "native" | "ninerouter" | "typed";
   embedding_route: "native" | "ninerouter";
   ninerouter_asr_prompt: string;
@@ -156,6 +158,14 @@ export interface PlatformSettings {
   asr_ai_provider: "aiservice" | "ninerouter_direct";
   analysis_provider: "aiservice" | "ninerouter_direct";
   assistant_provider: "aiservice" | "ninerouter_direct";
+  coach_provider: "aiservice" | "ninerouter_direct";
+  coach_enabled: boolean;
+  coach_model: string;
+  coach_history_limit: number;
+  coach_min_duration_seconds: number;
+  ninerouter_coach_model: string;
+  ninerouter_coach_prompt: string;
+  ninerouter_direct_coach_prompt: string;
   correction_provider: "aiservice" | "ninerouter_direct";
   decision_provider: "aiservice" | "ninerouter_direct";
   embedding_provider: "aiservice" | "ninerouter_direct";
@@ -265,6 +275,11 @@ export type ModuleSeverity = "normal" | "recommended" | "critical" | "security";
 export type ModuleReleaseStatus = "draft" | "published" | "revoked";
 
 export interface ModuleRelease {
+  archive_format?: "zip" | "tgz";
+  lab_verified?: boolean;
+  lab_evidence?: string | null;
+  min_issabel_major?: number | null;
+  max_issabel_major?: number | null;
   id: string;
   product: string;
   version: string;
@@ -295,6 +310,9 @@ export interface ModuleZipInspection {
 }
 
 export interface ModuleInstallation {
+  product?: string;
+  issabel_version?: string | null;
+  framework_version?: string | null;
   id: string;
   tenant_id: string;
   tenant_name: string | null;

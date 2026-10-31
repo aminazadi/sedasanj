@@ -27,6 +27,7 @@ import {
 import { fmt, INTENT_LABELS, refreshSession, request, STATUS_LABELS, tokens } from "../api";
 import { CAN_EDIT_TASKS, CAN_HEAR_AUDIO, isOrgAdmin, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
+import OperatorCoachSection from "../components/OperatorCoachSection";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -1147,6 +1148,8 @@ export default function CallDetailPage() {
           </ul>
         )}
       </section> : null}
+
+      {hasAudioAnalysis && isAnsweredCall ? <OperatorCoachSection callId={call.id} canRegenerate={canEditTasks} /> : null}
 
       {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />

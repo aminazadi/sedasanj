@@ -9,6 +9,7 @@ import type { CallPage, CallSummary } from "../types";
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 import CallUploadForm from "./CallUploadForm";
+import CallsExportDialog from "../components/CallsExportDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
 
@@ -77,13 +78,13 @@ function searchFromFilters(filters: Filters, page = 1): URLSearchParams {
 /** Phone number with the phonebook title (when there is one) above it. */
 function PartyCell({ number, name }: { number: string | null; name?: string | null }) {
   return (
-    <td dir="ltr">
+    <td dir="rtl" className="text-right">
       {name ? (
-        <div className="text-left text-xs font-bold">
+        <div className="text-right text-xs font-bold" dir="rtl">
           <bdi>{name}</bdi>
         </div>
       ) : null}
-      <div>{number ? fmt.digits(number) : "—"}</div>
+      <div dir="ltr" className="text-right">{number ? fmt.digits(number) : "—"}</div>
     </td>
   );
 }
@@ -265,11 +266,22 @@ export default function Calls() {
   const pageIndex = pageFromSearch(new URLSearchParams(searchKey)) - 1;
   const [filters, setFilters] = useState<Filters>(applied);
   const [reloadKey, setReloadKey] = useState(0);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [search, setSearch] = useState(applied.q);
   const hasAppliedFilters = Object.values(applied).some(Boolean);
 
   useEffect(() => {
     setFilters(applied);
+    setSearch(applied.q);
   }, [applied]);
+
+  // The search box applies itself shortly after typing stops, keeping the other applied filters.
+  useEffect(() => {
+    const next = search.trim();
+    if (next === applied.q) return;
+    const timer = window.setTimeout(() => setSearchParams(searchFromFilters({ ...applied, q: next })), 200);
+    return () => window.clearTimeout(timer);
+  }, [search, applied, setSearchParams]);
 
   function updateSearch(next: Filters, page = 1) {
     setSearchParams(searchFromFilters(next, page));
@@ -297,13 +309,6 @@ export default function Calls() {
       active: Boolean(filters.to),
       onRemove: () => resetField("to"),
       control: <JalaliDatePicker value={filters.to} onChange={(to) => setFilters({ ...filters, to })} placeholder="انتخاب تاریخ" />,
-    },
-    {
-      id: "q",
-      label: "جست‌وجو در متن",
-      active: Boolean(filters.q),
-      onRemove: () => resetField("q"),
-      control: <input className="input" value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} />,
     },
     {
       id: "number",
@@ -364,7 +369,31 @@ export default function Calls() {
   return (
     <div className="space-y-4">
       <PageHeader title="تماس‌ها" description={operator ? "فقط تماس‌هایی که شماره موبایل یا داخلی شما یک سمت آن باشد." : "فهرست و جست‌وجوی مکالمات سازمان"} actions={<div className="flex flex-wrap items-end justify-end gap-3"><CallUploadForm onUploaded={() => setReloadKey((key) => key + 1)} />{filterBar.toolbar}</div>} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[16rem] flex-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            className="input w-full pr-10"
+            type="search"
+            value={search}
+            maxLength={200}
+            placeholder="جست‌وجو در متن مکالمه، خلاصه، شماره و نام مخاطب"
+            aria-label="جست‌وجو در تماس‌ها"
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <button type="button" className="btn inline-flex min-h-[42px] items-center gap-2 px-5" onClick={() => setExportOpen(true)}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+            <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
+          </svg>
+          خروجی
+        </button>
+      </div>
       {filterBar.fields}
+      <CallsExportDialog open={exportOpen} filters={applied} operator={operator} onClose={() => setExportOpen(false)} />
       <CallsTableSection applied={applied} pageIndex={pageIndex} reloadKey={reloadKey} canDelete={canDelete} onPage={goToPage} />
     </div>
   );

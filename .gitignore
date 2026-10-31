@@ -1,2 +1,8 @@
 .DS_Store
 asterisk-module-*.zip
+
+# Generated Issabel releases and shared runtime binaries.
+deliverables/recuploader-*.tgz
+module-engine/bin/7zip/7zzs-*
+module-engine/bin/ffmpeg/ffmpeg-*
+module-engine/bin/gsm/gsm-encode-*

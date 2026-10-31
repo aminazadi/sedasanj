@@ -4,6 +4,7 @@ import bookUserIcon from "@iconify-icons/lucide/book-user";
 import botIcon from "@iconify-icons/lucide/bot";
 import calendarClockIcon from "@iconify-icons/lucide/calendar-clock";
 import dashboardIcon from "@iconify-icons/lucide/layout-dashboard";
+import extensionIcon from "@iconify-icons/lucide/phone-forwarded";
 import fileTextIcon from "@iconify-icons/lucide/file-text";
 import historyIcon from "@iconify-icons/lucide/history";
 import logOutIcon from "@iconify-icons/lucide/log-out";
@@ -41,6 +42,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
     items: [
       { to: "/calls", label: "تماس‌ها", icon: phoneIcon },
       { to: "/contacts", label: "دفترچه تلفن", icon: bookUserIcon },
+      { to: "/extensions", label: "داخلی‌ها", icon: extensionIcon },
       { to: "/tasks", label: "کارها", icon: tasksIcon },
       { to: "/assistant", label: "دستیار تماس‌ها", icon: botIcon },
     ],
@@ -59,7 +61,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/account", label: "اعتبار و اشتراک", icon: walletIcon, hideForOperator: true },
       { to: "/account-settings", label: "تنظیمات حساب", icon: settingsIcon, orgAdminOnly: true },
       { to: "/install", label: "راه‌اندازی", icon: rocketIcon, hideForOperator: true },
-      { to: "/freepbx-servers", label: "سرورهای FreePBX", icon: serverIcon, orgAdminOnly: true },
+      { to: "/freepbx-servers", label: "سرورهای تلفنی", icon: serverIcon, orgAdminOnly: true },
       { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: historyIcon, hideForOperator: true },
       { to: "/api-docs", label: "مستندات API", icon: fileTextIcon },
     ],

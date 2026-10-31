@@ -145,6 +145,7 @@ case 'verify':
     if (!$okManifest) { fail('Release manifest signature is invalid'); }
     $m = json_decode($manifest, true);
     if (!is_array($m)) { fail('Release manifest is unreadable'); }
+    if (($m['product'] ?? '') !== 'freepbx-recuploader') { fail('Release manifest is for another PBX product'); }
     if (($m['rawname'] ?? '') !== 'recuploader') { fail('Release manifest is for another module'); }
     if (($m['version'] ?? '') !== $toVersion) { fail('Release manifest version does not match the job'); }
     if (!hash_equals((string) ($m['sha256'] ?? ''), $actual)) { fail('Release manifest digest does not match the download'); }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.4 — AMINAZADI
+
+- Fixed horizontal overflow in the log viewer and added an ALL minimum-level filter.
+
 ## 1.5.3 — AMINAZADI
 
 - Fixed escaped hyphens in MixMonitor filters and restored recording direction from actual filenames so inbound answered-extension lookup runs.

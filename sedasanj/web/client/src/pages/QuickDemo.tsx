@@ -6,7 +6,7 @@ import { request } from "../api";
 import { useAuth } from "../auth";
 import { BrandLogo } from "../components/BrandLogo";
 import PhoneAuth from "../components/PhoneAuth";
-import { freePbxModuleConfig, pythonAgentConfig } from "../agentConfig";
+import { issabelModuleConfig, freePbxModuleConfig, pythonAgentConfig } from "../agentConfig";
 import { srcSetFor } from "../lib/imageSources";
 import voipIntegrationArtwork from "../assets/quick-demo-voip-integration.webp";
 import type { ApiKeyCreated } from "../types";
@@ -162,7 +162,7 @@ export default function QuickDemo() {
               <h3 className="font-bold">فایل‌های تنظیمات اتصال</h3>
               <p className="mt-1 text-xs leading-6 text-slate-600">یکی از فایل‌ها را متناسب با روش نصب دانلود و در سامانه تلفنی وارد کنید.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" className="btn" onClick={() => downloadConfig("sedasanj-freepbx-config.json", freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}><Icon name="download" size={18}/>دانلود تنظیمات FreePBX</button>
+                <button type="button" className="btn" onClick={() => downloadConfig("sedasanj-freepbx-config.json", freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}><Icon name="download" size={18}/>دانلود تنظیمات FreePBX</button><button type="button" className="btn" onClick={() => downloadConfig("sedasanj-issabel-config.json", issabelModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}><Icon name="download" size={18}/>دانلود تنظیمات ایزابل</button>
                 <button type="button" className="btn-ghost" onClick={() => downloadConfig("cbi-agent.toml", pythonAgentConfig(window.location.origin, voipKey.secret, voipKey.archive_format, ""))}><Icon name="download" size={18}/>دانلود تنظیمات Python Agent</button>
                 <button type="button" className="btn-ghost" onClick={() => void copyText(freePbxModuleConfig(window.location.origin, voipKey.id, voipKey.key_prefix, voipKey.secret, voipKey.archive_format, ""))}><Icon name="copy" size={18}/>کپی تنظیمات FreePBX</button>
                 <a className="btn-ghost" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a>

@@ -25,6 +25,7 @@ ERROR_STATUS: dict[str, int] = {
     "assistant_tool_disabled": 422,
     "assistant_tool_plan_invalid": 422,
     "assistant_export_unavailable": 503,
+    "coach_unavailable": status.HTTP_409_CONFLICT,
     "export_expired": 410,
     "export_too_large": 422,
     "conflict": status.HTTP_409_CONFLICT,

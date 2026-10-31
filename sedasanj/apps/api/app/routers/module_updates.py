@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
@@ -42,6 +42,8 @@ from app.schemas import (
     ModuleDiagnosticIn,
     ModuleDiagnosticOut,
     ModuleInstallationOut,
+    ModuleLabCertification,
+    ModuleProduct,
     ModuleReleaseOut,
     ModuleReleaseUpdate,
     ModuleSeverity,
@@ -145,10 +147,14 @@ def _stream(key: str) -> AsyncIterator[bytes]:
 def _download_response(release: ModuleRelease) -> StreamingResponse:
     return StreamingResponse(
         _stream(release.artifact_key),
-        media_type="application/zip",
+        media_type="application/gzip"
+        if release.product == releases.PRODUCT_ISSABEL
+        else "application/zip",
         headers={
             "Content-Length": str(release.artifact_size),
-            "Content-Disposition": f'attachment; filename="asterisk-module-{release.version}.zip"',
+            "Content-Disposition": f'attachment; filename="recuploader-{release.version}.tgz"'
+            if release.product == releases.PRODUCT_ISSABEL
+            else f'attachment; filename="asterisk-module-{release.version}.zip"',
             "X-Checksum-Sha256": release.artifact_sha256,
             "X-Signature-Ed25519": release.signature_b64,
         },
@@ -225,19 +231,21 @@ async def admin_inspect_module_zip(
 ) -> ModuleZipInspection:
     path = await _spool_upload(file)
     try:
-        inspection = releases.inspect_zip(path)
+        inspection = releases.inspect_artifact(path)
     finally:
         path.unlink(missing_ok=True)
-    newest = _newest(await _published(session, releases.PRODUCT_FREEPBX))
+    newest = _newest(await _published(session, inspection.product))
     exists = (
         await session.execute(
             select(ModuleRelease.id).where(
-                ModuleRelease.product == releases.PRODUCT_FREEPBX,
+                ModuleRelease.product == inspection.product,
                 ModuleRelease.version == inspection.version,
             )
         )
     ).scalar_one_or_none()
     return ModuleZipInspection(
+        product=cast(ModuleProduct, inspection.product),
+        archive_format=inspection.archive_format,
         rawname=inspection.rawname,
         version=inspection.version,
         sha256=inspection.sha256,
@@ -260,7 +268,9 @@ async def admin_create_module_release(
     title: Annotated[str | None, Form(max_length=200)] = None,
     changelog_html: Annotated[str, Form(max_length=200_000)] = "",
     severity: Annotated[ModuleSeverity, Form()] = "normal",
-    channel: Annotated[ModuleChannel, Form()] = "stable",
+    channel: Annotated[ModuleChannel | None, Form()] = None,
+    min_issabel_major: Annotated[int | None, Form(ge=4, le=5)] = None,
+    max_issabel_major: Annotated[int | None, Form(ge=4, le=5)] = None,
     min_freepbx_major: Annotated[int | None, Form(ge=13, le=99)] = None,
     max_freepbx_major: Annotated[int | None, Form(ge=13, le=99)] = None,
     min_php_version: Annotated[str | None, Form(pattern=r"^\d{1,2}\.\d{1,2}(\.\d{1,3})?$")] = None,
@@ -268,8 +278,9 @@ async def admin_create_module_release(
 ) -> ModuleReleaseOut:
     path = await _spool_upload(file)
     try:
-        inspection = releases.inspect_zip(path)
-        product = releases.PRODUCT_FREEPBX
+        inspection = releases.inspect_artifact(path)
+        product = inspection.product
+        channel = channel or ("beta" if product == releases.PRODUCT_ISSABEL else "stable")
         duplicate = (
             await session.execute(
                 select(ModuleRelease.id).where(
@@ -286,11 +297,28 @@ async def admin_create_module_release(
                 f"version {inspection.version} must be newer than published {newest.version}",
             )
         releases.embed_signing_public_key(path)
-        inspection = releases.inspect_zip(path)
+        inspection = releases.inspect_artifact(path)
+        if product == releases.PRODUCT_ISSABEL:
+            if channel != "beta":
+                raise ApiError(
+                    "invalid_request",
+                    "Issabel releases require the beta channel until lab certification",
+                )
+            min_issabel_major = min_issabel_major or 4
+            max_issabel_major = max_issabel_major or 5
+            min_php_version = min_php_version or "7.4.0"
+        if min_issabel_major and max_issabel_major and min_issabel_major > max_issabel_major:
+            raise ApiError("invalid_request", "minimum Issabel exceeds maximum")
         safe_html, plain = releases.sanitize_changelog(changelog_html)
         signature = releases.sign_digest(inspection.sha256)
         key = releases.artifact_key(product, inspection.version)
-        await get_storage().put_path(key, path, content_type="application/zip")
+        await get_storage().put_path(
+            key,
+            path,
+            content_type="application/gzip"
+            if product == releases.PRODUCT_ISSABEL
+            else "application/zip",
+        )
     finally:
         path.unlink(missing_ok=True)
     major, minor, patch = releases.parse_version(inspection.version)
@@ -305,6 +333,9 @@ async def admin_create_module_release(
         changelog_plain=plain,
         severity=severity,
         channel=channel,
+        archive_format=inspection.archive_format,
+        min_issabel_major=min_issabel_major,
+        max_issabel_major=max_issabel_major,
         min_freepbx_major=min_freepbx_major,
         max_freepbx_major=max_freepbx_major,
         min_php_version=min_php_version,
@@ -351,6 +382,12 @@ async def admin_update_module_release(
     release = await session.get(ModuleRelease, release_id, with_for_update=True)
     if release is None:
         raise ApiError("not_found", "release not found")
+    if (
+        release.product == releases.PRODUCT_ISSABEL
+        and payload.channel == "stable"
+        and not release.lab_verified
+    ):
+        raise ApiError("invalid_request", "Issabel stable promotion requires lab certification")
     changes = payload.model_dump(exclude_unset=True)
     if "changelog_html" in changes and changes["changelog_html"] is not None:
         release.changelog_html, release.changelog_plain = releases.sanitize_changelog(
@@ -359,8 +396,18 @@ async def admin_update_module_release(
     if "min_from_version" in changes:
         release.min_from_version = _check_metadata(changes.pop("min_from_version"))
     for field, value in changes.items():
-        if value is not None or field in {"min_freepbx_major", "max_freepbx_major", "min_php_version"}:
+        if value is not None or field in {
+            "min_freepbx_major",
+            "max_freepbx_major",
+            "min_php_version",
+        }:
             setattr(release, field, value)
+    if (
+        release.min_issabel_major
+        and release.max_issabel_major
+        and release.min_issabel_major > release.max_issabel_major
+    ):
+        raise ApiError("invalid_request", "minimum Issabel exceeds maximum")
     release.updated_at = datetime.now(UTC)
     await audit.record(
         session,
@@ -375,6 +422,40 @@ async def admin_update_module_release(
     return await _release_out(session, release)
 
 
+@router.post("/v1/admin/module-releases/{release_id}/certify", response_model=ModuleReleaseOut)
+async def certify_module_release(
+    release_id: UUID,
+    payload: ModuleLabCertification,
+    request: Request,
+    staff: ReleaseAdminDep,
+    session: StaffSession,
+) -> ModuleReleaseOut:
+    from app.routers.admin import _verify_sensitive_staff_action
+
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
+    release = await session.get(ModuleRelease, release_id, with_for_update=True)
+    if release is None or release.product != releases.PRODUCT_ISSABEL:
+        raise ApiError("not_found", "Issabel release not found")
+    release.lab_verified = True
+    release.lab_evidence = payload.evidence.strip()
+    if len(release.lab_evidence) < 20:
+        raise ApiError(
+            "invalid_request", "Record the Issabel 4/5 install, call and rollback results"
+        )
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="module_release.certify",
+        payload={"release_id": str(release.id), "sha256": release.artifact_sha256},
+        ip=client_ip(request),
+    )
+    await session.flush()
+    return await _release_out(session, release)
+
+
 @router.post("/v1/admin/module-releases/{release_id}/publish", response_model=ModuleReleaseOut)
 async def admin_publish_module_release(
     release_id: UUID,
@@ -386,7 +467,9 @@ async def admin_publish_module_release(
     # Code pushed to every customer PBX needs the operator's password (and TOTP when enabled).
     from app.routers.admin import _verify_sensitive_staff_action
 
-    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
     release = await session.get(ModuleRelease, release_id, with_for_update=True)
     if release is None:
         raise ApiError("not_found", "release not found")
@@ -394,6 +477,12 @@ async def admin_publish_module_release(
         return await _release_out(session, release)
     if not release.changelog_plain.strip():
         raise ApiError("invalid_request", "write a changelog before publishing")
+    if (
+        release.product == releases.PRODUCT_ISSABEL
+        and release.channel != "beta"
+        and not release.lab_verified
+    ):
+        raise ApiError("invalid_request", "Publish Issabel to beta until lab certification")
     newest = _newest(await _published(session, release.product))
     if newest is not None and _key(release.version) <= _key(newest.version):
         raise ApiError(
@@ -428,7 +517,9 @@ async def admin_revoke_module_release(
     # Code pushed to every customer PBX needs the operator's password (and TOTP when enabled).
     from app.routers.admin import _verify_sensitive_staff_action
 
-    await _verify_sensitive_staff_action(session, staff, payload.current_password, payload.totp_code)
+    await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
     release = await session.get(ModuleRelease, release_id, with_for_update=True)
     if release is None:
         raise ApiError("not_found", "release not found")
@@ -481,13 +572,19 @@ async def admin_download_module_release(
 async def _installations_out(
     session: AsyncSession, rows: list[ModuleInstallation], tenant_names: dict[UUID, str]
 ) -> list[ModuleInstallationOut]:
-    published = await _published(session, releases.PRODUCT_FREEPBX)
+    by_product = {product: await _published(session, product) for product in releases.PRODUCTS}
     items = []
     for row in rows:
         out = ModuleInstallationOut.model_validate(row)
         out.tenant_name = tenant_names.get(row.tenant_id)
         latest, _ = releases.select_update(
-            published, row.module_version, freepbx=row.freepbx_version
+            by_product.get(row.product, []),
+            row.module_version,
+            freepbx=row.freepbx_version,
+            php=row.php_version,
+            product=row.product,
+            issabel=row.issabel_version,
+            channel="beta" if row.product == releases.PRODUCT_ISSABEL else "stable",
         )
         out.update_available = latest is not None
         out.latest_version = latest.version if latest else None
@@ -499,6 +596,7 @@ async def _installations_out(
 async def admin_list_module_installations(
     staff: StaffDep,
     session: StaffSession,
+    product: ModuleProduct | None = None,
     tenant_id: UUID | None = None,
     version: str | None = None,
     outdated: bool | None = None,
@@ -508,6 +606,8 @@ async def admin_list_module_installations(
     query = select(ModuleInstallation, Tenant.name).join(
         Tenant, Tenant.id == ModuleInstallation.tenant_id
     )
+    if product:
+        query = query.where(ModuleInstallation.product == product)
     if tenant_id:
         query = query.where(ModuleInstallation.tenant_id == tenant_id)
     if version:
@@ -530,12 +630,14 @@ async def admin_list_module_installations(
 
 
 @router.get("/v1/admin/module-installations/stats")
-async def admin_module_installation_stats(staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def admin_module_installation_stats(
+    staff: StaffDep, session: StaffSession, product: ModuleProduct = "freepbx-recuploader"
+) -> dict[str, Any]:
     rows = (
         (
             await session.execute(
                 select(ModuleInstallation.module_version, func.count(ModuleInstallation.id))
-                .where(ModuleInstallation.product == releases.PRODUCT_FREEPBX)
+                .where(ModuleInstallation.product == product)
                 .group_by(ModuleInstallation.module_version)
             )
         )
@@ -550,11 +652,12 @@ async def admin_module_installation_stats(staff: StaffDep, session: StaffSession
     failed = (
         await session.execute(
             select(func.count(ModuleInstallation.id)).where(
-                ModuleInstallation.last_update_status.in_(("failed", "rolled_back"))
+                ModuleInstallation.product == product,
+                ModuleInstallation.last_update_status.in_(("failed", "rolled_back")),
             )
         )
     ).scalar_one()
-    newest = _newest(await _published(session, releases.PRODUCT_FREEPBX))
+    newest = _newest(await _published(session, product))
     return {
         "versions": [{"version": version, "count": count} for version, count in counts],
         "total": sum(count for _, count in counts),
@@ -571,6 +674,10 @@ async def ingest_module_updates(
     principal: ApiKeyDep,
     current: Annotated[str, Query(max_length=32)],
     host_uuid: Annotated[str, Query(min_length=8, max_length=64)],
+    product: ModuleProduct = "freepbx-recuploader",
+    issabel: Annotated[str | None, Query(max_length=64)] = None,
+    framework: Annotated[str | None, Query(max_length=64)] = None,
+    php_web: Annotated[str | None, Query(max_length=32)] = None,
     freepbx: Annotated[str | None, Query(max_length=64)] = None,
     php: Annotated[str | None, Query(max_length=32)] = None,
     hostname: Annotated[str | None, Query(max_length=255)] = None,
@@ -579,7 +686,13 @@ async def ingest_module_updates(
 ) -> ModuleUpdateCheckOut:
     """Called on every module page load: records the host heartbeat and offers the next release."""
     assert principal.tenant_id is not None
-    product = releases.PRODUCT_FREEPBX
+    releases.validate_product(product)
+    if product == releases.PRODUCT_ISSABEL and (
+        releases.freepbx_major(issabel) not in (4, 5) or freepbx
+    ):
+        raise ApiError(
+            "invalid_request", "Issabel hosts must report issabel=4/5 separately from FreePBX"
+        )
     now = datetime.now(UTC)
     async with control_session_scope() as session:
         values = {
@@ -588,6 +701,9 @@ async def ingest_module_updates(
             "product": product,
             "host_uuid": host_uuid,
             "hostname": hostname,
+            "issabel_version": issabel,
+            "framework_version": framework,
+            "php_web_version": php_web,
             "freepbx_version": freepbx,
             "php_version": php,
             "module_version": current,
@@ -619,7 +735,13 @@ async def ingest_module_updates(
             )
         ).scalar_one() > 0
     latest, changelog = releases.select_update(
-        published, current, freepbx=freepbx, php=php, channel=channel
+        published,
+        current,
+        freepbx=freepbx,
+        php=php,
+        channel=channel,
+        product=product,
+        issabel=issabel,
     )
     manifest = releases.build_manifest(latest) if latest else None
     return ModuleUpdateCheckOut(
@@ -648,9 +770,11 @@ async def ingest_module_updates(
 
 
 @router.get("/v1/ingest/module/releases")
-async def ingest_module_releases(principal: ApiKeyDep) -> dict[str, Any]:
+async def ingest_module_releases(
+    principal: ApiKeyDep, product: ModuleProduct = "freepbx-recuploader"
+) -> dict[str, Any]:
     async with control_session_scope() as session:
-        published = await _published(session, releases.PRODUCT_FREEPBX)
+        published = await _published(session, product)
     published.sort(
         key=lambda row: (row.version_major, row.version_minor, row.version_patch), reverse=True
     )
@@ -659,11 +783,11 @@ async def ingest_module_releases(principal: ApiKeyDep) -> dict[str, Any]:
 
 @router.get("/v1/ingest/module/releases/{release_id}/download")
 async def ingest_download_module_release(
-    release_id: UUID, principal: ApiKeyDep
+    release_id: UUID, principal: ApiKeyDep, product: ModuleProduct = "freepbx-recuploader"
 ) -> StreamingResponse:
     async with control_session_scope() as session:
         release = await session.get(ModuleRelease, release_id)
-    if release is None or release.status != "published":
+    if release is None or release.status != "published" or release.product != product:
         raise ApiError("not_found", "release not found")
     return _download_response(release)
 
@@ -679,7 +803,7 @@ async def ingest_module_update_report(
             await session.execute(
                 select(ModuleInstallation).where(
                     ModuleInstallation.tenant_id == principal.tenant_id,
-                    ModuleInstallation.product == releases.PRODUCT_FREEPBX,
+                    ModuleInstallation.product == payload.product,
                     ModuleInstallation.host_uuid == payload.host_uuid,
                 )
             )
@@ -687,8 +811,10 @@ async def ingest_module_update_report(
         if installation is None:
             raise ApiError("not_found", "unknown host; run an update check first")
         release_id = payload.release_id
-        if release_id is not None and await session.get(ModuleRelease, release_id) is None:
-            release_id = None
+        if release_id is not None:
+            reported_release = await session.get(ModuleRelease, release_id)
+            if reported_release is None or reported_release.product != payload.product:
+                raise ApiError("invalid_request", "release belongs to another product")
         session.add(
             ModuleUpdateEvent(
                 tenant_id=principal.tenant_id,
@@ -740,7 +866,7 @@ async def ingest_module_diagnostics(
             await session.execute(
                 select(ModuleInstallation).where(
                     ModuleInstallation.tenant_id == principal.tenant_id,
-                    ModuleInstallation.product == releases.PRODUCT_FREEPBX,
+                    ModuleInstallation.product == payload.product,
                     ModuleInstallation.host_uuid == payload.host_uuid,
                 )
             )
@@ -763,13 +889,17 @@ async def ingest_module_diagnostics(
         )
         await session.flush()
         stale = (
-            await session.execute(
-                select(ModuleDiagnostic.id)
-                .where(ModuleDiagnostic.installation_id == installation.id)
-                .order_by(ModuleDiagnostic.created_at.desc())
-                .offset(MAX_DIAGNOSTICS_KEPT)
+            (
+                await session.execute(
+                    select(ModuleDiagnostic.id)
+                    .where(ModuleDiagnostic.installation_id == installation.id)
+                    .order_by(ModuleDiagnostic.created_at.desc())
+                    .offset(MAX_DIAGNOSTICS_KEPT)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if stale:
             await session.execute(delete(ModuleDiagnostic).where(ModuleDiagnostic.id.in_(stale)))
     return {"accepted": True}
@@ -797,9 +927,11 @@ async def admin_module_diagnostics(
 
 
 @router.get("/v1/module/releases")
-async def tenant_module_releases(principal: UserDep) -> dict[str, Any]:
+async def tenant_module_releases(
+    principal: UserDep, product: ModuleProduct = "freepbx-recuploader"
+) -> dict[str, Any]:
     async with control_session_scope() as session:
-        published = await _published(session, releases.PRODUCT_FREEPBX)
+        published = await _published(session, product)
     published.sort(
         key=lambda row: (row.version_major, row.version_minor, row.version_patch), reverse=True
     )
@@ -816,7 +948,6 @@ async def tenant_module_installations(principal: OrgAdminDep) -> dict[str, Any]:
                     select(ModuleInstallation)
                     .where(
                         ModuleInstallation.tenant_id == principal.tenant_id,
-                        ModuleInstallation.product == releases.PRODUCT_FREEPBX,
                     )
                     .order_by(ModuleInstallation.last_seen_at.desc())
                 )

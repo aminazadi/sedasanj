@@ -8,6 +8,9 @@ export function sanitizeHtml(html: string): string {
 }
 
 export interface ModuleInstallation {
+  product?: string;
+  issabel_version?: string | null;
+  framework_version?: string | null;
   id: string;
   host_uuid: string;
   hostname: string | null;
@@ -42,6 +45,6 @@ export function loadModuleFleet(force = false): Promise<ModuleFleet> {
   return fleetRequest;
 }
 
-export function loadReleases(): Promise<{ items: ReleaseEntry[] }> {
-  return request<{ items: ReleaseEntry[] }>("/v1/module/releases");
+export function loadReleases(product = "freepbx-recuploader"): Promise<{ items: ReleaseEntry[] }> {
+  return request<{ items: ReleaseEntry[] }>(`/v1/module/releases?product=${encodeURIComponent(product)}`);
 }

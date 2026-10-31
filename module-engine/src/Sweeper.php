@@ -158,6 +158,9 @@ class Sweeper
 
     public static function sweepOnce(array $cfg, Logger $log, bool $dryRun = false): array
     {
+        if (!$dryRun && is_file(\Engine\Host\Factory::CONFIG)) {
+            IssabelRecording::recover($cfg, $log);
+        }
         $excludes = self::compileExcludes($cfg);
         $minAge = $cfg['watcher']['min_file_age_seconds'];
         $now = time();

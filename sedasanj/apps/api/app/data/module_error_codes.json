@@ -1,5 +1,47 @@
 [
     {
+        "code": "SS-SYS-1010",
+        "severity": "error",
+        "retryable": false,
+        "title": "Unsupported Issabel profile",
+        "action": "Check the Issabel compatibility guide and run activation."
+    },
+    {
+        "code": "SS-SYS-1011",
+        "severity": "error",
+        "retryable": false,
+        "title": "Independent PHP runtime or bridge failed",
+        "action": "Check the configured PHP CLI path and extensions, then run activation."
+    },
+    {
+        "code": "SS-SYS-1012",
+        "severity": "error",
+        "retryable": false,
+        "title": "Issabel installation or rollback failed",
+        "action": "Verify the installation backup and follow the restore guide."
+    },
+    {
+        "code": "SS-HOOK-1010",
+        "severity": "error",
+        "retryable": false,
+        "title": "Issabel recording layout conflicts",
+        "action": "Check the core version and existing post-record command; run activation again."
+    },
+    {
+        "code": "SS-HOOK-1011",
+        "severity": "error",
+        "retryable": true,
+        "title": "Issabel recording preparation failed",
+        "action": "Check recording permissions, the original WAV and spool disk space."
+    },
+    {
+        "code": "SS-UPD-1010",
+        "severity": "error",
+        "retryable": false,
+        "title": "Issabel release rejected",
+        "action": "Check product, signature, host compatibility and clock; download the matching beta."
+    },
+    {
         "code": "SS-CFG-1001",
         "severity": "error",
         "retryable": false,
@@ -441,27 +483,6 @@
         "action": "Check that MariaDB is running and FreePBX can reach it."
     },
     {
-        "code": "SS-EXT-1001",
-        "severity": "error",
-        "retryable": false,
-        "title": "FreePBX extension list is unavailable",
-        "action": "Run the sync from a FreePBX host with the core module enabled (needs /etc/freepbx.conf)."
-    },
-    {
-        "code": "SS-EXT-1002",
-        "severity": "warning",
-        "retryable": false,
-        "title": "FreePBX has no extensions to sync",
-        "action": "Create extensions in Applications > Extensions, then sync again."
-    },
-    {
-        "code": "SS-EXT-1003",
-        "severity": "error",
-        "retryable": true,
-        "title": "Extension sync could not reach Seda Sanj",
-        "action": "Check the endpoint, API key and connectivity on the module page, then sync again."
-    },
-    {
         "code": "SS-SYS-1001",
         "severity": "error",
         "retryable": false,
@@ -509,6 +530,27 @@
         "retryable": false,
         "title": "A required directory is not writable",
         "action": "Fix ownership: chown -R asterisk:asterisk on the module directories."
+    },
+    {
+        "code": "SS-EXT-1001",
+        "severity": "error",
+        "retryable": false,
+        "title": "FreePBX extension list is unavailable",
+        "action": "Run the sync from a FreePBX host with the core module enabled (needs /etc/freepbx.conf)."
+    },
+    {
+        "code": "SS-EXT-1002",
+        "severity": "warning",
+        "retryable": false,
+        "title": "FreePBX has no extensions to sync",
+        "action": "Create extensions in Applications > Extensions, then sync again."
+    },
+    {
+        "code": "SS-EXT-1003",
+        "severity": "error",
+        "retryable": true,
+        "title": "Extension sync could not reach Seda Sanj",
+        "action": "Check the endpoint, API key and connectivity on the module page, then sync again."
     },
     {
         "code": "SS-UPD-1001",

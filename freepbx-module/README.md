@@ -1,4 +1,4 @@
-# Seda Sanj FreePBX Module 1.5.3
+# Seda Sanj FreePBX Module 1.5.4
 
 ## License and rights
 

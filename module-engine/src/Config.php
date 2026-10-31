@@ -170,6 +170,7 @@ class Config
                 if (!array_key_exists($key, $parsed[$section])) {
                     continue;
                 }
+                if (substr($key, -4) === '_b64') { continue; }
                 $raw = $parsed[$section][$key];
                 $cfg[$section][$key] = self::castLike($default, $raw);
             }
@@ -184,13 +185,10 @@ class Config
                 $cfg['upload']['format'] = 'wav';
             }
         }
-        $encodedValues = [
-            'general' => ['endpoint', 'api_key', 'archive_password'],
-            'post_upload' => ['move_dir'],
-            'watcher' => ['watch_dir', 'filename_pattern'],
-            'voicemail' => ['spool_dir', 'folders'],
-            'state' => ['exclude_patterns'],
-        ];
+        $encodedValues = [];
+        foreach (self::DEFAULTS as $section => $keys) {
+            $encodedValues[$section] = array_keys(array_filter($keys, 'is_string'));
+        }
         foreach ($encodedValues as $section => $keys) {
             foreach ($keys as $key) {
                 $encodedKey = $key . '_b64';

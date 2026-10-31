@@ -23,7 +23,9 @@ from app.models import (
     Call,
     CallInsight,
     ChatConversation,
+    AnalysisRun,
     ChatMessage,
+    OperatorCallCoaching,
     OperatorCallScore,
     OperatorScoreRubric,
     OrganizationMemory,
@@ -39,6 +41,7 @@ from app.schemas import (
     ChatMessageOut,
     EphemeralChatMessageCreate,
     OperatorCallScoreOut,
+    OperatorCoachOut,
     OperatorScoreReport,
     OperatorScoreSummary,
     OrganizationMemoryOut,
@@ -54,6 +57,7 @@ from app.services import (
     audit,
     entitlements,
     knowledge,
+    operator_coaching,
     operator_scope,
     organization_memory,
     ratelimit,
@@ -329,6 +333,67 @@ async def get_call_score(
         )
     ).scalar_one_or_none()
     return OperatorCallScoreOut.model_validate(score) if score else None
+
+
+@router.get("/calls/{call_id}/operator-coach", response_model=OperatorCoachOut | None)
+async def get_call_coaching(
+    call_id: UUID, principal: UserDep, session: TenantSession
+) -> OperatorCoachOut | None:
+    """Latest AI coaching for a call; operators see only their own calls, managers see all."""
+    assert principal.tenant_id is not None
+    call = await session.get(Call, call_id)
+    if call is None or call.tenant_id != principal.tenant_id:
+        raise ApiError("not_found", "call not found")
+    await operator_scope.assert_call_visible_canonical(session, call, principal)
+    coaching = (
+        await session.execute(
+            select(OperatorCallCoaching)
+            .where(
+                OperatorCallCoaching.call_id == call_id,
+                OperatorCallCoaching.tenant_id == principal.tenant_id,
+            )
+            .order_by(OperatorCallCoaching.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return OperatorCoachOut.model_validate(coaching) if coaching else None
+
+
+@router.post(
+    "/calls/{call_id}/operator-coach/regenerate",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def regenerate_call_coaching(
+    call_id: UUID, principal: OperatorDep, session: TenantSession
+) -> dict[str, str]:
+    assert principal.tenant_id is not None
+    call = await session.get(Call, call_id)
+    if call is None or call.tenant_id != principal.tenant_id:
+        raise ApiError("not_found", "call not found")
+    await operator_scope.assert_call_visible_canonical(session, call, principal)
+    models = await effective_models(session)
+    if models["coach_enabled"].strip().lower() not in {"1", "true", "yes", "on"}:
+        raise ApiError(
+            "coach_unavailable",
+            "مربی ارتباط با مشتری غیرفعال است؛ مدیر سیستم می‌تواند آن را در تنظیمات فعال کند.",
+        )
+    run_id = (
+        await session.execute(
+            select(AnalysisRun.id)
+            .where(AnalysisRun.call_id == call_id, AnalysisRun.tenant_id == principal.tenant_id)
+            .order_by(AnalysisRun.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if run_id is None:
+        raise ApiError(
+            "coach_unavailable",
+            "تحلیل تماس هنوز کامل نشده است؛ پس از پایان تحلیل دوباره تلاش کنید.",
+        )
+    state = await operator_coaching.request_coaching(
+        principal.tenant_id, call_id, run_id, force=True
+    )
+    return {"status": state}
 
 
 @router.get("/operator-scores", response_model=OperatorScoreReport)

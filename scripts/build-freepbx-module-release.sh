@@ -36,7 +36,7 @@ fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
-cp -R "$MODULE" "$WORK/recuploader"
+cp -RL "$MODULE" "$WORK/recuploader"
 
 VENDOR_PATTERNS="recuploader/engine/bin/7zip/7zzs-* recuploader/engine/bin/ffmpeg/ffmpeg-* recuploader/engine/bin/gsm/gsm-encode-x86_64 recuploader/engine/bin/gsm/gsm-encode-aarch64"
 extract_vendor_zip() {

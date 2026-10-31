@@ -832,7 +832,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			default:
 				return false;
 		}
-		$logLevels = array('DEBUG', 'INFO', 'WARNING', 'ERROR');
+		$logLevels = array('ALL', 'DEBUG', 'INFO', 'WARNING', 'ERROR');
 		$minLevel = (isset($_REQUEST['log_min_level']) && in_array($_REQUEST['log_min_level'], $logLevels, true))
 			? $_REQUEST['log_min_level']
 			: 'INFO';
@@ -2198,7 +2198,7 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 		if (!file_exists(self::LOG_FILE) || !is_readable(self::LOG_FILE)) {
 			return array();
 		}
-		$minSeverity = isset(self::LOG_LEVELS[$minLevel]) ? self::LOG_LEVELS[$minLevel] : self::LOG_LEVELS['INFO'];
+		$minSeverity = ($minLevel === 'ALL') ? self::LOG_LEVELS['DEBUG'] : (isset(self::LOG_LEVELS[$minLevel]) ? self::LOG_LEVELS[$minLevel] : self::LOG_LEVELS['INFO']);
 
 		$maxBytes = 2 * 1024 * 1024; // 2MB
 		$size = filesize(self::LOG_FILE);

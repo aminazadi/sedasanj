@@ -42,6 +42,8 @@ if ($c === 0) { $fail('manifest size mismatch accepted'); }
 if ($c === 0 || strpos($o, 'expired') === false) { $fail("expired manifest accepted: $o"); }
 [$c] = $verify($manifest(['issued_at' => gmdate('Y-m-d\TH:i:s\Z', time() + 7200)]));
 if ($c === 0) { $fail('manifest from the future accepted'); }
+[$c] = $verify($manifest(['product' => 'issabel-recuploader']));
+if ($c === 0) { $fail('manifest for another PBX product accepted'); }
 [$c] = $verify($manifest(['rawname' => 'other']));
 if ($c === 0) { $fail('manifest for another module accepted'); }
 [$c] = $verify($manifest(), $sign($manifest()));  // signature without the domain prefix

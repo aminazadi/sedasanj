@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { SeverityBadge } from "@cbi/web-shared/components/ReleaseTimeline";
 import { fmt } from "../api";
 import { Empty, ErrorBox, Loading } from "../components/Widgets";
@@ -14,6 +14,8 @@ const UPDATE_STATUS: Record<NonNullable<ModuleInstallation["last_update_status"]
 };
 
 export default function FreepbxServers() {
+  const [params, setParams] = useSearchParams();
+  const product = params.get("product") || "all";
   const [fleet, setFleet] = useState<ModuleFleet | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,8 +27,11 @@ export default function FreepbxServers() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="سرورهای FreePBX" description="وضعیت سرورهای متصل و نسخهٔ ماژول نصب‌شده روی هر کدام" />
+      <PageHeader title="سرورهای تلفنی" description="وضعیت سرورهای متصل و نسخهٔ ماژول نصب‌شده روی هر کدام" />
       <ErrorBox message={error} />
+      <select className="input" aria-label="نوع مرکز تلفن" value={product} onChange={(event) => setParams({ product: event.target.value })}>
+        <option value="all">همه مرکزهای تلفن</option><option value="freepbx-recuploader">FreePBX</option><option value="issabel-recuploader">ایزابل</option>
+      </select>
       {fleet?.latest ? (
         <section className="card flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -42,9 +47,9 @@ export default function FreepbxServers() {
       ) : null}
 
       <section className="card">
-        <h2 className="font-bold">سرورهای FreePBX سازمان</h2>
+        <h2 className="font-bold">سرورهای تلفنی سازمان</h2>
         <p className="section-hint mb-4">
-          هر سرور با باز شدن صفحهٔ «Seda Sanj» در پنل FreePBX این‌جا ثبت می‌شود. برای به‌روزرسانی، همان صفحه را در FreePBX باز کنید و دکمهٔ «به‌روزرسانی» را بزنید.
+          هر سرور با باز شدن صفحهٔ «Seda Sanj» در پنل مرکز تلفن این‌جا ثبت می‌شود. برای به‌روزرسانی، همان صفحه را در مرکز تلفن باز کنید و دکمهٔ «به‌روزرسانی» را بزنید.
         </p>
         {!fleet && !error ? (
           <Loading />
@@ -57,14 +62,14 @@ export default function FreepbxServers() {
                 <tr>
                   <th>سرور</th>
                   <th>نسخهٔ ماژول</th>
-                  <th>FreePBX</th>
+                  <th>نوع و نسخه مرکز تلفن</th>
                   <th>سرویس آپلود</th>
                   <th>آخرین ارتباط</th>
                   <th>آخرین به‌روزرسانی</th>
                 </tr>
               </thead>
               <tbody>
-                {fleet.items.map((item) => {
+                {fleet.items.filter((item) => product === "all" || (item.product ?? "freepbx-recuploader") === product).map((item) => {
                   const update = item.last_update_status ? UPDATE_STATUS[item.last_update_status] : null;
                   return (
                     <tr key={item.id}>
@@ -77,7 +82,7 @@ export default function FreepbxServers() {
                           <span className="badge badge-success">به‌روز</span>
                         )}
                       </td>
-                      <td dir="ltr" className="text-xs" data-keep-latin-digits>{item.freepbx_version ?? "—"}</td>
+                      <td dir="ltr" className="text-xs" data-keep-latin-digits>{item.product === "issabel-recuploader" ? `Issabel ${item.issabel_version ?? "—"}` : `FreePBX ${item.freepbx_version ?? "—"}`}</td>
                       <td>{item.service_status === "running" ? "فعال" : item.service_status === "stopped" ? "متوقف" : "—"}</td>
                       <td>{fmt.dateTime(item.last_seen_at)}</td>
                       <td>

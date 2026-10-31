@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 import { fmt, query, request } from "../api";
+import SearchSelect from "./SearchSelect";
 import { Empty, ErrorBox } from "./Widgets";
 import type { ContactPage, Page, PbxExtension, User } from "../types";
 
@@ -47,6 +48,16 @@ export default function ExtensionsPanel({ canEdit }: { canEdit: boolean }) {
   const rows = extensions.data ?? [];
   const contactOptions = options.data?.contacts ?? [];
   const operatorOptions = options.data?.operators ?? [];
+  const contactList = contactOptions.map((item) => ({ value: item.id, label: item.name, keywords: item.phone_number }));
+  const operatorOptionList = operatorOptions.map((item) => ({ value: item.id, label: item.display_name ?? item.email, keywords: item.email }));
+
+  /** Keeps the current contact selectable even when it is outside the loaded page of options. */
+  function contactOptionsFor(row: PbxExtension) {
+    if (row.contact_id && row.contact_name && !contactOptions.some((item) => item.id === row.contact_id)) {
+      return [{ value: row.contact_id, label: row.contact_name }, ...contactList];
+    }
+    return contactList;
+  }
 
   return (
     <div className="card space-y-3">
@@ -73,19 +84,28 @@ export default function ExtensionsPanel({ canEdit }: { canEdit: boolean }) {
                 <td>{row.pbx_name ?? "—"}</td>
                 <td>
                   {canEdit ? (
-                    <select className="input" aria-label={`مخاطب داخلی ${row.extension}`} value={row.contact_id ?? ""} disabled={busyId === row.id} onChange={(event) => void assign(row, "contact_id", event.target.value)}>
-                      <option value="">بدون مخاطب</option>
-                      {row.contact_id && !contactOptions.some((item) => item.id === row.contact_id) ? <option value={row.contact_id}>{row.contact_name}</option> : null}
-                      {contactOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                    </select>
+                    <SearchSelect
+                      ariaLabel={`مخاطب داخلی ${row.extension}`}
+                      emptyLabel="بدون مخاطب"
+                      searchPlaceholder="جستجوی مخاطب…"
+                      options={contactOptionsFor(row)}
+                      value={row.contact_id ?? ""}
+                      disabled={busyId === row.id}
+                      onChange={(value) => void assign(row, "contact_id", value)}
+                    />
                   ) : (row.contact_name ?? "—")}
                 </td>
                 <td>
                   {canEdit ? (
-                    <select className="input" aria-label={`اپراتور داخلی ${row.extension}`} value={row.user_id ?? ""} disabled={busyId === row.id} onChange={(event) => void assign(row, "user_id", event.target.value)}>
-                      <option value="">بدون اپراتور</option>
-                      {operatorOptions.map((item) => <option key={item.id} value={item.id}>{item.display_name ?? item.email}</option>)}
-                    </select>
+                    <SearchSelect
+                      ariaLabel={`اپراتور داخلی ${row.extension}`}
+                      emptyLabel="بدون اپراتور"
+                      searchPlaceholder="جستجوی اپراتور…"
+                      options={operatorOptionList}
+                      value={row.user_id ?? ""}
+                      disabled={busyId === row.id}
+                      onChange={(value) => void assign(row, "user_id", value)}
+                    />
                   ) : (row.user_name ?? "—")}
                 </td>
               </tr>

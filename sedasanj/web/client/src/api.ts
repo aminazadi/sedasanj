@@ -181,7 +181,7 @@ export const fmt = {
 
 export const STATUS_LABELS: Record<string, string> = {
   missed: "بی‌پاسخ",
-  no_answer: "بی‌پاسخ (بدون پاسخ)",
+  no_answer: "بی‌پاسخ",
   busy: "مشغول",
   congestion: "اختلال / اشغال مسیر",
   failed: "ناموفق",

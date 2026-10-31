@@ -2,8 +2,13 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Added the Issabel 4/5 beta module, shared PBX engine, legacy PHP gateway, original-recording preservation, generated-dialplan adapters, verified installation backups and rollback.
+- Replaced the column checkboxes in the calls export dialog with the shared `ToggleSwitch` component used elsewhere in the panel.
+- Redesigned the organization dashboard around chart-only KPIs (conversion, quality and SLA gauges, daily trend, call-to-opportunity funnel, operator comparison, tasks, unanswered call types) and moved numeric cards, tables and secondary analyses into a collapsible details section stored in the `details` URL parameter; the customer-satisfaction block is unchanged.
+- Fixed module log viewer overflow and added an ALL minimum-level filter.
 - Fixed module 1.5.3 inbound recording direction, escaped MixMonitor filename filters, and answered-extension recovery for rejected uploads.
 
+- Fixed missed-call labels to show a single concise status and aligned caller and destination details in the calls table.
 - Documented FreePBX module licensing, third-party attribution, release-signing status, and GPL-compatible protection measures.
 - Fixed FreePBX module recording hooks failing to locate answered-call audio legs when Asterisk normalizes hyphens in the post-record filename; added regression coverage.
 

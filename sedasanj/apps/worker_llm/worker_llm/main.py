@@ -49,6 +49,7 @@ from app.services import (
     queue,
     sales_insights,
 )
+from app.services.operator_coaching import coach_call, request_coaching
 from app.services.operator_scoring import score_call
 from app.services.organization_memory import append_untrusted_context
 from app.services.platform import resolve_provider_settings
@@ -467,6 +468,7 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 )
             except Exception:
                 logger.exception("failed to enqueue operator score")
+            await _enqueue_coaching(tenant_id, call_id, run_id)
             return "reanalyzed"
         try:
             await queue.enqueue_raw(
@@ -481,6 +483,7 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             )
         except Exception:
             logger.exception("failed to enqueue operator score")
+        await _enqueue_coaching(tenant_id, call_id, run_id)
         try:
             await _maybe_warn_low_balance(tenant_id)
         except Exception:  # noqa: BLE001 - low-balance warning is not part of call analysis
@@ -577,6 +580,23 @@ async def _maybe_warn_low_balance(tenant_id: UUID) -> None:
     if cache is None or tenant is None or cache.seconds > settings.balance_low_threshold_seconds:
         return
     await queue.enqueue_balance_low(tenant_id)
+
+
+async def _enqueue_coaching(tenant_id: UUID, call_id: UUID, run_id: UUID) -> None:
+    """Queue the operator coach; a coaching failure must never affect call completion."""
+    try:
+        await request_coaching(tenant_id, call_id, run_id)
+    except Exception:  # noqa: BLE001 - coaching is an optional enrichment
+        logger.exception("failed to enqueue operator coaching")
+
+
+async def coach_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str:
+    return await coach_call(
+        UUID(str(payload["tenant_id"])),
+        UUID(str(payload["call_id"])),
+        UUID(str(payload["analysis_run_id"])),
+        force=bool(payload.get("force", False)),
+    )
 
 
 async def score_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str:
@@ -783,6 +803,7 @@ class WorkerSettings:
         submit_analysis_step,
         poll_analysis_step,
         score_operator_call,
+        coach_operator_call,
     ]
     queue_name = queue.QUEUE_LLM
     on_startup = startup

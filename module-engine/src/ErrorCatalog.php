@@ -20,6 +20,12 @@ class ErrorCatalog
 
     /** code => [severity, retryable, title, suggested action] */
     const ENTRIES = [
+        'SS-SYS-1010' => ['error', false, 'Unsupported Issabel profile', 'Check the Issabel compatibility guide and run activation.'],
+        'SS-SYS-1011' => ['error', false, 'Independent PHP runtime or bridge failed', 'Check the configured PHP CLI path and extensions, then run activation.'],
+        'SS-SYS-1012' => ['error', false, 'Issabel installation or rollback failed', 'Verify the installation backup and follow the restore guide.'],
+        'SS-HOOK-1010' => ['error', false, 'Issabel recording layout conflicts', 'Check the core version and existing post-record command; run activation again.'],
+        'SS-HOOK-1011' => ['error', true, 'Issabel recording preparation failed', 'Check recording permissions, the original WAV and spool disk space.'],
+        'SS-UPD-1010' => ['error', false, 'Issabel release rejected', 'Check product, signature, host compatibility and clock; download the matching beta.'],
         // Configuration
         'SS-CFG-1001' => ['error', false, 'Configuration file not found', 'Save the settings from Admin > Seda Sanj, or reinstall the module.'],
         'SS-CFG-1002' => ['error', false, 'Configuration file cannot be parsed', 'Re-save the settings from the module page or restore config.ini.example.'],

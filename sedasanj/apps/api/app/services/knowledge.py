@@ -74,7 +74,7 @@ async def invalidate_embeddings() -> int:
     updated = 0
     for tenant_id in await operational_tenant_ids():
         async with session_scope(tenant_id) as session:
-            for table in ("call_knowledge", "transcript_chunks"):
+            for table in ("call_knowledge", "transcript_chunks", "operator_call_coachings"):
                 result = await session.execute(
                     text(
                         f"UPDATE {table} SET embedding = NULL, vector_status = 'pending', "

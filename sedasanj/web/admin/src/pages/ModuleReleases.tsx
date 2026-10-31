@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import ReleaseTimeline, { SeverityBadge } from "@cbi/web-shared/components/ReleaseTimeline";
 import { ApiError, fmt, request, tokens } from "../api";
 import { useSensitiveAction } from "../components/SensitiveActionDialog";
@@ -28,7 +28,7 @@ export async function downloadRelease(release: ModuleRelease): Promise<void> {
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = `asterisk-module-${release.version}.zip`;
+  link.download = release.product === "issabel-recuploader" ? `recuploader-${release.version}.tgz` : `asterisk-module-${release.version}.zip`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -45,8 +45,12 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 
 export default function ModuleReleases() {
   const limit = 25;
-  const [offset, setOffset] = useState(0);
-  const [filter, setFilter] = useState<ModuleReleaseStatus | "">("");
+  const [params, setParams] = useSearchParams();
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const filter = (params.get("status") || "") as ModuleReleaseStatus | "";
+  const product = params.get("product") === "issabel-recuploader" ? "issabel-recuploader" : "freepbx-recuploader";
+  const setOffset = (value: number) => setParams((old) => { const next = new URLSearchParams(old); next.set("offset", String(value)); return next; });
+  const setFilter = (value: string) => setParams((old) => { const next = new URLSearchParams(old); next.set("status", value); next.delete("offset"); return next; });
   const [page, setPage] = useState<Page<ModuleRelease> | null>(null);
   const [stats, setStats] = useState<ModuleInstallationStats | null>(null);
   const [published, setPublished] = useState<ModuleRelease[]>([]);
@@ -56,12 +60,12 @@ export default function ModuleReleases() {
 
   const reload = useCallback(async () => {
     try {
-      const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      const query = new URLSearchParams({ offset: String(offset), limit: String(limit), product });
       if (filter) query.set("status", filter);
       const [list, fleet, live] = await Promise.all([
         request<Page<ModuleRelease>>(`/v1/admin/module-releases?${query}`),
-        request<ModuleInstallationStats>("/v1/admin/module-installations/stats"),
-        request<Page<ModuleRelease>>("/v1/admin/module-releases?status=published&limit=100"),
+        request<ModuleInstallationStats>(`/v1/admin/module-installations/stats?product=${product}`),
+        request<Page<ModuleRelease>>(`/v1/admin/module-releases?status=published&limit=100&product=${product}`),
       ]);
       setPage(list);
       setStats(fleet);
@@ -70,7 +74,7 @@ export default function ModuleReleases() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [offset, filter]);
+  }, [offset, filter, product]);
 
   useEffect(() => {
     void reload();
@@ -78,7 +82,7 @@ export default function ModuleReleases() {
 
   async function act(release: ModuleRelease, action: "publish" | "revoke" | "delete") {
     const prompts = {
-      publish: `نسخهٔ ${release.version} منتشر شود؟ همهٔ سرورهای FreePBX در بارگذاری بعدی صفحه آن را می‌بینند.`,
+      publish: `نسخهٔ ${release.version} منتشر شود؟ همهٔ سرورهای تلفنی در بارگذاری بعدی صفحه آن را می‌بینند.`,
       revoke: `انتشار نسخهٔ ${release.version} لغو شود؟ سرورها دیگر این نسخه را دریافت نمی‌کنند.`,
       delete: `پیش‌نویس ${release.version} و فایل آن برای همیشه حذف شود؟`,
     };
@@ -131,13 +135,16 @@ export default function ModuleReleases() {
       <div className="card">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1">
+            <select className="input" aria-label="نوع مرکز تلفن" value={product} onChange={(event) => setParams({ product: event.target.value })}>
+              <option value="freepbx-recuploader">FreePBX</option><option value="issabel-recuploader">ایزابل</option>
+            </select>
             {FILTERS.map((item) => (
               <button
                 key={item.value}
                 className={`rounded-lg px-3 py-1.5 text-sm ${filter === item.value ? "bg-brand-500 text-white" : "text-slate-600 hover:bg-slate-100"}`}
                 onClick={() => {
                   setFilter(item.value);
-                  setOffset(0);
+
                 }}
               >
                 {item.label}
@@ -145,7 +152,7 @@ export default function ModuleReleases() {
             ))}
           </div>
           <div className="flex gap-2">
-            <Link className="btn-ghost text-sm" to="/module-fleet">سرورهای FreePBX</Link>
+            <Link className="btn-ghost text-sm" to="/module-fleet">سرورهای تلفنی</Link>
             <Link className="btn text-sm" to="/module-releases/new">ثبت نسخهٔ جدید</Link>
           </div>
         </div>
