@@ -349,6 +349,18 @@ select {
   gap: 1.5px;
 }
 
+.assistant-conversation-processing--md {
+  width: 1.75rem;
+  height: 1.75rem;
+  gap: 3px;
+}
+
+.assistant-conversation-processing--lg {
+  width: 2.625rem;
+  height: 2.625rem;
+  gap: 4px;
+}
+
 .assistant-conversation-processing span {
   display: block;
   min-width: 0;

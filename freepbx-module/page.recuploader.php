@@ -161,6 +161,15 @@ $helpIcon = function ($title, $content) {
 	.sedasanj-panel .sj-steps { margin: 10px 0 0; padding: 0; list-style: none; }
 	.sedasanj-panel .sj-steps li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed #e2e8f0; color: var(--sj-neutral); font-size: 13px; }
 	.sedasanj-panel .sj-steps li .fa { width: 16px; text-align: center; }
+	.sedasanj-panel .sj-steps li .sj-loader { width: 14px; height: 14px; margin: 0 1px; }
+	.sedasanj-panel .sj-loader { display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; width: 1em; height: 1em; min-width: 14px; min-height: 14px; vertical-align: middle; flex: 0 0 auto; }
+	.sedasanj-panel .sj-loader > span { display: block; min-width: 0; min-height: 0; background: #b2ac88; animation: sj-loader 1.1s cubic-bezier(.4, 0, .2, 1) infinite; }
+	.sedasanj-panel .sj-loader > span:nth-child(2) { background: #7a8b73; animation-delay: -.82s; }
+	.sedasanj-panel .sj-loader > span:nth-child(3) { background: #d8d3b9; animation-delay: -.55s; }
+	.sedasanj-panel .sj-loader > span:nth-child(4) { background: #4b6e48; animation-delay: -.27s; }
+	.sedasanj-panel .sj-update-head .sj-loader { width: 18px; height: 18px; }
+	@keyframes sj-loader { 0%, 100% { opacity: .28; transform: scale(.56); } 38% { opacity: 1; transform: scale(1); } 64% { opacity: .72; transform: scale(.8); } }
+	@media (prefers-reduced-motion: reduce) { .sedasanj-panel .sj-loader > span { animation: none; opacity: 1; transform: none; } }
 	.sedasanj-panel .sj-steps li.is-running { color: var(--sj-ink); font-weight: 700; }
 	.sedasanj-panel .sj-steps li.is-done { color: var(--sj-label); }
 	.sedasanj-panel .sj-steps li.is-done .fa { color: var(--sj-green); }
@@ -758,7 +767,7 @@ $helpIcon = function ($title, $content) {
 
 			<div role="tabpanel" class="tab-pane sj-rtl" id="tab-changelog" dir="rtl">
 				<div id="sj-update-check-note" class="alert alert-warning" style="display: none;"></div>
-				<div id="sj-changelog"><p class="text-muted"><i class="fa fa-spinner fa-spin"></i> در حال دریافت تاریخچهٔ نسخه‌ها...</p></div>
+				<div id="sj-changelog"><p class="text-muted"><span class="sj-loader" role="status" aria-label="در حال پردازش"><span></span><span></span><span></span><span></span></span> در حال دریافت تاریخچهٔ نسخه‌ها...</p></div>
 			</div><!-- /tab-changelog -->
 
 		</div><!-- /tab-content -->
@@ -1143,7 +1152,7 @@ $helpIcon = function ($title, $content) {
 		}
 
 		function sjStartUpdate(releaseId, version, $btn) {
-			if ($btn) { $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> در حال دانلود و بررسی بسته...'); }
+			if ($btn) { $btn.prop('disabled', true).html(sjLoader + ' در حال دانلود و بررسی بسته...'); }
 			sjCall('startupdate', { release_id: releaseId }, 'POST').done(function (r) {
 				if (r && r.status && r.job) {
 					sjShowProgress(r.job, version);
@@ -1161,12 +1170,14 @@ $helpIcon = function ($title, $content) {
 			if ($btn) { $btn.prop('disabled', false).html('<i class="fa fa-download"></i> بروزرسانی به نسخهٔ ' + aruEscapeHtml(version)); }
 		}
 
+		var sjLoader = '<span class="sj-loader" role="status" aria-label="در حال پردازش"><span></span><span></span><span></span><span></span></span>';
+
 		function sjShowProgress(job, version) {
 			var steps = $.map(sjSteps, function (s) {
 				return '<li data-step="' + s[0] + '"><i class="fa fa-circle-o"></i><span>' + s[1] + '</span></li>';
 			}).join('');
 			$('#sj-update-banner').html('<div class="sj-update-card" id="sj-update-progress">'
-				+ '<div class="sj-update-head"><i class="fa fa-cog fa-spin" style="color: var(--sj-green); font-size: 18px;"></i>'
+				+ '<div class="sj-update-head">'+ sjLoader +''
 				+ '<h4>در حال بروزرسانی' + (version ? ' به نسخهٔ ' + aruEscapeHtml(version) : '') + '</h4></div>'
 				+ '<p class="sj-update-sub" id="sj-update-note">لطفاً تا پایان کار این صفحه را نبندید؛ در صورت بستن، با بازکردن دوباره پیشرفت نمایش داده می‌شود.</p>'
 				+ '<div class="sj-progress"><span></span></div>'
@@ -1201,17 +1212,19 @@ $helpIcon = function ($title, $content) {
 		function sjRenderStatus(s) {
 			var states = {};
 			$.each(s.steps || [], function (i, st) { states[st.id] = st.state; });
-			var icons = { pending: 'fa-circle-o', running: 'fa-spinner fa-spin', done: 'fa-check', failed: 'fa-times', skipped: 'fa-minus' };
+			var icons = { pending: 'fa-circle-o', done: 'fa-check', failed: 'fa-times', skipped: 'fa-minus' };
 			$('#sj-update-progress .sj-steps li').each(function () {
 				var st = states[$(this).data('step')] || 'pending';
-				$(this).attr('class', 'is-' + st).find('.fa').attr('class', 'fa ' + (icons[st] || icons.pending));
+				$(this).attr('class', 'is-' + st).children('.fa, .sj-loader').first()
+					.replaceWith(st === 'running' ? sjLoader : '<i class="fa ' + (icons[st] || icons.pending) + '"></i>');
 			});
 			$('#sj-update-progress .sj-progress > span').css('width', Math.max(0, Math.min(100, s.percent || 0)) + '%');
 			$('#sj-update-log').text(s.log_tail || '');
 		}
 
 		function sjFinish(s, job, version) {
-			var $head = $('#sj-update-progress .sj-update-head .fa');
+			var $head = $('<i class="fa" style="color: var(--sj-green); font-size: 18px;"></i>');
+			$('#sj-update-progress .sj-update-head').children('.fa, .sj-loader').first().replaceWith($head);
 			if (s.state === 'succeeded') {
 				$head.attr('class', 'fa fa-check-circle');
 				$('#sj-update-result').html('<div class="alert alert-success" style="margin: 14px 0 0;">بروزرسانی به نسخهٔ ' + aruEscapeHtml(version || '') + ' با موفقیت انجام شد. صفحه تا چند لحظهٔ دیگر بارگذاری می‌شود...</div>');

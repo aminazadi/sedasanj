@@ -6,6 +6,7 @@ import { request } from "../api";
 import { useAuth } from "../auth";
 import { BrandLogo } from "../components/BrandLogo";
 import PhoneAuth from "../components/PhoneAuth";
+import ProcessingIndicator from "../components/ProcessingIndicator";
 import { issabelModuleConfig, freePbxModuleConfig, pythonAgentConfig } from "../agentConfig";
 import { srcSetFor } from "../lib/imageSources";
 import voipIntegrationArtwork from "../assets/quick-demo-voip-integration.webp";
@@ -142,7 +143,7 @@ export default function QuickDemo() {
         <div className="demo-qr quick-demo-entry-qr"><div className="quick-demo-qr-frame"><QRCodeSVG value={link} size={244} level="H" marginSize={3} fgColor="#294c2b" bgColor="#ffffff" title="کد ورود به تست موبایل"/></div></div>
         <p className="quick-demo-qr-guide">دوربین گوشی را باز کنید و کد را اسکن کنید</p>
       </div>}
-      {(!demo || expired) && busy && <span className="demo-spinner quick-demo-qr-spinner" role="status" aria-label="در حال ساخت QR"/>}
+      {(!demo || expired) && busy && <ProcessingIndicator size="lg" className="quick-demo-qr-spinner" label="در حال ساخت QR"/>}
       {error && <p className="demo-error" role="alert">{error}</p>}
         </div>}
         {activePath === "voip" && <div className="quick-demo-voip-content">
@@ -170,7 +171,7 @@ export default function QuickDemo() {
             </div>
           </div>}
         </div>}
-        {activePath === "same" && <div className="quick-demo-same-device" role="status"><span className="demo-spinner"/><p>در حال آماده‌سازی تست با میکروفون همین گوشی یا کامپیوتر…</p></div>}
+        {activePath === "same" && <div className="quick-demo-same-device" role="status"><ProcessingIndicator size="lg" label="در حال آماده‌سازی تست با میکروفون"/><p>در حال آماده‌سازی تست با میکروفون همین گوشی یا کامپیوتر…</p></div>}
       </div>}
     </section>
   </div></main>;

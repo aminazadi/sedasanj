@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Replaced the Font Awesome spinners in the FreePBX module page (version history, update download button, update progress header and the running step) with the assistant's four-square loader (`.sj-loader`), and removed the unused `.icon-spin` style from the ASR dashboard. `php -l` was not run (PHP is not installed locally).
+
 - Released FreePBX module 1.5.5 with the existing internal-call direction mapping and synchronized release metadata; ZIP integrity passed, but PHP 7.4/8.2 tests could not run because the Docker daemon was unavailable, and PBX lab validation remains pending.
 
 - Marked FreePBX `exten-*` recordings as `internal` in the recording hook (`mix-stereo.php`) and the ingest mapper so extension-to-extension calls reach the platform with `direction=internal`; the platform still classifies calls from the synced extension list. The `exten-` filename prefix and `php -l` under 7.4/8.x are not yet lab-confirmed (⚠ needs lab confirmation); test added to `IngestDestinationTest.php`.

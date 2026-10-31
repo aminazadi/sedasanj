@@ -28,6 +28,7 @@ import { fmt, INTENT_LABELS, refreshSession, request, STATUS_LABELS, tokens } fr
 import { CAN_EDIT_TASKS, CAN_HEAR_AUDIO, isOrgAdmin, useAuth } from "../auth";
 import FollowUpTaskCard from "../components/FollowUpTaskCard";
 import OperatorCoachSection from "../components/OperatorCoachSection";
+import ProcessingIndicator from "../components/ProcessingIndicator";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -224,16 +225,17 @@ const CALL_ACTION_CLASS = "flex h-10 w-10 items-center justify-center border bor
 function CircularAudioProgress({ progress }: { progress: number | null }) {
   const radius = 8;
   const circumference = 2 * Math.PI * radius;
-  const normalizedProgress = progress === null ? 25 : Math.max(0, Math.min(100, progress));
+  if (progress === null) return <ProcessingIndicator label="در حال بارگذاری صدا" />;
+  const normalizedProgress = Math.max(0, Math.min(100, progress));
 
   return (
     <svg
-      className={`h-6 w-6 -rotate-90 ${progress === null ? "animate-spin" : ""}`}
+      className="h-6 w-6 -rotate-90"
       viewBox="0 0 24 24"
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={progress ?? undefined}
+      aria-valuenow={progress}
     >
       <circle cx="12" cy="12" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.5" />
       <circle

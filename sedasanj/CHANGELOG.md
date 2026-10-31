@@ -1,8 +1,10 @@
 # Changelog
 
 ## 2026-10-31 — AMINAZADI
+
 - Fixed the quick-demo QR link failing with "internal server error" when opened on a phone: `POST /v1/quick-demo/recording/login` read a non-existent `User.disabled_at` attribute (only `StaffUser` has it), so every first-time login from a QR scan raised `AttributeError`; the same-device flow never hit it because the user was already signed in. The organization status is still checked by `recording_session`. Added `test_qr_link_logs_in_a_phone_once`. Also reworded the same-device option on the quick-demo page in plain Persian ("همین گوشی یا کامپیوتر" instead of "دیوایس").
 
+- Replaced every rotating spinner in the client app (demo account creation and organization sign-in, demo recording upload, quick-demo QR and same-device test, assistant socket reconnect, indeterminate call-audio loading) with the assistant's four-square `ProcessingIndicator`, now available in `sm`/`md`/`lg` sizes; removed the unused `.demo-spinner` styles.
 
 - Rebuilt the published customer OpenAPI document from the real route table (`app/route_inspection.py`): each operation's security is derived from its dependencies (API key, user token or public) instead of its path prefix, key operations carry `x-required-scope`, 401/403/429 responses use a documented `Error` schema, and the description covers authentication, scopes, errors, pagination, idempotency and webhooks. Rate-limited responses now send `Retry-After` (also exposed to browsers through CORS). Tests in `tests/test_customer_openapi_contract.py`.
 
