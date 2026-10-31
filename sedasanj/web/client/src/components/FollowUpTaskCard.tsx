@@ -169,21 +169,26 @@ export default function FollowUpTaskCard({
               ) : null}
               {overdue ? <span className="badge bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700">عقب‌افتاده</span> : null}
             </div>
-            {canEdit && !done ? (
-              <button
-                type="button"
-                className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${
-                  open
-                    ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-                    : "border-[color:var(--line)] text-[#4B6E48] hover:bg-[#B2AC88]/40"
-                }`}
-                aria-label={open ? "بستن ویرایش" : "ویرایش کار"}
-                title={open ? "بستن ویرایش" : "ویرایش"}
-                onClick={() => setOpen((current) => !current)}
-              >
-                <EditIcon close={open} />
-              </button>
-            ) : null}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {canEdit ? <select className="input h-7 !w-auto min-w-0 py-0 text-xs" aria-label="وضعیت کار" value={task.status} disabled={saving} onChange={(event) => void patch({ status: event.target.value as TaskStatus }).catch(() => {})}>
+                <option value="open">باز</option><option value="in_progress">در حال انجام</option><option value="done">انجام‌شده</option>
+              </select> : null}
+              {canEdit && !done ? (
+                <button
+                  type="button"
+                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${
+                    open
+                      ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
+                      : "border-[color:var(--line)] text-[#4B6E48] hover:bg-[#B2AC88]/40"
+                  }`}
+                  aria-label={open ? "بستن ویرایش" : "ویرایش کار"}
+                  title={open ? "بستن ویرایش" : "ویرایش"}
+                  onClick={() => setOpen((current) => !current)}
+                >
+                  <EditIcon close={open} />
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
             <span>ایجاد: {fmt.dateTime(task.created_at)}</span>
@@ -207,9 +212,6 @@ export default function FollowUpTaskCard({
               {task.description}
             </p>
           ) : null}
-          {canEdit ? <select className="input mt-2 !w-auto text-xs" aria-label="وضعیت کار" value={task.status} disabled={saving} onChange={(event) => void patch({ status: event.target.value as TaskStatus }).catch(() => {})}>
-            <option value="open">باز</option><option value="in_progress">در حال انجام</option><option value="done">انجام‌شده</option>
-          </select> : null}
           <Link className="mt-2 block text-xs text-brand-700 underline" to={`/tasks?task=${task.id}`}>پیگیری و تاریخچه</Link>
           {showCallLink ? (
             <div className="mt-1.5 flex items-center">

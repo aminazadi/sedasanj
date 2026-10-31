@@ -1124,12 +1124,14 @@ export default function CallDetailPage() {
           title="کارهای قابل پیگیری"
           description="موارد عملیاتی استخراج‌شده از تماس؛ می‌توانید آن‌ها را ویرایش یا انجام‌شده کنید"
           action={
-            <Link className="btn-ghost inline-flex h-9 items-center px-3 py-0 text-xs" to="/tasks">
-              همه کارها
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link className="btn-ghost inline-flex h-9 items-center px-3 py-0 text-xs" to="/tasks">
+                همه کارها
+              </Link>
+              {canEditTasks ? <button type="button" className="btn inline-flex h-9 items-center px-3 py-0 text-xs" onClick={() => setCreatingTask(true)}>ثبت کار جدید</button> : null}
+            </div>
           }
         />
-        {canEditTasks ? <button type="button" className="btn mb-3" onClick={() => setCreatingTask(true)}>ثبت کار جدید</button> : null}
         {creatingTask ? <TaskCreateDialog callId={call.id} onCancel={() => setCreatingTask(false)} onCreated={(task) => { setCreatingTask(false); setCall((current) => current ? { ...current, tasks: [...current.tasks, task] } : current); }} /> : null}
         {tasks.length === 0 ? (
           <EmptyState icon="tasks" compact message="موردی ثبت نشده است." className="min-h-36" />

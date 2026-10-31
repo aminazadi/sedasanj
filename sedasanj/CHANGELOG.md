@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Moved call task creation beside the all-tasks link and grouped the shared task status selector with card header actions.
+
 - Added Persian deployment recovery steps for migration 0091 parameter type conflicts, including rebuild commands and successful migration checks.
 
 - Fixed migration 0091 failing with asyncpg AmbiguousParameterError by binding the task help article title, summary and plain text independently; corrected the PostgreSQL regression fixture to use the deployed VARCHAR/TEXT column types.
