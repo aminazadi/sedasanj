@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import ValidationError
@@ -10,8 +12,12 @@ from app.routers.kpi import (
     _display_funnel,
     _funnel_rows,
     _is_opportunity,
+    _missed_peak,
+    _operator_quality_drops,
     _rate,
     _rate_with_change,
+    _satisfaction_counts,
+    _tenant_zone,
 )
 from app.schemas import ExtractionResult
 
@@ -170,3 +176,103 @@ def test_kpi_settings_accepts_known_dashboard_widgets_and_rejects_unknown_ones()
     assert "tasks" in KpiSettingsIn(**payload).dashboard_widgets
     with pytest.raises(ValidationError):
         KpiSettingsIn(**payload, dashboard_widgets=["trend", "unknown"])
+
+
+def test_satisfaction_counts_only_known_sentiments() -> None:
+    rows = [
+        (None, SimpleNamespace(sentiment=value), None)
+        for value in ("happy", "satisfied", "neutral", "angry", None)
+    ] + [(None, None, None)]
+    assert _satisfaction_counts(rows) == (2, 4)
+    assert _rate_with_change(*_satisfaction_counts(rows), 0, 0)["value"] == 50.0
+
+
+def test_missed_peak_uses_tenant_local_hour_and_thresholds() -> None:
+    tehran = ZoneInfo("Asia/Tehran")
+    # 2026-10-31 is a Saturday; 06:45 UTC is 10:15 in Tehran.
+    slot = datetime(2026, 10, 31, 6, 45, tzinfo=UTC)
+    other = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)
+    answered = [slot] * 7 + [other] * 30
+    missed = [slot] * 3 + [other] * 2
+    peak = _missed_peak(answered, missed, tehran)
+    assert peak == {"weekday": 5, "hour": 10, "missed": 3, "total": 10, "rate": 30.0}
+    # Too few calls in the slot: no alert.
+    assert _missed_peak([slot] * 5, [slot] * 3, tehran) is None
+    # Below the unanswered-rate threshold: no alert.
+    assert _missed_peak([slot] * 18, [slot] * 2, tehran) is None
+
+
+def test_missed_peak_ties_prefer_more_unanswered_calls() -> None:
+    tehran = ZoneInfo("Asia/Tehran")
+    first = datetime(2026, 10, 31, 6, 0, tzinfo=UTC)
+    second = first + timedelta(hours=2)
+    peak = _missed_peak([first] * 8 + [second] * 16, [first] * 2 + [second] * 4, tehran)
+    assert peak is not None and peak["missed"] == 4
+
+
+def test_operator_quality_drops_need_sample_and_ten_points() -> None:
+    operators = [
+        {
+            "operator_id": "a",
+            "operator_label": "A",
+            "quality_score": 61.0,
+            "sample_sufficient": True,
+        },
+        {
+            "operator_id": "b",
+            "operator_label": "B",
+            "quality_score": 70.0,
+            "sample_sufficient": True,
+        },
+        {
+            "operator_id": "c",
+            "operator_label": "C",
+            "quality_score": 50.0,
+            "sample_sufficient": False,
+        },
+        {
+            "operator_id": "d",
+            "operator_label": "D",
+            "quality_score": None,
+            "sample_sufficient": True,
+        },
+        {
+            "operator_id": "e",
+            "operator_label": "E",
+            "quality_score": 40.0,
+            "sample_sufficient": True,
+        },
+    ]
+    previous = {"a": 76.0, "b": 75.0, "c": 90.0, "d": 90.0}
+    drops = _operator_quality_drops(operators, previous)
+    assert [item["operator_id"] for item in drops] == ["a"]
+    assert drops[0]["previous_value"] == 76.0
+
+
+def test_tenant_zone_falls_back_to_tehran() -> None:
+    assert _tenant_zone("Europe/Berlin").key == "Europe/Berlin"
+    assert _tenant_zone("Not/AZone").key == "Asia/Tehran"
+    assert _tenant_zone(None).key == "Asia/Tehran"
+
+
+def test_executive_dashboard_help_article_is_well_formed() -> None:
+    import importlib.util
+    import re
+    from pathlib import Path
+
+    from app.services.help_content import sanitize_help_html
+
+    path = (
+        Path(__file__).parents[1]
+        / "apps/api/alembic/versions/0074_executive_dashboard_help_content.py"
+    )
+    spec = importlib.util.spec_from_file_location("dashboard_help_migration", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.down_revision == "0073_operator_coach_help_content"
+    assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", module.ARTICLE_SLUG)
+    for heading in ("نشانه‌ها", "علت", "رفع مشکل", "تأیید رفع مشکل", "پیشگیری"):
+        assert f"<h2>{heading}</h2>" in module.ARTICLE_BODY
+    safe_html, _ = sanitize_help_html(module.ARTICLE_BODY)
+    assert safe_html == module.ARTICLE_BODY

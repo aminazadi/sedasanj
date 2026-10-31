@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Query, Request, status
 from pydantic import BaseModel, Field, model_validator
@@ -25,6 +26,7 @@ from app.models import (
     SalesInsight,
     Team,
     TeamMembership,
+    Tenant,
     Transcript,
     User,
     Utterance,
@@ -373,10 +375,7 @@ async def list_goals(
     rows = (
         (
             await session.execute(
-                base
-                .order_by(KpiGoal.valid_from.desc())
-                .offset(offset)
-                .limit(limit)
+                base.order_by(KpiGoal.valid_from.desc()).offset(offset).limit(limit)
             )
         )
         .scalars()
@@ -573,6 +572,98 @@ def _display_funnel(stages: list[tuple[str, int]]) -> list[dict[str, Any]]:
     return rows
 
 
+POSITIVE_SENTIMENTS = frozenset({"happy", "satisfied"})
+QUALITY_DROP_POINTS = 10.0
+MISSED_PEAK_MIN_CALLS = 10
+MISSED_PEAK_MIN_RATE = 20.0
+
+
+def _satisfaction_counts(rows: Any) -> tuple[int, int]:
+    """Return (positive, known) caller sentiments for (call, insight, sales) rows."""
+    known = [insight.sentiment for _, insight, _ in rows if insight and insight.sentiment]
+    return sum(1 for value in known if value in POSITIVE_SENTIMENTS), len(known)
+
+
+def _missed_peak(
+    answered: list[datetime], missed: list[datetime], timezone: ZoneInfo
+) -> dict[str, Any] | None:
+    """Weekday/hour slot (tenant local time) with the worst unanswered share.
+
+    Slots need MISSED_PEAK_MIN_CALLS calls and MISSED_PEAK_MIN_RATE percent unanswered
+    to count; ties prefer the slot with more unanswered calls.
+    """
+    totals: Counter[tuple[int, int]] = Counter()
+    misses: Counter[tuple[int, int]] = Counter()
+    for started_at in answered:
+        local = started_at.astimezone(timezone)
+        totals[(local.weekday(), local.hour)] += 1
+    for started_at in missed:
+        local = started_at.astimezone(timezone)
+        totals[(local.weekday(), local.hour)] += 1
+        misses[(local.weekday(), local.hour)] += 1
+    best: dict[str, Any] | None = None
+    for slot, missed_count in misses.items():
+        total = totals[slot]
+        rate = round(missed_count * 100 / total, 1)
+        if total < MISSED_PEAK_MIN_CALLS or rate < MISSED_PEAK_MIN_RATE:
+            continue
+        if best is None or (rate, missed_count) > (best["rate"], best["missed"]):
+            best = {
+                "weekday": slot[0],
+                "hour": slot[1],
+                "missed": missed_count,
+                "total": total,
+                "rate": rate,
+            }
+    return best
+
+
+def _operator_quality_drops(
+    operators: list[dict[str, Any]], previous_quality: dict[str, float]
+) -> list[dict[str, Any]]:
+    """Operators with a sufficient sample whose quality fell by QUALITY_DROP_POINTS or more."""
+    drops = []
+    for item in operators:
+        current = item.get("quality_score")
+        previous = previous_quality.get(item["operator_id"])
+        if not item.get("sample_sufficient") or current is None or previous is None:
+            continue
+        if previous - current >= QUALITY_DROP_POINTS:
+            drops.append(
+                {
+                    "operator_id": item["operator_id"],
+                    "operator_label": item["operator_label"],
+                    "value": current,
+                    "previous_value": previous,
+                }
+            )
+    return sorted(drops, key=lambda value: value["value"] - value["previous_value"])
+
+
+def _daily_point(day: str) -> dict[str, Any]:
+    return {
+        "date": day,
+        "calls": 0,
+        "answered_calls": 0,
+        "effective_calls": 0,
+        "missed_calls": 0,
+        "voicemail_calls": 0,
+        "call_types": {},
+        "opportunities": 0,
+        "wins": 0,
+        "quality_score": None,
+        "positive_sentiments": 0,
+        "sentiment_known": 0,
+    }
+
+
+def _tenant_zone(name: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(name or "Asia/Tehran")
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("Asia/Tehran")
+
+
 @router.get("/kpi/dashboard")
 async def dashboard(
     principal: UserDep,
@@ -660,11 +751,13 @@ async def dashboard(
     )
     if operator_id:
         missed_stmt = missed_stmt.where(
-            select(CallOperatorAssignment.id).where(
+            select(CallOperatorAssignment.id)
+            .where(
                 CallOperatorAssignment.call_id == Call.id,
                 CallOperatorAssignment.operator_id == operator_id,
                 CallOperatorAssignment.superseded_at.is_(None),
-            ).exists()
+            )
+            .exists()
         )
     if team_id:
         missed_stmt = missed_stmt.where(
@@ -720,11 +813,13 @@ async def dashboard(
     )
     if operator_id:
         previous_missed_stmt = previous_missed_stmt.where(
-            select(CallOperatorAssignment.id).where(
+            select(CallOperatorAssignment.id)
+            .where(
                 CallOperatorAssignment.call_id == Call.id,
                 CallOperatorAssignment.operator_id == operator_id,
                 CallOperatorAssignment.superseded_at.is_(None),
-            ).exists()
+            )
+            .exists()
         )
     if team_id:
         previous_missed_stmt = previous_missed_stmt.where(
@@ -751,17 +846,24 @@ async def dashboard(
     )
     if intent is not None or certainty is not None:
         previous_voicemail_stmt = previous_voicemail_stmt.where(false())
-    previous_voicemail_stmt = operator_scope.apply_operator_scope(previous_voicemail_stmt, principal)
+    previous_voicemail_stmt = operator_scope.apply_operator_scope(
+        previous_voicemail_stmt, principal
+    )
     previous_voicemail_rows = (await session.execute(previous_voicemail_stmt)).scalars().all()
     voicemail_ids = [call.id for call in voicemail_rows]
-    voicemail_transcribed = int(
-        await session.scalar(
-            select(func.count(func.distinct(Transcript.call_id))).where(
-                Transcript.tenant_id == tenant_id,
-                Transcript.call_id.in_(voicemail_ids),
+    voicemail_transcribed = (
+        int(
+            await session.scalar(
+                select(func.count(func.distinct(Transcript.call_id))).where(
+                    Transcript.tenant_id == tenant_id,
+                    Transcript.call_id.in_(voicemail_ids),
+                )
             )
-        ) or 0
-    ) if voicemail_ids else 0
+            or 0
+        )
+        if voicemail_ids
+        else 0
+    )
     call_ids = [call.id for call, _, _ in rows]
     missed_call_ids = [call.id for call in missed_rows]
     previous_call_ids = [call.id for call, _, _ in previous_rows]
@@ -798,6 +900,46 @@ async def dashboard(
     latest_score: dict[UUID, OperatorCallScore] = {}
     for score in scores:
         latest_score.setdefault(score.call_id, score)
+    previous_scores = (
+        (
+            await session.execute(
+                select(OperatorCallScore)
+                .where(
+                    OperatorCallScore.call_id.in_(previous_call_ids),
+                    OperatorCallScore.status == "succeeded",
+                )
+                .order_by(OperatorCallScore.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+        if previous_call_ids
+        else []
+    )
+    previous_latest_score: dict[UUID, OperatorCallScore] = {}
+    for score in previous_scores:
+        previous_latest_score.setdefault(score.call_id, score)
+    previous_operator_by_call = (
+        dict(
+            (
+                await session.execute(
+                    select(
+                        CallOperatorAssignment.call_id, CallOperatorAssignment.operator_id
+                    ).where(
+                        CallOperatorAssignment.call_id.in_(list(previous_latest_score)),
+                        CallOperatorAssignment.superseded_at.is_(None),
+                    )
+                )
+            )
+            .tuples()
+            .all()
+        )
+        if previous_latest_score
+        else {}
+    )
+    tenant_zone = _tenant_zone(
+        await session.scalar(select(Tenant.timezone).where(Tenant.id == tenant_id))
+    )
     tasks = (
         (await session.execute(select(FollowUpTask).where(FollowUpTask.call_id.in_(call_ids))))
         .scalars()
@@ -965,6 +1107,9 @@ async def dashboard(
         if insight and ((insight.sentiment_profile or {}).get("text") or {}).get("caller")
     )
     scored = [item.total_score for item in latest_score.values() if item.total_score is not None]
+    previous_scored = [
+        item.total_score for item in previous_latest_score.values() if item.total_score is not None
+    ]
     crm_eligible = [
         item
         for item in crm_rows
@@ -1129,6 +1274,16 @@ async def dashboard(
         stat["sample_sufficient"] = stat["calls"] >= settings["minimum_sample_size"]
         stat["agent_talk_ratio"] = round(agent_talk * 100 / total_talk, 1) if total_talk else None
         operators.append(stat)
+    previous_operator_scores: dict[str, list[float]] = defaultdict(list)
+    for call_id, score in previous_latest_score.items():
+        previous_operator = previous_operator_by_call.get(call_id)
+        if previous_operator is not None and score.total_score is not None:
+            previous_operator_scores[str(previous_operator)].append(score.total_score)
+    previous_operator_quality = {
+        key: round(sum(values) / len(values), 1) for key, values in previous_operator_scores.items()
+    }
+    for stat in operators:
+        stat["previous_quality_score"] = previous_operator_quality.get(stat["operator_id"])
     campaign_counter: dict[str, dict[str, Any]] = {}
     for call, insight, sales in rows:
         key = call.campaign_id or call.source or "unknown"
@@ -1143,13 +1298,11 @@ async def dashboard(
     for item in campaign_counter.values():
         item["conversion"] = _rate(item["wins"], item["opportunities"])
     daily: dict[str, dict[str, Any]] = {}
+    daily_scores: dict[str, list[float]] = defaultdict(list)
     sentiment_counter: Counter[str] = Counter()
     for call, insight, sales in rows:
-        day = call.started_at.astimezone(UTC).date().isoformat()
-        point = daily.setdefault(
-            day,
-            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "voicemail_calls": 0, "call_types": {}, "opportunities": 0, "wins": 0},
-        )
+        day = call.started_at.astimezone(tenant_zone).date().isoformat()
+        point = daily.setdefault(day, _daily_point(day))
         point["calls"] = int(point["calls"]) + 1
         point["answered_calls"] = int(point["answered_calls"]) + 1
         point["effective_calls"] = int(point["effective_calls"]) + int(call.duration_ms >= 15000)
@@ -1159,23 +1312,26 @@ async def dashboard(
         )
         if insight and insight.sentiment:
             sentiment_counter[insight.sentiment] += 1
+            point["sentiment_known"] = int(point["sentiment_known"]) + 1
+            point["positive_sentiments"] = int(point["positive_sentiments"]) + int(
+                insight.sentiment in POSITIVE_SENTIMENTS
+            )
+        day_score = latest_score.get(call.id)
+        if day_score is not None and day_score.total_score is not None:
+            daily_scores[day].append(day_score.total_score)
     for call in missed_rows:
-        day = call.started_at.astimezone(UTC).date().isoformat()
-        point = daily.setdefault(
-            day,
-            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "voicemail_calls": 0, "call_types": {}, "opportunities": 0, "wins": 0},
-        )
+        day = call.started_at.astimezone(tenant_zone).date().isoformat()
+        point = daily.setdefault(day, _daily_point(day))
         point["missed_calls"] = int(point.get("missed_calls", 0)) + 1
         point["calls"] = int(point["calls"]) + 1
         call_types = point.setdefault("call_types", {})
         call_types[call.call_type] = int(call_types.get(call.call_type, 0)) + 1
     for call in voicemail_rows:
-        day = call.started_at.astimezone(UTC).date().isoformat()
-        point = daily.setdefault(
-            day,
-            {"date": day, "calls": 0, "answered_calls": 0, "effective_calls": 0, "missed_calls": 0, "voicemail_calls": 0, "call_types": {}, "opportunities": 0, "wins": 0},
-        )
+        day = call.started_at.astimezone(tenant_zone).date().isoformat()
+        point = daily.setdefault(day, _daily_point(day))
         point["voicemail_calls"] = int(point.get("voicemail_calls", 0)) + 1
+    for day, values in daily_scores.items():
+        daily[day]["quality_score"] = round(sum(values) / len(values), 1)
     voicemail_duration_ms = sum(call.duration_ms for call in voicemail_rows)
     mailbox_counts = Counter(call.dialed_number or "unknown" for call in voicemail_rows)
     total_agent_talk = sum(channels.get(1, 0) for channels in talk.values())
@@ -1215,8 +1371,7 @@ async def dashboard(
         .all()
     )
     goal_map = {
-        item.metric: item.target_value
-        for item in sorted(goals, key=lambda value: value.team_id is not None)
+        item.metric: item for item in sorted(goals, key=lambda value: value.team_id is not None)
     }
     ai_rate = _rate_with_change(explicit_won, known_ai, previous_explicit_won, previous_known_ai)
     crm_rate = _rate_with_change(
@@ -1263,10 +1418,16 @@ async def dashboard(
         {
             "metric": metric,
             "actual": actuals.get(metric),
-            "target": target,
-            "achievement": round((actuals[metric] or 0) * 100 / target, 1) if target else None,
+            "target": goal.target_value,
+            "achievement": (
+                round((actuals[metric] or 0) * 100 / goal.target_value, 1)
+                if goal.target_value
+                else None
+            ),
+            "valid_from": goal.valid_from,
+            "valid_to": goal.valid_to,
         }
-        for metric, target in goal_map.items()
+        for metric, goal in goal_map.items()
     ]
     topics = Counter(topic for _, insight, _ in rows if insight for topic in (insight.topics or []))
     objections = Counter(value for _, _, sales in rows if sales for value in sales.objections)
@@ -1296,6 +1457,46 @@ async def dashboard(
                     "severity": "high",
                     "call_id": None,
                     "title": f"افزایش اعتراض: {objection}",
+                    "due_at": None,
+                }
+            )
+    alerts: list[dict[str, Any]] = []
+    for drop in _operator_quality_drops(operators, previous_operator_quality):
+        alerts.append(
+            {
+                "type": "operator_quality_drop",
+                "severity": "high",
+                "call_id": None,
+                "title": drop["operator_label"],
+                "due_at": None,
+                "meta": drop,
+            }
+        )
+    if principal.role != "operator":
+        peak = _missed_peak(
+            [call.started_at for call, _, _ in rows],
+            [call.started_at for call in missed_rows],
+            tenant_zone,
+        )
+        if peak is not None:
+            alerts.append(
+                {
+                    "type": "missed_peak",
+                    "severity": "normal",
+                    "call_id": None,
+                    "title": "",
+                    "due_at": None,
+                    "meta": peak,
+                }
+            )
+    for call, insight, _ in rows:
+        if insight and insight.sentiment == "angry" and not task_by_call[call.id]:
+            alerts.append(
+                {
+                    "type": "angry_customer",
+                    "severity": "normal",
+                    "call_id": str(call.id),
+                    "title": insight.summary or "",
                     "due_at": None,
                 }
             )
@@ -1359,12 +1560,33 @@ async def dashboard(
             "voicemail_calls": len(voicemail_rows),
             "previous_voicemail_calls": len(previous_voicemail_rows),
             "voicemail_total_duration_ms": voicemail_duration_ms,
-            "voicemail_average_duration_ms": round(voicemail_duration_ms / len(voicemail_rows)) if voicemail_rows else 0,
+            "voicemail_average_duration_ms": round(voicemail_duration_ms / len(voicemail_rows))
+            if voicemail_rows
+            else 0,
             "voicemail_transcribed_calls": voicemail_transcribed,
-            "voicemail_transcription_rate": round(voicemail_transcribed * 100 / len(voicemail_rows), 1) if voicemail_rows else 0,
+            "voicemail_transcription_rate": round(
+                voicemail_transcribed * 100 / len(voicemail_rows), 1
+            )
+            if voicemail_rows
+            else 0,
             "effective_calls": effective,
             "opportunities": opportunities,
             "explicit_wins": explicit_won,
+            "previous_explicit_wins": previous_explicit_won,
+            "previous_opportunities": previous_opportunities,
+            "answer_rate": _rate_with_change(
+                len(rows),
+                len(rows) + len(missed_rows),
+                len(previous_rows),
+                len(previous_rows) + len(previous_missed_rows),
+            ),
+            "satisfaction_rate": _rate_with_change(
+                *_satisfaction_counts(rows), *_satisfaction_counts(previous_rows)
+            ),
+            "previous_quality_score": (
+                round(sum(previous_scored) / len(previous_scored), 1) if previous_scored else None
+            ),
+            "previous_revenue": sum(item.amount or 0 for item in previous_crm_won),
             "probable_opportunities": probable,
             "probable_opportunity_rate": probable_rate,
             "unknown_outcomes": outcomes["unknown"],
@@ -1395,17 +1617,21 @@ async def dashboard(
             },
         },
         "call_types": [
-            {"key": call_type, "count": sum(1 for call in missed_rows if call.call_type == call_type)}
+            {
+                "key": call_type,
+                "count": sum(1 for call in missed_rows if call.call_type == call_type),
+            }
             for call_type in UNANSWERED_CALL_TYPES
         ],
         "voicemail_mailboxes": [
             {"mailbox": mailbox, "count": count}
-            for mailbox, count in sorted(mailbox_counts.items(), key=lambda item: (-item[1], item[0]))
+            for mailbox, count in sorted(
+                mailbox_counts.items(), key=lambda item: (-item[1], item[0])
+            )
         ],
         "trend": [daily[key] for key in sorted(daily)],
         "sentiments": [
-            {"key": key, "count": count}
-            for key, count in sentiment_counter.most_common()
+            {"key": key, "count": count} for key, count in sentiment_counter.most_common()
         ],
         "dashboard_widgets": settings["dashboard_widgets"],
         "funnel": funnel,
@@ -1428,7 +1654,7 @@ async def dashboard(
         "operators_total": (
             len(operators) if principal.role != "operator" else min(1, len(operators))
         ),
-        "actions": (hot + overdue + review)[:100],
+        "actions": (hot + overdue + alerts + review)[:150],
         "coaching": {
             "strengths": coaching_rows[:3],
             "improvements": list(reversed(coaching_rows[-3:])),
