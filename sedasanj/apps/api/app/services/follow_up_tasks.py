@@ -159,6 +159,9 @@ async def tenant_today(session: AsyncSession, tenant_id: UUID) -> tuple[date, st
 async def sync_from_analysis(
     session: AsyncSession, call: Call, action_items: Any
 ) -> list[FollowUpTask]:
+    if call.direction == "internal":
+        # Customer follow-up tasks do not apply to a call between two colleagues.
+        return []
     titles = titles_from_action_items(action_items)
     if not titles:
         return []

@@ -62,11 +62,13 @@ from app.schemas import (
 from app.sentiment import SENTIMENT_SET, caller_trajectory, normalize_sentiment
 from app.services import (
     analysis_runs,
-    call_export,
     audit,
     billing,
+    call_export,
+    call_scope,
     contacts,
     entitlements,
+    extensions,
     follow_up_tasks,
     operator_scope,
     outbox,
@@ -405,7 +407,7 @@ async def upload_call(
     asterisk_uniqueid: Annotated[str, Form()] = "",
     started_at: Annotated[datetime | None, Form()] = None,
     ended_at: Annotated[datetime | None, Form()] = None,
-    direction: Annotated[str | None, Form()] = "inbound",
+    direction: Annotated[str | None, Form()] = None,
     agent_extension: Annotated[str | None, Form()] = None,
 ) -> IngestAccepted:
     """Manual WAV upload from the tenant panel; billed like agent ingest."""
@@ -424,6 +426,9 @@ async def upload_call(
             raise ApiError("forbidden", "operator extension is required for call ownership")
         resolved_extension = principal.extension
 
+    direction, resolved_extension = await extensions.internal_direction_fixup(
+        session, principal.tenant_id, caller, dialed, direction, resolved_extension
+    )
     result = await accept_upload(
         tenant_id=principal.tenant_id,
         payload=await file.read(),
@@ -766,6 +771,8 @@ async def get_call(call_id: UUID, principal: UserDep, session: TenantSession) ->
             if call.direction == "inbound"
             else {0: "اپراتور", 1: "مشتری"}
             if call.direction == "outbound"
+            else {0: "همکار تماس‌گیرنده", 1: "همکار پاسخ‌دهنده"}
+            if call.direction == "internal"
             else {0: "کانال ۱", 1: "کانال ۲"}
         ),
         correction=(
@@ -1546,6 +1553,8 @@ async def analytics_summary(
             Call.started_at <= to_date,
         ),
     )
+    if await call_scope.internal_hidden(session, principal.tenant_id):
+        window = and_(window, call_scope.not_internal_clause())
 
     totals = (
         await session.execute(

@@ -284,7 +284,7 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
               <td className="whitespace-nowrap px-2 py-1.5 text-center text-[#555555]">{source.started_at ? fmt.dateTime(source.started_at) : "زمان نامشخص"}</td>
               <td className="whitespace-nowrap px-2 py-1.5 text-center font-bold text-[#4B6E48]" dir="ltr"><span>{callerNumber}</span><span className="px-1.5 text-[#898989]" dir="rtl">←</span><span>{dialedNumber}</span></td>
               <td className="whitespace-nowrap px-2 py-1.5 text-center" dir="ltr">{source.agent_extension ? fmt.digits(source.agent_extension) : "—"}</td>
-              <td className="px-2 py-1.5 text-center">{source.direction === "inbound" ? "ورودی" : source.direction === "outbound" ? "خروجی" : source.direction || "—"}</td>
+              <td className="px-2 py-1.5 text-center">{source.direction === "inbound" ? "ورودی" : source.direction === "outbound" ? "خروجی" : source.direction === "internal" ? "داخلی" : source.direction || "—"}</td>
               <td className="whitespace-nowrap px-2 py-1.5 text-center">{source.duration_ms == null ? "—" : fmt.duration(source.duration_ms)}</td>
               <td className="px-2 py-1.5 text-center">{source.status ? <StatusBadge status={source.status} /> : "—"}</td>
             </tr>

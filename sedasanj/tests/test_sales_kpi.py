@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.routers.kpi import (
+    GoalIn,
     KpiSettingsIn,
     _display_funnel,
     _funnel_rows,
@@ -276,3 +277,26 @@ def test_executive_dashboard_help_article_is_well_formed() -> None:
         assert f"<h2>{heading}</h2>" in module.ARTICLE_BODY
     safe_html, _ = sanitize_help_html(module.ARTICLE_BODY)
     assert safe_html == module.ARTICLE_BODY
+
+
+def test_kpi_settings_reject_hot_threshold_below_probable_threshold() -> None:
+    with pytest.raises(ValidationError):
+        KpiSettingsIn(
+            follow_up_sla_hours=24,
+            minimum_sample_size=5,
+            probable_confidence_threshold=0.8,
+            hot_opportunity_threshold=0.5,
+            taxonomy_version=1,
+            funnel_stages=["effective", "qualified", "won", "lost"],
+            objection_taxonomy=["price"],
+        )
+
+
+def test_kpi_goal_target_must_be_a_percentage_or_score() -> None:
+    window = {
+        "valid_from": datetime(2026, 1, 1, tzinfo=UTC),
+        "valid_to": datetime(2026, 12, 1, tzinfo=UTC),
+    }
+    assert GoalIn(metric="quality_score", target_value=85, **window).target_value == 85
+    with pytest.raises(ValidationError):
+        GoalIn(metric="conversion_rate", target_value=120, **window)

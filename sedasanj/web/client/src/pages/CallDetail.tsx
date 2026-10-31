@@ -1172,7 +1172,7 @@ export default function CallDetailPage() {
       </div>
       ) : null}
 
-      {hasAudioAnalysis && isAnsweredCall ? <OperatorCoachSection callId={call.id} canRegenerate={canEditTasks} /> : null}
+      {hasAudioAnalysis && isAnsweredCall ? <OperatorCoachSection callId={call.id} canRegenerate={canEditTasks} internal={call.direction === "internal"} /> : null}
 
       {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
@@ -1445,7 +1445,7 @@ export default function CallDetailPage() {
           ) : (
             <div className="max-h-[680px] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:p-4 lg:min-h-0 lg:max-h-none lg:flex-1">
               {conversationTurns.map((utterance, index) => {
-                const caller = speakerLabels[utterance.channel] === "مشتری" || speakerLabels[utterance.channel] === "گوینده ۱";
+                const caller = speakerLabels[utterance.channel] === "مشتری" || speakerLabels[utterance.channel] === "گوینده ۱" || speakerLabels[utterance.channel] === "همکار تماس‌گیرنده";
                 const speaker = speakerLabels[utterance.channel] ?? `کانال ${fmt.int(utterance.channel + 1)}`;
                 const turnId = `${utterance.channel}-${utterance.t_start_ms}-${index}`;
                 const messageDate = new Date(Date.parse(call.started_at) + utterance.t_start_ms).toISOString();

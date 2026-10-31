@@ -92,6 +92,9 @@ async def score_call(tenant_id: UUID, call_id: UUID, analysis_run_id: UUID) -> s
         transcript = await session.get(Transcript, call_id)
         if call is None or run is None or transcript is None:
             return "ineligible"
+        if call.direction == "internal":
+            # Customer-handling criteria do not apply to a call between two colleagues.
+            return "ineligible"
         assignments = (
             await session.execute(
                 select(CallOperatorAssignment, User)

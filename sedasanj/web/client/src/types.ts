@@ -438,6 +438,7 @@ export interface KpiDashboard {
     minimum_sample_size: number;
     operator_team_comparison_visible: boolean;
   };
+  internal_calls?: { total: number; answered: number; avg_duration_seconds: number; included_in_kpi: boolean };
   dashboard_widgets: string[];
   trend: Array<{
     date: string;

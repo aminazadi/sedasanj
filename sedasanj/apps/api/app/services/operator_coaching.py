@@ -35,7 +35,7 @@ from app.models import (
     Utterance,
 )
 from app.schemas import COACH_DIMENSION_KEYS, CoachDimension, CoachResult
-from app.services import knowledge, queue
+from app.services import extensions, knowledge, queue
 from app.services.operator_scope import number_matches
 from app.services.operator_scoring import default_score_criteria
 from app.services.organization_memory import append_untrusted_context
@@ -88,6 +88,53 @@ lists empty.
 """.strip()
 
 
+INTERNAL_CALL_PROMPT = """
+این تماس داخلی بین دو همکار سازمان است، نه تماس با مشتری. طرف مقابل مشتری نیست؛ هیچ
+فروش، رسیدگی به شکایت یا مدیریت اعتراض مشتری را ارزیابی یا پیشنهاد نکن. فقط کیفیت همکاری با
+همکار را مربیگری کن: روشن و کامل بودن درخواست یا اطلاع‌رسانی، سرعت و دقت پاسخ، لحن
+حرفه‌ای و محترمانه نسبت به همکار، تحویل‌دادن مناسب کار (handoff)، توافق روی گام بعدی و
+مسئول و زمان آن، و پیگیری قول‌ها. پیشنهادها باید دربارهٔ ارتباط با همکار باشند و
+عبارت‌هایی مثل «مشتری» یا «فروش» نباید در آن‌ها بیایند مگر موضوع تماس مشتری خاصی باشد.
+""".strip()
+
+INTERNAL_CALL_DIMENSIONS: list[dict[str, Any]] = [
+    {
+        "key": f"internal_{key}",
+        "label_fa": label,
+        "description": description,
+        "weight": None,
+        "levels": [],
+    }
+    for key, label, description in (
+        ("collaboration", "همکاری", "همراهی و آمادگی برای کمک به همکار"),
+        ("request_clarity", "وضوح درخواست", "روشن و کامل بودن درخواست یا اطلاع‌رسانی"),
+        ("responsiveness", "سرعت و دقت پاسخ", "پاسخ سریع، دقیق و مرتبط به نیاز همکار"),
+        ("professional_tone", "لحن حرفه‌ای", "احترام و لحن مناسب میان همکاران"),
+        ("follow_through", "تحویل و پیگیری", "توافق روی گام بعدی، مسئول و زمان، و پیگیری قول‌ها"),
+    )
+]
+
+
+def internal_call_context(
+    caller: tuple[str | None, str | None], callee: tuple[str | None, str | None]
+) -> str:
+    def describe(party: tuple[str | None, str | None]) -> str:
+        extension, name = party
+        parts = [name, f"داخلی {extension}" if extension else None]
+        return " / ".join(item for item in parts if item) or "نامشخص"
+
+    return "\n".join(
+        [
+            "## Internal call context",
+            "- This is an internal call between two colleagues, not a customer call.",
+            f"- caller colleague: {describe(caller)}",
+            f"- answering colleague: {describe(callee)}",
+            "- Coach collaboration with the colleague (request clarity, response speed, peer tone, "
+            "handoff, follow-through); do not coach customer handling.",
+        ]
+    )
+
+
 def rubric_dimensions(criteria: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Preserve organization criteria and stable keys across rubric edits and reordering."""
     return [
@@ -129,6 +176,10 @@ def prompt_fingerprint(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
 
+INTERNAL_CALLER_LABEL = "همکار تماس‌گیرنده"
+INTERNAL_CALLEE_LABEL = "همکار پاسخ‌دهنده"
+
+
 def speaker_labels(direction: str | None, speaker_mode: str | None) -> dict[int, str]:
     """Channel to speaker mapping; mirrors the labels shown on the call detail page."""
     if (speaker_mode or "").startswith("mono"):
@@ -137,6 +188,8 @@ def speaker_labels(direction: str | None, speaker_mode: str | None) -> dict[int,
         return {0: "مشتری", 1: "اپراتور"}
     if direction == "outbound":
         return {0: "اپراتور", 1: "مشتری"}
+    if direction == "internal":
+        return {0: INTERNAL_CALLER_LABEL, 1: INTERNAL_CALLEE_LABEL}
     return {0: "کانال ۱", 1: "کانال ۲"}
 
 
@@ -158,7 +211,16 @@ def format_transcript(utterances: list[Any], labels: dict[int, str]) -> tuple[st
         label = labels.get(channel, f"کانال {channel + 1}")
         lines.append(f"[نوبت {index} | {seconds // 60:02d}:{seconds % 60:02d}] {label}: {content}")
     operator_spoke = any(
-        labels.get(channel, "") in {"اپراتور", "گوینده ۱", "گوینده ۲", "کانال ۱", "کانال ۲"}
+        labels.get(channel, "")
+        in {
+            "اپراتور",
+            "گوینده ۱",
+            "گوینده ۲",
+            "کانال ۱",
+            "کانال ۲",
+            INTERNAL_CALLER_LABEL,
+            INTERNAL_CALLEE_LABEL,
+        }
         for channel, _, _ in turns
     )
     return "\n".join(lines), operator_spoke
@@ -342,13 +404,18 @@ async def _history(
     call_id: UUID,
     query_vector: list[float] | None,
     limit: int,
+    internal: bool = False,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, int]], int]:
+    # Customer and colleague coachings never share history, so patterns stay meaningful.
     base = (
         "SELECT id, created_at, result FROM operator_call_coachings "
         "WHERE tenant_id = :tenant_id AND operator_id = :operator_id AND call_id <> :call_id "
-        "AND status = 'succeeded' AND result IS NOT NULL"
+        "AND status = 'succeeded' AND result IS NOT NULL "
+        "AND (call_id IN (SELECT id FROM calls WHERE tenant_id = :tenant_id "
+        "AND direction = 'internal')) = :internal"
     )
     params: dict[str, Any] = {
+        "internal": internal,
         "tenant_id": tenant_id,
         "operator_id": operator_id,
         "call_id": call_id,
@@ -398,6 +465,7 @@ def _user_message(
     operator_label: str,
     transcript_text: str,
     tasks: list[str],
+    internal_context: str | None = None,
 ) -> str:
     sentiment = insight.sentiment if insight else None
     lines = [
@@ -408,6 +476,7 @@ def _user_message(
         f"- agent_extension: {call.agent_extension or 'unknown'}",
         f"- campaign/queue: {call.campaign_id or 'none'}",
         "",
+        *([internal_context, ""] if internal_context else []),
         "## Existing analysis of this call (reference, may contain errors)",
         f"- summary: {(insight.summary if insight else '') or 'n/a'}",
         f"- overall_sentiment: {sentiment or 'n/a'}",
@@ -510,10 +579,21 @@ async def coach_call(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        dimensions = rubric_dimensions(
-            list(rubric.criteria) if rubric is not None else default_score_criteria()
-        )
+        is_internal = call.direction == "internal"
+        internal_context: str | None = None
+        if is_internal:
+            peers = await extensions.peer_labels(
+                session, tenant_id, call.caller_number, call.dialed_number
+            )
+            internal_context = internal_call_context(peers["caller"], peers["callee"])
+            dimensions = INTERNAL_CALL_DIMENSIONS
+        else:
+            dimensions = rubric_dimensions(
+                list(rubric.criteria) if rubric is not None else default_score_criteria()
+            )
         base_prompt = await effective_coach_prompt(session)
+        if is_internal:
+            base_prompt = f"{base_prompt}\n\n{INTERNAL_CALL_PROMPT}"
         runtime = await resolve_provider_settings(session, capability="coach")
         history_limit = int(models["coach_history_limit"])
         task_titles = [str(item) for item in (insight.action_items or [])] if insight else []
@@ -523,6 +603,7 @@ async def coach_call(
             operator_label=operator_label,
             transcript_text=transcript_text,
             tasks=task_titles[:10],
+            internal_context=internal_context,
         )
         embed_text = build_embed_text(
             insight.summary if insight else None,
@@ -550,6 +631,7 @@ async def coach_call(
                     call_id=call_id,
                     query_vector=query_vector,
                     limit=history_limit,
+                    internal=is_internal,
                 )
             history_text = format_history(rows, patterns, total)
         system = append_untrusted_context(

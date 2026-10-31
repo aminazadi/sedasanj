@@ -286,6 +286,10 @@ class Call(Base):
             name="calls_call_type_check",
         ),
         CheckConstraint(
+            "direction IS NULL OR direction IN ('inbound','outbound','internal')",
+            name="calls_direction_check",
+        ),
+        CheckConstraint(
             "progress_pct IS NULL OR (progress_pct >= 0 AND progress_pct <= 100)",
             name="calls_progress_pct_check",
         ),

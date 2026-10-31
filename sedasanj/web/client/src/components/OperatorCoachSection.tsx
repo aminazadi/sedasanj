@@ -342,7 +342,7 @@ function CoachBody({ coach }: { coach: OperatorCoach }) {
   );
 }
 
-export default function OperatorCoachSection({ callId, canRegenerate }: { callId: string; canRegenerate: boolean }) {
+export default function OperatorCoachSection({ callId, canRegenerate, internal = false }: { callId: string; canRegenerate: boolean; internal?: boolean }) {
   const { session } = useAuth();
   const resource = useResource<OperatorCoach | null>(
     (signal) => request<OperatorCoach | null>(`/v1/calls/${callId}/operator-coach`, { signal }),
@@ -375,14 +375,16 @@ export default function OperatorCoachSection({ callId, canRegenerate }: { callId
 
   const showOperator = isOrgAdmin(session?.role) && coach?.operator_label && coach.operator_label !== "—";
   const description = showOperator
-    ? `پیشنهادهای دقیق برای بهتر شدن ارتباط با مشتری — ${coach?.operator_label}`
-    : "پیشنهادهای دقیق و مبتنی بر مکالمه برای بهتر شدن ارتباط اپراتور با مشتری";
+    ? `${internal ? "پیشنهادهای دقیق برای بهتر شدن همکاری با همکار" : "پیشنهادهای دقیق برای بهتر شدن ارتباط با مشتری"} — ${coach?.operator_label}`
+    : internal
+      ? "پیشنهادهای دقیق و مبتنی بر مکالمه برای بهتر شدن همکاری و ارتباط با همکار"
+      : "پیشنهادهای دقیق و مبتنی بر مکالمه برای بهتر شدن ارتباط اپراتور با مشتری";
 
   return (
     <section className="card overflow-visible" aria-live="polite">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-bold text-slate-800">مربی ارتباط با مشتری</h2>
+          <h2 className="font-bold text-slate-800">{internal ? "مربی همکاری با همکار" : "مربی ارتباط با مشتری"}</h2>
           <p className="mt-1 text-xs text-slate-400">{description}</p>
         </div>
         {canRegenerate && coach && !pending ? (

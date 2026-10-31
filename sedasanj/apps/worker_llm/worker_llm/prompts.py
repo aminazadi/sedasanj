@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+INTERNAL_CALL_NOTICE = (
+    "[یادداشت سامانه: این تماس داخلی بین دو همکار سازمان است، نه تماس مشتری. "
+    "[caller] همکار تماس‌گیرنده و [agent] همکار پاسخ‌دهنده است؛ هیچ‌کدام مشتری نیستند. "
+    "خلاصه را از دید هماهنگی و درخواست کاری بین همکاران بنویس، intent را other بگذار، "
+    "فیلدهای sales را unknown/خالی نگه دار و action_items را فقط برای کارهای داخلی بنویس.]"
+)
+
+
+def with_call_context(text: str, direction: str | None) -> str:
+    """Prefix the transcript with a notice when the call is between two colleagues."""
+    if direction == "internal":
+        return f"{INTERNAL_CALL_NOTICE}\n\n{text}"
+    return text
+
+
 REPAIR_SYSTEM_PROMPT = """تو فقط اصلاح کننده JSON هستی.
 محتوای تحلیل را تغییر نده و هیچ توضیحی ننویس.
 
