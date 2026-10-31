@@ -3,6 +3,8 @@
 ## 1.5.2 — AMINAZADI
 
 - Documented the GPLv3+ license, third-party notices, signing-key requirement, and compatible source-protection practices.
+- Fixed answered-call uploads when Asterisk removes hyphens from the filename passed to the MixMonitor post-record hook while preserving them in the recorded channel filenames.
+- Added end-to-end coverage for resolving the exact normalized channel filenames before stereo merge.
 
 ## 1.5.1 — AMINAZADI
 

@@ -82,6 +82,21 @@ function run(string $root, string $ini, string $uid, bool $corruptLeg): array
 	return [$code, implode("\n", $out), $dir, $name];
 }
 
+function runNormalizedFilename(string $root, string $ini, string $uid): array
+{
+    $dir = "$root/monitor/2026/10/29/";
+    @mkdir($dir, 0755, true);
+    $name = "out1002-1001-20261029-100000-$uid";
+    leg("{$dir}recv_out-1002-1001-20261029-100000-$uid.wav");
+    leg("{$dir}trans_out-1002-1001-20261029-100000-$uid.wav");
+    leg("{$dir}$name.wav");
+    putenv("ARU_CONFIG=$ini");
+    $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/../engine/bin/mix-stereo.php')
+        . ' ' . implode(' ', array_map('escapeshellarg', [$dir, $name, $uid, '1001', '1002', '', '1002', '']));
+    exec($cmd . ' 2>&1', $out, $code);
+    return [$code, implode("\n", $out), $dir, $name];
+}
+
 // A. healthy legs -> stereo upload, nothing left behind.
 $ini = writeConfig($root, $port, '200/-');
 [$code, $out, $dir, $name] = run($root, $ini, '1730000000.1', false);
@@ -98,6 +113,12 @@ if ($code !== 0) { $fail("B: exit $code: $out"); }
 if (strpos(file_get_contents("$root/log/uploader.log"), 'SS-HOOK-1003') === false) { $fail('B: merge failure not logged with SS-HOOK-1003'); }
 if (count(array_filter(explode("\n", (string) @file_get_contents("$root/hits.log")))) !== 1) { $fail('B: mono fallback was not uploaded'); }
 foreach (glob("{$dir}*.part") ?: [] as $p) { $fail('B: .part left behind'); }
+
+// B2. Asterisk filename normalization removes hyphens only from the hook argument.
+@unlink("$root/hits.log");
+[$code, $out] = runNormalizedFilename($root, $ini, '1730000000.22');
+if ($code !== 0) { $fail("B2: normalized filename failed: $out"); }
+if (count(array_filter(explode("\n", (string) @file_get_contents("$root/hits.log")))) !== 1) { $fail('B2: normalized filename was not uploaded'); }
 
 // C. rejected key -> recording is kept and paused, never moved to failed/.
 $ini = writeConfig($root, $port, '401/-');

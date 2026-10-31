@@ -3,6 +3,7 @@
 ## 2026-10-31 — AMINAZADI
 
 - Documented FreePBX module licensing, third-party attribution, release-signing status, and GPL-compatible protection measures.
+- Fixed FreePBX module recording hooks failing to locate answered-call audio legs when Asterisk normalizes hyphens in the post-record filename; added regression coverage.
 
 ## 2026-10-30 — AMINAZADI
 

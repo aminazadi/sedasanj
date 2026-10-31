@@ -89,8 +89,24 @@ function mixstereo_main(array $argv): int
     }
 
     $base = "{$dir}{$name}.wav";
-    $in = "{$dir}recv_{$name}.wav";   // caller leg
-    $out = "{$dir}trans_{$name}.wav"; // agent leg
+    // Some Asterisk/FreePBX paths normalize punctuation in the MixMonitor
+    // post-record arguments differently from the filenames already created.
+    // Resolve only exact normalized basenames, never a loose prefix match.
+    $resolveLeg = static function (string $prefix) use ($dir, $name): string {
+        $expected = $prefix . $name . '.wav';
+        if (is_file($dir . $expected)) {
+            return $dir . $expected;
+        }
+        $normalized = str_replace('-', '', $expected);
+        foreach (glob($dir . $prefix . '*.wav') ?: [] as $candidate) {
+            if (str_replace('-', '', basename($candidate)) === $normalized) {
+                return $candidate;
+            }
+        }
+        return $dir . $expected;
+    };
+    $in = $resolveLeg('recv_');
+    $out = $resolveLeg('trans_');
     $destination = "{$dir}stereo_{$name}.wav";
 
     // The merged file is built as <name>.part and renamed into place only after the metadata
