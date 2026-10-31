@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Made the assistant's vector index cover organization data. Calls without a summary now get transcript chunks, chunk sets are embedded before the previous set is replaced, the chunk cap is 10000, and a new `org_knowledge_chunks` table (migration `0076_org_knowledge_chunks`) indexes organization memories, sales insights, CRM outcomes, follow-up tasks, KPI goals, teams, contacts and scheduled reports with `tenant`/`call`/`admin` access levels. New assistant tool `search_knowledge`; `search_transcripts` now always combines exact-word, transcript-vector and summary-vector hits and returns `semantic_search: "unavailable"` instead of silently dropping vector failures. The backfill tick runs vector indexing before the graph so failing graph rows no longer starve it; admin knowledge coverage now reports `org_sources`. Help article via migration `0077_assistant_knowledge_help_content`. Tests in `tests/test_org_knowledge.py` and `tests/test_knowledge_chunks.py`.
+
 - Combined prompt-defined coach dimensions with the active organization operator-scoring rubric (titles, descriptions, weights and level descriptions), shared the scoring defaults when no rubric exists, and preserved omitted rubric dimensions without fabricated scores. Existing reports require coach regeneration.
 
 - Moved the smart summary and its keywords above the operator coach section on the call detail page, preserving summary loading and empty states.

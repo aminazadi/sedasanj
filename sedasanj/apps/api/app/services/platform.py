@@ -350,6 +350,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
                 "search_calls",
                 "get_call_details",
                 "search_transcripts",
+                "search_knowledge",
                 "get_call_analysis",
                 "get_call_analytics",
                 "get_operator_performance",

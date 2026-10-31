@@ -74,7 +74,12 @@ async def invalidate_embeddings() -> int:
     updated = 0
     for tenant_id in await operational_tenant_ids():
         async with session_scope(tenant_id) as session:
-            for table in ("call_knowledge", "transcript_chunks", "operator_call_coachings"):
+            for table in (
+                "call_knowledge",
+                "transcript_chunks",
+                "operator_call_coachings",
+                "org_knowledge_chunks",
+            ):
                 result = await session.execute(
                     text(
                         f"UPDATE {table} SET embedding = NULL, vector_status = 'pending', "
@@ -122,8 +127,13 @@ async def _index_graph(
 
 async def index_call(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> None:
     call = await session.get(Call, call_id)
+    if call is None or call.tenant_id != tenant_id:
+        return
     insight = await session.get(CallInsight, call_id)
-    if call is None or insight is None or call.tenant_id != tenant_id or not insight.summary:
+    if insight is None or not insight.summary:
+        # A call without a summary has no call_knowledge row, but its transcript is still
+        # searchable evidence, so it is chunked independently of the summary vector.
+        await _index_transcript_chunks(session, call, tenant_id)
         return
     operator_id = (
         await session.execute(
@@ -259,7 +269,7 @@ async def retry_graph(session: AsyncSession, tenant_id: UUID, call_id: UUID) -> 
     return graph_status == "ready"
 
 
-MAX_TRANSCRIPT_CHUNKS = 2000
+MAX_TRANSCRIPT_CHUNKS = 10000
 
 
 def _chunks(content: str, size: int = 1200, overlap: int = 200) -> list[str]:
@@ -296,6 +306,22 @@ async def _record_chunk_failure(
     )
 
 
+async def _transcript_chunks_complete(
+    session: AsyncSession, call_id: UUID, tenant_id: UUID
+) -> bool:
+    """True when the call already has a non-empty chunk set whose every chunk is embedded."""
+    value = (
+        await session.execute(
+            text(
+                "SELECT bool_and(vector_status = 'ready' AND embedding IS NOT NULL) "
+                "FROM transcript_chunks WHERE call_id = :call_id AND tenant_id = :tenant_id"
+            ),
+            {"call_id": call_id, "tenant_id": tenant_id},
+        )
+    ).scalar_one_or_none()
+    return value is True
+
+
 async def _index_transcript_chunks(session: AsyncSession, call: Call, tenant_id: UUID) -> None:
     transcript = await session.get(Transcript, call.id)
     if transcript is None:
@@ -304,13 +330,27 @@ async def _index_transcript_chunks(session: AsyncSession, call: Call, tenant_id:
     chunks = _chunks(content)
     if not chunks:
         return
+    # Embed everything first so a provider failure never leaves a previously complete
+    # chunk set half deleted.
+    embedded: list[tuple[list[float], str] | None] = []
+    failed = 0
+    last_error = ""
+    for chunk in chunks:
+        try:
+            embedded.append(await embed(chunk))
+        except Exception as exc:
+            embedded.append(None)
+            failed += 1
+            last_error = str(exc)[:500]
+    if failed and await _transcript_chunks_complete(session, call.id, tenant_id):
+        await _record_chunk_failure(session, tenant_id, call.id, failed, len(chunks), last_error)
+        return
     await session.execute(
         text("DELETE FROM transcript_chunks WHERE call_id = :call_id AND tenant_id = :tenant_id"),
         {"call_id": call.id, "tenant_id": tenant_id},
     )
     failed = 0
-    last_error = ""
-    for ordinal, chunk in enumerate(chunks):
+    for ordinal, (chunk, result) in enumerate(zip(chunks, embedded, strict=True)):
         digest = hashlib.sha256(chunk.encode()).hexdigest()
         base = {
             "tenant_id": tenant_id,
@@ -321,7 +361,9 @@ async def _index_transcript_chunks(session: AsyncSession, call: Call, tenant_id:
             "revision_id": transcript.active_revision_id,
         }
         try:
-            vector, model = await embed(chunk)
+            if result is None:
+                raise RuntimeError(last_error or "embedding failed")
+            vector, model = result
             # A savepoint keeps one bad row (for example a wrong dimension) from aborting
             # the surrounding analysis transaction.
             async with session.begin_nested():
@@ -515,6 +557,28 @@ def expected_embedding(models: dict[str, str]) -> tuple[str, str]:
     return model, _embedding_provider(model)
 
 
+# Calls whose transcript still needs chunk vectors although they have no usable summary
+# (the summary-driven backfill query never reaches them).
+_TRANSCRIPT_ONLY_BACKFILL_SQL = (
+    "SELECT tr.call_id FROM transcripts tr "
+    "JOIN calls c ON c.id = tr.call_id "
+    "LEFT JOIN call_insights i ON i.call_id = tr.call_id "
+    "WHERE tr.tenant_id = :tenant_id AND i.summary IS NULL "
+    "AND (NOT EXISTS (SELECT 1 FROM transcript_chunks t "
+    "WHERE t.call_id = tr.call_id AND t.tenant_id = tr.tenant_id) "
+    "OR EXISTS (SELECT 1 FROM transcript_chunks t "
+    "WHERE t.call_id = tr.call_id AND t.tenant_id = tr.tenant_id "
+    "AND (t.vector_status <> 'ready' "
+    "OR t.embedding_model IS DISTINCT FROM :model "
+    "OR t.embedding_provider IS DISTINCT FROM :provider "
+    "OR t.source_revision_id IS DISTINCT FROM tr.active_revision_id))) "
+    "AND NOT EXISTS (SELECT 1 FROM transcript_chunks t "
+    "WHERE t.call_id = tr.call_id AND t.tenant_id = tr.tenant_id "
+    "AND t.next_retry_at > now()) "
+    "ORDER BY c.created_at DESC LIMIT 1"
+)
+
+
 async def backfill_next() -> str:
     async with session_scope(None, staff=True) as control_session:
         models = await effective_models(control_session)
@@ -551,6 +615,17 @@ async def backfill_next() -> str:
                     },
                 )
             ).scalar_one_or_none()
+            if call_id is None:
+                call_id = (
+                    await session.execute(
+                        text(_TRANSCRIPT_ONLY_BACKFILL_SQL),
+                        {
+                            "tenant_id": tenant_id,
+                            "model": expected_model,
+                            "provider": expected_provider,
+                        },
+                    )
+                ).scalar_one_or_none()
             if call_id is not None:
                 await index_call(session, tenant_id, UUID(str(call_id)))
                 return f"indexed:{tenant_id}:{call_id}"
@@ -581,6 +656,15 @@ async def backfill_graph_next() -> str:
 async def graph_context(session: AsyncSession, call_ids: list[UUID]) -> str:
     if not call_ids:
         return ""
+    # Apache AGE has no row-level security: keep only ids the tenant-scoped session can see.
+    visible = (
+        await session.execute(
+            text("SELECT id FROM calls WHERE id = ANY(:ids)"), {"ids": list(call_ids)}
+        )
+    ).scalars()
+    call_ids = [UUID(str(call_id)) for call_id in visible]
+    if not call_ids:
+        return ""
     values = ", ".join(_cypher_value(call_id) for call_id in call_ids)
     query = (
         "MATCH (c:Call)-[r]->(n) WHERE c.id IN ["
@@ -597,16 +681,10 @@ async def graph_context(session: AsyncSession, call_ids: list[UUID]) -> str:
 
 # Tenant data that is never embedded today. Reported so the gap stays visible until each
 # source type gets a builder. Names are fixed constants, never user input.
+# Sources the assistant reads only through exact SQL tools. Everything else is indexed by
+# `org_knowledge.SOURCES`; chat history is deliberately not shared across users.
 UNINDEXED_SOURCES: tuple[tuple[str, str], ...] = (
-    ("sales_insights", "sales_insights"),
-    ("crm_outcomes", "crm_outcomes"),
     ("operator_scores", "operator_call_scores"),
-    ("follow_up_tasks", "follow_up_tasks"),
-    ("kpi_goals", "kpi_goals"),
-    ("teams", "teams"),
-    ("contacts", "contacts"),
-    ("organization_memories", "organization_memories"),
-    ("scheduled_report_runs", "scheduled_report_runs"),
     ("chat_messages", "chat_messages"),
 )
 

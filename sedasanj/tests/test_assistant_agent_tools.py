@@ -98,7 +98,8 @@ async def test_agent_rejects_disabled_tool() -> None:
 
 def test_tool_schemas_never_expose_security_scope() -> None:
     schemas = assistant_tools.schemas()
-    assert len(schemas) == 9
+    assert len(schemas) == 10
+    assert "search_knowledge" in {item["function"]["name"] for item in schemas}
     serialized = json.dumps(schemas)
     assert "tenant_id" not in serialized
     assert "user_id" not in serialized

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -30,7 +31,9 @@ from app.models import (
     Transcript,
     User,
 )
-from app.services import assistant_exports, knowledge, operator_scope
+from app.services import assistant_exports, knowledge, operator_scope, org_knowledge
+
+logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 25
 
@@ -74,6 +77,12 @@ class CallIdsArguments(ToolArguments):
 class SearchTranscriptsArguments(WindowArguments):
     query: str = Field(min_length=2, max_length=500)
     call_id: UUID | None = None
+    limit: int = Field(default=8, ge=1, le=MAX_RESULTS)
+
+
+class SearchKnowledgeArguments(ToolArguments):
+    query: str = Field(min_length=2, max_length=500)
+    source_types: list[str] | None = Field(default=None, max_length=10)
     limit: int = Field(default=8, ge=1, le=MAX_RESULTS)
 
 
@@ -391,36 +400,88 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
         }
         for call_id, full_text, started_at in rows
     ]
-    if len(items) < args.limit:
-        try:
-            semantic = await knowledge.vector_transcript_context(
+    semantic_status = "ok"
+    operator_filter = ctx.principal.id if operator_scope.is_operator(ctx.principal) else None
+    call_filter = args.call_id or ctx.bound_call_id
+    window_end = end + timedelta(microseconds=1)
+    semantic: list[dict[str, Any]] = []
+    try:
+        # Hybrid search: vectors always run next to the lexical match, because a lexical
+        # hit says nothing about semantically related calls. A savepoint keeps a failed
+        # vector query from aborting the tool transaction.
+        async with ctx.session.begin_nested():
+            for kind, retrieve in (
+                ("semantic_transcript", knowledge.vector_transcript_context),
+                ("semantic_summary", knowledge.vector_call_context),
+            ):
+                for hit in await retrieve(
+                    ctx.session,
+                    ctx.principal.tenant_id,
+                    args.query,
+                    args.limit,
+                    operator_filter,
+                    call_filter,
+                    from_date=start,
+                    to_date=window_end,
+                ):
+                    semantic.append({**hit, "match": kind})
+    except Exception:
+        logger.warning("assistant semantic search failed", exc_info=True)
+        semantic = []
+        semantic_status = "unavailable"
+    known = {item["call_id"] for item in items}
+    for row in semantic:
+        call_id = str(row["call_id"])
+        if call_id in known:
+            continue
+        known.add(call_id)
+        items.append(
+            {
+                "call_id": call_id,
+                "started_at": row["started_at"].isoformat(),
+                "snippet": str(row.get("content") or row.get("summary") or "")[:500],
+                "match": row["match"],
+                "score": row.get("score"),
+            }
+        )
+        if len(items) >= args.limit:
+            break
+    result: dict[str, Any] = {"version": 1, "count": len(items), "items": items}
+    if semantic_status != "ok":
+        result["semantic_search"] = semantic_status
+        result["notice"] = (
+            "Semantic search is unavailable; only exact-word matches are shown. "
+            "Tell the user the result may be incomplete."
+        )
+    return result
+
+
+async def _search_knowledge(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
+    args = SearchKnowledgeArguments.model_validate(raw)
+    unknown = [item for item in args.source_types or [] if item not in org_knowledge.SOURCE_BY_TYPE]
+    if unknown:
+        raise ApiError(
+            "invalid_request",
+            f"unknown source_types {unknown}; use {sorted(org_knowledge.SOURCE_BY_TYPE)}",
+        )
+    try:
+        async with ctx.session.begin_nested():
+            items = await org_knowledge.search(
                 ctx.session,
-                ctx.principal.tenant_id,
+                ctx.principal,
                 args.query,
-                args.limit,
-                ctx.principal.id if operator_scope.is_operator(ctx.principal) else None,
-                args.call_id or ctx.bound_call_id,
-                from_date=start,
-                to_date=end + timedelta(microseconds=1),
+                source_types=args.source_types,
+                limit=args.limit,
             )
-        except Exception:
-            semantic = []
-        known = {item["call_id"] for item in items}
-        for row in semantic:
-            call_id = str(row["call_id"])
-            if call_id in known:
-                continue
-            items.append(
-                {
-                    "call_id": call_id,
-                    "started_at": row["started_at"].isoformat(),
-                    "snippet": str(row["content"])[:500],
-                    "match": "semantic_transcript",
-                    "score": row.get("score"),
-                }
-            )
-            if len(items) >= args.limit:
-                break
+    except Exception:
+        logger.warning("assistant knowledge search failed", exc_info=True)
+        return {
+            "version": 1,
+            "count": 0,
+            "items": [],
+            "semantic_search": "unavailable",
+            "notice": "Knowledge search is unavailable; the answer may be incomplete.",
+        }
     return {"version": 1, "count": len(items), "items": items}
 
 
@@ -902,6 +963,18 @@ TOOLS = (
         "Search visible call transcripts and semantic summaries.",
         SearchTranscriptsArguments,
         _search_transcripts,
+        120,
+    ),
+    ToolDefinition(
+        "search_knowledge",
+        "جست‌وجوی دانش سازمان",
+        "Semantic search over organization data other than call text: organization memories, "
+        "sales insights, CRM outcomes, follow-up tasks, KPI goals, teams, contacts (administrators "
+        "only), scheduled reports and operator coaching. source_types is one of "
+        + json.dumps(sorted(org_knowledge.SOURCE_BY_TYPE))
+        + ". Results are limited to what the current user may see.",
+        SearchKnowledgeArguments,
+        _search_knowledge,
         120,
     ),
     ToolDefinition(

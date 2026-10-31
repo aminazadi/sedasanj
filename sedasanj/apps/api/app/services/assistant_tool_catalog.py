@@ -17,6 +17,10 @@ KEYWORDS = {
     "search_calls": "تماس تلفن پیدا جستجو search calls phone",
     "get_call_details": "تماس جزئیات مشخصات details metadata",
     "search_transcripts": "متن مکالمه رونوشت جستجو transcript conversation text search",
+    "search_knowledge": (
+        "دانش سازمان حافظه مخاطب وظیفه پیگیری هدف تیم گزارش کوچینگ فروش "
+        "knowledge memory contact task goal team report coaching crm sales"
+    ),
     "get_call_analysis": "تحلیل خلاصه احساس فروش analysis summary sentiment sales crm",
     "get_call_analytics": "آمار تعداد مجموع تماس statistics analytics count",
     "get_operator_performance": "اپراتور عملکرد امتیاز operator performance score",

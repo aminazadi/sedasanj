@@ -67,9 +67,14 @@ def test_chunks_cover_long_transcripts_beyond_the_old_hundred_chunk_cap() -> Non
     assert " ".join(content.split()).endswith(chunks[-1])
 
 
-def test_chunks_are_still_bounded() -> None:
-    chunks = knowledge._chunks("ب" * 5_000_000)
-    assert len(chunks) == knowledge.MAX_TRANSCRIPT_CHUNKS
+def test_chunks_are_still_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(knowledge, "MAX_TRANSCRIPT_CHUNKS", 50)
+    chunks = knowledge._chunks("ب" * 500_000)
+    assert len(chunks) == 50
+
+
+def test_chunk_cap_is_far_above_a_two_hour_call() -> None:
+    assert knowledge.MAX_TRANSCRIPT_CHUNKS >= 10000
 
 
 @pytest.mark.asyncio
@@ -191,7 +196,7 @@ async def test_coverage_reports_every_source_and_unindexed_tables() -> None:
     assert result["transcript"]["stale"] == 1  # type: ignore[index]
     unindexed = result["unindexed_sources"]
     assert set(unindexed) == {name for name, _ in knowledge.UNINDEXED_SOURCES}  # type: ignore[arg-type]
-    assert "contacts" in unindexed  # type: ignore[operator]
+    assert "chat_messages" in unindexed  # type: ignore[operator]
     assert all("tenant_id = :tenant_id" in q for q in queries)
 
 
@@ -230,3 +235,96 @@ def test_expected_embedding_follows_provider() -> None:
     }
     assert knowledge.expected_embedding(direct) == ("ninerouter_direct:bge", "ninerouter_direct")
     assert knowledge.expected_embedding(native) == ("e5", "aiservice")
+
+
+@pytest.mark.asyncio
+async def test_failed_embedding_keeps_previous_complete_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call, transcript = _call_and_transcript("الف " * 1000)
+
+    class _CompleteSession(_Session):
+        async def execute(self, statement: object, params: dict[str, object] | None = None):
+            sql = str(statement)
+            self.statements.append((sql, params or {}))
+            if "bool_and" in sql:
+                return _Result(True)
+            return _Result()
+
+    session = _CompleteSession(transcript)
+
+    async def broken_embed(content: str) -> tuple[list[float], str]:
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(knowledge, "embed", broken_embed)
+
+    await knowledge._index_transcript_chunks(session, call, uuid4())  # type: ignore[arg-type]
+
+    sqls = [sql for sql, _ in session.statements]
+    assert not any(s.startswith("DELETE FROM transcript_chunks") for s in sqls)
+    assert any(s.startswith("UPDATE call_knowledge SET attempt_count") for s in sqls)
+
+
+@pytest.mark.asyncio
+async def test_call_without_summary_still_gets_transcript_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid4()
+    call = SimpleNamespace(id=uuid4(), tenant_id=tenant_id)
+    seen: list[object] = []
+
+    class _S:
+        async def get(self, model: object, key: object) -> object | None:
+            return call if model is knowledge.Call else None
+
+    async def fake_chunks(session: object, got_call: object, got_tenant: object) -> None:
+        seen.append(got_call)
+
+    monkeypatch.setattr(knowledge, "_index_transcript_chunks", fake_chunks)
+
+    await knowledge.index_call(_S(), tenant_id, call.id)  # type: ignore[arg-type]
+
+    assert seen == [call]
+
+
+@pytest.mark.asyncio
+async def test_backfill_also_selects_calls_without_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[str] = []
+    tenant_id = uuid4()
+    call_id = uuid4()
+
+    @asynccontextmanager
+    async def fake_scope(tid: object = None, **kwargs: object):
+        class _S:
+            async def execute(self, statement: object, params: object = None) -> _Result:
+                sql = str(statement)
+                captured.append(sql)
+                return _Result(call_id if "i.summary IS NULL" in sql else None)
+
+        yield _S()
+
+    async def fake_models(session: object) -> dict[str, str]:
+        return {
+            "embedding_provider": "aiservice",
+            "embedding_model": "m",
+            "ninerouter_embedding_model": "",
+        }
+
+    async def fake_tenants() -> list[object]:
+        return [tenant_id]
+
+    indexed: list[object] = []
+
+    async def fake_index(session: object, tid: object, cid: object) -> None:
+        indexed.append(cid)
+
+    monkeypatch.setattr(knowledge, "session_scope", fake_scope)
+    monkeypatch.setattr(knowledge, "effective_models", fake_models)
+    monkeypatch.setattr(knowledge, "operational_tenant_ids", fake_tenants)
+    monkeypatch.setattr(knowledge, "index_call", fake_index)
+
+    assert (await knowledge.backfill_next()).startswith("indexed:")
+    assert indexed == [call_id]
+    assert len(captured) == 2
