@@ -301,8 +301,9 @@ async def test_migration_roundtrip_rls_and_help(workspace):
     await connection.execute(
         text(
             "CREATE TABLE help_articles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slug "
-            "text UNIQUE, title text, summary text, body_html text, body_plain text, kind "
-            "text, status text, position int, published_at timestamptz)"
+            "varchar(120) UNIQUE, title varchar(250), summary text, body_html text, "
+            "body_plain text, kind varchar(16), status varchar(16), position int, "
+            "published_at timestamptz)"
         )
     )
     await connection.execute(
@@ -323,6 +324,18 @@ async def test_migration_roundtrip_rls_and_help(workspace):
 
     await connection.run_sync(lambda sync: migrate(sync, "upgrade"))
     await create(session, manager, calls[0].id)
+    article = (
+        await connection.execute(
+            text("SELECT title,summary,body_html,body_plain FROM help_articles WHERE slug=:slug"),
+            {"slug": module.ARTICLE_SLUG},
+        )
+    ).one()
+    assert article == (
+        module.ARTICLE_TITLE,
+        module.ARTICLE_TITLE,
+        module.ARTICLE_BODY,
+        module.ARTICLE_TITLE,
+    )
     assert await connection.scalar(text("SELECT count(*) FROM help_error_codes")) == 2
     flags = (
         await connection.execute(

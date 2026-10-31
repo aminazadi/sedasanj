@@ -86,11 +86,17 @@ def upgrade() -> None:
         sa.text(
             "INSERT INTO help_articles (slug,title,summary,body_html,body_plain,"
             "kind,status,position,"
-            "published_at) VALUES (:slug,:title,:title,:body,:title,"
+            "published_at) VALUES (:slug,:title,:summary,:body,:plain,"
             "'article','published',152,now()) "
             "ON CONFLICT (slug) DO NOTHING"
         ),
-        {"slug": ARTICLE_SLUG, "title": ARTICLE_TITLE, "body": ARTICLE_BODY},
+        {
+            "slug": ARTICLE_SLUG,
+            "title": ARTICLE_TITLE,
+            "summary": ARTICLE_TITLE,
+            "body": ARTICLE_BODY,
+            "plain": ARTICLE_TITLE,
+        },
     )
     for code in ("task_version_conflict", "task_assignee_invalid"):
         bind.execute(
