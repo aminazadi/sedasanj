@@ -2,12 +2,8 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { selectPosition } from "../lib/selectPosition";
 
-export interface SearchSelectOption {
-  value: string;
-  label: string;
-  /** Extra text matched by the search box but not displayed (e.g. an email). */
-  keywords?: string;
-}
+import { searchSelectOptions, type SearchSelectOption } from "../lib/searchSelectOptions";
+export type { SearchSelectOption } from "../lib/searchSelectOptions";
 
 interface Props {
   options: SearchSelectOption[];
@@ -15,6 +11,7 @@ interface Props {
   onChange: (value: string) => void;
   /** Label of the "nothing selected" entry; it is hidden when empty. */
   emptyLabel?: string;
+  allowEmpty?: boolean;
   searchPlaceholder?: string;
   ariaLabel: string;
   disabled?: boolean;
@@ -32,12 +29,8 @@ interface Props {
   };
 }
 
-function normalize(text: string): string {
-  return text.toLocaleLowerCase().replace(/ي/g, "ی").replace(/ك/g, "ک");
-}
-
 /** Dropdown with a search box; keyboard: arrows move, Enter selects, Escape closes. */
-export default function SearchSelect({ options, value, onChange, emptyLabel = "بدون انتخاب", searchPlaceholder = "جستجو…", ariaLabel, disabled, selectedLabel, onSearchChange, loading = false, error, onRetry, pagination }: Props) {
+export default function SearchSelect({ options, value, onChange, emptyLabel = "بدون انتخاب", allowEmpty = true, searchPlaceholder = "جستجو…", ariaLabel, disabled, selectedLabel, onSearchChange, loading = false, error, onRetry, pagination }: Props) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [active, setActive] = useState(0);
@@ -48,13 +41,9 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
   const [position, setPosition] = useState<ReturnType<typeof selectPosition> | null>(null);
   const listId = useId();
 
-  const visible = useMemo(() => {
-    const needle = normalize(term.trim());
-    const matches = needle && !onSearchChange
-      ? options.filter((option) => normalize(`${option.label} ${option.keywords ?? ""}`).includes(needle))
-      : options;
-    return emptyLabel && !needle ? [{ value: "", label: emptyLabel }, ...matches] : matches;
-  }, [options, term, emptyLabel, onSearchChange]);
+  const visible = useMemo(() => searchSelectOptions(options, term, {
+    remote: Boolean(onSearchChange), emptyLabel, allowEmpty,
+  }), [options, term, emptyLabel, allowEmpty, onSearchChange]);
 
   const selected = options.find((option) => option.value === value);
 
@@ -142,7 +131,11 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
           dir="rtl"
           className="fixed z-[10000] flex flex-col border border-[color:var(--line)] bg-[#F2F0EF] text-start shadow-lg"
           style={{ ...position, visibility: position ? "visible" : "hidden" }}
-          onKeyDown={(event) => { event.stopPropagation(); onKeyDown(event); }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if ((event.target as HTMLElement).closest("button") && event.key !== "Escape") return;
+            onKeyDown(event);
+          }}
         >
           <input
             ref={searchRef}

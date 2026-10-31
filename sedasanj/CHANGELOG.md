@@ -1,6 +1,6 @@
 ## 2026-11-01 — AMINAZADI
 
-- Replaced task call selection with the shared searchable dropdown, including server-side search and pagination, retained selection, retry feedback and native-dialog-safe menu rendering.
+- Replaced task call selection with the shared searchable dropdown, including server-side search and pagination, retained selection, retry feedback and native-dialog-safe menu rendering without a duplicated selection prompt.
 
 - Fixed the table row-count dropdown with an explicit clickable trigger and a portalled, keyboard-accessible menu that stays visible above clipped tables and near the bottom of the viewport.
 

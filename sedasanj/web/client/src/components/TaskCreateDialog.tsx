@@ -64,6 +64,7 @@ export default function TaskCreateDialog({ callId, onCreated, onCancel }: {
           setSelectedLabel(call ? `${call.caller_number ?? "—"} ← ${call.dialed_number ?? "—"} · ${fmt.dateTime(call.started_at)}` : "");
         }}
         emptyLabel="انتخاب تماس مشتری"
+        allowEmpty={false}
         searchPlaceholder="جست‌وجوی شماره یا عبارت تماس"
         onSearchChange={(term) => {
           if (term !== search || callsOffset !== 0) setLoading(true);
