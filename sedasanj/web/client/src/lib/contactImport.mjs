@@ -63,17 +63,7 @@ export async function importContacts(file, mode, dryRun, send, onProgress) {
     const body = new FormData();
     body.append('file', new Blob([header, ...batch.map(r => r.text)], { type: 'text/csv;charset=utf-8' }), 'contacts.csv');
     body.append('mode', mode); body.append('dry_run', String(dryRun));
-    let result;
-    for (;;) {
-      try { result = await send(body); break; }
-      catch (error) {
-        if (error.status !== 429) throw error;
-        for (let seconds = 60; seconds > 0; seconds--) {
-          onProgress(Math.min(99, Math.floor(progress * 100)), `مکث برای ادامهٔ ارسال: ${seconds} ثانیه`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-    }
+    const result = await send(body);
     for (const key of result.accepted_numbers) seen.add(key);
     for (const key of ['created', 'updated', 'skipped']) report[key] += result[key];
     report.total_rows += result.total_rows;

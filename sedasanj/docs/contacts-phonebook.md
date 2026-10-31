@@ -13,7 +13,9 @@ the calls table and in the call detail header (`caller_name` / `dialed_name` on 
   (organisation admins only; import/export/delete are audited).
 - CSV import: UTF-8 (with or without BOM), UTF-16 or Windows-1256; comma, semicolon or tab; first row
   is the header (Persian or English names, see `_HEADER_ALIASES`); required columns: name and phone.
-  Limits: 5 MB, 20 000 rows. `dry_run=true` returns the report without saving. `mode=skip` keeps
+  Files are streamed in sequential browser batches of at most 250 rows or about 256 KiB, without
+  file-size or row-count caps or per-minute import throttling. `dry_run=true` returns the report
+  without saving. `mode=skip` keeps
   existing contacts, `mode=update` overwrites only the cells that are filled. Row errors are reported
   with their line number; the first row wins when a number appears twice in one file.
 - CSV export: UTF-8 with BOM (Excel shows Persian correctly); text cells starting with `= + - @` get a
@@ -58,3 +60,10 @@ the calls table and in the call detail header (`caller_name` / `dialed_name` on 
 فهرست روی ردیف‌های جدول نمایش داده می‌شود و اگر پایین صفحه جا نباشد، بالای کادر باز می‌شود.
 با کلیدهای جهت‌دار و Enter انتخاب کنید؛ برای بستن فهرست Escape بزنید یا بیرون آن کلیک کنید.
 پس از انتخاب، نام باید در همان ردیف دیده شود. اگر ثبت انجام نشد، پیام خطا را بررسی و دوباره تلاش کنید.
+
+## ارسال پیوستهٔ فایل CSV
+
+بررسی و ثبت فایل به‌صورت بخش‌های کوچک و پشت‌سرهم انجام می‌شود و مکث اجباری ندارد.
+تا پایان عملیات صفحه را باز نگه دارید. اگر ارسال با خطا متوقف شد، اتصال شبکه را بررسی
+و فایل را با گزینهٔ نادیده گرفتن شماره‌های موجود دوباره وارد کنید؛ بخش‌های ثبت‌شده حفظ می‌شوند.
+خطای `invalid_request` نیاز به اصلاح عنوان ستون‌ها یا اطلاعات فایل دارد.

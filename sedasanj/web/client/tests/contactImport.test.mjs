@@ -34,3 +34,16 @@ test('failed batch stops processing without claiming completion', async () => {
   await assert.rejects(importContacts(new Blob(['name,phone\nA,123\n']), 'skip', true, async () => { throw new Error('offline'); }, p => progress.push(p)), /offline/);
   assert.ok(!progress.includes(100));
 });
+
+test('rate-limit errors propagate immediately without a countdown or automatic retry', async () => {
+  const error = Object.assign(new Error('rate limited'), { status: 429 });
+  const progress = [];
+  let calls = 0;
+  await assert.rejects(importContacts(new Blob(['name,phone\nA,123\n']), 'skip', true, async () => {
+    calls++;
+    throw error;
+  }, (percent, message) => progress.push({ percent, message })), candidate => candidate === error);
+  assert.equal(calls, 1);
+  assert.equal(progress.length, 1);
+  assert.equal(progress[0].percent, 0);
+});

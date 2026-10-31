@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Removed per-minute contact CSV import throttling and the 60-second browser retry countdown so validation and import batches proceed consecutively; updated the Persian help guide.
+
 - Hidden the analysis progress card and processing execution report on completed call details while retaining them for ongoing, failed and canceled processing.
 
 - Moved call task creation beside the all-tasks link and grouped the shared task status selector with card header actions.

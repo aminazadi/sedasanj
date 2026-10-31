@@ -301,3 +301,63 @@ async def test_update_import_resets_city_when_the_province_changes() -> None:
         created_by=None,
     )
     assert (existing.province, existing.city) == ("تهران", None)
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+async def test_import_batches_do_not_consume_upload_rate_limit(
+    monkeypatch: pytest.MonkeyPatch, dry_run: bool
+) -> None:
+    from io import BytesIO
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from fastapi import UploadFile
+    from starlette.requests import Request
+
+    from app.routers import contacts as routes
+
+    limiter = AsyncMock(side_effect=AssertionError("Import must not use upload throttling"))
+    audit = AsyncMock()
+    monkeypatch.setattr(routes.ratelimit, "enforce", limiter)
+    monkeypatch.setattr(routes.audit, "record", audit)
+    principal = SimpleNamespace(id=uuid4(), tenant_id=uuid4())
+    for _ in range(25):
+        report = await routes.import_contacts(
+            Request({"type": "http", "headers": []}),
+            principal,  # type: ignore[arg-type]
+            _FakeSession([]),  # type: ignore[arg-type]
+            UploadFile(filename="contacts.csv", file=BytesIO(_csv("A,09121234567,,,\n"))),
+            mode="skip",
+            dry_run=dry_run,
+        )
+        assert report.total_rows == report.created == 1
+        assert report.accepted_numbers == ["09121234567"]
+    limiter.assert_not_awaited()
+    assert audit.await_count == (0 if dry_run else 25)
+
+
+def test_import_help_migration_replaces_pause_text_and_can_restore_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib.util
+    from pathlib import Path
+    from unittest.mock import Mock
+
+    path = Path(__file__).parents[1] / "apps/api/alembic/versions/0092_contacts_import_no_pause.py"
+    spec = importlib.util.spec_from_file_location("contact_import_help", path)
+    assert spec and spec.loader
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    connection = Mock()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: connection)
+    migration.upgrade()
+    statement, parameters = connection.execute.call_args.args
+    assert "body_html = replace" in str(statement)
+    assert "body_plain = replace" in str(statement)
+    assert parameters["slug"] == "contacts-csv-import-guide"
+    assert parameters["previous"] == migration.OLD_TEXT
+    assert parameters["replacement"] == migration.NEW_TEXT
+    migration.downgrade()
+    _, parameters = connection.execute.call_args.args
+    assert parameters["previous"] == migration.NEW_TEXT
+    assert parameters["replacement"] == migration.OLD_TEXT

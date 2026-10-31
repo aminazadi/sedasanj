@@ -9,7 +9,6 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.deps import OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import Contact
@@ -141,9 +140,6 @@ async def import_contacts(
     dry_run: Annotated[bool, Form()] = False,
 ) -> ContactImportReport:
     assert principal.tenant_id is not None
-    await ratelimit.enforce(
-        f"contacts-import:{principal.id}", get_settings().rate_limit_uploads_per_minute
-    )
     raw = await file.read()
     parsed = contacts.parse_import(raw)
     try:
