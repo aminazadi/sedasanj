@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { build } from "esbuild";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PAGE_SIZES, pageSize, tableOffset, withPageSize } from "../../shared/lib/tablePagination.mjs";
 
+const require = createRequire(import.meta.url);
 async function sourceModule(relative) {
-  const result = await build({ entryPoints: [new URL(relative, import.meta.url).pathname], bundle: true, write: false, format: "esm", platform: "node", jsx: "automatic", nodePaths: [new URL("../node_modules", import.meta.url).pathname] });
-  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+  const result = await build({ entryPoints: [new URL(relative, import.meta.url).pathname], bundle: true, write: false, format: "esm", platform: "node", jsx: "automatic", plugins: [{ name: "shared-react", setup(build) { build.onResolve({ filter: /^(react|react-dom)(\/.*)?$/ }, (args) => ({ path: pathToFileURL(require.resolve(args.path)).href, external: true })); } }], nodePaths: [new URL("../node_modules", import.meta.url).pathname] });
+  const directory = mkdtempSync(join(tmpdir(), "ss-table-test-"));
+  const output = join(directory, "component.mjs");
+  writeFileSync(output, result.outputFiles[0].text);
+  try { return await import(pathToFileURL(output).href); } finally { rmSync(directory, { recursive: true }); }
 }
 const { tablePreferences, tableOffsetState } = await sourceModule("../../shared/lib/useTablePreferences.ts");
 const { PaginatedTable } = await sourceModule("../../shared/components/PaginatedTable.tsx");
@@ -72,6 +81,7 @@ test("in-memory tables display up to 200 actual rows and retain headers and cont
   assert.match(last, /row-236/);
   const reduced = render(200, 99999);
   assert.match(reduced, /row-236/);
-  assert.match(render(25, 0), /<select/);
-  assert.match(render(200, 0), /value="200" selected/);
+  assert.match(render(25, 0), /aria-haspopup="listbox"/);
+  assert.match(render(25, 0), /aria-expanded="false"/);
+  assert.match(render(200, 0), /۲۰۰/);
 });
