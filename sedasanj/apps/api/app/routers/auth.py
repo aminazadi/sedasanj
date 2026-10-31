@@ -208,6 +208,31 @@ async def logout(payload: RefreshRequest, session: PublicSession) -> None:
     )
 
 
+def _created_out(row: ApiKey, secret: str) -> ApiKeyCreated:
+    return ApiKeyCreated(
+        **_api_key_out(row).model_dump(exclude={"created_at"}),
+        created_at=row.created_at or datetime.now(UTC),
+        secret=secret,
+    )
+
+
+def _api_key_out(row: ApiKey) -> ApiKeyOut:
+    return ApiKeyOut(
+        id=row.id,
+        key_prefix=row.key_prefix,
+        label=row.label,
+        archive_format=cast(ArchiveFormat, row.archive_format),
+        archive_password_configured=row.archive_password_hash is not None,
+        scopes=list(row.scopes),
+        expires_at=row.expires_at,
+        allowed_cidrs=list(row.allowed_cidrs),
+        last_used_at=row.last_used_at,
+        last_used_ip=str(row.last_used_ip) if row.last_used_ip is not None else None,
+        revoked_at=row.revoked_at,
+        created_at=row.created_at,
+    )
+
+
 @router.post("/api-keys", response_model=ApiKeyCreated, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     payload: ApiKeyCreate,
@@ -228,6 +253,9 @@ async def create_api_key(
             if payload.archive_password
             else None
         ),
+        scopes=list(payload.scopes),
+        expires_at=payload.expires_at,
+        allowed_cidrs=payload.allowed_cidrs,
     )
     session.add(api_key)
     await session.flush()
@@ -242,19 +270,13 @@ async def create_api_key(
             "label": payload.label,
             "archive_format": payload.archive_format,
             "archive_password_configured": payload.archive_password is not None,
+            "scopes": payload.scopes,
+            "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+            "allowed_cidrs": payload.allowed_cidrs,
         },
         ip=client_ip(request),
     )
-    return ApiKeyCreated(
-        id=api_key.id,
-        key_prefix=prefix,
-        label=api_key.label,
-        archive_format=cast(ArchiveFormat, api_key.archive_format),
-        archive_password_configured=api_key.archive_password_hash is not None,
-        last_used_at=None,
-        created_at=datetime.now(UTC),
-        secret=secret,
-    )
+    return _created_out(api_key, secret)
 
 
 @router.get("/api-keys")
@@ -263,10 +285,11 @@ async def list_api_keys(
     principal: OrgAdminDep,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    include_revoked: bool = False,
 ) -> dict[str, Any]:
-    base = select(ApiKey).where(
-        ApiKey.tenant_id == principal.tenant_id, ApiKey.revoked_at.is_(None)
-    )
+    base = select(ApiKey).where(ApiKey.tenant_id == principal.tenant_id)
+    if not include_revoked:
+        base = base.where(ApiKey.revoked_at.is_(None))
     total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
     rows = (
         await session.execute(
@@ -276,18 +299,7 @@ async def list_api_keys(
             .limit(limit)
         )
     ).scalars().all()
-    items = [
-        ApiKeyOut(
-            id=row.id,
-            key_prefix=row.key_prefix,
-            label=row.label,
-            archive_format=cast(ArchiveFormat, row.archive_format),
-            archive_password_configured=row.archive_password_hash is not None,
-            last_used_at=row.last_used_at,
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+    items = [_api_key_out(row) for row in rows]
     return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
 
 
@@ -322,6 +334,12 @@ async def update_api_key(
         )
     if payload.remove_archive_password:
         api_key.archive_password_hash = None
+    if payload.scopes is not None:
+        api_key.scopes = list(payload.scopes)
+    if "expires_at" in changes:
+        api_key.expires_at = payload.expires_at
+    if payload.allowed_cidrs is not None:
+        api_key.allowed_cidrs = payload.allowed_cidrs
 
     await session.flush()
     await audit.record(
@@ -334,6 +352,9 @@ async def update_api_key(
             "api_key_id": str(api_key.id),
             "label_changed": "label" in changes,
             "archive_format": api_key.archive_format,
+            "scopes": api_key.scopes,
+            "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
+            "allowed_cidrs": api_key.allowed_cidrs,
             "archive_password_action": (
                 "removed"
                 if payload.remove_archive_password or payload.archive_format == "gzip"
@@ -344,15 +365,59 @@ async def update_api_key(
         },
         ip=client_ip(request),
     )
-    return ApiKeyOut(
-        id=api_key.id,
-        key_prefix=api_key.key_prefix,
-        label=api_key.label,
-        archive_format=cast(ArchiveFormat, api_key.archive_format),
-        archive_password_configured=api_key.archive_password_hash is not None,
-        last_used_at=api_key.last_used_at,
-        created_at=api_key.created_at,
+    return _api_key_out(api_key)
+
+
+@router.post(
+    "/api-keys/{key_id}/rotate",
+    response_model=ApiKeyCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+async def rotate_api_key(
+    key_id: UUID,
+    request: Request,
+    session: ControlSession,
+    principal: OrgAdminDep,
+    grace_hours: Annotated[int, Query(ge=0, le=168)] = 24,
+) -> ApiKeyCreated:
+    """Issue a replacement with the same settings; the old key stops after `grace_hours`."""
+    old = await session.get(ApiKey, key_id)
+    if old is None or old.tenant_id != principal.tenant_id or old.revoked_at is not None:
+        raise ApiError("not_found", "api key not found")
+    secret, prefix, key_hash = generate_api_key()
+    new = ApiKey(
+        tenant_id=old.tenant_id,
+        key_hash=key_hash,
+        key_prefix=prefix,
+        label=old.label,
+        archive_format=old.archive_format,
+        archive_password_hash=old.archive_password_hash,
+        scopes=list(old.scopes),
+        expires_at=old.expires_at,
+        allowed_cidrs=list(old.allowed_cidrs),
     )
+    session.add(new)
+    now = datetime.now(UTC)
+    if grace_hours == 0:
+        old.revoked_at = now
+    else:
+        cutoff = now + timedelta(hours=grace_hours)
+        old.expires_at = cutoff if old.expires_at is None else min(old.expires_at, cutoff)
+    await session.flush()
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="api_key.rotate",
+        payload={
+            "old_api_key_id": str(old.id),
+            "new_api_key_id": str(new.id),
+            "grace_hours": grace_hours,
+        },
+        ip=client_ip(request),
+    )
+    return _created_out(new, secret)
 
 
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)

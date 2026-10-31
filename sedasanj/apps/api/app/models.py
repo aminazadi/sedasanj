@@ -201,6 +201,12 @@ class ApiKey(Base):
     label: Mapped[str | None] = mapped_column(Text)
     archive_format: Mapped[str] = mapped_column(Text, nullable=False, default="gzip")
     archive_password_hash: Mapped[str | None] = mapped_column(Text)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    allowed_cidrs: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+    last_used_ip: Mapped[str | None] = mapped_column(INET)
     last_used_at: Mapped[datetime | None] = mapped_column(TSTZ)
     revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -209,6 +215,7 @@ class ApiKey(Base):
         CheckConstraint(
             "archive_format IN ('wav','gzip','zip')", name="api_keys_archive_format_check"
         ),
+        CheckConstraint("cardinality(scopes) > 0", name="api_keys_scopes_not_empty"),
     )
 
 
@@ -1278,17 +1285,6 @@ class TranscriptChunk(Base):
     __table_args__ = (UniqueConstraint("call_id", "ordinal"),)
 
 
-class CallKnowledge(Base):
-    __tablename__ = "call_knowledge"
-
-    call_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), primary_key=True
-    )
-    tenant_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
-    )
-    operator_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
 class OrgKnowledgeChunk(Base):
     __tablename__ = "org_knowledge_chunks"
 
@@ -1322,6 +1318,17 @@ class OrgKnowledgeChunk(Base):
     __table_args__ = (UniqueConstraint("source_type", "source_id", "ordinal"),)
 
 
+class CallKnowledge(Base):
+    __tablename__ = "call_knowledge"
+
+    call_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    operator_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Any | None] = mapped_column(VectorType())
@@ -2111,6 +2118,15 @@ class Webhook(Base):
     secret: Mapped[str] = mapped_column(Text, nullable=False)
     events: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    description: Mapped[str | None] = mapped_column(Text)
+    secret_previous: Mapped[str | None] = mapped_column(Text)
+    secret_rotated_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    disabled_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    disabled_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
 class WebhookDelivery(Base):
@@ -2129,6 +2145,9 @@ class WebhookDelivery(Base):
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
     status_code: Mapped[int | None] = mapped_column(Integer)
     next_retry_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    delivery_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 

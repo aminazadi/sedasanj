@@ -5,6 +5,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from typing import Any
 
 import socketio
 from fastapi import FastAPI, Request, Response
@@ -17,6 +18,7 @@ from app.db import assert_database_runtime_ready, assert_rls_enforced, dispose_e
 from app.errors import install_error_handlers
 from app.logging import configure_logging, log_context
 from app.metrics import http_request_seconds, http_requests_total
+from app.route_inspection import api_routes, auth_kind, scope_names
 from app.routers import (
     account,
     admin,
@@ -31,6 +33,7 @@ from app.routers import (
     health,
     help,
     ingest,
+    integration_api,
     internal_tools,
     kpi,
     module_updates,
@@ -101,12 +104,147 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await dispose_engine()
 
 
+# Operations carrying one of these tags are never published: the assistant is reachable only
+# from the signed-in SedaSanj panel, never by third parties.
+PRIVATE_OPENAPI_TAGS = frozenset(
+    {"admin", "internal", "assistant", "call assistant", "organization memory"}
+)
+
+
+def _public_paths(paths: dict[str, Any]) -> dict[str, Any]:
+    """Keep customer-facing operations; drop staff, internal and assistant ones."""
+    public: dict[str, Any] = {}
+    for path, operations in paths.items():
+        if not path.startswith("/v1/") or path.startswith(("/v1/admin", "/v1/assistant")):
+            continue
+        kept = {
+            method: operation
+            for method, operation in operations.items()
+            if not (
+                isinstance(operation, dict)
+                and PRIVATE_OPENAPI_TAGS & set(operation.get("tags", []))
+            )
+        }
+        if kept:
+            public[path] = kept
+    return public
+
+
+CUSTOMER_API_DESCRIPTION = """
+Customer and Asterisk integration API. Archive uploads use the format configured on each API key.
+
+**Authentication.** Machine routes take an API key as `Authorization: Bearer <key>` or
+`X-API-Key: <key>`. Panel routes take a user JWT. A key only works on the routes whose
+scope it carries; every operation lists its scope in `x-required-scope`.
+
+| Scope | Allows |
+| --- | --- |
+| `ingest:write` | Upload calls, voicemails, missed calls and extensions |
+| `module:sync` | PBX module updates, reports and diagnostics |
+| `crm:write` | Write and read CRM outcomes |
+| `calls:read` | Read call results under `/v1/integration/calls` |
+| `contacts:read` | Look up a contact by phone number |
+
+Keys can also carry an expiry date and an allowed IP list. There is no key scope for the
+in-panel assistant.
+
+**Errors.** Every failure is `{"error": {"code", "message", "retryable", "request_id"}}`.
+`429 rate_limited` carries `Retry-After` (seconds). Reads and writes have separate budgets
+per key.
+
+**Pagination.** List routes return `items` and `next_cursor`; pass `next_cursor` as `cursor`
+for the next page. Treat the cursor as opaque.
+
+**Idempotency.** Uploads deduplicate on `asterisk_uniqueid`; `Idempotency-Key` additionally
+rejects a reused ID with different numbers (`409 conflict_idempotency`). CRM outcomes are
+upserts keyed by `external_lead_id`; an older `occurred_at` never overwrites a newer one.
+
+**Webhooks.** Events are pushed to your endpoint; manage them under `/v1/webhooks`.
+`GET /v1/webhooks/events` lists the events and the signature recipe.
+""".strip()
+
+
+def _declare_security(schema: dict[str, Any]) -> None:
+    """Set each operation's security, scope and error responses from its real dependencies."""
+    routes = {
+        (route.path, method): route for route in api_routes() for method in route.methods or ()
+    }
+    components = schema.setdefault("components", {})
+    components.setdefault("schemas", {})["Error"] = {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+            "error": {
+                "type": "object",
+                "required": ["code", "message", "retryable", "request_id"],
+                "properties": {
+                    "code": {"type": "string"},
+                    "message": {"type": "string"},
+                    "retryable": {"type": "boolean"},
+                    "request_id": {"type": "string"},
+                },
+            }
+        },
+    }
+    error_body = {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+    for path, operations in schema.get("paths", {}).items():
+        for method, operation in operations.items():
+            if not isinstance(operation, dict):
+                continue
+            route = routes.get((path, method.upper()))
+            kind = auth_kind(route) if route is not None else "user"
+            responses = operation.setdefault("responses", {})
+            if kind == "api_key":
+                operation["security"] = [{"AgentBearer": []}, {"AgentHeader": []}]
+                scopes = sorted(scope_names(route)) if route is not None else []
+                if scopes:
+                    operation["x-required-scope"] = scopes[0]
+                    operation["description"] = (
+                        f"{operation.get('description', '')}\n\nRequired API key scope: "
+                        f"`{scopes[0]}`."
+                    ).strip()
+                responses.setdefault(
+                    "401", {"description": "Missing, invalid, revoked or expired API key."}
+                )["content"] = error_body
+                responses.setdefault(
+                    "403", {"description": "Missing scope, IP not allowed or tenant suspended."}
+                )["content"] = error_body
+                responses.setdefault("429", {"description": "Rate limit exceeded."}).update(
+                    {
+                        "content": error_body,
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {"type": "integer"},
+                            }
+                        },
+                    }
+                )
+            elif kind == "user":
+                operation["security"] = [{"CustomerJWT": []}]
+                responses.setdefault("401", {"description": "Missing or invalid user token."})[
+                    "content"
+                ] = error_body
+            else:
+                operation["security"] = []
+            operation["parameters"] = [
+                parameter
+                for parameter in operation.get("parameters", [])
+                if str(parameter.get("name", "")).lower() not in {"authorization", "x-api-key"}
+            ]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=API_TITLE,
         version="1.0.0",
         description="Post-call Persian voice analytics (ASR + LLM), multi-tenant.",
         lifespan=lifespan,
+        # The full schema lists staff and assistant routes; only the filtered customer spec
+        # below is published.
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     settings = get_settings()
     origins = settings.cors_origin_list
@@ -115,14 +253,16 @@ def create_app() -> FastAPI:
         allow_origins=origins,
         allow_origin_regex=None if origins else r"http://(localhost|127\.0\.0\.1)(:\d+)?",
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=[
             "authorization",
             "content-type",
             "idempotency-key",
             "x-api-key",
             "x-cbi-archive-password",
+            "x-request-id",
         ],
+        expose_headers=["x-request-id", "retry-after"],
     )
 
     @app.middleware("http")
@@ -151,6 +291,7 @@ def create_app() -> FastAPI:
         phone_auth,
         quick_demo,
         ingest,
+        integration_api,
         calls,
         contacts,
         extensions,
@@ -178,16 +319,9 @@ def create_app() -> FastAPI:
         schema["info"] = {
             "title": API_TITLE,
             "version": "1.0.0",
-            "description": (
-                "Customer and Asterisk integration API. Archive uploads use the format "
-                "configured on each API key."
-            ),
+            "description": CUSTOMER_API_DESCRIPTION,
         }
-        schema["paths"] = {
-            path: operations
-            for path, operations in schema.get("paths", {}).items()
-            if path.startswith("/v1/") and not path.startswith("/v1/admin")
-        }
+        schema["paths"] = _public_paths(schema.get("paths", {}))
         _prune_unreferenced_schemas(schema)
         components = schema.setdefault("components", {})
         components["securitySchemes"] = {
@@ -195,22 +329,7 @@ def create_app() -> FastAPI:
             "AgentBearer": {"type": "http", "scheme": "bearer"},
             "AgentHeader": {"type": "apiKey", "in": "header", "name": "X-API-Key"},
         }
-        for path, operations in schema.get("paths", {}).items():
-            if path in {"/v1/auth/login", "/v1/auth/refresh"}:
-                security: list[dict[str, list[str]]] = []
-            elif path.startswith("/v1/ingest/") or path.startswith("/v1/crm/"):
-                security = [{"AgentBearer": []}, {"AgentHeader": []}]
-            else:
-                security = [{"CustomerJWT": []}]
-            for operation in operations.values():
-                if isinstance(operation, dict):
-                    operation["security"] = security
-                    operation["parameters"] = [
-                        parameter
-                        for parameter in operation.get("parameters", [])
-                        if str(parameter.get("name", "")).lower()
-                        not in {"authorization", "x-api-key"}
-                    ]
+        _declare_security(schema)
         ingest_operation = schema["paths"]["/v1/ingest/calls"]["post"]
         ingest_operation["description"] = f"""
 Upload one call using the archive format configured on the authenticated API key.
@@ -220,7 +339,9 @@ The request must use HTTPS and `multipart/form-data`. Authentication accepts eit
 Required form fields: `file`, `asterisk_uniqueid`, `caller_number`, `dialed_number`,
 `started_at`, and `ended_at`. Optional fields: `direction`, `agent_extension`,
 `campaign_id`, `source`, and `external_reference`.
-Send `Idempotency-Key` to make retries safe; the Asterisk unique ID is also deduplicated.
+Retries are deduplicated on the Asterisk unique ID and return the original call. When you
+send `Idempotency-Key`, a repeat of the same unique ID with a different caller or dialed
+number is rejected with `409 conflict_idempotency` instead of returning the original call.
 
 ```bash
 gzip -c call.wav > call.wav.gz
@@ -256,21 +377,20 @@ encryption, and AES strengths below 256 bits. GZIP must extract to one valid WAV
 The extracted file must pass the PCM, sample-rate, channel, and duration checks.
 """.strip()
         ingest_responses = ingest_operation.setdefault("responses", {})
-        ingest_responses.update(
-            {
-                "400": {"description": "Invalid metadata or malformed request."},
-                "401": {"description": "Missing, invalid, or revoked API key."},
-                "402": {"description": "Insufficient processing credit."},
-                "413": {"description": "Compressed or extracted file exceeds a limit."},
-                "415": {"description": "Unsupported archive or invalid WAV media."},
-                "422": {
-                    "description": (
-                        "Archive format mismatch, unsafe archive, or missing/invalid ZIP password."
-                    )
-                },
-                "429": {"description": "Rate limit exceeded; retry with backoff."},
-            }
-        )
+        # Keep the generated 401/403/429 entries (they carry the error schema and Retry-After).
+        for status_code, details in {
+            "400": {"description": "Invalid metadata or malformed request."},
+            "402": {"description": "Insufficient processing credit."},
+            "413": {"description": "Compressed or extracted file exceeds a limit."},
+            "415": {"description": "Unsupported archive or invalid WAV media."},
+            "422": {
+                "description": (
+                    "Archive format mismatch, unsafe archive, or missing/invalid ZIP password."
+                )
+            },
+            "409": {"description": "Same unique ID resent with different caller or dialed number."},
+        }.items():
+            ingest_responses.setdefault(status_code, details)
         return JSONResponse(schema)
 
     @app.get("/v1/docs/customer", include_in_schema=False, response_class=HTMLResponse)

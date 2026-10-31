@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.config import get_settings
 from app.db import control_session_scope
-from app.deps import ApiKeyDep, ApiKeySession
+from app.deps import ApiKeySession, IngestKeyDep
 from app.errors import ApiError
 from app.models import ApiKey, Call, CallOperatorAssignment, Tenant, User
 from app.schemas import (
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
 
 @router.post("/extensions/sync", response_model=ExtensionSyncOut)
 async def sync_extensions(
-    principal: ApiKeyDep, session: ApiKeySession, payload: ExtensionSyncIn
+    principal: IngestKeyDep, session: ApiKeySession, payload: ExtensionSyncIn
 ) -> ExtensionSyncOut:
     """Replace the tenant's PBX extension list with the one sent by the FreePBX module."""
     assert principal.tenant_id is not None
@@ -51,7 +51,7 @@ async def sync_extensions(
 
 @router.post("/missed-calls", status_code=status.HTTP_201_CREATED)
 async def ingest_missed_call(
-    principal: ApiKeyDep, session: ApiKeySession, payload: MissedCallIngest
+    principal: IngestKeyDep, session: ApiKeySession, payload: MissedCallIngest
 ) -> dict[str, object]:
     """Accept an idempotent metadata-only no-answer, busy, congestion, failed, or canceled call event."""
     tenant_id = principal.tenant_id
@@ -131,7 +131,7 @@ async def _control_api_key(key_id: UUID) -> ApiKey:
 
 
 @router.get("/health")
-async def ingest_health(principal: ApiKeyDep, session: ApiKeySession) -> dict[str, object]:
+async def ingest_health(principal: IngestKeyDep, session: ApiKeySession) -> dict[str, object]:
     """Connectivity + key check used by the agent and the install page (§11)."""
     assert principal.tenant_id is not None
     tenant = await session.get(Tenant, principal.tenant_id)
@@ -167,7 +167,7 @@ async def _validate_archive_password(api_key: ApiKey, archive_password: str | No
 
 @router.post("/config/validate", response_model=IngestConfigValidation)
 async def validate_ingest_config(
-    principal: ApiKeyDep,
+    principal: IngestKeyDep,
     session: ApiKeySession,
     archive_password: Annotated[str | None, Header(alias="X-CBI-Archive-Password")] = None,
 ) -> IngestConfigValidation:
@@ -191,7 +191,7 @@ async def validate_ingest_config(
 
 @router.post("/calls", response_model=IngestAccepted, status_code=status.HTTP_201_CREATED)
 async def ingest_call(
-    principal: ApiKeyDep,
+    principal: IngestKeyDep,
     response: Response,
     session: ApiKeySession,
     file: Annotated[UploadFile, File()],
@@ -263,7 +263,7 @@ async def ingest_call(
 
 @router.post("/voicemails", response_model=IngestAccepted, status_code=status.HTTP_201_CREATED)
 async def ingest_voicemail(
-    principal: ApiKeyDep,
+    principal: IngestKeyDep,
     response: Response,
     session: ApiKeySession,
     file: Annotated[UploadFile, File()],

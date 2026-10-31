@@ -8,6 +8,7 @@ import { ROLE_LABELS, useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import { PageHeader } from "../components/PageHeader";
 import ApiKeyManager from "../components/ApiKeyManager";
+import WebhookDeliveries from "../components/WebhookDeliveries";
 import CreditTopUp from "../components/CreditTopUp";
 import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
@@ -25,6 +26,7 @@ import type {
   User,
   Webhook,
   WebhookCreated,
+  WebhookTestResult,
 } from "../types";
 
 const EVENTS = ["call.complete", "call.failed", "balance.low", "sales.insight"];
@@ -101,6 +103,8 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [maxOperators, setMaxOperators] = useState<number | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [hooks, setHooks] = useState<Webhook[]>([]);
+  const [hookNote, setHookNote] = useState<string | null>(null);
+  const [logHookId, setLogHookId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [hookSecret, setHookSecret] = useState<string | null>(null);
@@ -212,6 +216,35 @@ export default function Account({ section = "billing" }: { section?: AccountSect
       setUserDialogError((err as Error).message);
     } finally {
       setUserDialogBusy(false);
+    }
+  }
+
+  async function testHook(hook: Webhook) {
+    try {
+      const result = await request<WebhookTestResult>(`/v1/webhooks/${hook.id}/test`, { method: "POST" });
+      setHookNote(result.ok ? `تست موفق بود (${result.delivery.status_code ?? "—"}).` : `تست ناموفق بود: ${result.delivery.error ?? ""}`);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function rotateHook(hook: Webhook) {
+    try {
+      const rotated = await request<WebhookCreated>(`/v1/webhooks/${hook.id}/rotate-secret`, { method: "POST" });
+      setHookSecret(rotated.secret);
+      setHookNote("کلید قبلی تا ۲۴ ساعت در هدر X-CBI-Signature-Previous هم امضا می‌شود.");
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function toggleHook(hook: Webhook) {
+    try {
+      await request<Webhook>(`/v1/webhooks/${hook.id}`, { method: "PATCH", body: { active: !hook.active } });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
     }
   }
 
@@ -411,6 +444,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                 <tr>
                   <th>آدرس</th>
                   <th>رویدادها</th>
+                  <th>وضعیت</th>
                   <th />
                 </tr>
               </thead>
@@ -421,7 +455,12 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                       {hook.url}
                     </td>
                     <td dir="ltr">{hook.events.join(", ")}</td>
-                    <td>
+                    <td>{hook.active ? "فعال" : hook.disabled_reason === "consecutive_failures" ? "غیرفعال (شکست پیاپی)" : "غیرفعال"}</td>
+                    <td className="space-x-1 space-x-reverse whitespace-nowrap">
+                      <button className="btn-ghost text-xs" onClick={() => void testHook(hook)}>تست</button>
+                      <button className="btn-ghost text-xs" onClick={() => setLogHookId(logHookId === hook.id ? null : hook.id)}>لاگ</button>
+                      <button className="btn-ghost text-xs" onClick={() => void rotateHook(hook)}>چرخش کلید</button>
+                      <button className="btn-ghost text-xs" onClick={() => void toggleHook(hook)}>{hook.active ? "غیرفعال‌سازی" : "فعال‌سازی"}</button>
                       <button
                         className="btn-danger"
                         onClick={async () => {
@@ -436,6 +475,8 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                 ))}
               </tbody>
             </table>
+            {hookNote ? <div className="mb-2 text-sm text-slate-600">{hookNote}</div> : null}
+            {logHookId ? <WebhookDeliveries webhookId={logHookId} onClose={() => setLogHookId(null)} /> : null}
             <Pagination page={Math.floor(hookOffset/limit)+1} hasPrevious={hookOffset>0} hasNext={hookOffset+limit<hookTotal} total={hookTotal} onPrevious={()=>setHookOffset(Math.max(0,hookOffset-limit))} onNext={()=>setHookOffset(hookOffset+limit)}/>
             <form className="grid gap-2 md:grid-cols-3" onSubmit={createHook}>
               <input

@@ -12,6 +12,9 @@ ERROR_STATUS: dict[str, int] = {
     "quota_exceeded": status.HTTP_402_PAYMENT_REQUIRED,
     "subscription_inactive": status.HTTP_402_PAYMENT_REQUIRED,
     "tenant_suspended": status.HTTP_403_FORBIDDEN,
+    "api_key_scope_denied": status.HTTP_403_FORBIDDEN,
+    "api_key_expired": status.HTTP_401_UNAUTHORIZED,
+    "ip_not_allowed": status.HTTP_403_FORBIDDEN,
     "conflict_idempotency": status.HTTP_409_CONFLICT,
     "unsupported_audio": status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     "unsupported_archive": status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -54,10 +57,17 @@ RETRYABLE_CODES = {
 class ApiError(Exception):
     """Error carrying one of the §7.3 codes."""
 
-    def __init__(self, code: str, message: str, retryable: bool | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        retryable: bool | None = None,
+        retry_after: int | None = None,
+    ) -> None:
         if code not in ERROR_STATUS:
             raise ValueError(f"unknown error code {code}")
         self.code = code
+        self.retry_after = retry_after
         self.message = message
         self.retryable = code in RETRYABLE_CODES if retryable is None else retryable
         super().__init__(message)
@@ -97,13 +107,16 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=error_body(exc.code, exc.message, exc.retryable, _request_id(request)),
+            headers={"Retry-After": str(exc.retry_after)} if exc.retry_after else None,
         )
 
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=422,
-            content=error_body("invalid_request", _validation_message(exc), False, _request_id(request)),
+            content=error_body(
+                "invalid_request", _validation_message(exc), False, _request_id(request)
+            ),
         )
 
     @app.exception_handler(StarletteHTTPException)
