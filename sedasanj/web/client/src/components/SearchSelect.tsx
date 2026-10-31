@@ -1,4 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { selectPosition } from "../lib/selectPosition";
 
 export interface SearchSelectOption {
   value: string;
@@ -29,6 +31,9 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState<ReturnType<typeof selectPosition> | null>(null);
   const listId = useId();
 
   const visible = useMemo(() => {
@@ -45,10 +50,26 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
     if (!open) return;
     searchRef.current?.focus();
     const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (triggerRef.current) {
+        setPosition(selectPosition(triggerRef.current.getBoundingClientRect(), window.innerWidth, window.innerHeight));
+      }
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
   }, [open]);
 
   useEffect(() => setActive(0), [term, open]);
@@ -60,11 +81,16 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
 
   function choose(next: string) {
     setOpen(false);
+    triggerRef.current?.focus();
     if (next !== value) onChange(next);
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
-    if (event.key === "Escape") setOpen(false);
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
     else if (event.key === "ArrowDown") {
       event.preventDefault();
       setActive((index) => Math.min(index + 1, visible.length - 1));
@@ -81,6 +107,7 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
   return (
     <div ref={rootRef} className="relative" onKeyDown={open ? onKeyDown : undefined}>
       <button
+        ref={triggerRef}
         type="button"
         className="input flex items-center justify-between gap-2 text-start"
         aria-label={ariaLabel}
@@ -93,18 +120,24 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
         <span className={selected ? "truncate" : "truncate text-slate-500"}>{selected?.label ?? (emptyLabel || "—")}</span>
         <span aria-hidden="true" className="text-xs text-slate-400">▾</span>
       </button>
-      {open ? (
-        <div className="absolute inset-x-0 z-20 mt-1 border border-slate-300 bg-white shadow-lg">
+      {open ? createPortal(
+        <div
+          ref={menuRef}
+          dir="rtl"
+          className="fixed z-[10000] flex flex-col border border-[color:var(--line)] bg-[#F2F0EF] text-start shadow-lg"
+          style={{ ...position, visibility: position ? "visible" : "hidden" }}
+          onKeyDown={(event) => { event.stopPropagation(); onKeyDown(event); }}
+        >
           <input
             ref={searchRef}
-            className="input border-0 border-b border-slate-200"
+            className="input shrink-0 border-0 border-b border-[color:var(--line)] bg-[#F2F0EF]"
             type="search"
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
             value={term}
             onChange={(event) => setTerm(event.target.value)}
           />
-          <ul id={listId} role="listbox" aria-label={ariaLabel} className="max-h-56 overflow-y-auto text-sm">
+          <ul id={listId} role="listbox" aria-label={ariaLabel} className="min-h-0 overflow-y-auto text-sm">
             {visible.length === 0 ? (
               <li className="px-3 py-2 text-slate-500">موردی پیدا نشد؛ عبارت دیگری را جستجو کنید.</li>
             ) : (
@@ -122,7 +155,8 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
               ))
             )}
           </ul>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
