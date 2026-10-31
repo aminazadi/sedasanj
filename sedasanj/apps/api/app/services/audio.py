@@ -12,6 +12,7 @@ from app.errors import ApiError
 
 ALLOWED_SAMPLE_RATES = (8000, 16000)
 ALLOWED_CODECS = ("pcm_s16le", "pcm_s16be", "pcm_s24le", "pcm_s32le", "pcm_f32le")
+ADAPTIVE_ENHANCEMENT_MODEL = "speech-telephony-adaptive"
 
 DENOISER_MODELS: dict[str, tuple[str, str]] = {
     "none": ("بدون حذف نویز", "فقط تبدیل استاندارد صوت انجام می‌شود."),
@@ -35,7 +36,26 @@ ENHANCEMENT_MODELS: dict[str, tuple[str, str]] = {
         "وضوح گفتار — قوی",
         "فشرده‌سازی دامنه و تقویت وضوح برای صدای بسیار کم یا ناهمگون.",
     ),
+    ADAPTIVE_ENHANCEMENT_MODEL: (
+        "وضوح گفتار تلفنی — تطبیقی",
+        "بلندی هر کانال جداگانه اندازه‌گیری و به سطح هدف رسانده می‌شود؛ مناسب وقتی صدای "
+        "مشتری از اپراتور بسیار ضعیف‌تر است. کانال ساکت تقویت نمی‌شود.",
+    ),
 }
+
+# Defaults and limits for the adaptive level matching (admin-managed settings).
+DEFAULT_TARGET_LOUDNESS_LUFS = -20.0
+DEFAULT_MAX_GAIN_DB = 30.0
+TARGET_LOUDNESS_RANGE = (-30.0, -12.0)
+MAX_GAIN_RANGE = (0.0, 40.0)
+# Quieter channels are never turned down by more than this; a channel that is already louder
+# than the target is only trimmed a little, so the operator side is not damaged.
+MAX_ATTENUATION_DB = 6.0
+# Integrated (gated) loudness below this means the channel carries no usable speech; boosting it
+# would only amplify line noise and invite Whisper hallucinations.
+SILENT_CHANNEL_LUFS = -55.0
+# Gains smaller than this are inaudible and not worth an extra filter.
+NEGLIGIBLE_GAIN_DB = 0.5
 
 
 class AudioPreprocessingError(RuntimeError):
@@ -47,6 +67,8 @@ class AudioPreprocessingConfig:
     enabled: bool = False
     denoiser_model: str = "speech-afftdn-balanced"
     enhancement_model: str = "speech-clarity-balanced"
+    target_loudness_lufs: float = DEFAULT_TARGET_LOUDNESS_LUFS
+    max_gain_db: float = DEFAULT_MAX_GAIN_DB
 
     def validate(self) -> None:
         if self.denoiser_model not in DENOISER_MODELS:
@@ -55,12 +77,34 @@ class AudioPreprocessingConfig:
             raise AudioPreprocessingError(
                 f"unsupported enhancement model: {self.enhancement_model}"
             )
+        low, high = TARGET_LOUDNESS_RANGE
+        if not low <= self.target_loudness_lufs <= high:
+            raise AudioPreprocessingError(f"target loudness must be between {low} and {high} LUFS")
+        low, high = MAX_GAIN_RANGE
+        if not low <= self.max_gain_db <= high:
+            raise AudioPreprocessingError(f"maximum gain must be between {low} and {high} dB")
+
+    @property
+    def adaptive(self) -> bool:
+        return self.enabled and self.enhancement_model == ADAPTIVE_ENHANCEMENT_MODEL
 
     @property
     def identity(self) -> str:
         if not self.enabled:
             return "preprocess:none"
-        return f"denoise:{self.denoiser_model}+enhance:{self.enhancement_model}"
+        identity = f"denoise:{self.denoiser_model}+enhance:{self.enhancement_model}"
+        if self.adaptive:
+            identity += f"@{self.target_loudness_lufs:g}LUFS/{self.max_gain_db:g}dB"
+        return identity
+
+
+@dataclass(frozen=True)
+class ChannelLevelReport:
+    """What the adaptive level matching did to one channel (for logs and diagnostics)."""
+
+    measured_lufs: float | None
+    gain_db: float
+    silent: bool
 
 
 @dataclass(frozen=True)
@@ -159,18 +203,72 @@ async def resample_to_16k(source: Path, target: Path) -> None:
         raise RuntimeError(f"ffmpeg resample failed: {stderr.decode()[:300]}")
 
 
+def compute_gain_db(
+    measured_lufs: float | None, target_lufs: float, max_gain_db: float
+) -> tuple[float, bool]:
+    """Return (gain in dB, channel_is_silent) for matching a channel to the target loudness."""
+    if (
+        measured_lufs is None
+        or not math.isfinite(measured_lufs)
+        or (measured_lufs < SILENT_CHANNEL_LUFS)
+    ):
+        return 0.0, True
+    gain = min(target_lufs - measured_lufs, max_gain_db)
+    gain = max(gain, -MAX_ATTENUATION_DB)
+    if abs(gain) < NEGLIGIBLE_GAIN_DB:
+        return 0.0, False
+    return round(gain, 1), False
+
+
+def parse_integrated_loudness(stderr: bytes) -> float | None:
+    """Read `input_i` from the JSON block printed by ffmpeg's loudnorm (None = no speech)."""
+    text = stderr.decode(errors="replace")
+    start, end = text.rfind("{"), text.rfind("}")
+    if start < 0 or end < start:
+        raise AudioPreprocessingError("ffmpeg loudness measurement printed no result")
+    try:
+        value = float(json.loads(text[start : end + 1])["input_i"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise AudioPreprocessingError("ffmpeg loudness measurement was unreadable") from exc
+    return value if math.isfinite(value) else None
+
+
+async def _measure_loudness(source: Path, filters: list[str]) -> float | None:
+    code, _, stderr = await _run(
+        "ffmpeg",
+        "-hide_banner",
+        "-nostats",
+        "-i",
+        str(source),
+        "-af",
+        ",".join([*filters, "loudnorm=I=-23:TP=-2:LRA=11:print_format=json"]),
+        "-f",
+        "null",
+        "-",
+    )
+    if code != 0:
+        detail = " ".join(stderr.decode(errors="replace").split())[-500:]
+        raise AudioPreprocessingError(f"ffmpeg loudness measurement failed: {detail}")
+    return parse_integrated_loudness(stderr)
+
+
 async def preprocess_mono_audio(
     source: Path, target: Path, config: AudioPreprocessingConfig
-) -> None:
+) -> ChannelLevelReport | None:
     """Prepare one mono speech channel for ASR using an explicit local pipeline.
 
     The output is always mono, 16 kHz, signed 16-bit PCM WAV.  When the feature
     is enabled, the selected denoiser runs before the selected clarity model.
     A failure is terminal for this attempt: silently sending the raw file would
     make the admin setting misleading and produce irreproducible transcripts.
+
+    The adaptive telephony model measures this channel on its own and lifts it to the target
+    loudness, so a faint caller leg is brought up to the level of a strong operator leg.  Its
+    ChannelLevelReport is returned; other models return None.
     """
     config.validate()
     filters = ["aresample=16000"]
+    report: ChannelLevelReport | None = None
     if config.enabled:
         if config.denoiser_model == "speech-afftdn-balanced":
             filters.append("afftdn=nr=12:nf=-50:tn=1")
@@ -188,6 +286,19 @@ async def preprocess_mono_audio(
                     "dynaudnorm=f=120:g=7:p=0.92",
                 ]
             )
+        elif config.enhancement_model == ADAPTIVE_ENHANCEMENT_MODEL:
+            filters.extend(["highpass=f=100", "lowpass=f=7600"])
+            measured = await _measure_loudness(source, filters)
+            gain, silent = compute_gain_db(
+                measured, config.target_loudness_lufs, config.max_gain_db
+            )
+            report = ChannelLevelReport(measured_lufs=measured, gain_db=gain, silent=silent)
+            if gain:
+                filters.append(f"volume={gain}dB")
+            if not silent:
+                # A static lift keeps the configured target honest (dynaudnorm would push every
+                # peak to full scale); the limiter only guards the boosted peaks against clipping.
+                filters.append("alimiter=limit=0.9:level=0")
 
     code, _, stderr = await _run(
         "ffmpeg",
@@ -209,6 +320,7 @@ async def preprocess_mono_audio(
         raise AudioPreprocessingError(f"ffmpeg audio preprocessing failed: {detail}")
     if not target.is_file() or target.stat().st_size <= 44:
         raise AudioPreprocessingError("audio preprocessing produced an empty WAV file")
+    return report
 
 
 async def split_channels(source: Path, left: Path, right: Path) -> None:

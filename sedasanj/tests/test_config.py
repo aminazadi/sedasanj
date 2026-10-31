@@ -36,6 +36,8 @@ def test_audio_preprocessing_is_safe_by_default() -> None:
     assert settings.audio_preprocessing_enabled is False
     assert settings.audio_denoiser_model == "speech-afftdn-balanced"
     assert settings.audio_enhancement_model == "speech-clarity-balanced"
+    assert settings.audio_target_loudness_lufs == -20.0
+    assert settings.audio_max_gain_db == 30.0
 
 
 def test_voicesanj_default_uses_https() -> None:

@@ -1151,6 +1151,8 @@ class SettingsUpdate(BaseModel):
     audio_preprocessing_enabled: bool | None = None
     audio_denoiser_model: str | None = None
     audio_enhancement_model: str | None = None
+    audio_target_loudness_lufs: float | None = Field(default=None, ge=-30.0, le=-12.0)
+    audio_max_gain_db: float | None = Field(default=None, ge=0.0, le=40.0)
     mono_diarization_enabled: bool | None = None
     diarization_model: str | None = Field(default=None, min_length=1, max_length=100)
     turn_min_seconds: float | None = Field(default=None, ge=0.1, le=3.0)
