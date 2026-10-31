@@ -18,6 +18,18 @@ interface Props {
   searchPlaceholder?: string;
   ariaLabel: string;
   disabled?: boolean;
+  selectedLabel?: string;
+  /** When provided, search and pagination are handled by the caller's API. */
+  onSearchChange?: (term: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  pagination?: {
+    hasPrevious: boolean;
+    hasNext: boolean;
+    onPrevious: () => void;
+    onNext: () => void;
+  };
 }
 
 function normalize(text: string): string {
@@ -25,7 +37,7 @@ function normalize(text: string): string {
 }
 
 /** Dropdown with a search box; keyboard: arrows move, Enter selects, Escape closes. */
-export default function SearchSelect({ options, value, onChange, emptyLabel = "بدون انتخاب", searchPlaceholder = "جستجو…", ariaLabel, disabled }: Props) {
+export default function SearchSelect({ options, value, onChange, emptyLabel = "بدون انتخاب", searchPlaceholder = "جستجو…", ariaLabel, disabled, selectedLabel, onSearchChange, loading = false, error, onRetry, pagination }: Props) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [active, setActive] = useState(0);
@@ -38,11 +50,11 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
 
   const visible = useMemo(() => {
     const needle = normalize(term.trim());
-    const matches = needle
+    const matches = needle && !onSearchChange
       ? options.filter((option) => normalize(`${option.label} ${option.keywords ?? ""}`).includes(needle))
       : options;
     return emptyLabel && !needle ? [{ value: "", label: emptyLabel }, ...matches] : matches;
-  }, [options, term, emptyLabel]);
+  }, [options, term, emptyLabel, onSearchChange]);
 
   const selected = options.find((option) => option.value === value);
 
@@ -72,14 +84,17 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
     };
   }, [open]);
 
-  useEffect(() => setActive(0), [term, open]);
+  useEffect(() => setActive(0), [term, open, options]);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
 
   function toggle() {
     setTerm("");
+    if (!open) onSearchChange?.("");
     setOpen((current) => !current);
   }
 
   function choose(next: string) {
+    if (disabled || loading || error) return;
     setOpen(false);
     triggerRef.current?.focus();
     if (next !== value) onChange(next);
@@ -87,20 +102,21 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
 
   function onKeyDown(event: React.KeyboardEvent) {
     if (event.key === "Escape") {
+      event.preventDefault();
       event.stopPropagation();
       setOpen(false);
       triggerRef.current?.focus();
     }
     else if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActive((index) => Math.min(index + 1, visible.length - 1));
+      setActive((index) => Math.max(0, Math.min(index + 1, visible.length - 1)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive((index) => Math.max(index - 1, 0));
     } else if (event.key === "Enter") {
       event.preventDefault();
       const option = visible[active];
-      if (option) choose(option.value);
+      if (option && !loading && !error) choose(option.value);
     }
   }
 
@@ -117,7 +133,7 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
         disabled={disabled}
         onClick={toggle}
       >
-        <span className={selected ? "truncate" : "truncate text-slate-500"}>{selected?.label ?? (emptyLabel || "—")}</span>
+        <span className={(selected || selectedLabel) ? "truncate" : "truncate text-slate-500"}>{selected?.label ?? selectedLabel ?? (emptyLabel || "—")}</span>
         <span aria-hidden="true" className="text-xs text-slate-400">▾</span>
       </button>
       {open ? createPortal(
@@ -135,10 +151,14 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
             value={term}
-            onChange={(event) => setTerm(event.target.value)}
+            onChange={(event) => {
+              setTerm(event.target.value);
+              onSearchChange?.(event.target.value);
+            }}
           />
-          <ul id={listId} role="listbox" aria-label={ariaLabel} className="min-h-0 overflow-y-auto text-sm">
-            {visible.length === 0 ? (
+          {loading ? <p role="status" className="px-3 py-2 text-sm">در حال دریافت…</p> : error ? <div role="alert" className="px-3 py-2 text-sm text-rose-700">{error}{onRetry ? <button type="button" className="btn-ghost mt-2" onClick={onRetry}>تلاش دوباره</button> : null}</div> : null}
+          <ul id={listId} aria-busy={loading} role="listbox" aria-label={ariaLabel} className="min-h-0 overflow-y-auto text-sm">
+            {loading || error ? null : visible.length === 0 ? (
               <li className="px-3 py-2 text-slate-500">موردی پیدا نشد؛ عبارت دیگری را جستجو کنید.</li>
             ) : (
               visible.map((option, index) => (
@@ -155,8 +175,12 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "�
               ))
             )}
           </ul>
+          {pagination ? <div className="flex shrink-0 justify-between gap-2 border-t border-[color:var(--line)] p-2">
+            <button type="button" className="btn-ghost text-xs" disabled={loading || !pagination.hasPrevious} onClick={pagination.onPrevious}>قبلی</button>
+            <button type="button" className="btn-ghost text-xs" disabled={loading || !pagination.hasNext} onClick={pagination.onNext}>بعدی</button>
+          </div> : null}
         </div>,
-        document.body,
+        triggerRef.current?.closest("dialog") ?? document.body,
       ) : null}
     </div>
   );

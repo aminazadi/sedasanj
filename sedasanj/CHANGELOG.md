@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Replaced task call selection with the shared searchable dropdown, including server-side search and pagination, retained selection, retry feedback and native-dialog-safe menu rendering.
+
 - Fixed the table row-count dropdown with an explicit clickable trigger and a portalled, keyboard-accessible menu that stays visible above clipped tables and near the bottom of the viewport.
 
 - Added a task follow-up workspace for organization administrators and operators with server-side filtering, sorting, counts and pagination; shared headers, filters, tables and an illustrated task-creation dialog with URL-persisted views, filters and selected tasks.
