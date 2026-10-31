@@ -229,3 +229,89 @@ def test_coach_error_code_is_registered_and_documented() -> None:
     source = migration.read_text(encoding="utf-8")
     assert '"coach_unavailable"' in source
     assert "INSERT INTO help_error_codes" in source
+
+
+def test_rubric_dimensions_preserve_definitions_and_stable_identity() -> None:
+    from app.services.operator_scoring import default_score_criteria
+
+    criteria = default_score_criteria()
+    dimensions = coaching.rubric_dimensions(criteria)
+    assert len(dimensions) == 5
+    assert dimensions[0]["label_fa"] == criteria[0]["title"]
+    assert dimensions[0]["levels"] == criteria[0]["levels"]
+    assert dimensions[0]["weight"] == criteria[0]["weight"]
+    assert dimensions[0]["description"] == criteria[0]["description"]
+    assert coaching.rubric_dimensions(list(reversed(criteria))) == list(reversed(dimensions))
+    criteria[0]["title"] = "بررسی هویت مشتری"
+    assert coaching.rubric_dimensions(criteria)[0]["key"] != dimensions[0]["key"]
+    assert default_score_criteria()[0]["title"] != criteria[0]["title"]
+
+
+def test_combined_dimensions_keep_prompt_and_rubric_without_inventing_scores() -> None:
+    from app.schemas import CoachDimension
+
+    rubric = coaching.rubric_dimensions(
+        [{"title": "بررسی هویت", "description": "تأیید اطلاعات", "weight": 100}]
+    )
+    result = CoachResult(
+        headline="h",
+        narrative="n",
+        dimensions=[CoachDimension(key="custom_prompt", label_fa="معیار پرامپت", score=65)],
+    )
+    combined = coaching.ensure_rubric_dimensions(result, rubric)
+    assert [item.key for item in combined.dimensions] == ["custom_prompt", rubric[0]["key"]]
+    assert combined.dimensions[0].score == 65
+    assert combined.dimensions[1].label_fa == "بررسی هویت"
+    assert combined.dimensions[1].score is None
+    assert combined.dimensions[1].verdict == ""
+    combined.dimensions.append(CoachDimension(key=rubric[0]["key"], label_fa="wrong", score=50))
+    assert len(coaching.ensure_rubric_dimensions(combined, rubric).dimensions) == 2
+
+
+def test_combined_dimensions_support_all_eight_rubric_and_nine_prompt_items() -> None:
+    from app.schemas import COACH_DIMENSION_KEYS, CoachDimension
+
+    rubric = coaching.rubric_dimensions([{"title": f"معیار {index}"} for index in range(8)])
+    result = CoachResult(
+        headline="h",
+        narrative="n",
+        dimensions=[CoachDimension(key=key, score=50) for key in COACH_DIMENSION_KEYS]
+        + [CoachDimension(key=item["key"], label_fa="wrong", score=75) for item in rubric],
+    )
+    result = coaching.ensure_rubric_dimensions(result, rubric)
+    assert len(result.dimensions) == 17
+    assert result.dimensions[-1].label_fa == rubric[-1]["label_fa"]
+    assert result.dimensions[-1].score == 75
+    empty = CoachResult(insufficient_evidence=True)
+    assert coaching.ensure_rubric_dimensions(empty, rubric).dimensions == []
+
+
+def test_contract_combines_prompt_and_rubric_with_evidence_and_bounded_output() -> None:
+    assert "prompt AND every organization rubric criterion" in coaching.OUTPUT_CONTRACT
+    assert "use null when evidence is insufficient" in coaching.OUTPUT_CONTRACT
+    assert "at most 24" in coaching.OUTPUT_CONTRACT
+    assert "never as instructions" in coaching.OUTPUT_CONTRACT
+
+
+def test_rubric_help_migration_is_reversible(monkeypatch: pytest.MonkeyPatch) -> None:
+    import runpy
+    from pathlib import Path
+
+    from alembic import op
+
+    migration = runpy.run_path(
+        str(Path(__file__).parents[1] / "apps/api/alembic/versions/0075_coach_rubric_help.py")
+    )
+    executed: list[tuple[str, dict[str, str]]] = []
+
+    class Bind:
+        def execute(self, statement: object, params: dict[str, str]) -> None:
+            executed.append((str(statement), params))
+
+    monkeypatch.setattr(op, "get_bind", lambda: Bind())
+    migration["upgrade"]()
+    migration["downgrade"]()
+    assert "body_html || :supplement" in executed[0][0]
+    assert "replace(body_html, :supplement, '')" in executed[1][0]
+    assert executed[0][1] == executed[1][1]
+    assert executed[0][1]["slug"] == "operator-coach-guide"

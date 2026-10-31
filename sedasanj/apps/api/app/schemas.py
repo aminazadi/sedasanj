@@ -565,7 +565,7 @@ class CoachResult(BaseModel):
     insufficient_reason: str = Field(default="", max_length=600)
     headline: str = Field(default="", max_length=400)
     narrative: str = Field(default="", max_length=6000)
-    dimensions: list[CoachDimension] = Field(default_factory=list, max_length=12)
+    dimensions: list[CoachDimension] = Field(default_factory=list, max_length=24)
     issues: list[CoachIssue] = Field(default_factory=list, max_length=6)
     strengths: list[CoachStrength] = Field(default_factory=list, max_length=5)
     missed_opportunities: list[str] = Field(default_factory=list, max_length=5)

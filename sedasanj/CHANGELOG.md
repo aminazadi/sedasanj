@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Combined prompt-defined coach dimensions with the active organization operator-scoring rubric (titles, descriptions, weights and level descriptions), shared the scoring defaults when no rubric exists, and preserved omitted rubric dimensions without fabricated scores. Existing reports require coach regeneration.
+
 - Moved the smart summary and its keywords above the operator coach section on the call detail page, preserving summary loading and empty states.
 
 - Removed the background color and geometric pattern from operator coach summaries in the call detail section and full report dialog.
