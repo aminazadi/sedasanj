@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Added a calls-table refresh button that refetches the current page with its applied filters, updates only the table section, and prevents repeat clicks while loading.
+
 - Fixed supplementary dashboard analyses with independent cards, consistent executive headers and metric tiles, contained table scrolling, balanced chart sizing and compact empty states.
 
 - Added shared 10/25/50/100/200-row selectors to customer and admin data tables, with URL-backed pagination, saved per-screen browser preferences, first-page resets that preserve filters, matching API limits and a Persian help article.

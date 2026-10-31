@@ -165,6 +165,21 @@ const CallsTableSection = memo(function CallsTableSection({
 
   return (
     <>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="btn inline-flex min-h-[42px] items-center gap-2 px-5"
+          onClick={() => calls.reload()}
+          disabled={calls.loading}
+          aria-busy={calls.loading}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+            <path d="M20 7v5h-5M4 17v-5h5" />
+            <path d="M6.1 7a7 7 0 0 1 11.6-2L20 8M4 16l2.3 3A7 7 0 0 0 17.9 17" />
+          </svg>
+          {calls.loading ? "در حال بروزرسانی…" : "بروزرسانی"}
+        </button>
+      </div>
       <ErrorBox message={calls.error ?? actionError} />
 
       <div className="card">
