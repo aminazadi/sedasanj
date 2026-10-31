@@ -352,7 +352,7 @@ export default function Calls() {
       label: "جهت تماس",
       active: Boolean(filters.direction),
       onRemove: () => resetField("direction"),
-      control: <FilterSelect value={filters.direction} onChange={(direction) => setFilters({ ...filters, direction })} options={[{ value: "inbound", label: "ورودی" }, { value: "outbound", label: "خروجی" }]} />,
+      control: <FilterSelect value={filters.direction} onChange={(direction) => setFilters({ ...filters, direction })} options={[{ value: "inbound", label: "ورودی" }, { value: "outbound", label: "خروجی" }, { value: "internal", label: "داخلی" }]} />,
     },
   ];
 

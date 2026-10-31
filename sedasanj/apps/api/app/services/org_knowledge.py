@@ -63,7 +63,9 @@ SOURCES: tuple[Source, ...] = (
         "|| coalesce('; objections: ' || array_to_string(s.objections, ', '), '') "
         "|| coalesce('; win_loss_reason: ' || s.win_loss_reason, '') "
         "|| coalesce('; next_action: ' || s.next_action, '') AS content, s.updated_at "
-        "FROM sales_insights s WHERE s.tenant_id = :tenant_id",
+        "FROM sales_insights s WHERE s.tenant_id = :tenant_id "
+        "AND NOT EXISTS (SELECT 1 FROM calls ic WHERE ic.id = s.call_id "
+        "AND ic.direction = 'internal')",
     ),
     Source(
         "crm_outcome",
@@ -76,7 +78,9 @@ SOURCES: tuple[Source, ...] = (
         "|| coalesce('; campaign: ' || o.campaign_id, '') "
         "|| coalesce('; source: ' || o.source, '') "
         "|| coalesce('; channel: ' || o.channel, '') AS content, o.updated_at "
-        "FROM crm_outcomes o WHERE o.tenant_id = :tenant_id",
+        "FROM crm_outcomes o WHERE o.tenant_id = :tenant_id "
+        "AND NOT EXISTS (SELECT 1 FROM calls ic WHERE ic.id = o.call_id "
+        "AND ic.direction = 'internal')",
     ),
     Source(
         "follow_up_task",
@@ -85,7 +89,9 @@ SOURCES: tuple[Source, ...] = (
         "f.title || coalesce(E'\\n' || f.description, '') || '; status: ' || f.status "
         "|| coalesce('; priority: ' || f.priority, '') "
         "|| coalesce('; due: ' || f.due_date::text, '') AS content, f.updated_at "
-        "FROM follow_up_tasks f WHERE f.tenant_id = :tenant_id",
+        "FROM follow_up_tasks f WHERE f.tenant_id = :tenant_id "
+        "AND NOT EXISTS (SELECT 1 FROM calls ic WHERE ic.id = f.call_id "
+        "AND ic.direction = 'internal')",
     ),
     Source(
         "kpi_goal",
@@ -125,7 +131,10 @@ SOURCES: tuple[Source, ...] = (
         "operator_coaching",
         "کوچینگ اپراتور",
         "SELECT k.id AS source_id, k.call_id, 'call' AS access, "
-        "k.operator_label AS title, k.operator_label || E'\\n' || k.narrative AS content, "
+        "k.operator_label AS title, k.operator_label "
+        "|| CASE WHEN EXISTS (SELECT 1 FROM calls ic WHERE ic.id = k.call_id "
+        "AND ic.direction = 'internal') THEN ' (تماس داخلی بین همکاران)' ELSE '' END "
+        "|| E'\\n' || k.narrative AS content, "
         "coalesce(k.completed_at, k.created_at) AS updated_at "
         "FROM operator_call_coachings k WHERE k.tenant_id = :tenant_id "
         "AND k.status = 'succeeded' AND k.narrative IS NOT NULL",

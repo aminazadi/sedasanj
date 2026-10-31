@@ -31,7 +31,13 @@ from app.models import (
     Transcript,
     User,
 )
-from app.services import assistant_exports, knowledge, operator_scope, org_knowledge
+from app.services import (
+    assistant_exports,
+    call_scope,
+    knowledge,
+    operator_scope,
+    org_knowledge,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +214,14 @@ def _base_calls(ctx: ToolContext) -> Any:
     if ctx.bound_call_id is not None:
         stmt = stmt.where(Call.id == ctx.bound_call_id)
     return stmt
+
+
+async def _hide_internal(ctx: ToolContext, direction: str | None) -> bool:
+    """Analytics are customer metrics: skip internal calls unless asked or opted in via KPI settings."""
+    if direction:
+        return False
+    assert ctx.principal.tenant_id is not None
+    return await call_scope.internal_hidden(ctx.session, ctx.principal.tenant_id)
 
 
 def _apply_window(stmt: Any, start: datetime, end: datetime) -> Any:
@@ -553,6 +567,8 @@ async def _analytics(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
     start, end = _window(args)
     operator_id = await _validate_operator(ctx, args.operator_id)
     stmt = _apply_window(_base_calls(ctx), start, end)
+    if await _hide_internal(ctx, args.direction):
+        stmt = stmt.where(call_scope.not_internal_clause())
     if operator_id is not None and not operator_scope.is_operator(ctx.principal):
         stmt = stmt.where(
             select(CallOperatorAssignment.id)
@@ -657,6 +673,14 @@ async def _operator_performance(ctx: ToolContext, raw: ToolArguments) -> dict[st
     )
     if operator_id is not None:
         stmt = stmt.where(OperatorCallScore.operator_id == operator_id)
+    if await _hide_internal(ctx, None):
+        stmt = stmt.where(
+            OperatorCallScore.call_id.not_in(
+                select(Call.id).where(
+                    Call.tenant_id == ctx.principal.tenant_id, Call.direction == "internal"
+                )
+            )
+        )
     rows = (
         await ctx.session.execute(
             stmt.group_by(OperatorCallScore.operator_id, OperatorCallScore.operator_label)
@@ -736,6 +760,9 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         start, end = _window(args)
         operator_id = await _validate_operator(ctx, args.operator_id)
         trend_stmt = _apply_window(_base_calls(ctx), start, end)
+        hide_internal = await _hide_internal(ctx, args.direction)
+        if hide_internal:
+            trend_stmt = trend_stmt.where(call_scope.not_internal_clause())
         if operator_id is not None and not operator_scope.is_operator(ctx.principal):
             trend_stmt = trend_stmt.where(
                 select(CallOperatorAssignment.id)
@@ -789,6 +816,8 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
             missed_stmt = _apply_window(_base_calls(ctx), start, end).where(
                 Call.call_type.in_(UNANSWERED_CALL_TYPES)
             )
+            if hide_internal:
+                missed_stmt = missed_stmt.where(call_scope.not_internal_clause())
             missed_operator_id = await _validate_operator(ctx, args.operator_id)
             if missed_operator_id is not None and not operator_scope.is_operator(ctx.principal):
                 missed_stmt = missed_stmt.where(
@@ -987,7 +1016,8 @@ TOOLS = (
     ToolDefinition(
         "get_call_analytics",
         "دریافت آمار تماس‌ها",
-        "Calculate exact call statistics from the database.",
+        "Calculate exact customer call statistics from the database. Internal "
+        "colleague-to-colleague calls are excluded unless direction=internal.",
         AnalyticsArguments,
         _analytics,
     ),

@@ -14,7 +14,7 @@ SEARCH_NAME = "search_tools"
 MAX_DISCOVERY_ROUNDS = 2
 KEYWORDS = {
     "get_current_time": "زمان تاریخ ساعت امروز time date now",
-    "search_calls": "تماس تلفن پیدا جستجو search calls phone",
+    "search_calls": "تماس تلفن پیدا جستجو داخلی همکار search calls phone internal colleague",
     "get_call_details": "تماس جزئیات مشخصات details metadata",
     "search_transcripts": "متن مکالمه رونوشت جستجو transcript conversation text search",
     "search_knowledge": (
@@ -22,7 +22,7 @@ KEYWORDS = {
         "knowledge memory contact task goal team report coaching crm sales"
     ),
     "get_call_analysis": "تحلیل خلاصه احساس فروش analysis summary sentiment sales crm",
-    "get_call_analytics": "آمار تعداد مجموع تماس statistics analytics count",
+    "get_call_analytics": "آمار تعداد مجموع تماس داخلی همکار statistics analytics count internal",
     "get_operator_performance": "اپراتور عملکرد امتیاز operator performance score",
     "visualize_statistics": "نمودار آمار نمایش chart graph visualize statistics",
     "export_data": (

@@ -230,7 +230,7 @@ export default function Overview() {
     control: <FilterSelect value={value} onChange={(next) => updateAnalysisFilter(id, next, clearKey)} options={options} />,
   });
   const analysisFilterFields: FilterBarField[] = [
-    analysisFilter("direction", "جهت تماس", direction, strOptions(filters.directions, { inbound: "ورودی", outbound: "خروجی" })),
+    analysisFilter("direction", "جهت تماس", direction, strOptions(filters.directions, { inbound: "ورودی", outbound: "خروجی", internal: "داخلی" })),
     analysisFilter("campaign", "کمپین", campaign, strOptions(filters.campaigns)),
     analysisFilter("source", "منبع", source, strOptions(filters.sources)),
     analysisFilter("intent", "قصد", intent, strOptions(filters.intents)),

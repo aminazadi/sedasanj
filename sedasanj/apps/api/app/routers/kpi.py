@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.routers.calls import _decode_cursor, _encode_cursor
 from app.services import audit, operator_scope
+from app.services.call_scope import not_internal_clause
 
 router = APIRouter(prefix="/v1", tags=["sales KPI"])
 
@@ -47,6 +48,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "probable_confidence_threshold": 0.65,
     "hot_opportunity_threshold": 0.8,
     "operator_team_comparison_visible": True,
+    "include_internal_calls": False,
     "dashboard_widgets": [
         "trend",
         "funnel",
@@ -88,6 +90,7 @@ class KpiSettingsIn(BaseModel):
     probable_confidence_threshold: float = Field(ge=0, le=1)
     hot_opportunity_threshold: float = Field(ge=0, le=1)
     operator_team_comparison_visible: bool = True
+    include_internal_calls: bool = False
     dashboard_widgets: list[str] = Field(
         default_factory=lambda: list(DEFAULT_SETTINGS["dashboard_widgets"])
     )
@@ -97,6 +100,10 @@ class KpiSettingsIn(BaseModel):
 
     @model_validator(mode="after")
     def valid_taxonomies(self) -> KpiSettingsIn:
+        if self.hot_opportunity_threshold < self.probable_confidence_threshold:
+            raise ValueError(
+                "hot_opportunity_threshold must not be lower than probable_confidence_threshold"
+            )
         allowed_stages = set(DEFAULT_SETTINGS["funnel_stages"])
         required_stages = {"effective", "qualified", "won", "lost"}
         if len(self.funnel_stages) != len(set(self.funnel_stages)):
@@ -127,7 +134,7 @@ class MembershipIn(BaseModel):
 
 class GoalIn(BaseModel):
     metric: Literal["conversion_rate", "quality_score", "follow_up_sla_rate"]
-    target_value: float = Field(gt=0)
+    target_value: float = Field(gt=0, le=100)
     team_id: UUID | None = None
     valid_from: datetime
     valid_to: datetime
@@ -240,7 +247,15 @@ async def put_kpi_settings(
     payload: KpiSettingsIn, request: Request, principal: OrgAdminDep, session: TenantSession
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
-    version, _ = await _settings(session, principal.tenant_id)
+    version, current = await _settings(session, principal.tenant_id)
+    values = payload.model_dump()
+    if version:
+        taxonomy_changed = values["funnel_stages"] != list(current["funnel_stages"]) or values[
+            "objection_taxonomy"
+        ] != list(current["objection_taxonomy"])
+        values["taxonomy_version"] = int(current["taxonomy_version"]) + (
+            1 if taxonomy_changed else 0
+        )
     await session.execute(
         update(KpiConfiguration)
         .where(KpiConfiguration.tenant_id == principal.tenant_id, KpiConfiguration.active.is_(True))
@@ -249,7 +264,7 @@ async def put_kpi_settings(
     row = KpiConfiguration(
         tenant_id=principal.tenant_id,
         version=version + 1,
-        settings=payload.model_dump(),
+        settings=values,
         active=True,
         created_by=principal.id,
     )
@@ -825,6 +840,7 @@ async def dashboard(
     if principal.role == "operator":
         operator_id = principal.id
         team_id = None
+    _, settings = await _settings(session, tenant_id)
     conditions = [
         Call.tenant_id == tenant_id,
         Call.call_type == "answered",
@@ -850,6 +866,9 @@ async def dashboard(
             )
             .exists()
         )
+    hide_internal = not direction and not settings["include_internal_calls"]
+    if hide_internal:
+        conditions.append(not_internal_clause())
     if team_id:
         conditions.append(
             select(CallOperatorAssignment.id)
@@ -879,6 +898,8 @@ async def dashboard(
         )
         if value
     ]
+    if hide_internal:
+        missed_filters.append(not_internal_clause())
     missed_stmt = select(Call).where(
         Call.tenant_id == tenant_id,
         Call.call_type.in_(UNANSWERED_CALL_TYPES),
@@ -1124,6 +1145,37 @@ async def dashboard(
     call_scoped_crm = principal.role == "operator" or any(
         value is not None for value in (operator_id, team_id, direction, intent, certainty)
     )
+    internal_stmt = operator_scope.apply_operator_scope(
+        select(
+            func.count(Call.id),
+            func.count(Call.id).filter(Call.call_type == "answered"),
+            func.coalesce(func.sum(Call.duration_ms), 0),
+        ).where(
+            Call.tenant_id == tenant_id,
+            Call.direction == "internal",
+            Call.started_at >= from_date,
+            Call.started_at <= to_date,
+        ),
+        principal,
+    )
+    internal_total, internal_answered, internal_seconds = (
+        await session.execute(internal_stmt)
+    ).one()
+    internal_summary = {
+        "total": int(internal_total),
+        "answered": int(internal_answered),
+        "avg_duration_seconds": (
+            round(int(internal_seconds) / 1000 / internal_total) if internal_total else 0
+        ),
+        "included_in_kpi": bool(settings["include_internal_calls"]),
+    }
+    internal_call_ids = select(Call.id).where(
+        Call.tenant_id == tenant_id, Call.direction == "internal"
+    )
+    if hide_internal:
+        crm_conditions.append(
+            or_(CrmOutcome.call_id.is_(None), CrmOutcome.call_id.not_in(internal_call_ids))
+        )
     if call_scoped_crm:
         crm_conditions.append(CrmOutcome.call_id.in_(call_ids))
     crm_rows = (
@@ -1138,6 +1190,10 @@ async def dashboard(
         CrmOutcome.occurred_at >= previous_from,
         CrmOutcome.occurred_at < previous_to,
     ]
+    if hide_internal:
+        previous_crm_conditions.append(
+            or_(CrmOutcome.call_id.is_(None), CrmOutcome.call_id.not_in(internal_call_ids))
+        )
     if call_scoped_crm:
         previous_crm_conditions.append(CrmOutcome.call_id.in_(previous_call_ids))
     previous_crm_rows = (
@@ -1149,7 +1205,6 @@ async def dashboard(
         previous_crm_rows = [item for item in previous_crm_rows if item.campaign_id == campaign_id]
     if source:
         previous_crm_rows = [item for item in previous_crm_rows if item.source == source]
-    _, settings = await _settings(session, tenant_id)
     now = datetime.now(UTC)
     outcomes = Counter(item.outcome for _, _, item in rows if item)
     opportunity_rows = [
@@ -1488,9 +1543,12 @@ async def dashboard(
                 .limit(1)
             )
         ).scalar_one_or_none()
+    show_team_goals = principal.role != "operator" or bool(
+        settings["operator_team_comparison_visible"]
+    )
     goal_scope = (
         or_(KpiGoal.team_id.is_(None), KpiGoal.team_id == goal_team_id)
-        if goal_team_id
+        if goal_team_id and show_team_goals
         else KpiGoal.team_id.is_(None)
     )
     goals = (
@@ -1771,6 +1829,7 @@ async def dashboard(
             {"key": key, "count": count} for key, count in sentiment_counter.most_common()
         ],
         "dashboard_widgets": settings["dashboard_widgets"],
+        "internal_calls": internal_summary,
         "funnel": funnel,
         "funnel_views": funnel_views,
         "breakdowns": {
@@ -1797,7 +1856,10 @@ async def dashboard(
             "improvements": list(reversed(coaching_rows[-3:])),
         },
         "filters": {
-            "directions": sorted({call.direction for call, _, _ in rows if call.direction}),
+            "directions": sorted(
+                {call.direction for call, _, _ in rows if call.direction}
+                | ({"internal"} if internal_summary["total"] else set())
+            ),
             "campaigns": sorted({call.campaign_id for call, _, _ in rows if call.campaign_id}),
             "sources": sorted({call.source for call, _, _ in rows if call.source}),
             "intents": sorted(

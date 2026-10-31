@@ -10,15 +10,15 @@ import re
 import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
-from app.models import Contact, PbxExtension, User
+from app.models import Call, Contact, PbxExtension, User
 from app.services.phone_numbers import normalize_call_number
 
 MAX_SYNC_EXTENSIONS = 5000
@@ -95,6 +95,7 @@ async def sync(
         existing[key].active = False
         existing[key].updated_at = now
     await session.flush()
+    await reclassify_internal(session, tenant_id)
     return SyncOutcome(created=created, updated=updated, deactivated=len(stale))
 
 
@@ -124,6 +125,53 @@ async def internal_direction_fixup(
     if caller_key in known and dialed_key in known:
         return "internal", agent_extension or dialed_key
     return direction, agent_extension
+
+
+def is_internal(direction: str | None) -> bool:
+    return direction == "internal"
+
+
+async def reclassify_internal(session: AsyncSession, tenant_id: UUID, *, days: int = 30) -> int:
+    """Mark recent calls between two active extensions as internal; returns rows changed.
+
+    Run after every extension sync so calls ingested before the list was complete are fixed.
+    """
+    known = await known_extensions(session, tenant_id)
+    if len(known) < 2:
+        return 0
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = (
+        await session.execute(
+            select(Call.id, Call.caller_number, Call.dialed_number, Call.agent_extension).where(
+                Call.tenant_id == tenant_id,
+                Call.started_at >= since,
+                or_(Call.direction.is_(None), Call.direction != "internal"),
+            )
+        )
+    ).all()
+    changed = 0
+    for call_id, caller, dialed, agent in rows:
+        caller_key = extension_key(caller)
+        dialed_key = extension_key(dialed)
+        if caller_key in known and dialed_key in known:
+            await session.execute(
+                update(Call)
+                .where(Call.id == call_id)
+                .values(direction="internal", agent_extension=agent or dialed_key)
+            )
+            changed += 1
+    return changed
+
+
+async def peer_labels(
+    session: AsyncSession, tenant_id: UUID, caller: str | None, dialed: str | None
+) -> dict[str, tuple[str | None, str | None]]:
+    """Caller/callee of an internal call as (extension, display name)."""
+    labels = await labels_for(session, tenant_id, [caller, dialed])
+    return {
+        "caller": (extension_key(caller), label_for(labels, caller)),
+        "callee": (extension_key(dialed), label_for(labels, dialed)),
+    }
 
 
 async def labels_for(

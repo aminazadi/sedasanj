@@ -59,7 +59,7 @@ from worker_llm.chunking import plan_chunks
 from worker_llm.client import LlmClient, build_client, extract_json, load_run_prompt
 from worker_llm.correction import poll_transcript_correction, start_transcript_correction
 from worker_llm.durable import poll_analysis_step, start_analysis, submit_analysis_step
-from worker_llm.prompts import build_repair_request
+from worker_llm.prompts import build_repair_request, with_call_context
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +264,9 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             ).scalar_one_or_none()
             if transcript is None:
                 raise RuntimeError("call has no transcript")
-            text = transcript.corrected_text or transcript.full_text
+            text = with_call_context(
+                transcript.corrected_text or transcript.full_text, claimed.direction
+            )
             duration_ms = claimed.duration_ms
             previous_status = (
                 str(previous_status_raw)
