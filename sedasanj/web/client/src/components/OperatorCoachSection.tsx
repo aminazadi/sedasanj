@@ -254,7 +254,7 @@ function CoachDetailDialog({ coach, open, onClose }: { coach: OperatorCoach; ope
             <button type="button" className="btn-ghost h-8 px-3 py-0 text-xs" onClick={onClose}>بستن</button>
           </div>
           <div className="space-y-5 p-4 sm:p-5">
-            <div className="coach-pattern border border-[color:var(--line)] p-4 sm:p-5">
+            <div className="border border-[color:var(--line)] p-4 sm:p-5">
               <div className="mt-1 text-sm leading-8 text-slate-700">
                 <MarkdownMessage content={result.narrative} />
               </div>
@@ -310,7 +310,7 @@ function CoachBody({ coach }: { coach: OperatorCoach }) {
   const topIssue = [...result.issues].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0];
   return (
     <div className="space-y-4">
-      <div className="coach-pattern border border-[color:var(--line)] p-4 sm:p-5">
+      <div className="border border-[color:var(--line)] p-4 sm:p-5">
         <div className="grid items-center gap-4 md:grid-cols-[auto_1fr_minmax(15rem,22rem)]">
           <ScoreRing score={score} />
           <div className="min-w-0">
