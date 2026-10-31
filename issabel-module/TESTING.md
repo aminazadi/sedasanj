@@ -1,6 +1,16 @@
 # Issabel beta validation
 
-## Automated checks
+## Final automated results (2026-10-31)
+
+- Full Python suite: **823 passed, 77 skipped**.
+- Final PHP 7.4 and 8.2 code: all 60 PHP files parsed by the PHP runtime; dialplan fixtures, native Issabel ACL, CSRF, settings/adapters and strict TGZ extraction tests passed using temporary WordPress PHP.wasm runtimes after Docker became unavailable.
+- Legacy web files also passed a PHP 5.4 grammar check using `php-parser`; this does not certify execution on PHP 5.4.
+- Earlier Docker runs passed the FreePBX regression suite on PHP 7.4/8.2 and legacy web/bridge tests on PHP 5.6. The final complete Docker matrix could not be repeated after Docker Desktop stopped responding.
+- Both panel builds passed; they retain existing bundle-size warnings. Generated page JavaScript and both configuration export formats passed their checks.
+- Focused Ruff/format checks and mypy for the changed release services/router passed. Repository-wide checks remain non-clean: Ruff reported 210 diagnostics in 49 files; mypy reported 114 errors in 22 files outside the changed release modules.
+- Real PostgreSQL upgrade/downgrade/re-upgrade passed against module/help schemas 0053–0056 plus 0071. No production migration was run.
+
+## Reproducible test coverage
 
 - PHP 5.6: web/lifecycle lint, authenticated bridge/CSRF tests and official 2.11/2.12 recording fixtures.
 - PHP 7.4 and 8.2: complete module/engine lint, settings roundtrip, input rejection, adapter checks and strict TGZ extraction tests.
