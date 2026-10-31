@@ -804,6 +804,43 @@ select {
     background-position: 0 0, 14px 0;
   }
 
+  /* Operator coach detail modal. */
+  .coach-dialog {
+    width: min(94vw, 56rem);
+    max-height: 90vh;
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    overflow: hidden;
+  }
+  .coach-dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  .coach-dialog::backdrop {
+    background: rgb(15 23 42 / 0.45);
+  }
+  .coach-dialog-body {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .coach-dialog-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+    padding: 0.75rem 1.25rem;
+  }
+
   .card {
     @apply rounded-xl border border-slate-200 bg-white p-4;
   }

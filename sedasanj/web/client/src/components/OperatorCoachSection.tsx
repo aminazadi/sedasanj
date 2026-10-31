@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 import { Skeleton, SkeletonRegion } from "@cbi/web-shared/components/Skeleton";
 import { fmt, request } from "../api";
@@ -17,6 +18,7 @@ const SEVERITY_TONE: Record<CoachSeverity, string> = {
   medium: "bg-amber-50 text-amber-700",
   low: "bg-slate-100 text-slate-600",
 };
+const SEVERITY_RANK: Record<CoachSeverity, number> = { high: 3, medium: 2, low: 1 };
 const PATTERN_LABELS: Record<CoachPattern, string> = { new: "جدید", recurring: "تکراری", improving: "در حال بهبود" };
 const PATTERN_TONE: Record<CoachPattern, string> = {
   new: "bg-slate-100 text-slate-600",
@@ -149,7 +151,151 @@ function BulletList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function averageScore(dimensions: CoachDimension[]): number | null {
+  const scores = dimensions.map((item) => item.score).filter((value): value is number => value !== null);
+  if (scores.length === 0) return null;
+  return Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length);
+}
+
+/** Circular gauge; the ring colour follows the same thresholds as the dimension bars. */
+function ScoreRing({ score }: { score: number | null }) {
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  const color = score === null ? "#B2AC88" : score >= 75 ? "#4B6E48" : score >= 50 ? "#F59E0B" : "#E11D48";
+  return (
+    <svg viewBox="0 0 128 128" className="h-32 w-32 shrink-0" role="img" aria-label={`امتیاز کلی ارتباط: ${score ?? "نامشخص"}`}>
+      <circle cx="64" cy="64" r={radius} fill="none" stroke="#F2F0EF" strokeWidth="12" />
+      <circle cx="64" cy="64" r="40" fill="none" stroke="#B2AC88" strokeOpacity="0.5" strokeDasharray="2 5" />
+      {score === null ? null : (
+        <circle
+          cx="64" cy="64" r={radius} fill="none" stroke={color} strokeWidth="12" strokeLinecap="butt"
+          strokeDasharray={`${(circumference * score) / 100} ${circumference}`} transform="rotate(-90 64 64)"
+        />
+      )}
+      <text x="64" y="68" textAnchor="middle" fontSize="30" fontWeight="700" fill="#1e293b">{score === null ? "—" : fmt.int(score)}</text>
+      <text x="64" y="88" textAnchor="middle" fontSize="10" fill="#64748b">امتیاز کلی</text>
+    </svg>
+  );
+}
+
+/** Radar of the scored dimensions; needs at least three axes to form a shape. */
+function DimensionRadar({ items }: { items: CoachDimension[] }) {
+  const axes = items.filter((item) => item.score !== null);
+  if (axes.length < 3) return null;
+  const size = 300;
+  const center = size / 2;
+  const radius = 96;
+  const point = (index: number, ratio: number): [number, number] => {
+    const angle = (Math.PI * 2 * index) / axes.length - Math.PI / 2;
+    return [center + Math.cos(angle) * radius * ratio, center + Math.sin(angle) * radius * ratio];
+  };
+  const ring = (ratio: number) => axes.map((_, index) => point(index, ratio).join(",")).join(" ");
+  const shape = axes.map((item, index) => point(index, (item.score ?? 0) / 100).join(",")).join(" ");
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-64 w-full max-w-[22rem]" role="img" aria-label="نمودار رادار ابعاد ارتباط">
+      {[0.25, 0.5, 0.75, 1].map((ratio) => (
+        <polygon key={ratio} points={ring(ratio)} fill={ratio === 1 ? "#F2F0EF" : "none"} stroke="#B2AC88" strokeOpacity="0.6" />
+      ))}
+      {axes.map((item, index) => {
+        const [x, y] = point(index, 1);
+        const [lx, ly] = point(index, 1.2);
+        const label = DIMENSION_LABELS[item.key] ?? item.label_fa ?? item.key;
+        return (
+          <g key={item.key}>
+            <line x1={center} y1={center} x2={x} y2={y} stroke="#B2AC88" strokeOpacity="0.5" />
+            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="#475569">{label}</text>
+          </g>
+        );
+      })}
+      <polygon points={shape} fill="#4B6E48" fillOpacity="0.28" stroke="#4B6E48" strokeWidth="2" />
+      {axes.map((item, index) => {
+        const [x, y] = point(index, (item.score ?? 0) / 100);
+        return <rect key={item.key} x={x - 3} y={y - 3} width="6" height="6" fill="#4B6E48" />;
+      })}
+    </svg>
+  );
+}
+
+function StatTile({ value, label, tone }: { value: number; label: string; tone: string }) {
+  return (
+    <div className="border border-[color:var(--line)] bg-white px-3 py-3 text-center">
+      <p className={`text-2xl font-bold ${tone}`}>{fmt.int(value)}</p>
+      <p className="mt-1 text-xs text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+/** Full coaching report, shown in a modal so the call page stays a graphic summary. */
+function CoachDetailDialog({ coach, open, onClose }: { coach: OperatorCoach; open: boolean; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const result = coach.result;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  if (!result) return null;
+  const scored = result.dimensions.filter((item) => item.score !== null || item.verdict);
+  return (
+    <dialog
+      ref={dialogRef}
+      className="coach-dialog"
+      aria-label="تفصیل تحلیل مربی"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onClick={(event) => { if (event.target === dialogRef.current) onClose(); }}
+    >
+      {open ? (
+        <div dir="rtl" className="coach-dialog-body">
+          <div className="coach-dialog-head">
+            <h2 className="font-bold text-slate-800">تفصیل تحلیل مربی</h2>
+            <button type="button" className="btn-ghost h-8 px-3 py-0 text-xs" onClick={onClose}>بستن</button>
+          </div>
+          <div className="space-y-5 p-4 sm:p-5">
+            <div className="coach-pattern border border-[color:var(--line)] p-4 sm:p-5">
+              <div className="mt-1 text-sm leading-8 text-slate-700">
+                <MarkdownMessage content={result.narrative} />
+              </div>
+            </div>
+            {scored.length > 0 ? (
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {scored.map((item) => (
+                  <DimensionBar key={item.key} item={item} />
+                ))}
+              </ul>
+            ) : null}
+            {result.issues.length > 0 ? (
+              <ul className="space-y-3">
+                {result.issues.map((issue, index) => (
+                  <IssueCard key={`${issue.title}-${index}`} issue={issue} index={index} />
+                ))}
+              </ul>
+            ) : (
+              <p className="bg-[#F2F0EF] px-4 py-4 text-sm text-slate-600">مشکل قابل‌اتکایی با شاهد در این تماس پیدا نشد.</p>
+            )}
+            <div className="grid gap-3 lg:grid-cols-2">
+              <BulletList title="نقاط قوت" items={result.strengths.map((item) => (item.evidence_quote ? `${item.title} — «${item.evidence_quote}»` : item.title))} />
+              <BulletList title="فرصت‌های از دست‌رفته" items={result.missed_opportunities} />
+              <BulletList title="تمرین برای تماس بعدی" items={result.next_call_drills} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </dialog>
+  );
+}
+
 function CoachBody({ coach }: { coach: OperatorCoach }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const open = searchParams.get("coach") === "detail";
+  function setOpen(next: boolean) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("coach", "detail");
+    else params.delete("coach");
+    setSearchParams(params, { replace: true });
+  }
   const result = coach.result;
   if (!result) return null;
   if (result.insufficient_evidence) {
@@ -160,39 +306,38 @@ function CoachBody({ coach }: { coach: OperatorCoach }) {
       />
     );
   }
-  const scored = result.dimensions.filter((item) => item.score !== null || item.verdict);
+  const score = averageScore(result.dimensions);
+  const topIssue = [...result.issues].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0];
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="coach-pattern border border-[color:var(--line)] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <p className="text-lg font-bold leading-8 text-slate-900">{result.headline}</p>
-          {result.confidence === "low" ? <Chip className="bg-amber-50 text-amber-700">اطمینان پایین</Chip> : null}
-        </div>
-        <div className="mt-3 text-sm leading-8 text-slate-700">
-          <MarkdownMessage content={result.narrative} />
+        <div className="grid items-center gap-4 md:grid-cols-[auto_1fr_minmax(15rem,22rem)]">
+          <ScoreRing score={score} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-start gap-2">
+              <p className="text-lg font-bold leading-8 text-slate-900">{result.headline}</p>
+              {result.confidence === "low" ? <Chip className="bg-amber-50 text-amber-700">اطمینان پایین</Chip> : null}
+            </div>
+            {topIssue ? (
+              <p className="mt-2 flex items-start gap-2 text-sm leading-7 text-slate-600">
+                <span className={`mt-2.5 h-2 w-2 shrink-0 ${SEVERITY_BAR[topIssue.severity]}`} aria-hidden="true" />
+                <span>مهم‌ترین نکته: {topIssue.title}</span>
+              </p>
+            ) : null}
+          </div>
+          <DimensionRadar items={result.dimensions} />
         </div>
       </div>
-      {scored.length > 0 ? (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {scored.map((item) => (
-            <DimensionBar key={item.key} item={item} />
-          ))}
-        </ul>
-      ) : null}
-      {result.issues.length > 0 ? (
-        <ul className="space-y-3">
-          {result.issues.map((issue, index) => (
-            <IssueCard key={`${issue.title}-${index}`} issue={issue} index={index} />
-          ))}
-        </ul>
-      ) : (
-        <p className="bg-[#F2F0EF] px-4 py-4 text-sm text-slate-600">مشکل قابل‌اتکایی با شاهد در این تماس پیدا نشد.</p>
-      )}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <BulletList title="نقاط قوت" items={result.strengths.map((item) => (item.evidence_quote ? `${item.title} — «${item.evidence_quote}»` : item.title))} />
-        <BulletList title="فرصت‌های از دست‌رفته" items={result.missed_opportunities} />
-        <BulletList title="تمرین برای تماس بعدی" items={result.next_call_drills} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile value={result.issues.length} label="نکتهٔ قابل‌بهبود" tone="text-rose-700" />
+        <StatTile value={result.strengths.length} label="نقطهٔ قوت" tone="text-[#4B6E48]" />
+        <StatTile value={result.missed_opportunities.length} label="فرصت از دست‌رفته" tone="text-amber-600" />
+        <StatTile value={result.next_call_drills.length} label="تمرین پیشنهادی" tone="text-slate-700" />
       </div>
+      <div className="flex justify-end">
+        <button type="button" className="btn h-10 px-5 py-0 text-sm" onClick={() => setOpen(true)}>مشاهدهٔ تفصیل تحلیل</button>
+      </div>
+      <CoachDetailDialog coach={coach} open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }

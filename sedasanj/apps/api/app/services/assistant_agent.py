@@ -119,6 +119,14 @@ FILE_HINT = (
 )
 
 
+DATA_TOOLS = ("get_call_analytics", "search_calls", "visualize_statistics")
+TIME_ONLY_HINT = (
+    "\n[الزام سامانه] get_current_time به‌تنهایی پاسخی نمی‌دهد. زمان فعلی در current_time "
+    "پرامپت سیستم آمده است؛ همین حالا ابزار داده مناسب (مثلاً get_call_analytics یا "
+    "search_calls) را با from_date و to_date دارای offset از همان مقادیر فراخوانی کن."
+)
+
+
 def wants_file(question: str) -> bool:
     return bool(FILE_REQUEST.search(question))
 
@@ -361,6 +369,7 @@ async def plan(
     pending: list[PlannedToolCall] = []
     seen: set[str] = set()
     file_forced = False
+    time_retried = False
     for round_index in range(discovery_rounds + 2):
         allow_search = round_index < discovery_rounds
         planned = await _request_plan(
@@ -383,6 +392,18 @@ async def plan(
                 if fingerprint not in seen:
                     pending.append(call)
                     seen.add(fingerprint)
+        if (
+            not discoveries
+            and not time_retried
+            and pending
+            and all(call.name == "get_current_time" for call in pending)
+            and any(enabled is None or name in enabled for name in DATA_TOOLS)
+        ):
+            # The time alone answers nothing; replan with the clock from the system prompt.
+            time_retried = True
+            pending = []
+            history += TIME_ONLY_HINT
+            continue
         if not discoveries:
             if (
                 not file_forced
