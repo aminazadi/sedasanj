@@ -244,8 +244,10 @@ async def test_resolve_provider_settings_uses_admin_audio_models(
         type(
             "Row",
             (),
-            {"key": "audio_enhancement_model", "value": "speech-clarity-strong"},
+            {"key": "audio_enhancement_model", "value": "speech-telephony-adaptive"},
         )(),
+        type("Row", (), {"key": "audio_target_loudness_lufs", "value": "-18"})(),
+        type("Row", (), {"key": "audio_max_gain_db", "value": "24"})(),
     ]
 
     class _Result:
@@ -259,7 +261,9 @@ async def test_resolve_provider_settings_uses_admin_audio_models(
     runtime = await platform_service.resolve_provider_settings(FakeSession())  # type: ignore[arg-type]
     assert runtime.audio_preprocessing_enabled is True
     assert runtime.audio_denoiser_model == "speech-afftdn-strong"
-    assert runtime.audio_enhancement_model == "speech-clarity-strong"
+    assert runtime.audio_enhancement_model == "speech-telephony-adaptive"
+    assert runtime.audio_target_loudness_lufs == -18.0
+    assert runtime.audio_max_gain_db == 24.0
 
 
 @pytest.mark.asyncio
@@ -303,7 +307,10 @@ async def test_settings_view_exposes_server_owned_audio_catalog(
         "none",
         "speech-clarity-balanced",
         "speech-clarity-strong",
+        "speech-telephony-adaptive",
     }
+    assert payload["audio_target_loudness_lufs"] == -20.0
+    assert payload["audio_max_gain_db"] == 30.0
 
 
 @pytest.mark.asyncio
@@ -425,3 +432,21 @@ async def test_dual_channel_sends_preprocessed_files_to_asr(tmp_path: Path) -> N
         await _transcribe_tracks(FakeEngine(), original, tmp_path, channels=2, preprocessing=config)
 
     assert set(received) == {"left-preprocessed.wav", "right-preprocessed.wav"}
+
+
+def test_channel_level_report_is_logged_per_channel(caplog: pytest.LogCaptureFixture) -> None:
+    from app.services.audio import ChannelLevelReport
+    from worker_asr.main import _log_channel_levels
+
+    with caplog.at_level("INFO", logger="worker_asr.main"):
+        _log_channel_levels(
+            ChannelLevelReport(measured_lufs=-31.5, gain_db=11.5, silent=False), None
+        )
+    records = [r for r in caplog.records if r.getMessage() == "asr channel level matched"]
+    assert len(records) == 1
+    assert records[0].extra_fields == {  # type: ignore[attr-defined]
+        "channel": 0,
+        "measured_lufs": -31.5,
+        "gain_db": 11.5,
+        "silent": False,
+    }

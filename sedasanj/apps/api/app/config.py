@@ -89,8 +89,12 @@ class Settings(BaseSettings):
         "none", "speech-afftdn-balanced", "speech-afftdn-strong"
     ] = "speech-afftdn-balanced"
     audio_enhancement_model: Literal[
-        "none", "speech-clarity-balanced", "speech-clarity-strong"
+        "none", "speech-clarity-balanced", "speech-clarity-strong", "speech-telephony-adaptive"
     ] = "speech-clarity-balanced"
+    # Used only by the adaptive telephony model: every channel is lifted to this integrated
+    # loudness, never by more than audio_max_gain_db.
+    audio_target_loudness_lufs: float = Field(default=-20.0, ge=-30.0, le=-12.0)
+    audio_max_gain_db: float = Field(default=30.0, ge=0.0, le=40.0)
     mono_diarization_enabled: bool = False
     diarization_model: str = "sherpa-diarization-2speaker"
     turn_min_seconds: float = Field(default=0.3, ge=0.1, le=3.0)

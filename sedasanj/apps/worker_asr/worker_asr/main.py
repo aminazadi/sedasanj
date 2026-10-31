@@ -34,6 +34,7 @@ from app.services import analysis_runs, outbox, pipeline, processing_events, pro
 from app.services.asr_revisions import activate_new
 from app.services.audio import (
     AudioPreprocessingConfig,
+    ChannelLevelReport,
     preprocess_mono_audio,
     probe_wav_file,
     resample_to_16k,
@@ -170,6 +171,24 @@ async def _load_or_create_analysis_run(
     return run
 
 
+def _log_channel_levels(*reports: ChannelLevelReport | None) -> None:
+    """One line per channel: what the adaptive level matching measured and applied."""
+    for channel, report in enumerate(reports):
+        if report is None:
+            continue
+        logger.info(
+            "asr channel level matched",
+            extra={
+                "extra_fields": {
+                    "channel": channel,
+                    "measured_lufs": report.measured_lufs,
+                    "gain_db": report.gain_db,
+                    "silent": report.silent,
+                }
+            },
+        )
+
+
 async def _transcribe_tracks(
     engine: AsrEngine,
     original: Path,
@@ -186,10 +205,11 @@ async def _transcribe_tracks(
         if preprocessing.enabled:
             left_ready = scratch / "left-preprocessed.wav"
             right_ready = scratch / "right-preprocessed.wav"
-            await asyncio.gather(
+            left_report, right_report = await asyncio.gather(
                 preprocess_mono_audio(left, left_ready, preprocessing),
                 preprocess_mono_audio(right, right_ready, preprocessing),
             )
+            _log_channel_levels(left_report, right_report)
             if on_preprocessed is not None:
                 await on_preprocessed()
         else:
@@ -259,6 +279,8 @@ async def _engine_for_job(
         enabled=runtime.audio_preprocessing_enabled,
         denoiser_model=runtime.audio_denoiser_model,
         enhancement_model=runtime.audio_enhancement_model,
+        target_loudness_lufs=runtime.audio_target_loudness_lufs,
+        max_gain_db=runtime.audio_max_gain_db,
     )
     preprocessing.validate()
     return engine, preprocessing, runtime

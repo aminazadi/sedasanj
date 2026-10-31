@@ -366,6 +366,8 @@ export default function Settings() {
           audio_preprocessing_enabled: settings.audio_preprocessing_enabled,
           audio_denoiser_model: settings.audio_denoiser_model,
           audio_enhancement_model: settings.audio_enhancement_model,
+          audio_target_loudness_lufs: settings.audio_target_loudness_lufs,
+          audio_max_gain_db: settings.audio_max_gain_db,
           analysis_concurrency: settings.analysis_concurrency,
           mono_diarization_enabled: settings.mono_diarization_enabled,
           diarization_model: settings.diarization_model,
@@ -789,6 +791,52 @@ export default function Settings() {
               )?.description ?? ""}
             </p>
           </div>
+
+          {settings.audio_enhancement_model === "speech-telephony-adaptive" && (
+            <>
+              <div>
+                <label className="label">بلندی هدف هر کانال (LUFS)</label>
+                <input
+                  className="input"
+                  dir="ltr"
+                  type="number"
+                  min="-30"
+                  max="-12"
+                  step="1"
+                  disabled={!settings.audio_preprocessing_enabled}
+                  value={settings.audio_target_loudness_lufs}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      audio_target_loudness_lufs: Number(event.target.value),
+                    })
+                  }
+                />
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  بین ۳۰- و ۱۲-؛ مقدار پیشنهادی ۲۰-. هر دو طرف مکالمه به همین سطح می‌رسند.
+                </p>
+              </div>
+              <div>
+                <label className="label">حداکثر تقویت (dB)</label>
+                <input
+                  className="input"
+                  dir="ltr"
+                  type="number"
+                  min="0"
+                  max="40"
+                  step="1"
+                  disabled={!settings.audio_preprocessing_enabled}
+                  value={settings.audio_max_gain_db}
+                  onChange={(event) =>
+                    setSettings({ ...settings, audio_max_gain_db: Number(event.target.value) })
+                  }
+                />
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  بین ۰ و ۴۰؛ مقدار پیشنهادی ۳۰. سقف تقویت، جلوی بلند شدن نویز خط را می‌گیرد.
+                </p>
+              </div>
+            </>
+          )}
         </div>
         <div className="border-t border-slate-200 pt-4">
           <div className="flex items-start justify-between gap-4">

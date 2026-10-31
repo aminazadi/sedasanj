@@ -112,6 +112,8 @@ export interface PlatformSettings {
   audio_preprocessing_enabled: boolean;
   audio_denoiser_model: string;
   audio_enhancement_model: string;
+  audio_target_loudness_lufs: number;
+  audio_max_gain_db: number;
   analysis_concurrency: number;
   decision_model: string;
   decision_fallback_model: string;
