@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Added Persian deployment recovery steps for migration 0091 parameter type conflicts, including rebuild commands and successful migration checks.
+
 - Fixed migration 0091 failing with asyncpg AmbiguousParameterError by binding the task help article title, summary and plain text independently; corrected the PostgreSQL regression fixture to use the deployed VARCHAR/TEXT column types.
 
 - Replaced dropdown arrows across client and admin native selects, searchable selects and table page-size controls with the shared Lucide chevron-down icon at a consistent 20px size.

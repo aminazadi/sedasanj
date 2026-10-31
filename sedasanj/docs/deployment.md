@@ -28,6 +28,27 @@ docker compose up -d --build --remove-orphans
 docker compose logs -f migrate
 ```
 
+### توقف مایگریشن میز پیگیری
+
+اگر لاگ سرویس `migrate` در مرحلهٔ `0091_task_workspace` شامل
+`AmbiguousParameterError` و `character varying versus text` است، نسخهٔ اصلاح‌شدهٔ
+کد را دریافت کنید. علت، استفاده از یک پارامتر مشترک برای عنوان مقاله از نوع
+`VARCHAR` و متن‌های راهنما از نوع `TEXT` است. سپس از پوشهٔ `sedasanj/deploy`
+تصویرها را بازسازی و استقرار را دوباره اجرا کنید:
+
+```bash
+git pull --ff-only
+docker compose up -d --build --remove-orphans
+docker compose logs --tail=100 migrate
+docker compose ps -a
+```
+
+برای تأیید، سرویس `migrate` باید با کد `0` تمام شود و سرویس‌های وابسته شروع شوند.
+اگر خطا باقی ماند، نام مایگریشن و نوع خطای جدید را بررسی کنید. برای عبور از خطا،
+نسخهٔ Alembic را دستی تغییر ندهید و volume دیتابیس را حذف نکنید. در تست‌های
+مایگریشن نیز نوع ستون‌ها را مطابق دیتابیس اصلی نگه دارید تا این ناسازگاری
+پیش از استقرار شناسایی شود.
+
 پیش از هر اجرای Redis، سرویس `redis-aof-repair` صحت AOF پایدار را بررسی می‌کند. اگر AOF
 ناقص باشد، ابتدا یک کپی کامل در `aof-repair-backups` همان volume می‌سازد و سپس repair رسمی
 Redis را اجرا می‌کند. فایل سالم بدون هیچ تغییری عبور داده می‌شود.
