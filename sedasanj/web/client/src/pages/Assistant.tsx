@@ -1,3 +1,4 @@
+import { DataTable } from "../components/DataTable";
 import AssistantContextPicker, { AssistantAttachmentChips } from "../components/AssistantContextPicker";
 import ProcessingIndicator from "../components/ProcessingIndicator";
 import AssistantExportFiles from "../components/AssistantExportFiles";
@@ -259,7 +260,7 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
       <span className="border border-[#B2AC88] bg-[#F2F0EF] px-2 py-1 text-[11px] font-bold text-[#4B6E48]">{fmt.int(sources.length)} تماس</span>
     </div>
     <div className="max-h-[30rem] overflow-auto border border-[#B2AC88] bg-white">
-      <table className="w-full min-w-[48rem] table-fixed border-collapse text-[11px]">
+      <DataTable tableId="assistant_results" className="w-full min-w-[48rem] table-fixed border-collapse text-[11px]">
         <thead className="sticky top-0 z-10 bg-[#F2F0EF] text-[#4B6E48]">
           <tr className="border-b border-[#B2AC88]">
             <th className="w-9 p-0" aria-label="نمایش جزئیات" />
@@ -309,7 +310,7 @@ export function CallSources({ sources, expandedCallId, onToggle }: { sources: As
             </tr> : null}
           </tbody>;
         })}
-      </table>
+      </DataTable>
     </div>
   </section>;
 }

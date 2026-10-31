@@ -354,7 +354,7 @@ async def list_tenants(
     staff: StaffDep,
     session: StaffSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     base = select(Tenant).where(Tenant.status != "deleted")
     total = int(
@@ -381,7 +381,7 @@ async def list_tenant_databases(
     staff: StaffDep,
     session: StaffSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     total = int(
         (
@@ -713,7 +713,7 @@ async def tenant_users(
     staff: StaffDep,
     session: StaffSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     base = select(User).where(User.tenant_id == tenant_id)
     total = int(
@@ -865,7 +865,7 @@ async def operations(
     staff: StaffDep,
     session: StaffSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
     pending_outbox: list[JobOutbox] = []
@@ -1752,7 +1752,7 @@ async def admin_list_packages(
     staff: StaffDep,
     session: StaffSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     total = int((await session.execute(select(func.count(Package.id)))).scalar_one())
     rows = (
@@ -1945,7 +1945,7 @@ async def list_staff(
     staff: StaffDep,
     session: StaffSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     total = int((await session.execute(select(func.count(StaffUser.id)))).scalar_one())
     rows = (

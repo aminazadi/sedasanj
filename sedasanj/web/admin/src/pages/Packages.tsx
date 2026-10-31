@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { fmt, request } from "../api";
 import { useReasonDialog } from "../components/ReasonDialog";
@@ -8,7 +9,7 @@ import type { Package, Page } from "../types";
 const EMPTY = { name: "", minutes: 500, price_toman: 5000000, active: true };
 
 export default function Packages() {
-  const limit = 25;
+  const [limit] = useTablePageSize();
   const [filters, setFilters] = useUrlParams({ offset: "0" });
   const offset = toOffset(filters.offset);
   const setOffset = (value: number) => setFilters({ offset: String(value) });
@@ -28,7 +29,7 @@ export default function Packages() {
 
   useEffect(() => {
     void reload();
-  }, [offset]);
+  }, [limit, offset]);
   const packages = page?.items ?? null;
 
   async function create(event: React.FormEvent) {

@@ -1,3 +1,4 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -79,6 +80,8 @@ interface ViewContext {
   operator: boolean;
   operatorOffset: number;
   campaignOffset: number;
+  recentOffset: number;
+  setRecentOffset: (offset: number) => void;
   tableLimit: number;
   selectedRange: { from: string; to: string };
   navigate: (to: string) => void;
@@ -107,7 +110,7 @@ function KpiRow({ data, operator, range }: { data: KpiDashboard; operator: boole
 
 /** Secondary analyses kept below the executive view; built from the same payload. */
 function detailView(data: KpiDashboard, recent: CallPage, ctx: ViewContext) {
-  const { operator, operatorOffset, campaignOffset, tableLimit, selectedRange, navigate, updateAnalysisFilter } = ctx;
+  const { operator, operatorOffset, campaignOffset, recentOffset, setRecentOffset, tableLimit, selectedRange, navigate, updateAnalysisFilter } = ctx;
   const c = data.cards;
   const widgets = new Set(data.dashboard_widgets);
   const talk = [{ name: "اپراتور", value: c.talk_balance.agent_percent ?? 0, color: chart.primary }, { name: "مشتری", value: c.talk_balance.caller_percent ?? 0, color: chart.cyan }];
@@ -120,7 +123,7 @@ function detailView(data: KpiDashboard, recent: CallPage, ctx: ViewContext) {
     coaching: widgets.has("coaching") && !operator ? <CoachingPanel coaching={data.coaching} title="نقاط قوت و اولویت‌های بهبود تیم" /> : null,
     operatorsTable: !operator ? <section className="card overflow-x-auto"><h2 className="mb-4 font-bold">عملکرد تفصیلی اپراتورها</h2><table className="table min-w-[780px]"><thead><tr><th>اپراتور</th><th>تماس پاسخ‌داده‌شده</th><th>تماس بی‌پاسخ</th><th>فرصت</th><th>فروش</th><th>تبدیل</th><th>کیفیت</th><th>سهم صحبت</th><th>نمونه</th></tr></thead><tbody>{data.operators.map((item) => <tr key={item.operator_id}><td>{item.operator_label}</td><td>{fmt.int(item.calls)}</td><td>{fmt.int(item.missed_calls)}</td><td>{fmt.int(item.opportunities)}</td><td>{fmt.int(item.wins)}</td><td>{pct(item.conversion)}</td><td>{item.quality_score == null ? "—" : fmt.decimal(item.quality_score)}</td><td>{item.agent_talk_ratio == null ? "—" : `${fmt.decimal(item.agent_talk_ratio)}٪`}</td><td className={item.sample_sufficient ? "text-emerald-700" : "text-amber-700"}>{item.sample_sufficient ? "کافی" : "ناکافی"}</td></tr>)}</tbody></table><Pagination page={Math.floor(operatorOffset / tableLimit) + 1} hasPrevious={operatorOffset > 0} hasNext={operatorOffset + tableLimit < data.operators_total} total={data.operators_total} onPrevious={() => updateAnalysisFilter("operator_offset", String(Math.max(0, operatorOffset - tableLimit)))} onNext={() => updateAnalysisFilter("operator_offset", String(operatorOffset + tableLimit))} /></section> : null,
     campaignsTable: !operator ? <section className="card overflow-x-auto"><h2 className="mb-4 font-bold">کمپین‌ها و منابع</h2><table className="table min-w-[600px]"><thead><tr><th>کمپین / منبع</th><th>تماس</th><th>فرصت</th><th>فروش</th><th>نرخ برد AI</th></tr></thead><tbody>{data.breakdowns.campaigns.map((item) => <tr key={item.key}><td>{item.key === "unknown" ? "منبع نامشخص" : item.key}</td><td>{fmt.int(item.calls)}</td><td>{fmt.int(item.opportunities)}</td><td>{fmt.int(item.wins)}</td><td>{pct(item.conversion)}</td></tr>)}</tbody></table><Pagination page={Math.floor(campaignOffset / tableLimit) + 1} hasPrevious={campaignOffset > 0} hasNext={campaignOffset + tableLimit < data.breakdowns.campaigns_total} total={data.breakdowns.campaigns_total} onPrevious={() => updateAnalysisFilter("campaign_offset", String(Math.max(0, campaignOffset - tableLimit)))} onNext={() => updateAnalysisFilter("campaign_offset", String(campaignOffset + tableLimit))} /></section> : null,
-    recent: <section className="card overflow-x-auto"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-bold">تماس‌های اخیر بازه</h2><p className="mt-1 text-sm text-slate-500">برای بررسی کامل، روی هر ردیف کلیک کنید.</p></div><Link to={`/calls${query({ from: selectedRange.from, to: selectedRange.to })}`} className="btn-ghost inline-flex h-9 items-center px-3 py-0 text-xs">همه تماس‌ها</Link></div>{recent.items.length ? <table className="table min-w-[780px]"><thead><tr><th>زمان</th><th>شماره</th><th>مدت</th><th>خلاصه</th><th>وضعیت</th><th>احساس</th><th>تغییر</th></tr></thead><tbody>{recent.items.map((call) => <tr key={call.id} className="table-row-link" role="link" tabIndex={0} onClick={() => navigate(`/calls/${call.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/calls/${call.id}`); } }}><td>{fmt.dateTime(call.started_at)}</td><td dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</td><td>{fmt.duration(call.duration_ms)}</td><SummaryCell summary={call.summary} /><td><StatusBadge status={call.call_type === "answered" ? call.status : call.call_type} /></td><td><SentimentBadge sentiment={call.sentiment} /></td><td><TrajectoryBadge trajectory={call.sentiment_trajectory} /></td></tr>)}</tbody></table> : <Empty />}</section>,
+    recent: <section className="card overflow-x-auto"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-bold">تماس‌های اخیر بازه</h2><p className="mt-1 text-sm text-slate-500">برای بررسی کامل، روی هر ردیف کلیک کنید.</p></div><Link to={`/calls${query({ from: selectedRange.from, to: selectedRange.to })}`} className="btn-ghost inline-flex h-9 items-center px-3 py-0 text-xs">همه تماس‌ها</Link></div>{recent.items.length ? <table className="table min-w-[780px]"><thead><tr><th>زمان</th><th>شماره</th><th>مدت</th><th>خلاصه</th><th>وضعیت</th><th>احساس</th><th>تغییر</th></tr></thead><tbody>{recent.items.map((call) => <tr key={call.id} className="table-row-link" role="link" tabIndex={0} onClick={() => navigate(`/calls/${call.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/calls/${call.id}`); } }}><td>{fmt.dateTime(call.started_at)}</td><td dir="ltr">{call.caller_number ? fmt.digits(call.caller_number) : "—"}</td><td>{fmt.duration(call.duration_ms)}</td><SummaryCell summary={call.summary} /><td><StatusBadge status={call.call_type === "answered" ? call.status : call.call_type} /></td><td><SentimentBadge sentiment={call.sentiment} /></td><td><TrajectoryBadge trajectory={call.sentiment_trajectory} /></td></tr>)}</tbody></table> : <Empty />}<Pagination page={Math.floor(recentOffset / tableLimit) + 1} hasPrevious={recentOffset > 0} hasNext={recentOffset + tableLimit < recent.total} total={recent.total} onPrevious={() => setRecentOffset(Math.max(0, recentOffset - tableLimit))} onNext={() => setRecentOffset(recentOffset + tableLimit)} /></section>,
     breakdowns: <div className="grid gap-px overflow-hidden border border-[color:var(--line)] bg-[#B2AC88] lg:grid-cols-2"><Breakdown title="اعتراض‌های پرتکرار" rows={data.breakdowns.objections} /><Breakdown title="محصولات و خدمات" rows={data.breakdowns.products} /><TopicsCloud rows={data.breakdowns.topics} emptyState={<DashboardEmpty title="داده کافی وجود ندارد." description="پس از تکمیل تحلیل تماس‌ها، این بخش نمایش داده می‌شود." />} /><Breakdown title="دلایل برد و باخت" rows={data.breakdowns.win_loss_reasons} /></div>,
   };
 }
@@ -176,7 +179,8 @@ export default function Overview() {
   const trendMetric: TrendMetric = TREND_METRICS.some((item) => item.value === trendParam) ? (trendParam as TrendMetric) : "calls";
   const funnelView: FunnelView = searchParams.get("funnel") === "sales" ? "sales" : "engagement";
   const attention = searchParams.get("attention") ?? "";
-  const tableLimit = 25;
+  const [tableLimit] = useTablePageSize();
+  const [recentOffset, setRecentOffset] = useTableOffset("recent_offset");
   const detailsOpen = searchParams.get("details") === "1";
   const incompleteRange = range === "custom" && (!fromInput || !toInput);
   const selectedRange = useMemo(() => rangeDates(range, fromInput, toInput), [range, fromInput, toInput]);
@@ -187,14 +191,14 @@ export default function Overview() {
   };
   const clearAnalysisFilters = () => {
     const params = new URLSearchParams(searchParams);
-    ["direction", "campaign", "source", "intent", "certainty", "team", "operator", "operator_offset", "campaign_offset"].forEach((key) => params.delete(key));
+    ["direction", "campaign", "source", "intent", "certainty", "team", "operator", "operator_offset", "campaign_offset", "recent_offset"].forEach((key) => params.delete(key));
     setSearchParams(params);
   };
   const updateAnalysisFilter = (key: string, value: string, clearKey?: string) => {
     const params = new URLSearchParams(searchParams);
     if (value) params.set(key, value); else params.delete(key);
     if (clearKey) params.delete(clearKey);
-    if (key !== "operator_offset" && key !== "campaign_offset") { params.delete("operator_offset"); params.delete("campaign_offset"); }
+    if (key !== "operator_offset" && key !== "campaign_offset") { params.delete("operator_offset"); params.delete("campaign_offset"); params.delete("recent_offset"); }
     setSearchParams(params);
   };
   /** View-only params (chart metric, expanded group) must not reset table pagination. */
@@ -208,15 +212,15 @@ export default function Overview() {
     const filterQuery = { from: selectedRange.from, to: selectedRange.to, direction, campaign_id: campaign, source, intent, certainty, team_id: team, operator_id: operatorId };
     const [data, recent] = await Promise.all([
       request<KpiDashboard>(`/v1/kpi/dashboard${query({ ...filterQuery, operator_offset: operatorOffset, campaign_offset: campaignOffset, table_limit: tableLimit })}`, { signal }),
-      request<CallPage>(`/v1/calls${query({ limit: 10, ...filterQuery })}`, { signal }),
+      request<CallPage>(`/v1/calls${query({ limit: tableLimit, offset: recentOffset, ...filterQuery })}`, { signal }),
     ]);
     return { data, recent };
-  }, [campaign, campaignOffset, certainty, direction, fromInput, intent, operatorId, operatorOffset, range, selectedRange.from, selectedRange.to, source, team, toInput]);
+  }, [tableLimit, recentOffset, campaign, campaignOffset, certainty, direction, fromInput, intent, operatorId, operatorOffset, range, selectedRange.from, selectedRange.to, source, team, toInput]);
 
   // The previous result stays available while a new one loads: filter options, widget set and row counts come from it.
   const previous = dashboard.data?.data;
   const live = dashboard.loading ? null : dashboard.data;
-  const ctx: ViewContext = { operator, operatorOffset, campaignOffset, tableLimit, selectedRange, navigate, updateAnalysisFilter };
+  const ctx: ViewContext = { operator, operatorOffset, campaignOffset, recentOffset, setRecentOffset, tableLimit, selectedRange, navigate, updateAnalysisFilter };
   const details = live ? detailView(live.data, live.recent, ctx) : null;
   const widgets = new Set(previous?.dashboard_widgets ?? DEFAULT_WIDGETS);
   const filters = previous?.filters ?? EMPTY_FILTERS;
@@ -259,7 +263,7 @@ export default function Overview() {
         {widgets.has("trend") ? <TrendPanel trend={data.trend} metric={trendMetric} onMetric={(value) => updateViewParam("trend", value, "calls")} /> : null}
         {widgets.has("funnel") ? <FunnelStrip views={data.funnel_views} view={funnelView} onView={(value) => updateViewParam("funnel", value, "engagement")} /> : null}
         <div className="exec-split exec-split--wide">
-          {operator ? (widgets.has("coaching") ? <CoachingPanel coaching={data.coaching} /> : null) : widgets.has("operator_comparison") ? <TeamPanel operators={data.operators} total={data.operators_total} /> : null}
+          {operator ? (widgets.has("coaching") ? <CoachingPanel coaching={data.coaching} /> : null) : widgets.has("operator_comparison") ? <TeamPanel operators={data.operators} total={data.operators_total} offset={operatorOffset} limit={tableLimit} onOffset={(value) => updateAnalysisFilter("operator_offset", String(value))} /> : null}
           {widgets.has("sentiment") ? <VoiceOfCustomer sentiments={data.sentiments} objections={data.breakdowns.objections} topics={data.breakdowns.topics} range={selectedRange} /> : null}
         </div>
       </> : <ExecutiveSkeleton operator={operator} />}

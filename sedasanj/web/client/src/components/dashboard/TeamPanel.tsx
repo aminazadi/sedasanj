@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { fmt } from "../../api";
 import type { KpiDashboard } from "../../types";
-import { Empty } from "../Widgets";
+import { Empty, Pagination } from "../Widgets";
 import { DashboardCard } from "./DashboardCard";
 
 const QUALITY_ALERT = 70;
@@ -14,14 +14,14 @@ function QualityTrend({ current, previous }: { current: number | null; previous:
 }
 
 /** Leaderboard by sales; low-sample operators are tagged rather than hidden. */
-export function TeamPanel({ operators, total }: { operators: KpiDashboard["operators"]; total: number }) {
-  const ranked = [...operators].sort((a, b) => b.wins - a.wins || (b.conversion.value ?? -1) - (a.conversion.value ?? -1) || b.calls - a.calls).slice(0, 6);
+export function TeamPanel({ operators, total, offset, limit, onOffset }: { operators: KpiDashboard["operators"]; total: number; offset: number; limit: number; onOffset: (offset: number) => void }) {
+  const ranked = [...operators].sort((a, b) => b.wins - a.wins || (b.conversion.value ?? -1) - (a.conversion.value ?? -1) || b.calls - a.calls);
   const maxWins = Math.max(1, ...ranked.map((item) => item.wins));
   return <DashboardCard title="تیم" hint={`رتبه بر اساس فروش · ${fmt.int(total)} اپراتور فعال در این بازه`} action={<Link to="/operator-scores" className="exec-link">کارنامهٔ اپراتورها</Link>}>
     {ranked.length ? <div className="overflow-x-auto"><table className="exec-table min-w-[520px]">
       <thead><tr><th className="w-10" /><th>اپراتور</th><th>تماس</th><th>فروش</th><th>تبدیل</th><th>کیفیت</th><th>تغییر کیفیت</th></tr></thead>
       <tbody>{ranked.map((item, index) => <tr key={item.operator_id}>
-        <td><span className="exec-rank">{fmt.int(index + 1)}</span></td>
+        <td><span className="exec-rank">{fmt.int(offset + index + 1)}</span></td>
         <td className="max-w-[12rem]"><span className="block truncate">{item.operator_label}</span>{item.sample_sufficient ? null : <span className="exec-tag">نمونهٔ کم</span>}</td>
         <td className="tabular-nums">{fmt.int(item.calls)}</td>
         <td className="tabular-nums"><span className="inline-flex items-center gap-2"><i className="exec-minibar" style={{ width: `${(item.wins * 48) / maxWins}px` }} aria-hidden="true" />{fmt.int(item.wins)}</span></td>
@@ -30,6 +30,7 @@ export function TeamPanel({ operators, total }: { operators: KpiDashboard["opera
         <td className="tabular-nums"><QualityTrend current={item.quality_score} previous={item.previous_quality_score} /></td>
       </tr>)}</tbody>
     </table></div> : <Empty>هنوز تماسی به اپراتورها منتسب نشده است.</Empty>}
+    <Pagination page={Math.floor(offset / limit) + 1} hasPrevious={offset > 0} hasNext={offset + limit < total} total={total} onPrevious={() => onOffset(Math.max(0, offset - limit))} onNext={() => onOffset(offset + limit)} />
   </DashboardCard>;
 }
 

@@ -1,3 +1,5 @@
+import { useUrlParams } from "../lib/useUrlParams";
+import { DataTable } from "../components/DataTable";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { request } from "../api";
@@ -14,8 +16,11 @@ const SEVERITY: Record<HelpSeverity, { label: string; className: string }> = {
 export default function HelpErrorCodes() {
   const navigate = useNavigate();
   const [codes, setCodes] = useState<HelpErrorCode[] | null>(null);
-  const [onlyMissing, setOnlyMissing] = useState(false);
-  const [filter, setFilter] = useState("");
+  const [filters, setFilters] = useUrlParams({ missing: "", q: "", helperrorcodes_0_offset: "0" });
+  const onlyMissing = filters.missing === "true";
+  const filter = filters.q;
+  const setOnlyMissing = (value: boolean) => setFilters({ missing: value ? "true" : "", helperrorcodes_0_offset: "0" });
+  const setFilter = (value: string) => setFilters({ q: value, helperrorcodes_0_offset: "0" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +122,7 @@ export default function HelpErrorCodes() {
         <Empty>کدی یافت نشد. برای شروع «افزودن کدهای ماژول» را بزنید.</Empty>
       ) : (
         <div className="card overflow-x-auto p-0">
-          <table className="table">
+          <DataTable tableId="helperrorcodes_0" className="table">
             <thead>
               <tr>
                 <th>کد</th>
@@ -153,7 +158,7 @@ export default function HelpErrorCodes() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
       <p className="text-xs text-slate-400">

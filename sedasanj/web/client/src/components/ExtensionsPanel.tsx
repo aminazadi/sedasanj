@@ -1,3 +1,4 @@
+import { DataTable } from "./DataTable";
 import { useState } from "react";
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import { useResource } from "@cbi/web-shared/lib/useResource";
@@ -73,7 +74,7 @@ export default function ExtensionsPanel({ canEdit }: { canEdit: boolean }) {
       ) : rows.length === 0 ? (
         <Empty>هنوز داخلی‌ای همگام نشده؛ در صفحهٔ ماژول FreePBX دکمهٔ «Sync extensions» را بزنید.</Empty>
       ) : (
-        <table className="table" dir="rtl">
+        <DataTable tableId="extensionspanel_0" className="table" dir="rtl">
           <thead>
             <tr>{COLUMNS.map((column, index) => <th key={index}>{column.label}</th>)}</tr>
           </thead>
@@ -111,7 +112,7 @@ export default function ExtensionsPanel({ canEdit }: { canEdit: boolean }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       )}
     </div>
   );

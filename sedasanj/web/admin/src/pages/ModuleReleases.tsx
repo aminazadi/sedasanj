@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import ReleaseTimeline, { SeverityBadge } from "@cbi/web-shared/components/ReleaseTimeline";
@@ -44,7 +45,7 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 }
 
 export default function ModuleReleases() {
-  const limit = 25;
+  const [limit] = useTablePageSize();
   const [params, setParams] = useSearchParams();
   const offset = Math.max(0, Number(params.get("offset")) || 0);
   const filter = (params.get("status") || "") as ModuleReleaseStatus | "";
@@ -74,7 +75,7 @@ export default function ModuleReleases() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [offset, filter, product]);
+  }, [limit, offset, filter, product]);
 
   useEffect(() => {
     void reload();

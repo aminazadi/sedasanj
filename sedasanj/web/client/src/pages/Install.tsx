@@ -1,3 +1,4 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { Link } from "react-router-dom";
@@ -78,8 +79,8 @@ function Block({ title, code }: { title: string; code: string }) {
 }
 
 export default function Install() {
-  const limit = 10;
-  const [installationOffset, setInstallationOffset] = useState(0);
+  const [limit] = useTablePageSize();
+  const [installationOffset, setInstallationOffset] = useTableOffset("installation_offset");
   const [installationTotal, setInstallationTotal] = useState(0);
   const [key, setKey] = useState("");
   const [result, setResult] = useState<{ tenant: string | null; balance_minutes: number; archive_format: string; archive_password_configured: boolean } | null>(null);
@@ -94,7 +95,7 @@ export default function Install() {
     setInstallationTotal(page.total);
   }
 
-  useEffect(() => { void reloadInstallations(); }, [installationOffset]);
+  useEffect(() => { void reloadInstallations(); }, [limit, installationOffset]);
 
   async function createInstallation(event: React.FormEvent) {
     event.preventDefault();

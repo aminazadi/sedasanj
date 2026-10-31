@@ -1,3 +1,5 @@
+import { DataTable } from "../components/DataTable";
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -5,10 +7,10 @@ import { Empty, ErrorBox, Loading, Pagination, Stat } from "../components/Widget
 import type { LedgerEntry, Page, TenantDetail, TenantUser } from "../types";
 
 export default function TenantDetailPage() {
-  const limit = 10;
-  const [userOffset, setUserOffset] = useState(0);
+  const [limit] = useTablePageSize();
+  const [userOffset, setUserOffset] = useTableOffset("user_offset");
   const [userPage, setUserPage] = useState<Page<TenantUser> | null>(null);
-  const [ledgerOffset, setLedgerOffset] = useState(0);
+  const [ledgerOffset, setLedgerOffset] = useTableOffset("ledger_offset");
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const { tenantId } = useParams<{ tenantId: string }>();
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
@@ -40,7 +42,7 @@ export default function TenantDetailPage() {
 
   useEffect(() => {
     void reload();
-  }, [ledgerOffset, tenantId, userOffset]);
+  }, [limit, ledgerOffset, tenantId, userOffset]);
 
   async function setStatus(action: "suspend" | "activate") {
     try {
@@ -226,16 +228,16 @@ export default function TenantDetailPage() {
       </div>
       {commerce ? <div className="grid gap-4 md:grid-cols-2">
         <section className="card md:col-span-2 overflow-x-auto"><h2 className="mb-3 font-bold">اشتراک و مصرف</h2><p className="mb-2 text-sm">پیام‌های موفق دستیار: {fmt.int(commerce.assistant_messages_total)}</p>
-          {commerce.subscriptions.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>وضعیت</th><th>دوره</th><th>شروع</th><th>پایان</th><th>ظرفیت</th><th>نرخ دقیقه</th><th>پیام دستیار</th></tr></thead><tbody>{commerce.subscriptions.map((row) => <tr key={String(row.id)}><td>{String(row.status)}{row.cancel_at_period_end ? <small className="block text-amber-600">لغو در پایان دوره</small> : null}</td><td>{String(row.billing_period)}</td><td>{fmt.date(String(row.period_start))}</td><td>{fmt.date(String(row.period_end))}</td><td>{fmt.int(Number(row.base_operators) + Number(row.extra_operators))}</td><td>{fmt.toman(Number(row.price_per_minute_toman))}</td><td>{fmt.int(Number(row.assistant_monthly_messages))}</td></tr>)}</tbody></table>}
+          {commerce.subscriptions.length === 0 ? <Empty /> : <DataTable tableId="tenantdetail_1" className="table"><thead><tr><th>وضعیت</th><th>دوره</th><th>شروع</th><th>پایان</th><th>ظرفیت</th><th>نرخ دقیقه</th><th>پیام دستیار</th></tr></thead><tbody>{commerce.subscriptions.map((row) => <tr key={String(row.id)}><td>{String(row.status)}{row.cancel_at_period_end ? <small className="block text-amber-600">لغو در پایان دوره</small> : null}</td><td>{String(row.billing_period)}</td><td>{fmt.date(String(row.period_start))}</td><td>{fmt.date(String(row.period_end))}</td><td>{fmt.int(Number(row.base_operators) + Number(row.extra_operators))}</td><td>{fmt.toman(Number(row.price_per_minute_toman))}</td><td>{fmt.int(Number(row.assistant_monthly_messages))}</td></tr>)}</tbody></DataTable>}
         </section>
         <section className="card overflow-x-auto"><h2 className="mb-3 font-bold">اعتبارها</h2>
-          {commerce.credit_grants.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>منبع</th><th>کل</th><th>باقی‌مانده</th><th>انقضا</th></tr></thead><tbody>{commerce.credit_grants.map((row) => <tr key={String(row.id)}><td>{String(row.source)}</td><td>{fmt.minutes(Number(row.total_seconds))}</td><td>{fmt.minutes(Number(row.remaining_seconds))}</td><td>{row.expires_at ? fmt.date(String(row.expires_at)) : "—"}</td></tr>)}</tbody></table>}
+          {commerce.credit_grants.length === 0 ? <Empty /> : <DataTable tableId="tenantdetail_2" className="table"><thead><tr><th>منبع</th><th>کل</th><th>باقی‌مانده</th><th>انقضا</th></tr></thead><tbody>{commerce.credit_grants.map((row) => <tr key={String(row.id)}><td>{String(row.source)}</td><td>{fmt.minutes(Number(row.total_seconds))}</td><td>{fmt.minutes(Number(row.remaining_seconds))}</td><td>{row.expires_at ? fmt.date(String(row.expires_at)) : "—"}</td></tr>)}</tbody></DataTable>}
         </section>
         <section className="card overflow-x-auto"><h2 className="mb-3 font-bold">رزروهای باز</h2>
-          {commerce.reservations.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>وضعیت</th><th>مدت</th><th>زمان</th></tr></thead><tbody>{commerce.reservations.map((row) => <tr key={String(row.id)}><td>{String(row.status)}</td><td>{fmt.minutes(Number(row.seconds))}</td><td>{fmt.dateTime(String(row.created_at))}</td></tr>)}</tbody></table>}
+          {commerce.reservations.length === 0 ? <Empty /> : <DataTable tableId="tenantdetail_3" className="table"><thead><tr><th>وضعیت</th><th>مدت</th><th>زمان</th></tr></thead><tbody>{commerce.reservations.map((row) => <tr key={String(row.id)}><td>{String(row.status)}</td><td>{fmt.minutes(Number(row.seconds))}</td><td>{fmt.dateTime(String(row.created_at))}</td></tr>)}</tbody></DataTable>}
         </section>
         <section className="card md:col-span-2 overflow-x-auto"><h2 className="mb-3 font-bold">سفارش‌های سازمان</h2>
-          {commerce.orders.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>ایجاد</th><th>پرداخت</th></tr></thead><tbody>{commerce.orders.map((row) => <tr key={String(row.id)}><td dir="ltr">{String(row.number)}</td><td>{String(row.kind)}</td><td>{String(row.status)}</td><td>{fmt.toman(Number(row.amount_toman))}</td><td>{fmt.dateTime(String(row.created_at))}</td><td>{row.paid_at ? fmt.dateTime(String(row.paid_at)) : "—"}</td></tr>)}</tbody></table>}
+          {commerce.orders.length === 0 ? <Empty /> : <DataTable tableId="tenantdetail_4" className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>ایجاد</th><th>پرداخت</th></tr></thead><tbody>{commerce.orders.map((row) => <tr key={String(row.id)}><td dir="ltr">{String(row.number)}</td><td>{String(row.kind)}</td><td>{String(row.status)}</td><td>{fmt.toman(Number(row.amount_toman))}</td><td>{fmt.dateTime(String(row.created_at))}</td><td>{row.paid_at ? fmt.dateTime(String(row.paid_at)) : "—"}</td></tr>)}</tbody></DataTable>}
         </section>
       </div> : null}
 

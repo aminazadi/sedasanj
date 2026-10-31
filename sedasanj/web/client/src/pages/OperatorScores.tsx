@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import type { OperatorScoreReport } from "../types";
@@ -7,7 +8,6 @@ import { PageHeader } from "../components/PageHeader";
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 
-const LIMIT = 25;
 const COLUMNS: SkeletonColumn[] = [
   { label: "رتبه", width: "1.5rem" },
   { label: "اپراتور", width: "8rem" },
@@ -16,6 +16,7 @@ const COLUMNS: SkeletonColumn[] = [
 ];
 
 export default function OperatorScores() {
+  const [LIMIT] = useTablePageSize();
   const [searchParams, setSearchParams] = useSearchParams();
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
   const range = searchParams.get("range") ?? "30";
@@ -32,7 +33,7 @@ export default function OperatorScores() {
       params.set("days", range);
     }
     return request<OperatorScoreReport>(`/v1/operator-scores?${params}`, { signal });
-  }, [from, offset, range, to]);
+  }, [LIMIT, from, offset, range, to]);
   const report = scores.data;
 
   function updateRange(nextRange: { range: string; from?: string; to?: string }) {

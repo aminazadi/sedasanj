@@ -445,7 +445,7 @@ async def list_goals(
     principal: OrgAdminDep,
     session: TenantSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     base = select(KpiGoal).where(KpiGoal.tenant_id == principal.tenant_id)
     total = int(
@@ -566,7 +566,7 @@ async def list_crm_outcomes(
     principal: CrmKeyDep,
     session: ApiKeySession,
     cursor: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
     external_lead_id: Annotated[str | None, Query(max_length=200)] = None,
 ) -> CrmOutcomePage:
     assert principal.tenant_id is not None
@@ -831,7 +831,7 @@ async def dashboard(
     certainty: str | None = None,
     operator_offset: Annotated[int, Query(ge=0)] = 0,
     campaign_offset: Annotated[int, Query(ge=0)] = 0,
-    table_limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    table_limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     tenant_id = principal.tenant_id
     assert tenant_id is not None

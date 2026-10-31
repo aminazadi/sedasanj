@@ -284,7 +284,7 @@ async def list_api_keys(
     session: ControlSession,
     principal: OrgAdminDep,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
     include_revoked: bool = False,
 ) -> dict[str, Any]:
     base = select(ApiKey).where(ApiKey.tenant_id == principal.tenant_id)
@@ -503,7 +503,7 @@ async def list_users(
     session: ControlSession,
     principal: OrgAdminDep,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     base = select(User).where(User.tenant_id == principal.tenant_id)
     total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())

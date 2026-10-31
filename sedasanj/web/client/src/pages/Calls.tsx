@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { fmt, INTENT_LABELS, query, request, SENTIMENT_LABELS, STATUS_LABELS } from "../api";
@@ -45,7 +46,6 @@ const EMPTY: Filters = {
   status: "",
   direction: "",
 };
-const PAGE_SIZE = 25;
 
 function filtersFromSearch(search: URLSearchParams): Filters {
   return {
@@ -65,13 +65,14 @@ function pageFromSearch(search: URLSearchParams): number {
   return Number.isSafeInteger(page) && page > 0 ? page : 1;
 }
 
-function searchFromFilters(filters: Filters, page = 1): URLSearchParams {
+function searchFromFilters(filters: Filters, page = 1, pageSize?: string | null): URLSearchParams {
   const params = new URLSearchParams();
   for (const [key, rawValue] of Object.entries(filters)) {
     const value = rawValue.trim();
     if (value) params.set(key, value);
   }
   if (page > 1) params.set("page", String(page));
+  if (pageSize) params.set("page_size", pageSize);
   return params;
 }
 
@@ -120,6 +121,7 @@ const CallsTableSection = memo(function CallsTableSection({
   canDelete: boolean;
   onPage: (page: number) => void;
 }) {
+  const [PAGE_SIZE] = useTablePageSize();
   const navigate = useNavigate();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<CallSummary | null>(null);
@@ -134,7 +136,7 @@ const CallsTableSection = memo(function CallsTableSection({
       return new Promise<CallPage>(() => {});
     }
     return response;
-  }, [appliedKey, pageIndex, reloadKey]);
+  }, [PAGE_SIZE, appliedKey, pageIndex, reloadKey]);
 
   const items = calls.data?.items ?? [];
   const pages = calls.data?.pages ?? 1;
@@ -262,6 +264,7 @@ export default function Calls() {
   const operator = isOperator(session?.role);
   const canDelete = isOrgAdmin(session?.role);
   const searchKey = searchParams.toString();
+  const pageSizeParam = searchParams.get("page_size");
   const applied = useMemo(() => filtersFromSearch(new URLSearchParams(searchKey)), [searchKey]);
   const pageIndex = pageFromSearch(new URLSearchParams(searchKey)) - 1;
   const [filters, setFilters] = useState<Filters>(applied);
@@ -279,16 +282,16 @@ export default function Calls() {
   useEffect(() => {
     const next = search.trim();
     if (next === applied.q) return;
-    const timer = window.setTimeout(() => setSearchParams(searchFromFilters({ ...applied, q: next })), 200);
+    const timer = window.setTimeout(() => setSearchParams(searchFromFilters({ ...applied, q: next }, 1, pageSizeParam)), 200);
     return () => window.clearTimeout(timer);
-  }, [search, applied, setSearchParams]);
+  }, [search, applied, pageSizeParam, setSearchParams]);
 
   function updateSearch(next: Filters, page = 1) {
-    setSearchParams(searchFromFilters(next, page));
+    setSearchParams(searchFromFilters(next, page, pageSizeParam));
   }
 
   // Stable between keystrokes in the filter fields, so the table section is not re-rendered by them.
-  const goToPage = useCallback((page: number) => setSearchParams(searchFromFilters(applied, page)), [applied, setSearchParams]);
+  const goToPage = useCallback((page: number) => setSearchParams(searchFromFilters(applied, page, pageSizeParam)), [applied, pageSizeParam, setSearchParams]);
 
   function resetField(key: keyof Filters) {
     setFilters((current) => ({ ...current, [key]: "" }));

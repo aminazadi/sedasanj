@@ -1,3 +1,5 @@
+import { useSearchParams } from "react-router-dom";
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import downloadIcon from "@iconify-icons/lucide/download";
@@ -17,8 +19,6 @@ import addUserArt from "../assets/add-user.webp";
 import importArt from "../assets/assign-operator.webp";
 import { importContacts } from "../lib/contactImport.mjs";
 import type { Contact, ContactImportReport, ContactPage, IranGeo } from "../types";
-
-const PAGE_SIZE = 25;
 
 interface ContactForm {
   name: string;
@@ -205,11 +205,21 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
 }
 
 export default function Contacts() {
+  const [PAGE_SIZE] = useTablePageSize();
   const { session } = useAuth();
   const canEdit = isOrgAdmin(session?.role);
-  const [search, setSearch] = useState("");
+  const [params, setParams] = useSearchParams();
+  const search = params.get("q") ?? "";
+  const setSearch = (value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set("q", value); else next.delete("q");
+    next.delete("contact_offset");
+    setParams(next, { replace: true });
+  };
   const debounced = useDebounced(search.trim());
-  const [pageIndex, setPageIndex] = useState(0);
+  const [contactOffset, setContactOffset] = useTableOffset("contact_offset");
+  const pageIndex = Math.floor(contactOffset / PAGE_SIZE);
+  const setPageIndex = (value: number) => setContactOffset(value * PAGE_SIZE);
   const [reloadKey, setReloadKey] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -221,8 +231,6 @@ export default function Contacts() {
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => setPageIndex(0), [debounced]);
-
   const contacts = useResource<ContactPage>(async (signal) => {
     const response = await request<ContactPage>(`/v1/contacts${query({ q: debounced, offset: pageIndex * PAGE_SIZE, limit: PAGE_SIZE })}`, { signal });
     if (response.total > 0 && pageIndex >= response.pages) {
@@ -230,7 +238,7 @@ export default function Contacts() {
       return new Promise<ContactPage>(() => {});
     }
     return response;
-  }, [debounced, pageIndex, reloadKey]);
+  }, [PAGE_SIZE, debounced, pageIndex, reloadKey]);
 
   const geo = useIranGeo(canEdit);
   const cities = geo?.provinces.find((province) => province.name === form.province)?.cities ?? [];

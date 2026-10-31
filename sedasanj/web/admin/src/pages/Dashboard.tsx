@@ -1,3 +1,4 @@
+import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -45,7 +46,7 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card">
           <h2 className="mb-3 font-bold">عمق صف‌ها</h2>
-          <table className="table">
+          <DataTable tableId="dashboard_0" className="table">
             <thead>
               <tr>
                 <th>صف</th>
@@ -60,7 +61,7 @@ export default function Dashboard() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
         <div className="card">
           <h2 className="mb-3 font-bold">کارهای در انتظار تلاش مجدد</h2>

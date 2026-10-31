@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useUrlParams } from "../lib/useUrlParams";
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import type { AuditEvent, Page } from "../types";
@@ -15,14 +16,16 @@ const COLUMNS: SkeletonColumn[] = [
 ];
 
 export default function Audit() {
-  const limit = 25;
-  const [offset, setOffset] = useState(0);
-  const [action, setAction] = useState("");
+  const [limit] = useTablePageSize();
+  const [offset, setOffset] = useTableOffset("offset");
+  const [filters, setFilters] = useUrlParams({ action: "", offset: "0" });
+  const action = filters.action;
+  const setAction = (value: string) => setFilters({ action: value, offset: "0" });
   const audit = useResource<Page<AuditEvent>>((signal) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (action) params.set("action", action);
     return request<Page<AuditEvent>>(`/v1/admin/audit?${params.toString()}`, { signal });
-  }, [action, offset]);
+  }, [limit, action, offset]);
   const page = audit.data;
   const events = page?.items ?? null;
 
@@ -31,9 +34,9 @@ export default function Audit() {
       <ErrorBox message={audit.error} />
       <FilterBar
         hasActive={Boolean(action)}
-        onClear={() => { setAction(""); setOffset(0); }}
+        onClear={() => { setAction(""); }}
         fields={[
-          { id: "action", label: "عملیات", active: Boolean(action), onRemove: () => { setAction(""); setOffset(0); }, className: "sm:w-64", control: <input className="input" dir="ltr" placeholder="tenant.suspend" value={action} onChange={(event) => { setAction(event.target.value); setOffset(0); }} /> },
+          { id: "action", label: "عملیات", active: Boolean(action), onRemove: () => { setAction(""); }, className: "sm:w-64", control: <input className="input" dir="ltr" placeholder="tenant.suspend" value={action} onChange={(event) => { setAction(event.target.value); }} /> },
         ]}
       />
 

@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -18,7 +19,6 @@ type RunSummary = Pick<Run, "id" | "report_id" | "name" | "trigger" | "status" |
 const empty: ReportInput = { name: "", instructions: "", enabled: true, schedule_mode: "interval", interval_hours: 24, fixed_hours: [], max_retries: 3, retry_base_minutes: 5 };
 const statuses: Record<string, string> = { queued: "در صف", running: "در حال ساخت", succeeded: "آماده", failed: "ناموفق" };
 const STATUS_COLORS: Record<string, string> = { queued: chart.warning, running: chart.cyan, succeeded: chart.primary, failed: chart.danger };
-const PAGE_SIZE = 25;
 const RUN_COLUMNS: SkeletonColumn[] = [
   { label: "گزارش", width: "10rem" },
   { label: "زمان", width: "8.5rem" },
@@ -42,6 +42,7 @@ function TriggerBadge({ trigger }: { trigger: string }) {
 }
 
 export default function ScheduledReports() {
+  const [PAGE_SIZE] = useTablePageSize();
   const [params, setParams] = useSearchParams();
   const settings = params.get("tab") === "settings";
   const archived = params.get("archived") === "true";
@@ -73,9 +74,9 @@ export default function ScheduledReports() {
     let active = true;
     let timer: number | undefined;
     // Skeleton only when the list changes; opening a run just loads its detail.
-    const listKey = [settings, archived, offset, reportId, status, trigger, revision].join("|");
+    const listKey = [PAGE_SIZE, settings, archived, offset, reportId, status, trigger, revision].join("|");
     if (listKeyRef.current !== listKey) { listKeyRef.current = listKey; setLoading(true); }
-    const query = new URLSearchParams({ offset: String(offset), limit: "25" });
+    const query = new URLSearchParams({ offset: String(offset), limit: String(PAGE_SIZE) });
     if (reportId) query.set("report_id", reportId);
     if (status) query.set("status", status);
     if (trigger) query.set("trigger", trigger);
@@ -95,7 +96,7 @@ export default function ScheduledReports() {
     }
     void load();
     return () => { active = false; requestSequence.current += 1; window.clearTimeout(timer); };
-  }, [settings, archived, offset, reportId, status, trigger, selected, revision]);
+  }, [PAGE_SIZE, settings, archived, offset, reportId, status, trigger, selected, revision]);
   async function mutate(action: () => Promise<unknown>) {
     setBusy(true); setError("");
     try { await action(); refresh(); } catch (err) { setError((err as Error).message); }

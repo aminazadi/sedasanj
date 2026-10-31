@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -22,7 +23,7 @@ const COLUMNS: SkeletonColumn[] = [
 const STATUS_LABELS: Record<string, string> = { active: "فعال", trialing: "آزمایشی", pending_payment: "در انتظار پرداخت", expired: "منقضی", canceled: "لغوشده" };
 
 export default function Subscriptions() {
-  const limit = 25;
+  const [limit] = useTablePageSize();
   const [filters, setFilters] = useUrlParams({ offset: "0", status: "", q: "", plan: "" });
   const offset = toOffset(filters.offset);
   const status = filters.status;
@@ -39,7 +40,7 @@ export default function Subscriptions() {
     if (query.trim()) params.set("q", query.trim());
     if (planCode) params.set("plan_code", planCode);
     return request<Page<SubscriptionAdmin>>(`/v1/admin/commerce/subscriptions?${params}`, { signal });
-  }, [offset, planCode, query, status]);
+  }, [limit, offset, planCode, query, status]);
   const page = subscriptions.data;
 
   async function action(item: SubscriptionAdmin, type: string) {

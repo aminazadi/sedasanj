@@ -266,7 +266,7 @@ async def list_runs(
     status: Literal["queued", "running", "succeeded", "failed"] | None = None,
     trigger: Literal["scheduled", "manual"] | None = None,
     offset: int = Query(default=0, ge=0),
-    limit: int = Query(default=25, ge=1, le=100),
+    limit: int = Query(default=25, ge=1, le=200),
 ):
     filters = [ScheduledReportRun.tenant_id == principal.tenant_id]
     if report_id:

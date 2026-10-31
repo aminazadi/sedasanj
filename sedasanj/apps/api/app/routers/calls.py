@@ -260,7 +260,7 @@ async def list_calls(
     session: TenantSession,
     cursor: Annotated[str | None, Query()] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
     from_: Annotated[str | None, Query(alias="from")] = None,
     to: Annotated[str | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,

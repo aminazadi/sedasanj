@@ -1203,7 +1203,7 @@ async def list_orders(
     principal: OrgAdminDep,
     session: TenantSession,
     offset: int = Query(default=0, ge=0),
-    limit: int = Query(default=25, ge=1, le=100),
+    limit: int = Query(default=25, ge=1, le=200),
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
     total = int(
@@ -1383,7 +1383,7 @@ async def list_installations(
     principal: OrgAdminDep,
     session: TenantSession,
     offset: int = Query(default=0, ge=0),
-    limit: int = Query(default=25, ge=1, le=100),
+    limit: int = Query(default=25, ge=1, le=200),
 ) -> dict[str, Any]:
     assert principal.tenant_id is not None
     total = int(
@@ -2179,7 +2179,7 @@ async def admin_tenant_commerce(
                     select(Order)
                     .where(Order.tenant_id == tenant_id)
                     .order_by(Order.created_at.desc())
-                    .limit(100)
+                    .limit(200)
                 )
             )
             .scalars()
@@ -2202,7 +2202,7 @@ async def admin_tenant_commerce(
                     select(CreditReservation)
                     .where(CreditReservation.tenant_id == tenant_id)
                     .order_by(CreditReservation.created_at.desc())
-                    .limit(100)
+                    .limit(200)
                 )
             )
             .scalars()
@@ -2214,7 +2214,7 @@ async def admin_tenant_commerce(
                     select(LedgerEntry)
                     .where(LedgerEntry.tenant_id == tenant_id)
                     .order_by(LedgerEntry.created_at.desc())
-                    .limit(100)
+                    .limit(200)
                 )
             )
             .scalars()
@@ -2226,7 +2226,7 @@ async def admin_tenant_commerce(
                     select(AuditEvent)
                     .where(AuditEvent.tenant_id == tenant_id)
                     .order_by(AuditEvent.created_at.desc())
-                    .limit(100)
+                    .limit(200)
                 )
             )
             .scalars()

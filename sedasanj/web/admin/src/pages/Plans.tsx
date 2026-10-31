@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
@@ -80,7 +81,7 @@ function validate(form: VersionForm, trial: boolean, sellable: boolean): string 
 }
 
 export default function Plans() {
-  const limit = 25;
+  const [limit] = useTablePageSize();
   const [filters, setFilters] = useUrlParams({ offset: "0", plan: "" });
   const offset = toOffset(filters.offset);
   const [form, setForm] = useState<VersionForm>(EMPTY_VERSION);
@@ -90,7 +91,7 @@ export default function Plans() {
   const [ask, dialog] = useReasonDialog();
   const plans = useResource<Page<PlanVersion>>(
     (signal) => request<Page<PlanVersion>>(`/v1/admin/commerce/plans?limit=${limit}&cursor=${offset}`, { signal }),
-    [offset],
+    [limit, offset],
   );
   const rows = plans.data?.items ?? [];
   const codes = useMemo(() => Array.from(new Set(rows.map((item) => item.code))), [rows]);

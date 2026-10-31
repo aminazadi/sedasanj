@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Added shared 10/25/50/100/200-row selectors to customer and admin data tables, with URL-backed pagination, saved per-screen browser preferences, first-page resets that preserve filters, matching API limits and a Persian help article.
+
 - Removed contact CSV file-size and row-count caps and added sequential, bounded browser uploads with separate validation/import percentages, automatic rate-limit pauses, cross-batch duplicate tracking, partial-failure guidance and a Persian help article.
 
 # Changelog

@@ -1,3 +1,4 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
@@ -43,8 +44,8 @@ function displayDateTime(value: string): string {
 }
 
 export default function Installations() {
-  const limit = 25;
-  const [offset, setOffset] = useState(0);
+  const [limit] = useTablePageSize();
+  const [offset, setOffset] = useTableOffset("offset");
   const [page, setPage] = useState<Page<Installation> | null>(null);
   const [edit, setEdit] = useState<InstallationEdit | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export default function Installations() {
 
   useEffect(() => {
     void load();
-  }, [offset]);
+  }, [limit, offset]);
 
   function beginUpdate(item: Installation, status: string) {
     setEdit({ item, status, notes: item.internal_notes ?? "", scheduledAt: localDateTime(item.scheduled_at) });

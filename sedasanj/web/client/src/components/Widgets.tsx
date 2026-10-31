@@ -1,3 +1,5 @@
+import { PageSizeSelect } from "@cbi/web-shared/components/PageSizeSelect";
+import { useTablePageSize } from "../lib/useTablePagination";
 import type { ReactNode } from "react";
 import { SkeletonPanel } from "@cbi/web-shared/components/Skeleton";
 import { EMPTY_STATE_ART } from "./pageArt";
@@ -79,9 +81,10 @@ export function Pagination({
   onPrevious: () => void;
   onNext: () => void;
 }) {
-  if (!hasPrevious && !hasNext) return null;
+  const [pageSize, setPageSize] = useTablePageSize();
   return (
     <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4" aria-label="صفحه‌بندی">
+      <PageSizeSelect value={pageSize} onChange={setPageSize} />
       <span className="text-xs text-slate-500">صفحه {fmt.int(page)}{typeof total === "number" ? ` · ${fmt.int(total)} مورد` : ""}</span>
       <div className="flex gap-2">
         <button className="btn-ghost text-sm" type="button" disabled={loading || !hasPrevious} onClick={onPrevious}>صفحه قبل</button>

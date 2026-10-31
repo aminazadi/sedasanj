@@ -171,7 +171,7 @@ async def admin_list_module_releases(
     status_filter: Annotated[str | None, Query(alias="status")] = None,
     product: str = releases.PRODUCT_FREEPBX,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     query = select(ModuleRelease).where(ModuleRelease.product == product)
     if status_filter:

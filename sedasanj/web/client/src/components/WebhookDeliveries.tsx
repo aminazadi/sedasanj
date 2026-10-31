@@ -1,16 +1,30 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
+import { Pagination } from "./Widgets";
+import { useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useState } from "react";
 import { request } from "../api";
 import type { Page, WebhookDelivery, WebhookTestResult } from "../types";
 
 export default function WebhookDeliveries({ webhookId, onClose }: { webhookId: string; onClose: () => void }) {
+  const [limit] = useTablePageSize();
+  const [offset, setOffset] = useTableOffset("delivery_offset");
+  const [total, setTotal] = useState(0);
+  const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<WebhookDelivery[]>([]);
-  const [failedOnly, setFailedOnly] = useState(false);
+  const failedOnly = params.get("delivery_failed") === "true";
+  const setFailedOnly = (value: boolean) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set("delivery_failed", "true"); else next.delete("delivery_failed");
+    next.delete("delivery_offset");
+    setParams(next);
+  };
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const data = await request<Page<WebhookDelivery>>(`/v1/webhooks/${webhookId}/deliveries?limit=25${failedOnly ? "&failed_only=true" : ""}`);
+    const data = await request<Page<WebhookDelivery>>(`/v1/webhooks/${webhookId}/deliveries?limit=${limit}&offset=${offset}${failedOnly ? "&failed_only=true" : ""}`);
     setItems(data.items);
-  }, [webhookId, failedOnly]);
+    setTotal(data.total);
+  }, [limit, offset, webhookId, failedOnly]);
 
   useEffect(() => {
     load().catch((error: Error) => setMessage(error.message));
@@ -55,6 +69,7 @@ export default function WebhookDeliveries({ webhookId, onClose }: { webhookId: s
           ))}
         </tbody>
       </table>
+      <Pagination page={Math.floor(offset / limit) + 1} total={total} hasPrevious={offset > 0} hasNext={offset + limit < total} onPrevious={() => setOffset(Math.max(0, offset - limit))} onNext={() => setOffset(offset + limit)} />
     </div>
   );
 }

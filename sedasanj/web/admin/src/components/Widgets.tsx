@@ -1,3 +1,5 @@
+import { PageSizeSelect } from "@cbi/web-shared/components/PageSizeSelect";
+import { useTablePageSize } from "../lib/useTablePagination";
 import type { ReactNode } from "react";
 import { Skeleton, SkeletonPanel } from "@cbi/web-shared/components/Skeleton";
 import { Icon } from "@iconify/react";
@@ -99,11 +101,12 @@ export function Pagination({
   loading?: boolean;
   onChange: (offset: number) => void;
 }) {
-  if (total <= limit) return null;
+  const [pageSize, setPageSize] = useTablePageSize();
   const page = Math.floor(offset / limit) + 1;
   const pages = Math.max(1, Math.ceil(total / limit));
   return (
     <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4" aria-label="صفحه‌بندی">
+      <PageSizeSelect value={pageSize} onChange={setPageSize} />
       <span className="text-xs text-slate-500">
         صفحه {fmt.int(page)} از {fmt.int(pages)} · {fmt.int(total)} مورد
       </span>

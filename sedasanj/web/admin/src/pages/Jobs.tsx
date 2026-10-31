@@ -1,3 +1,5 @@
+import { useUrlParams } from "../lib/useUrlParams";
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useState } from "react";
 import { fmt, formatJobError, request } from "../api";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
@@ -21,11 +23,14 @@ const KINDS = ["", "asr", "emotion", "llm", "notify"];
 const DEFAULT_STATUS = "failed_retryable";
 
 export default function Jobs() {
-  const limit = 25;
-  const [offset, setOffset] = useState(0);
-  const [outboxOffset, setOutboxOffset] = useState(0);
-  const [kind, setKind] = useState("");
-  const [status, setStatus] = useState(DEFAULT_STATUS);
+  const [limit] = useTablePageSize();
+  const [offset, setOffset] = useTableOffset("offset");
+  const [outboxOffset, setOutboxOffset] = useTableOffset("outbox_offset");
+  const [filters, setFilters] = useUrlParams({ kind: "", status: DEFAULT_STATUS, offset: "0" });
+  const kind = filters.kind;
+  const status = filters.status;
+  const setKind = (value: string) => setFilters({ kind: value, offset: "0" });
+  const setStatus = (value: string) => setFilters({ status: value, offset: "0" });
   const [error, setError] = useState<string | null>(null);
   const jobsData = useResource<{ page: Page<Job>; operations: Operations }>(async (signal) => {
     const params = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
@@ -35,7 +40,7 @@ export default function Jobs() {
       request<Operations>(`/v1/admin/operations?offset=${outboxOffset}&limit=${limit}`, { signal }),
     ]);
     return { page, operations };
-  }, [kind, offset, outboxOffset, status]);
+  }, [limit, kind, offset, outboxOffset, status]);
   const reload = async () => jobsData.reload();
   const page = jobsData.data?.page ?? null;
   const operations = jobsData.data?.operations ?? null;
@@ -55,11 +60,11 @@ export default function Jobs() {
       <ErrorBox message={jobsData.error ?? error} />
       <FilterBar
         hasActive={Boolean(kind) || status !== DEFAULT_STATUS}
-        onClear={() => { setKind(""); setStatus(DEFAULT_STATUS); setOffset(0); }}
+        onClear={() => { setFilters({ kind: "", status: DEFAULT_STATUS, offset: "0" }); }}
         actions={<button type="button" className="btn min-h-[42px]" onClick={() => void reload()}>بازخوانی</button>}
         fields={[
-          { id: "status", label: "وضعیت", pinned: true, active: status !== DEFAULT_STATUS, onRemove: () => { setStatus(DEFAULT_STATUS); setOffset(0); }, control: <FilterSelect allLabel={null} value={status} onChange={(value) => { setStatus(value); setOffset(0); }} options={[{ value: "failed_retryable", label: "خطای موقت" }, { value: "failed_terminal", label: "خطای نهایی" }, { value: "queued", label: "در صف" }, { value: "running", label: "در اجرا" }, { value: "succeeded", label: "موفق" }]} /> },
-          { id: "kind", label: "نوع کار", active: Boolean(kind), onRemove: () => { setKind(""); setOffset(0); }, control: <FilterSelect value={kind} onChange={(value) => { setKind(value); setOffset(0); }} options={KINDS.filter(Boolean).map((item) => ({ value: item, label: item }))} /> },
+          { id: "status", label: "وضعیت", pinned: true, active: status !== DEFAULT_STATUS, onRemove: () => { setStatus(DEFAULT_STATUS); }, control: <FilterSelect allLabel={null} value={status} onChange={(value) => { setStatus(value); }} options={[{ value: "failed_retryable", label: "خطای موقت" }, { value: "failed_terminal", label: "خطای نهایی" }, { value: "queued", label: "در صف" }, { value: "running", label: "در اجرا" }, { value: "succeeded", label: "موفق" }]} /> },
+          { id: "kind", label: "نوع کار", active: Boolean(kind), onRemove: () => { setKind(""); }, control: <FilterSelect value={kind} onChange={(value) => { setKind(value); }} options={KINDS.filter(Boolean).map((item) => ({ value: item, label: item }))} /> },
         ]}
       />
 

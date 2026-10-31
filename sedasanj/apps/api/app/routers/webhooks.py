@@ -163,7 +163,7 @@ async def list_webhooks(
     principal: OrgAdminDep,
     session: TenantSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     base = select(Webhook).where(Webhook.tenant_id == principal.tenant_id)
     total = int(
@@ -276,7 +276,7 @@ async def list_deliveries(
     principal: OrgAdminDep,
     session: TenantSession,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
     failed_only: bool = False,
 ) -> dict[str, Any]:
     await _get_owned(session, principal.tenant_id, webhook_id)

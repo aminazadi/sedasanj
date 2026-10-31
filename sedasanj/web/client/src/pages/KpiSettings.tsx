@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
@@ -40,7 +41,7 @@ const METRIC_LABELS: Record<string, string> = { conversion_rate: "نرخ تبد�
 interface Goal { id: string; team_id: string | null; metric: string; target_value: number; valid_from: string; valid_to: string }
 
 export default function KpiSettings({ embedded = false }: { embedded?: boolean }) {
-  const limit = 25;
+  const [limit] = useTablePageSize();
   const [searchParams, setSearchParams] = useSearchParams();
   const goalOffset = Math.max(0, Number(searchParams.get("goal_offset")) || 0);
   function setGoalOffset(offset: number) {
@@ -69,7 +70,7 @@ export default function KpiSettings({ embedded = false }: { embedded?: boolean }
       setVersion(config.version); setSettings(config.settings); setObjectionText(config.settings.objection_taxonomy.join(",")); setTeams(teamRows); setUsers(userRows.items.filter((item) => item.role === "operator")); setGoals(goalRows.items); setGoalTotal(goalRows.total);
     } catch (reason) { setError((reason as Error).message); }
   }
-  useEffect(() => { void load(); }, [goalOffset]);
+  useEffect(() => { void load(); }, [limit, goalOffset]);
   function patch(change: Partial<Settings>) { setSaved(null); setError(null); setSettings((current) => (current ? { ...current, ...change } : current)); }
   function validate(value: Settings): string | null {
     if (!Number.isInteger(value.follow_up_sla_hours) || value.follow_up_sla_hours < 1 || value.follow_up_sla_hours > 720) return "SLA پیگیری باید عدد صحیح بین ۱ تا ۷۲۰ ساعت باشد.";

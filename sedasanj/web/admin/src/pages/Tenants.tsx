@@ -1,3 +1,4 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -25,8 +26,8 @@ const EMPTY_FORM = {
 };
 
 export default function Tenants() {
-  const limit = 25;
-  const [offset, setOffset] = useState(0);
+  const [limit] = useTablePageSize();
+  const [offset, setOffset] = useTableOffset("offset");
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [open, setOpen] = useState(false);
@@ -38,7 +39,7 @@ export default function Tenants() {
 
   useEffect(() => {
     request<Page<{code:string;name:string;status:string}>>("/v1/admin/commerce/plans?limit=200").then((page) => setPlanCodes(Array.from(new Map(page.items.filter((row) => row.status === "published").map((row) => [row.code, {code: row.code, name: row.name}])).values()))).catch(() => undefined);
-  }, [offset]);
+  }, [limit, offset]);
 
   async function create(event: React.FormEvent) {
     event.preventDefault();

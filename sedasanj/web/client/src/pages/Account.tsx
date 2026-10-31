@@ -1,3 +1,4 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { Icon } from "@iconify/react";
 import walletIcon from "@iconify-icons/lucide/wallet";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
@@ -91,7 +92,7 @@ function withOffset(params: URLSearchParams, name: string, value: number): URLSe
 export type AccountSection = "billing" | "users" | "integrations" | "data";
 
 export default function Account({ section = "billing" }: { section?: AccountSection }) {
-  const limit = 10;
+  const [limit] = useTablePageSize();
   const { session } = useAuth();
   const isAdmin = session?.role === "org_admin";
 
@@ -119,11 +120,11 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const setOrderOffset = (value: number) => setParams(withOffset(params, "orders", value), { replace: true });
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [orderTotal, setOrderTotal] = useState(0);
-  const [userOffset, setUserOffset] = useState(0);
+  const [userOffset, setUserOffset] = useTableOffset("user_offset");
   const [userTotal, setUserTotal] = useState(0);
-  const [keyOffset, setKeyOffset] = useState(0);
+  const [keyOffset, setKeyOffset] = useTableOffset("key_offset");
   const [keyTotal, setKeyTotal] = useState(0);
-  const [hookOffset, setHookOffset] = useState(0);
+  const [hookOffset, setHookOffset] = useTableOffset("hook_offset");
   const [hookTotal, setHookTotal] = useState(0);
 
   const [userForm, setUserForm] = useState(EMPTY_USER);
@@ -195,7 +196,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
 
   useEffect(() => {
     void reload();
-  }, [hookOffset, isAdmin, keyOffset, ledgerOffset, orderOffset, section, userOffset]);
+  }, [limit, hookOffset, isAdmin, keyOffset, ledgerOffset, orderOffset, section, userOffset]);
 
   async function createUser() {
     setUserDialogBusy(true);

@@ -59,7 +59,7 @@ async def list_contacts(
     session: TenantSession,
     q: Annotated[str | None, Query(max_length=200)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> ContactPage:
     assert principal.tenant_id is not None
     stmt = select(Contact).where(Contact.tenant_id == principal.tenant_id)

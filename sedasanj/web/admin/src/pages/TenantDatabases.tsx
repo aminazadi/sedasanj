@@ -1,3 +1,4 @@
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { request } from "../api";
@@ -5,7 +6,7 @@ import { ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { Page, TenantDatabaseStatus } from "../types";
 
 export default function TenantDatabases() {
-  const limit = 25;
+  const [limit] = useTablePageSize();
   const [searchParams, setSearchParams] = useSearchParams();
   const parsedOffset = Number.parseInt(searchParams.get("offset") || "0", 10);
   const offset = Number.isSafeInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
@@ -26,7 +27,7 @@ export default function TenantDatabases() {
     void load();
     const timer = window.setInterval(() => void load(), 10_000);
     return () => window.clearInterval(timer);
-  }, [offset]);
+  }, [limit, offset]);
 
   async function retry(tenantId: string) {
     setRetrying(tenantId);

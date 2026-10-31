@@ -1,3 +1,5 @@
+import { DataTable } from "../components/DataTable";
+import { useTablePageSize } from "../lib/useTablePagination";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -27,7 +29,7 @@ const UPDATE_STATUS: Record<NonNullable<ModuleInstallation["last_update_status"]
 const STALE_MS = 7 * 24 * 3600 * 1000;
 
 export default function ModuleFleet() {
-  const limit = 50;
+  const [limit] = useTablePageSize();
   const [params, setParams] = useSearchParams();
   const offset = Math.max(0, Number(params.get("offset")) || 0);
   const outdatedOnly = params.get("outdated") === "true";
@@ -62,7 +64,7 @@ export default function ModuleFleet() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [offset, outdatedOnly, product]);
+  }, [limit, offset, outdatedOnly, product]);
 
   useEffect(() => {
     void reload();
@@ -195,7 +197,7 @@ export default function ModuleFleet() {
                 <p className="text-sm text-slate-600">
                   آخرین گزارش: {fmt.dateTime(diag.reports[0].created_at)} — {diag.reports[0].ok ? "همه‌چیز سالم" : `${diag.reports[0].failed_checks} مورد نیازمند اقدام`}
                 </p>
-                <table className="table">
+                <DataTable tableId="modulefleet_1" className="table">
                   <thead><tr><th>مورد</th><th>وضعیت</th><th>توضیح</th></tr></thead>
                   <tbody>
                     {(diag.reports[0].report.checks ?? []).filter((c) => c.status !== "ok").map((c) => (
@@ -209,7 +211,7 @@ export default function ModuleFleet() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
                 {Object.keys(diag.reports[0].report.recent_codes ?? {}).length > 0 ? (
                   <p className="text-xs text-slate-500" dir="ltr">
                     {Object.entries(diag.reports[0].report.recent_codes ?? {}).map(([code, n]) => `${code} ×${n}`).join("  ")}

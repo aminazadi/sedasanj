@@ -13,7 +13,11 @@
     "./lib/resourceState": "./lib/resourceState.ts",
     "./lib/useResource": "./lib/useResource.ts",
     "./styles/skeleton.css": "./styles/skeleton.css",
-    "./theme": "./theme.js"
+    "./theme": "./theme.js",
+    "./lib/tablePagination": "./lib/tablePagination.mjs",
+    "./lib/useTablePreferences": "./lib/useTablePreferences.ts",
+    "./components/PageSizeSelect": "./components/PageSizeSelect.tsx",
+    "./components/PaginatedTable": "./components/PaginatedTable.tsx"
   },
   "peerDependencies": {
     "react": "18.3.1",

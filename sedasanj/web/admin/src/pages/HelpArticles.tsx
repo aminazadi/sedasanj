@@ -1,3 +1,4 @@
+import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -27,8 +28,8 @@ const STATUS_META: Record<HelpStatus, { label: string; className: string }> = {
 };
 
 export default function HelpArticles() {
-  const limit = 25;
-  const [offset, setOffset] = useState(0);
+  const [limit] = useTablePageSize();
+  const [offset, setOffset] = useTableOffset("offset");
   const [status, setStatus] = useState<HelpStatus | "">("");
   const [kind, setKind] = useState<HelpKind | "">("");
   const [q, setQ] = useState("");
@@ -39,7 +40,7 @@ export default function HelpArticles() {
     if (kind) params.set("kind", kind);
     if (query) params.set("q", query);
     return request<ArticlePage>(`/v1/admin/help/articles?${params}`, { signal });
-  }, [offset, status, kind, query]);
+  }, [limit, offset, status, kind, query]);
   const page = articles.data;
 
   const filterBar = useFilterBar({ hasActive: Boolean(q || query || status || kind), onClear: () => { setQ(""); setQuery(""); setStatus(""); setKind(""); setOffset(0); }, fields: [ { id: "q", label: "جستجو", active: Boolean(q || query), onRemove: () => { setQ(""); setQuery(""); setOffset(0); }, className: "sm:w-64", control: <form onSubmit={(e) => { e.preventDefault(); setOffset(0); setQuery(q.trim()); }}><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="عنوان یا نشانی" /></form> }, { id: "status", label: "وضعیت", active: Boolean(status), onRemove: () => { setOffset(0); setStatus(""); }, control: <FilterSelect value={status} onChange={(value) => { setOffset(0); setStatus(value as HelpStatus | ""); }} options={[{ value: "published", label: "منتشرشده" }, { value: "draft", label: "پیش‌نویس" }]} /> }, { id: "kind", label: "نوع", active: Boolean(kind), onRemove: () => { setOffset(0); setKind(""); }, control: <FilterSelect value={kind} onChange={(value) => { setOffset(0); setKind(value as HelpKind | ""); }} options={[{ value: "article", label: "مقاله" }, { value: "error", label: "خطا" }, { value: "faq", label: "پرسش متداول" }]} /> }, ] });

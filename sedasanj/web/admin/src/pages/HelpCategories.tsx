@@ -1,3 +1,4 @@
+import { DataTable } from "../components/DataTable";
 import { useCallback, useEffect, useState } from "react";
 import { request } from "../api";
 import { Empty, ErrorBox, Loading } from "../components/Widgets";
@@ -106,7 +107,7 @@ export default function HelpCategories() {
         <Empty>هنوز دسته‌ای نیست.</Empty>
       ) : (
         <div className="card overflow-x-auto p-0">
-          <table className="table">
+          <DataTable tableId="helpcategories_0" className="table">
             <thead>
               <tr>
                 <th>عنوان</th>
@@ -140,7 +141,7 @@ export default function HelpCategories() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

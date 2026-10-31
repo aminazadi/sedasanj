@@ -1,3 +1,4 @@
+import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { SeverityBadge } from "@cbi/web-shared/components/ReleaseTimeline";
@@ -29,7 +30,7 @@ export default function FreepbxServers() {
     <div className="space-y-4">
       <PageHeader title="سرورهای تلفنی" description="وضعیت سرورهای متصل و نسخهٔ ماژول نصب‌شده روی هر کدام" />
       <ErrorBox message={error} />
-      <select className="input" aria-label="نوع مرکز تلفن" value={product} onChange={(event) => setParams({ product: event.target.value })}>
+      <select className="input" aria-label="نوع مرکز تلفن" value={product} onChange={(event) => setParams((current) => { const next = new URLSearchParams(current); next.set("product", event.target.value); next.delete("freepbxservers_0_offset"); return next; })}>
         <option value="all">همه مرکزهای تلفن</option><option value="freepbx-recuploader">FreePBX</option><option value="issabel-recuploader">ایزابل</option>
       </select>
       {fleet?.latest ? (
@@ -57,7 +58,7 @@ export default function FreepbxServers() {
           <Empty>هنوز سروری گزارش نشده است.</Empty>
         ) : (
           <div className="overflow-x-auto">
-            <table className="table">
+            <DataTable tableId="freepbxservers_0" className="table">
               <thead>
                 <tr>
                   <th>سرور</th>
@@ -95,7 +96,7 @@ export default function FreepbxServers() {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </section>
