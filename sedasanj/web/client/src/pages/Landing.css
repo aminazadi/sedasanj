@@ -365,3 +365,6 @@
 @media (max-width: 760px) { .why-story { inset-block-end: 12px; inset-inline-start: 12px; } .why-story[data-position="end"] { inset-inline-start: auto; inset-inline-end: 12px; } }
 @media (max-width: 760px) { .why-video-button { inset-block-end: 12px; } }
 @media (prefers-reduced-motion: reduce) { .why-video-button { transition: none; } }
+
+.site-footer-brand p, .site-footer-contact p { white-space: pre-line; overflow-wrap: anywhere; }
+.site-footer-links a, .site-footer-legal a { overflow-wrap: anywhere; max-width: 100%; }

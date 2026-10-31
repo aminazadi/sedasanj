@@ -67,6 +67,7 @@ from app.services.gateways import GatewayError, PaymentContext
 from app.services.gateways.registry import GATEWAY_ORDER, GATEWAYS, build_gateway
 from app.services.phone_identity import normalize_mobile as _mobile
 from app.services.signup import create_account
+from app.services.site_footer import FooterSettings
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ DEFAULT_SITE_CONTACT_PHONE = "09399093062"
 class SiteContactSettingsUpdate(BaseModel):
     phone: str = Field(min_length=10, max_length=15)
     trust_html: str = Field(default="", max_length=20_000)
+    footer: FooterSettings | None = None
 
     @field_validator("phone")
     @classmethod
@@ -309,24 +311,28 @@ async def list_plans(session: PublicSession) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/site/contact-settings")
-async def public_site_contact_settings(session: PublicSession) -> dict[str, str]:
+async def _site_contact_settings(session: AsyncSession) -> dict[str, Any]:
     phone_row = await session.get(PlatformSetting, SITE_CONTACT_PHONE_KEY)
     trust_row = await session.get(PlatformSetting, "site_trust_html")
+    footer_row = await session.get(PlatformSetting, "site_footer")
+    footer = (
+        FooterSettings.model_validate_json(footer_row.value) if footer_row else FooterSettings()
+    )
     return {
         "phone": phone_row.value if phone_row else DEFAULT_SITE_CONTACT_PHONE,
         "trust_html": trust_row.value if trust_row else "",
+        "footer": footer.model_dump(),
     }
+
+
+@router.get("/site/contact-settings")
+async def public_site_contact_settings(session: PublicSession) -> dict[str, Any]:
+    return await _site_contact_settings(session)
 
 
 @router.get("/admin/site-contact-settings")
-async def admin_site_contact_settings(staff: StaffDep, session: StaffSession) -> dict[str, str]:
-    phone_row = await session.get(PlatformSetting, SITE_CONTACT_PHONE_KEY)
-    trust_row = await session.get(PlatformSetting, "site_trust_html")
-    return {
-        "phone": phone_row.value if phone_row else DEFAULT_SITE_CONTACT_PHONE,
-        "trust_html": trust_row.value if trust_row else "",
-    }
+async def admin_site_contact_settings(staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+    return await _site_contact_settings(session)
 
 
 @router.patch("/admin/site-contact-settings")
@@ -335,8 +341,10 @@ async def update_site_contact_settings(
     request: Request,
     staff: StaffDep,
     session: StaffSession,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     values = {SITE_CONTACT_PHONE_KEY: payload.phone, "site_trust_html": payload.trust_html}
+    if payload.footer is not None:
+        values["site_footer"] = payload.footer.model_dump_json()
     for key, value in values.items():
         row = await session.get(PlatformSetting, key)
         if row is None:
@@ -349,10 +357,15 @@ async def update_site_contact_settings(
         actor_type="staff",
         actor_id=staff.id,
         action="site_contact.settings_update",
-        payload={"phone": payload.phone, "trust_html_updated": bool(payload.trust_html)},
+        payload={
+            "phone": payload.phone,
+            "trust_html_updated": bool(payload.trust_html),
+            "footer_updated": payload.footer is not None,
+        },
         ip=client_ip(request),
     )
-    return {"phone": payload.phone, "trust_html": payload.trust_html}
+    await session.flush()
+    return await _site_contact_settings(session)
 
 
 @router.post("/contact-leads", status_code=status.HTTP_201_CREATED)

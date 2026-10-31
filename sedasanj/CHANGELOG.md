@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Added admin management of public footer descriptions, headings, copyright and ordered navigation/legal links alongside trust badges, with shared rendering across public pages, validated HTTP/site-path destinations, audit tracking and a help article.
+
 - Fixed the quick-demo QR link failing with "internal server error" when opened on a phone: `POST /v1/quick-demo/recording/login` read a non-existent `User.disabled_at` attribute (only `StaffUser` has it), so every first-time login from a QR scan raised `AttributeError`; the same-device flow never hit it because the user was already signed in. The organization status is still checked by `recording_session`. Added `test_qr_link_logs_in_a_phone_once`. Also reworded the same-device option on the quick-demo page in plain Persian ("همین گوشی یا کامپیوتر" instead of "دیوایس").
 
 - Replaced every rotating spinner in the client app (demo account creation and organization sign-in, demo recording upload, quick-demo QR and same-device test, assistant socket reconnect, indeterminate call-audio loading) with the assistant's four-square `ProcessingIndicator`, now available in `sm`/`md`/`lg` sizes; removed the unused `.demo-spinner` styles.
