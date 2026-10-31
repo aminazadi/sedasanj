@@ -132,7 +132,7 @@ export default function QuickDemo() {
       </header>
       {!showContent && <div className="quick-demo-path-options" role="radiogroup" aria-label="مسیر تست">
         <label className="quick-demo-path-option"><input type="radio" name="demo-path" checked={activePath === "mobile"} onChange={() => selectPath("mobile")}/><span className="quick-demo-path-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.2"/><path d="M10 5h4M11 18.5h2"/></svg></span><span><strong>تست موبایل</strong><small>ضبط پیام با گوشی و اسکن QR</small></span></label>
-        <label className="quick-demo-path-option"><input type="radio" name="demo-path" checked={activePath === "same"} onChange={() => selectPath("same")}/><span className="quick-demo-path-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="13" rx="1.5"/><path d="M8 21h8m-4-5v5m-2-12a2 2 0 0 1 4 0v2a2 2 0 0 1-4 0zm2-3V6m-3 4v1a3 3 0 0 0 6 0v-1"/></svg></span><span><strong>تست با همین دیوایس</strong><small>مطمئن شوید که این دیوایس میکروفون متصل و فعال دارد</small></span></label>
+        <label className="quick-demo-path-option"><input type="radio" name="demo-path" checked={activePath === "same"} onChange={() => selectPath("same")}/><span className="quick-demo-path-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="13" rx="1.5"/><path d="M8 21h8m-4-5v5m-2-12a2 2 0 0 1 4 0v2a2 2 0 0 1-4 0zm2-3V6m-3 4v1a3 3 0 0 0 6 0v-1"/></svg></span><span><strong>تست با همین گوشی یا کامپیوتر</strong><small>صدایتان را همین‌جا با میکروفون خودِ همین گوشی یا کامپیوتر ضبط می‌کنید؛ مطمئن شوید میکروفونش کار می‌کند</small></span></label>
         <label className="quick-demo-path-option"><input type="radio" name="demo-path" checked={activePath === "voip"} onChange={() => selectPath("voip")}/><span className="quick-demo-path-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4.5a2 2 0 0 1 2-2h2.2a1.5 1.5 0 0 1 1.46 1.15l.7 2.8a1.5 1.5 0 0 1-.75 1.67l-1.55.89a13.1 13.1 0 0 0 5.93 5.93l.89-1.55a1.5 1.5 0 0 1 1.67-.75l2.8.7a1.5 1.5 0 0 1 1.15 1.46V17a2 2 0 0 1-2 2h-1C10.5 19 5 13.5 5 6.5z"/><path d="M14 4a6 6 0 0 1 6 6M14 7a3 3 0 0 1 3 3"/></svg></span><span><strong>نصب در VOIP</strong><small>اتصال به صداسنج از طریق سامانه تلفنی</small></span></label>
       </div>}
       {showContent && <div className="quick-demo-content-stage">
@@ -170,7 +170,7 @@ export default function QuickDemo() {
             </div>
           </div>}
         </div>}
-        {activePath === "same" && <div className="quick-demo-same-device" role="status"><span className="demo-spinner"/><p>در حال آماده‌سازی تست با میکروفون همین دستگاه…</p></div>}
+        {activePath === "same" && <div className="quick-demo-same-device" role="status"><span className="demo-spinner"/><p>در حال آماده‌سازی تست با میکروفون همین گوشی یا کامپیوتر…</p></div>}
       </div>}
     </section>
   </div></main>;

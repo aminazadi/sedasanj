@@ -281,6 +281,18 @@ async def test_rotated_and_expired_qr_are_rejected(demo_env):
     assert expired.status_code == 401
 
 
+async def test_qr_link_logs_in_a_phone_once(demo_env):
+    env = demo_env
+    account = await login(env)
+    demo = await new_session(env, account)
+    first = await env.client.post("/v1/quick-demo/recording/login", json={"token": demo["token"]})
+    assert first.status_code == 200
+    claims = decode_access_token(first.json()["access_token"])
+    assert str(claims["sub"]) == str(account.user_id)
+    again = await env.client.post("/v1/quick-demo/recording/login", json={"token": demo["token"]})
+    assert again.status_code == 401
+
+
 async def test_quota_and_upload_validation_are_enforced_server_side(demo_env, wav_factory):
     env = demo_env
     account = await login(env)

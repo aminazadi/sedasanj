@@ -291,7 +291,7 @@ async def recording_login(payload: SessionToken, request: Request) -> TokenPair:
         if row.auth_exchanged_at is not None:
             raise ApiError("unauthorized", "این لینک قبلاً برای ورود استفاده شده است.")
         user = await session.get(User, row.user_id)
-        if user is None or user.disabled_at is not None or user.tenant_id != row.tenant_id:
+        if user is None or user.tenant_id != row.tenant_id:
             raise ApiError("unauthorized", "حساب این لینک فعال نیست.")
         value = await demo_settings.load(session)
         if not value.enabled:
