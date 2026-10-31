@@ -2,13 +2,13 @@
 <module>
 	<rawname>recuploader</rawname>
 	<name>Seda Sanj</name>
-	<version>1.5.2</version>
+	<version>1.5.3</version>
 	<publisher>Seda Sanj</publisher>
 	<license>GPLv3+</license>
 	<licenselink>http://www.gnu.org/licenses/gpl-3.0.txt</licenselink>
 	<category>Admin</category>
 	<description>Seda Sanj (sedasanj.ir) uploads finished call recordings to an external HTTP endpoint (by default the Persian ASR transcription service), with automatic retry and self-healing reconciliation. Combines the retry queue and the sweeper into a single background service and provisions the MixMonitor recording path automatically - configure everything, including which ASR model(s) to use, from this page.</description>
-	<changelog>*1.5.2* Fix answered-call uploads when Asterisk removes hyphens from the post-record hook filename; document GPLv3+ rights, third-party notices and release signing requirements. *1.5.1* Fix FreePBX bootstrap failure after upload by keeping PHP component metadata scalar and checking all required extensions during installation. *1.5.0* Sync FreePBX extensions to Seda Sanj from the module page so internal calls are recognised and extensions can be linked to contacts and operators (SS-EXT codes). *1.4.0* Two-step installation from Module Admin (activate.sh finishes the root-only part), declared dependencies and FreePBX 15/16/17 support, coded errors (SS-xxx-nnnn) with structured redacted logs, recordings are paused instead of failed when the API key or account is rejected, mono fallback when the stereo merge fails. *1.3.9* Security: filtered MixMonitor hook arguments, CSRF protection, validated settings form.</changelog>
+	<changelog>*1.5.3* Restore inbound direction and answered-extension lookup after filename filtering; recover dialplan-label destinations when retrying failed uploads. *1.5.2* Fix answered-call uploads when Asterisk removes hyphens from the post-record hook filename; document GPLv3+ rights, third-party notices and release signing requirements. *1.5.1* Fix FreePBX bootstrap failure after upload by keeping PHP component metadata scalar and checking all required extensions during installation. *1.5.0* Sync FreePBX extensions to Seda Sanj from the module page so internal calls are recognised and extensions can be linked to contacts and operators (SS-EXT codes). *1.4.0* Two-step installation from Module Admin (activate.sh finishes the root-only part), declared dependencies and FreePBX 15/16/17 support, coded errors (SS-xxx-nnnn) with structured redacted logs, recordings are paused instead of failed when the API key or account is rejected, mono fallback when the stereo merge fails. *1.3.9* Security: filtered MixMonitor hook arguments, CSRF protection, validated settings form.</changelog>
 	<supported>
 		<version>15.0</version>
 		<version>16.0</version>

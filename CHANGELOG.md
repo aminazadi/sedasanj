@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Fixed module 1.5.3 inbound recording direction, escaped MixMonitor filename filters, and answered-extension recovery for rejected uploads.
+
 - Documented FreePBX module licensing, third-party attribution, release-signing status, and GPL-compatible protection measures.
 - Fixed FreePBX module recording hooks failing to locate answered-call audio legs when Asterisk normalizes hyphens in the post-record filename; added regression coverage.
 

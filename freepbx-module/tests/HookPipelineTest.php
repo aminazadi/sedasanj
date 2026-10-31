@@ -17,6 +17,7 @@ $parts = explode('/', trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/'
 $status = (int) ($parts[0] ?? 200);
 file_put_contents(dirname(__FILE__) . '/hits.log', json_encode([
 	'path' => $_SERVER['REQUEST_URI'], 'type' => $_SERVER['CONTENT_TYPE'] ?? '',
+    'direction' => $_POST['direction'] ?? '',
 	'uid' => preg_match('/name="asterisk_uniqueid"\r\n\r\n([^\r]+)/', (string) file_get_contents('php://input'), $m) ? $m[1] : ($_POST['asterisk_uniqueid'] ?? null),
 ]) . "\n", FILE_APPEND);
 http_response_code($status);
@@ -118,6 +119,7 @@ foreach (glob("{$dir}*.part") ?: [] as $p) { $fail('B: .part left behind'); }
 @unlink("$root/hits.log");
 [$code, $out] = runNormalizedFilename($root, $ini, '1730000000.22');
 if ($code !== 0) { $fail("B2: normalized filename failed: $out"); }
+if (strpos((string) file_get_contents("$root/hits.log"), '"direction":"outbound"') === false) { $fail('B2: direction was lost after filename filtering'); }
 if (count(array_filter(explode("\n", (string) @file_get_contents("$root/hits.log")))) !== 1) { $fail('B2: normalized filename was not uploaded'); }
 
 // C. rejected key -> recording is kept and paused, never moved to failed/.

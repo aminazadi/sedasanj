@@ -88,25 +88,32 @@ function mixstereo_main(array $argv): int
         return 1;
     }
 
-    $base = "{$dir}{$name}.wav";
-    // Some Asterisk/FreePBX paths normalize punctuation in the MixMonitor
-    // post-record arguments differently from the filenames already created.
-    // Resolve only exact normalized basenames, never a loose prefix match.
-    $resolveLeg = static function (string $prefix) use ($dir, $name): string {
-        $expected = $prefix . $name . '.wav';
+    $resolveFile = static function (string $expected) use ($dir): string {
         if (is_file($dir . $expected)) {
             return $dir . $expected;
         }
         $normalized = str_replace('-', '', $expected);
-        foreach (glob($dir . $prefix . '*.wav') ?: [] as $candidate) {
+        foreach (glob($dir . '*.wav') ?: [] as $candidate) {
             if (str_replace('-', '', basename($candidate)) === $normalized) {
                 return $candidate;
             }
         }
         return $dir . $expected;
     };
-    $in = $resolveLeg('recv_');
-    $out = $resolveLeg('trans_');
+    $base = $resolveFile("{$name}.wav");
+    // Some Asterisk/FreePBX paths normalize punctuation in the MixMonitor
+    // post-record arguments differently from the filenames already created.
+    // Resolve only exact normalized basenames, never a loose prefix match.
+    $in = $resolveFile("recv_{$name}.wav");
+    $out = $resolveFile("trans_{$name}.wav");
+    // Recover punctuation from the actual recording before deriving direction/metadata.
+    if (is_file($in)) {
+        $name = substr(pathinfo($in, PATHINFO_FILENAME), strlen('recv_'));
+    } elseif (is_file($base)) {
+        $name = pathinfo($base, PATHINFO_FILENAME);
+    }
+    $direction = str_starts_with($name, 'in-') ? 'inbound'
+        : (str_starts_with($name, 'out-') ? 'outbound' : '');
     $destination = "{$dir}stereo_{$name}.wav";
 
     // The merged file is built as <name>.part and renamed into place only after the metadata
@@ -123,8 +130,9 @@ function mixstereo_main(array $argv): int
     } catch (\Throwable $exc) {
         @unlink($part);
         mixstereo_say('SS-HOOK-1003', "could not merge legs ({$exc->getMessage()})", $trace);
-        // Fall back to the mono mix MixMonitor wrote alongside the legs: the call is still
-        // delivered (as a single channel) instead of being stranded in the monitor tree.
+        // Preserve delivery when a leg is unavailable or invalid by using MixMonitor's
+        // mono mix. The base filename is resolved with the same exact normalization
+        // rules as the channel legs above.
         if (is_file($base) && filesize($base) > 44 && @copy($base, $part)) {
             $mergedFrom = 'mono';
             mixstereo_say('SS-HOOK-1003', 'delivering the mono mix instead of the stereo merge', $trace);

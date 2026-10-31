@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3 — AMINAZADI
+
+- Fixed escaped hyphens in MixMonitor filters and restored recording direction from actual filenames so inbound answered-extension lookup runs.
+- Fixed invalid dialplan destinations in old failed jobs by resolving the answered CDR extension again before upload.
+
 ## 1.5.2 — AMINAZADI
 
 - Documented the GPLv3+ license, third-party notices, signing-key requirement, and compatible source-protection practices.

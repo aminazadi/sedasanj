@@ -1,4 +1,4 @@
-# Seda Sanj FreePBX Module 1.5.2
+# Seda Sanj FreePBX Module 1.5.3
 
 ## License and rights
 
@@ -122,3 +122,11 @@ HTTP 402 responses remain in `blocked_credit`, do not consume an attempt, and re
 ## Uninstall
 
 Run `sudo ./recuploader/uninstall.sh` to keep config, state, queue, and logs, or add `--purge` to remove them. Purge deletes pending and failed recordings and must only be used after a backup.
+
+### رفع خطای `SS-UPL-0422` برای مقصد `recordcheck`
+
+نشانه: فایل صوتی آماده می‌شود، اما پاسخ سرور `422` است و تماس به پوشهٔ `failed` منتقل می‌شود. علت می‌تواند ثبت نام مرحلهٔ dialplan به‌جای شمارهٔ مقصد و از دست رفتن جهت تماس در نام فایل باشد.
+
+ماژول 1.5.3 جهت تماس را از نام واقعی ضبط بازیابی می‌کند و برای تماس ورودی، داخلی پاسخ‌دهنده را از CDR می‌خواند. فایل‌های ردشده نیز هنگام ارسال مجدد با همین روش بررسی می‌شوند. ابتدا نسخه را ارتقا دهید و یک تماس پاسخ‌داده‌شده بگیرید. پس از تأیید ثبت آن در پنل، از ابزار `engine/bin/requeue-failed.php` برای بازگرداندن تماس‌های دارای کد `SS-UPL-0422` استفاده کنید. قبل از بازگرداندن صف، از فایل‌های پوشهٔ `failed` نسخهٔ پشتیبان بگیرید.
+
+تأیید: شمارهٔ مقصد و داخلی پاسخ‌دهنده در پنل باید با تماس آزمایشی یکسان باشند. اگر CDR داخلی یکتایی نشان ندهد، ماژول شماره‌ای حدس نمی‌زند؛ تنظیمات CDR و کانال پاسخ‌دهنده را بررسی کنید. ⚠ نیازمند تأیید در محیط واقعی FreePBX.

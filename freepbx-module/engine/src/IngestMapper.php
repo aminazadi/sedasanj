@@ -48,7 +48,14 @@ class IngestMapper
         $out['caller_number'] = $pick(['caller_number', 'src', 'callerid', 'from']) ?? $filenameCaller;
         $dialedNumber = $pick(['dialed_number', 'dst', 'extension', 'to']) ?? $filenameDialed;
         $agentExt = $pick(['agent_extension', 'agent']);
-        if ($dialedNumber !== null && preg_match('/[\p{Nd}]/u', (string) $dialedNumber) !== 1 && $agentExt !== null) {
+        // Old failed jobs may contain a dialplan label and a punctuation-stripped
+        // filename. Resolve the answered extension at send time as well as in the hook.
+        $inbound = ($metadata['direction'] ?? $filenameDirection) === 'inbound'
+            || preg_match('/^stereo_in(?:-|s[0-9])/', $filename) === 1;
+        if ($agentExt === null && $inbound && preg_match('/[0-9]/', (string) $dialedNumber) !== 1) {
+            $agentExt = AnsweredExtension::lookup((string) ($out['asterisk_uniqueid'] ?? ''));
+        }
+        if (preg_match('/[\p{Nd}]/u', (string) $dialedNumber) !== 1 && $agentExt !== null) {
             $dialedNumber = $agentExt;
         }
         $out['dialed_number'] = $dialedNumber;
@@ -86,7 +93,7 @@ class IngestMapper
             $out['ended_at'] = $endedIso;
         }
 
-        $direction = $pick(['direction']) ?? $filenameDirection;
+        $direction = $pick(['direction']) ?? $filenameDirection ?? ($inbound ? 'inbound' : null);
         if ($direction) {
             $out['direction'] = (string) $direction;
         }
