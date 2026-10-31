@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Moved the smart summary and its keywords above the operator coach section on the call detail page, preserving summary loading and empty states.
+
 - Removed the background color and geometric pattern from operator coach summaries in the call detail section and full report dialog.
 
 - Redesigned the call-detail operator coach section as a graphic summary: overall score ring, a radar of the scored dimensions, the most important issue, and count tiles for issues, strengths, missed opportunities and drills. The full report (narrative, dimension bars, issues with quotes and better phrases, strength/opportunity/drill lists) moved into a modal opened with "مشاهدهٔ تفصیل تحلیل"; its open state lives in the URL as `?coach=detail`.

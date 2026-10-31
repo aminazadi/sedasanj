@@ -1149,6 +1149,29 @@ export default function CallDetailPage() {
         )}
       </section> : null}
 
+      {hasAudioAnalysis ? (
+      <div className="card">
+        <SectionTitle title="خلاصه هوشمند" description="چکیده محتوای تماس" />
+        {insights?.summary ? (
+          <p className="text-sm leading-7 text-slate-700">{insights.summary}</p>
+        ) : (
+          <EmptyState
+            icon="summary" compact
+            state={stateKind}
+            message={call.processing ? "خلاصه در حال آماده‌سازی است…" : callFailed ? "خلاصه تولید نشد. تحلیل مجدد را اجرا کنید." : "خلاصه‌ای برای این تماس ثبت نشده است."}
+            className="min-h-32"
+          />
+        )}
+        {insights?.keywords?.length ? (
+          <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-4">
+            {insights.keywords.map((keyword) => (
+              <span key={keyword} className="badge bg-brand-50 px-2.5 py-1 text-brand-700"># {keyword}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      ) : null}
+
       {hasAudioAnalysis && isAnsweredCall ? <OperatorCoachSection callId={call.id} canRegenerate={canEditTasks} /> : null}
 
       {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -1469,26 +1492,7 @@ export default function CallDetailPage() {
         </div>
 
         <aside className="space-y-4">
-          <div className="card">
-            <SectionTitle title="خلاصه هوشمند" description="چکیده محتوای تماس" />
-            {insights?.summary ? (
-              <p className="text-sm leading-7 text-slate-700">{insights.summary}</p>
-            ) : (
-              <EmptyState
-                icon="summary" compact
-                state={stateKind}
-                message={call.processing ? "خلاصه در حال آماده‌سازی است…" : callFailed ? "خلاصه تولید نشد. تحلیل مجدد را اجرا کنید." : "خلاصه‌ای برای این تماس ثبت نشده است."}
-                className="min-h-32"
-              />
-            )}
-            {insights?.keywords?.length ? (
-              <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-4">
-                {insights.keywords.map((keyword) => (
-                  <span key={keyword} className="badge bg-brand-50 px-2.5 py-1 text-brand-700"># {keyword}</span>
-                ))}
-              </div>
-            ) : null}
-          </div>
+
 
           {insights?.topics?.length ? (
             <div className="card">
