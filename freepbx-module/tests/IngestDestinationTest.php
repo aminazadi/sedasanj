@@ -27,4 +27,11 @@ $metadata['source_filename'] = 'stereo_out1001202610310937381793426858.840.wav';
 if (isset(IngestMapper::toIngestForm($metadata)['agent_extension'])) {
     throw new \RuntimeException('Outbound destination was inferred from an inbound channel');
 }
+$internal = IngestMapper::toIngestForm([
+    'uniqueid' => '1793426858.841', 'src' => '1001', 'dst' => '1002',
+    'source_filename' => 'stereo_exten-1002-1001-20261031-093738-1793426858.841.wav',
+]);
+if (($internal['direction'] ?? '') !== 'internal' || $internal['dialed_number'] !== '1002' || $internal['caller_number'] !== '1001') {
+    throw new \RuntimeException('Extension-to-extension recording was not marked internal');
+}
 echo "Ingest destination recovery passed.\n";

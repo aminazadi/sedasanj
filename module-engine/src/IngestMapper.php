@@ -38,8 +38,8 @@ class IngestMapper
         $filenameCaller = null;
         $filenameDialed = null;
         $filenameDirection = null;
-        if (preg_match('/^stereo_(in|out)-([^-]+)-([^-]+)-/', $filename, $match) === 1) {
-            $filenameDirection = $match[1] === 'in' ? 'inbound' : 'outbound';
+        if (preg_match('/^stereo_(in|out|exten)-([^-]+)-([^-]+)-/', $filename, $match) === 1) {
+            $filenameDirection = $match[1] === 'in' ? 'inbound' : ($match[1] === 'out' ? 'outbound' : 'internal');
             $filenameDialed = $match[2];
             $filenameCaller = $match[3];
         }
