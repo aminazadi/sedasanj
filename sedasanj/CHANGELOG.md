@@ -1,5 +1,11 @@
 ## 2026-11-01 — AMINAZADI
 
+- Added a task follow-up workspace for organization administrators and operators with server-side filtering, sorting, counts and pagination; shared panel styling and URL-persisted views, filters and selected tasks.
+- Added manual tasks on accessible customer calls, administrator-managed assignees constrained by current call access, an in-progress workflow, immutable follow-up notes, paginated activity history and version-based concurrent edit protection.
+- Updated task summaries, overdue alerts, call details and assistant exports for the expanded workflow and organization timezone; added tenant-isolated activity storage and Persian help for task conflicts and assignment errors.
+
+- Moved the calls refresh action beside export in the search toolbar and made it an accessible icon-only button while keeping refresh state inside the table section.
+
 - Added a calls-table refresh button that refetches the current page with its applied filters, updates only the table section, and prevents repeat clicks while loading.
 
 - Fixed supplementary dashboard analyses with independent cards, consistent executive headers and metric tiles, contained table scrolling, balanced chart sizing and compact empty states.

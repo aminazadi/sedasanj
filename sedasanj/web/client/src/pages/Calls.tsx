@@ -1,5 +1,6 @@
 import { useTablePageSize } from "../lib/useTablePagination";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { fmt, INTENT_LABELS, query, request, SENTIMENT_LABELS, STATUS_LABELS } from "../api";
 import { isOperator, isOrgAdmin, useAuth } from "../auth";
@@ -112,12 +113,14 @@ const CallsTableSection = memo(function CallsTableSection({
   applied,
   pageIndex,
   reloadKey,
+  refreshTarget,
   canDelete,
   onPage,
 }: {
   applied: Filters;
   pageIndex: number;
   reloadKey: number;
+  refreshTarget: HTMLDivElement | null;
   canDelete: boolean;
   onPage: (page: number) => void;
 }) {
@@ -165,21 +168,23 @@ const CallsTableSection = memo(function CallsTableSection({
 
   return (
     <>
-      <div className="flex justify-end">
+      {refreshTarget ? createPortal(
         <button
           type="button"
-          className="btn inline-flex min-h-[42px] items-center gap-2 px-5"
+          className="btn inline-flex h-[42px] w-[42px] items-center justify-center p-0"
           onClick={() => calls.reload()}
           disabled={calls.loading}
           aria-busy={calls.loading}
+          aria-label={calls.loading ? "در حال بروزرسانی تماس‌ها" : "بروزرسانی تماس‌ها"}
+          title="بروزرسانی تماس‌ها"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
             <path d="M20 7v5h-5M4 17v-5h5" />
             <path d="M6.1 7a7 7 0 0 1 11.6-2L20 8M4 16l2.3 3A7 7 0 0 0 17.9 17" />
           </svg>
-          {calls.loading ? "در حال بروزرسانی…" : "بروزرسانی"}
-        </button>
-      </div>
+        </button>,
+        refreshTarget,
+      ) : null}
       <ErrorBox message={calls.error ?? actionError} />
 
       <div className="card">
@@ -284,6 +289,7 @@ export default function Calls() {
   const pageIndex = pageFromSearch(new URLSearchParams(searchKey)) - 1;
   const [filters, setFilters] = useState<Filters>(applied);
   const [reloadKey, setReloadKey] = useState(0);
+  const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [search, setSearch] = useState(applied.q);
   const hasAppliedFilters = Object.values(applied).some(Boolean);
@@ -403,6 +409,7 @@ export default function Calls() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+        <div ref={setRefreshTarget} className="flex shrink-0 items-center" />
         <button type="button" className="btn inline-flex min-h-[42px] items-center gap-2 px-5" onClick={() => setExportOpen(true)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
             <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
@@ -412,7 +419,7 @@ export default function Calls() {
       </div>
       {filterBar.fields}
       <CallsExportDialog open={exportOpen} filters={applied} operator={operator} onClose={() => setExportOpen(false)} />
-      <CallsTableSection applied={applied} pageIndex={pageIndex} reloadKey={reloadKey} canDelete={canDelete} onPage={goToPage} />
+      <CallsTableSection refreshTarget={refreshTarget} applied={applied} pageIndex={pageIndex} reloadKey={reloadKey} canDelete={canDelete} onPage={goToPage} />
     </div>
   );
 }
