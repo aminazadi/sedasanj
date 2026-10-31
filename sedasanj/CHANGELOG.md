@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Fixed the quick-demo phone recorder hanging on "waiting for microphone access": after a QR scan the recorder no longer auto-starts (mobile browsers need a tap to show the microphone prompt and to play audio), it asks the user to tap and allow the microphone, unlocks guide playback inside that tap, and shows an actionable message if the permission prompt never appears within 15 seconds (e.g. QR opened in an in-app scanner browser). After sending, the phone shows a confirmation and the desktop page that displayed the QR continues to the call; the same-device flow is unchanged.
+
 - Added admin management of public footer descriptions, headings, copyright and ordered navigation/legal links alongside trust badges, with shared rendering across public pages, validated HTTP/site-path destinations, audit tracking and a help article.
 
 - Fixed the quick-demo QR link failing with "internal server error" when opened on a phone: `POST /v1/quick-demo/recording/login` read a non-existent `User.disabled_at` attribute (only `StaffUser` has it), so every first-time login from a QR scan raised `AttributeError`; the same-device flow never hit it because the user was already signed in. The organization status is still checked by `recording_session`. Added `test_qr_link_logs_in_a_phone_once`. Also reworded the same-device option on the quick-demo page in plain Persian ("همین گوشی یا کامپیوتر" instead of "دیوایس").

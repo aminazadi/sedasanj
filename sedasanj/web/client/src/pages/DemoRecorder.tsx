@@ -32,6 +32,7 @@ export default function DemoRecorder() {
   const mounted = useRef(true);
   const startedAt = useRef(0);
   const autoStarted = useRef(false);
+  const viaQr = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval>>();
   const limitTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -49,7 +50,7 @@ export default function DemoRecorder() {
         if (!session || session.userId !== value.user_id) {
           const pair = await request<TokenPair>("/v1/quick-demo/recording/login", { method: "POST", body: { token }, retry: false });
           if (!mounted.current) return;
-          acceptSession(pair);
+          viaQr.current = true; acceptSession(pair);
         }
         if (!mounted.current) return;
         setInfo(value);
@@ -66,7 +67,7 @@ export default function DemoRecorder() {
     };
   }, [token, loading, session, acceptSession, navigate]);
   useEffect(() => {
-    if (info && !info.completed && !autoStarted.current) {
+    if (info && !info.completed && !autoStarted.current && !viaQr.current) {
       autoStarted.current = true;
       void start(info, true);
     }
@@ -86,7 +87,8 @@ export default function DemoRecorder() {
       if (mounted.current) {
         recording.current = null;
         if (session?.userId) sessionStorage.removeItem(`sedasanj.quick-demo.${session.userId}`);
-        navigate(`/calls/${result.call_id}`, { replace: true });
+        if (viaQr.current) setPhase("done");
+        else navigate(`/calls/${result.call_id}`, { replace: true });
       }
     } catch (reason) {
       if (mounted.current) { setError((reason as Error).message); setPhase("retry"); }
@@ -154,9 +156,20 @@ export default function DemoRecorder() {
     try {
       if (context.current && context.current.state !== "closed") await context.current.close();
       context.current = new AudioContext(); await context.current.resume();
-      stream.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
-      if (!mounted.current) { releaseMicrophone(); return; }
-      if (currentInfo.prompt_url) { audio.current!.currentTime = 0; await playPrompt(); }
+      const element = audio.current;
+      if (element && currentInfo.prompt_url) {
+        // Unlock playback inside the tap so the guide can play after the permission prompt (iOS Safari).
+        element.muted = true;
+        try { await element.play(); element.pause(); } catch { /* handled when the guide starts */ }
+        element.muted = false; element.currentTime = 0;
+      }
+      let timedOut = false;
+      const wait = setTimeout(() => { timedOut = true; setPhase("idle"); setError("پنجرهٔ اجازهٔ میکروفون نمایش داده نشد. اگر QR را داخل برنامهٔ اسکنر یا مرورگر داخلی باز کرده‌اید، لینک را در Safari یا Chrome گوشی باز کنید و دوباره دکمه را بزنید."); }, 15000);
+      try {
+        stream.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      } finally { clearTimeout(wait); }
+      if (timedOut || !mounted.current) { releaseMicrophone(); return; }
+      if (currentInfo.prompt_url) { try { await playPrompt(); } catch { void playBeeps(); } }
       else void playBeeps();
     } catch (reason) {
       releaseMicrophone(); setPhase("idle");
@@ -173,12 +186,12 @@ export default function DemoRecorder() {
     {!supported && <p className="demo-error" role="alert">برای ضبط، لینک را با Safari یا Chrome به‌روز و اتصال HTTPS باز کنید.</p>}
     {error && <p className="demo-error" role="alert">{error}</p>}
     {info?.prompt_url && phase !== "done" && <audio ref={audio} src={info.prompt_url} preload="auto" playsInline onEnded={() => void playBeeps()} onError={() => { releaseMicrophone(); setPhase("idle"); setError("صدای راهنما بارگذاری نشد؛ اتصال را بررسی و دوباره شروع کنید."); }}/>} 
-    {phase === "idle" && info && <><p>راهنما پخش می‌شود؛ پس از یک بوق کشیده پیام خود را بگویید.</p><p className="demo-note">حداکثر {fmt.int(info.max_duration_seconds)} ثانیه</p><button className="demo-audio-control" disabled={!supported} onClick={() => void start(info)} aria-label="شروع پخش راهنما و ضبط"><RecorderEqualizer active={audioActive}/><strong>شروع پخش و ضبط</strong></button></>}
-    {phase === "permission" && <p role="status">در انتظار دسترسی به میکروفون…</p>}
+    {phase === "idle" && info && <>{viaQr.current && <p>برای شروع، دکمهٔ زیر را بزنید و در پنجرهٔ باز‌شده «اجازه دادن» به میکروفون را تأیید کنید.</p>}<p>راهنما پخش می‌شود؛ پس از یک بوق کشیده پیام خود را بگویید.</p><p className="demo-note">حداکثر {fmt.int(info.max_duration_seconds)} ثانیه</p><button className="demo-audio-control" disabled={!supported} onClick={() => void start(info)} aria-label="شروع پخش راهنما و ضبط"><RecorderEqualizer active={audioActive}/><strong>شروع پخش و ضبط</strong></button></>}
+    {phase === "permission" && <p role="status">در انتظار تأیید شما؛ در پنجرهٔ مرورگر روی «اجازه دادن» برای میکروفون بزنید…</p>}
     {(phase === "prompt" || phase === "beep" || phase === "recording" || phase === "paused") && <div className="demo-audio-stage" role="status">{(phase === "prompt" || phase === "beep") ? <div className="demo-audio-control is-active"><RecorderEqualizer active/><strong>{phase === "prompt" ? "در حال پخش پیام راهنما" : "یک بوق کشیده تا شروع ضبط"}</strong></div> : <><div className="demo-recording-control"><button className="demo-recording-pause" onClick={togglePause} aria-label={phase === "recording" ? "مکث ضبط" : "ادامه ضبط"}>{phase === "recording" ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM15 5h4v14h-4z"/></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 12 7-12 7z"/></svg>}</button><strong>{phase === "recording" ? "در حال ضبط" : "ضبط مکث شده"}</strong></div><div className="demo-recording"><strong role="timer">{fmt.duration(elapsed * 1000)}</strong><button className="demo-button demo-stop" onClick={stop}>پایان ضبط</button></div></>}</div>}
     {phase === "review" && <div className="demo-review" role="group" aria-label="بازبینی صدای ضبط‌شده"><img className="demo-review-artwork" src={recordingReviewArtwork} srcSet={srcSetFor(recordingReviewArtwork)} sizes="(max-width: 528px) calc(100vw - 48px), 480px" width={1000} height={667} alt="پیام صوتی آمادهٔ ارسال است" decoding="async"/><p>ضبط پیام به پایان رسید. می‌توانید ارسال کنید یا دوباره ضبط کنید.</p><button className="demo-button" onClick={() => recording.current && void upload(recording.current)}>ارسال پیام صوتی</button><button className="demo-button demo-retake" onClick={retryRecording}>ضبط دوباره</button></div>}
     {phase === "uploading" && <div className="demo-progress" role="status"><ProcessingIndicator size="lg" label="در حال ارسال پیام صوتی"/><p>در حال ارسال پیام صوتی… این صفحه را نبندید.</p></div>}
     {phase === "retry" && <><p>فایل ضبط‌شده در همین صفحه نگه داشته شده است.</p><button className="demo-button" onClick={() => recording.current && void upload(recording.current)}>تلاش دوباره برای ارسال</button><button className="demo-button demo-retake" onClick={retryRecording}>ضبط دوباره</button></>}
-    {phase === "done" && <div role="status"><p>پیام صوتی در فهرست تماس‌های سازمان قرار گرفت و تحلیل آن آغاز می‌شود. نتیجه در صفحه‌ای که تست را شروع کردید نمایش داده می‌شود.</p><Link className="demo-button" to={`/quick-demo?step=result&session=${info?.session_id || ""}`}>بازگشت به صفحه تست</Link></div>}
+    {phase === "done" && <div role="status"><p>پیام صوتی ارسال شد و تحلیل آن آغاز می‌شود. ادامهٔ مراحل و نتیجه در همان صفحه‌ای که QR را نشان می‌داد باز می‌شود؛ این صفحه را می‌توانید ببندید.</p>{!viaQr.current && <Link className="demo-button" to={`/quick-demo?step=result&session=${info?.session_id || ""}`}>بازگشت به صفحه تست</Link>}</div>}
   </section></main>;
 }
