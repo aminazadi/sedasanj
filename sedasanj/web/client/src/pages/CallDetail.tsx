@@ -929,6 +929,7 @@ export default function CallDetailPage() {
   const sentimentData = sentimentChartData(activeSentimentProfile);
   const sentimentScore = insights?.sentiment_score;
   const hasAudioAnalysis = call.call_type === "answered" || call.call_type === "voicemail";
+  const showProcessingDetails = hasAudioAnalysis && call.status !== "complete";
   const isAnsweredCall = call.call_type === "answered";
   const callFailed = call.status.startsWith("failed");
   const stateKind: CallStateKind = call.processing ? "processing" : callFailed ? "failed" : "empty";
@@ -1097,7 +1098,7 @@ export default function CallDetailPage() {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
       ) : null}
 
-      {!hasAudioAnalysis ? isMissedCall ? null : <section className="card border-rose-100 bg-rose-50/50"><h2 className="font-bold text-rose-800">نوع تماس: {STATUS_LABELS[call.call_type] ?? call.call_type}</h2><p className="mt-1 text-sm text-slate-600">برای این رخداد فایل صوتی یا تحلیل مکالمه ثبت نشده است.</p></section> : <ProcessingCard status={call.status} progressPct={call.progress_pct} detail={call.progress_detail} />}
+      {!hasAudioAnalysis ? isMissedCall ? null : <section className="card border-rose-100 bg-rose-50/50"><h2 className="font-bold text-rose-800">نوع تماس: {STATUS_LABELS[call.call_type] ?? call.call_type}</h2><p className="mt-1 text-sm text-slate-600">برای این رخداد فایل صوتی یا تحلیل مکالمه ثبت نشده است.</p></section> : showProcessingDetails ? <ProcessingCard status={call.status} progressPct={call.progress_pct} detail={call.progress_detail} /> : null}
 
       {isMissedCall ? (
         <section className="card border-amber-200 bg-amber-50/60">
@@ -1117,7 +1118,7 @@ export default function CallDetailPage() {
         </section>
       ) : null}
 
-      {hasAudioAnalysis ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
+      {showProcessingDetails ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
 
       {call.direction !== "internal" ? <section className="card overflow-visible">
         <SectionTitle

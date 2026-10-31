@@ -1,5 +1,7 @@
 ## 2026-11-01 — AMINAZADI
 
+- Hidden the analysis progress card and processing execution report on completed call details while retaining them for ongoing, failed and canceled processing.
+
 - Moved call task creation beside the all-tasks link and grouped the shared task status selector with card header actions.
 
 - Added Persian deployment recovery steps for migration 0091 parameter type conflicts, including rebuild commands and successful migration checks.
