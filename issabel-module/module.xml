@@ -11,7 +11,7 @@
   <embedcategory>Advanced</embedcategory>
   <description>مدیریت ضبط و ارسال تماس‌های ایزابل به صداسنج؛ نیازمند فعال‌سازی و PHP CLI مستقل 7.4 یا جدیدتر.</description>
   <supported><version>2.11</version><version>2.12</version></supported>
-  <depends><version>2.11.0.0</version><phpversion>5.4.0</phpversion><module>core ge 2.11.0.0</module></depends>
+  <depends><version>2.11.0.0</version><phpversion>5.4.0</phpversion><module>core ge 2.11.0.0</module><module>framework le 2.12.99</module><file>/etc/issabel-release</file></depends>
   <menuitems><recuploader>Seda Sanj</recuploader></menuitems>
   <methods><get_config pri="900">recuploader_get_config</get_config></methods>
   <changelog>*1.6.0* Add Issabel 4/5 adapters, independent CLI runtime, management page and signed beta releases. Lab confirmation required.</changelog>

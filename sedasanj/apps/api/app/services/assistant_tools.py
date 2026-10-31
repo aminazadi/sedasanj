@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import false, func, or_, select
@@ -25,6 +26,7 @@ from app.models import (
     CrmOutcome,
     OperatorCallScore,
     SalesInsight,
+    Tenant,
     Transcript,
     User,
 )
@@ -149,16 +151,32 @@ def _window(args: WindowArguments) -> tuple[datetime, datetime]:
     return start, end
 
 
-async def _get_current_time(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
-    now = datetime.now(UTC)
+def clock(timezone_name: str | None, now: datetime | None = None) -> dict[str, Any]:
+    """Current time in the organization's timezone with ready-to-use day boundaries."""
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+        name = timezone_name or "UTC"
+    except (ZoneInfoNotFoundError, ValueError):
+        zone, name = ZoneInfo("UTC"), "UTC"
+    current = (now or datetime.now(UTC)).astimezone(zone)
+    day_start = current.replace(hour=0, minute=0, second=0, microsecond=0)
     return {
         "version": 1,
-        "timezone": "UTC",
-        "datetime": now.isoformat(),
-        "date": now.date().isoformat(),
-        "time": now.time().replace(microsecond=0).isoformat(),
-        "unix_timestamp": int(now.timestamp()),
+        "timezone": name,
+        "datetime": current.isoformat(),
+        "date": current.date().isoformat(),
+        "time": current.time().replace(microsecond=0).isoformat(),
+        "unix_timestamp": int(current.timestamp()),
+        "today_from_date": day_start.isoformat(),
+        "today_to_date": current.isoformat(),
+        "yesterday_from_date": (day_start - timedelta(days=1)).isoformat(),
+        "yesterday_to_date": day_start.isoformat(),
     }
+
+
+async def _get_current_time(ctx: ToolContext, raw: ToolArguments) -> dict[str, Any]:
+    tenant = await ctx.session.get(Tenant, ctx.principal.tenant_id)
+    return clock(tenant.timezone if tenant else None)
 
 
 async def _validate_operator(ctx: ToolContext, operator_id: UUID | None) -> UUID | None:

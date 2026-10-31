@@ -26,3 +26,8 @@ foreach (array('4', '5') as $version) {
     sj_assert(serialize($ext) === $before, 'All target checks must happen before any mutation');
 }
 echo "Issabel dialplan fixtures passed\n";
+
+$xml = simplexml_load_file(__DIR__ . '/../module.xml');
+sj_assert((string) $xml->product === 'issabel-recuploader', 'Package identity must be explicit');
+sj_assert((string) $xml->depends->file === '/etc/issabel-release', 'Reject other PBX distributions');
+sj_assert(in_array('framework le 2.12.99', array_map('strval', iterator_to_array($xml->depends->module, false)), true), 'Reject modern FreePBX framework versions');

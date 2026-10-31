@@ -1,6 +1,6 @@
 import json
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -120,14 +120,17 @@ def test_tool_schemas_never_expose_security_scope() -> None:
     }
 
 
-def test_current_time_tool_returns_utc_date_and_time() -> None:
+def test_current_time_tool_returns_tenant_date_and_time() -> None:
     tool = assistant_tools.TOOL_BY_NAME["get_current_time"]
-    result = asyncio.run(
-        tool.executor(None, assistant_tools.CurrentTimeArguments())
-    )
+    class _Session:
+        async def get(self, *_args: object) -> SimpleNamespace:
+            return SimpleNamespace(timezone="UTC")
+
+    ctx = SimpleNamespace(session=_Session(), principal=SimpleNamespace(tenant_id=uuid4()))
+    result = asyncio.run(tool.executor(ctx, assistant_tools.CurrentTimeArguments()))
     instant = datetime.fromisoformat(result["datetime"])
     assert result["timezone"] == "UTC"
-    assert instant.tzinfo == UTC
+    assert instant.utcoffset() == timedelta(0)
     assert result["date"] == instant.date().isoformat()
     assert result["time"] == instant.time().replace(microsecond=0).isoformat()
     assert result["unix_timestamp"] == int(instant.timestamp())
@@ -252,3 +255,62 @@ async def test_operator_mentions_are_rejected_for_non_admin_users() -> None:
         await assistant._attachment_context(
             object(), uuid4(), principal.id, principal, attachments
         )
+
+
+class SequenceClient(LlmClient):
+    def __init__(self, payloads: list[dict[str, object]]) -> None:
+        self.payloads = payloads
+        self.users: list[str] = []
+
+    async def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_object: bool = True,
+        model: str | None = None,
+    ) -> str:
+        self.users.append(user)
+        return json.dumps(self.payloads.pop(0), ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_time_only_plan_is_replanned_with_a_data_tool() -> None:
+    client = SequenceClient(
+        [
+            {"answer": None, "tool_calls": [{"name": "get_current_time", "arguments": {}}]},
+            {
+                "answer": None,
+                "tool_calls": [
+                    {
+                        "name": "get_call_analytics",
+                        "arguments": {
+                            "from_date": "2026-10-31T00:00:00+03:30",
+                            "to_date": "2026-10-31T12:00:00+03:30",
+                        },
+                    }
+                ],
+            },
+        ]
+    )
+    plan = await assistant_agent.plan(
+        client, "system", "امروز چه خبر؟", "", model="chat-model", mode="structured"
+    )
+    assert [call.name for call in plan.tool_calls] == ["get_call_analytics"]
+    assert assistant_agent.TIME_ONLY_HINT in client.users[1]
+
+
+def test_clock_uses_the_tenant_timezone_and_day_boundaries() -> None:
+    info = assistant_tools.clock("Asia/Tehran", datetime(2026, 10, 31, 9, 0, tzinfo=UTC))
+    assert info["timezone"] == "Asia/Tehran"
+    assert info["today_from_date"] == "2026-10-31T00:00:00+03:30"
+    assert info["yesterday_from_date"] == "2026-10-30T00:00:00+03:30"
+    assert assistant_tools.clock("Nope/Zone")["timezone"] == "UTC"
+
+
+def test_enabled_tools_without_a_data_tool_fall_back_to_all() -> None:
+    every = set(assistant_tools.TOOL_BY_NAME)
+    assert assistant._enabled_assistant_tools({"assistant_enabled_tools": '["bogus"]'}) == every
+    assert assistant._enabled_assistant_tools({}) == every
+    chosen = assistant._enabled_assistant_tools({"assistant_enabled_tools": '["search_calls"]'})
+    assert chosen == {"search_calls"} | assistant_tools.ALWAYS_ENABLED

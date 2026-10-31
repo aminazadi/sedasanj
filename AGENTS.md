@@ -35,7 +35,7 @@ ruff: line length 100, py312. mypy: strict. pytest: asyncio auto mode, tests in 
 
 ### Alembic
 
-Migrations: `sedasanj/apps/api/alembic/versions/`; latest is `0070_calls_search_trgm_indexes`; continue numbering and keep one head. One SQL statement per `op.execute`, no trailing `;`; `GRANT … TO cbi_app` for each table; tenant tables get RLS; control-plane tables go in `_CONTROL_ONLY` (`app/services/tenant_provisioning.py`); write a real `downgrade()`. Details: `skills/sedasanj-migrations-api`.
+Migrations: `sedasanj/apps/api/alembic/versions/`; latest is `0074_executive_dashboard_help_content`; continue numbering and keep one head. One SQL statement per `op.execute`, no trailing `;`; `GRANT … TO cbi_app` for each table; tenant tables get RLS; control-plane tables go in `_CONTROL_ONLY` (`app/services/tenant_provisioning.py`); write a real `downgrade()`. Details: `skills/sedasanj-migrations-api`.
 
 Apply: `uv run alembic -c apps/api/alembic.ini upgrade head` (from `sedasanj/`).
 

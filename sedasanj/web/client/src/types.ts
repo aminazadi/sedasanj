@@ -449,6 +449,9 @@ export interface KpiDashboard {
     effective_calls: number;
     opportunities: number;
     wins: number;
+    quality_score: number | null;
+    positive_sentiments: number;
+    sentiment_known: number;
   }>;
   sentiments: AnalyticsBucket[];
   cards: {
@@ -465,6 +468,12 @@ export interface KpiDashboard {
     effective_calls: number;
     opportunities: number;
     explicit_wins: number;
+    previous_explicit_wins: number;
+    previous_opportunities: number;
+    answer_rate: RateMetric;
+    satisfaction_rate: RateMetric;
+    previous_quality_score: number | null;
+    previous_revenue: number;
     probable_opportunities: number;
     probable_opportunity_rate: RateMetric;
     unknown_outcomes: number;
@@ -488,7 +497,7 @@ export interface KpiDashboard {
       overdue: number;
       completion_rate: RateMetric;
     };
-    goal_achievement: Array<{ metric: string; actual: number | null; target: number; achievement: number | null }>;
+    goal_achievement: Array<{ metric: string; actual: number | null; target: number; achievement: number | null; valid_from: string; valid_to: string }>;
   };
   call_types: AnalyticsBucket[];
   voicemail_mailboxes: Array<{ mailbox: string; count: number }>;
@@ -516,9 +525,10 @@ export interface KpiDashboard {
     quality_score: number | null;
     sample_sufficient: boolean;
     agent_talk_ratio: number | null;
+    previous_quality_score: number | null;
   }>;
   operators_total: number;
-  actions: Array<{ type: string; severity: string; call_id: string | null; title: string; due_at: string | null }>;
+  actions: Array<{ type: string; severity: string; call_id: string | null; title: string; due_at: string | null; meta?: Record<string, string | number> }>;
   coaching: {
     strengths: Array<{ title: string; average: number; call_id: string; evidence: string | null }>;
     improvements: Array<{ title: string; average: number; call_id: string; evidence: string | null }>;
