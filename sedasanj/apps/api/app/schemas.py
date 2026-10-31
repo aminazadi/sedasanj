@@ -1184,13 +1184,14 @@ class SettingsUpdate(BaseModel):
             "search_calls",
             "get_call_details",
             "search_transcripts",
+            "search_knowledge",
             "get_call_analysis",
             "get_call_analytics",
             "get_operator_performance",
             "visualize_statistics",
             "export_data",
         ]
-    ] | None = Field(default=None, min_length=1, max_length=9)
+    ] | None = Field(default=None, min_length=1, max_length=10)
     assistant_export_ttl_minutes: int | None = Field(default=None, ge=1, le=1440)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None

@@ -90,6 +90,7 @@ from app.services import (
     billing,
     entitlements,
     knowledge,
+    org_knowledge,
     outbox,
     processing_events,
     progress,
@@ -1130,12 +1131,20 @@ async def assistant_knowledge_coverage(
                 {
                     "tenant_id": str(current),
                     **await knowledge.coverage_for_tenant(tenant_session, current, model, provider),
+                    "org_sources": await org_knowledge.coverage_for_tenant(
+                        tenant_session, current, model, provider
+                    ),
                 }
             )
     return {
         "embedding_model": model,
         "embedding_provider": provider,
-        "totals": knowledge.merge_coverage(per_tenant),
+        "totals": {
+            **knowledge.merge_coverage(per_tenant),
+            "org_sources": org_knowledge.merge_coverage(
+                [item["org_sources"] for item in per_tenant]  # type: ignore[misc]
+            ),
+        },
         "tenants": per_tenant,
     }
 

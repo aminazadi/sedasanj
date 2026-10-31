@@ -1289,6 +1289,39 @@ class CallKnowledge(Base):
     )
     operator_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+class OrgKnowledgeChunk(Base):
+    __tablename__ = "org_knowledge_chunks"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    call_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE")
+    )
+    access: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'tenant'"))
+    title: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    source_updated_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    embedding: Mapped[Any | None] = mapped_column(VectorType())
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    embedding_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    vector_status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'pending'"))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    next_retry_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (UniqueConstraint("source_type", "source_id", "ordinal"),)
+
+
     )
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Any | None] = mapped_column(VectorType())
