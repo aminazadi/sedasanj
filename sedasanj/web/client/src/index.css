@@ -794,16 +794,6 @@ select {
 }
 
 @layer components {
-  /* Operator coach: soft diamond lattice behind the headline block. */
-  .coach-pattern {
-    background-color: #fff;
-    background-image:
-      linear-gradient(45deg, rgb(178 172 136 / 0.14) 25%, transparent 25%),
-      linear-gradient(-45deg, rgb(178 172 136 / 0.14) 25%, transparent 25%);
-    background-size: 28px 28px;
-    background-position: 0 0, 14px 0;
-  }
-
   /* Operator coach detail modal. */
   .coach-dialog {
     width: min(94vw, 56rem);
