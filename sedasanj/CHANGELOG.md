@@ -2,6 +2,8 @@
 
 ## 2026-10-31 — AMINAZADI
 
+- Fixed Persian speech input in the assistant repeating text and repeatedly cutting out on mobile (Chrome/Android with Google speech): on mobile it now captures one utterance per tap instead of a continuous auto-restart loop, and cumulative final results re-emitted by the engine are merged instead of appended. Desktop behaviour is unchanged. Added `speechResults.test.mjs`.
+
 - Fixed the quick-demo phone recorder hanging on "waiting for microphone access": after a QR scan the recorder no longer auto-starts (mobile browsers need a tap to show the microphone prompt and to play audio), it asks the user to tap and allow the microphone, unlocks guide playback inside that tap, and shows an actionable message if the permission prompt never appears within 15 seconds (e.g. QR opened in an in-app scanner browser). After sending, the phone shows a confirmation and the desktop page that displayed the QR continues to the call; the same-device flow is unchanged.
 
 - Added admin management of public footer descriptions, headings, copyright and ordered navigation/legal links alongside trust badges, with shared rendering across public pages, validated HTTP/site-path destinations, audit tracking and a help article.

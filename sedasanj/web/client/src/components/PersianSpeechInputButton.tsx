@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isMobileSpeechClient, joinText, mergeFinalPhrases } from "../lib/speechResults.mjs";
 
 interface SpeechRecognitionResultLike {
   isFinal: boolean;
@@ -27,10 +28,6 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 const SILENCE_AFTER_SPEECH_MS = 2500;
 const SILENCE_BEFORE_SPEECH_MS = 7000;
 
-function joinText(...parts: string[]): string {
-  return parts.map((part) => part.trim()).filter(Boolean).join(" ");
-}
-
 function recognitionConstructor(): SpeechRecognitionConstructor | undefined {
   const browserWindow = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
   return browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
@@ -43,6 +40,7 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
   const sessionFinalRef = useRef("");
   const silenceTimerRef = useRef<number | null>(null);
   const spokeRef = useRef(false);
+  const mobileRef = useRef(typeof navigator !== "undefined" && isMobileSpeechClient(navigator.userAgent, navigator.maxTouchPoints));
   const [listening, setListening] = useState(false);
   const supported = typeof window !== "undefined" && Boolean(recognitionConstructor());
 
@@ -86,12 +84,14 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
     if (!Recognition || !shouldListenRef.current) return;
     const recognition = new Recognition();
     recognition.lang = "fa-IR";
-    recognition.continuous = true;
+    // Chrome on Android re-emits cumulative results in continuous mode and ends sessions on its own,
+    // so mobile takes one utterance per tap instead of an auto-restart loop.
+    recognition.continuous = !mobileRef.current;
     recognition.interimResults = true;
     sessionFinalRef.current = "";
     recognition.onresult = (event) => {
       const results = Array.from(event.results);
-      const sessionFinal = joinText(...results.filter((result) => result.isFinal).map((result) => result[0].transcript));
+      const sessionFinal = mergeFinalPhrases(results.filter((result) => result.isFinal).map((result) => result[0].transcript));
       let interim = joinText(...results.filter((result) => !result.isFinal).map((result) => result[0].transcript));
       // Some engines re-emit the last final phrase as interim text; drop that echo.
       if (interim && sessionFinal.endsWith(interim)) interim = "";
@@ -106,7 +106,8 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
       // Restarting resets the results list, so keep what was already finalised.
       committedRef.current = joinText(committedRef.current, sessionFinalRef.current);
       sessionFinalRef.current = "";
-      if (shouldListenRef.current) window.setTimeout(startListening, 150);
+      if (mobileRef.current) { shouldListenRef.current = false; clearSilenceTimer(); setActive(false); }
+      else if (shouldListenRef.current) window.setTimeout(startListening, 150);
       else { clearSilenceTimer(); setActive(false); }
     };
     recognition.onerror = (event) => {
