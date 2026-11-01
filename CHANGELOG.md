@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-01 — AMINAZADI
+
+- Redesigned the Jalase-Negar Flutter app (`jalase-negar/`) to match the SedaSanj panel: brand palette (`#F2F0EF`, `#B2AC88`, `#898989`, `#4B6E48`), zero border radius, no shadows, dotted patterns, green dotted app bar, dotted section title bands and square badges, via a new shared theme (`lib/app/theme.dart`) and widgets (`lib/app/widgets/ss_widgets.dart`). Reused the SedaSanj office line art, empty-state illustration and pattern images (`assets/images/brand/`) and the Vazirmatn variable font as static 350/500/600 instances. Verified on the Android emulator only; iOS and the lab matrix were not run.
+- Removed all on-device analysis from Jalase-Negar: local LLM minutes (fllama/Dorna), transcript correction, online AI transcription, license gating and their settings; the embedded online-AI API key is gone from the source and must still be revoked by its owner. Local database migrates to version 4 (drops minutes, corrections and online transcripts) and meeting statuses now cover the upload/processing flow. Dropped unused dependencies, fonts and Android build hacks.
+- Added the Jalase-Negar SedaSanj connection flow: pairing payload parser (`sedasanj.jalase-negar.config` v1, expiry and https checks), typed `ApiClient` with Persian actionable errors (401 reconnect, 402 top-up, pairing/limit codes), token kept in secure storage, and a connection screen with QR scan, config file and pasted-config import plus disconnect. Added camera permission for QR scanning.
+- Reworked Jalase-Negar recording (J3): mono 16 kHz capture with a microphone foreground service, sample-based timing, 45–90 s WAV chunks cut at silence and registered in a new `upload_chunks` table (DB v5), meeting row written at start so killed recordings are repaired and recovered on next launch, disk-space guard (500 MB), and surfacing of OS interruptions. Added chunk writer and WAV repair tests.
+- Added the Jalase-Negar upload queue (J5): chunks are uploaded while the meeting is still recording (two at a time, sha256-verified, exponential backoff with jitter), the session is created idempotently and resumed from the server's received chunks, finished once every chunk is in, then server processing is followed to completion. 401/402 stop the queue with Persian guidance, a server-deleted meeting is marked failed, and local chunk files are removed after the server accepts the finish. The list shows upload progress. Added `test/tools/fake_sedasanj.py` for emulator testing and queue unit tests with a fake API.
+
+
 ## 2026-10-31 — AMINAZADI
 
 - Replaced the Font Awesome spinners in the FreePBX module page (version history, update download button, update progress header and the running step) with the assistant's four-square loader (`.sj-loader`), and removed the unused `.icon-spin` style from the ASR dashboard. `php -l` was not run (PHP is not installed locally).
