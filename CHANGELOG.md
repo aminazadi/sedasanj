@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-03 — AMINAZADI
+
+- Fixed the AI dashboard resource grid to show six cards in two rows of three on desktop, with two columns on tablets and one on phones.
+
 ## 2026-11-02 — AMINAZADI
 
 - Added CUDA scheduling for Shenava NeMo CTC models with the pinned Sherpa CUDA 12/cuDNN 9 wheel, per-GPU isolated inference, bounded execution, CPU fallback under the existing scheduler policy, and coded worker failures.

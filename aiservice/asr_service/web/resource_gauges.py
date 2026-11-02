@@ -1,7 +1,9 @@
 """Live resource speedometers for the administration overview."""
 
 STYLE = """
-.resource-grid{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.resource-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:1100px){.resource-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.resource-grid{grid-template-columns:minmax(0,1fr)}}
 .resource-card{border-radius:0!important;background-color:var(--card);background-image:radial-gradient(var(--line) .6px,transparent .6px);background-size:10px 10px;padding:16px}
 .resource-title{display:flex;justify-content:space-between;gap:12px;font-weight:300}
 .resource-title b{font-weight:400}.resource-note{font-weight:300;font-variant-numeric:tabular-nums}
