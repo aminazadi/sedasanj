@@ -103,7 +103,7 @@ class DownloadManager:
    if config.get("auto_map") or config.get("trust_remote_code"):
     raise ValueError("decision bundles may not require remote code")
   script = (
-   "from gliner2 import GLiNER2; GLiNER2.from_pretrained(__import__('sys').argv[1])"
+   "from gliner2 import AutoExtractor; AutoExtractor.from_pretrained(__import__('sys').argv[1])"
    if spec.engine == "gliner2_5_multi_decide" else
    "import laya; laya.load(__import__('sys').argv[1], device='cpu')"
   )

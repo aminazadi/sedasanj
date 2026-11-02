@@ -51,8 +51,8 @@ class DecisionRuntimeRegistry:
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
         try:
             if spec.engine == "gliner2_5_multi_decide":
-                from gliner2 import GLiNER2
-                return GLiNER2.from_pretrained(str(root))
+                from gliner2 import AutoExtractor
+                return AutoExtractor.from_pretrained(str(root))
             if spec.engine == "laya_multilingual":
                 import laya
                 return laya.load(str(root), device=f"cuda:{device_index}" if device_index is not None else "cpu")

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-02 — AMINAZADI
+
+- Fixed GLiNER2.5 Multi Decide install and runtime loading by using AutoExtractor.from_pretrained instead of the span-only GLiNER2.from_pretrained, which could not load boundary checkpoints and raised ExtractorConfig has no attribute max_width.
+
 ## 2026-10-28 — AMINAZADI
 
 - Persisted admin-downloaded AI models in the AISERVICE project-root `models` directory for reuse across deployments.
