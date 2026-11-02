@@ -14,6 +14,7 @@ from asr_service.domain.catalog import BUILTIN_MODEL_IDS, CATALOG, load_custom_m
 from asr_service.infrastructure.storage import MODEL_DIR, execute, now, state
 from asr_service.infrastructure.ninerouter import cached_models, configured_models
 from asr_service.services.downloader import manager
+from asr_service.services.gpu_runtime import model_gpu_artifacts_ready
 
 from ..dependencies import authorize_admin
 from ..openapi import documented_responses
@@ -118,6 +119,7 @@ def models():
                 or model.id in remote_by_kind.get(model.kind, set())
             ),
             "custom": model.id not in BUILTIN_MODEL_IDS,
+            "gpu_artifacts_ready": model_gpu_artifacts_ready(model.id),
         }
         for model in CATALOG.values()
     ]

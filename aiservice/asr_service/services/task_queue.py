@@ -862,6 +862,8 @@ class TaskManager:
                         continue
                 elif not remote:
                     settings = gpu_runtime.get_settings()
+                    if gpu_runtime.cuda_model_family(kind, model_id) and not gpu_runtime.model_gpu_artifacts_ready(model_id):
+                        device_reason = "gpu_artifacts_missing"
                     if settings["mode"] == "gpu" and gpu_runtime.cuda_model_family(kind, model_id):
                         continue
                     if settings["mode"] == "auto" and gpu_runtime.gpu_eligible(kind, model_id):

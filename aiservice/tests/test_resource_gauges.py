@@ -62,3 +62,6 @@ assert.ok(network.includes('مقیاس خودکار'));
         self.assertIn(".map(gpuResourceCard)", page)
         self.assertIn("CUDA Sherpa:", render_admin_page("settings"))
         self.assertNotIn("renderModels();renderModelAnalytics", page)
+        models = render_admin_page("models")
+        self.assertIn("تکمیل فایل‌های GPU", models)
+        self.assertIn("m.gpu_artifacts_ready===false", models)

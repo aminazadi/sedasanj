@@ -91,6 +91,7 @@ class ModelResponse(ApiSchema):
     job_id: str | None = None
     available: bool
     custom: bool = False
+    gpu_artifacts_ready: bool = True
 
 
 class ModelStateResponse(ApiSchema):

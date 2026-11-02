@@ -46,10 +46,10 @@ def denoiser():
 @lru_cache(maxsize=4)
 def _load(mid, device_index):
  spec=CATALOG[mid];root=MODEL_DIR/mid
- if spec.architecture=="nemoCtc" and device_index is not None:
+ if spec.architecture in {"nemoCtc","transducer"} and device_index is not None:
   from .sherpa_gpu import SherpaGpuModel
   device=gpu_runtime.current_device() or {}
-  return SherpaGpuModel(root,device.get("uuid",device_index),THREADS)
+  return SherpaGpuModel(root,device.get("uuid",device_index),THREADS,spec.architecture)
  if spec.architecture=="fasterWhisper":
   from faster_whisper import WhisperModel
   device="cuda" if device_index is not None else DEVICE
@@ -81,7 +81,7 @@ def transcribe(path,mid,beam,vad,prompt,on_event=None):
  path=str(path)
  if not os.path.isfile(path):raise FileNotFoundError(f"Audio input does not exist: {path}")
  spec=CATALOG[mid];event(f"Loading ASR model {mid}");engine=load(mid);event("ASR model is ready")
- if spec.architecture=="nemoCtc" and gpu_runtime.current_device_index() is not None:
+ if spec.architecture in {"nemoCtc","transducer"} and gpu_runtime.current_device_index() is not None:
   event("Decoding audio with sherpa-onnx CUDA")
   text,d=engine.transcribe(path);text=normalize(text)
   return text,[{"id":0,"start":0,"end":d,"text":text}],d,d

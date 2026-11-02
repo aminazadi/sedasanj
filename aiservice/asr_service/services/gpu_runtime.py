@@ -163,7 +163,9 @@ def gpu_eligible(kind, model_id):
     if kind == "asr":
         from asr_service.domain.catalog import CATALOG
 
-        backend = "sherpa_onnx" if CATALOG[model_id].architecture == "nemoCtc" else "ctranslate2"
+        if CATALOG[model_id].architecture == "transducer" and not model_gpu_artifacts_ready(model_id):
+            return False
+        backend = "sherpa_onnx" if CATALOG[model_id].architecture in {"nemoCtc", "transducer"} else "ctranslate2"
         return capabilities.get(backend, False)
     if kind in {"chat", "chat_async", "text"}:
         return capabilities["llama_cpp"]
@@ -174,6 +176,17 @@ def gpu_eligible(kind, model_id):
     return False
 
 
+def model_gpu_artifacts_ready(model_id):
+    from asr_service.domain.catalog import CATALOG
+    from asr_service.infrastructure.storage import MODEL_DIR
+    from .sherpa_gpu import rnnt_gpu_artifacts_ready
+
+    model = CATALOG.get(model_id)
+    if model and model.architecture == "transducer":
+        return rnnt_gpu_artifacts_ready(MODEL_DIR / model_id)
+    return True
+
+
 def cuda_model_family(kind, model_id):
     from asr_service.domain.catalog import CATALOG
 
@@ -181,7 +194,7 @@ def cuda_model_family(kind, model_id):
     if not model:
         return False
     if kind == "asr":
-        return model.architecture in {"fasterWhisper", "nemoCtc"}
+        return model.architecture in {"fasterWhisper", "nemoCtc", "transducer"}
     if kind in {"chat", "chat_async", "text"}:
         return model.kind == "llm"
     if kind == "decision":

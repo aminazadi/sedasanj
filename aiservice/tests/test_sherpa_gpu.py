@@ -5,14 +5,99 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from asr_service.services import gpu_runtime, inference, sherpa_gpu
+from asr_service.domain.catalog import CATALOG
+from asr_service.infrastructure import storage
 
 
 class SherpaGpuTests(unittest.TestCase):
+    def test_rnnt_requires_all_fp32_files_before_gpu_scheduling(self):
+        model_id = "shenava-koochik-v1-5-rnnt"
+        required = {"encoder.onnx", "decoder.onnx", "joiner.onnx"}
+        self.assertTrue(required.issubset({file.filename for file in CATALOG[model_id].files}))
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            storage, "MODEL_DIR", Path(directory)
+        ), patch.object(
+            gpu_runtime, "enabled_devices", return_value=[{"uuid": "GPU-a"}]
+        ), patch.object(
+            gpu_runtime, "runtime_capabilities", return_value={"sherpa_onnx": True}
+        ):
+            root = Path(directory) / model_id
+            root.mkdir()
+            for name in ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx"):
+                (root / name).write_bytes(b"cpu")
+            self.assertTrue(gpu_runtime.cuda_model_family("asr", model_id))
+            self.assertFalse(gpu_runtime.gpu_eligible("asr", model_id))
+            for name in required:
+                (root / name).write_bytes(b"fp32")
+            self.assertTrue(gpu_runtime.gpu_eligible("asr", model_id))
+            (root / "encoder.onnx").write_bytes(b"")
+            self.assertFalse(gpu_runtime.gpu_eligible("asr", model_id))
+
+    def test_rnnt_missing_gpu_artifacts_raise_actionable_error_before_spawning(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            sherpa_gpu.subprocess, "run"
+        ) as run:
+            model = sherpa_gpu.SherpaGpuModel(directory, "GPU-a", 2, "transducer")
+            with self.assertRaisesRegex(sherpa_gpu.SherpaGpuError, "SS-DEP-0002"):
+                model.transcribe("audio.wav")
+            run.assert_not_called()
+
+    def test_rnnt_cpu_load_retains_int8_and_cuda_load_uses_isolated_worker(self):
+        sherpa = Mock()
+        model_id = "shenava-koochik-v1-5-rnnt"
+        with patch.dict(sys.modules, {"sherpa_onnx": sherpa}), patch.object(
+            gpu_runtime, "current_device", return_value={"uuid": "GPU-b"}
+        ):
+            inference._load(model_id, None)
+            options = sherpa.OfflineRecognizer.from_transducer.call_args.kwargs
+            self.assertTrue(options["encoder"].endswith("encoder.int8.onnx"))
+            self.assertEqual(options["model_type"], "nemo_transducer")
+            model = inference._load(model_id, 1)
+            self.assertEqual(model.architecture, "transducer")
+            self.assertEqual(model.device, "GPU-b")
+            sherpa.OfflineRecognizer.from_transducer.assert_called_once()
+
+    def test_rnnt_child_uses_fp32_files_and_nemo_transducer_on_cuda(self):
+        audio = Mock()
+        samples = Mock()
+        samples.__len__ = Mock(return_value=16000)
+        audio.mean.return_value = samples
+        sherpa = Mock(__version__="1.12.39+cuda12.cudnn9")
+        sherpa.OfflineRecognizer.from_transducer.return_value.create_stream.return_value.result.text = (
+            "speech"
+        )
+        payload = io.StringIO(
+            json.dumps(
+                {
+                    "root": "/models/rnnt",
+                    "path": "/audio.wav",
+                    "threads": 2,
+                    "architecture": "transducer",
+                }
+            )
+        )
+        with patch.dict(
+            sys.modules,
+            {"sherpa_onnx": sherpa, "soundfile": Mock(read=Mock(return_value=(audio, 16000)))},
+        ), patch.object(sys, "platform", "darwin"), patch.object(
+            sys, "stdin", payload
+        ), contextlib.redirect_stdout(
+            io.StringIO()
+        ):
+            self.assertEqual(sherpa_gpu.main(), 0)
+        options = sherpa.OfflineRecognizer.from_transducer.call_args.kwargs
+        self.assertEqual(options["provider"], "cuda")
+        self.assertEqual(options["model_type"], "nemo_transducer")
+        for name in ("encoder", "decoder", "joiner"):
+            self.assertEqual(options[name], f"/models/rnnt/{name}.onnx")
+        sherpa.OfflineRecognizer.from_nemo_ctc.assert_not_called()
+
     def test_cuda_wheel_and_working_torch_cuda_are_both_required(self):
         for wheel, cuda, expected in (
             ("1.12.39", True, False),
