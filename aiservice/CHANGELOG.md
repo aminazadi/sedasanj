@@ -2,6 +2,7 @@
 
 ## 2026-11-02 — AMINAZADI
 
+- Raised the decision-model install smoke test timeout from 60s to a configurable 600s (DECISION_SMOKE_TIMEOUT_SECONDS) because loading GLiNER2.5 on a slow CPU exceeded 60s, and reported timeouts with an actionable message.
 - Fixed GLiNER2.5 Multi Decide install and runtime loading by using AutoExtractor.from_pretrained instead of the span-only GLiNER2.from_pretrained, which could not load boundary checkpoints and raised ExtractorConfig has no attribute max_width.
 
 ## 2026-10-28 — AMINAZADI

@@ -108,7 +108,11 @@ class DownloadManager:
    "import laya; laya.load(__import__('sys').argv[1], device='cpu')"
   )
   env={**os.environ,"HF_HUB_OFFLINE":"1","TRANSFORMERS_OFFLINE":"1"}
-  result=subprocess.run([os.sys.executable,"-c",script,str(folder)],text=True,capture_output=True,env=env,timeout=60)
+  limit=int(os.environ.get("DECISION_SMOKE_TIMEOUT_SECONDS","600"))
+  try:
+   result=subprocess.run([os.sys.executable,"-c",script,str(folder)],text=True,capture_output=True,env=env,timeout=limit)
+  except subprocess.TimeoutExpired:
+   raise ValueError(f"decision smoke timed out after {limit}s; raise DECISION_SMOKE_TIMEOUT_SECONDS if the CPU is slow")
   if result.returncode:
    raise ValueError("decision smoke failed: "+(result.stderr or result.stdout)[-1000:])
  def _file(self,mid,f,folder,stop,bundle_received,bundle_total):
