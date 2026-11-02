@@ -795,3 +795,81 @@ export interface PbxExtension {
   user_name: string | null;
   synced_at: string;
 }
+
+export type MeetingStatus = "receiving" | "processing" | "complete" | "failed_retryable" | "failed_terminal" | "canceled";
+
+export interface MeetingListItem {
+  id: string;
+  title: string | null;
+  status: MeetingStatus;
+  owner_id: string;
+  owner_name: string | null;
+  started_at: string;
+  ended_at: string | null;
+  duration_ms: number | null;
+  speaker_count: number;
+  summary: string | null;
+  progress_pct: number;
+  /** True while the meeting is still being received or analysed. */
+  processing: boolean;
+}
+
+export interface MeetingPage {
+  items: MeetingListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface MeetingSegment {
+  speaker_idx: number;
+  t_start_ms: number;
+  t_end_ms: number;
+  text: string;
+}
+
+export interface MeetingSpeaker {
+  speaker_idx: number;
+  label: string;
+  user_id: string | null;
+}
+
+export interface MeetingActionItem {
+  text: string;
+  assignee: string | null;
+  due: string | null;
+}
+
+export interface MeetingMinutes {
+  version: number;
+  summary: string;
+  decisions: string[];
+  action_items: MeetingActionItem[];
+  created_at: string;
+}
+
+export interface MeetingDetail extends MeetingListItem {
+  progress_detail: string | null;
+  error_code: string | null;
+  audio_available: boolean;
+  segments: MeetingSegment[];
+  speakers: MeetingSpeaker[];
+  minutes: MeetingMinutes | null;
+  processing_events: ProcessingEvent[];
+}
+
+export interface MeetingPairingCode {
+  pairing_code: string;
+  expires_at: string;
+  server_url: string;
+}
+
+export interface MeetingDevice {
+  id: string;
+  label: string;
+  token_prefix: string;
+  last_used_at: string | null;
+  created_at: string;
+  revoked_at: string | null;
+}

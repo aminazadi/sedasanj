@@ -14,12 +14,15 @@ QUEUE_ASR = "q:asr"
 QUEUE_EMOTION = "q:emotion"
 QUEUE_LLM = "q:llm"
 QUEUE_NOTIFY = "q:notify"
+QUEUE_MEETING = "q:meeting"
 
 JOB_ASR = "transcribe_call"
 JOB_EMOTION = "analyze_voice_sentiment"
 JOB_LLM = "analyze_call"
 JOB_CORRECTION = "start_transcript_correction"
 JOB_NOTIFY = "deliver_event"
+JOB_MEETING_CHUNK = "transcribe_meeting_chunk"
+JOB_MEETING_MINUTES = "reanalyze_meeting_minutes"
 
 
 class Queue(abc.ABC):

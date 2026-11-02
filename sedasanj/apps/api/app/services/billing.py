@@ -241,6 +241,7 @@ async def _apply(
     toman_delta: int,
     idempotency_key: str,
     reservation_id: UUID | None = None,
+    meeting_id: UUID | None = None,
 ) -> LedgerEntry:
     """Insert a ledger entry and move the balance cache in the same transaction (§8)."""
     cache = await _lock_cache(session, tenant_id)
@@ -251,6 +252,7 @@ async def _apply(
         seconds_delta=seconds_delta,
         toman_delta=toman_delta,
         reservation_id=reservation_id,
+        meeting_id=meeting_id,
         idempotency_key=idempotency_key,
     )
     session.add(entry)
@@ -319,12 +321,20 @@ async def reserve(
     session: AsyncSession,
     *,
     tenant: Tenant,
-    call_id: UUID,
+    call_id: UUID | None = None,
+    meeting_id: UUID | None = None,
+    block: int = 0,
     duration_ms: int,
     price_per_minute_toman: int | None = None,
 ) -> CreditReservation:
-    """§10 reserve: lock the cache, refuse when short, then hold seconds and toman."""
-    key = f"reserve:{call_id}"
+    """§10 reserve: lock the cache, refuse when short, then hold seconds and toman.
+
+    A meeting holds credit in blocks (`block` 0, 1, 2, ...), each its own reservation, because
+    its length is unknown while it is being recorded.
+    """
+    if (call_id is None) == (meeting_id is None):
+        raise ValueError("reserve needs exactly one of call_id or meeting_id")
+    key = f"reserve:{call_id}" if call_id is not None else f"meeting-reserve:{meeting_id}:{block}"
     existing = await _existing_entry(session, tenant.id, key)
     if existing is not None and existing.reservation_id is not None:
         reservation = (
@@ -360,6 +370,7 @@ async def reserve(
     reservation = CreditReservation(
         tenant_id=tenant.id,
         call_id=call_id,
+        meeting_id=meeting_id,
         seconds=seconds,
         toman=toman,
         price_per_minute_toman=price,
@@ -385,6 +396,7 @@ async def reserve(
         session,
         tenant_id=tenant.id,
         call_id=call_id,
+        meeting_id=meeting_id,
         kind="reservation",
         seconds_delta=-seconds,
         toman_delta=-toman,
@@ -476,9 +488,23 @@ async def reserve_retry(
 
 
 async def settle(
-    session: AsyncSession, *, tenant_id: UUID, call_id: UUID, actual_duration_ms: int
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    call_id: UUID | None = None,
+    meeting_id: UUID | None = None,
+    actual_duration_ms: int,
 ) -> int:
     """§10 settle: charge true cost, release the leftover. Returns billed seconds."""
+    if meeting_id is not None:
+        return await _settle_meeting(
+            session,
+            tenant_id=tenant_id,
+            meeting_id=meeting_id,
+            actual_duration_ms=actual_duration_ms,
+        )
+    if call_id is None:
+        raise ValueError("settle needs call_id or meeting_id")
     reservation = (
         await session.execute(
             select(CreditReservation)
@@ -578,8 +604,19 @@ async def settle(
     return actual_seconds
 
 
-async def release(session: AsyncSession, *, tenant_id: UUID, call_id: UUID) -> None:
+async def release(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    call_id: UUID | None = None,
+    meeting_id: UUID | None = None,
+) -> None:
     """§10 release: terminal failure must not charge the tenant."""
+    if meeting_id is not None:
+        await _release_meeting(session, tenant_id=tenant_id, meeting_id=meeting_id)
+        return
+    if call_id is None:
+        raise ValueError("release needs call_id or meeting_id")
     reservation = (
         await session.execute(
             select(CreditReservation)
@@ -624,6 +661,126 @@ async def release(session: AsyncSession, *, tenant_id: UUID, call_id: UUID) -> N
         )
         .values(status="released")
     )
+
+
+async def _held_meeting_reservations(
+    session: AsyncSession, tenant_id: UUID, meeting_id: UUID
+) -> list[CreditReservation]:
+    return list(
+        (
+            await session.execute(
+                select(CreditReservation)
+                .where(
+                    CreditReservation.meeting_id == meeting_id,
+                    CreditReservation.tenant_id == tenant_id,
+                    CreditReservation.status == "held",
+                )
+                .order_by(CreditReservation.created_at, CreditReservation.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _settle_meeting(
+    session: AsyncSession, *, tenant_id: UUID, meeting_id: UUID, actual_duration_ms: int
+) -> int:
+    """Charge the true meeting length against all of its held blocks and free the rest."""
+    actual_seconds = billable_seconds(actual_duration_ms)
+    key = f"settle-meeting:{meeting_id}"
+    if await _existing_entry(session, tenant_id, key) is not None:
+        return actual_seconds
+    reservations = await _held_meeting_reservations(session, tenant_id, meeting_id)
+    if not reservations:
+        raise ApiError("not_found", f"no reservation for meeting {meeting_id}")
+
+    last = reservations[-1]
+    reserved_seconds = sum(r.seconds for r in reservations)
+    reserved_toman = sum(r.toman for r in reservations)
+    reserved_free = sum(int(r.free_seconds or 0) for r in reservations)
+    price = int(last.price_per_minute_toman or 0)
+    if price == 0:
+        price = await effective_price_per_minute(session, tenant_id)
+    actual_toman = seconds_to_toman(max(0, actual_seconds - reserved_free), price)
+
+    seconds_delta = reserved_seconds - actual_seconds
+    if seconds_delta > 0:
+        restored = 0
+        for reservation in reversed(reservations):
+            if restored >= seconds_delta:
+                break
+            restored += await _restore_allocations(
+                session,
+                tenant_id=tenant_id,
+                reservation_id=reservation.id,
+                seconds=seconds_delta - restored,
+            )
+        seconds_delta = restored
+    elif seconds_delta < 0:
+        cache = await _lock_cache(session, tenant_id)
+        await _ensure_legacy_grant(session, tenant_id, cache)
+        if cache.seconds < -seconds_delta:
+            raise ApiError("insufficient_credit", "actual meeting cost exceeds available credit")
+        await _allocate_grants(
+            session, tenant_id=tenant_id, reservation_id=last.id, seconds=-seconds_delta
+        )
+
+    await _apply(
+        session,
+        tenant_id=tenant_id,
+        call_id=None,
+        meeting_id=meeting_id,
+        kind="settlement",
+        seconds_delta=seconds_delta,
+        toman_delta=reserved_toman - actual_toman,
+        idempotency_key=key,
+        reservation_id=last.id,
+    )
+    await session.execute(
+        update(CreditReservation)
+        .where(
+            CreditReservation.meeting_id == meeting_id,
+            CreditReservation.tenant_id == tenant_id,
+            CreditReservation.status == "held",
+        )
+        .values(status="settled")
+    )
+    return actual_seconds
+
+
+async def _release_meeting(session: AsyncSession, *, tenant_id: UUID, meeting_id: UUID) -> None:
+    """Give every held block back; used when a meeting is canceled, deleted or fails for good."""
+    for reservation in await _held_meeting_reservations(session, tenant_id, meeting_id):
+        key = f"release-meeting:{meeting_id}:{reservation.id}"
+        if await _existing_entry(session, tenant_id, key) is not None:
+            continue
+        restored = await _restore_allocations(
+            session,
+            tenant_id=tenant_id,
+            reservation_id=reservation.id,
+            seconds=reservation.seconds,
+        )
+        await _apply(
+            session,
+            tenant_id=tenant_id,
+            call_id=None,
+            meeting_id=meeting_id,
+            kind="release",
+            seconds_delta=restored,
+            toman_delta=reservation.toman,
+            idempotency_key=key,
+            reservation_id=reservation.id,
+        )
+        await session.execute(
+            update(CreditReservation)
+            .where(
+                CreditReservation.id == reservation.id,
+                CreditReservation.tenant_id == tenant_id,
+            )
+            .values(status="released")
+        )
 
 
 async def topup(

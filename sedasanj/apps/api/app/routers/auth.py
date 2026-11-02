@@ -287,7 +287,9 @@ async def list_api_keys(
     limit: Annotated[int, Query(ge=1, le=200)] = 25,
     include_revoked: bool = False,
 ) -> dict[str, Any]:
-    base = select(ApiKey).where(ApiKey.tenant_id == principal.tenant_id)
+    base = select(ApiKey).where(
+        ApiKey.tenant_id == principal.tenant_id, ApiKey.kind == "integration"
+    )
     if not include_revoked:
         base = base.where(ApiKey.revoked_at.is_(None))
     total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
@@ -316,6 +318,7 @@ async def update_api_key(
         api_key is None
         or api_key.tenant_id != principal.tenant_id
         or api_key.revoked_at is not None
+        or api_key.kind != "integration"
     ):
         raise ApiError("not_found", "api key not found")
 
@@ -382,7 +385,12 @@ async def rotate_api_key(
 ) -> ApiKeyCreated:
     """Issue a replacement with the same settings; the old key stops after `grace_hours`."""
     old = await session.get(ApiKey, key_id)
-    if old is None or old.tenant_id != principal.tenant_id or old.revoked_at is not None:
+    if (
+        old is None
+        or old.tenant_id != principal.tenant_id
+        or old.revoked_at is not None
+        or old.kind != "integration"
+    ):
         raise ApiError("not_found", "api key not found")
     secret, prefix, key_hash = generate_api_key()
     new = ApiKey(
@@ -432,6 +440,7 @@ async def revoke_api_key(
         .where(
             ApiKey.id == key_id,
             ApiKey.tenant_id == principal.tenant_id,
+            ApiKey.kind == "integration",
             ApiKey.revoked_at.is_(None),
         )
         .values(revoked_at=datetime.now(UTC))

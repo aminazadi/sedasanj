@@ -84,6 +84,9 @@ async def _ensure_monthly_plan_credit(session: AsyncSession, tenant_id: UUID, no
     return int(price_per_minute)
 
 
+ensure_monthly_plan_credit = _ensure_monthly_plan_credit
+
+
 @dataclass(frozen=True)
 class IngestResult:
     accepted: IngestAccepted

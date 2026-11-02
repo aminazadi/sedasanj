@@ -19,7 +19,9 @@ import trophyIcon from "@iconify-icons/lucide/trophy";
 import { fmt, SALES_OUTCOME_LABELS, SENTIMENT_LABELS, STATUS_LABELS, TRAJECTORY_LABELS } from "../api";
 import type { PartySentiment, SentimentPoint } from "../types";
 
-const PIPELINE_STEPS: { label: string; hint: string; statuses: string[] }[] = [
+export interface PipelineStep { label: string; hint: string; statuses: string[] }
+
+const PIPELINE_STEPS: PipelineStep[] = [
   { label: "دریافت و ذخیره", hint: "آماده‌سازی فایل صوتی", statuses: ["received", "reserved", "stored"] },
   { label: "تبدیل گفتار", hint: "پیاده‌سازی مکالمه", statuses: ["transcribing", "transcribed"] },
   { label: "تحلیل هوشمند", hint: "تحلیل لحن، احساس و بینش", statuses: ["emotion_queued", "emotion_analyzing", "analyzing", "analyzed"] },
@@ -127,17 +129,22 @@ export function ProcessingCard({
   status,
   progressPct,
   detail,
+  title = "مسیر تحلیل تماس",
+  steps = PIPELINE_STEPS,
 }: {
   status: string;
   progressPct: number;
   detail: string | null;
+  /** Card heading and step list; the defaults describe the call pipeline. */
+  title?: string;
+  steps?: PipelineStep[];
 }) {
   const failed = status.startsWith("failed");
-  const current = PIPELINE_STEPS.findIndex((step) => step.statuses.includes(status));
+  const current = steps.findIndex((step) => step.statuses.includes(status));
   const complete = status === "complete";
   const safeProgress = complete ? 100 : Math.max(0, Math.min(progressPct, 100));
   const activeIndex =
-    current >= 0 ? current : failed ? Math.min(3, Math.max(0, Math.floor(safeProgress / 25))) : 0;
+    current >= 0 ? current : failed ? Math.min(steps.length - 1, Math.max(0, Math.floor(safeProgress / (100 / steps.length)))) : 0;
   return (
     <section className="processing-card-dots card overflow-hidden !p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -152,7 +159,7 @@ export function ProcessingCard({
                     : "animate-pulse bg-[#4B6E48]"
               }`}
             />
-            <h2 className="font-bold text-slate-800">مسیر تحلیل تماس</h2>
+            <h2 className="font-bold text-slate-800">{title}</h2>
           </div>
           <p className="text-xs text-slate-500">
             {detail || STATUS_LABELS[status] || status}
@@ -184,7 +191,7 @@ export function ProcessingCard({
         />
       </div>
       <ol className="grid gap-0 px-4 py-5 sm:grid-cols-4 sm:px-6">
-        {PIPELINE_STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const done = complete || (!failed && activeIndex > index);
           const active = !complete && activeIndex === index;
           return (
@@ -192,7 +199,7 @@ export function ProcessingCard({
               key={step.label}
               className="relative flex min-h-16 items-start gap-3 pb-4 last:pb-0 sm:block sm:min-h-0 sm:px-2 sm:pb-0 sm:text-center"
             >
-              {index < PIPELINE_STEPS.length - 1 ? (
+              {index < steps.length - 1 ? (
                 <span
                   className={`absolute right-[15px] top-8 h-[calc(100%-1.5rem)] w-px sm:right-1/2 sm:top-4 sm:h-px sm:w-full ${
                     done ? "bg-emerald-300" : "bg-slate-200"

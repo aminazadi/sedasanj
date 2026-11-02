@@ -1,6 +1,5 @@
 import TaskCreateDialog from "../components/TaskCreateDialog";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { chart, palette } from "@cbi/web-shared/theme";
 import { Icon } from "@iconify/react";
@@ -11,8 +10,6 @@ import repeatButtonIcon from "@iconify-icons/lucide/refresh-cw";
 import starIcon from "@iconify-icons/lucide/star";
 import telephoneIcon from "@iconify-icons/lucide/phone";
 import {
-  Area,
-  AreaChart,
   CartesianGrid,
   Cell,
   Legend,
@@ -33,6 +30,8 @@ import ProcessingIndicator from "../components/ProcessingIndicator";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
 import ConversationBubble from "../components/ConversationBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
+import OverflowMenu from "../components/OverflowMenu";
+import ProcessingTimeline from "../components/ProcessingTimeline";
 import {
   ErrorBox,
   OutcomeBadge,
@@ -41,7 +40,7 @@ import {
   StatusBadge,
   TrajectoryBadge,
 } from "../components/Widgets";
-import type { AsrTranscriptRevision, CallDetail, CorrectionStatus, DualPartySentiment, FollowUpTask, OperatorScore, ProcessingEvent, Utterance } from "../types";
+import type { AsrTranscriptRevision, CallDetail, CorrectionStatus, DualPartySentiment, FollowUpTask, OperatorScore, Utterance } from "../types";
 import { downloadTextFile } from "../utils/download";
 import { CallStateArt, type CallStateKind, type CallStateSection } from "../components/CallStateArt";
 
@@ -450,151 +449,6 @@ function sentimentChartData(profile: DualPartySentiment | null | undefined) {
       اپراتور: profile.agent ? pointValence(profile.agent.end) : undefined,
     },
   ];
-}
-
-const EVENT_KIND_LABELS: Record<ProcessingEvent["kind"], string> = {
-  pipeline: "آماده‌سازی",
-  asr: "تبدیل گفتار",
-  emotion: "تحلیل لحن صدا",
-  correction: "تصحیح هوشمند متن",
-  llm: "تحلیل هوشمند",
-  notify: "اطلاع‌رسانی",
-};
-
-function eventState(event: ProcessingEvent) {
-  if (event.level === "error" || event.status === "failed_terminal") {
-    return { label: "ناموفق", icon: "×", tone: "text-rose-600 bg-rose-50" };
-  }
-  if (event.level === "warning" || event.status === "failed_retryable") {
-    return { label: "خطا؛ تلاش مجدد", icon: "!", tone: "text-amber-700 bg-amber-50" };
-  }
-  if (event.status === "canceled") {
-    return { label: "لغو شد", icon: "×", tone: "text-slate-500 bg-slate-100" };
-  }
-  if (event.level === "success" || (event.status && event.status !== "queued" && event.status !== "running")) {
-    return { label: "انجام شد", icon: "✓", tone: "text-emerald-700 bg-emerald-50" };
-  }
-  if (event.status === "queued") {
-    return { label: "در صف", icon: "◷", tone: "text-slate-500 bg-slate-100" };
-  }
-  return { label: "در حال انجام", icon: "↻", tone: "text-blue-700 bg-blue-50" };
-}
-
-function ProcessingTimeline({ events }: { events: ProcessingEvent[] }) {
-  if (!events.length) return null;
-
-  return (
-    <details className="card group" dir="rtl">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-        <span className="text-sm font-bold text-slate-800">گزارش اجرای پردازش</span>
-        <span className="flex h-9 w-9 items-center justify-center border border-[color:var(--line)] bg-[#F2F0EF] text-[#000000] transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter">
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </span>
-      </summary>
-      <div className="mt-4 max-h-[32rem] overflow-y-auto overscroll-contain sm:max-h-[42rem]">
-        <ol className="divide-y divide-slate-100" dir="rtl">
-          {events.map((event) => {
-            const state = eventState(event);
-            return (
-              <li key={event.id} className="py-2.5 first:pt-0 last:pb-0">
-                <div className="flex items-start gap-3">
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center text-base font-bold leading-none ${state.tone}`} aria-hidden="true">
-                    {state.icon}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-                      <span className="font-semibold text-slate-700">{EVENT_KIND_LABELS[event.kind]}</span>
-                      <span className="text-slate-600">{event.message}</span>
-                      <span className="text-[11px] font-medium text-slate-500">{state.label}</span>
-                      <time className="mr-auto text-[10px] text-slate-400" dateTime={event.created_at}>
-                        {fmt.dateTime(event.created_at)}
-                      </time>
-                    </div>
-                    {event.error_code || event.error_detail ? (
-                      <details className="mt-1.5 text-[11px] text-rose-700">
-                        <summary className="w-fit cursor-pointer font-medium hover:text-rose-900">
-                          {event.error_code ? <span>کد خطا: <bdi>{event.error_code}</bdi></span> : "جزئیات خطا"}
-                        </summary>
-                        {event.error_detail ? (
-                          <div className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-rose-50 p-2.5 leading-5" dir="auto">
-                            {event.error_detail}
-                          </div>
-                        ) : null}
-                      </details>
-                    ) : null}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-    </details>
-  );
-}
-
-interface MenuAction { label: string; onClick: () => void; disabled?: boolean }
-
-/** "More" menu: keeps rarely used actions and technical details out of the card header. */
-function OverflowMenu({ label, actions, details }: { label: string; actions: MenuAction[]; details?: Array<{ term: string; value: string; ltr?: boolean }> }) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  // Portalled and fixed so neighbouring stacking contexts (the title band, the message bubbles) cannot cover or clip it.
-  useLayoutEffect(() => {
-    if (!open) { setPosition(null); return; }
-    const place = () => {
-      const trigger = triggerRef.current;
-      const menu = menuRef.current;
-      if (!trigger || !menu) return;
-      const anchor = trigger.getBoundingClientRect();
-      const margin = 8;
-      const left = Math.min(Math.max(anchor.left, margin), Math.max(window.innerWidth - menu.offsetWidth - margin, margin));
-      setPosition({ top: anchor.bottom + 4, left });
-    };
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown); };
-  }, [open]);
-  return (
-    <>
-      <button ref={triggerRef} type="button" className={`flex h-9 w-9 items-center justify-center border border-[#898989] text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${open ? "bg-[#F2F0EF]" : "bg-white"}`} aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
-      </button>
-      {open ? createPortal(
-        <div ref={menuRef} role="menu" dir="rtl" className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] border border-[color:var(--line)] bg-[#F2F0EF] py-1 shadow-lg" style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}>
-          {actions.map((action) => (
-            <button key={action.label} type="button" role="menuitem" className="block w-full px-3 py-2 text-start text-sm text-slate-700 hover:bg-white hover:text-[#4B6E48] focus-visible:bg-white focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[#898989] disabled:hover:bg-transparent" disabled={action.disabled} onClick={() => { setOpen(false); action.onClick(); }}>
-              {action.label}
-            </button>
-          ))}
-          {details?.length ? (
-            <dl className="mt-1 space-y-1 border-t border-[color:var(--line)] px-3 py-2 text-[11px] text-slate-500">
-              {details.map((item) => (
-                <div key={item.term} className="flex justify-between gap-3"><dt>{item.term}</dt><dd className="min-w-0 truncate text-slate-700" dir={item.ltr ? "ltr" : undefined}>{item.value}</dd></div>
-              ))}
-            </dl>
-          ) : null}
-        </div>,
-        document.body,
-      ) : null}
-    </>
-  );
 }
 
 export default function CallDetailPage() {
@@ -1120,6 +974,56 @@ export default function CallDetailPage() {
 
       {showProcessingDetails ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
 
+      {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+        <MetricCard
+          label="نوبت‌های گفت‌وگو"
+          value={fmt.int(conversationTurns.length)}
+          hint={`میانگین هر نوبت ${fmt.duration(averageTurnDuration)}`}
+          icon={<Icon icon={repeatButtonIcon} className="h-9 w-9 text-[#4B6E48]" />}
+        />
+        <MetricCard
+          label="پوشش گفتار"
+          value={fmt.percent(speechCoverage)}
+          hint="نسبت گفتار تشخیص‌داده‌شده به تماس"
+          icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />}
+        />
+        <MetricCard
+          label="امتیاز احساس"
+          value={sentimentScore == null ? "—" : fmt.percent(sentimentScore * 100)}
+          hint={insights?.intent ? (INTENT_LABELS[insights.intent] ?? insights.intent) : "قصد تماس نامشخص"}
+          icon={<Icon icon={bullseyeIcon} className="h-9 w-9 text-[#4B6E48]" />}
+        />
+        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+      </section> : isVoicemail ? <section className="grid gap-3 sm:grid-cols-2">
+        <MetricCard label="مدت پیام" value={fmt.duration(call.duration_ms)} hint="مدت فایل پیام‌گیر صوتی" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+        <MetricCard label="بخش‌های پیاده‌سازی‌شده" value={fmt.int(conversationTurns.length)} hint="تعداد بخش‌های متن پیام" icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+      </section> : null}
+
+      <div className={call.direction !== "internal" && hasAudioAnalysis ? "grid items-stretch gap-4 xl:grid-cols-2" : "grid gap-4"}>
+      {hasAudioAnalysis ? (
+      <div className="card">
+        <SectionTitle title="خلاصه هوشمند" description="چکیده محتوای تماس" />
+        {insights?.summary ? (
+          <p className="text-sm leading-7 text-slate-700">{insights.summary}</p>
+        ) : (
+          <EmptyState
+            icon="summary" compact
+            state={stateKind}
+            message={call.processing ? "خلاصه در حال آماده‌سازی است…" : callFailed ? "خلاصه تولید نشد. تحلیل مجدد را اجرا کنید." : "خلاصه‌ای برای این تماس ثبت نشده است."}
+            className="min-h-32"
+          />
+        )}
+        {insights?.keywords?.length ? (
+          <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-4">
+            {insights.keywords.map((keyword) => (
+              <span key={keyword} className="badge bg-brand-50 px-2.5 py-1 text-brand-700"># {keyword}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      ) : null}
+
       {call.direction !== "internal" ? <section className="card overflow-visible">
         <SectionTitle
           title="کارهای قابل پیگیری"
@@ -1159,57 +1063,10 @@ export default function CallDetailPage() {
           </ul>
         )}
       </section> : null}
-
-      {hasAudioAnalysis ? (
-      <div className="card">
-        <SectionTitle title="خلاصه هوشمند" description="چکیده محتوای تماس" />
-        {insights?.summary ? (
-          <p className="text-sm leading-7 text-slate-700">{insights.summary}</p>
-        ) : (
-          <EmptyState
-            icon="summary" compact
-            state={stateKind}
-            message={call.processing ? "خلاصه در حال آماده‌سازی است…" : callFailed ? "خلاصه تولید نشد. تحلیل مجدد را اجرا کنید." : "خلاصه‌ای برای این تماس ثبت نشده است."}
-            className="min-h-32"
-          />
-        )}
-        {insights?.keywords?.length ? (
-          <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-4">
-            {insights.keywords.map((keyword) => (
-              <span key={keyword} className="badge bg-brand-50 px-2.5 py-1 text-brand-700"># {keyword}</span>
-            ))}
-          </div>
-        ) : null}
       </div>
-      ) : null}
 
       {hasAudioAnalysis && isAnsweredCall ? <OperatorCoachSection callId={call.id} canRegenerate={canEditTasks} internal={call.direction === "internal"} /> : null}
 
-      {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
-        <MetricCard
-          label="نوبت‌های گفت‌وگو"
-          value={fmt.int(conversationTurns.length)}
-          hint={`میانگین هر نوبت ${fmt.duration(averageTurnDuration)}`}
-          icon={<Icon icon={repeatButtonIcon} className="h-9 w-9 text-[#4B6E48]" />}
-        />
-        <MetricCard
-          label="پوشش گفتار"
-          value={fmt.percent(speechCoverage)}
-          hint="نسبت گفتار تشخیص‌داده‌شده به تماس"
-          icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />}
-        />
-        <MetricCard
-          label="امتیاز احساس"
-          value={sentimentScore == null ? "—" : fmt.percent(sentimentScore * 100)}
-          hint={insights?.intent ? (INTENT_LABELS[insights.intent] ?? insights.intent) : "قصد تماس نامشخص"}
-          icon={<Icon icon={bullseyeIcon} className="h-9 w-9 text-[#4B6E48]" />}
-        />
-        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starIcon} className="h-9 w-9 text-[#4B6E48]" />} />
-      </section> : isVoicemail ? <section className="grid gap-3 sm:grid-cols-2">
-        <MetricCard label="مدت پیام" value={fmt.duration(call.duration_ms)} hint="مدت فایل پیام‌گیر صوتی" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
-        <MetricCard label="بخش‌های پیاده‌سازی‌شده" value={fmt.int(conversationTurns.length)} hint="تعداد بخش‌های متن پیام" icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />} />
-      </section> : null}
 
       {isAnsweredCall && operatorScore?.criteria_scores?.length ? <section className="card"><SectionTitle title="ارزیابی عملکرد اپراتور" description={operatorScore.operator_label} /><div className="grid gap-3 md:grid-cols-2">{operatorScore.criteria_scores.map((criterion) => <div key={criterion.title} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between"><strong>{criterion.title}</strong><span>{fmt.decimal(criterion.score)}</span></div>{criterion.evidence ? <p className="mt-2 text-sm text-slate-600">{criterion.evidence}</p> : null}</div>)}</div></section> : null}
 
@@ -1333,54 +1190,6 @@ export default function CallDetailPage() {
         </div>
       </section> : null}
 
-      {isAnsweredCall && conversationTurns.length ? (
-        <section className="card">
-          <SectionTitle title="ریتم مکالمه" description="مدت هر نوبت گفت‌وگو در ترتیب زمانی تماس" />
-          <div className="h-52" dir="ltr">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={conversationTurns.slice(0, 30).map((turn, index) => ({
-                  turn: fmt.int(index + 1),
-                  مشتری: turn.channel === 0 ? Math.max(0, turn.t_end_ms - turn.t_start_ms) / 1000 : 0,
-                  اپراتور: turn.channel !== 0 ? Math.max(0, turn.t_end_ms - turn.t_start_ms) / 1000 : 0,
-                }))}
-                margin={{ top: 4, right: 10, left: -12, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="callerArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={chart.primary} stopOpacity={0.45} />
-                    <stop offset="100%" stopColor={chart.primary} stopOpacity={0.03} />
-                  </linearGradient>
-                  <linearGradient id="agentArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={chart.secondary} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={chart.secondary} stopOpacity={0.03} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={chart.light} strokeDasharray="4 6" vertical={false} />
-                <XAxis dataKey="turn" axisLine={false} tickLine={false} tick={{ fill: chart.neutral, fontSize: 10 }} />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: chart.neutral, fontSize: 10 }}
-                  tickFormatter={(value) => fmt.decimal(Number(value))}
-                  unit=" ث"
-                />
-                <Tooltip
-                  formatter={(value) => `${fmt.decimal(Number(value))} ثانیه`}
-                  labelFormatter={(label) => `نوبت ${label}`}
-                  contentStyle={{ borderRadius: 0, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
-                />
-                <Legend wrapperStyle={{ direction: "rtl", fontSize: 12 }} />
-                <Area type="monotone" dataKey="مشتری" stroke={chart.primary} strokeWidth={2} fill="url(#callerArea)" />
-                <Area type="monotone" dataKey="اپراتور" stroke={chart.secondary} strokeWidth={2} fill="url(#agentArea)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          {conversationTurns.length > 30 ? (
-            <p className="mt-2 text-center text-[11px] text-slate-400">۳۰ نوبت نخست برای خوانایی نمودار نمایش داده شده است.</p>
-          ) : null}
-        </section>
-      ) : null}
 
       {hasAudioAnalysis ? <section className="grid items-stretch gap-4 lg:grid-cols-3">
         <div className="relative min-h-0 lg:col-span-2">

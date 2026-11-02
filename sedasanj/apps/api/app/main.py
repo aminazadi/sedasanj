@@ -36,6 +36,7 @@ from app.routers import (
     integration_api,
     internal_tools,
     kpi,
+    meetings,
     module_updates,
     organization_memories,
     phone_auth,
@@ -107,7 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # Operations carrying one of these tags are never published: the assistant is reachable only
 # from the signed-in SedaSanj panel, never by third parties.
 PRIVATE_OPENAPI_TAGS = frozenset(
-    {"admin", "internal", "assistant", "call assistant", "organization memory"}
+    {"admin", "internal", "assistant", "call assistant", "organization memory", "meetings"}
 )
 
 
@@ -306,6 +307,7 @@ def create_app() -> FastAPI:
         organization_memories,
         scheduled_reports,
         kpi,
+        meetings,
         module_updates,
         help,
         site_pages,

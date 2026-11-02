@@ -131,6 +131,16 @@ export async function downloadFile(path: string, filename: string): Promise<void
   URL.revokeObjectURL(url);
 }
 
+/** Fetches an authenticated binary response (audio) as a Blob, refreshing the session once on 401. */
+export async function fetchAuthorizedBlob(path: string): Promise<Blob | null> {
+  const send = () => fetch(path, { headers: { Authorization: `Bearer ${tokens.access() ?? ""}` } });
+  let response = await send();
+  if (response.status === 401 && (await refreshSession())) response = await send();
+  if (response.status === 404) return null;
+  if (!response.ok) throw await parseError(response);
+  return response.blob();
+}
+
 export function query(params: Record<string, string | number | undefined | null>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -202,6 +212,15 @@ export const STATUS_LABELS: Record<string, string> = {
   complete: "کامل",
   failed_retryable: "خطای موقت",
   failed_terminal: "خطای نهایی",
+};
+
+export const MEETING_STATUS_LABELS: Record<string, string> = {
+  receiving: "در حال دریافت",
+  processing: "در حال پردازش",
+  complete: "کامل",
+  failed_retryable: "خطای موقت",
+  failed_terminal: "ناموفق",
+  canceled: "لغوشده",
 };
 
 export const SENTIMENT_LABELS: Record<string, string> = {

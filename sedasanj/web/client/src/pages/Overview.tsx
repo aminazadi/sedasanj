@@ -2,13 +2,11 @@ import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Icon } from "@iconify/react";
-import checkMarkButtonIcon from "@iconify-icons/lucide/circle-check";
 import { chart } from "@cbi/web-shared/theme";
 import { FilterSelect, useFilterBar, type FilterBarField } from "@cbi/web-shared/components/FilterBar";
 import { DateRangePicker } from "../components/DateRangePicker";
 import { PageHeader } from "../components/PageHeader";
-import { EMPTY_STATE_ART } from "../components/pageArt";
+import { PanelEmpty } from "../components/PanelEmpty";
 import { TopicsCloud } from "../components/TopicsCloud";
 import { fmt, query, request } from "../api";
 import { isOperator, isOrgAdmin, useAuth } from "../auth";
@@ -43,9 +41,8 @@ function compactAmount(value: number) {
   return { value: fmt.int(value), unit: "" };
 }
 
-function DashboardEmpty({ title = "موردی یافت نشد.", description = "با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.", success = false }: { title?: string; description?: string; success?: boolean }) {
-  const icon = success ? checkMarkButtonIcon : null;
-  return <div className="panel-empty">{icon ? <span className="mb-3 flex h-14 w-14 items-center justify-center border border-current bg-emerald-50 text-emerald-700"><Icon icon={icon} className="h-7 w-7" /></span> : <img className="panel-empty__art" src={EMPTY_STATE_ART} alt="" aria-hidden="true" loading="lazy" decoding="async" />}<strong className={success ? "text-sm text-emerald-800" : "text-sm text-slate-700"}>{title}</strong><p className="mt-1 max-w-xs text-xs leading-6 text-slate-500">{description}</p></div>;
+function DashboardEmpty({ title = "موردی یافت نشد.", description = "با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود." }: { title?: string; description?: string }) {
+  return <PanelEmpty title={title} description={description} />;
 }
 
 const CALL_TYPE_LABELS: Record<string, string> = {

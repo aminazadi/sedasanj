@@ -199,6 +199,15 @@ class Settings(BaseSettings):
 
     rate_limit_uploads_per_minute: int = 30
     rate_limit_reads_per_minute: int = 120
+    rate_limit_meeting_chunks_per_minute: int = Field(default=240, ge=10, le=6000)
+    rate_limit_meeting_pairing_per_minute: int = Field(default=10, ge=1, le=600)
+    meeting_chunk_max_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=64 * 1024 * 1024)
+    meeting_chunk_seconds_target: int = Field(default=60, ge=10, le=300)
+    meeting_chunk_seconds_max: int = Field(default=90, ge=10, le=600)
+    meeting_token_limit: int = Field(default=5, ge=1, le=50)
+    meeting_pairing_ttl_minutes: int = Field(default=15, ge=1, le=120)
+    meeting_min_balance_seconds: int = Field(default=600, ge=0)
+    meeting_reserve_block_seconds: int = Field(default=1800, ge=60)
     webhook_max_per_tenant: int = 10
     webhook_auto_disable_failures: int = 10
     webhook_delivery_retention_days: int = 30

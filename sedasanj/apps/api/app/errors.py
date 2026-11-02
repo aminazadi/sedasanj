@@ -6,6 +6,17 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ERROR_STATUS: dict[str, int] = {
+    "meeting_not_found": status.HTTP_404_NOT_FOUND,
+    "meeting_closed": status.HTTP_409_CONFLICT,
+    "meeting_chunk_conflict": status.HTTP_409_CONFLICT,
+    "meeting_incomplete_chunks": status.HTTP_409_CONFLICT,
+    "meeting_chunk_too_large": status.HTTP_413_CONTENT_TOO_LARGE,
+    "meeting_chunk_invalid_audio": 422,
+    "meeting_token_limit": status.HTTP_409_CONFLICT,
+    "meeting_pairing_invalid": status.HTTP_400_BAD_REQUEST,
+    "meeting_asr_failed": status.HTTP_502_BAD_GATEWAY,
+    "meeting_diarization_failed": status.HTTP_502_BAD_GATEWAY,
+    "meeting_minutes_failed": status.HTTP_502_BAD_GATEWAY,
     "task_version_conflict": 409,
     "task_assignee_invalid": 422,
     "unauthorized": status.HTTP_401_UNAUTHORIZED,
@@ -53,6 +64,8 @@ RETRYABLE_CODES = {
     "rate_limited",
     "internal",
     "payment_gateway_unavailable",
+    "meeting_asr_failed",
+    "meeting_minutes_failed",
 }
 
 
@@ -65,12 +78,15 @@ class ApiError(Exception):
         message: str,
         retryable: bool | None = None,
         retry_after: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         if code not in ERROR_STATUS:
             raise ValueError(f"unknown error code {code}")
         self.code = code
         self.retry_after = retry_after
         self.message = message
+        # Machine-readable detail merged into the error body (for example `missing_seqs`).
+        self.extra = extra or {}
         self.retryable = code in RETRYABLE_CODES if retryable is None else retryable
         super().__init__(message)
 
@@ -79,9 +95,16 @@ class ApiError(Exception):
         return ERROR_STATUS[self.code]
 
 
-def error_body(code: str, message: str, retryable: bool, request_id: str) -> dict[str, Any]:
+def error_body(
+    code: str,
+    message: str,
+    retryable: bool,
+    request_id: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "error": {
+            **(extra or {}),
             "code": code,
             "message": message,
             "retryable": retryable,
@@ -108,7 +131,9 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_body(exc.code, exc.message, exc.retryable, _request_id(request)),
+            content=error_body(
+                exc.code, exc.message, exc.retryable, _request_id(request), exc.extra
+            ),
             headers={"Retry-After": str(exc.retry_after)} if exc.retry_after else None,
         )
 

@@ -1790,3 +1790,175 @@ class ContactImportReport(BaseModel):
     error_count: int
     errors: list[ContactImportError]
     accepted_numbers: list[str] = Field(default_factory=list)
+
+
+class MeetingPairingCodeCreate(BaseModel):
+    label: str | None = Field(default=None, max_length=80)
+
+
+class MeetingPairingCodeOut(BaseModel):
+    pairing_code: str
+    expires_at: datetime
+    server_url: str
+
+
+class MeetingPairIn(BaseModel):
+    pairing_code: str = Field(min_length=6, max_length=32)
+    device_label: str = Field(min_length=1, max_length=80)
+    app_version: str = Field(min_length=1, max_length=40)
+    platform: Literal["android", "ios"]
+
+
+class MeetingLimits(BaseModel):
+    chunk_max_bytes: int
+    chunk_seconds_target: int
+    chunk_seconds_max: int
+
+
+class MeetingPairedUser(BaseModel):
+    display_name: str | None
+
+
+class MeetingPairedTenant(BaseModel):
+    name: str
+
+
+class MeetingPairOut(BaseModel):
+    token: str
+    token_prefix: str
+    user: MeetingPairedUser
+    tenant: MeetingPairedTenant
+    limits: MeetingLimits
+
+
+class MeetingDeviceOut(BaseModel):
+    id: UUID
+    label: str | None
+    token_prefix: str
+    last_used_at: datetime | None
+    created_at: datetime
+    revoked_at: datetime | None
+
+
+class MeetingConfigValidation(BaseModel):
+    ok: bool
+    user: MeetingPairedUser
+    tenant: MeetingPairedTenant
+    limits: MeetingLimits
+    server_time: datetime
+
+
+class MeetingSessionIn(BaseModel):
+    client_meeting_id: UUID
+    title: str | None = Field(default=None, max_length=200)
+    started_at: datetime
+    sample_rate: Literal[16000]
+    channels: Literal[1]
+    app_version: str = Field(min_length=1, max_length=40)
+
+
+class MeetingSessionOut(BaseModel):
+    meeting_id: UUID
+    status: str
+    received_seqs: list[int]
+    chunk_max_bytes: int
+
+
+class MeetingChunkOut(BaseModel):
+    seq: int
+    status: str
+
+
+class MeetingStatusOut(BaseModel):
+    status: str
+    received_seqs: list[int]
+    processed_seqs: list[int]
+    progress_pct: int
+    progress_detail: str | None
+    error_code: str | None
+
+
+class MeetingFinishIn(BaseModel):
+    ended_at: datetime
+    total_chunks: int = Field(ge=0, le=10000)
+    duration_ms: int = Field(ge=0)
+
+
+class MeetingFinishOut(BaseModel):
+    meeting_id: UUID
+    status: str
+
+
+class MeetingListItem(BaseModel):
+    id: UUID
+    owner_user_id: UUID
+    owner_name: str | None = None
+    title: str | None
+    status: str
+    started_at: datetime
+    ended_at: datetime | None
+    duration_ms: int | None
+    speaker_count: int | None
+    progress_pct: int
+    progress_detail: str | None
+    error_code: str | None
+    audio_available: bool
+
+
+class MeetingPage(BaseModel):
+    items: list[MeetingListItem]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class MeetingSegmentOut(BaseModel):
+    id: UUID
+    t_start_ms: int
+    t_end_ms: int
+    speaker_idx: int | None
+    text: str
+
+
+class MeetingSpeakerOut(BaseModel):
+    speaker_idx: int
+    label: str
+    user_id: UUID | None
+    total_ms: int
+
+
+class MeetingMinutesOut(BaseModel):
+    version: int
+    content_md: str
+    structured: Any | None
+    model: str | None
+    is_selected: bool
+    created_at: datetime
+
+
+class MeetingEventOut(BaseModel):
+    id: UUID
+    step_key: str
+    kind: str
+    status: str
+    detail: str | None
+    created_at: datetime
+
+
+class MeetingDetail(MeetingListItem):
+    segments: list[MeetingSegmentOut]
+    speakers: list[MeetingSpeakerOut]
+    minutes: MeetingMinutesOut | None
+    processing_events: list[MeetingEventOut]
+
+
+class MeetingSpeakerPatch(BaseModel):
+    speaker_idx: int = Field(ge=0, le=63)
+    label: str = Field(min_length=1, max_length=80)
+    user_id: UUID | None = None
+
+
+class MeetingPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    speakers: list[MeetingSpeakerPatch] | None = Field(default=None, max_length=64)

@@ -1,7 +1,8 @@
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmt } from "../../api";
 import type { KpiDashboard } from "../../types";
-import { Empty } from "../Widgets";
+import { TREND_EMPTY_ART } from "../pageArt";
+import { PanelEmpty } from "../PanelEmpty";
 import { DashboardCard, Segmented } from "./DashboardCard";
 
 export type TrendMetric = "calls" | "sales" | "quality" | "satisfaction";
@@ -20,6 +21,9 @@ const HINTS: Record<TrendMetric, string> = {
   satisfaction: "سهم مشتریان راضی و خوشحال از تماس‌های تحلیل‌شدهٔ هر روز",
 };
 
+/** Series plotted for each metric; a line needs at least two days with a value to be a trend. */
+const SERIES: Record<TrendMetric, string[]> = { calls: ["calls", "answered_calls"], sales: ["opportunities", "wins"], quality: ["quality_score"], satisfaction: ["satisfaction"] };
+
 const AXIS = { fill: "#6f716b", fontSize: 12 };
 const TOOLTIP = { border: "1px solid #b2ac88", borderRadius: 0, background: "#f2f0ef", direction: "rtl" as const, fontSize: 12 };
 
@@ -34,6 +38,7 @@ export function TrendPanel({ trend, metric, onMetric }: { trend: KpiDashboard["t
     label: fmt.calendarDate(item.date),
     satisfaction: item.sentiment_known ? Math.round((item.positive_sentiments * 1000) / item.sentiment_known) / 10 : null,
   }));
+  const populatedDays = rows.filter((row) => SERIES[metric].some((key) => Number((row as Record<string, unknown>)[key] ?? 0) > 0)).length;
   const percent = metric === "satisfaction";
   const keys = {
     calls: [<Key key="c" color="#b2ac88" label="کل تماس‌ها" bar />, <Key key="a" color="#4b6e48" label="پاسخ‌داده‌شده" />],
@@ -42,7 +47,7 @@ export function TrendPanel({ trend, metric, onMetric }: { trend: KpiDashboard["t
     satisfaction: [<Key key="s" color="#4b6e48" label="سهم مشتریان راضی" />],
   }[metric];
   return <DashboardCard title="روند روزانه" hint={HINTS[metric]} action={<Segmented label="شاخص نمودار روند" value={metric} options={TREND_METRICS} onChange={onMetric} />}>
-    {rows.length ? <>
+    {populatedDays >= 2 ? <>
       <div className="mb-3 flex flex-wrap gap-x-5 gap-y-2">{keys}</div>
       <div className="h-64 min-w-0 sm:h-72" dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
@@ -64,6 +69,6 @@ export function TrendPanel({ trend, metric, onMetric }: { trend: KpiDashboard["t
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-    </> : <Empty />}
+    </> : <PanelEmpty art={TREND_EMPTY_ART} title={populatedDays ? "برای ترسیم روند فقط یک روز داده داریم." : "برای این شاخص هنوز داده‌ای ثبت نشده است."} description={populatedDays ? "با ثبت داده در روزهای بعد، نمودار روند اینجا رسم می‌شود. بازهٔ زمانی را بزرگ‌تر کنید تا روزهای بیشتری دیده شود." : "پس از تکمیل تحلیل تماس‌ها، روند روزانه اینجا نمایش داده می‌شود."} />}
   </DashboardCard>;
 }

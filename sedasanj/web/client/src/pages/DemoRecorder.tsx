@@ -4,6 +4,7 @@ import { fmt, request } from "../api";
 import { useAuth } from "../auth";
 import ProcessingIndicator from "../components/ProcessingIndicator";
 import type { TokenPair } from "../types";
+import { classifyMicrophoneError, isEmbeddedBrowser, microphoneErrorMessage, microphoneSupportIssue, requestMicrophone } from "../lib/microphone.mjs";
 import { srcSetFor } from "../lib/imageSources";
 import recordingReviewArtwork from "../assets/quick-demo-recording-review.webp";
 import "../components/quick-demo.css";
@@ -23,7 +24,11 @@ export default function DemoRecorder() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [elapsed, setElapsed] = useState(0);
-  const [supported, setSupported] = useState(true);
+  const [supportIssue, setSupportIssue] = useState<"insecure" | "unsupported" | null>(null);
+  const [permissionStuck, setPermissionStuck] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const embedded = useRef(isEmbeddedBrowser(navigator.userAgent));
+  const attempt = useRef(0);
   const stream = useRef<MediaStream | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const context = useRef<AudioContext | null>(null);
@@ -31,7 +36,6 @@ export default function DemoRecorder() {
   const recording = useRef<Blob | null>(null);
   const mounted = useRef(true);
   const startedAt = useRef(0);
-  const autoStarted = useRef(false);
   const viaQr = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval>>();
   const limitTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -40,7 +44,7 @@ export default function DemoRecorder() {
   function clearTimers() { clearInterval(timer.current); clearTimeout(limitTimer.current); }
   useEffect(() => {
     mounted.current = true;
-    setSupported(window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined");
+    setSupportIssue(microphoneSupportIssue({ isSecureContext: window.isSecureContext, hasGetUserMedia: !!navigator.mediaDevices?.getUserMedia, hasMediaRecorder: typeof MediaRecorder !== "undefined" }));
     if (loading) return;
     if (!token) { setError("لینک تست کامل نیست؛ دوباره QR را اسکن کنید."); return; }
     async function initialize() {
@@ -56,7 +60,6 @@ export default function DemoRecorder() {
         setInfo(value);
         if (value.completed && value.call_id) navigate(`/calls/${value.call_id}`, { replace: true });
         else if (value.completed) setPhase("done");
-        else if (!autoStarted.current) setInfo(value);
       } catch (reason) { if (mounted.current) setError((reason as Error).message); }
     }
     void initialize();
@@ -66,12 +69,6 @@ export default function DemoRecorder() {
       releaseMicrophone(); void context.current?.close();
     };
   }, [token, loading, session, acceptSession, navigate]);
-  useEffect(() => {
-    if (info && !info.completed && !autoStarted.current && !viaQr.current) {
-      autoStarted.current = true;
-      void start(info, true);
-    }
-  }, [info]);
   useEffect(() => {
     if (phase !== "recording") return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
@@ -150,12 +147,18 @@ export default function DemoRecorder() {
     setError(""); setPhase("prompt");
     await audio.current.play();
   }
-  async function start(currentInfo = info, automatic = false) {
-    if (!currentInfo || !supported) return;
-    setError(""); setPhase("permission");
+  // Browsers only show the microphone prompt for a request made synchronously inside a tap/click, so
+  // getUserMedia is the first thing start() does; audio unlock and AudioContext setup follow it.
+  async function start(currentInfo = info) {
+    if (!currentInfo || supportIssue) return;
+    const id = ++attempt.current;
+    setError(""); setPermissionStuck(false); setPhase("permission");
+    const pending = requestMicrophone(navigator.mediaDevices);
+    const stuck = setTimeout(() => { if (attempt.current === id) setPermissionStuck(true); }, 8000);
     try {
-      if (context.current && context.current.state !== "closed") await context.current.close();
-      context.current = new AudioContext(); await context.current.resume();
+      if (context.current && context.current.state !== "closed") void context.current.close();
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      context.current = new AudioContextClass(); void context.current.resume().catch(() => undefined);
       const element = audio.current;
       if (element && currentInfo.prompt_url) {
         // Unlock playback inside the tap so the guide can play after the permission prompt (iOS Safari).
@@ -163,19 +166,23 @@ export default function DemoRecorder() {
         try { await element.play(); element.pause(); } catch { /* handled when the guide starts */ }
         element.muted = false; element.currentTime = 0;
       }
-      let timedOut = false;
-      const wait = setTimeout(() => { timedOut = true; setPhase("idle"); setError("پنجرهٔ اجازهٔ میکروفون نمایش داده نشد. اگر QR را داخل برنامهٔ اسکنر یا مرورگر داخلی باز کرده‌اید، لینک را در Safari یا Chrome گوشی باز کنید و دوباره دکمه را بزنید."); }, 15000);
-      try {
-        stream.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
-      } finally { clearTimeout(wait); }
-      if (timedOut || !mounted.current) { releaseMicrophone(); return; }
+      const granted = await pending;
+      if (attempt.current !== id || !mounted.current) { granted.getTracks().forEach((track) => track.stop()); return; }
+      stream.current = granted;
+      setPermissionStuck(false);
       if (currentInfo.prompt_url) { try { await playPrompt(); } catch { void playBeeps(); } }
       else void playBeeps();
     } catch (reason) {
+      if (attempt.current !== id) return;
       releaseMicrophone(); setPhase("idle");
-      if (automatic && (reason as DOMException).name === "NotAllowedError") setError("مرورگر اجازهٔ شروع خودکار را نداد؛ برای ادامه دکمهٔ شروع را بزنید.");
-      else setError((reason as DOMException).name === "NotAllowedError" ? "دسترسی میکروفون را از تنظیمات مرورگر فعال کنید و دوباره شروع کنید." : "میکروفون در دسترس نیست؛ مرورگر یا دستگاه دیگری را امتحان کنید.");
-    }
+      setError(microphoneErrorMessage(classifyMicrophoneError(reason), { embedded: embedded.current }));
+    } finally { clearTimeout(stuck); }
+  }
+  function cancelPermission() {
+    attempt.current += 1; setPermissionStuck(false); setPhase("idle");
+  }
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(window.location.href); setLinkCopied(true); } catch { setError("کپی نشد؛ آدرس صفحه را به‌صورت دستی در Safari یا Chrome باز کنید."); }
   }
   function retryRecording() {
     recording.current = null;
@@ -183,11 +190,12 @@ export default function DemoRecorder() {
   }
   const audioActive = phase === "prompt" || phase === "beep" || phase === "recording";
   return <main className="demo-page demo-recorder-page" dir="rtl"><section className="demo-card">
-    {!supported && <p className="demo-error" role="alert">برای ضبط، لینک را با Safari یا Chrome به‌روز و اتصال HTTPS باز کنید.</p>}
+    {supportIssue && <p className="demo-error" role="alert">{supportIssue === "insecure" ? "ضبط فقط روی اتصال امن HTTPS کار می‌کند؛ لینک را با آدرس https باز کنید." : "این مرورگر از ضبط صدا پشتیبانی نمی‌کند؛ Safari یا Chrome به‌روز را امتحان کنید."}</p>}
+    {embedded.current && !supportIssue && phase === "idle" && <div className="demo-note" role="note"><p>به نظر می‌رسد صفحه داخل یک برنامه (مثل پیام‌رسان یا اسکنر) باز شده و ممکن است اجازهٔ میکروفون نمایش داده نشود. بهتر است لینک را در Safari یا Chrome باز کنید.</p><button type="button" className="demo-button demo-retake" onClick={() => void copyLink()}>{linkCopied ? "لینک کپی شد" : "کپی لینک صفحه"}</button></div>}
     {error && <p className="demo-error" role="alert">{error}</p>}
     {info?.prompt_url && phase !== "done" && <audio ref={audio} src={info.prompt_url} preload="auto" playsInline onEnded={() => void playBeeps()} onError={() => { releaseMicrophone(); setPhase("idle"); setError("صدای راهنما بارگذاری نشد؛ اتصال را بررسی و دوباره شروع کنید."); }}/>} 
-    {phase === "idle" && info && <>{viaQr.current && <p>برای شروع، دکمهٔ زیر را بزنید و در پنجرهٔ باز‌شده «اجازه دادن» به میکروفون را تأیید کنید.</p>}<p>راهنما پخش می‌شود؛ پس از یک بوق کشیده پیام خود را بگویید.</p><p className="demo-note">حداکثر {fmt.int(info.max_duration_seconds)} ثانیه</p><button className="demo-audio-control" disabled={!supported} onClick={() => void start(info)} aria-label="شروع پخش راهنما و ضبط"><RecorderEqualizer active={audioActive}/><strong>شروع پخش و ضبط</strong></button></>}
-    {phase === "permission" && <p role="status">در انتظار تأیید شما؛ در پنجرهٔ مرورگر روی «اجازه دادن» برای میکروفون بزنید…</p>}
+    {phase === "idle" && info && <><p>برای شروع، دکمهٔ زیر را بزنید و در پنجرهٔ باز‌شده «اجازه دادن» به میکروفون را تأیید کنید.</p><p>راهنما پخش می‌شود؛ پس از یک بوق کشیده پیام خود را بگویید.</p><p className="demo-note">حداکثر {fmt.int(info.max_duration_seconds)} ثانیه</p><button className="demo-audio-control" disabled={!!supportIssue} onClick={() => void start(info)} aria-label="شروع پخش راهنما و ضبط"><RecorderEqualizer active={audioActive}/><strong>شروع پخش و ضبط</strong></button></>}
+    {phase === "permission" && <div role="status"><p>در انتظار تأیید شما؛ در پنجرهٔ مرورگر روی «اجازه دادن» برای میکروفون بزنید…</p>{permissionStuck && <p className="demo-note">اگر پنجره‌ای نمایش داده نشد، مرورگر ممکن است میکروفون را برای این سایت مسدود کرده باشد: آیکن قفل کنار آدرس را بزنید، میکروفون را «اجازه» کنید و دوباره شروع کنید. در برنامه‌های داخلی، لینک را در Safari یا Chrome باز کنید.</p>}<button type="button" className="demo-button demo-retake" onClick={cancelPermission}>بازگشت و تلاش دوباره</button></div>}
     {(phase === "prompt" || phase === "beep" || phase === "recording" || phase === "paused") && <div className="demo-audio-stage" role="status">{(phase === "prompt" || phase === "beep") ? <div className="demo-audio-control is-active"><RecorderEqualizer active/><strong>{phase === "prompt" ? "در حال پخش پیام راهنما" : "یک بوق کشیده تا شروع ضبط"}</strong></div> : <><div className="demo-recording-control"><button className="demo-recording-pause" onClick={togglePause} aria-label={phase === "recording" ? "مکث ضبط" : "ادامه ضبط"}>{phase === "recording" ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM15 5h4v14h-4z"/></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 12 7-12 7z"/></svg>}</button><strong>{phase === "recording" ? "در حال ضبط" : "ضبط مکث شده"}</strong></div><div className="demo-recording"><strong role="timer">{fmt.duration(elapsed * 1000)}</strong><button className="demo-button demo-stop" onClick={stop}>پایان ضبط</button></div></>}</div>}
     {phase === "review" && <div className="demo-review" role="group" aria-label="بازبینی صدای ضبط‌شده"><img className="demo-review-artwork" src={recordingReviewArtwork} srcSet={srcSetFor(recordingReviewArtwork)} sizes="(max-width: 528px) calc(100vw - 48px), 480px" width={1000} height={667} alt="پیام صوتی آمادهٔ ارسال است" decoding="async"/><p>ضبط پیام به پایان رسید. می‌توانید ارسال کنید یا دوباره ضبط کنید.</p><button className="demo-button" onClick={() => recording.current && void upload(recording.current)}>ارسال پیام صوتی</button><button className="demo-button demo-retake" onClick={retryRecording}>ضبط دوباره</button></div>}
     {phase === "uploading" && <div className="demo-progress" role="status"><ProcessingIndicator size="lg" label="در حال ارسال پیام صوتی"/><p>در حال ارسال پیام صوتی… این صفحه را نبندید.</p></div>}

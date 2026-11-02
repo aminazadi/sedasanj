@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     String,
     Text,
@@ -210,12 +211,21 @@ class ApiKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(TSTZ)
     revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    # Personal mobile-app tokens belong to one user; integration keys have no user.
+    user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'integration'"))
 
     __table_args__ = (
         CheckConstraint(
             "archive_format IN ('wav','gzip','zip')", name="api_keys_archive_format_check"
         ),
         CheckConstraint("cardinality(scopes) > 0", name="api_keys_scopes_not_empty"),
+        CheckConstraint("kind IN ('integration','mobile')", name="api_keys_kind_check"),
+        CheckConstraint(
+            "kind <> 'mobile' OR user_id IS NOT NULL", name="api_keys_mobile_user_check"
+        ),
     )
 
 
@@ -1420,6 +1430,251 @@ class FollowUpTaskEvent(Base):
     )
 
 
+MEETING_STATUSES = (
+    "receiving",
+    "processing",
+    "complete",
+    "failed_retryable",
+    "failed_terminal",
+    "canceled",
+)
+MEETING_CHUNK_STATUSES = ("received", "queued", "transcribing", "transcribed", "failed")
+
+
+def _in_list(values: tuple[str, ...]) -> str:
+    return ",".join(f"'{value}'" for value in values)
+
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    owner_user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("users.id"))
+    client_meeting_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True))
+    title: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'receiving'"))
+    started_at: Mapped[datetime] = mapped_column(TSTZ)
+    ended_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    finish_requested_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    duration_ms: Mapped[int | None] = mapped_column(BigInteger)
+    sample_rate: Mapped[int] = mapped_column(Integer, server_default=text("16000"))
+    channels: Mapped[int] = mapped_column(SmallInteger, server_default=text("1"))
+    app_version: Mapped[str | None] = mapped_column(Text)
+    total_chunks: Mapped[int | None] = mapped_column(Integer)
+    received_chunks: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    processed_chunks: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    received_ms: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    reserved_seconds: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    reserved_blocks: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    billed_seconds: Mapped[int | None] = mapped_column(Integer)
+    speaker_count: Mapped[int | None] = mapped_column(Integer)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    progress_pct: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    progress_detail: Mapped[str | None] = mapped_column(Text)
+    audio_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("audio_objects.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "client_meeting_id", name="meetings_client_unique"),
+        CheckConstraint(f"status IN ({_in_list(MEETING_STATUSES)})", name="meetings_status_check"),
+        CheckConstraint("progress_pct BETWEEN 0 AND 100", name="meetings_progress_pct_check"),
+        Index("idx_meetings_owner", "tenant_id", "owner_user_id", text("started_at DESC")),
+        Index("idx_meetings_tenant_started", "tenant_id", text("started_at DESC")),
+        Index("idx_meetings_status", "status", "updated_at"),
+    )
+
+
+class MeetingChunk(Base):
+    __tablename__ = "meeting_chunks"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE")
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    t_start_ms: Mapped[int] = mapped_column(BigInteger)
+    t_end_ms: Mapped[int] = mapped_column(BigInteger)
+    audio_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("audio_objects.id", ondelete="SET NULL")
+    )
+    sha256: Mapped[str] = mapped_column(Text)
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    duration_ms: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    device_text: Mapped[Any | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'received'"))
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "seq", name="meeting_chunks_seq_unique"),
+        CheckConstraint("seq >= 0", name="meeting_chunks_seq_check"),
+        CheckConstraint(
+            f"status IN ({_in_list(MEETING_CHUNK_STATUSES)})", name="meeting_chunks_status_check"
+        ),
+        Index("idx_meeting_chunks_status", "status", "updated_at"),
+    )
+
+
+class MeetingSegment(Base):
+    __tablename__ = "meeting_segments"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE")
+    )
+    chunk_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meeting_chunks.id", ondelete="CASCADE")
+    )
+    t_start_ms: Mapped[int] = mapped_column(BigInteger)
+    t_end_ms: Mapped[int] = mapped_column(BigInteger)
+    speaker_idx: Mapped[int | None] = mapped_column(SmallInteger)
+    source: Mapped[str] = mapped_column(Text, server_default=text("'server_asr'"))
+    # Declared last: the attribute name shadows sqlalchemy's text() inside this class body.
+    text: Mapped[str] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("source IN ('server_asr')", name="meeting_segments_source_check"),
+        Index("idx_meeting_segments_time", "meeting_id", "t_start_ms"),
+        Index("idx_meeting_segments_chunk", "chunk_id"),
+    )
+
+
+class MeetingChunkSpeaker(Base):
+    __tablename__ = "meeting_chunk_speakers"
+
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    chunk_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meeting_chunks.id", ondelete="CASCADE"), primary_key=True
+    )
+    local_idx: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    speech_ms: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # float32 voice embedding; sensitive, never logged or exported.
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+
+
+class MeetingSpeaker(Base):
+    __tablename__ = "meeting_speakers"
+
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True
+    )
+    speaker_idx: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    label: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    total_ms: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+
+
+class MeetingAnalysisStep(Base):
+    __tablename__ = "meeting_analysis_steps"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    ordinal: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    idempotency_key: Mapped[str] = mapped_column(Text, unique=True)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    input_digest: Mapped[str | None] = mapped_column(Text)
+    output: Mapped[Any | None] = mapped_column(JSONB)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('block_summary','final_minutes','extract','repair')",
+            name="meeting_analysis_steps_kind_check",
+        ),
+        CheckConstraint(
+            "status IN ('pending','running','done','failed')",
+            name="meeting_analysis_steps_status_check",
+        ),
+        Index("idx_meeting_steps_meeting", "meeting_id", "kind", "ordinal"),
+    )
+
+
+class MeetingMinutes(Base):
+    __tablename__ = "meeting_minutes"
+
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content_md: Mapped[str] = mapped_column(Text)
+    structured: Mapped[Any | None] = mapped_column(JSONB)
+    model: Mapped[str | None] = mapped_column(Text)
+    is_selected: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (CheckConstraint("version >= 1", name="meeting_minutes_version_check"),)
+
+
+class MeetingEvent(Base):
+    __tablename__ = "meeting_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE")
+    )
+    step_key: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "step_key", name="meeting_events_step_unique"),
+        Index("idx_meeting_events_meeting", "meeting_id", "created_at"),
+    )
+
+
+class MeetingPairingCode(Base):
+    """One-time code that the app swaps for a personal token. Control database only."""
+
+    __tablename__ = "meeting_pairing_codes"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    code_hash: Mapped[str] = mapped_column(Text, unique=True)
+    label: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(TSTZ)
+    used_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (Index("idx_meeting_pairing_user", "user_id", "created_at"),)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
@@ -1550,6 +1805,7 @@ class LedgerEntry(Base):
     seconds_delta: Mapped[int] = mapped_column(Integer, nullable=False)
     toman_delta: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reservation_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    meeting_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
@@ -1573,8 +1829,9 @@ class CreditReservation(Base):
     tenant_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
-    call_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("calls.id"), nullable=False
+    call_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), ForeignKey("calls.id"))
+    meeting_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE")
     )
     seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -1586,6 +1843,9 @@ class CreditReservation(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('held','settled','released')", name="credit_reservations_status_check"
+        ),
+        CheckConstraint(
+            "num_nonnulls(call_id, meeting_id) = 1", name="credit_reservations_target_check"
         ),
     )
 

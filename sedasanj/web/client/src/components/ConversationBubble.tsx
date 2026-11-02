@@ -7,9 +7,18 @@ type ConversationBubbleProps = {
   ariaLabel?: string;
   wide?: boolean;
   actions?: ReactNode;
+  /** Distinguishes more than two speakers: tints the avatar (and the outline of the answering side). */
+  accentColor?: string;
 };
 
-function ConversationAvatar({ side, ariaLabel }: Pick<ConversationBubbleProps, "side" | "ariaLabel">) {
+function readableOn(hex: string): string {
+  const value = hex.replace("#", "");
+  if (value.length !== 6) return "#F2F0EF";
+  const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(value.slice(offset, offset + 2), 16));
+  return (red * 299 + green * 587 + blue * 114) / 1000 > 150 ? "#000000" : "#F2F0EF";
+}
+
+function ConversationAvatar({ side, ariaLabel, accentColor }: Pick<ConversationBubbleProps, "side" | "ariaLabel" | "accentColor">) {
   const user = side === "user";
   const label = ariaLabel ?? (user ? "کاربر" : "دستیار");
 
@@ -18,6 +27,7 @@ function ConversationAvatar({ side, ariaLabel }: Pick<ConversationBubbleProps, "
       className={`assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center border ${user ? "border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48]" : "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"}`}
       aria-label={label}
       title={label}
+      style={accentColor ? { backgroundColor: accentColor, borderColor: accentColor, color: readableOn(accentColor) } : undefined}
     >
       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {user ? <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></> : <><path d="M12 3v3" /><rect x="4" y="6" width="16" height="13" rx="3" /><path d="M8 11h.01M16 11h.01M9 15h6" /></>}
@@ -26,9 +36,9 @@ function ConversationAvatar({ side, ariaLabel }: Pick<ConversationBubbleProps, "
   );
 }
 
-export default function ConversationBubble({ side, children, header, ariaLabel, wide = false, actions }: ConversationBubbleProps) {
+export default function ConversationBubble({ side, children, header, ariaLabel, wide = false, actions, accentColor }: ConversationBubbleProps) {
   const user = side === "user";
-  const avatar = <ConversationAvatar side={side} ariaLabel={ariaLabel} />;
+  const avatar = <ConversationAvatar side={side} ariaLabel={ariaLabel} accentColor={accentColor} />;
 
   return (
     <div className={`flex w-full items-end gap-4 ${user ? "justify-end" : "justify-start"}`} dir="ltr">
@@ -36,6 +46,7 @@ export default function ConversationBubble({ side, children, header, ariaLabel, 
       <div className={`flex max-w-[calc(85%_-_2.75rem)] flex-col ${wide ? "w-full" : "w-fit"} ${user ? "items-end" : "items-start"}`}>
         <div
           dir="rtl"
+          style={accentColor && !user ? { borderColor: accentColor } : undefined}
           className={`assistant-message-bubble relative w-full break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-black"}`}
         >
           {header}

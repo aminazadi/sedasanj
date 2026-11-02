@@ -29,6 +29,7 @@ MIGRATIONS = (
     "0059_contact_geo.py",
     "0061_assistant_exports.py",
     "0072_operator_call_coachings.py",
+    "0093_meetings.py",
 )
 
 

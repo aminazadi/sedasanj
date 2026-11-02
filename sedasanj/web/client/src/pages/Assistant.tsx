@@ -15,7 +15,6 @@ import MarkdownMessage from "../components/MarkdownMessage";
 import PersianSpeechInputButton from "../components/PersianSpeechInputButton";
 import { ErrorBox, SentimentBadge, StatusBadge } from "../components/Widgets";
 import { Skeleton } from "@cbi/web-shared/components/Skeleton";
-import { useDesktopMenuToggle } from "../components/Layout";
 import type { AssistantCallSource, AssistantChart, AssistantContextOptions, AssistantMessageAttachments, AssistantToolRun, ChatConversation, ChatMessage, OrganizationMemory } from "../types";
 import { downloadTextFile, safeDownloadName } from "../utils/download";
 import { isFreshRunSequence, mergeSnapshotMessages, orderUniqueRunEvents, reconcileAcceptedMessage, withConversationRunState } from "./assistantRunState.mjs";
@@ -406,7 +405,6 @@ function AssistantSkeleton() {
       <aside className="assistant-sidebar relative hidden flex-col overflow-hidden lg:sticky lg:top-8 lg:flex lg:h-[calc(100vh-4rem)] lg:w-auto lg:border-l lg:border-[#B2AC88] lg:shadow-none" aria-hidden="true">
         <nav className="flex-1 px-3 pb-24 pt-3">
           <div className="mb-5 flex items-center gap-2">
-            <Skeleton style={{ width: "2.75rem", height: "2.75rem" }} />
             <div className="flex flex-1 gap-1 border border-[#B2AC88] bg-white p-1">
               {[0, 1, 2].map((index) => <Skeleton key={index} className="flex-1" style={{ height: "2.25rem" }} />)}
             </div>
@@ -441,7 +439,6 @@ function AssistantSkeleton() {
 
 export default function Assistant() {
   const { session } = useAuth();
-  const desktopMenuToggle = useDesktopMenuToggle();
   const [search, setSearch] = useSearchParams();
   const training = search.get("mode") === "train" && isOrgAdmin(session?.role);
   const requestedConversationId = search.get("conversation");
@@ -1433,7 +1430,6 @@ export default function Assistant() {
       </div>
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-24 pt-3" aria-label="فهرست گفتگوها">
         <div className="mb-5 flex items-center gap-2">
-          {desktopMenuToggle ? <button type="button" className="assistant-panel-menu-toggle hidden h-11 w-11 shrink-0 items-center justify-center border border-[#B2AC88] bg-white text-[#4B6E48] shadow-[0_8px_20px_rgba(75,110,72,0.14)] transition hover:-translate-y-0.5 hover:border-[#4B6E48] hover:bg-[#4B6E48] hover:text-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] lg:inline-flex" onClick={desktopMenuToggle.toggle} aria-label={desktopMenuToggle.open ? "مخفی کردن منوی اصلی" : "نمایش منوی اصلی"} aria-expanded={desktopMenuToggle.open} aria-controls="client-desktop-menu"><MenuIcon close={desktopMenuToggle.open} /></button> : null}
           <div className="flex flex-1 border border-[#B2AC88] bg-white p-1" role="tablist" aria-label="نوع گفتگوها">
             <button type="button" role="tab" aria-selected={!training && conversationView === "active"} className={`min-h-9 flex-1 px-2 text-xs font-bold transition ${!training && conversationView === "active" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => selectAssistantTab("chat")}>چت‌ها</button>
             <button type="button" role="tab" aria-selected={!training && conversationView === "archived"} className={`min-h-9 flex-1 px-2 text-xs font-bold transition ${!training && conversationView === "archived" ? "bg-[#4B6E48] text-[#F2F0EF]" : "text-[#4B6E48] hover:bg-[#F2F0EF]"}`} onClick={() => selectAssistantTab("archived")}>آرشیوها</button>

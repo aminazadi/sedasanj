@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isEmbeddedBrowser, speechErrorMessage } from "../lib/microphone.mjs";
 import { isMobileSpeechClient, joinText, mergeFinalPhrases } from "../lib/speechResults.mjs";
 
 interface SpeechRecognitionResultLike {
@@ -42,6 +43,7 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
   const spokeRef = useRef(false);
   const mobileRef = useRef(typeof navigator !== "undefined" && isMobileSpeechClient(navigator.userAgent, navigator.maxTouchPoints));
   const [listening, setListening] = useState(false);
+  const [problem, setProblem] = useState("");
   const supported = typeof window !== "undefined" && Boolean(recognitionConstructor());
 
   useEffect(() => () => { shouldListenRef.current = false; clearSilenceTimer(); recognitionRef.current?.stop(); }, []);
@@ -114,6 +116,7 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
       // "no-speech" and "aborted" are routine; onend restarts or stops as appropriate.
       const code = (event as { error?: string } | undefined)?.error;
       if (code === "no-speech" || code === "aborted") return;
+      setProblem(speechErrorMessage(code, { embedded: isEmbeddedBrowser(navigator.userAgent) }));
       shouldListenRef.current = false;
       recognitionRef.current = null;
       clearSilenceTimer();
@@ -130,6 +133,7 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
       return;
     }
     shouldListenRef.current = true;
+    setProblem("");
     committedRef.current = "";
     spokeRef.current = false;
     setActive(true);
@@ -137,10 +141,10 @@ export default function PersianSpeechInputButton({ onTranscript, onListeningChan
     startListening();
   }
 
-  const label = !supported ? "تبدیل گفتار فارسی در Chrome پشتیبانی نمی‌شود" : listening ? "توقف تبدیل گفتار فارسی" : "تبدیل گفتار فارسی";
+  const label = problem || (!supported ? "تبدیل گفتار فارسی در Chrome پشتیبانی نمی‌شود" : listening ? "توقف تبدیل گفتار فارسی" : "تبدیل گفتار فارسی");
   return <button type="button" className={className} onClick={toggleListening} disabled={!supported} aria-label={label} title={label} aria-pressed={listening}>
     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" /></svg>
     {listening ? <span className="flex h-3 items-center gap-0.5" aria-hidden="true"><i className="h-1.5 w-0.5 animate-[pulse_0.6s_ease-in-out_infinite] bg-current" /><i className="h-3 w-0.5 animate-[pulse_0.6s_ease-in-out_0.15s_infinite] bg-current" /><i className="h-2 w-0.5 animate-[pulse_0.6s_ease-in-out_0.3s_infinite] bg-current" /></span> : null}
-    <span>{listening ? "در حال شنیدن" : "گفتار"}</span>
+    <span>{problem ? "میکروفون؟" : listening ? "در حال شنیدن" : "گفتار"}</span>
   </button>;
 }

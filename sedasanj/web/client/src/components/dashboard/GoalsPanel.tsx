@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { fmt } from "../../api";
 import type { KpiDashboard } from "../../types";
+import { GOAL_ART } from "../pageArt";
+import { PanelEmpty } from "../PanelEmpty";
 import { DashboardCard } from "./DashboardCard";
 
 const GOAL_LABELS: Record<string, string> = { conversion_rate: "نرخ تبدیل", quality_score: "کیفیت مکالمه", follow_up_sla_rate: "پیگیری در SLA" };
@@ -22,9 +24,8 @@ export function GoalsPanel({ goals, canEdit }: { goals: KpiDashboard["cards"]["g
           <div className="mt-1.5 flex justify-between text-[11px] text-slate-500"><span>{goal.actual == null ? "دادهٔ کافی برای سنجش نیست" : `${fmt.int(achievement)}٪ محقق`}</span><span style={{ color: reached ? "#4b6e48" : "#8a4b3f" }}>{reached ? "به هدف رسیده" : daysLeft > 0 ? `${fmt.int(daysLeft)} روز تا پایان دورهٔ هدف` : "زیر هدف"}</span></div>
         </li>;
       })}
-    </ul> : <div className="border border-dashed border-[color:var(--line-strong)] p-5 text-center text-sm leading-7 text-slate-500">
-      <p>هنوز هدفی برای این بازه تعریف نشده است.</p>
-      {canEdit ? <Link to="/account-settings?tab=kpi" className="btn mt-3 inline-flex">تعریف هدف</Link> : <p className="text-xs">تعریف هدف با مدیر سازمان است.</p>}
-    </div>}
+    </ul> : <PanelEmpty art={GOAL_ART} title="هنوز هدفی برای این بازه تعریف نشده است." description={canEdit ? "با تعریف هدف، پیشرفت نرخ تبدیل و کیفیت اینجا نمایش داده می‌شود." : "تعریف هدف با مدیر سازمان است."}>
+      {canEdit ? <Link to="/account-settings?tab=kpi" className="btn mt-3 inline-flex">تعریف هدف</Link> : null}
+    </PanelEmpty>}
   </DashboardCard>;
 }

@@ -10,6 +10,12 @@ ingest_total = Counter("cbi_ingest_total", "Accepted ingest uploads", ["tenant",
 credit_rejects_total = Counter(
     "cbi_credit_rejects_total", "Ingests rejected for credit", ["tenant"]
 )
+meeting_chunks_total = Counter(
+    "cbi_meeting_chunks_total", "Meeting chunk uploads by outcome", ["result"]
+)
+meeting_failures_total = Counter(
+    "cbi_meeting_failures_total", "Meeting processing failures", ["code"]
+)
 queue_depth = Gauge("cbi_queue_depth", "Pending jobs per queue", ["queue"])
 job_wait_seconds = Histogram("cbi_job_wait_seconds", "Time from enqueue to claim", ["kind"])
 outbox_dispatch_seconds = Histogram(

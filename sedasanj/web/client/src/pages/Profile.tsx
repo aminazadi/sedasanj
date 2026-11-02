@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt, request } from "../api";
 import { ROLE_LABELS } from "../auth";
+import JalaseNegarPairing from "../components/JalaseNegarPairing";
 import TwoFactorSettings from "../components/TwoFactorSettings";
 import { ErrorBox, Loading } from "../components/Widgets";
 import { PageHeader } from "../components/PageHeader";
@@ -125,6 +126,7 @@ export default function Profile() {
             {saved ? <span className="form-success" role="status">پروفایل ذخیره شد.</span> : null}
           </div>
         </form>
+        <JalaseNegarPairing />
         {account.user.role === "org_admin" ? <TwoFactorSettings /> : null}
         {account.user.role !== "operator" ? <nav className="card flex flex-wrap items-center gap-3" aria-label="بخش‌های مرتبط حساب"><Link className="btn-ghost" to="/account">اعتبار و اشتراک</Link>{account.user.role === "org_admin" ? <Link className="btn-ghost" to="/account-settings">تنظیمات حساب</Link> : null}</nav> : null}
         </>

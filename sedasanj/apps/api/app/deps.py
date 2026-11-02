@@ -16,7 +16,7 @@ from app.db import session_scope
 from app.errors import ApiError
 from app.logging import log_context
 from app.models import ApiKey, StaffUser, Tenant, User
-from app.security import decode_access_token, hash_api_key
+from app.security import API_KEY_PREFIX, decode_access_token, hash_api_key
 from app.services import audit, ratelimit
 from app.services.api_scopes import ip_allowed
 
@@ -34,6 +34,9 @@ class Principal:
     mobile_number: str | None = None
     extension: str | None = None
     scopes: frozenset[str] = frozenset()
+    # Set only for personal mobile tokens (api_keys.kind = 'mobile').
+    user_id: UUID | None = None
+    key_kind: str | None = None
 
 
 def settings_dep() -> Settings:
@@ -158,13 +161,51 @@ async def current_api_key(
         tenant_id = api_key.tenant_id
         key_id = api_key.id
         scopes = frozenset(api_key.scopes)
+        key_user_id = api_key.user_id
+        key_kind = api_key.kind
 
     await _assert_tenant_active(tenant_id)
     log_context(tenant_id=str(tenant_id))
     principal = Principal(
-        kind="api_key", id=key_id, tenant_id=tenant_id, role="agent", scopes=scopes
+        kind="api_key",
+        id=key_id,
+        tenant_id=tenant_id,
+        role="agent",
+        scopes=scopes,
+        user_id=key_user_id,
+        key_kind=key_kind,
     )
     request.state.principal = principal
+    return principal
+
+
+async def _deny_scope(request: Request, principal: Principal, scope: str) -> ApiError:
+    async with session_scope(None, staff=True) as session:
+        await audit.record(
+            session,
+            actor_type="api_key",
+            actor_id=principal.id,
+            tenant_id=principal.tenant_id,
+            action="api_key.denied.api_key_scope_denied",
+            payload={"scope": scope, "path": request.url.path},
+            ip=client_ip(request),
+        )
+    return ApiError(
+        "api_key_scope_denied",
+        f"این کلید دسترسی {scope} ندارد؛ آن را به کلید اضافه کنید",
+    )
+
+
+async def _enforce_scope(request: Request, principal: Principal, scope: str) -> Principal:
+    if scope not in principal.scopes:
+        raise await _deny_scope(request, principal, scope)
+    # Reads and writes have separate budgets so a polling CRM cannot starve call uploads.
+    settings = get_settings()
+    if scope.endswith(":read"):
+        bucket, limit = f"key-read:{principal.id}", settings.rate_limit_reads_per_minute
+    else:
+        bucket, limit = f"key:{principal.id}", settings.rate_limit_uploads_per_minute
+    await ratelimit.enforce(bucket, limit)
     return principal
 
 
@@ -174,31 +215,50 @@ def require_scope(scope: str) -> Callable[..., Awaitable[Principal]]:
     async def dependency(
         request: Request, principal: Annotated[Principal, Depends(current_api_key)]
     ) -> Principal:
-        if scope not in principal.scopes:
-            async with session_scope(None, staff=True) as session:
-                await audit.record(
-                    session,
-                    actor_type="api_key",
-                    actor_id=principal.id,
-                    tenant_id=principal.tenant_id,
-                    action="api_key.denied.api_key_scope_denied",
-                    payload={"scope": scope, "path": request.url.path},
-                    ip=client_ip(request),
-                )
-            raise ApiError(
-                "api_key_scope_denied",
-                f"این کلید دسترسی {scope} ندارد؛ آن را به کلید اضافه کنید",
-            )
-        # Reads and writes have separate budgets so a polling CRM cannot starve call uploads.
-        settings = get_settings()
-        if scope.endswith(":read"):
-            bucket, limit = f"key-read:{principal.id}", settings.rate_limit_reads_per_minute
-        else:
-            bucket, limit = f"key:{principal.id}", settings.rate_limit_uploads_per_minute
-        await ratelimit.enforce(bucket, limit)
-        return principal
+        return await _enforce_scope(request, principal, scope)
 
     return dependency
+
+
+async def _enforce_mobile(request: Request, principal: Principal, scope: str) -> Principal:
+    """Personal mobile-token guard: right scope, a `mobile` key and the user it belongs to."""
+    if (
+        scope not in principal.scopes
+        or principal.key_kind != "mobile"
+        or principal.user_id is None
+    ):
+        raise await _deny_scope(request, principal, scope)
+    # One budget per device token, separate from integration-key traffic.
+    await ratelimit.enforce(
+        f"meeting-chunk:{principal.id}", get_settings().rate_limit_meeting_chunks_per_minute
+    )
+    return principal
+
+
+def require_mobile_scope(scope: str) -> Callable[..., Awaitable[Principal]]:
+    """Like `require_scope`, but only for personal mobile tokens (api_keys.kind = 'mobile')."""
+
+    async def dependency(
+        request: Request, principal: Annotated[Principal, Depends(current_api_key)]
+    ) -> Principal:
+        return await _enforce_mobile(request, principal, scope)
+
+    return dependency
+
+
+async def current_meeting_actor(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
+) -> Principal:
+    """Panel JWT or the app's personal token; used by routes both clients read."""
+    bearer = authorization.split(" ", 1)[1].strip() if (
+        authorization and authorization.lower().startswith("bearer ")
+    ) else ""
+    if x_api_key or bearer.startswith(API_KEY_PREFIX):
+        key_principal = await current_api_key(request, authorization, x_api_key)
+        return await _enforce_mobile(request, key_principal, "meetings:write")
+    return await current_user(request, authorization)
 
 
 async def _assert_tenant_active(tenant_id: UUID) -> None:
@@ -275,6 +335,8 @@ CrmKeyDep = Annotated[Principal, Depends(require_scope("crm:write"))]
 ModuleKeyDep = Annotated[Principal, Depends(require_scope("module:sync"))]
 CallsReadKeyDep = Annotated[Principal, Depends(require_scope("calls:read"))]
 ContactsReadKeyDep = Annotated[Principal, Depends(require_scope("contacts:read"))]
+MeetingsKeyDep = Annotated[Principal, Depends(require_mobile_scope("meetings:write"))]
+MeetingActorDep = Annotated[Principal, Depends(current_meeting_actor)]
 TenantSession = Annotated[AsyncSession, Depends(tenant_session)]
 ApiKeySession = Annotated[AsyncSession, Depends(api_key_session)]
 StaffSession = Annotated[AsyncSession, Depends(staff_session)]

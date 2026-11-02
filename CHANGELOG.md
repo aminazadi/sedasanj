@@ -2,6 +2,7 @@
 
 ## 2026-11-03 — AMINAZADI
 
+- Removed the obsolete MikroTik Fadaeian Arvan setup document.
 - Added Shenava Koochik v1.5 RNNT CUDA inference using FP32 encoder/decoder/joiner artifacts, preserved INT8 CPU inference, and added a model-card action to complete GPU files for existing installations with actionable missing-artifact diagnostics.
 - Fixed the AI dashboard resource grid to show six cards in two rows of three on desktop, with two columns on tablets and one on phones.
 

@@ -278,14 +278,20 @@ const CallsTableSection = memo(function CallsTableSection({
   );
 });
 
-export default function Calls() {
+/** Calls list; `voicemailOnly` pins it to voicemail messages (call_type = voicemail) and hides the status filter. */
+export default function Calls({ voicemailOnly = false }: { voicemailOnly?: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
   const operator = isOperator(session?.role);
   const canDelete = isOrgAdmin(session?.role);
   const searchKey = searchParams.toString();
   const pageSizeParam = searchParams.get("page_size");
-  const applied = useMemo(() => filtersFromSearch(new URLSearchParams(searchKey)), [searchKey]);
+  const applied = useMemo(() => {
+    const fromUrl = filtersFromSearch(new URLSearchParams(searchKey));
+    return voicemailOnly ? { ...fromUrl, status: "" } : fromUrl;
+  }, [searchKey, voicemailOnly]);
+  // What is sent to the API: the pinned voicemail type is never written to the URL.
+  const effective = useMemo(() => (voicemailOnly ? { ...applied, status: "voicemail" } : applied), [applied, voicemailOnly]);
   const pageIndex = pageFromSearch(new URLSearchParams(searchKey)) - 1;
   const [filters, setFilters] = useState<Filters>(applied);
   const [reloadKey, setReloadKey] = useState(0);
@@ -319,7 +325,7 @@ export default function Calls() {
     if (applied[key]) updateSearch({ ...applied, [key]: "" });
   }
 
-  const callFilterFields: FilterBarField[] = [
+  const allFilterFields: FilterBarField[] = [
     {
       id: "from",
       label: "از تاریخ",
@@ -380,6 +386,8 @@ export default function Calls() {
     },
   ];
 
+  const callFilterFields = voicemailOnly ? allFilterFields.filter((field) => field.id !== "status") : allFilterFields;
+
   const filterBar = useFilterBar({
     hasActive: hasAppliedFilters || Object.values(filters).some(Boolean),
     onClear: () => {
@@ -392,7 +400,11 @@ export default function Calls() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="تماس‌ها" description={operator ? "فقط تماس‌هایی که شماره موبایل یا داخلی شما یک سمت آن باشد." : "فهرست و جست‌وجوی مکالمات سازمان"} actions={<div className="flex flex-wrap items-end justify-end gap-3"><CallUploadForm onUploaded={() => setReloadKey((key) => key + 1)} />{filterBar.toolbar}</div>} />
+      <PageHeader
+        title={voicemailOnly ? "پیام‌های صوتی" : "تماس‌ها"}
+        description={voicemailOnly ? (operator ? "فقط پیام‌های صوتی که شماره موبایل یا داخلی شما یک سمت آن باشد." : "فهرست و جست‌وجوی پیام‌های صوتی گذاشته‌شده در پیام‌گیر") : operator ? "فقط تماس‌هایی که شماره موبایل یا داخلی شما یک سمت آن باشد." : "فهرست و جست‌وجوی مکالمات سازمان"}
+        actions={<div className="flex flex-wrap items-end justify-end gap-3">{voicemailOnly ? null : <CallUploadForm onUploaded={() => setReloadKey((key) => key + 1)} />}{filterBar.toolbar}</div>}
+      />
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[16rem] flex-1">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400">
@@ -404,8 +416,8 @@ export default function Calls() {
             type="search"
             value={search}
             maxLength={200}
-            placeholder="جست‌وجو در متن مکالمه، خلاصه، شماره و نام مخاطب"
-            aria-label="جست‌وجو در تماس‌ها"
+            placeholder={voicemailOnly ? "جست‌وجو در متن پیام، خلاصه، شماره و نام مخاطب" : "جست‌وجو در متن مکالمه، خلاصه، شماره و نام مخاطب"}
+            aria-label={voicemailOnly ? "جست‌وجو در پیام‌های صوتی" : "جست‌وجو در تماس‌ها"}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
@@ -418,8 +430,8 @@ export default function Calls() {
         </button>
       </div>
       {filterBar.fields}
-      <CallsExportDialog open={exportOpen} filters={applied} operator={operator} onClose={() => setExportOpen(false)} />
-      <CallsTableSection refreshTarget={refreshTarget} applied={applied} pageIndex={pageIndex} reloadKey={reloadKey} canDelete={canDelete} onPage={goToPage} />
+      <CallsExportDialog open={exportOpen} filters={effective} operator={operator} onClose={() => setExportOpen(false)} />
+      <CallsTableSection refreshTarget={refreshTarget} applied={effective} pageIndex={pageIndex} reloadKey={reloadKey} canDelete={canDelete} onPage={goToPage} />
     </div>
   );
 }

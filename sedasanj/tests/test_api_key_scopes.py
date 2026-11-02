@@ -12,11 +12,27 @@ from pydantic import ValidationError
 from app import deps
 from app.errors import ApiError
 from app.schemas import ApiKeyCreate, ApiKeyUpdate
-from app.services.api_scopes import API_KEY_SCOPES, ip_allowed, normalize_cidrs
+from app.services.api_scopes import (
+    API_KEY_SCOPES,
+    MEETING_SCOPE,
+    MOBILE_KEY_SCOPES,
+    ip_allowed,
+    normalize_cidrs,
+)
 
 
 def test_no_assistant_scope_exists() -> None:
     assert not [scope for scope in API_KEY_SCOPES if "assistant" in scope]
+
+
+def test_meetings_scope_belongs_to_mobile_tokens_only() -> None:
+    assert MEETING_SCOPE == "meetings:write"
+    assert MOBILE_KEY_SCOPES == ("meetings:write",)
+    assert MEETING_SCOPE not in API_KEY_SCOPES
+    with pytest.raises(ValidationError):
+        ApiKeyCreate(scopes=["meetings:write"])  # type: ignore[list-item]
+    with pytest.raises(ValidationError):
+        ApiKeyUpdate(scopes=["meetings:write"])  # type: ignore[list-item]
 
 
 def test_new_keys_default_to_least_privilege() -> None:

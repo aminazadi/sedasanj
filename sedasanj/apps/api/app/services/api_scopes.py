@@ -11,6 +11,10 @@ API_KEY_SCOPES: tuple[str, ...] = (
     "calls:read",
     "contacts:read",
 )
+MEETING_SCOPE = "meetings:write"
+# Personal mobile tokens (api_keys.kind = 'mobile') carry only this scope. It is deliberately not
+# in API_KEY_SCOPES: integration keys created from the panel can never hold it.
+MOBILE_KEY_SCOPES: tuple[str, ...] = (MEETING_SCOPE,)
 DEFAULT_NEW_KEY_SCOPES: tuple[str, ...] = ("ingest:write", "module:sync")
 MAX_ALLOWED_CIDRS = 20
 

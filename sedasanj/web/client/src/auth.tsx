@@ -104,6 +104,8 @@ export function useAuth(): AuthState {
 export const CAN_HEAR_AUDIO = ["org_admin", "operator"];
 export const CAN_UPLOAD_CALLS = ["org_admin", "operator"];
 export const CAN_EDIT_TASKS = ["org_admin", "operator"];
+/** Roles that may rename speakers, reanalyze and retry meetings; a viewer only reads meetings they own. */
+export const CAN_MANAGE_MEETINGS = ["org_admin", "operator"];
 export const ROLE_LABELS: Record<string, string> = {
   org_admin: "مدیر سازمان",
   operator: "اپراتور",

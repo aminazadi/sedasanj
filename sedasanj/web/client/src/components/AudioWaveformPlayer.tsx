@@ -44,11 +44,15 @@ type AudioWaveformPlayerProps = {
   src: string;
   onError: () => void;
   onWaveformReady?: () => void;
+  /** Subject of the recording in the header and aria label; defaults to the call wording. */
+  title?: string;
+  /** Reports the playback position in seconds on every time update (e.g. to highlight the spoken turn). */
+  onTimeChange?: (seconds: number) => void;
 };
 
 const controlClassName = "flex h-11 w-11 shrink-0 items-center justify-center border border-[color:var(--line)] bg-[#F2F0EF] text-[#000000] transition hover:border-[#4B6E48] hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]";
 
-export default function AudioWaveformPlayer({ audioRef, downloadName, src, onError, onWaveformReady }: AudioWaveformPlayerProps) {
+export default function AudioWaveformPlayer({ audioRef, downloadName, src, onError, onWaveformReady, title = "فایل صوتی تماس", onTimeChange }: AudioWaveformPlayerProps) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -143,9 +147,13 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
         src={src}
         className="hidden"
         preload="metadata"
-        aria-label="فایل صوتی تماس"
+        aria-label={title}
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-        onTimeUpdate={(event) => setCurrentTime(Number.isFinite(event.currentTarget.currentTime) ? event.currentTarget.currentTime : 0)}
+        onTimeUpdate={(event) => {
+          const seconds = Number.isFinite(event.currentTarget.currentTime) ? event.currentTarget.currentTime : 0;
+          setCurrentTime(seconds);
+          onTimeChange?.(seconds);
+        }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
@@ -153,7 +161,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
       />
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-extrabold text-[#000000]">فایل صوتی تماس</p>
+          <p className="text-sm font-extrabold text-[#000000]">{title}</p>
           <p className="mt-0.5 text-[11px] text-[#898989]">برای جابه‌جایی روی موج کلیک کنید</p>
         </div>
         <span className="shrink-0 text-xs font-medium tabular-nums text-[#898989]">

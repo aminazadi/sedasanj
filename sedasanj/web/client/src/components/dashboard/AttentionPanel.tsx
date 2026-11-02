@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { Icon } from "@iconify/react";
 import angryIcon from "@iconify-icons/lucide/angry";
 import chevronLeftIcon from "@iconify-icons/lucide/chevron-left";
-import circleCheckIcon from "@iconify-icons/lucide/circle-check";
 import clockAlertIcon from "@iconify-icons/lucide/clock-alert";
 import eyeIcon from "@iconify-icons/lucide/eye";
 import flameIcon from "@iconify-icons/lucide/flame";
@@ -11,6 +10,8 @@ import trendingDownIcon from "@iconify-icons/lucide/trending-down";
 import { fmt, query } from "../../api";
 import type { KpiDashboard } from "../../types";
 import { groupActions, type ActionGroup, type DashboardAction } from "./dashboardInsights.mjs";
+import { ALL_CLEAR_ART } from "../pageArt";
+import { PanelEmpty } from "../PanelEmpty";
 import { DashboardCard } from "./DashboardCard";
 
 const WEEKDAYS = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"];
@@ -77,6 +78,6 @@ export function AttentionPanel({ actions, expanded, onExpand, range }: { actions
   const urgent = groups.filter((group) => group.severity === "high").reduce((sum, group) => sum + group.count, 0);
   return <DashboardCard title="نیازمند توجه شما" hint={groups.length ? `${fmt.int(actions.length)} مورد${urgent ? ` · ${fmt.int(urgent)} فوری` : ""} · مرتب‌شده بر اساس فوریت` : "مواردی که پیگیری یا تصمیم شما را لازم دارند"}>
     {groups.length ? <ul className="exec-attn">{groups.map((group) => <GroupRow key={group.type} group={group} range={range} expanded={expanded === group.type} onToggle={() => onExpand(expanded === group.type ? "" : group.type)} />)}</ul>
-      : <div className="flex items-center gap-3 border border-[color:var(--line)] bg-brand-50 p-4 text-sm text-brand-800"><Icon icon={circleCheckIcon} className="h-6 w-6 shrink-0" aria-hidden="true" /><span>موردی برای رسیدگی فوری باقی نمانده است.</span></div>}
+      : <PanelEmpty art={ALL_CLEAR_ART} title="موردی برای رسیدگی فوری باقی نمانده است." description="پیگیری عقب‌افتاده، فرصت بدون پیگیری یا افت کیفیتی در این بازه ثبت نشده است." />}
   </DashboardCard>;
 }

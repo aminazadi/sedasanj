@@ -77,3 +77,20 @@ export function issabelModuleConfig(...args: Parameters<typeof freePbxModuleConf
   profile.settings.archive.format = "wav";
   return JSON.stringify(profile, null, 2) + "\n";
 }
+
+export const JALASE_NEGAR_CONFIG_SCHEMA = "sedasanj.jalase-negar.config";
+
+/** Pairing file for the Jalase Negar app. It carries a one-time pairing code only, never a long-lived token. */
+export function jalaseNegarConfig(serverUrl: string, pairingCode: string, expiresAt: string): string {
+  return JSON.stringify(
+    {
+      schema: JALASE_NEGAR_CONFIG_SCHEMA,
+      version: 1,
+      server_url: serverUrl.replace(/\/$/, ""),
+      pairing_code: pairingCode,
+      expires_at: expiresAt,
+    },
+    null,
+    2,
+  ) + "\n";
+}

@@ -50,6 +50,8 @@ _CONTROL_ONLY = {
     "tenant_backups",
     "identity_projection_state",
     "contact_leads",
+    # Pairing codes are redeemed before the tenant is known, so only the control database sees them.
+    "meeting_pairing_codes",
     # Module fleet telemetry is read and written through the control database only; copying it into
     # a tenant database would also break on the foreign key to the global module_releases table.
     "module_installations",
