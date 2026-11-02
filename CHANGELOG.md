@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-02 — AMINAZADI
+
+- Fixed AI GPU image library discovery by registering wheel-provided NVIDIA and PyTorch library paths with the system loader; added a fresh-process cuBLAS/cuDNN symbol check, regression tests, and Persian troubleshooting for SS-DEP-0001 to prevent broken GPU images from reaching inference.
+
 ## 2026-11-01 — AMINAZADI
 
 - Redesigned the Jalase-Negar Flutter app (`jalase-negar/`) to match the SedaSanj panel: brand palette (`#F2F0EF`, `#B2AC88`, `#898989`, `#4B6E48`), zero border radius, no shadows, dotted patterns, green dotted app bar, dotted section title bands and square badges, via a new shared theme (`lib/app/theme.dart`) and widgets (`lib/app/widgets/ss_widgets.dart`). Reused the SedaSanj office line art, empty-state illustration and pattern images (`assets/images/brand/`) and the Vazirmatn variable font as static 350/500/600 instances. Verified on the Android emulator only; iOS and the lab matrix were not run.

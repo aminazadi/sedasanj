@@ -145,6 +145,38 @@ CPU می‌رود. `gpu` این fallback را برای مدل‌های GPU-capab
 `GET /api/system-metrics` مصرف، ظرفیت مؤثر و خطای اخیر هر دستگاه را نمایش می‌دهند؛
 `GET/PUT /api/gpu-runtime` تنظیمات را می‌خواند و ذخیره می‌کند.
 
+#### خطای بارگذاری cuDNN — `SS-DEP-0001`
+
+**نشانه‌ها:** کارت‌ها شناسایی می‌شوند، ولی اجرای Whisper با پیام
+`Unable to load any of {libcudnn_ops.so...}` یا
+`Cannot load symbol cudnnCreateTensorDescriptor` قطع می‌شود. سرویس ممکن است دوباره
+راه‌اندازی شود و تسک پس از تمام شدن تلاش‌ها `Worker interrupted on final attempt` بگیرد.
+
+**علت:** شناسایی کارت به معنی بارگذاری موفق cuDNN نیست. کتابخانه‌های NVIDIA نصب‌شده
+در بسته‌های Python ممکن است در مسیر جست‌وجوی بارگذار سیستم نباشند؛ پیام بارگذاری همچنین
+می‌تواند ناشی از وابستگی مفقود یا نسخه ناسازگار باشد.
+
+**رفع:** تصویر GPU مسیرهای واقعی `nvidia/*/lib` و `torch/lib` را بعد از نصب بسته‌ها
+در تنظیمات بارگذار ثبت می‌کند، `ldconfig` را اجرا می‌کند و بارگذاری cuBLAS و cuDNN،
+از جمله نماد موردنیاز در `libcudnn_ops.so.9`، را در یک پردازش تازه بررسی می‌کند.
+اگر این بررسی شکست بخورد، ساخت با کد `SS-DEP-0001` متوقف می‌شود.
+پس از دریافت نسخه اصلاح‌شده، در پوشه `aiservice` اجرا کنید:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml build persian-asr
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --no-build persian-asr
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec persian-asr \
+  python /usr/local/bin/configure-gpu-libraries.py --check
+```
+
+**تأیید:** دستور آخر باید با کد خروج `0` تمام شود. سپس یک درخواست جدید تبدیل صوت
+با همان مدل ارسال کنید و موفقیت نتیجه و ثابت ماندن تعداد restartها را بررسی کنید؛
+تسک‌هایی که قبلاً شکست خورده‌اند خودکار دوباره اجرا نمی‌شوند.
+
+**پیشگیری:** همیشه هر دو فایل Compose را در دستورهای build و up نگه دارید و بعد از
+تغییر نسخه بسته‌های CUDA بررسی بالا و یک تبدیل واقعی صوت را تکرار کنید.
+مرجع: [راهنمای رسمی faster-whisper](https://github.com/SYSTRAN/faster-whisper/blob/master/README.md#gpu).
+
 تنظیمات مهم:
 
 - `ASR_TASK_WORKERS`: تعداد workerهای صف پایدار.

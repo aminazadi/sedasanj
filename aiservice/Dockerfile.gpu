@@ -28,6 +28,8 @@ RUN sh /usr/local/bin/pip-install-with-fallback python --retries 15 --timeout "$
     --no-cache-dir --no-binary=llama-cpp-python \
     -r requirements-runtime.txt -r requirements-build.txt \
     && python -c "from pathlib import Path; import sysconfig; cuda_lib = Path(sysconfig.get_path('platlib')) / 'llama_cpp/lib/libggml-cuda.so'; assert cuda_lib.is_file(), f'llama.cpp CUDA backend was not built: {cuda_lib}'"
+COPY docker/configure-gpu-libraries.py /usr/local/bin/configure-gpu-libraries.py
+RUN python /usr/local/bin/configure-gpu-libraries.py
 COPY app.py ./
 COPY asr_service ./asr_service
 RUN useradd --create-home --uid 10001 asr \
