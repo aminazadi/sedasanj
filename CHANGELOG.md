@@ -2,6 +2,8 @@
 
 ## 2026-11-02 — AMINAZADI
 
+- Added CUDA scheduling for Shenava NeMo CTC models with the pinned Sherpa CUDA 12/cuDNN 9 wheel, per-GPU isolated inference, bounded execution, CPU fallback under the existing scheduler policy, and coded worker failures.
+- Replaced resource bars with live speedometer gauges, separated GPU compute from VRAM occupancy, added temperature/power/fan readings, and sampled resources independently every second with stale-data feedback and explicit network rate scales.
 - Fixed AI GPU image library discovery by registering wheel-provided NVIDIA and PyTorch library paths with the system loader; added a fresh-process cuBLAS/cuDNN symbol check, regression tests, and Persian troubleshooting for SS-DEP-0001 to prevent broken GPU images from reaching inference.
 
 ## 2026-11-01 — AMINAZADI

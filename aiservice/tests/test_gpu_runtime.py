@@ -8,6 +8,18 @@ from asr_service.services import gpu_runtime
 
 
 class GpuRuntimeTests(unittest.TestCase):
+    def test_live_gpu_compute_and_memory_are_independent_and_optional_metrics_can_be_unavailable(self):
+        process = SimpleNamespace(stdout="0, GPU-a, RTX 3060, 12288, 8192, 0, 42, 25.5, 170, [N/A]\n")
+        with patch.object(gpu_runtime.subprocess, "run", return_value=process):
+            gpu_runtime._device_cache["at"] = 0
+            device = gpu_runtime.discover_gpus()[0]
+        self.assertEqual(device["utilization_percent"], 0)
+        self.assertEqual(device["memory_total"] - device["memory_free"], 4096 * 1024**2)
+        self.assertEqual(device["power_watts"], 25.5)
+        self.assertEqual(device["temperature_celsius"], 42)
+        self.assertIsNone(device["fan_percent"])
+        self.assertGreater(device["sampled_at"], 0)
+
     def test_discovers_stable_uuid_and_memory_values(self):
         process = SimpleNamespace(stdout="0, GPU-a, RTX 3060, 12288, 8192, 17\n")
         with patch.object(gpu_runtime.subprocess, "run", return_value=process):

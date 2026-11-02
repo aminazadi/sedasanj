@@ -30,6 +30,10 @@ RUN sh /usr/local/bin/pip-install-with-fallback python --retries 15 --timeout "$
     && python -c "from pathlib import Path; import sysconfig; cuda_lib = Path(sysconfig.get_path('platlib')) / 'llama_cpp/lib/libggml-cuda.so'; assert cuda_lib.is_file(), f'llama.cpp CUDA backend was not built: {cuda_lib}'"
 COPY docker/configure-gpu-libraries.py /usr/local/bin/configure-gpu-libraries.py
 RUN python /usr/local/bin/configure-gpu-libraries.py
+RUN python -m pip install --no-cache-dir --no-deps --force-reinstall --no-index \
+    --find-links https://k2-fsa.github.io/sherpa/onnx/cuda.html \
+    'sherpa-onnx==1.12.39+cuda12.cudnn9' \
+    && python -c "import sherpa_onnx; assert '+cuda12.cudnn9' in sherpa_onnx.__version__"
 COPY app.py ./
 COPY asr_service ./asr_service
 RUN useradd --create-home --uid 10001 asr \

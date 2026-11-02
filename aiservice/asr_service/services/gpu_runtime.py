@@ -9,6 +9,7 @@ import threading
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
+from importlib.metadata import version
 
 from asr_service.infrastructure.storage import execute, row, rows
 
@@ -35,7 +36,7 @@ def discover_gpus():
             return [dict(item) for item in _device_cache["value"]]
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,uuid,name,memory.total,memory.free,utilization.gpu", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=index,uuid,name,memory.total,memory.free,utilization.gpu,temperature.gpu,power.draw,power.limit,fan.speed", "--format=csv,noheader,nounits"],
             check=True, capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
@@ -44,18 +45,26 @@ def discover_gpus():
         return []
     devices = []
     for values in csv.reader(io.StringIO(result.stdout), skipinitialspace=True):
-        if len(values) != 6:
+        if len(values) < 6:
             continue
         try:
             index, uuid, name = int(values[0]), values[1], values[2]
-            total, free, utilization = (int(value) for value in values[3:])
+            total, free, utilization = (int(value) for value in values[3:6])
         except (TypeError, ValueError):
             continue
+        telemetry = {}
+        for field, value in zip(("temperature_celsius", "power_watts", "power_limit_watts", "fan_percent"), values[6:]):
+            try:
+                telemetry[field] = float(value)
+            except ValueError:
+                telemetry[field] = None
         devices.append({
             "index": index, "uuid": uuid, "name": name,
             "memory_total": total * 1024 * 1024,
             "memory_free": free * 1024 * 1024,
             "utilization_percent": utilization,
+            "sampled_at": time.time(),
+            **telemetry,
         })
     with _lock:
         _device_cache.update(at=time.monotonic(), value=[dict(item) for item in devices])
@@ -110,7 +119,7 @@ def runtime_capabilities():
     with _lock:
         if time.monotonic() - _capability_cache["at"] < 30:
             return dict(_capability_cache["value"])
-    result = {"ctranslate2": False, "llama_cpp": False, "torch": False}
+    result = {"ctranslate2": False, "llama_cpp": False, "torch": False, "sherpa_onnx": False}
     try:
         import ctranslate2
         result["ctranslate2"] = ctranslate2.get_cuda_device_count() > 0
@@ -124,6 +133,10 @@ def runtime_capabilities():
     try:
         import torch
         result["torch"] = bool(torch.cuda.is_available())
+    except Exception:
+        pass
+    try:
+        result["sherpa_onnx"] = result["torch"] and "+cuda12.cudnn9" in version("sherpa-onnx")
     except Exception:
         pass
     with _lock:
@@ -148,7 +161,10 @@ def gpu_eligible(kind, model_id):
         return False
     capabilities = runtime_capabilities()
     if kind == "asr":
-        return capabilities["ctranslate2"]
+        from asr_service.domain.catalog import CATALOG
+
+        backend = "sherpa_onnx" if CATALOG[model_id].architecture == "nemoCtc" else "ctranslate2"
+        return capabilities.get(backend, False)
     if kind in {"chat", "chat_async", "text"}:
         return capabilities["llama_cpp"]
     if kind == "decision":
@@ -165,7 +181,7 @@ def cuda_model_family(kind, model_id):
     if not model:
         return False
     if kind == "asr":
-        return model.architecture == "fasterWhisper"
+        return model.architecture in {"fasterWhisper", "nemoCtc"}
     if kind in {"chat", "chat_async", "text"}:
         return model.kind == "llm"
     if kind == "decision":
