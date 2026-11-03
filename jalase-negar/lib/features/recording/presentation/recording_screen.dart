@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:record/record.dart' show InputDevice;
 
 import '../../../app/theme.dart';
+import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../application/live_engine_provider.dart';
@@ -116,9 +117,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
         context.pushReplacement('/meeting/${next.savedMeetingId}');
       }
       if (next.error != null && next.error != previous?.error) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.error!)));
+        SsToastHost.show(context, next.error!);
       }
     });
 
@@ -760,17 +759,13 @@ class _LiveToggle extends ConsumerWidget {
       ),
       onPressed: () {
         ref.read(liveTranscriptEnabledProvider.notifier).set(!enabled);
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(
-                enabled
-                    ? 'متن زنده خاموش شد؛ ضبط مثل قبل انجام می‌شود.'
-                    : 'متن زنده روشن شد؛ از ضبط بعدی متن هم‌زمان نمایش داده می‌شود.',
-              ),
-            ),
-          );
+        SsToastHost.show(
+          context,
+          enabled
+              ? 'متن زنده خاموش شد؛ ضبط مثل قبل انجام می‌شود.'
+              : 'متن زنده روشن شد؛ از ضبط بعدی متن هم‌زمان نمایش داده می‌شود.',
+          queue: SsToastQueue.dismissCurrent,
+        );
       },
     );
   }

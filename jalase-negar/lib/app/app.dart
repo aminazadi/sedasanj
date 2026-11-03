@@ -6,6 +6,7 @@ import '../core/providers.dart';
 import 'router.dart';
 import 'splash_screen.dart';
 import 'theme.dart';
+import 'widgets/ss_toast.dart';
 
 class JalaseNegarApp extends ConsumerStatefulWidget {
   const JalaseNegarApp({super.key});
@@ -63,6 +64,7 @@ class _RouterApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: buildAppTheme(),
+      builder: (context, child) => SsToastHost(child: child!),
       routerConfig: ref.watch(routerProvider),
     );
   }

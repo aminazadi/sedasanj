@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../application/connection_controller.dart';
 import 'qr_scan_screen.dart';
@@ -104,12 +105,9 @@ class SettingsScreen extends ConsumerWidget {
                     final text = data?.text;
                     if (text == null || text.trim().isEmpty) {
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'کلیپ‌بورد خالی است؛ متن کانفیگ را کپی کنید و دوباره بزنید.',
-                            ),
-                          ),
+                        SsToastHost.show(
+                          context,
+                          'کلیپ‌بورد خالی است؛ متن کانفیگ را کپی کنید و دوباره بزنید.',
                         );
                       }
                       return;

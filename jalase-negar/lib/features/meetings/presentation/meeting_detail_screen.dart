@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
@@ -57,9 +58,7 @@ class MeetingDetailScreen extends ConsumerWidget {
                           ClipboardData(text: transcript),
                         );
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('متن کپی شد')),
-                        );
+                        SsToastHost.show(context, 'متن کپی شد');
                       },
                 onShare: transcript.isEmpty
                     ? null

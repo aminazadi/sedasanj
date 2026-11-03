@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
+import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
@@ -533,34 +534,27 @@ class _MeetingTile extends ConsumerWidget {
     );
   }
 
-  /// Hides the tile now and deletes for real once the undo snack bar closes
+  /// Hides the tile now and deletes for real once the undo toast closes
   /// without "restore", so a swipe never loses audio instantly.
-  void _deleteWithUndo(BuildContext context, Meeting meeting) {
+  Future<void> _deleteWithUndo(BuildContext context, Meeting meeting) async {
     // The tile is gone after the swipe; keep what outlives it.
     final container = ProviderScope.containerOf(context);
-    final messenger = ScaffoldMessenger.of(context);
     final pending = container.read(pendingDeletesProvider.notifier);
+    final actions = container.read(meetingActionsProvider(meeting.id));
     pending.hide(meeting.id);
-    messenger.clearSnackBars();
-    messenger
-        .showSnackBar(
-          SnackBar(
-            content: const Text('جلسه حذف شد'),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'بازگردانی',
-              onPressed: () => pending.restore(meeting.id),
-            ),
-          ),
-        )
-        .closed
-        .then((reason) async {
-          if (reason == SnackBarClosedReason.action) return;
-          await container
-              .read(meetingActionsProvider(meeting.id))
-              .deleteMeeting();
-          pending.restore(meeting.id);
-        });
+    final result = await SsToastHost.show(
+      context,
+      'جلسه حذف شد',
+      actionLabel: 'بازگردانی',
+      duration: const Duration(seconds: 5),
+      queue: SsToastQueue.clear,
+    );
+    if (!actions.ref.mounted) return;
+    try {
+      if (result == SsToastResult.dismissed) await actions.deleteMeeting();
+    } finally {
+      if (actions.ref.mounted) pending.restore(meeting.id);
+    }
   }
 
   Widget _menu(

@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Moved Jalase-Negar toast messages below the top toolbar, including the meeting deletion undo action.
 - Added a two-second tone after the Jalase-Negar countdown and before microphone capture, and made the countdown digits bolder.
 - Matched the Jalase-Negar recording header buttons and added a three-second audible countdown between the wind effect and microphone capture.
 - Compacted the Jalase-Negar meeting player controls and moved the playback timer beside them below the waveform, removing the duplicate title above it.
