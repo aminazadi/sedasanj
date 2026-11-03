@@ -44,7 +44,6 @@ class MeetingDetailScreen extends ConsumerWidget {
           ),
           bottomNavigationBar: AudioWaveformPlayer(
             path: data.meeting.audioPath,
-            title: data.meeting.title,
           ),
           body: ListView(
             padding: const EdgeInsets.all(16),

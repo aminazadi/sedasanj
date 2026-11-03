@@ -57,6 +57,51 @@ void main() {
     }
   });
 
+  testWidgets('places the timer beside compact controls below the waveform', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final meeting = _meeting(MeetingStatus.recorded);
+    await _openDetail(tester, MeetingDetail(meeting: meeting, segments: []));
+
+    final player = find.byType(AudioWaveformPlayer);
+    final waveform = find.descendant(
+      of: player,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is GestureDetector && widget.onHorizontalDragUpdate != null,
+      ),
+    );
+    final timer = find.text('۰۰:۰۰ / ۰۰:۰۰');
+    final mute = find.byTooltip('قطع صدا');
+    final speed = find.byTooltip('افزایش سرعت پخش');
+    final share = find.byTooltip('اشتراک‌گذاری فایل صوتی');
+    final play = find.byTooltip('پخش فایل صوتی');
+
+    expect(find.text(meeting.title), findsOneWidget);
+    expect(tester.getTopLeft(waveform).dy - tester.getTopLeft(player).dy, 10);
+    expect(
+      tester.getTopLeft(timer).dy,
+      greaterThan(tester.getBottomLeft(waveform).dy),
+    );
+    expect(tester.getCenter(timer).dy, tester.getCenter(mute).dy);
+    expect(tester.getTopLeft(timer).dx, greaterThan(tester.getCenter(mute).dx));
+    expect(tester.getCenter(play).dx, greaterThan(tester.getCenter(timer).dx));
+    expect(tester.getCenter(mute).dx, greaterThan(tester.getCenter(speed).dx));
+    expect(tester.getCenter(speed).dx, greaterThan(tester.getCenter(share).dx));
+    for (final control in [mute, speed, share]) {
+      final face = find.descendant(
+        of: control,
+        matching: find.byType(Container),
+      );
+      expect(tester.getSize(face), const Size(36, 36));
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('failed meetings offer no audio transcription retry', (
     tester,
   ) async {
@@ -90,7 +135,12 @@ Future<void> _openDetail(WidgetTester tester, MeetingDetail detail) async {
       overrides: [
         meetingDetailProvider(meeting.id).overrideWith((ref) async => detail),
       ],
-      child: MaterialApp(home: MeetingDetailScreen(meetingId: meeting.id)),
+      child: MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: MeetingDetailScreen(meetingId: meeting.id),
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();

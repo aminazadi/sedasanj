@@ -40,14 +40,9 @@ final _emptyWaveform = [
 
 /// Fixed bottom player that mirrors the web panel's waveform player.
 class AudioWaveformPlayer extends StatefulWidget {
-  const AudioWaveformPlayer({
-    super.key,
-    required this.path,
-    required this.title,
-  });
+  const AudioWaveformPlayer({super.key, required this.path});
 
   final String path;
-  final String title;
 
   @override
   State<AudioWaveformPlayer> createState() => _AudioWaveformPlayerState();
@@ -153,132 +148,122 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
   );
 
   Widget _buildPlayer(ThemeData theme) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        StreamBuilder<Duration>(
-          stream: _player.positionStream,
-          builder: (context, snapshot) {
-            final total = _player.duration ?? Duration.zero;
-            final position = snapshot.data ?? Duration.zero;
-            final ratio =
-                _dragRatio ??
-                (total.inMilliseconds > 0
-                    ? (position.inMilliseconds / total.inMilliseconds).clamp(
-                        0.0,
-                        1.0,
-                      )
-                    : 0.0);
-            final shown = _dragRatio != null ? total * ratio : position;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall,
-                      ),
-                    ),
-                    Text(
-                      '${formatDuration(shown)} / ${formatDuration(total)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: SsColors.neutral,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _Waveform(
-                  peaks: _peaks,
-                  progress: ratio,
-                  onSeek: _seekToRatio,
-                  onDrag: (value) => setState(() => _dragRatio = value),
-                  onDragEnd: (value) {
-                    _seekToRatio(value);
-                    setState(() => _dragRatio = null);
-                  },
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 8),
-        Row(
+    return StreamBuilder<Duration>(
+      stream: _player.positionStream,
+      builder: (context, snapshot) {
+        final total = _player.duration ?? Duration.zero;
+        final position = snapshot.data ?? Duration.zero;
+        final ratio =
+            _dragRatio ??
+            (total.inMilliseconds > 0
+                ? (position.inMilliseconds / total.inMilliseconds).clamp(
+                    0.0,
+                    1.0,
+                  )
+                : 0.0);
+        final shown = _dragRatio != null ? total * ratio : position;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            StreamBuilder<PlayerState>(
-              stream: _player.playerStateStream,
-              builder: (context, snapshot) {
-                final state = snapshot.data;
-                final playing =
-                    (state?.playing ?? false) &&
-                    state?.processingState != ProcessingState.completed;
-                return Row(
-                  children: [
-                    SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: IconButton.filled(
-                        tooltip: playing ? 'توقف پخش' : 'پخش فایل صوتی',
-                        style: IconButton.styleFrom(
-                          backgroundColor: SsColors.primary,
-                          foregroundColor: SsColors.canvas,
-                          shape: const RoundedRectangleBorder(),
-                        ),
-                        onPressed: _toggle,
-                        icon: Icon(
-                          playing ? Icons.pause : Icons.play_arrow,
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      playing ? 'در حال پخش' : 'آماده پخش',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: SsColors.neutral,
-                      ),
-                    ),
-                  ],
-                );
+            _Waveform(
+              peaks: _peaks,
+              progress: ratio,
+              onSeek: _seekToRatio,
+              onDrag: (value) => setState(() => _dragRatio = value),
+              onDragEnd: (value) {
+                _seekToRatio(value);
+                setState(() => _dragRatio = null);
               },
             ),
-            const Spacer(),
+            const SizedBox(height: 8),
+            _buildControls(theme, shown, total),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildControls(ThemeData theme, Duration position, Duration total) {
+    return StreamBuilder<PlayerState>(
+      stream: _player.playerStateStream,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final playing =
+            (state?.playing ?? false) &&
+            state?.processingState != ProcessingState.completed;
+        return Row(
+          children: [
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: IconButton.filled(
+                tooltip: playing ? 'توقف پخش' : 'پخش فایل صوتی',
+                style: IconButton.styleFrom(
+                  backgroundColor: SsColors.primary,
+                  foregroundColor: SsColors.canvas,
+                  shape: const RoundedRectangleBorder(),
+                ),
+                onPressed: _toggle,
+                icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 24),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                playing ? 'در حال پخش' : 'آماده پخش',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: SsColors.neutral,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerEnd,
+                child: Text(
+                  '${formatDuration(position)} / ${formatDuration(total)}',
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: SsColors.neutral,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
             _ControlButton(
               tooltip: _muted ? 'فعال‌کردن صدا' : 'قطع صدا',
               onPressed: _toggleMute,
               child: Icon(
                 _muted ? Icons.volume_off : Icons.volume_up,
-                size: 20,
+                size: 18,
               ),
             ),
-            const SizedBox(width: 8),
             _ControlButton(
               tooltip: 'افزایش سرعت پخش',
               onPressed: _cycleRate,
               child: Text(
                 '${toPersianDigits(_rate.toString().replaceAll('.0', ''))}×',
-                style: theme.textTheme.labelLarge?.copyWith(
+                style: theme.textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
             _ControlButton(
               tooltip: 'اشتراک‌گذاری فایل صوتی',
               onPressed: () => SharePlus.instance.share(
                 ShareParams(files: [XFile(widget.path)]),
               ),
-              child: const Icon(Icons.ios_share, size: 20),
+              child: const Icon(Icons.ios_share, size: 18),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -298,17 +283,23 @@ class _ControlButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        child: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: SsColors.canvas,
-            border: Border.all(color: SsColors.line),
+      child: SizedBox(
+        width: 42,
+        height: 44,
+        child: InkWell(
+          onTap: onPressed,
+          child: Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: SsColors.canvas,
+                border: Border.all(color: SsColors.line),
+              ),
+              child: child,
+            ),
           ),
-          child: child,
         ),
       ),
     );
