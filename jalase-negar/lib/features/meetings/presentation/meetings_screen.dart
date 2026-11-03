@@ -17,60 +17,43 @@ class MeetingsScreen extends ConsumerWidget {
     final meetings = ref.watch(meetingsProvider);
     final upload = ref.watch(uploadQueueProvider);
 
-    return Stack(
-      children: [
-        meetings.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('خطا: $e')),
-          data: (items) => items.isEmpty
-              ? const SsEmptyState(
-                  title: 'هنوز جلسه‌ای ضبط نشده است',
-                  hint: 'برای شروع روی «ضبط جلسه» بزنید',
-                )
-              : RefreshIndicator(
-                  onRefresh: () => ref.refresh(meetingsProvider.future),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-                    itemCount: items.length + 1,
-                    itemBuilder: (context, index) => index == 0
-                        ? Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Column(
-                              children: [
-                                SsPageHeader(
-                                  title: 'جلسه‌های من',
-                                  description:
-                                      '${items.length} جلسه ضبط‌شده روی همین دستگاه',
-                                ),
-                                if (upload.needsReconnect)
-                                  const _QueueNotice(
-                                    'توکن ابطال شده است؛ از «تنظیمات» دوباره به صداسنج متصل شوید.',
-                                  )
-                                else if (upload.creditExhausted)
-                                  const _QueueNotice(
-                                    'اعتبار سازمان تمام شده است؛ در پنل صداسنج شارژ کنید تا ارسال ادامه یابد.',
-                                  ),
-                              ],
+    return meetings.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('خطا: $e')),
+      data: (items) => items.isEmpty
+          ? const SsEmptyState(
+              title: 'هنوز جلسه‌ای ضبط نشده است',
+              hint: 'برای شروع روی دکمهٔ «ضبط جلسه» پایین صفحه بزنید',
+            )
+          : RefreshIndicator(
+              onRefresh: () => ref.refresh(meetingsProvider.future),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: items.length + 1,
+                itemBuilder: (context, index) => index == 0
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          children: [
+                            SsPageHeader(
+                              title: 'جلسه‌های من',
+                              description:
+                                  '${items.length} جلسه ضبط‌شده روی همین دستگاه',
                             ),
-                          )
-                        : _MeetingTile(meeting: items[index - 1]),
-                  ),
-                ),
-        ),
-        // FloatingActionButton
-        Positioned(
-          bottom: 16,
-          left: 16,
-          right: 16,
-          child: Center(
-            child: FloatingActionButton.extended(
-              onPressed: () => context.push('/record'),
-              icon: const Icon(Icons.mic),
-              label: const Text('ضبط جلسه'),
+                            if (upload.needsReconnect)
+                              const _QueueNotice(
+                                'توکن ابطال شده است؛ از «تنظیمات» دوباره به صداسنج متصل شوید.',
+                              )
+                            else if (upload.creditExhausted)
+                              const _QueueNotice(
+                                'اعتبار سازمان تمام شده است؛ در پنل صداسنج شارژ کنید تا ارسال ادامه یابد.',
+                              ),
+                          ],
+                        ),
+                      )
+                    : _MeetingTile(meeting: items[index - 1]),
+              ),
             ),
-          ),
-        ),
-      ],
     );
   }
 }
