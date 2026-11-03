@@ -18,7 +18,8 @@ export default function JalaseNegarPairing() {
 
   const loadDevices = useCallback(async () => {
     try {
-      setDevices(await request<MeetingDevice[]>("/v1/meetings/devices"));
+      const response = await request<{ items: MeetingDevice[] }>("/v1/meetings/devices");
+      setDevices(response.items);
     } catch (reason) {
       setError((reason as Error).message);
     }
