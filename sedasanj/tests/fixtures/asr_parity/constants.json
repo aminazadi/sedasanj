@@ -1,0 +1,71 @@
+{
+  "description": "Server preprocessing and merge constants that the on-device pipeline must match. tests/test_asr_parity_contract.py fails if the server code drifts from this file.",
+  "output_format": {
+    "sample_rate_hz": 16000,
+    "channels": 1,
+    "codec": "pcm_s16le"
+  },
+  "accepted_ingest": {
+    "sample_rates_hz": [
+      8000,
+      16000
+    ],
+    "max_channels": 2
+  },
+  "preprocessing": {
+    "enabled_by_default": false,
+    "default_denoiser_model": "speech-afftdn-balanced",
+    "default_enhancement_model": "speech-clarity-balanced",
+    "target_loudness_lufs": -20.0,
+    "target_loudness_range_lufs": [
+      -30.0,
+      -12.0
+    ],
+    "max_gain_db": 30.0,
+    "max_gain_range_db": [
+      0.0,
+      40.0
+    ],
+    "max_attenuation_db": 6.0,
+    "silent_channel_lufs": -55.0,
+    "negligible_gain_db": 0.5,
+    "identity_disabled": "preprocess:none",
+    "adaptive_loudness_probe": "loudnorm=I=-23:TP=-2:LRA=11:print_format=json",
+    "adaptive_limiter": "alimiter=limit=0.9:level=0",
+    "denoise_filters": {
+      "none": null,
+      "speech-afftdn-balanced": "afftdn=nr=12:nf=-50:tn=1",
+      "speech-afftdn-strong": "afftdn=nr=20:nf=-45:tn=1"
+    },
+    "enhancement_filters": {
+      "none": [],
+      "speech-clarity-balanced": [
+        "highpass=f=80",
+        "lowpass=f=7600",
+        "dynaudnorm=f=150:g=9:p=0.95"
+      ],
+      "speech-clarity-strong": [
+        "highpass=f=100",
+        "lowpass=f=7200",
+        "acompressor=threshold=0.125:ratio=3:attack=10:release=120:makeup=2",
+        "dynaudnorm=f=120:g=7:p=0.92"
+      ],
+      "speech-telephony-adaptive": [
+        "highpass=f=100",
+        "lowpass=f=7600"
+      ]
+    }
+  },
+  "merge": {
+    "turn_merge_gap_ms": 1200,
+    "turn_merge_gap_range_ms": [
+      0,
+      5000
+    ]
+  },
+  "channel_labels": {
+    "0": "caller",
+    "1": "agent"
+  },
+  "base_filter": "aresample=16000"
+}

@@ -1,0 +1,62 @@
+{
+  "description": "Runtime transcript text normalisation. `server` is aiservice inference.normalize() today (Arabic yeh/kaf -> Persian, all whitespace collapsed to single spaces). `app_today` is jalase-negar normalizePersianAsrText() today; it is omitted where it equals `server`. Every entry where they differ is a divergence the parity contract must close.",
+  "cases": [
+    {
+      "name": "arabic_yeh_kaf",
+      "input": "كيف حال",
+      "server": "کیف حال"
+    },
+    {
+      "name": "extra_spaces_trimmed",
+      "input": "  چند   فاصله  ",
+      "server": "چند فاصله"
+    },
+    {
+      "name": "zwnj_is_preserved",
+      "input": "می‌روم",
+      "server": "می‌روم"
+    },
+    {
+      "name": "empty_after_trim",
+      "input": "   ",
+      "server": ""
+    },
+    {
+      "name": "single_newline",
+      "input": "خط\nجدید",
+      "server": "خط جدید",
+      "app_today": "خط\nجدید"
+    },
+    {
+      "name": "blank_lines",
+      "input": "سلام\n\n\nدنیا",
+      "server": "سلام دنیا",
+      "app_today": "سلام\n\nدنیا"
+    },
+    {
+      "name": "alef_maksura",
+      "input": "مصطفى",
+      "server": "مصطفى",
+      "app_today": "مصطفی"
+    },
+    {
+      "name": "tatweel",
+      "input": "ســلام",
+      "server": "ســلام",
+      "app_today": "سلام"
+    },
+    {
+      "name": "diacritic_fatha",
+      "input": "سَلام",
+      "server": "سَلام",
+      "app_today": "سلام"
+    },
+    {
+      "name": "heh_with_yeh_above",
+      "input": "خانۀ ما",
+      "server": "خانۀ ما",
+      "app_today": "خانه ما",
+      "note": "The app maps U+06C0 to U+0647 U+0654 and then strips U+0654 as a combining mark, so the effective result is a plain heh (latent app bug)."
+    }
+  ]
+}

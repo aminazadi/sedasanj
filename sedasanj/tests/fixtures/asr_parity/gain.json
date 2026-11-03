@@ -1,0 +1,117 @@
+{
+  "description": "compute_gain_db(measured_lufs, target_lufs, max_gain_db) vectors (app/services/audio.py). Returns [gain_db, silent].",
+  "cases": [
+    {
+      "measured_lufs": null,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": true
+    },
+    {
+      "measured_lufs": "nan",
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": true
+    },
+    {
+      "measured_lufs": -60,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": true
+    },
+    {
+      "measured_lufs": -55.1,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": true
+    },
+    {
+      "measured_lufs": -55,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 30.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -54.9,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 30.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -40,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 20.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -23,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 3.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -20.4,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -20,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -19.8,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": 0.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -15,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": -5.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -10,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": -6.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": 0,
+      "target_lufs": -20.0,
+      "max_gain_db": 30.0,
+      "gain_db": -6.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -50,
+      "target_lufs": -20.0,
+      "max_gain_db": 10.0,
+      "gain_db": 10.0,
+      "silent": false
+    },
+    {
+      "measured_lufs": -50,
+      "target_lufs": -30.0,
+      "max_gain_db": 30.0,
+      "gain_db": 20.0,
+      "silent": false
+    }
+  ]
+}

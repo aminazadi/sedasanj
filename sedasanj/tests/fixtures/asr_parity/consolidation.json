@@ -1,0 +1,461 @@
+{
+  "description": "consolidate_segments contract vectors (worker_asr/main.py). Generated from the server implementation and reviewed by hand; the on-device port must reproduce them.",
+  "cases": [
+    {
+      "name": "word_sized_parts_merge_per_channel",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 300,
+          "text": " سلام ",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 350,
+          "end_ms": 700,
+          "text": "وقت بخیر",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 1,
+          "start_ms": 900,
+          "end_ms": 1300,
+          "text": "بفرمایید",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 1,
+          "start_ms": 1400,
+          "end_ms": 1800,
+          "text": "در خدمتم",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 700,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": "native"
+        },
+        {
+          "channel": 1,
+          "start_ms": 900,
+          "end_ms": 1800,
+          "text": "بفرمایید در خدمتم",
+          "confidence": null,
+          "timestamp_source": "native"
+        }
+      ]
+    },
+    {
+      "name": "gap_larger_than_merge_gap_keeps_turns_apart",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 1701,
+          "end_ms": 2000,
+          "text": "خداحافظ",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 1701,
+          "end_ms": 2000,
+          "text": "خداحافظ",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ]
+    },
+    {
+      "name": "gap_exactly_merge_gap_still_merges",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 1700,
+          "end_ms": 2000,
+          "text": "خداحافظ",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 2000,
+          "text": "سلام خداحافظ",
+          "confidence": null,
+          "timestamp_source": "native"
+        }
+      ]
+    },
+    {
+      "name": "other_channel_in_between_prevents_merge",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 1,
+          "start_ms": 600,
+          "end_ms": 900,
+          "text": "بله",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 1000,
+          "end_ms": 1400,
+          "text": "ممنون",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 1,
+          "start_ms": 600,
+          "end_ms": 900,
+          "text": "بله",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 1000,
+          "end_ms": 1400,
+          "text": "ممنون",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ]
+    },
+    {
+      "name": "exact_duplicate_overlap_is_suppressed",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1000,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 500,
+          "end_ms": 1200,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1200,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": "native"
+        }
+      ]
+    },
+    {
+      "name": "suffix_overlap_keeps_previous_text",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1000,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 500,
+          "end_ms": 1200,
+          "text": "وقت بخیر",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1200,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": "native"
+        }
+      ]
+    },
+    {
+      "name": "prefix_overlap_keeps_longer_current_text",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1000,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 500,
+          "end_ms": 1500,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1500,
+          "text": "سلام وقت بخیر",
+          "confidence": null,
+          "timestamp_source": "native"
+        }
+      ]
+    },
+    {
+      "name": "repeat_after_pause_is_kept_as_new_turn",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "بله",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 3000,
+          "end_ms": 3400,
+          "text": "بله",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "بله",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 3000,
+          "end_ms": 3400,
+          "text": "بله",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ]
+    },
+    {
+      "name": "confidence_is_the_minimum_and_ignores_none",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 400,
+          "text": "الف",
+          "confidence": 0.9,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 450,
+          "end_ms": 800,
+          "text": "ب",
+          "confidence": 0.6,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 850,
+          "end_ms": 1200,
+          "text": "ج",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 1200,
+          "text": "الف ب ج",
+          "confidence": 0.6,
+          "timestamp_source": "native"
+        }
+      ]
+    },
+    {
+      "name": "blank_text_dropped_negative_start_clamped_input_unsorted",
+      "merge_gap_ms": 1200,
+      "input": [
+        {
+          "channel": 1,
+          "start_ms": 2000,
+          "end_ms": 2400,
+          "text": "خوب",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": -50,
+          "end_ms": 300,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 0,
+          "start_ms": 400,
+          "end_ms": 500,
+          "text": "   ",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 300,
+          "text": "سلام",
+          "confidence": null,
+          "timestamp_source": null
+        },
+        {
+          "channel": 1,
+          "start_ms": 2000,
+          "end_ms": 2400,
+          "text": "خوب",
+          "confidence": null,
+          "timestamp_source": null
+        }
+      ]
+    },
+    {
+      "name": "timestamp_source_and_zero_gap_setting",
+      "merge_gap_ms": 0,
+      "input": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 500,
+          "text": "الف",
+          "confidence": null,
+          "timestamp_source": "vad_window"
+        },
+        {
+          "channel": 0,
+          "start_ms": 500,
+          "end_ms": 900,
+          "text": "ب",
+          "confidence": null,
+          "timestamp_source": "vad_window"
+        },
+        {
+          "channel": 0,
+          "start_ms": 901,
+          "end_ms": 1200,
+          "text": "ج",
+          "confidence": null,
+          "timestamp_source": "vad_window"
+        }
+      ],
+      "expected": [
+        {
+          "channel": 0,
+          "start_ms": 0,
+          "end_ms": 900,
+          "text": "الف ب",
+          "confidence": null,
+          "timestamp_source": "vad_window"
+        },
+        {
+          "channel": 0,
+          "start_ms": 901,
+          "end_ms": 1200,
+          "text": "ج",
+          "confidence": null,
+          "timestamp_source": "vad_window"
+        }
+      ]
+    }
+  ]
+}

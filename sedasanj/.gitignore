@@ -18,4 +18,9 @@ deploy/data/
 models/
 *.wav
 !tests/fixtures/*.wav
+
+# ASR golden set: real recordings, references and system outputs stay out of git.
+test_data/asr_golden/audio/
+test_data/asr_golden/manifest.json
+test_data/asr_golden/hypotheses/
 asterisk-module-*.zip

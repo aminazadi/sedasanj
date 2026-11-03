@@ -1,0 +1,16 @@
+{
+  "clips": [
+    {
+      "id": "clip01",
+      "audio": "audio/clip01.wav",
+      "reference": "سلام وقت بخیر جلسه را شروع می‌کنیم",
+      "tags": ["meeting", "clean"]
+    },
+    {
+      "id": "clip02",
+      "audio": "audio/clip02.wav",
+      "reference": "شماره پیگیری ۱۲۳۴ را یادداشت کنید",
+      "tags": ["phone-8k", "numbers"]
+    }
+  ]
+}

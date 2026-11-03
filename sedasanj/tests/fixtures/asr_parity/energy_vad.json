@@ -1,0 +1,116 @@
+{
+  "description": "Server energy-VAD regions (aiservice speech_segmentation.vad_regions, min 0.3 s, padding 0.2 s) for deterministic synthetic signals: float32 sample i is floor.amp*sin(2*pi*floor.freq*i/sr) plus, inside [start,end), amp*sin(2*pi*freq*i/sr).",
+  "sample_rate": 16000,
+  "min_seconds": 0.3,
+  "padding_seconds": 0.2,
+  "cases": [
+    {
+      "name": "bursts_bridge_short_drop_and_quiet",
+      "duration_s": 6.0,
+      "floor": {
+        "amp": 0.002,
+        "freq": 50
+      },
+      "bursts": [
+        {
+          "start": 0.5,
+          "end": 1.5,
+          "amp": 0.3,
+          "freq": 220
+        },
+        {
+          "start": 1.7,
+          "end": 2.4,
+          "amp": 0.3,
+          "freq": 300
+        },
+        {
+          "start": 3.5,
+          "end": 3.6,
+          "amp": 0.3,
+          "freq": 250
+        },
+        {
+          "start": 4.2,
+          "end": 5.9,
+          "amp": 0.05,
+          "freq": 260
+        }
+      ],
+      "expected_regions": [
+        [
+          0.27999999999999997,
+          2.6
+        ],
+        [
+          4.0,
+          6.0
+        ]
+      ]
+    },
+    {
+      "name": "tone_to_end_of_file_is_clamped",
+      "duration_s": 2.0,
+      "floor": {
+        "amp": 0.002,
+        "freq": 50
+      },
+      "bursts": [
+        {
+          "start": 1.0,
+          "end": 2.0,
+          "amp": 0.3,
+          "freq": 220
+        }
+      ],
+      "expected_regions": [
+        [
+          0.79,
+          2.0
+        ]
+      ]
+    },
+    {
+      "name": "digital_silence_has_no_regions",
+      "duration_s": 2.0,
+      "floor": {
+        "amp": 0.0,
+        "freq": 50
+      },
+      "bursts": [],
+      "expected_regions": []
+    },
+    {
+      "name": "gap_longer_than_bridge_stays_two_regions",
+      "duration_s": 4.0,
+      "floor": {
+        "amp": 0.002,
+        "freq": 50
+      },
+      "bursts": [
+        {
+          "start": 0.5,
+          "end": 1.2,
+          "amp": 0.3,
+          "freq": 220
+        },
+        {
+          "start": 2.0,
+          "end": 2.8,
+          "amp": 0.3,
+          "freq": 240
+        }
+      ],
+      "expected_regions": [
+        [
+          0.27999999999999997,
+          1.4
+        ],
+        [
+          1.78,
+          3.02
+        ]
+      ]
+    }
+  ]
+}
