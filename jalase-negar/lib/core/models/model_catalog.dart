@@ -121,8 +121,7 @@ abstract final class ModelCatalog {
       id: 'shenava-koochik',
       repo: 'Shenava-Koochik-v1.0-sherpa-onnx',
       nameFa: 'شنوا کوچیک (۱۱۴M)',
-      descriptionFa:
-          'مدل CTC بزرگ‌تر (حدود ۴۳۸ مگابایت)؛ جایگزین مدل پیشنهادی',
+      descriptionFa: 'مدل CTC بزرگ‌تر (حدود ۴۳۸ مگابایت)؛ جایگزین مدل پیشنهادی',
       modelSize: 458819249,
     ),
     _shenava(

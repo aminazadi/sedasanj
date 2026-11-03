@@ -26,6 +26,34 @@ void main() {
       );
     });
 
+    test('the live draft is named so the full transcript can replace it', () {
+      final live = buildAsrIdentity(
+        modelId: 'm',
+        segmenter: AsrSegmenter.silero,
+        live: true,
+      );
+      expect(live, 'm|device-quiet-gain-v1|segmenter:silero-vad-live');
+      Meeting meeting(String? identity) => Meeting(
+        id: 'a',
+        title: 't',
+        createdAt: DateTime(2026),
+        duration: Duration.zero,
+        audioPath: '/a.wav',
+        sampleRate: 16000,
+        channels: 1,
+        status: MeetingStatus.recorded,
+        asrIdentity: identity,
+      );
+      expect(meeting(live).isLiveDraft, isTrue);
+      expect(meeting(null).isLiveDraft, isFalse);
+      expect(
+        meeting(
+          buildAsrIdentity(modelId: 'm', segmenter: AsrSegmenter.silero),
+        ).isLiveDraft,
+        isFalse,
+      );
+    });
+
     test('server-parity mode uses the server preparation identity', () {
       expect(
         buildAsrIdentity(modelId: 'm', segmenter: AsrSegmenter.serverEnergy),
@@ -35,18 +63,21 @@ void main() {
   });
 
   group('Segment', () {
-    test('rows written before the contract fields default to the device VAD', () {
-      final segment = Segment.fromRow({
-        'channel': 0,
-        't_start_ms': 100,
-        't_end_ms': 900,
-        'text': 'سلام',
-      });
-      expect(segment.timestampSource, TimestampSource.sileroVad);
-      expect(segment.source, 'device');
-      expect(segment.confidence, isNull);
-      expect(segment.speaker, isNull);
-    });
+    test(
+      'rows written before the contract fields default to the device VAD',
+      () {
+        final segment = Segment.fromRow({
+          'channel': 0,
+          't_start_ms': 100,
+          't_end_ms': 900,
+          'text': 'سلام',
+        });
+        expect(segment.timestampSource, TimestampSource.sileroVad);
+        expect(segment.source, 'device');
+        expect(segment.confidence, isNull);
+        expect(segment.speaker, isNull);
+      },
+    );
 
     test('reads the contract fields', () {
       final segment = Segment.fromRow({

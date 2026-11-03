@@ -1,54 +1,373 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
+import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
 import '../../upload/upload_controller.dart';
 import '../application/pipeline_controller.dart';
 import '../data/meeting.dart';
 
-class MeetingsScreen extends ConsumerWidget {
+enum _Filter {
+  all('همه'),
+  active('در حال پردازش'),
+  complete('کامل'),
+  failed('ناموفق');
+
+  const _Filter(this.label);
+
+  final String label;
+
+  bool accepts(Meeting m) => switch (this) {
+    _Filter.all => true,
+    _Filter.active =>
+      m.status != MeetingStatus.complete && m.status != MeetingStatus.failed,
+    _Filter.complete => m.status == MeetingStatus.complete,
+    _Filter.failed => m.status == MeetingStatus.failed,
+  };
+}
+
+bool _matchesQuery(Meeting m, String query) {
+  if (query.isEmpty) return true;
+  final q = toPersianDigits(query.trim());
+  return displayMeetingTitle(m.title).contains(q) ||
+      formatJalaliDay(m.createdAt).contains(q);
+}
+
+class MeetingsScreen extends ConsumerStatefulWidget {
   const MeetingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MeetingsScreen> createState() => _MeetingsScreenState();
+}
+
+class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
+  final _search = TextEditingController();
+  var _query = '';
+  var _filter = _Filter.all;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hidden = ref.watch(pendingDeletesProvider);
     // Narrow watches: reloading the list (status polling, upload ticks) must
     // not rebuild or flash the screen. It only rebuilds when the set/order of
-    // meetings changes; each tile then updates itself.
+    // visible meetings changes; each tile then updates itself.
     final idsKey = ref.watch(
-      meetingsProvider.select((a) => a.value?.map((m) => m.id).join(',')),
+      meetingsProvider.select(
+        (a) => a.value
+            ?.where(
+              (m) =>
+                  !hidden.contains(m.id) &&
+                  _filter.accepts(m) &&
+                  _matchesQuery(m, _query),
+            )
+            .map((m) => m.id)
+            .join(','),
+      ),
+    );
+    final total = ref.watch(
+      meetingsProvider.select(
+        (a) => a.value?.where((m) => !hidden.contains(m.id)).length,
+      ),
     );
     final failed = ref.watch(
       meetingsProvider.select((a) => a.hasError && !a.hasValue),
     );
     if (failed) {
-      return Center(child: Text('خطا: ${ref.read(meetingsProvider).error}'));
-    }
-    if (idsKey == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    final ids = idsKey.isEmpty ? const <String>[] : idsKey.split(',');
-    if (ids.isEmpty) {
-      return const SsEmptyState(
-        title: 'هنوز جلسه‌ای ضبط نشده است',
-        hint: 'برای شروع روی دکمهٔ «ضبط جلسه» پایین صفحه بزنید',
+      return SsEmptyState(
+        title: 'بارگذاری فهرست جلسه‌ها ناموفق بود',
+        hint: 'دوباره تلاش کنید؛ اگر ادامه داشت برنامه را ببندید و باز کنید',
+        action: FilledButton.icon(
+          onPressed: () => ref.invalidate(meetingsProvider),
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('تلاش مجدد'),
+        ),
       );
     }
+    if (idsKey == null || total == null) return const _SkeletonList();
+    if (total == 0) {
+      return SsEmptyState(
+        title: 'هنوز جلسه‌ای ضبط نشده است',
+        hint: 'اولین جلسهٔ خود را ضبط کنید تا متن آن اینجا ظاهر شود',
+        action: FilledButton.icon(
+          onPressed: () => context.push('/record'),
+          icon: const Icon(Icons.mic_none, size: 18),
+          label: const Text('ضبط اولین جلسه'),
+        ),
+      );
+    }
+
+    final ids = idsKey.isEmpty ? const <String>[] : idsKey.split(',');
+    final byId = {
+      for (final m in ref.read(meetingsProvider).value ?? const <Meeting>[])
+        m.id: m,
+    };
+    final now = DateTime.now();
+    final groups = <(String, List<String>)>[];
+    for (final id in ids) {
+      final meeting = byId[id];
+      if (meeting == null) continue;
+      final label = meetingGroupLabel(meeting.createdAt, now);
+      if (groups.isNotEmpty && groups.last.$1 == label) {
+        groups.last.$2.add(id);
+      } else {
+        groups.add((label, [id]));
+      }
+    }
+
     return RefreshIndicator(
       onRefresh: () => ref.refresh(meetingsProvider.future),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: ids.length + 1,
-        findChildIndexCallback: (key) {
-          if (key is! ValueKey<String>) return null;
-          final i = ids.indexOf(key.value);
-          return i < 0 ? null : i + 1;
-        },
-        itemBuilder: (context, index) => index == 0
-            ? const _Header(key: ValueKey('header'))
-            : _MeetingTile(key: ValueKey(ids[index - 1]), id: ids[index - 1]),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          const SliverToBoxAdapter(child: _Header(key: ValueKey('header'))),
+          SliverToBoxAdapter(
+            child: _SearchAndFilters(
+              controller: _search,
+              filter: _filter,
+              onQuery: (v) => setState(() => _query = v),
+              onFilter: (f) => setState(() => _filter = f),
+            ),
+          ),
+          if (ids.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _NoResults(
+                onClear: () => setState(() {
+                  _search.clear();
+                  _query = '';
+                  _filter = _Filter.all;
+                }),
+              ),
+            )
+          else
+            for (final (label, groupIds) in groups)
+              SliverMainAxisGroup(
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _GroupHeaderDelegate(label, groupIds.length),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+                    sliver: SliverList.builder(
+                      itemCount: groupIds.length,
+                      findChildIndexCallback: (key) {
+                        if (key is! ValueKey<String>) return null;
+                        final i = groupIds.indexOf(key.value);
+                        return i < 0 ? null : i;
+                      },
+                      itemBuilder: (context, i) => _MeetingTile(
+                        key: ValueKey(groupIds[i]),
+                        id: groupIds[i],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _GroupHeaderDelegate(this.label, this.count);
+
+  final String label;
+  final int count;
+
+  @override
+  double get minExtent => 38;
+
+  @override
+  double get maxExtent => 38;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final theme = Theme.of(context);
+    return Container(
+      color: SsColors.canvas,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      alignment: AlignmentDirectional.centerStart,
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: SsColors.primaryDark,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(toPersianDigits('$count'), style: theme.textTheme.labelSmall),
+          const SizedBox(width: 10),
+          const Expanded(child: Divider()),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_GroupHeaderDelegate old) =>
+      old.label != label || old.count != count;
+}
+
+class _SearchAndFilters extends StatelessWidget {
+  const _SearchAndFilters({
+    required this.controller,
+    required this.filter,
+    required this.onQuery,
+    required this.onFilter,
+  });
+
+  final TextEditingController controller;
+  final _Filter filter;
+  final ValueChanged<String> onQuery;
+  final ValueChanged<_Filter> onFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    OutlineInputBorder border(Color c) => OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: c),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+          child: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => TextField(
+              controller: controller,
+              onChanged: onQuery,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'جست‌وجو در عنوان یا تاریخ جلسه',
+                filled: true,
+                fillColor: Colors.white,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                prefixIcon: const Icon(Icons.search, color: SsColors.neutral),
+                suffixIcon: value.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'پاک کردن',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () {
+                          controller.clear();
+                          onQuery('');
+                        },
+                      ),
+                border: border(SsColors.line),
+                enabledBorder: border(SsColors.line),
+                focusedBorder: border(SsColors.primary),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 36,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _Filter.values.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final f = _Filter.values[i];
+              return _FilterPill(
+                label: f.label,
+                selected: f == filter,
+                onTap: () => onFilter(f),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+}
+
+class _FilterPill extends StatelessWidget {
+  const _FilterPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? SsColors.primary : Colors.white,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: selected ? SsColors.primary : SsColors.line),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Center(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: selected ? SsColors.canvas : SsColors.ink,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoResults extends StatelessWidget {
+  const _NoResults({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.search_off, size: 44, color: SsColors.accent),
+          const SizedBox(height: 12),
+          Text('جلسه‌ای پیدا نشد', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'عبارت جست‌وجو یا فیلتر را تغییر دهید',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          TextButton(onPressed: onClear, child: const Text('پاک کردن فیلترها')),
+        ],
       ),
     );
   }
@@ -72,8 +391,38 @@ class _Header extends ConsumerWidget {
         : null;
     if (notice == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: _QueueNotice(notice),
+    );
+  }
+}
+
+class _QueueNotice extends StatelessWidget {
+  const _QueueNotice(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: scheme.errorContainer),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: scheme.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.error),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -82,12 +431,6 @@ class _MeetingTile extends ConsumerWidget {
   const _MeetingTile({super.key, required this.id});
 
   final String id;
-
-  Color _tone(MeetingStatus status) => switch (status) {
-    MeetingStatus.complete => SsColors.success,
-    MeetingStatus.failed => SsColors.danger,
-    _ => SsColors.neutral,
-  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -99,223 +442,514 @@ class _MeetingTile extends ConsumerWidget {
       ),
     );
     if (meeting == null) return const SizedBox.shrink();
-    // `.value` keeps the previous progress while the provider reloads, so the
-    // progress row never flickers away between ticks.
-    final counts = ref.watch(uploadProgressProvider(id).select((a) => a.value));
-    final progress =
-        counts == null ||
-            counts.$2 == 0 ||
-            meeting.status == MeetingStatus.complete
-        ? null
-        : counts;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SsCard(
-        padding: EdgeInsets.zero,
-        onTap: () => context.push('/meeting/${meeting.id}'),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Status accent edge on the start (right) side.
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                width: 4,
-                color: switch (meeting.status) {
-                  MeetingStatus.complete => SsColors.primary,
-                  MeetingStatus.failed => SsColors.danger,
-                  _ => SsColors.accent,
-                },
+    final preview =
+        ref.watch(meetingPreviewProvider(id).select((a) => a.value)) ?? '';
+    final canSwipe =
+        meeting.status != MeetingStatus.recording &&
+        meeting.status != MeetingStatus.transcribing;
+
+    final card = SsCard(
+      ripple: true,
+      elevated: true,
+      color: Colors.white,
+      padding: EdgeInsets.zero,
+      onTap: () => context.push('/meeting/${meeting.id}'),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 4, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Hero(
+                    tag: 'meeting-title-${meeting.id}',
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: Text(
+                        displayMeetingTitle(meeting.title),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                _menu(context, ref, meeting, preview),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _Meta(
+                      Icons.calendar_today_outlined,
+                      '${formatJalaliDay(meeting.createdAt)}  ·  '
+                      '${formatClock(meeting.createdAt)}',
+                    ),
+                  ),
+                  _DurationChip(formatDuration(meeting.duration)),
+                ],
               ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(14, 6, 4, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              displayMeetingTitle(meeting.title),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall,
-                            ),
-                          ),
-                          _menu(context, ref, meeting),
-                        ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(end: 10),
-                        child: Row(
-                          children: [
-                            _Meta(
-                              Icons.calendar_today_outlined,
-                              '${formatJalaliDay(meeting.createdAt)}  ·  '
-                              '${formatClock(meeting.createdAt)}',
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(height: 1, color: SsColors.line),
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(
-                          end: 10,
-                          top: 10,
-                          bottom: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            SsBadge(
-                              _statusLabel(meeting.status),
-                              color: _tone(meeting.status),
-                              icon: _statusIcon(meeting.status),
-                              leading: _isBusy(meeting.status)
-                                  ? const SsProcessingMark(size: 14)
-                                  : null,
-                            ),
-                            if (progress != null) ...[
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      toPersianDigits(
-                                        'ارسال ${progress.$1} از ${progress.$2} تکه',
-                                      ),
-                                      style: theme.textTheme.labelSmall,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    LinearProgressIndicator(
-                                      value: progress.$1 / progress.$2,
-                                      minHeight: 3,
-                                      color: SsColors.primary,
-                                      backgroundColor: SsColors.line,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                            ] else
-                              const Spacer(),
-                            _Meta(
-                              Icons.timer_outlined,
-                              formatDuration(meeting.duration),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+            ),
+            if (preview.isNotEmpty)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 12, top: 10),
+                child: Text(
+                  toPersianDigits(preview),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 13,
+                    height: 1.65,
+                    color: SsColors.ink.withValues(alpha: 0.8),
                   ),
                 ),
               ),
-            ],
-          ),
+            if (meeting.status != MeetingStatus.complete)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 12, top: 12),
+                child: _StatusArea(meeting: meeting),
+              ),
+          ],
         ),
       ),
     );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: canSwipe
+          ? Dismissible(
+              key: ValueKey('dismiss-${meeting.id}'),
+              direction: DismissDirection.endToStart,
+              background: const _SwipeDeleteBackground(),
+              onDismissed: (_) => _deleteWithUndo(context, meeting),
+              child: card,
+            )
+          : card,
+    );
   }
 
-  Widget _menu(BuildContext context, WidgetRef ref, Meeting meeting) {
+  /// Hides the tile now and deletes for real once the undo snack bar closes
+  /// without "restore", so a swipe never loses audio instantly.
+  void _deleteWithUndo(BuildContext context, Meeting meeting) {
+    // The tile is gone after the swipe; keep what outlives it.
+    final container = ProviderScope.containerOf(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final pending = container.read(pendingDeletesProvider.notifier);
+    pending.hide(meeting.id);
+    messenger.clearSnackBars();
+    messenger
+        .showSnackBar(
+          SnackBar(
+            content: const Text('جلسه حذف شد'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'بازگردانی',
+              onPressed: () => pending.restore(meeting.id),
+            ),
+          ),
+        )
+        .closed
+        .then((reason) async {
+          if (reason == SnackBarClosedReason.action) return;
+          await container
+              .read(pipelineControllerProvider(meeting.id).notifier)
+              .deleteMeeting();
+          pending.restore(meeting.id);
+        });
+  }
+
+  Widget _menu(
+    BuildContext context,
+    WidgetRef ref,
+    Meeting meeting,
+    String preview,
+  ) {
+    TextStyle? style(Color? color) =>
+        Theme.of(context).textTheme.labelMedium?.copyWith(color: color);
+    PopupMenuItem<String> item(
+      String value,
+      IconData icon,
+      String label, {
+      Color? color,
+    }) => PopupMenuItem(
+      value: value,
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color ?? SsColors.ink),
+          const SizedBox(width: 10),
+          Text(label, style: style(color)),
+        ],
+      ),
+    );
+
     return SizedBox(
-      width: 32,
-      height: 32,
+      width: 36,
+      height: 36,
       child: PopupMenuButton<String>(
         padding: EdgeInsets.zero,
         iconSize: 20,
         icon: const Icon(Icons.more_vert, color: SsColors.neutral),
         tooltip: 'گزینه‌ها',
-        onSelected: (value) async {
-          if (value != 'delete') return;
-          final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('حذف جلسه'),
-              content: Text(
-                '«${meeting.title}» به همراه فایل صوتی، متن و صورت‌جلسه حذف شود؟',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('انصراف'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('حذف'),
-                ),
-              ],
-            ),
-          );
-          if (confirmed == true) {
-            await ref
-                .read(pipelineControllerProvider(meeting.id).notifier)
-                .deleteMeeting();
-          }
-        },
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: SsColors.line),
+        ),
         constraints: const BoxConstraints(minWidth: 0),
         position: PopupMenuPosition.under,
+        onSelected: (value) => switch (value) {
+          'rename' => _rename(context, ref, meeting),
+          'share' => _share(ref, meeting),
+          _ => _confirmDelete(context, ref, meeting),
+        },
         itemBuilder: (context) => [
-          PopupMenuItem(
-            value: 'delete',
-            height: 38,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.delete_outline,
-                  size: 17,
-                  color: SsColors.danger,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'حذف جلسه',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelMedium?.copyWith(color: SsColors.danger),
-                ),
-              ],
-            ),
+          item('rename', Icons.edit_outlined, 'تغییر نام'),
+          if (preview.isNotEmpty)
+            item('share', Icons.ios_share, 'اشتراک‌گذاری متن'),
+          item(
+            'delete',
+            Icons.delete_outline,
+            'حذف جلسه',
+            color: SsColors.danger,
           ),
         ],
       ),
     );
   }
 
-  bool _isBusy(MeetingStatus status) =>
-      status == MeetingStatus.transcribing ||
-      status == MeetingStatus.uploading ||
-      status == MeetingStatus.processing;
+  Future<void> _rename(
+    BuildContext context,
+    WidgetRef ref,
+    Meeting meeting,
+  ) async {
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) =>
+          _RenameDialog(initial: displayMeetingTitle(meeting.title)),
+    );
+    if (title == null) return;
+    await ref
+        .read(pipelineControllerProvider(meeting.id).notifier)
+        .renameMeeting(title);
+  }
 
-  IconData _statusIcon(MeetingStatus status) => switch (status) {
+  Future<void> _share(WidgetRef ref, Meeting meeting) async {
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    final segments = await repo.segments(meeting.id);
+    final text = segments
+        .map((s) => s.text.trim())
+        .where((t) => t.isNotEmpty)
+        .join('\n');
+    if (text.isEmpty) return;
+    await SharePlus.instance.share(ShareParams(text: text));
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    Meeting meeting,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف جلسه'),
+        content: Text(
+          '«${displayMeetingTitle(meeting.title)}» به همراه فایل صوتی، متن و '
+          'صورت‌جلسه حذف شود؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref
+          .read(pipelineControllerProvider(meeting.id).notifier)
+          .deleteMeeting();
+    }
+  }
+}
+
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تغییر نام جلسه'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 80,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (v) => Navigator.pop(context, v),
+        decoration: const InputDecoration(hintText: 'عنوان جلسه'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('انصراف'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('ذخیره'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SwipeDeleteBackground extends StatelessWidget {
+  const _SwipeDeleteBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(color: SsColors.danger),
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      alignment: AlignmentDirectional.centerEnd,
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'حذف',
+            style: TextStyle(
+              fontFamily: 'Vazirmatn',
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(width: 8),
+          Icon(Icons.delete_outline, color: Colors.white),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom area of a tile that is not complete: progress while the pipeline is
+/// running, a retry for failures, otherwise a plain status badge.
+class _StatusArea extends ConsumerWidget {
+  const _StatusArea({required this.meeting});
+
+  final Meeting meeting;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = meeting.status;
+    if (status == MeetingStatus.failed) {
+      return _FailedPanel(meeting: meeting);
+    }
+    // `.value` keeps the previous progress while the provider reloads, so the
+    // progress row never flickers away between ticks.
+    final counts = ref.watch(
+      uploadProgressProvider(meeting.id).select((a) => a.value),
+    );
+    final uploading = counts != null && counts.$2 > 0 && counts.$1 < counts.$2;
+
+    if (status == MeetingStatus.transcribing) {
+      return _TranscribeProgress(id: meeting.id);
+    }
+    if (status == MeetingStatus.uploading ||
+        (uploading && status != MeetingStatus.processing)) {
+      final sent = counts?.$1 ?? 0;
+      final all = counts?.$2 ?? 0;
+      return _ProgressPanel(
+        label: all == 0
+            ? 'در انتظار ارسال'
+            : toPersianDigits('ارسال $sent از $all تکه'),
+        value: all == 0 ? null : sent / all,
+        busy: true,
+      );
+    }
+    if (status == MeetingStatus.processing) {
+      return const _ProgressPanel(
+        label: 'در حال پردازش در صداسنج',
+        value: null,
+        busy: true,
+      );
+    }
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: SsBadge(
+        _statusLabel(status),
+        color: status == MeetingStatus.recording
+            ? SsColors.danger
+            : SsColors.neutral,
+        icon: _statusIcon(status),
+      ),
+    );
+  }
+
+  static IconData _statusIcon(MeetingStatus status) => switch (status) {
     MeetingStatus.recording => Icons.fiber_manual_record,
     MeetingStatus.recorded => Icons.audiotrack,
-    MeetingStatus.transcribing => Icons.hourglass_top,
     MeetingStatus.transcribed => Icons.notes,
-    MeetingStatus.uploading => Icons.cloud_upload_outlined,
     MeetingStatus.uploaded => Icons.cloud_done_outlined,
-    MeetingStatus.processing => Icons.hourglass_top,
-    MeetingStatus.complete => Icons.task_alt,
-    MeetingStatus.failed => Icons.error_outline,
+    _ => Icons.circle_outlined,
   };
 
-  String _statusLabel(MeetingStatus status) => switch (status) {
+  static String _statusLabel(MeetingStatus status) => switch (status) {
     MeetingStatus.recording => 'در حال ضبط',
     MeetingStatus.recorded => 'ضبط‌شده',
-    MeetingStatus.transcribing => 'در حال رونویسی',
     MeetingStatus.transcribed => 'رونویسی‌شده',
-    MeetingStatus.uploading => 'در حال ارسال',
     MeetingStatus.uploaded => 'ارسال‌شده',
-    MeetingStatus.processing => 'در حال پردازش',
-    MeetingStatus.complete => 'کامل',
-    MeetingStatus.failed => 'ناموفق',
+    _ => '',
   };
 }
 
-/// Small icon + text pair for a tile's date / time / duration line.
+class _TranscribeProgress extends ConsumerWidget {
+  const _TranscribeProgress({required this.id});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final progress = ref.watch(
+      pipelineControllerProvider(id).select((s) => s.transcribeProgress),
+    );
+    final known = progress > 0;
+    return _ProgressPanel(
+      label: known
+          ? toPersianDigits('در حال رونویسی · ${(progress * 100).round()}٪')
+          : 'در حال رونویسی',
+      value: known ? progress.clamp(0.0, 1.0) : null,
+      busy: true,
+    );
+  }
+}
+
+class _ProgressPanel extends StatelessWidget {
+  const _ProgressPanel({
+    required this.label,
+    required this.value,
+    required this.busy,
+  });
+
+  final String label;
+  final double? value;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(color: SsColors.selected),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              if (busy) ...[
+                const SsProcessingMark(size: 14),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: SsColors.primaryDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: value,
+            minHeight: 5,
+            color: SsColors.primary,
+            backgroundColor: Colors.white,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FailedPanel extends ConsumerWidget {
+  const _FailedPanel({required this.meeting});
+
+  final Meeting meeting;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final error = meeting.error;
+    // Stored errors may be raw exceptions; only show human (Persian) text.
+    final message = error != null && RegExp(r'[؀-ۿ]').hasMatch(error)
+        ? error
+        : 'پردازش این جلسه ناموفق بود؛ دوباره تلاش کنید.';
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, size: 18, color: SsColors.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: SsColors.danger),
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: SsColors.danger,
+              visualDensity: VisualDensity.compact,
+            ),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final provider = pipelineControllerProvider(meeting.id);
+              await ref.read(provider.notifier).transcribeMeeting();
+              final err = ref.read(provider).error;
+              if (err != null) {
+                messenger.showSnackBar(SnackBar(content: Text(err)));
+              }
+            },
+            child: const Text('تلاش مجدد'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small icon + text pair for a tile's date / time line.
 class _Meta extends StatelessWidget {
   const _Meta(this.icon, this.text);
 
@@ -329,25 +963,116 @@ class _Meta extends StatelessWidget {
       children: [
         Icon(icon, size: 14, color: SsColors.neutral),
         const SizedBox(width: 5),
-        Text(text, style: Theme.of(context).textTheme.bodySmall),
+        Flexible(
+          child: Text(
+            text,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
       ],
     );
   }
 }
 
-class _QueueNotice extends StatelessWidget {
-  const _QueueNotice(this.text);
+class _DurationChip extends StatelessWidget {
+  const _DurationChip(this.text);
 
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 8),
-    child: SsCard(
-      child: Text(
-        text,
-        style: TextStyle(color: Theme.of(context).colorScheme.error),
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+      decoration: BoxDecoration(color: SsColors.selected),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.timer_outlined, size: 13, color: SsColors.primary),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: SsColors.primaryDark,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
-    ),
+    );
+  }
+}
+
+/// Pulsing placeholder cards shown while the list first loads.
+class _SkeletonList extends StatefulWidget {
+  const _SkeletonList();
+
+  @override
+  State<_SkeletonList> createState() => _SkeletonListState();
+}
+
+class _SkeletonListState extends State<_SkeletonList>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'در حال بارگذاری جلسه‌ها',
+      child: ExcludeSemantics(
+        child: ListView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(12),
+          itemCount: 5,
+          itemBuilder: (context, _) => FadeTransition(
+            opacity: Tween(begin: 0.45, end: 1.0).animate(_c),
+            child: Container(
+              height: 104,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: SsColors.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _bar(150, 14),
+                  const SizedBox(height: 10),
+                  _bar(100, 10),
+                  const SizedBox(height: 14),
+                  _bar(double.infinity, 10),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bar(double width, double height) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(color: SsColors.selected),
   );
 }

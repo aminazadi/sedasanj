@@ -124,7 +124,8 @@ class PipelineController extends Notifier<PipelineState> {
     required AsrSegmenter segmenter,
   }) async {
     final recognised = <TranscriptSegment>[];
-    final denoiserPath = segmenter == AsrSegmenter.silero &&
+    final denoiserPath =
+        segmenter == AsrSegmenter.silero &&
             await store.isInstalled(denoiserSpec)
         ? store.filePath(denoiserSpec, denoiserSpec.files[0])
         : null;
@@ -188,8 +189,7 @@ class PipelineController extends Notifier<PipelineState> {
             endMs: turn.endMs,
             text: turn.text,
             confidence: turn.confidence,
-            timestampSource:
-                turn.timestampSource ?? TimestampSource.sileroVad,
+            timestampSource: turn.timestampSource ?? TimestampSource.sileroVad,
           ),
       ];
       await repo.replaceSegments(meetingId, segments);
@@ -242,6 +242,17 @@ class PipelineController extends Notifier<PipelineState> {
     }
   }
 
+  Future<void> renameMeeting(String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return;
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    final meeting = await repo.byId(meetingId);
+    if (meeting == null) return;
+    await repo.update(meeting.copyWith(title: trimmed, error: meeting.error));
+    ref.invalidate(meetingsProvider);
+    ref.invalidate(meetingDetailProvider(meetingId));
+  }
+
   Future<void> deleteMeeting() async {
     final repo = await ref.read(meetingRepositoryProvider.future);
     final meeting = await repo.byId(meetingId);
@@ -270,6 +281,35 @@ final meetingsProvider = FutureProvider<List<Meeting>>((ref) async {
   final repo = await ref.watch(meetingRepositoryProvider.future);
   return repo.all();
 });
+
+/// One-line transcript preview of a meeting for the list; reloads when the
+/// meeting's status changes (e.g. transcription finished).
+final meetingPreviewProvider = FutureProvider.family<String, String>((
+  ref,
+  meetingId,
+) async {
+  ref.watch(
+    meetingsProvider.select(
+      (a) => a.value?.where((m) => m.id == meetingId).firstOrNull?.status,
+    ),
+  );
+  final repo = await ref.watch(meetingRepositoryProvider.future);
+  return repo.previewText(meetingId);
+});
+
+/// Meetings swiped away in the list whose deletion is still undoable.
+class PendingDeletes extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {};
+
+  void hide(String id) => state = {...state, id};
+
+  void restore(String id) => state = {...state}..remove(id);
+}
+
+final pendingDeletesProvider = NotifierProvider<PendingDeletes, Set<String>>(
+  PendingDeletes.new,
+);
 
 class MeetingDetail {
   const MeetingDetail({required this.meeting, required this.segments});

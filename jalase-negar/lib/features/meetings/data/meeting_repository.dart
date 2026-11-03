@@ -7,8 +7,9 @@ import '../../../core/audio/wav.dart';
 import '../../../core/db/app_database.dart';
 import '../../upload/upload_queue.dart';
 import 'meeting.dart';
+import 'transcript_store.dart';
 
-class MeetingRepository implements UploadStore {
+class MeetingRepository implements UploadStore, TranscriptStore {
   MeetingRepository(this._db);
 
   final AppDatabase _db;
@@ -69,9 +70,55 @@ class MeetingRepository implements UploadStore {
     return rows.map(Segment.fromRow).toList();
   }
 
+  /// First non-empty segment texts in time order, for the list preview.
+  Future<String> previewText(String meetingId, {int limit = 4}) async {
+    final rows = await _db.db.query(
+      'segments',
+      columns: ['text'],
+      where: "meeting_id = ? AND TRIM(text) != ''",
+      whereArgs: [meetingId],
+      orderBy: 't_start_ms ASC',
+      limit: limit,
+    );
+    return rows.map((r) => (r['text'] as String).trim()).join(' ');
+  }
+
+  @override
   Future<void> replaceSegments(String meetingId, List<Segment> segments) async {
     final batch = _db.db.batch();
     batch.delete('segments', where: 'meeting_id = ?', whereArgs: [meetingId]);
+    for (final s in segments) {
+      batch.insert('segments', {
+        'meeting_id': meetingId,
+        'channel': s.channel,
+        't_start_ms': s.startMs,
+        't_end_ms': s.endMs,
+        'text': s.text,
+        'confidence': s.confidence,
+        'speaker': s.speaker,
+        'timestamp_source': s.timestampSource,
+        'source': s.source,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Records how the stored transcript was produced (ASR parity identity).
+  @override
+  Future<void> setAsrIdentity(String meetingId, String identity) =>
+      _db.db.update(
+        'meetings',
+        {'asr_identity': identity},
+        where: 'id = ?',
+        whereArgs: [meetingId],
+      );
+
+  /// Adds segments after the ones already stored (live draft written while
+  /// the recording is still running), in one transaction.
+  @override
+  Future<void> appendSegments(String meetingId, List<Segment> segments) async {
+    if (segments.isEmpty) return;
+    final batch = _db.db.batch();
     for (final s in segments) {
       batch.insert('segments', {
         'meeting_id': meetingId,

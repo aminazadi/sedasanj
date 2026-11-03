@@ -77,3 +77,16 @@ String displayMeetingTitle(String title) {
   }
   return toPersianDigits(title);
 }
+
+/// Section label for the meetings list: relative for the last week, then the
+/// Jalali month.
+String meetingGroupLabel(DateTime dateTime, DateTime now) {
+  final day = DateTime.utc(dateTime.year, dateTime.month, dateTime.day);
+  final today = DateTime.utc(now.year, now.month, now.day);
+  final diff = today.difference(day).inDays;
+  if (diff <= 0) return 'امروز';
+  if (diff == 1) return 'دیروز';
+  if (diff < 7) return 'این هفته';
+  final f = Jalali.fromDateTime(dateTime).formatter;
+  return toPersianDigits('${f.mN} ${f.yyyy}');
+}

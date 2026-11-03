@@ -47,7 +47,18 @@ class MeetingDetailScreen extends ConsumerWidget {
             : pipeline.liveTranscript;
 
         return Scaffold(
-          appBar: SsAppBar(title: Text(data.meeting.title)),
+          appBar: SsAppBar(
+            title: Hero(
+              tag: 'meeting-title-${data.meeting.id}',
+              child: Material(
+                type: MaterialType.transparency,
+                child: Text(
+                  data.meeting.title,
+                  style: Theme.of(context).appBarTheme.titleTextStyle,
+                ),
+              ),
+            ),
+          ),
           bottomNavigationBar: AudioWaveformPlayer(
             path: data.meeting.audioPath,
             title: data.meeting.title,
@@ -140,6 +151,8 @@ class _TranscriptionHeader extends StatelessWidget {
                 ? liveWordCount == 0
                       ? 'شنوا در حال شنیدن و تحلیل فایل است… $percent٪'
                       : 'رونویسی زنده: $liveWordCount کلمه تا این لحظه — $percent٪'
+                : meeting.isLiveDraft && hasTranscript
+                ? 'این متن پیش‌نویس زنده‌ی زمان ضبط است؛ ممکن است جمله‌های کم‌صدا یا ناقص داشته باشد. برای متن دقیق‌تر، رونویسی کامل را اجرا کنید.'
                 : hasTranscript
                 ? 'رونویسی انجام شد؛ متن زیر خروجی مستقیم صوت است.'
                 : 'فایل صوتی آماده است. برای شروع، تبدیل دقیق را اجرا کنید.',
@@ -155,7 +168,13 @@ class _TranscriptionHeader extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onTranscribe,
                 icon: const Icon(Icons.transcribe),
-                label: Text(hasTranscript ? 'رونویسی دوباره' : 'شروع رونویسی'),
+                label: Text(
+                  meeting.isLiveDraft && hasTranscript
+                      ? 'رونویسی کامل (جایگزین پیش‌نویس)'
+                      : hasTranscript
+                      ? 'رونویسی دوباره'
+                      : 'شروع رونویسی',
+                ),
               ),
             ),
           ],

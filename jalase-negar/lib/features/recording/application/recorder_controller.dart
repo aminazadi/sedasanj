@@ -18,6 +18,8 @@ import '../../meetings/data/meeting.dart';
 import '../../meetings/data/meeting_repository.dart';
 import '../../upload/upload_controller.dart';
 import 'live_audio_waveform.dart';
+import 'live_engine_provider.dart';
+import 'live_transcript_session.dart';
 
 /// Meetings are recorded mono at 16 kHz, the native rate of the ASR models
 /// and of the upload format, so nothing needs resampling downstream.
@@ -88,6 +90,22 @@ class RecorderState {
 class RecorderController extends Notifier<RecorderState> {
   /// Repaint the waveform directly without rebuilding the recording screen.
   final waveform = LiveAudioWaveform(sampleRate: kRecordSampleRate);
+
+  /// Live transcript of the running recording; like [waveform], separate from
+  /// [RecorderState] so a new line does not rebuild the whole screen.
+  final ValueNotifier<LiveTranscriptState> live =
+      ValueNotifier<LiveTranscriptState>(const LiveTranscriptState());
+  LiveTranscriptSession? _live;
+  VoidCallback? _liveListener;
+
+  /// Whether the live panel has anything to show; changes rarely, so the
+  /// screen can re-layout on it without following every new line.
+  final ValueNotifier<bool> liveVisible = ValueNotifier<bool>(false);
+
+  void _setLive(LiveTranscriptState value) {
+    live.value = value;
+    liveVisible.value = value.phase != LivePhase.off || value.lines.isNotEmpty;
+  }
 
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _subscription;
@@ -244,6 +262,7 @@ class RecorderController extends Notifier<RecorderState> {
       _repo = repo;
       _meetingId = meetingId;
 
+      await _startLive(repo, meetingId);
       final warning = await RecordingService.start();
       final stream = await recorder.startStream(
         RecordConfig(
@@ -286,6 +305,7 @@ class RecorderController extends Notifier<RecorderState> {
     await recorder.dispose();
     _recorder = null;
     await RecordingService.stop();
+    await _disposeLive();
     await _stateSubscription?.cancel();
     _stateSubscription = null;
     try {
@@ -314,6 +334,7 @@ class RecorderController extends Notifier<RecorderState> {
     // Both writers swallow no errors: a failed write surfaces through the
     // returned future and stops the recording with the audio kept so far.
     _writer?.add(pcm);
+    _live?.feed(pcm);
     _chunks?.add(pcm).catchError((Object e) => _fail('خطا در نوشتن فایل: $e'));
   }
 
@@ -324,6 +345,7 @@ class RecorderController extends Notifier<RecorderState> {
     }
     if (recorderState == RecordState.pause && !_userPaused) {
       waveform.clear();
+      _live?.pause();
       state = state.copyWith(
         interrupted: true,
         interruptions: state.interruptions + 1,
@@ -366,6 +388,7 @@ class RecorderController extends Notifier<RecorderState> {
     _userPaused = true;
     waveform.clear();
     await _recorder?.pause();
+    _live?.pause();
     state = state.copyWith(status: RecorderStatus.paused);
   }
 
@@ -396,9 +419,13 @@ class RecorderController extends Notifier<RecorderState> {
     _writer = null;
 
     String? error = streamError;
+    Future<void> liveDone = Future<void>.value();
     try {
       await _subscription?.cancel();
       _subscription = null;
+      // The microphone stream is closed, so the transcript can finish while
+      // the audio files are still being closed below.
+      liveDone = _finishLive();
       await _stateSubscription?.cancel();
       _stateSubscription = null;
       await _recorder?.stop();
@@ -412,6 +439,7 @@ class RecorderController extends Notifier<RecorderState> {
       }
       await writer?.close();
       await _chunkRows;
+      await liveDone;
 
       if (meetingId == null || repo == null) {
         state = RecorderState(error: error ?? 'ضبط ناقص بود');
@@ -437,7 +465,75 @@ class RecorderController extends Notifier<RecorderState> {
     _recorder?.dispose();
     _writer?.close();
     _chunks?.close();
+    _live?.dispose();
     WakelockPlus.disable();
+  }
+
+  /// Starts live transcription for the meeting being recorded. A missing
+  /// model or any failure only leaves the live panel empty with a hint; the
+  /// recording starts either way.
+  Future<void> _startLive(MeetingRepository repo, String meetingId) async {
+    _setLive(const LiveTranscriptState());
+    try {
+      final setup = await ref.read(liveEngineBuilderProvider)();
+      final engine = setup.engine;
+      if (engine == null) {
+        _setLive(LiveTranscriptState(note: setup.unavailableReason));
+        return;
+      }
+      final session = LiveTranscriptSession(
+        engine: engine,
+        store: repo,
+        meetingId: meetingId,
+        modelId: setup.modelId,
+      );
+      void mirror() => _setLive(session.state.value);
+      session.state.addListener(mirror);
+      _live = session;
+      _liveListener = mirror;
+      mirror();
+      // Loading the model takes seconds; audio is buffered meanwhile.
+      unawaited(session.start());
+    } catch (e) {
+      _setLive(
+        const LiveTranscriptState(
+          phase: LivePhase.failed,
+          note: 'متن زنده شروع نشد؛ ضبط بدون آن ادامه دارد.',
+        ),
+      );
+    }
+  }
+
+  Future<void> _finishLive() async {
+    final session = _live;
+    if (session == null) return;
+    _live = null;
+    try {
+      await session.stop();
+    } catch (_) {
+      // The draft is best effort; the recording is already safe.
+    }
+    _unhookLive(session);
+  }
+
+  Future<void> _disposeLive() async {
+    final session = _live;
+    if (session == null) return;
+    _live = null;
+    try {
+      await session.dispose();
+    } catch (_) {}
+    _unhookLive(session);
+    _setLive(const LiveTranscriptState());
+  }
+
+  void _unhookLive(LiveTranscriptSession session) {
+    final listener = _liveListener;
+    if (listener != null) {
+      listener();
+      session.state.removeListener(listener);
+      _liveListener = null;
+    }
   }
 }
 

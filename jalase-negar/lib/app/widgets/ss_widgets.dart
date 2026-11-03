@@ -144,6 +144,9 @@ class SsCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.onTap,
     this.selected = false,
+    this.ripple = false,
+    this.elevated = false,
+    this.color,
     required this.child,
   });
 
@@ -152,6 +155,13 @@ class SsCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
   final bool selected;
+
+  /// Soft ink ripple on tap (the theme disables splashes by default).
+  final bool ripple;
+
+  /// Soft shadow under the card.
+  final bool elevated;
+  final Color? color;
   final Widget child;
 
   @override
@@ -164,13 +174,38 @@ class SsCard extends StatelessWidget {
         Padding(padding: padding, child: child),
       ],
     );
-    return Material(
-      color: selected ? SsColors.selected : SsColors.canvas,
+    final card = Material(
+      color: color ?? (selected ? SsColors.selected : SsColors.canvas),
       shape: Border.fromBorderSide(
         BorderSide(color: selected ? SsColors.primary : SsColors.line),
       ),
-      clipBehavior: Clip.hardEdge,
-      child: onTap == null ? body : InkWell(onTap: onTap, child: body),
+      clipBehavior: Clip.antiAlias,
+      child: onTap == null
+          ? body
+          : InkWell(
+              onTap: onTap,
+              splashFactory: ripple ? InkRipple.splashFactory : null,
+              splashColor: ripple
+                  ? SsColors.primary.withValues(alpha: 0.08)
+                  : null,
+              highlightColor: ripple
+                  ? SsColors.primary.withValues(alpha: 0.04)
+                  : null,
+              child: body,
+            ),
+    );
+    if (!elevated) return card;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: SsColors.ink.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: card,
     );
   }
 }

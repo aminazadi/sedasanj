@@ -1,3 +1,4 @@
+import 'asr_common.dart';
 import 'transcriber.dart';
 
 /// Audio preparation applied by the on-device pipeline before decoding.
@@ -16,12 +17,13 @@ String buildAsrIdentity({
   required String modelId,
   required AsrSegmenter segmenter,
   bool denoiser = false,
+  bool live = false,
 }) {
   final preparation = segmenter == AsrSegmenter.serverEnergy
       ? kServerParityPreparation
       : '$kDeviceQuietGainPreparation${denoiser ? '+gtcrn' : ''}';
   final segmentation = switch (segmenter) {
-    AsrSegmenter.silero => 'silero-vad',
+    AsrSegmenter.silero => live ? kLiveSegmentation : 'silero-vad',
     AsrSegmenter.serverEnergy => 'server-energy-vad',
   };
   return '$modelId|$preparation|segmenter:$segmentation';

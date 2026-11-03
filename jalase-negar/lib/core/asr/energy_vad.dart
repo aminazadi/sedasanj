@@ -56,10 +56,7 @@ List<SpeechRegion> energyVadRegions(
     }
     if (start != null && index - lastActive > bridge) {
       raw.add(
-        SpeechRegion(
-          start * 0.03,
-          math.min(duration, (lastActive + 1) * 0.03),
-        ),
+        SpeechRegion(start * 0.03, math.min(duration, (lastActive + 1) * 0.03)),
       );
       start = null;
     }

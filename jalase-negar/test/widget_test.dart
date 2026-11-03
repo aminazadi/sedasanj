@@ -5,18 +5,15 @@ import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 
 void main() {
-  testWidgets('shared header renders title and description', (tester) async {
+  testWidgets('shared app bar renders its title', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
           theme: buildAppTheme(),
-          home: const Scaffold(
-            body: SsPageHeader(title: 'جلسه‌نگار', description: 'توضیح'),
-          ),
+          home: Scaffold(appBar: SsAppBar(title: const Text('جلسه‌نگار'))),
         ),
       ),
     );
     expect(find.text('جلسه‌نگار'), findsOneWidget);
-    expect(find.text('توضیح'), findsOneWidget);
   });
 }

@@ -66,9 +66,15 @@ class SettingsScreen extends ConsumerWidget {
                   icon: const Icon(Icons.qr_code_scanner),
                   label: const Text('اسکن QR'),
                   onPressed: () async {
-                    final text = await Navigator.of(context).push<String>(
-                      MaterialPageRoute(builder: (_) => const QrScanScreen()),
-                    );
+                    final text =
+                        await Navigator.of(
+                          context,
+                          rootNavigator: true,
+                        ).push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => const QrScanScreen(),
+                          ),
+                        );
                     if (text != null) controller.connectFromText(text);
                   },
                 ),

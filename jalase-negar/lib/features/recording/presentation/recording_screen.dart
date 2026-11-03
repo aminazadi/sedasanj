@@ -9,13 +9,15 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../application/recorder_controller.dart';
+import '../application/live_engine_provider.dart';
+import 'live_transcript_panel.dart';
 import 'live_waveform.dart';
 import 'meeting_illustration.dart';
 
 class RecordingScreen extends ConsumerWidget {
   const RecordingScreen({super.key, this.liveTranscript});
 
-  /// Content displayed between the header and the recording monitor.
+  /// Replaces the built-in live transcript panel (previews and tests).
   final Widget? liveTranscript;
 
   static const _controlsHeight = 132.0;
@@ -71,8 +73,10 @@ class RecordingScreen extends ConsumerWidget {
         appBar: SsAppBar(
           title: const Text('ضبط جلسه'),
           actions: [
-            if (state.status == RecorderStatus.idle)
+            if (state.status == RecorderStatus.idle) ...[
+              const _LiveToggle(),
               _MicMenu(state: state, controller: controller),
+            ],
           ],
         ),
         body: SafeArea(
@@ -85,7 +89,11 @@ class RecordingScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: isActive
-                          ? ClipRect(child: liveTranscript)
+                          ? ClipRect(
+                              child:
+                                  liveTranscript ??
+                                  LiveTranscriptPanel(state: controller.live),
+                            )
                           : const SizedBox.expand(),
                     ),
                     if (isActive) ...[
@@ -583,6 +591,34 @@ class _DiamondButtonState extends State<_DiamondButton>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// App-bar switch for live transcription; the choice is remembered.
+class _LiveToggle extends ConsumerWidget {
+  const _LiveToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(liveTranscriptEnabledProvider).value ?? true;
+    return IconButton(
+      tooltip: enabled ? 'متن زنده روشن است' : 'متن زنده خاموش است',
+      icon: Icon(enabled ? Icons.subtitles : Icons.subtitles_off_outlined),
+      onPressed: () {
+        ref.read(liveTranscriptEnabledProvider.notifier).set(!enabled);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                enabled
+                    ? 'متن زنده خاموش شد؛ ضبط مثل قبل انجام می‌شود.'
+                    : 'متن زنده روشن شد؛ از ضبط بعدی متن هم‌زمان نمایش داده می‌شود.',
+              ),
+            ),
+          );
+      },
     );
   }
 }
