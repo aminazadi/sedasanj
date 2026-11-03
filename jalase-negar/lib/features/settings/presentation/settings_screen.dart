@@ -25,11 +25,6 @@ class SettingsScreen extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const SsPageHeader(
-          title: 'اتصال به صداسنج',
-          description: 'اتصال اپ به پنل سازمان برای ارسال و تحلیل جلسه‌ها',
-        ),
-        const SizedBox(height: 12),
         SsCard(
           title: 'وضعیت اتصال',
           trailing: SsBadge(connection == null ? 'متصل نیست' : 'متصل'),

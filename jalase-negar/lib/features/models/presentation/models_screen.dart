@@ -20,10 +20,6 @@ class ModelsScreen extends ConsumerWidget {
           : ListView(
               padding: const EdgeInsets.all(12),
               children: [
-                const SsPageHeader(
-                  title: 'مدل‌های هوش مصنوعی',
-                  description: 'دانلود و مدیریت مدل‌های آفلاین',
-                ),
                 const _SectionHeader(
                   title: 'تشخیص گفتار',
                   subtitle: 'پیش‌نیاز رونویسی؛ حجم بسیار کم',

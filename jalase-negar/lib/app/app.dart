@@ -4,20 +4,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
 import 'router.dart';
+import 'splash_screen.dart';
 import 'theme.dart';
 
-class JalaseNegarApp extends ConsumerWidget {
+class JalaseNegarApp extends ConsumerStatefulWidget {
   const JalaseNegarApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<JalaseNegarApp> createState() => _JalaseNegarAppState();
+}
+
+class _JalaseNegarAppState extends ConsumerState<JalaseNegarApp> {
+  bool _splashDone = false;
+
+  @override
+  Widget build(BuildContext context) {
     final dbAsync = ref.watch(appDatabaseProvider);
 
-    return dbAsync.when(
-      loading: () => MaterialApp(
+    // The splash stays until its logo animation has finished, even when the
+    // database is ready sooner; a start-up error replaces it immediately.
+    if (!dbAsync.hasError && (dbAsync.isLoading || !_splashDone)) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
-        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
-      ),
+        home: SplashScreen(
+          onComplete: () =>
+              Future<void>.delayed(const Duration(milliseconds: 300), () {
+                if (mounted) setState(() => _splashDone = true);
+              }),
+        ),
+      );
+    }
+
+    return dbAsync.when(
+      loading: () => const SizedBox.shrink(),
       error: (e, _) => MaterialApp(
         theme: buildAppTheme(),
         home: Scaffold(body: Center(child: Text('خطا در راه‌اندازی: $e'))),

@@ -35,7 +35,7 @@ class SsDots extends StatelessWidget {
           end: AlignmentDirectional.centerEnd,
           colors: const [Colors.black, Color(0x8C000000), Colors.transparent],
           stops: const [0, 0.45, 1],
-        ).createShader(rect),
+        ).createShader(rect, textDirection: Directionality.of(context)),
         child: dots,
       );
     }
@@ -70,7 +70,8 @@ class _DotsPainter extends CustomPainter {
   bool shouldRepaint(_DotsPainter old) => old.color != color;
 }
 
-/// App bar with the green brand gradient and light dot pattern.
+/// App bar on the canvas surface: dot pattern plus the office line art,
+/// mirrored onto the end side and fading out towards the title.
 class SsAppBar extends AppBar {
   SsAppBar({
     super.key,
@@ -83,96 +84,53 @@ class SsAppBar extends AppBar {
   }) : super(
          flexibleSpace: const DecoratedBox(
            decoration: BoxDecoration(
-             gradient: LinearGradient(
-               begin: Alignment.topCenter,
-               end: Alignment.bottomCenter,
-               colors: [
-                 SsColors.primaryLight,
-                 SsColors.primary,
-                 SsColors.primaryDark,
-               ],
-               stops: [0, 0.55, 1],
-             ),
+             color: SsColors.canvas,
+             border: Border(bottom: BorderSide(color: SsColors.line)),
            ),
-           child: SsDots.onPrimary(),
+           child: Stack(
+             fit: StackFit.expand,
+             children: [SsDots(), _AppBarArt()],
+           ),
          ),
        );
 }
 
-/// Hero band: dotted canvas with the office line art fading in from the start side.
-class SsPageHeader extends StatelessWidget {
-  const SsPageHeader({
-    super.key,
-    required this.title,
-    this.description,
-    this.trailing,
-  });
-
-  final String title;
-  final String? description;
-  final Widget? trailing;
+class _AppBarArt extends StatelessWidget {
+  const _AppBarArt();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      decoration: const BoxDecoration(
-        color: SsColors.canvas,
-        border: Border.fromBorderSide(BorderSide(color: SsColors.line)),
-      ),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: SsDots()),
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.35,
-              child: Image.asset(
-                'assets/images/brand/office-line-art.webp',
-                fit: BoxFit.cover,
-                alignment: AlignmentDirectional.centerStart,
-                colorBlendMode: BlendMode.multiply,
-                color: SsColors.canvas,
-              ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Opacity(
+          opacity: 0.5,
+          child: Transform.flip(
+            flipX: true,
+            child: Image.asset(
+              'assets/images/brand/office-line-art.webp',
+              fit: BoxFit.cover,
+              alignment: const AlignmentDirectional(-1, 0.45),
+              colorBlendMode: BlendMode.multiply,
+              color: SsColors.canvas,
             ),
           ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: AlignmentDirectional.centerEnd,
-                  end: AlignmentDirectional.centerStart,
-                  colors: [
-                    SsColors.canvas,
-                    SsColors.canvas.withValues(alpha: 0.9),
-                    SsColors.canvas.withValues(alpha: 0.2),
-                  ],
-                  stops: const [0, 0.42, 1],
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: theme.textTheme.titleLarge),
-                      if (description != null) ...[
-                        const SizedBox(height: 2),
-                        Text(description!, style: theme.textTheme.bodySmall),
-                      ],
-                    ],
-                  ),
-                ),
-                if (trailing != null) trailing!,
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: AlignmentDirectional.centerStart,
+              end: AlignmentDirectional.centerEnd,
+              colors: [
+                SsColors.canvas,
+                SsColors.canvas.withValues(alpha: 0.85),
+                SsColors.canvas.withValues(alpha: 0.1),
               ],
+              stops: const [0, 0.4, 1],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -293,10 +251,20 @@ class SsEmptyState extends StatelessWidget {
 
 /// Square status badge replacing rounded pills / gradient chips.
 class SsBadge extends StatelessWidget {
-  const SsBadge(this.label, {super.key, this.color = SsColors.primary});
+  const SsBadge(
+    this.label, {
+    super.key,
+    this.color = SsColors.primary,
+    this.icon,
+    this.leading,
+  });
 
   final String label;
   final Color color;
+  final IconData? icon;
+
+  /// Replaces [icon], e.g. the animated [SsProcessingMark].
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -306,15 +274,132 @@ class SsBadge extends StatelessWidget {
         color: color.withValues(alpha: 0.1),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: 'Vazirmatn',
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: color,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (leading != null) ...[
+            leading!,
+            const SizedBox(width: 5),
+          ] else if (icon != null) ...[
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Vazirmatn',
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Four-square processing mark, ported from the web panel's
+/// `ProcessingIndicator` (`.assistant-conversation-processing`): a 2x2 grid of
+/// squares that pulse in turn.
+class SsProcessingMark extends StatefulWidget {
+  const SsProcessingMark({super.key, this.size = 14});
+
+  final double size;
+
+  @override
+  State<SsProcessingMark> createState() => _SsProcessingMarkState();
+}
+
+class _SsProcessingMarkState extends State<SsProcessingMark>
+    with SingleTickerProviderStateMixin {
+  static const _period = Duration(milliseconds: 1100);
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: _period,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'در حال پردازش',
+      child: ExcludeSemantics(
+        child: RepaintBoundary(
+          child: CustomPaint(
+            size: Size.square(widget.size),
+            painter: _ProcessingMarkPainter(_c),
+          ),
         ),
       ),
     );
   }
+}
+
+class _ProcessingMarkPainter extends CustomPainter {
+  _ProcessingMarkPainter(this.animation) : super(repaint: animation);
+
+  final AnimationController animation;
+
+  // Square colours and animation delays (seconds), as in index.css.
+  static const _colors = [
+    Color(0xFFB2AC88),
+    Color(0xFF7A8B73),
+    Color(0xFFD8D3B9),
+    Color(0xFF4B6E48),
+  ];
+  static const _delays = [0.0, -0.82, -0.55, -0.27];
+  static const _ease = Cubic(0.4, 0, 0.2, 1);
+
+  /// Keyframes 0%/100%: opacity .28 scale .56; 38%: 1 / 1; 64%: .72 / .8.
+  static (double, double) _frame(double p) {
+    double lerp(double a, double b, double t) =>
+        a + (b - a) * _ease.transform(t);
+    if (p < 0.38) return (lerp(0.28, 1, p / 0.38), lerp(0.56, 1, p / 0.38));
+    if (p < 0.64) {
+      final t = (p - 0.38) / 0.26;
+      return (lerp(1, 0.72, t), lerp(1, 0.8, t));
+    }
+    final t = (p - 0.64) / 0.36;
+    return (lerp(0.72, 0.28, t), lerp(0.8, 0.56, t));
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gap = size.width / 12;
+    final cell = (size.width - gap) / 2;
+    final seconds = animation.value * 1.1;
+    for (var i = 0; i < 4; i++) {
+      final phase = (((seconds - _delays[i]) / 1.1) % 1 + 1) % 1;
+      final (opacity, scale) = animation.isAnimating
+          ? _frame(phase)
+          : (1.0, 1.0);
+      final cx = (i % 2) * (cell + gap) + cell / 2;
+      final cy = (i ~/ 2) * (cell + gap) + cell / 2;
+      final half = cell * scale / 2;
+      canvas.drawRect(
+        Rect.fromLTRB(cx - half, cy - half, cx + half, cy + half),
+        Paint()..color = _colors[i].withValues(alpha: opacity),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ProcessingMarkPainter old) => false;
 }

@@ -36,6 +36,7 @@ class Meeting {
     this.error,
     this.recordingState = 'finished',
     this.remoteMeetingId,
+    this.asrIdentity,
   });
 
   final String id;
@@ -53,6 +54,45 @@ class Meeting {
   final String recordingState;
   final String? remoteMeetingId;
 
+  /// How the on-device transcript was produced (model, audio preparation and
+  /// segmentation), in the ASR parity contract's identity format. Null until
+  /// the meeting is transcribed.
+  final String? asrIdentity;
+
+  /// Value equality lets the list skip rebuilding tiles whose meeting did not
+  /// change when the list is reloaded.
+  @override
+  bool operator ==(Object other) =>
+      other is Meeting &&
+      other.id == id &&
+      other.title == title &&
+      other.createdAt == createdAt &&
+      other.duration == duration &&
+      other.audioPath == audioPath &&
+      other.sampleRate == sampleRate &&
+      other.channels == channels &&
+      other.status == status &&
+      other.error == error &&
+      other.recordingState == recordingState &&
+      other.remoteMeetingId == remoteMeetingId &&
+      other.asrIdentity == asrIdentity;
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    title,
+    createdAt,
+    duration,
+    audioPath,
+    sampleRate,
+    channels,
+    status,
+    error,
+    recordingState,
+    remoteMeetingId,
+    asrIdentity,
+  );
+
   Meeting copyWith({
     MeetingStatus? status,
     String? title,
@@ -63,6 +103,7 @@ class Meeting {
     int? channels,
     String? recordingState,
     String? remoteMeetingId,
+    String? asrIdentity,
   }) => Meeting(
     id: id,
     title: title ?? this.title,
@@ -75,6 +116,7 @@ class Meeting {
     error: error,
     recordingState: recordingState ?? this.recordingState,
     remoteMeetingId: remoteMeetingId ?? this.remoteMeetingId,
+    asrIdentity: asrIdentity ?? this.asrIdentity,
   );
 
   factory Meeting.fromRow(Map<String, Object?> row) => Meeting(
@@ -89,6 +131,7 @@ class Meeting {
     error: row['error'] as String?,
     recordingState: (row['recording_state'] as String?) ?? 'finished',
     remoteMeetingId: row['remote_meeting_id'] as String?,
+    asrIdentity: row['asr_identity'] as String?,
   );
 
   Map<String, Object?> toRow() => {
@@ -103,7 +146,16 @@ class Meeting {
     'error': error,
     'recording_state': recordingState,
     'remote_meeting_id': remoteMeetingId,
+    'asr_identity': asrIdentity,
   };
+}
+
+/// Where a segment's timestamps come from (ASR parity contract).
+abstract final class TimestampSource {
+  static const String sileroVad = 'silero_vad';
+  static const String vadWindow = 'vad_window';
+  static const String native = 'native';
+  static const String diarization = 'diarization';
 }
 
 class Segment {
@@ -112,6 +164,10 @@ class Segment {
     required this.startMs,
     required this.endMs,
     required this.text,
+    this.confidence,
+    this.speaker,
+    this.timestampSource = TimestampSource.sileroVad,
+    this.source = 'device',
   });
 
   final int channel;
@@ -119,10 +175,24 @@ class Segment {
   final int endMs;
   final String text;
 
+  /// 0..1 when the recognizer provides one; null for RNNT/CTC (like the
+  /// server, which only has a score for Whisper models).
+  final double? confidence;
+  final String? speaker;
+  final String timestampSource;
+
+  /// 'device' for on-device transcripts, 'server' for platform ones.
+  final String source;
+
   factory Segment.fromRow(Map<String, Object?> row) => Segment(
     channel: row['channel'] as int,
     startMs: row['t_start_ms'] as int,
     endMs: row['t_end_ms'] as int,
     text: row['text'] as String,
+    confidence: (row['confidence'] as num?)?.toDouble(),
+    speaker: row['speaker'] as String?,
+    timestampSource:
+        (row['timestamp_source'] as String?) ?? TimestampSource.sileroVad,
+    source: (row['source'] as String?) ?? 'device',
   );
 }

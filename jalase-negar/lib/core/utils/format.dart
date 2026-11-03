@@ -56,3 +56,24 @@ String formatJalaliDate(DateTime dateTime) {
       '${dateTime.minute.toString().padLeft(2, '0')}';
   return toPersianDigits('${f.d} ${f.mN} ${f.yyyy} - $time');
 }
+
+String formatJalaliDay(DateTime dateTime) {
+  final f = Jalali.fromDateTime(dateTime).formatter;
+  return toPersianDigits('${f.d} ${f.mN} ${f.yyyy}');
+}
+
+String formatClock(DateTime dateTime) => toPersianDigits(
+  '${dateTime.hour.toString().padLeft(2, '0')}:'
+  '${dateTime.minute.toString().padLeft(2, '0')}',
+);
+
+/// Meetings recorded by older builds were titled with a Gregorian date
+/// ("جلسه 2026/11/1"); show those as Jalali with Persian digits.
+String displayMeetingTitle(String title) {
+  final m = RegExp(r'^جلسه (\d{4})/(\d{1,2})/(\d{1,2})$').firstMatch(title);
+  if (m != null) {
+    final day = DateTime(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
+    return 'جلسه ${formatJalaliDay(day)}';
+  }
+  return toPersianDigits(title);
+}

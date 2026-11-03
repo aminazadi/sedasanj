@@ -7,6 +7,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../application/pipeline_controller.dart';
 import '../data/meeting.dart';
+import 'audio_waveform_player.dart';
 
 /// Shows one recorded meeting and its on-device draft transcript.
 /// Analysis (speakers, minutes) is produced by SedaSanj and read in the panel.
@@ -47,6 +48,10 @@ class MeetingDetailScreen extends ConsumerWidget {
 
         return Scaffold(
           appBar: SsAppBar(title: Text(data.meeting.title)),
+          bottomNavigationBar: AudioWaveformPlayer(
+            path: data.meeting.audioPath,
+            title: data.meeting.title,
+          ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [

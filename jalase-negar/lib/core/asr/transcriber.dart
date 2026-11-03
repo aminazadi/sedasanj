@@ -7,6 +7,7 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../audio/wav.dart';
 import '../models/model_spec.dart';
+import 'energy_vad.dart';
 
 /// One decoded utterance from a single channel.
 class TranscriptSegment {
@@ -15,13 +16,32 @@ class TranscriptSegment {
     required this.startMs,
     required this.endMs,
     required this.text,
+    this.timestampSource = 'silero_vad',
   });
 
   final int channel;
   final int startMs;
   final int endMs;
   final String text;
+
+  /// `silero_vad` for VAD speech spans, `vad_window` for the quiet-audio
+  /// coverage windows and the server-parity regions (contract values).
+  final String timestampSource;
 }
+
+/// How speech is cut into pieces before decoding.
+enum AsrSegmenter {
+  /// Silero VAD with look-around context and a coverage pass. The default.
+  silero,
+
+  /// The server's energy VAD (`energyVadRegions`), decoding each region
+  /// without any extra audio preparation. For comparing a clip with the
+  /// server's transcript region by region; the whole channel is held in memory,
+  /// so it is limited to [kServerParityMaxSeconds].
+  serverEnergy,
+}
+
+const int kServerParityMaxSeconds = 30 * 60;
 
 class TranscribeRequest {
   const TranscribeRequest({
@@ -34,6 +54,7 @@ class TranscribeRequest {
     this.encoderPath,
     this.decoderPath,
     this.joinerPath,
+    this.segmenter = AsrSegmenter.silero,
   });
 
   /// Original (possibly multi-channel) PCM16 WAV recording.
@@ -46,6 +67,7 @@ class TranscribeRequest {
   final String? encoderPath;
   final String? decoderPath;
   final String? joinerPath;
+  final AsrSegmenter segmenter;
 }
 
 class TranscribeProgress {
@@ -344,6 +366,18 @@ Future<void> _transcribeEntry((SendPort, TranscribeRequest) args) async {
     var processedFrames = 0;
 
     for (var channel = 0; channel < info.channels; channel++) {
+      if (request.segmenter == AsrSegmenter.serverEnergy) {
+        await _transcribeServerRegions(
+          request: request,
+          info: info,
+          channel: channel,
+          recognizer: recognizer,
+          sendPort: sendPort,
+        );
+        processedFrames += info.frameCount;
+        sendPort.send(TranscribeProgress(processedFrames / totalFrames));
+        continue;
+      }
       final emittedRanges = <(int, int)>[];
       final emittedTexts = <(int, int, String)>[];
       var fedSamples = 0;
@@ -371,6 +405,7 @@ Future<void> _transcribeEntry((SendPort, TranscribeRequest) args) async {
         required Float32List samples,
         required int startMs,
         int? contentEndMs,
+        String timestampSource = 'silero_vad',
       }) {
         if (samples.isEmpty) return;
         final stream = recognizer!.createStream();
@@ -404,6 +439,7 @@ Future<void> _transcribeEntry((SendPort, TranscribeRequest) args) async {
               startMs: startMs,
               endMs: endMs,
               text: text,
+              timestampSource: timestampSource,
             ),
           );
           emittedRanges.add((startMs, endMs));
@@ -509,6 +545,7 @@ Future<void> _transcribeEntry((SendPort, TranscribeRequest) args) async {
             decodeAndSend(
               samples: prepareSamples(window),
               startMs: windowStartMs,
+              timestampSource: 'vad_window',
             );
           }
         }
@@ -525,5 +562,67 @@ Future<void> _transcribeEntry((SendPort, TranscribeRequest) args) async {
     recognizer?.free();
     denoiser?.free();
     sendPort.send(null);
+  }
+}
+
+/// Server-parity pass: the server's energy VAD cuts the channel into regions
+/// and each region is decoded as is, so the result can be compared with the
+/// server's `ensure_timestamps` transcript clip by clip.
+Future<void> _transcribeServerRegions({
+  required TranscribeRequest request,
+  required WavInfo info,
+  required int channel,
+  required sherpa.OfflineRecognizer recognizer,
+  required SendPort sendPort,
+}) async {
+  var channelSamples = Float32List(0);
+  await for (final chunk in readChannelSamples(
+    request.wavPath,
+    info: info,
+    channel: channel,
+    targetSampleRate: _asrSampleRate,
+    chunkFrames: (_windowSeconds * info.sampleRate).round(),
+  )) {
+    channelSamples = _appendSamples(channelSamples, chunk.samples);
+    if (channelSamples.length > _asrSampleRate * kServerParityMaxSeconds) {
+      throw Exception(
+        'حالت هم‌ترازی با سرور فقط برای صوت کوتاه‌تر از '
+        '${kServerParityMaxSeconds ~/ 60} دقیقه است',
+      );
+    }
+  }
+  final regions = energyVadRegions(channelSamples, _asrSampleRate);
+  for (final region in regions) {
+    final startSample = (region.start * _asrSampleRate).floor();
+    final endSample = math.min(
+      channelSamples.length,
+      (region.end * _asrSampleRate).ceil(),
+    );
+    if (endSample <= startSample) continue;
+    final stream = recognizer.createStream();
+    try {
+      stream.acceptWaveform(
+        samples: Float32List.sublistView(
+          channelSamples,
+          startSample,
+          endSample,
+        ),
+        sampleRate: _asrSampleRate,
+      );
+      recognizer.decode(stream);
+      final text = normalizePersianAsrText(recognizer.getResult(stream).text);
+      if (text.isEmpty) continue;
+      sendPort.send(
+        TranscriptSegment(
+          channel: channel,
+          startMs: (region.start * 1000).round(),
+          endMs: (region.end * 1000).round(),
+          text: text,
+          timestampSource: 'vad_window',
+        ),
+      );
+    } finally {
+      stream.free();
+    }
   }
 }

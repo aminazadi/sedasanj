@@ -79,6 +79,10 @@ class MeetingRepository implements UploadStore {
         't_start_ms': s.startMs,
         't_end_ms': s.endMs,
         'text': s.text,
+        'confidence': s.confidence,
+        'speaker': s.speaker,
+        'timestamp_source': s.timestampSource,
+        'source': s.source,
       });
     }
     await batch.commit(noResult: true);

@@ -2,6 +2,23 @@
 
 ## 2026-11-03 — AMINAZADI
 
+- Made Shenava Koochik v1.5 RNNT (INT8) the recommended Jalase-Negar model, ported the platform's turn consolidation (`consolidate_segments`) and energy VAD to Dart against shared contract vectors, and recorded the segment contract fields (confidence, speaker, timestamp source, source) plus an ASR identity per meeting (database v6).
+- Added a server-parity transcription mode to Jalase-Negar (server energy VAD, regions decoded as is, clips up to 30 minutes) for region-by-region comparison with the platform transcript; normal transcription still uses Silero VAD.
+- Added the ASR parity contract (`sedasanj/docs/asr-parity-contract.md`) with shared fixtures for preprocessing constants, gain, transcript normalization, segment merging and the segment schema, plus server and Jalase-Negar tests that lock them; recorded the current app/server normalization gaps, including `ۀ` collapsing to a plain `ه`.
+- Added `sedasanj/scripts/asr_eval.py` (stdlib WER/CER scoring and baseline comparison) and the ASR golden-set layout under `sedasanj/test_data/asr_golden/`, with audio, references and system outputs git-ignored.
+
+- Added a fixed bottom waveform audio player (play/pause, seek, mute, speed, share) to the Jalase-Negar meeting detail screen, matching the web panel player.
+
+- Added the shared processing indicator and installed app version to the Jalase-Negar splash screen.
+
+- Added animated diamond pulse waves to the meeting recording start button.
+
+- Placed the recording timer immediately below the meeting illustration.
+
+- Added a compact, dotted meeting recording illustration inspired by the web panel artwork.
+
+- Matched the Jalase-Negar recording screen start button size and green border to the bottom navigation button.
+
 - Changed Jalase-Negar navigation to include a dedicated recording button and refreshed meeting and settings tabs.
 - Removed the obsolete MikroTik Fadaeian Arvan setup document.
 - Added Shenava Koochik v1.5 RNNT CUDA inference using FP32 encoder/decoder/joiner artifacts, preserved INT8 CPU inference, and added a model-card action to complete GPU files for existing installations with actionable missing-artifact diagnostics.

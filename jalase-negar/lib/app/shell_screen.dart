@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/upload/upload_controller.dart';
 import 'theme.dart';
+import 'widgets/brand_logo.dart';
 import 'widgets/ss_widgets.dart';
 
 class ShellScreen extends ConsumerWidget {
@@ -29,24 +30,52 @@ class ShellScreen extends ConsumerWidget {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(index == 0 ? 'جلسه‌نگار' : 'تنظیمات'),
-            const SizedBox(width: 8),
-            const SsBadge('آزمایشی', color: SsColors.accent),
+            // Same animated wordmark as the web panel's sidebar.
+            const Padding(
+              padding: EdgeInsetsDirectional.only(start: 16),
+              child: SsBrandLogo(width: 104),
+            ),
           ],
         ),
         centerTitle: false,
         actions: [
-          // Info/Team icon
-          IconButton(
-            tooltip: 'تولیدکنندگان',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => context.push('/team'),
-          ),
-          // Models icon
-          IconButton(
-            tooltip: 'مدل‌ها',
-            icon: const Icon(Icons.download_for_offline_outlined),
-            onPressed: () => context.push('/models'),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 12),
+            child: Center(
+              child: Semantics(
+                button: true,
+                label: 'دانلود مدل‌ها',
+                child: InkWell(
+                  onTap: () => context.push('/models'),
+                  child: Container(
+                    height: 34,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: SsColors.ink.withValues(alpha: 0.06),
+                      border: Border.all(
+                        color: SsColors.ink.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.file_download_outlined, size: 19),
+                        SizedBox(width: 6),
+                        Text(
+                          'دانلود مدل‌ها',
+                          style: TextStyle(
+                            fontFamily: 'Vazirmatn',
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: SsColors.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -84,18 +113,19 @@ class _GlyphPainter extends CustomPainter {
 
     switch (glyph) {
       case _Glyph.sessions:
-        final card = RRect.fromRectAndRadius(
-          const Rect.fromLTWH(3, 3, 18, 18),
-          const Radius.circular(5),
-        );
-        canvas.drawRRect(card, line);
-        const bars = [3.0, 6.0, 9.0, 5.5, 3.0];
+        // Voice waveform: five rounded bars, tallest in the middle.
+        const bars = [6.0, 11.0, 17.0, 11.0, 6.0];
+        final bar = Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round;
         for (var i = 0; i < bars.length; i++) {
-          final x = 7.4 + i * 2.3;
+          final x = 4 + i * 4.0;
           canvas.drawLine(
             Offset(x, 12 - bars[i] / 2),
             Offset(x, 12 + bars[i] / 2),
-            line,
+            bar,
           );
         }
       case _Glyph.settings:
@@ -153,76 +183,53 @@ class _GlyphIcon extends StatelessWidget {
   );
 }
 
-/// Bar silhouette with a smooth round notch for the record button.
+/// Bar silhouette: a straight top edge that drops along a 45° V under the
+/// diamond record button, leaving a thin gap between the V and the diamond.
 class _BarPainter extends CustomPainter {
-  _BarPainter({
-    required this.lift,
-    required this.notchHalf,
-    required this.depth,
-  });
+  _BarPainter({required this.lift, required this.half});
 
   final double lift;
-  final double notchHalf;
-  final double depth;
 
-  Path _path(Size size) {
-    final cx = size.width / 2;
-    final top = lift;
-    return Path()
-      ..moveTo(0, top)
-      ..lineTo(cx - notchHalf - 14, top)
-      ..cubicTo(
-        cx - notchHalf + 4,
-        top,
-        cx - notchHalf + 2,
-        top + depth,
-        cx,
-        top + depth,
-      )
-      ..cubicTo(
-        cx + notchHalf - 2,
-        top + depth,
-        cx + notchHalf - 4,
-        top,
-        cx + notchHalf + 14,
-        top,
-      )
-      ..lineTo(size.width, top)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-  }
+  /// Half the width of the V; equal to the diamond's half-diagonal so the V
+  /// runs parallel to the diamond's lower edges.
+  final double half;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = _path(size);
+    final cx = size.width / 2;
+    final edge = Path()
+      ..moveTo(0, lift)
+      ..lineTo(cx - half, lift)
+      ..lineTo(cx, lift + half)
+      ..lineTo(cx + half, lift)
+      ..lineTo(size.width, lift);
+    final body = Path.from(edge)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
     canvas.drawShadow(
-      path,
+      body,
       SsColors.primaryDark.withValues(alpha: 0.55),
       10,
       false,
     );
-    canvas.drawPath(path, Paint()..color = SsColors.canvas);
-    // Hairline follows the silhouette but not the sides/bottom.
-    final edge = Path()
-      ..moveTo(0, lift)
-      ..addPath(path, Offset.zero);
+    canvas.drawPath(body, Paint()..color = SsColors.canvas);
     canvas.drawPath(
       edge,
       Paint()
         ..color = SsColors.line
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
+        ..strokeWidth = 1
+        ..strokeJoin = StrokeJoin.miter,
     );
   }
 
   @override
-  bool shouldRepaint(_BarPainter old) =>
-      old.lift != lift || old.notchHalf != notchHalf || old.depth != depth;
+  bool shouldRepaint(_BarPainter old) => old.lift != lift || old.half != half;
 }
 
-/// Brand bottom bar: canvas surface with a sculpted notch holding a raised
-/// green record button, hand-drawn icons and a soft active pill.
+/// Brand bottom bar: canvas surface whose top edge dips into a V under a
+/// raised diamond record button, with hand-drawn icons and a soft active pill.
 class _SsBottomBar extends StatelessWidget {
   const _SsBottomBar({
     required this.selectedIndex,
@@ -235,7 +242,9 @@ class _SsBottomBar extends StatelessWidget {
   final VoidCallback onRecord;
 
   static const _bar = 72.0;
-  static const _lift = 30.0;
+  static const _lift = 60.0;
+  static const _half = 38.0;
+  static const _slotWidth = 132.0;
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +255,7 @@ class _SsBottomBar extends StatelessWidget {
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: _BarPainter(lift: _lift, notchHalf: 44, depth: 40),
+              painter: _BarPainter(lift: _lift, half: _half),
             ),
           ),
           Positioned(
@@ -264,9 +273,7 @@ class _SsBottomBar extends StatelessWidget {
                     onTap: () => onSelected(0),
                   ),
                 ),
-                Expanded(
-                  child: _RecordSlot(onTap: onRecord, lift: _lift),
-                ),
+                const SizedBox(width: _slotWidth),
                 Expanded(
                   child: _NavTab(
                     glyph: _Glyph.settings,
@@ -276,6 +283,22 @@ class _SsBottomBar extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+          Positioned(
+            top: 0,
+            bottom: bottom,
+            left: 0,
+            right: 0,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: _RecordSlot(
+                onTap: onRecord,
+                lift: _lift,
+                half: _half,
+                width: _slotWidth,
+                height: _lift + _bar,
+              ),
             ),
           ),
         ],
@@ -314,20 +337,11 @@ class _NavTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedContainer(
+            TweenAnimationBuilder<Color?>(
               duration: _anim,
               curve: Curves.easeOutCubic,
-              width: 54,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? SsColors.selected : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: selected ? SsColors.line : Colors.transparent,
-                ),
-              ),
-              child: _GlyphIcon(glyph, color, filled: selected),
+              tween: ColorTween(end: color),
+              builder: (context, c, _) => _GlyphIcon(glyph, c ?? color),
             ),
             const SizedBox(height: 4),
             AnimatedDefaultTextStyle(
@@ -349,10 +363,19 @@ class _NavTab extends StatelessWidget {
 }
 
 class _RecordSlot extends StatefulWidget {
-  const _RecordSlot({required this.onTap, required this.lift});
+  const _RecordSlot({
+    required this.onTap,
+    required this.lift,
+    required this.half,
+    required this.width,
+    required this.height,
+  });
 
   final VoidCallback onTap;
   final double lift;
+  final double half;
+  final double width;
+  final double height;
 
   @override
   State<_RecordSlot> createState() => _RecordSlotState();
@@ -374,7 +397,11 @@ class _RecordSlotState extends State<_RecordSlot>
 
   @override
   Widget build(BuildContext context) {
-    const size = 64.0;
+    final d = widget.half;
+    // Square side whose 45° rotation has half-diagonal d.
+    final side = d * math.sqrt2;
+    // The diamond's centre sits above the bar's top edge, as in the sketch.
+    final centerY = widget.lift - 0.4 * d;
     return Semantics(
       button: true,
       label: 'ضبط جلسه',
@@ -384,96 +411,105 @@ class _RecordSlotState extends State<_RecordSlot>
         onTapCancel: () => setState(() => _down = false),
         onTapUp: (_) => setState(() => _down = false),
         onTap: widget.onTap,
-        child: OverflowBox(
-          maxHeight: 140,
-          alignment: Alignment.bottomCenter,
+        child: SizedBox(
+          width: widget.width,
+          height: widget.height,
           child: AnimatedScale(
             duration: const Duration(milliseconds: 120),
-            scale: _down ? 0.93 : 1,
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            scale: _down ? 0.94 : 1,
+            alignment: Alignment(0, (centerY / widget.height) * 2 - 1),
+            child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                SizedBox(
-                  width: size + 24,
-                  height: size + 24,
+                Positioned(
+                  left: widget.width / 2 - d,
+                  top: centerY - d,
+                  width: 2 * d,
+                  height: 2 * d,
                   child: Stack(
                     alignment: Alignment.center,
+                    clipBehavior: Clip.none,
                     children: [
                       AnimatedBuilder(
                         animation: _pulse,
                         builder: (context, _) {
                           final t = Curves.easeOut.transform(_pulse.value);
-                          return Container(
-                            width: size + 20 * t,
-                            height: size + 20 * t,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(22 + 8 * t),
-                              border: Border.all(
-                                color: SsColors.primary.withValues(
-                                  alpha: 0.35 * (1 - t),
+                          final s = side + 12 * t;
+                          return Transform.rotate(
+                            angle: math.pi / 4,
+                            child: Container(
+                              width: s,
+                              height: s,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: SsColors.primary.withValues(
+                                    alpha: 0.35 * (1 - t),
+                                  ),
                                 ),
                               ),
                             ),
                           );
                         },
                       ),
-                      Container(
-                        width: size,
-                        height: size,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          gradient: const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              SsColors.primaryLight,
-                              SsColors.primary,
-                              SsColors.primaryDark,
-                            ],
-                            stops: [0, 0.55, 1],
-                          ),
-                          border: Border.all(
-                            color: SsColors.accent,
-                            width: 1.5,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x663E5C3B),
-                              blurRadius: 16,
-                              offset: Offset(0, 6),
+                      Transform.rotate(
+                        angle: math.pi / 4,
+                        child: Container(
+                          width: side,
+                          height: side,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                SsColors.primaryLight,
+                                SsColors.primary,
+                                SsColors.primaryDark,
+                              ],
+                              stops: [0, 0.55, 1],
                             ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20.5),
-                          child: const SsDots.onPrimary(
-                            child: Center(
-                              child: _GlyphIcon(
-                                _Glyph.mic,
-                                SsColors.canvas,
-                                filled: true,
-                                size: 30,
+                            border: Border.all(
+                              color: SsColors.primary,
+                              width: 1.5,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x663E5C3B),
+                                blurRadius: 14,
+                                offset: Offset(0, 5),
                               ),
-                            ),
+                            ],
+                          ),
+                          child: const SsDots.onPrimary(
+                            child: SizedBox.expand(),
                           ),
                         ),
+                      ),
+                      const _GlyphIcon(
+                        _Glyph.mic,
+                        SsColors.canvas,
+                        filled: true,
+                        size: 34,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 1),
-                const Text(
-                  'ضبط جلسه',
-                  style: TextStyle(
-                    fontFamily: 'Vazirmatn',
-                    fontSize: 12,
-                    height: 1.2,
-                    fontWeight: FontWeight.w600,
-                    color: SsColors.primary,
+                // Aligned with the other tabs' labels.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: widget.lift + 43,
+                  child: const Text(
+                    'ضبط جلسه',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Vazirmatn',
+                      fontSize: 12,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                      color: SsColors.primary,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 6),
               ],
             ),
           ),

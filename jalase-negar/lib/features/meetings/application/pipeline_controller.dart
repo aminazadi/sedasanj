@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/asr/asr_identity.dart';
+import '../../../core/asr/consolidate.dart';
 import '../../../core/asr/transcriber.dart';
 import '../../../core/models/model_catalog.dart';
 import '../../../core/models/model_spec.dart';
@@ -69,7 +71,11 @@ class PipelineController extends Notifier<PipelineState> {
     return null;
   }
 
-  Future<void> transcribeMeeting() async {
+  /// [segmenter] is [AsrSegmenter.silero] for normal use; the server energy
+  /// VAD is only for comparing a short clip with the server's transcript.
+  Future<void> transcribeMeeting({
+    AsrSegmenter segmenter = AsrSegmenter.silero,
+  }) async {
     if (state.transcribing) return;
     final repo = await ref.read(meetingRepositoryProvider.future);
     final meeting = await repo.byId(meetingId);
@@ -101,6 +107,7 @@ class PipelineController extends Notifier<PipelineState> {
       vadSpec: vadSpec,
       denoiserSpec: denoiserSpec,
       isTransducer: isTransducer,
+      segmenter: segmenter,
     );
     ref.invalidate(meetingsProvider);
     ref.invalidate(meetingDetailProvider(meetingId));
@@ -114,8 +121,13 @@ class PipelineController extends Notifier<PipelineState> {
     required ModelSpec vadSpec,
     required ModelSpec denoiserSpec,
     required bool isTransducer,
+    required AsrSegmenter segmenter,
   }) async {
-    final segments = <Segment>[];
+    final recognised = <TranscriptSegment>[];
+    final denoiserPath = segmenter == AsrSegmenter.silero &&
+            await store.isInstalled(denoiserSpec)
+        ? store.filePath(denoiserSpec, denoiserSpec.files[0])
+        : null;
     try {
       await for (final event in transcribe(
         TranscribeRequest(
@@ -128,9 +140,8 @@ class PipelineController extends Notifier<PipelineState> {
             asrSpec.files[isTransducer ? 3 : 1],
           ),
           vadModelPath: store.filePath(vadSpec, vadSpec.files[0]),
-          denoiserModelPath: await store.isInstalled(denoiserSpec)
-              ? store.filePath(denoiserSpec, denoiserSpec.files[0])
-              : null,
+          denoiserModelPath: denoiserPath,
+          segmenter: segmenter,
           architecture: asrSpec.asrArchitecture,
           encoderPath: isTransducer
               ? store.filePath(asrSpec, asrSpec.files[0])
@@ -145,15 +156,8 @@ class PipelineController extends Notifier<PipelineState> {
       )) {
         switch (event) {
           case TranscriptSegment segment:
-            segments.add(
-              Segment(
-                channel: segment.channel,
-                startMs: segment.startMs,
-                endMs: segment.endMs,
-                text: segment.text,
-              ),
-            );
-            final liveTranscript = segments
+            recognised.add(segment);
+            final liveTranscript = recognised
                 .map((item) => item.text.trim())
                 .where((text) => text.isNotEmpty)
                 .join('\n');
@@ -165,6 +169,29 @@ class PipelineController extends Notifier<PipelineState> {
             state = state.copyWith(transcribeProgress: progress.fraction);
         }
       }
+      // Same turn building as the platform's worker_asr: short same-channel
+      // pieces become readable turns (see the ASR parity contract).
+      final segments = [
+        for (final turn in consolidateSegments([
+          for (final item in recognised)
+            AsrTurn(
+              channel: item.channel,
+              startMs: item.startMs,
+              endMs: item.endMs,
+              text: item.text,
+              timestampSource: item.timestampSource,
+            ),
+        ]))
+          Segment(
+            channel: turn.channel,
+            startMs: turn.startMs,
+            endMs: turn.endMs,
+            text: turn.text,
+            confidence: turn.confidence,
+            timestampSource:
+                turn.timestampSource ?? TimestampSource.sileroVad,
+          ),
+      ];
       await repo.replaceSegments(meetingId, segments);
       if (segments.isEmpty) {
         const noSpeechError =
@@ -190,7 +217,16 @@ class PipelineController extends Notifier<PipelineState> {
               .toList(),
           channelCount: meeting.channels,
         );
-        await repo.update(meeting.copyWith(status: MeetingStatus.transcribed));
+        await repo.update(
+          meeting.copyWith(
+            status: MeetingStatus.transcribed,
+            asrIdentity: buildAsrIdentity(
+              modelId: asrSpec.id,
+              segmenter: segmenter,
+              denoiser: denoiserPath != null,
+            ),
+          ),
+        );
         state = state.copyWith(
           transcribing: false,
           transcribeProgress: 1,

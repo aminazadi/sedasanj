@@ -2,8 +2,10 @@ import 'model_spec.dart';
 
 /// Static catalog of supported models.
 ///
-/// ASR: the Shenava-1 family (FastConformer CTC), official sherpa-onnx
-/// exports from the original release repositories.
+/// ASR: the Shenava family (FastConformer), official sherpa-onnx exports from
+/// the original release repositories. The recommended model is the same Shenava
+/// Koochik v1.5 RNNT (INT8) that the SedaSanj platform's aiservice runs on CPU,
+/// so a local transcript and a server transcript come from the same weights.
 /// VAD: Silero VAD used to segment long meeting audio before decoding.
 abstract final class ModelCatalog {
   static const String vadModelId = 'silero-vad';
@@ -78,7 +80,8 @@ abstract final class ModelCatalog {
     asrArchitecture: AsrArchitecture.transducer,
     nameFa: 'شنوا کوچیک ۱.۵ (Sherpa-ONNX RNNT، ۱۳۷M)',
     descriptionFa:
-        'نسخهٔ سبک و سریع برای نمایش زنده؛ دقت فایل نهایی از مدل CTC کمتر است',
+        'همان مدل پیش‌فرض سرور صداسنج (نسخهٔ INT8 برای پردازنده)؛ پیشنهاد اصلی',
+    recommended: true,
     repoUrl:
         'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx',
     files: [
@@ -113,16 +116,15 @@ abstract final class ModelCatalog {
   );
 
   static final List<ModelSpec> asrModels = [
+    shenavaKoochikRnnt,
     _shenava(
       id: 'shenava-koochik',
       repo: 'Shenava-Koochik-v1.0-sherpa-onnx',
       nameFa: 'شنوا کوچیک (۱۱۴M)',
       descriptionFa:
-          'بالاترین دقت برای رونویسی فایل جلسه؛ انتخاب اصلی گوشی‌های میان‌رده به بالا',
+          'مدل CTC بزرگ‌تر (حدود ۴۳۸ مگابایت)؛ جایگزین مدل پیشنهادی',
       modelSize: 458819249,
-      recommended: true,
     ),
-    shenavaKoochikRnnt,
     _shenava(
       id: 'shenava-rizeh',
       repo: 'Shenava-Rizeh-v1.0-sherpa-onnx',

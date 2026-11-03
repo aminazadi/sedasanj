@@ -40,6 +40,16 @@ void main() {
       }
     });
 
+    test('the server default RNNT model is the only recommended ASR model', () {
+      final recommended = ModelCatalog.asrModels.where((m) => m.recommended);
+      expect(recommended.map((m) => m.id), ['shenava-koochik-v1-5-rnnt']);
+      expect(ModelCatalog.asrModels.first.id, 'shenava-koochik-v1-5-rnnt');
+      expect(
+        ModelCatalog.shenavaKoochikRnnt.asrArchitecture,
+        AsrArchitecture.transducer,
+      );
+    });
+
     test('byId resolves and throws for unknown ids', () {
       expect(ModelCatalog.byId('shenava-koochik').kind, ModelKind.asr);
       expect(() => ModelCatalog.byId('nope'), throwsStateError);

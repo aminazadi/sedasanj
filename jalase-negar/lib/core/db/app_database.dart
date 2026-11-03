@@ -15,15 +15,17 @@ class AppDatabase {
     final path = '${await getDatabasesPath()}/jalase_negar.db';
     final db = await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await _createV4(db);
         await _migrateToV5(db);
+        await _migrateToV6(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
         if (oldVersion < 5) await _migrateToV5(db);
+        if (oldVersion < 6) await _migrateToV6(db);
       },
     );
     _instance = AppDatabase._(db);
@@ -105,6 +107,21 @@ class AppDatabase {
         PRIMARY KEY (meeting_id, seq)
       )
     ''');
+  }
+
+  /// v6 adds the ASR parity contract fields. Segments written before this
+  /// version came from the Silero VAD on the device, which the column defaults
+  /// describe; asr_identity stays null for them.
+  static Future<void> _migrateToV6(Database db) async {
+    await db.execute('ALTER TABLE segments ADD COLUMN confidence REAL');
+    await db.execute('ALTER TABLE segments ADD COLUMN speaker TEXT');
+    await db.execute(
+      "ALTER TABLE segments ADD COLUMN timestamp_source TEXT NOT NULL DEFAULT 'silero_vad'",
+    );
+    await db.execute(
+      "ALTER TABLE segments ADD COLUMN source TEXT NOT NULL DEFAULT 'device'",
+    );
+    await db.execute('ALTER TABLE meetings ADD COLUMN asr_identity TEXT');
   }
 
   Future<String?> getSetting(String key) async {

@@ -6,7 +6,6 @@ import '../features/meetings/presentation/meetings_screen.dart';
 import '../features/models/presentation/models_screen.dart';
 import '../features/recording/presentation/recording_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
-import '../features/team/presentation/team_screen.dart';
 import 'shell_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -38,7 +37,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/models',
         builder: (context, state) => const ModelsScreen(),
       ),
-      GoRoute(path: '/team', builder: (context, state) => const TeamScreen()),
     ],
   );
 });

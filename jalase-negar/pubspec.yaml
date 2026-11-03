@@ -33,6 +33,9 @@ dependencies:
   flutter_foreground_task: ^10.0.0
   disk_space_plus: ^0.2.6
   crypto: ^3.0.8
+  flutter_svg: ^2.3.0
+  package_info_plus: ^9.0.1
+  just_audio: ^0.10.6
 
 dev_dependencies:
   flutter_test:
@@ -43,7 +46,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/team/
     - assets/images/brand/
 
   fonts:

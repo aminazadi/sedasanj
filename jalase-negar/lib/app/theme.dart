@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Brand tokens shared with the SedaSanj web panel (shared/theme.js, index.css).
 abstract final class SsColors {
@@ -111,14 +112,22 @@ ThemeData buildAppTheme() {
     ),
     appBarTheme: AppBarTheme(
       centerTitle: false,
+      // Tight gap between the back arrow and the title.
+      leadingWidth: 48,
+      titleSpacing: 0,
       elevation: 0,
       scrolledUnderElevation: 0,
-      backgroundColor: SsColors.primary,
-      foregroundColor: SsColors.canvas,
+      backgroundColor: SsColors.canvas,
+      foregroundColor: SsColors.ink,
       surfaceTintColor: Colors.transparent,
-      iconTheme: const IconThemeData(color: SsColors.canvas),
-      actionsIconTheme: const IconThemeData(color: SsColors.canvas),
-      titleTextStyle: _text(17, FontWeight.w500, SsColors.canvas),
+      systemOverlayStyle: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
+      iconTheme: const IconThemeData(color: SsColors.ink),
+      actionsIconTheme: const IconThemeData(color: SsColors.ink),
+      titleTextStyle: _text(17, FontWeight.w500, SsColors.ink),
     ),
     cardTheme: const CardThemeData(
       elevation: 0,
@@ -211,6 +220,7 @@ ThemeData buildAppTheme() {
       elevation: 0,
       shape: squareLine,
       surfaceTintColor: Colors.transparent,
+      menuPadding: const EdgeInsets.symmetric(vertical: 2),
       textStyle: _text(13, FontWeight.w400, SsColors.ink),
     ),
     menuTheme: const MenuThemeData(

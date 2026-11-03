@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:disk_space_plus/disk_space_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../core/utils/format.dart';
 import '../../../core/audio/chunk_writer.dart';
 import '../../../core/audio/wav.dart';
 import '../../../core/platform/recording_service.dart';
@@ -84,6 +86,10 @@ class RecorderState {
 }
 
 class RecorderController extends Notifier<RecorderState> {
+  /// Smoothed input loudness 0..1 for the live waveform. Kept out of
+  /// [RecorderState] so a level update never rebuilds the whole screen.
+  final ValueNotifier<double> level = ValueNotifier<double>(0);
+
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _subscription;
   StreamSubscription<RecordState>? _stateSubscription;
@@ -224,7 +230,7 @@ class RecorderController extends Notifier<RecorderState> {
       await repo.insert(
         Meeting(
           id: meetingId,
-          title: 'جلسه ${now.year}/${now.month}/${now.day}',
+          title: 'جلسه ${formatJalaliDay(now)}',
           createdAt: now,
           duration: Duration.zero,
           audioPath: path,
@@ -299,10 +305,27 @@ class RecorderController extends Notifier<RecorderState> {
   }
 
   void _onPcm(Uint8List pcm) {
+    _updateLevel(pcm);
     // Both writers swallow no errors: a failed write surfaces through the
     // returned future and stops the recording with the audio kept so far.
     _writer?.add(pcm);
     _chunks?.add(pcm).catchError((Object e) => _fail('خطا در نوشتن فایل: $e'));
+  }
+
+  /// RMS of the 16-bit little-endian PCM chunk (every 4th sample), mapped to
+  /// a perceptual 0..1 level with a quick decay.
+  void _updateLevel(Uint8List pcm) {
+    final data = ByteData.sublistView(pcm);
+    var sum = 0.0;
+    var n = 0;
+    for (var i = 0; i + 1 < pcm.lengthInBytes; i += 8) {
+      final v = data.getInt16(i, Endian.little) / 32768.0;
+      sum += v * v;
+      n++;
+    }
+    if (n == 0) return;
+    final raw = (math.sqrt(sum / n) * 5).clamp(0.0, 1.0);
+    level.value = math.max(raw, level.value * 0.6);
   }
 
   void _onRecorderState(RecordState recorderState) {
@@ -351,6 +374,7 @@ class RecorderController extends Notifier<RecorderState> {
   Future<void> pause() async {
     if (state.status != RecorderStatus.recording) return;
     _userPaused = true;
+    level.value = 0;
     await _recorder?.pause();
     state = state.copyWith(status: RecorderStatus.paused);
   }
@@ -368,6 +392,7 @@ class RecorderController extends Notifier<RecorderState> {
       return;
     }
     state = state.copyWith(status: RecorderStatus.saving);
+    level.value = 0;
     _ticker?.cancel();
     _diskTimer?.cancel();
     await WakelockPlus.disable();
