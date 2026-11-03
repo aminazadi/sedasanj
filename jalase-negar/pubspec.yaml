@@ -47,6 +47,7 @@ flutter:
 
   assets:
     - assets/images/brand/
+    - assets/audio/countdown-beep.wav
 
   fonts:
     - family: Vazirmatn

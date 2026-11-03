@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,22 +9,104 @@ import 'package:record/record.dart' show InputDevice;
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
-import '../application/recorder_controller.dart';
 import '../application/live_engine_provider.dart';
+import '../application/recorder_controller.dart';
 import 'live_transcript_panel.dart';
 import 'live_waveform.dart';
 import 'meeting_illustration.dart';
+import 'recording_start_sound.dart';
 
-class RecordingScreen extends ConsumerWidget {
+class RecordingScreen extends ConsumerStatefulWidget {
   const RecordingScreen({super.key, this.liveTranscript});
 
   /// Replaces the built-in live transcript panel (previews and tests).
   final Widget? liveTranscript;
 
+  @override
+  ConsumerState<RecordingScreen> createState() => _RecordingScreenState();
+}
+
+class _RecordingScreenState extends ConsumerState<RecordingScreen> {
   static const _controlsHeight = 132.0;
+  late final AppLifecycleListener _lifecycle;
+  RecordingStartSound? _startSound;
+  Timer? _countdownTimer;
+  int? _secondsRemaining;
+  bool _openingMicrophone = false;
+
+  bool get _preparing => _startSound != null || _openingMicrophone;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onInactive: _cancelPreparation);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    _countdownTimer?.cancel();
+    final sound = _startSound;
+    if (sound != null) unawaited(sound.close());
+    super.dispose();
+  }
+
+  void _prepare() {
+    if (_preparing) return;
+    setState(() => _startSound = ref.read(recordingStartSoundProvider)());
+  }
+
+  void _cancelPreparation() {
+    final sound = _startSound;
+    if (sound == null) return;
+    _countdownTimer?.cancel();
+    setState(() {
+      _startSound = null;
+      _secondsRemaining = null;
+    });
+    unawaited(sound.close());
+  }
+
+  void _beginCountdown() {
+    final sound = _startSound;
+    if (sound == null) return;
+
+    void showSecond(int seconds) {
+      setState(() => _secondsRemaining = seconds);
+      unawaited(sound.play());
+    }
+
+    var seconds = 3;
+    showSecond(seconds);
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      seconds--;
+      if (seconds > 0) {
+        showSecond(seconds);
+      } else {
+        timer.cancel();
+        unawaited(_openMicrophone(sound));
+      }
+    });
+  }
+
+  Future<void> _openMicrophone(RecordingStartSound sound) async {
+    setState(() => _secondsRemaining = null);
+    await sound.close();
+    if (!mounted || !identical(_startSound, sound)) return;
+
+    setState(() {
+      _startSound = null;
+      _openingMicrophone = true;
+    });
+    try {
+      await ref.read(recorderControllerProvider.notifier).start();
+    } finally {
+      if (mounted) setState(() => _openingMicrophone = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(recorderControllerProvider);
     final controller = ref.read(recorderControllerProvider.notifier);
 
@@ -45,9 +128,13 @@ class RecordingScreen extends ConsumerWidget {
     final isActive = isRecording || isPaused || isSaving;
 
     return PopScope(
-      canPop: !isActive,
+      canPop: !isActive && !_openingMicrophone,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop || isSaving) return;
+        if (didPop) {
+          _cancelPreparation();
+          return;
+        }
+        if (!isActive || isSaving) return;
         final leave = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -73,10 +160,18 @@ class RecordingScreen extends ConsumerWidget {
         appBar: SsAppBar(
           title: const Text('ضبط جلسه'),
           actions: [
-            if (state.status == RecorderStatus.idle) ...[
-              const _LiveToggle(),
-              _MicMenu(state: state, controller: controller),
-            ],
+            if (!isActive && !_preparing)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const _LiveToggle(),
+                    const SizedBox(width: 4),
+                    _MicMenu(state: state, controller: controller),
+                  ],
+                ),
+              ),
           ],
         ),
         body: SafeArea(
@@ -91,7 +186,7 @@ class RecordingScreen extends ConsumerWidget {
                       child: isActive
                           ? ClipRect(
                               child:
-                                  liveTranscript ??
+                                  widget.liveTranscript ??
                                   LiveTranscriptPanel(state: controller.live),
                             )
                           : const SizedBox.expand(),
@@ -122,13 +217,17 @@ class RecordingScreen extends ConsumerWidget {
                       height: _controlsHeight,
                       child: Center(
                         child: switch (state.status) {
+                          RecorderStatus.idle when _preparing =>
+                            _openingMicrophone
+                                ? const SsProcessingMark(size: 30)
+                                : const SizedBox.shrink(),
                           RecorderStatus.idle => _ControlColumn(
                             label: 'شروع ضبط',
                             child: _DiamondButton(
                               pulse: true,
                               half: 38,
                               icon: Icons.mic,
-                              onTap: controller.start,
+                              onTap: _prepare,
                             ),
                           ),
                           RecorderStatus.saving => const Column(
@@ -170,7 +269,11 @@ class RecordingScreen extends ConsumerWidget {
                 ),
                 Positioned.fill(
                   bottom: _controlsHeight,
-                  child: _RecordingPreview(active: isActive),
+                  child: _RecordingPreview(
+                    dispersed: _preparing || isActive,
+                    secondsRemaining: _secondsRemaining,
+                    onDispersed: _beginCountdown,
+                  ),
                 ),
               ],
             ),
@@ -182,45 +285,101 @@ class RecordingScreen extends ConsumerWidget {
 }
 
 class _RecordingPreview extends StatelessWidget {
-  const _RecordingPreview({required this.active});
+  const _RecordingPreview({
+    required this.dispersed,
+    required this.secondsRemaining,
+    required this.onDispersed,
+  });
 
-  final bool active;
+  final bool dispersed;
+  final int? secondsRemaining;
+  final VoidCallback onDispersed;
 
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 20),
-              child: MeetingIllustration(dispersed: active),
-            ),
-          ),
-          Visibility.maintain(
-            visible: !active,
-            child: Column(
-              children: [
-                Text(
-                  formatDuration(Duration.zero),
-                  textDirection: TextDirection.ltr,
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontSize: 56,
-                    fontWeight: FontWeight.w300,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'برای شروع ضبط، دکمهٔ زیر را بزنید',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
+          _buildIllustration(context),
+          if (secondsRemaining case final seconds?)
+            Center(child: _CountdownNumber(seconds: seconds)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildIllustration(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: MeetingIllustration(
+              dispersed: dispersed,
+              onDispersed: onDispersed,
+            ),
+          ),
+        ),
+        Visibility.maintain(
+          visible: !dispersed,
+          child: Column(
+            children: [
+              Text(
+                formatDuration(Duration.zero),
+                textDirection: TextDirection.ltr,
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                  fontSize: 56,
+                  fontWeight: FontWeight.w300,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'برای شروع ضبط، دکمهٔ زیر را بزنید',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CountdownNumber extends StatelessWidget {
+  const _CountdownNumber({required this.seconds});
+
+  final int seconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final digit = toPersianDigits('$seconds');
+    return Semantics(
+      liveRegion: true,
+      label: 'شروع ضبط تا $digit ثانیهٔ دیگر',
+      excludeSemantics: true,
+      child: TweenAnimationBuilder<double>(
+        key: ValueKey(seconds),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        tween: Tween(begin: 0.35, end: 1),
+        builder: (context, opacity, child) => Opacity(
+          opacity: opacity,
+          child: Transform.scale(scale: 0.9 + 0.1 * opacity, child: child),
+        ),
+        child: Text(
+          digit,
+          style: Theme.of(context).textTheme.displayLarge?.copyWith(
+            color: SsColors.primary,
+            fontSize: 96,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
       ),
     );
   }
@@ -279,12 +438,6 @@ class _MicMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = state.inputDevices
-        .where((d) => d.id == state.selectedInputDeviceId)
-        .firstOrNull;
-    final current = state.selectedInputDeviceId.isEmpty || selected == null
-        ? 'میکروفون پیش‌فرض'
-        : _labelOf(selected);
     final textStyle = Theme.of(context).textTheme.labelMedium;
 
     PopupMenuItem<String> item(String value, String label, {bool on = false}) {
@@ -318,85 +471,80 @@ class _MicMenu extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsetsDirectional.only(end: 12),
-      child: Center(
-        child: PopupMenuButton<String>(
-          tooltip: 'انتخاب ورودی صوتی',
-          position: PopupMenuPosition.under,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 200),
-          onSelected: (value) {
-            if (value == _refresh) {
-              controller.refreshInputDevices();
-            } else {
-              controller.setInputDevice(value);
-            }
-          },
-          itemBuilder: (context) => [
-            item(
-              '',
-              'میکروفون پیش‌فرض',
-              on: state.selectedInputDeviceId.isEmpty,
-            ),
-            for (final device in state.inputDevices)
-              item(
-                device.id,
-                _labelOf(device),
-                on: device.id == state.selectedInputDeviceId,
-              ),
-            const PopupMenuDivider(height: 1),
-            PopupMenuItem<String>(
-              value: _refresh,
-              height: 40,
-              enabled: !state.discoveringInputDevices,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(width: 18),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.refresh, size: 16, color: SsColors.neutral),
-                  const SizedBox(width: 6),
-                  Text(
-                    'به‌روزرسانی لیست',
-                    style: textStyle?.copyWith(color: SsColors.neutral),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: SsColors.ink.withValues(alpha: 0.06),
-              border: Border.all(color: SsColors.ink.withValues(alpha: 0.25)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.mic_none, size: 18, color: SsColors.primary),
-                const SizedBox(width: 6),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: Text(
-                    current,
-                    overflow: TextOverflow.ellipsis,
-                    style: textStyle,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                state.discoveringInputDevices
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.arrow_drop_down, size: 20),
-              ],
-            ),
+    return PopupMenuButton<String>(
+      tooltip: 'انتخاب ورودی صوتی',
+      position: PopupMenuPosition.under,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 200),
+      onSelected: (value) {
+        if (value == _refresh) {
+          controller.refreshInputDevices();
+        } else {
+          controller.setInputDevice(value);
+        }
+      },
+      itemBuilder: (context) => [
+        item('', 'میکروفون پیش‌فرض', on: state.selectedInputDeviceId.isEmpty),
+        for (final device in state.inputDevices)
+          item(
+            device.id,
+            _labelOf(device),
+            on: device.id == state.selectedInputDeviceId,
           ),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem<String>(
+          value: _refresh,
+          height: 40,
+          enabled: !state.discoveringInputDevices,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: 18),
+              const SizedBox(width: 6),
+              const Icon(Icons.refresh, size: 16, color: SsColors.neutral),
+              const SizedBox(width: 6),
+              Text(
+                'به‌روزرسانی لیست',
+                style: textStyle?.copyWith(color: SsColors.neutral),
+              ),
+            ],
+          ),
+        ),
+      ],
+      child: _HeaderActionIcon(
+        icon: Icons.mic_none,
+        busy: state.discoveringInputDevices,
+      ),
+    );
+  }
+}
+
+class _HeaderActionIcon extends StatelessWidget {
+  const _HeaderActionIcon({required this.icon, this.busy = false});
+
+  final IconData icon;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 44,
+      child: Center(
+        child: Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: SsColors.ink.withValues(alpha: 0.06),
+            border: Border.all(color: SsColors.ink.withValues(alpha: 0.25)),
+          ),
+          child: busy
+              ? const SizedBox.square(
+                  dimension: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(icon, size: 18, color: SsColors.primary),
         ),
       ),
     );
@@ -604,7 +752,11 @@ class _LiveToggle extends ConsumerWidget {
     final enabled = ref.watch(liveTranscriptEnabledProvider).value ?? true;
     return IconButton(
       tooltip: enabled ? 'متن زنده روشن است' : 'متن زنده خاموش است',
-      icon: Icon(enabled ? Icons.subtitles : Icons.subtitles_off_outlined),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      icon: _HeaderActionIcon(
+        icon: enabled ? Icons.subtitles_outlined : Icons.subtitles_off_outlined,
+      ),
       onPressed: () {
         ref.read(liveTranscriptEnabledProvider.notifier).set(!enabled);
         ScaffoldMessenger.of(context)
