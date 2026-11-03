@@ -91,13 +91,14 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
   }
 
   Future<void> _openMicrophone(RecordingStartSound sound) async {
-    setState(() => _secondsRemaining = null);
+    setState(() => _secondsRemaining = 0);
     await sound.playFinal();
     await sound.close();
     if (!mounted || !identical(_startSound, sound)) return;
 
     setState(() {
       _startSound = null;
+      _secondsRemaining = null;
       _openingMicrophone = true;
     });
     try {
@@ -302,7 +303,18 @@ class _RecordingPreview extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           _buildIllustration(context),
-          if (secondsRemaining case final seconds?)
+          if (secondsRemaining == 0)
+            Center(
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  'آمادهٔ ضبط…',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+            )
+          else if (secondsRemaining case final seconds?)
             Center(child: _CountdownNumber(seconds: seconds)),
         ],
       ),

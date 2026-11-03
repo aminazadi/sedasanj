@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Shortened the Jalase-Negar final recording cue to 800 ms and showed a readiness message during playback.
 - Moved the Jalase-Negar meeting upload toggle into the section header with square corners and shortened the description of audio and transcript uploads.
 - Moved Jalase-Negar toast messages below the top toolbar, including the meeting deletion undo action.
 - Added a two-second tone after the Jalase-Negar countdown and before microphone capture, and made the countdown digits bolder.

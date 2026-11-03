@@ -19,6 +19,7 @@ import 'package:jalase_negar/features/recording/presentation/recording_start_sou
 
 const _transcript = Key('transcript');
 const _elapsed = Duration(seconds: 13);
+const _finalCueDuration = Duration(milliseconds: 800);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +48,9 @@ void main() {
     expect(wave.amplitudeAt(count - 2), 0);
   });
 
-  test('the final cue is a two-second PCM wave', () async {
+  test('the final cue is an 800 ms PCM wave', () async {
     final cue = await readWavInfo('assets/audio/countdown-final.wav');
-    expect(cue.frameCount, cue.sampleRate * 2);
+    expect(cue.duration, _finalCueDuration);
     expect(cue.channels, 1);
   });
 
@@ -94,15 +95,19 @@ void main() {
     }
     await tester.pump(const Duration(milliseconds: 999));
     expect(find.text('۱'), findsOneWidget);
+    final readyText = find.text('آمادهٔ ضبط…');
+    expect(readyText, findsNothing);
     expect(recorder.startCount, 0);
     final finalGate = sound.finalGate = Completer<void>();
     final closeGate = sound.closeGate = Completer<void>();
     await tester.pump(const Duration(milliseconds: 1));
     expect(find.text('۱'), findsNothing);
+    expect(readyText, findsOneWidget);
     expect(sound.finalCount, 1);
     expect(sound.closeCount, 0);
     expect(recorder.startCount, 0);
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(_finalCueDuration);
+    expect(readyText, findsOneWidget);
     expect(sound.closeCount, 0);
     expect(recorder.startCount, 0);
     expect(find.byKey(_transcript), findsNothing);
@@ -113,6 +118,7 @@ void main() {
     closeGate.complete();
     await tester.pump();
     await tester.pump();
+    expect(readyText, findsNothing);
     expect(recorder.startCount, 1);
     expect(sound.closed, isTrue);
 
@@ -217,6 +223,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     await tester.pump(const Duration(seconds: 3));
+    expect(find.text('آمادهٔ ضبط…'), findsOneWidget);
     expect(sound.finalCount, 1);
     expect(recorder.startCount, 0);
 
@@ -227,6 +234,7 @@ void main() {
     finalGate.complete();
     await tester.pump();
     expect(recorder.startCount, 0);
+    expect(find.text('آمادهٔ ضبط…'), findsNothing);
     expect(find.byIcon(Icons.mic), findsOneWidget);
   });
 
