@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Added a two-second tone after the Jalase-Negar countdown and before microphone capture, and made the countdown digits bolder.
 - Matched the Jalase-Negar recording header buttons and added a three-second audible countdown between the wind effect and microphone capture.
 - Compacted the Jalase-Negar meeting player controls and moved the playback timer beside them below the waveform, removing the duplicate title above it.
 - Removed post-recording retranscription from Jalase-Negar. Meeting details now show the saved transcript and audio player, and the meeting list no longer retries processing failures by transcribing the saved audio.

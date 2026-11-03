@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
+import 'package:jalase_negar/core/audio/wav.dart';
 import 'package:jalase_negar/core/utils/format.dart';
 import 'package:jalase_negar/features/recording/application/live_audio_waveform.dart';
 import 'package:jalase_negar/features/recording/application/recorder_controller.dart';
@@ -46,7 +47,13 @@ void main() {
     expect(wave.amplitudeAt(count - 2), 0);
   });
 
-  testWidgets('wind and three cues finish before the recording layout opens', (
+  test('the final cue is a two-second PCM wave', () async {
+    final cue = await readWavInfo('assets/audio/countdown-final.wav');
+    expect(cue.frameCount, cue.sampleRate * 2);
+    expect(cue.channels, 1);
+  });
+
+  testWidgets('wind and all cues finish before the recording layout opens', (
     tester,
   ) async {
     final (recorder, sound) = await _openScreen(tester);
@@ -70,6 +77,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(particles, findsNothing);
     expect(find.text('۳'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('۳')).style?.fontWeight,
+      FontWeight.w700,
+    );
     expect(sound.playCount, 1);
     expect(find.byIcon(Icons.mic), findsNothing);
 
@@ -77,15 +88,27 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.text(digit), findsOneWidget);
       expect(sound.playCount, playCount);
+      expect(sound.finalCount, 0);
       expect(recorder.startCount, 0);
       expect(find.byKey(_transcript), findsNothing);
     }
     await tester.pump(const Duration(milliseconds: 999));
     expect(find.text('۱'), findsOneWidget);
     expect(recorder.startCount, 0);
+    final finalGate = sound.finalGate = Completer<void>();
     final closeGate = sound.closeGate = Completer<void>();
     await tester.pump(const Duration(milliseconds: 1));
     expect(find.text('۱'), findsNothing);
+    expect(sound.finalCount, 1);
+    expect(sound.closeCount, 0);
+    expect(recorder.startCount, 0);
+    await tester.pump(const Duration(seconds: 2));
+    expect(sound.closeCount, 0);
+    expect(recorder.startCount, 0);
+    expect(find.byKey(_transcript), findsNothing);
+    finalGate.complete();
+    await tester.pump();
+    expect(sound.closeCount, 1);
     expect(recorder.startCount, 0);
     closeGate.complete();
     await tester.pump();
@@ -185,6 +208,28 @@ void main() {
     expect(find.byIcon(Icons.mic), findsOneWidget);
   });
 
+  testWidgets('losing app focus during the final cue prevents capture', (
+    tester,
+  ) async {
+    final (recorder, sound) = await _openScreen(tester, reducedMotion: true);
+    final finalGate = sound.finalGate = Completer<void>();
+    await tester.tap(find.byIcon(Icons.mic));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    expect(sound.finalCount, 1);
+    expect(recorder.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(sound.closed, isTrue);
+    finalGate.complete();
+    await tester.pump();
+    expect(recorder.startCount, 0);
+    expect(find.byIcon(Icons.mic), findsOneWidget);
+  });
+
   test(
     'countdown audio failure reports a code and releases the player',
     () async {
@@ -204,10 +249,12 @@ void main() {
 
       final sound = RecordingStartSound();
       await sound.play();
-      await sound.play();
+      await sound.playFinal();
       await sound.close();
       expect(
-        messages.where((message) => message?.startsWith('JN-REC-0002') ?? false),
+        messages.where(
+          (message) => message?.startsWith('JN-REC-0002') ?? false,
+        ),
         hasLength(1),
       );
     },
@@ -279,14 +326,24 @@ class _Recorder extends RecorderController {
 
 class _StartSound implements RecordingStartSound {
   int playCount = 0;
+  int finalCount = 0;
+  int closeCount = 0;
   bool closed = false;
+  Completer<void>? finalGate;
   Completer<void>? closeGate;
 
   @override
   Future<void> play() async => playCount++;
 
   @override
+  Future<void> playFinal() async {
+    finalCount++;
+    await finalGate?.future;
+  }
+
+  @override
   Future<void> close() async {
+    closeCount++;
     await closeGate?.future;
     closed = true;
   }

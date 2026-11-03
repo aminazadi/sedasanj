@@ -6,7 +6,7 @@ final recordingStartSoundProvider = Provider<RecordingStartSound Function()>(
   (ref) => RecordingStartSound.new,
 );
 
-/// Owns the short cue for one attempt and preloads it during the wind effect.
+/// Owns the cues for one attempt and preloads the short cue during the wind effect.
 class RecordingStartSound {
   RecordingStartSound() {
     _ready = _load();
@@ -30,12 +30,29 @@ class RecordingStartSound {
 
   bool _isCurrent(int cue) => _closing == null && cue == _cue;
 
-  Future<void> play() async {
+  Future<void> play() => _play();
+
+  Future<void> playFinal() =>
+      _play(asset: 'assets/audio/countdown-final.wav').timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {
+          if (_closing != null) return;
+          _cue++;
+          _reportFailure();
+        },
+      );
+
+  Future<void> _play({String? asset}) async {
     final cue = ++_cue;
     try {
       if (!await _ready || !_isCurrent(cue)) return;
       await _player.pause();
-      await _player.seek(Duration.zero);
+      if (!_isCurrent(cue)) return;
+      if (asset == null) {
+        await _player.seek(Duration.zero);
+      } else {
+        await _player.setAsset(asset);
+      }
       if (_isCurrent(cue)) await _player.play();
     } catch (_) {
       if (_isCurrent(cue)) _reportFailure();

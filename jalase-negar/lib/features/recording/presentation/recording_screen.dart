@@ -91,6 +91,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
 
   Future<void> _openMicrophone(RecordingStartSound sound) async {
     setState(() => _secondsRemaining = null);
+    await sound.playFinal();
     await sound.close();
     if (!mounted || !identical(_startSound, sound)) return;
 
@@ -377,7 +378,7 @@ class _CountdownNumber extends StatelessWidget {
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
             color: SsColors.primary,
             fontSize: 96,
-            fontWeight: FontWeight.w300,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
