@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:disk_space_plus/disk_space_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -18,6 +17,7 @@ import '../../meetings/application/pipeline_controller.dart';
 import '../../meetings/data/meeting.dart';
 import '../../meetings/data/meeting_repository.dart';
 import '../../upload/upload_controller.dart';
+import 'live_audio_waveform.dart';
 
 /// Meetings are recorded mono at 16 kHz, the native rate of the ASR models
 /// and of the upload format, so nothing needs resampling downstream.
@@ -86,9 +86,8 @@ class RecorderState {
 }
 
 class RecorderController extends Notifier<RecorderState> {
-  /// Smoothed input loudness 0..1 for the live waveform. Kept out of
-  /// [RecorderState] so a level update never rebuilds the whole screen.
-  final ValueNotifier<double> level = ValueNotifier<double>(0);
+  /// Repaint the waveform directly without rebuilding the recording screen.
+  final waveform = LiveAudioWaveform(sampleRate: kRecordSampleRate);
 
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _subscription;
@@ -106,6 +105,7 @@ class RecorderController extends Notifier<RecorderState> {
   @override
   RecorderState build() {
     ref.onDispose(_disposeResources);
+    ref.onDispose(waveform.dispose);
     return const RecorderState();
   }
 
@@ -259,6 +259,7 @@ class RecorderController extends Notifier<RecorderState> {
           audioInterruption: AudioInterruptionMode.pauseResume,
         ),
       );
+      waveform.clear();
       _recorder = recorder;
       _userPaused = false;
       _failing = false;
@@ -305,27 +306,15 @@ class RecorderController extends Notifier<RecorderState> {
   }
 
   void _onPcm(Uint8List pcm) {
-    _updateLevel(pcm);
+    if (!_userPaused &&
+        !state.interrupted &&
+        state.status != RecorderStatus.saving) {
+      waveform.addPcm(pcm);
+    }
     // Both writers swallow no errors: a failed write surfaces through the
     // returned future and stops the recording with the audio kept so far.
     _writer?.add(pcm);
     _chunks?.add(pcm).catchError((Object e) => _fail('خطا در نوشتن فایل: $e'));
-  }
-
-  /// RMS of the 16-bit little-endian PCM chunk (every 4th sample), mapped to
-  /// a perceptual 0..1 level with a quick decay.
-  void _updateLevel(Uint8List pcm) {
-    final data = ByteData.sublistView(pcm);
-    var sum = 0.0;
-    var n = 0;
-    for (var i = 0; i + 1 < pcm.lengthInBytes; i += 8) {
-      final v = data.getInt16(i, Endian.little) / 32768.0;
-      sum += v * v;
-      n++;
-    }
-    if (n == 0) return;
-    final raw = (math.sqrt(sum / n) * 5).clamp(0.0, 1.0);
-    level.value = math.max(raw, level.value * 0.6);
   }
 
   void _onRecorderState(RecordState recorderState) {
@@ -334,6 +323,7 @@ class RecorderController extends Notifier<RecorderState> {
       return;
     }
     if (recorderState == RecordState.pause && !_userPaused) {
+      waveform.clear();
       state = state.copyWith(
         interrupted: true,
         interruptions: state.interruptions + 1,
@@ -374,7 +364,7 @@ class RecorderController extends Notifier<RecorderState> {
   Future<void> pause() async {
     if (state.status != RecorderStatus.recording) return;
     _userPaused = true;
-    level.value = 0;
+    waveform.clear();
     await _recorder?.pause();
     state = state.copyWith(status: RecorderStatus.paused);
   }
@@ -392,7 +382,7 @@ class RecorderController extends Notifier<RecorderState> {
       return;
     }
     state = state.copyWith(status: RecorderStatus.saving);
-    level.value = 0;
+    waveform.clear();
     _ticker?.cancel();
     _diskTimer?.cancel();
     await WakelockPlus.disable();

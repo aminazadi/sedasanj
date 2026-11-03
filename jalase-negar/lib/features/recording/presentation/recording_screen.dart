@@ -1,7 +1,5 @@
-import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,10 +9,16 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../application/recorder_controller.dart';
+import 'live_waveform.dart';
 import 'meeting_illustration.dart';
 
 class RecordingScreen extends ConsumerWidget {
-  const RecordingScreen({super.key});
+  const RecordingScreen({super.key, this.liveTranscript});
+
+  /// Content displayed between the header and the recording monitor.
+  final Widget? liveTranscript;
+
+  static const _controlsHeight = 132.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -74,110 +78,178 @@ class RecordingScreen extends ConsumerWidget {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Column(
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (state.status == RecorderStatus.idle) ...[
-                        const Flexible(
-                          child: Padding(
-                            padding: EdgeInsets.only(bottom: 20),
-                            child: MeetingIllustration(),
+                Column(
+                  children: [
+                    Expanded(
+                      child: isActive
+                          ? ClipRect(child: liveTranscript)
+                          : const SizedBox.expand(),
+                    ),
+                    if (isActive) ...[
+                      if (state.interrupted || isPaused || isSaving)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            isSaving
+                                ? 'در حال ذخیرهٔ جلسه، لطفاً صبر کنید…'
+                                : isPaused
+                                ? 'ضبط موقتاً متوقف است'
+                                : 'ضبط توسط سیستم موقتاً متوقف شد و خودکار ادامه می‌یابد.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
-                      ],
-                      Text(
-                        formatDuration(state.elapsed),
-                        style: Theme.of(context).textTheme.displaySmall
-                            ?.copyWith(
-                              fontSize: 56,
-                              fontWeight: FontWeight.w300,
-                              height: 1.1,
-                              color: isRecording
-                                  ? SsColors.danger
-                                  : SsColors.ink,
-                            ),
-                      ),
-                      if (isRecording || isPaused) ...[
-                        const SizedBox(height: 22),
-                        _WavePanel(
-                          level: controller.level,
+                      _RecordingMonitor(
+                        state: state,
+                        waveform: LiveWaveform(
+                          waveform: controller.waveform,
                           active: isRecording && !state.interrupted,
-                          paused: isPaused || state.interrupted,
                         ),
-                      ],
-                      const SizedBox(height: 14),
-                      Text(
-                        switch (state.status) {
-                          RecorderStatus.idle =>
-                            'برای شروع ضبط، دکمه‌ی زیر را بزنید',
-                          RecorderStatus.recording =>
-                            state.interrupted
-                                ? 'ضبط توسط سیستم متوقف شد (تماس یا برنامه‌ی دیگر)؛ پس از پایان خودکار ادامه می‌یابد'
-                                : 'گوشی را نزدیک سخنران‌ها نگه دارید',
-                          RecorderStatus.paused => 'ضبط متوقف شده است',
-                          RecorderStatus.saving =>
-                            'در حال ذخیره‌ی جلسه، لطفاً صبر کنید…',
-                        },
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
-                  ),
+                    SizedBox(
+                      height: _controlsHeight,
+                      child: Center(
+                        child: switch (state.status) {
+                          RecorderStatus.idle => _ControlColumn(
+                            label: 'شروع ضبط',
+                            child: _DiamondButton(
+                              pulse: true,
+                              half: 38,
+                              icon: Icons.mic,
+                              onTap: controller.start,
+                            ),
+                          ),
+                          RecorderStatus.saving => const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [SsProcessingMark(size: 30)],
+                          ),
+                          _ => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _ControlColumn(
+                                label: isRecording ? 'توقف موقت' : 'ادامه',
+                                child: _DiamondButton(
+                                  half: 34,
+                                  icon: isRecording
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
+                                  outlined: true,
+                                  onTap: isRecording
+                                      ? controller.pause
+                                      : controller.resume,
+                                ),
+                              ),
+                              const SizedBox(width: 44),
+                              _ControlColumn(
+                                label: 'پایان و ذخیره',
+                                child: _DiamondButton(
+                                  half: 34,
+                                  icon: Icons.stop,
+                                  danger: true,
+                                  onTap: controller.stop,
+                                ),
+                              ),
+                            ],
+                          ),
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(
-                  height: 150,
-                  child: Center(
-                    child: switch (state.status) {
-                      RecorderStatus.idle => _ControlColumn(
-                        label: 'شروع ضبط',
-                        child: _DiamondButton(
-                          pulse: true,
-                          half: 38,
-                          icon: Icons.mic,
-                          onTap: controller.start,
-                        ),
-                      ),
-                      RecorderStatus.saving => const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [SsProcessingMark(size: 30)],
-                      ),
-                      _ => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _ControlColumn(
-                            label: isRecording ? 'توقف موقت' : 'ادامه',
-                            child: _DiamondButton(
-                              half: 34,
-                              icon: isRecording
-                                  ? Icons.pause
-                                  : Icons.play_arrow,
-                              outlined: true,
-                              onTap: isRecording
-                                  ? controller.pause
-                                  : controller.resume,
-                            ),
-                          ),
-                          const SizedBox(width: 44),
-                          _ControlColumn(
-                            label: 'پایان و ذخیره',
-                            child: _DiamondButton(
-                              half: 34,
-                              icon: Icons.stop,
-                              danger: true,
-                              onTap: controller.stop,
-                            ),
-                          ),
-                        ],
-                      ),
-                    },
-                  ),
+                Positioned.fill(
+                  bottom: _controlsHeight,
+                  child: _RecordingPreview(active: isActive),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordingPreview extends StatelessWidget {
+  const _RecordingPreview({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: MeetingIllustration(dispersed: active),
+            ),
+          ),
+          Visibility.maintain(
+            visible: !active,
+            child: Column(
+              children: [
+                Text(
+                  formatDuration(Duration.zero),
+                  textDirection: TextDirection.ltr,
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    fontSize: 56,
+                    fontWeight: FontWeight.w300,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'برای شروع ضبط، دکمهٔ زیر را بزنید',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordingMonitor extends StatelessWidget {
+  const _RecordingMonitor({required this.state, required this.waveform});
+
+  final RecorderState state;
+  final LiveWaveform waveform;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = waveform.active ? SsColors.danger : SsColors.ink;
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: SsColors.line)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Semantics(
+              label: 'زمان ضبط',
+              child: Text(
+                formatDuration(state.elapsed),
+                textDirection: TextDirection.ltr,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: color,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(child: waveform),
+          ],
         ),
       ),
     );
@@ -321,139 +393,6 @@ class _MicMenu extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Framed live waveform: mirrored rounded bars scrolling with the input level.
-class _WavePanel extends StatefulWidget {
-  const _WavePanel({
-    required this.level,
-    required this.active,
-    required this.paused,
-  });
-
-  final ValueListenable<double> level;
-  final bool active;
-  final bool paused;
-
-  @override
-  State<_WavePanel> createState() => _WavePanelState();
-}
-
-class _WavePanelState extends State<_WavePanel> {
-  static const _bars = 64;
-  final List<double> _history = List.filled(_bars, 0);
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(_WavePanel old) {
-    super.didUpdateWidget(old);
-    _sync();
-  }
-
-  void _sync() {
-    if (widget.active && _timer == null) {
-      _timer = Timer.periodic(const Duration(milliseconds: 70), (_) {
-        _history
-          ..removeAt(0)
-          ..add(widget.level.value);
-        setState(() {});
-      });
-    } else if (!widget.active && _timer != null) {
-      _timer!.cancel();
-      _timer = null;
-      if (!widget.paused) _history.fillRange(0, _bars, 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.active
-        ? SsColors.danger
-        : widget.paused
-        ? SsColors.warning
-        : SsColors.neutral;
-    return SizedBox(
-      height: 110,
-      width: double.infinity,
-      child: RepaintBoundary(
-        child: CustomPaint(painter: _WavePainter(_history, color)),
-      ),
-    );
-  }
-}
-
-class _WavePainter extends CustomPainter {
-  _WavePainter(this.values, this.color);
-
-  final List<double> values;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final mid = size.height / 2;
-    final maxH = size.height - 8;
-    final n = values.length;
-    final dx = size.width / (n - 1);
-
-    // Baseline.
-    canvas.drawLine(
-      Offset(0, mid),
-      Offset(size.width, mid),
-      Paint()
-        ..color = color.withValues(alpha: 0.25)
-        ..strokeWidth = 1,
-    );
-
-    double half(int i) => math.max(1.0, values[i] * maxH / 2);
-
-    // Smooth mirrored envelope: top edge left->right, bottom edge back.
-    final top = <Offset>[
-      for (var i = 0; i < n; i++) Offset(i * dx, mid - half(i)),
-    ];
-    final bottom = <Offset>[
-      for (var i = n - 1; i >= 0; i--) Offset(i * dx, mid + half(i)),
-    ];
-    Path smooth(List<Offset> pts, Path path, {bool moveFirst = true}) {
-      if (moveFirst) {
-        path.moveTo(pts.first.dx, pts.first.dy);
-      } else {
-        path.lineTo(pts.first.dx, pts.first.dy);
-      }
-      for (var i = 1; i < pts.length - 1; i++) {
-        final m = Offset(
-          (pts[i].dx + pts[i + 1].dx) / 2,
-          (pts[i].dy + pts[i + 1].dy) / 2,
-        );
-        path.quadraticBezierTo(pts[i].dx, pts[i].dy, m.dx, m.dy);
-      }
-      path.lineTo(pts.last.dx, pts.last.dy);
-      return path;
-    }
-
-    final path = smooth(top, Path());
-    smooth(bottom, path, moveFirst: false);
-    path.close();
-
-    final shader = LinearGradient(
-      colors: [color.withValues(alpha: 0.05), color.withValues(alpha: 0.9)],
-    ).createShader(Offset.zero & size);
-    canvas.drawPath(path, Paint()..shader = shader);
-  }
-
-  @override
-  bool shouldRepaint(_WavePainter old) => true;
 }
 
 class _ControlColumn extends StatelessWidget {

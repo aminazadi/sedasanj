@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-04 — AMINAZADI
+
+- Changed Jalase-Negar recording to disperse the illustration into windblown particles and show the PCM waveform and compact timer below the live transcript.
+
 ## 2026-11-03 — AMINAZADI
 
 - Made Shenava Koochik v1.5 RNNT (INT8) the recommended Jalase-Negar model, ported the platform's turn consolidation (`consolidate_segments`) and energy VAD to Dart against shared contract vectors, and recorded the segment contract fields (confidence, speaker, timestamp source, source) plus an ASR identity per meeting (database v6).
