@@ -13,7 +13,7 @@ import '../../../core/audio/chunk_writer.dart';
 import '../../../core/audio/wav.dart';
 import '../../../core/platform/recording_service.dart';
 import '../../../core/providers.dart';
-import '../../meetings/application/pipeline_controller.dart';
+import '../../meetings/application/meeting_providers.dart';
 import '../../meetings/data/meeting.dart';
 import '../../meetings/data/meeting_repository.dart';
 import '../../upload/upload_controller.dart';
@@ -450,6 +450,8 @@ class RecorderController extends Notifier<RecorderState> {
         chunks?.duration ?? writer?.duration ?? Duration.zero,
       );
       ref.invalidate(meetingsProvider);
+      ref.invalidate(meetingDetailProvider(meetingId));
+      ref.invalidate(meetingPreviewProvider(meetingId));
       ref.read(uploadQueueProvider.notifier).kick();
       state = RecorderState(savedMeetingId: meetingId, error: error);
     } catch (e) {

@@ -175,7 +175,7 @@ void main() {
     await settle();
     expect(session.state.value.phase, LivePhase.failed);
     expect(session.state.value.note, contains('مدل بارگذاری نشد'));
-    expect(session.state.value.note, contains('رونویسی کامل'));
+    expect(session.state.value.note, contains('JN-ASR-0001'));
     await session.stop();
     expect(session.state.value.phase, LivePhase.failed);
   });
@@ -186,7 +186,8 @@ void main() {
     engine.emit(const LiveFailure('خطای کوچک'));
     await settle();
     expect(session.state.value.phase, LivePhase.listening);
-    expect(session.state.value.note, 'خطای کوچک');
+    expect(session.state.value.note, contains('خطای کوچک'));
+    expect(session.state.value.note, contains('JN-ASR-0001'));
   });
 
   test('skipped speech and lag are reported without stopping', () async {
@@ -198,7 +199,7 @@ void main() {
     engine.emit(const LiveSkipped(startMs: 0, endMs: 2000));
     await settle();
     expect(session.state.value.skipped, 1);
-    expect(session.state.value.note, contains('رونویسی کامل'));
+    expect(session.state.value.note, contains('JN-ASR-0001'));
     engine.emit(const LiveLagState(lagging: false));
     await settle();
     expect(session.state.value.phase, LivePhase.listening);

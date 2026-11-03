@@ -26,32 +26,13 @@ void main() {
       );
     });
 
-    test('the live draft is named so the full transcript can replace it', () {
+    test('identifies transcripts captured live', () {
       final live = buildAsrIdentity(
         modelId: 'm',
         segmenter: AsrSegmenter.silero,
         live: true,
       );
       expect(live, 'm|device-quiet-gain-v1|segmenter:silero-vad-live');
-      Meeting meeting(String? identity) => Meeting(
-        id: 'a',
-        title: 't',
-        createdAt: DateTime(2026),
-        duration: Duration.zero,
-        audioPath: '/a.wav',
-        sampleRate: 16000,
-        channels: 1,
-        status: MeetingStatus.recorded,
-        asrIdentity: identity,
-      );
-      expect(meeting(live).isLiveDraft, isTrue);
-      expect(meeting(null).isLiveDraft, isFalse);
-      expect(
-        meeting(
-          buildAsrIdentity(modelId: 'm', segmenter: AsrSegmenter.silero),
-        ).isLiveDraft,
-        isFalse,
-      );
     });
 
     test('server-parity mode uses the server preparation identity', () {

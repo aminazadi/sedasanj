@@ -86,8 +86,8 @@ class VadSegmentEngine implements LiveAsrEngine {
         _Init(inbox.sendPort, _config),
         onError: inbox.sendPort,
       );
-    } catch (e) {
-      _fail('رونویسی زنده شروع نشد: $e');
+    } catch (_) {
+      _fail('رونویسی زنده شروع نشد.');
     }
   }
 
@@ -116,11 +116,7 @@ class VadSegmentEngine implements LiveAsrEngine {
     try {
       await _done.future.timeout(timeout);
     } on TimeoutException {
-      _emit(
-        const LiveFailure(
-          'بخشی از متن زنده تا پایان ضبط آماده نشد؛ با «رونویسی کامل» کامل می‌شود.',
-        ),
-      );
+      _emit(const LiveFailure('بخشی از متن زنده تا پایان ضبط آماده نشد.'));
     }
     await dispose();
   }
@@ -167,7 +163,7 @@ class VadSegmentEngine implements LiveAsrEngine {
       }
     } else if (message is List) {
       // Uncaught error inside the isolate: [error, stackTrace].
-      _fail('رونویسی زنده متوقف شد: ${message.first}');
+      _fail('رونویسی زنده متوقف شد.');
     }
   }
 
@@ -251,9 +247,12 @@ void _liveEntry(_Init init) {
       maxBacklogMs: config.maxBacklogMs,
     );
     out.send(const LiveReady());
-  } catch (e) {
+  } catch (_) {
     out.send(
-      LiveFailure('بارگذاری مدل رونویسی زنده ناموفق بود: $e', fatal: true),
+      const LiveFailure(
+        'مدل رونویسی زنده بارگذاری نشد. مدل شنوا و تشخیص گفتار را در بخش «مدل‌ها» بررسی کنید.',
+        fatal: true,
+      ),
     );
     recognizer?.free();
     recognizer = null;
@@ -326,10 +325,10 @@ void _liveEntry(_Init init) {
         }
       }
       errors = 0;
-    } catch (e) {
+    } catch (_) {
       errors++;
       final fatal = errors >= _maxConsecutiveErrors;
-      out.send(LiveFailure('خطا در رونویسی زنده: $e', fatal: fatal));
+      out.send(LiveFailure('در رونویسی زنده خطایی رخ داد.', fatal: fatal));
       if (fatal) shutdown();
     }
   });

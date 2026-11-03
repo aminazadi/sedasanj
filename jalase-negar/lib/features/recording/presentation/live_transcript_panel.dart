@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme.dart';
 import '../application/live_transcript_session.dart';
 
-/// Live draft of what is being said, shown under the waveform while recording.
+/// Live transcript of what is being said during recording.
 ///
 /// New lines scroll into view unless the person has scrolled up to re-read.
 class LiveTranscriptPanel extends StatefulWidget {
@@ -97,14 +97,6 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
                             ? SsColors.danger
                             : SsColors.warning,
                       ),
-                    ),
-                  ),
-                if (live.lines.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                    child: Text(
-                      'پیش‌نویس زنده؛ بعد از ضبط می‌توانید «رونویسی کامل» بگیرید.',
-                      style: textTheme.bodySmall,
                     ),
                   ),
               ],

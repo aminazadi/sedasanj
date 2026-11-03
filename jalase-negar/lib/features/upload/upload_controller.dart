@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/api_client.dart';
 import '../../core/providers.dart';
-import '../meetings/application/pipeline_controller.dart';
+import '../meetings/application/meeting_providers.dart';
 import '../settings/application/connection_controller.dart';
 import 'upload_queue.dart';
 

@@ -4,13 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/widgets/ss_widgets.dart';
-import '../../../core/utils/format.dart';
-import '../application/pipeline_controller.dart';
+import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
 import 'audio_waveform_player.dart';
 
-/// Shows one recorded meeting and its on-device draft transcript.
-/// Analysis (speakers, minutes) is produced by SedaSanj and read in the panel.
+/// Plays the recording and shows the transcript stored for the meeting.
 class MeetingDetailScreen extends ConsumerWidget {
   const MeetingDetailScreen({super.key, required this.meetingId});
 
@@ -19,16 +17,6 @@ class MeetingDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(meetingDetailProvider(meetingId));
-    final pipeline = ref.watch(pipelineControllerProvider(meetingId));
-    final controller = ref.read(pipelineControllerProvider(meetingId).notifier);
-
-    ref.listen(pipelineControllerProvider(meetingId), (previous, next) {
-      if (next.error != null && next.error != previous?.error) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.error!)));
-      }
-    });
 
     return detail.when(
       loading: () =>
@@ -39,12 +27,7 @@ class MeetingDetailScreen extends ConsumerWidget {
           return const Scaffold(body: Center(child: Text('جلسه پیدا نشد')));
         }
 
-        final saved = _rawTranscript(data.segments);
-        final transcript = pipeline.transcribing
-            ? pipeline.liveTranscript
-            : saved.isNotEmpty
-            ? saved
-            : pipeline.liveTranscript;
+        final transcript = _rawTranscript(data.segments);
 
         return Scaffold(
           appBar: SsAppBar(
@@ -66,18 +49,8 @@ class MeetingDetailScreen extends ConsumerWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _TranscriptionHeader(
-                meeting: data.meeting,
-                hasTranscript: transcript.isNotEmpty,
-                transcribing: pipeline.transcribing,
-                progress: pipeline.transcribeProgress,
-                liveWordCount: pipeline.liveWordCount,
-                onTranscribe: controller.transcribeMeeting,
-              ),
-              const SizedBox(height: 12),
               _TranscriptCard(
                 transcript: transcript,
-                transcribing: pipeline.transcribing,
                 onCopy: transcript.isEmpty
                     ? null
                     : () async {
@@ -115,85 +88,14 @@ class MeetingDetailScreen extends ConsumerWidget {
   }
 }
 
-class _TranscriptionHeader extends StatelessWidget {
-  const _TranscriptionHeader({
-    required this.meeting,
-    required this.hasTranscript,
-    required this.transcribing,
-    required this.progress,
-    required this.liveWordCount,
-    required this.onTranscribe,
-  });
-
-  final Meeting meeting;
-  final bool hasTranscript;
-  final bool transcribing;
-  final double progress;
-  final int liveWordCount;
-  final VoidCallback onTranscribe;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final percent = (progress * 100).round().clamp(0, 100);
-
-    return SsCard(
-      title: 'تبدیل صوت به متن',
-      trailing: Text(
-        formatDuration(meeting.duration),
-        style: theme.textTheme.bodySmall,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            transcribing
-                ? liveWordCount == 0
-                      ? 'شنوا در حال شنیدن و تحلیل فایل است… $percent٪'
-                      : 'رونویسی زنده: $liveWordCount کلمه تا این لحظه — $percent٪'
-                : meeting.isLiveDraft && hasTranscript
-                ? 'این متن پیش‌نویس زنده‌ی زمان ضبط است؛ ممکن است جمله‌های کم‌صدا یا ناقص داشته باشد. برای متن دقیق‌تر، رونویسی کامل را اجرا کنید.'
-                : hasTranscript
-                ? 'رونویسی انجام شد؛ متن زیر خروجی مستقیم صوت است.'
-                : 'فایل صوتی آماده است. برای شروع، تبدیل دقیق را اجرا کنید.',
-            style: theme.textTheme.bodySmall,
-          ),
-          if (transcribing) ...[
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: progress),
-          ] else ...[
-            const SizedBox(height: 14),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: FilledButton.icon(
-                onPressed: onTranscribe,
-                icon: const Icon(Icons.transcribe),
-                label: Text(
-                  meeting.isLiveDraft && hasTranscript
-                      ? 'رونویسی کامل (جایگزین پیش‌نویس)'
-                      : hasTranscript
-                      ? 'رونویسی دوباره'
-                      : 'شروع رونویسی',
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _TranscriptCard extends StatelessWidget {
   const _TranscriptCard({
     required this.transcript,
-    required this.transcribing,
     required this.onCopy,
     required this.onShare,
   });
 
   final String transcript;
-  final bool transcribing;
   final VoidCallback? onCopy;
   final VoidCallback? onShare;
 
@@ -221,9 +123,7 @@ class _TranscriptCard extends StatelessWidget {
       ),
       child: transcript.isEmpty
           ? Text(
-              transcribing
-                  ? 'متن به‌محض آماده شدن اینجا نمایش داده می‌شود…'
-                  : 'هنوز متنی وجود ندارد.',
+              'برای این جلسه متنی ذخیره نشده است. می‌توانید فایل صوتی را پخش کنید.',
               style: theme.textTheme.bodySmall,
             )
           : SelectableText(transcript, style: theme.textTheme.bodyMedium),

@@ -1,5 +1,3 @@
-import '../../../core/asr/asr_common.dart';
-
 enum MeetingStatus {
   recording,
   recorded,
@@ -60,11 +58,6 @@ class Meeting {
   /// segmentation), in the ASR parity contract's identity format. Null until
   /// the meeting is transcribed.
   final String? asrIdentity;
-
-  /// True while the transcript is the draft written during recording; the
-  /// full transcription replaces it and rewrites [asrIdentity].
-  bool get isLiveDraft =>
-      asrIdentity?.endsWith('segmenter:$kLiveSegmentation') ?? false;
 
   /// Value equality lets the list skip rebuilding tiles whose meeting did not
   /// change when the list is reloaded.

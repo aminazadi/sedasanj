@@ -66,7 +66,7 @@ class LiveTranscriptState {
 
 /// Owns one recording's live transcription: feeds the engine, mirrors its
 /// output into [state] for the screen, writes utterances to the database while
-/// the meeting is recorded, and on stop leaves one readable draft behind.
+/// the meeting is recorded, and saves the transcript when recording stops.
 ///
 /// Nothing here may disturb the recording: engine and database errors only
 /// change [state].
@@ -124,7 +124,7 @@ class LiveTranscriptSession {
     try {
       await engine.stop();
     } catch (_) {
-      // The engine reports its own failures; the draft keeps what arrived.
+      // The engine reports its own failures; keep the text that arrived.
     }
     _persistTimer?.cancel();
     await _events?.cancel();
@@ -147,7 +147,7 @@ class LiveTranscriptSession {
         ]);
       }
     } catch (_) {
-      // Keep the rows already appended; the full transcription can redo it.
+      // Keep the rows already appended.
     }
     final current = state.value;
     state.value = current.copyWith(
@@ -200,7 +200,7 @@ class LiveTranscriptSession {
         state.value = current.copyWith(
           skipped: current.skipped + 1,
           note:
-              'گوشی از گفتار عقب افتاد و بخشی از متن زنده جا ماند؛ بعد از ضبط با «رونویسی کامل» کامل می‌شود.',
+              'گوشی از گفتار عقب افتاد و بخشی از متن زنده جا ماند. برای شنیدن آن، فایل جلسه را پخش کنید. ($kIncompleteLiveTranscriptCode)',
         );
       case LiveSpeechState():
         state.value = current.copyWith(speaking: event.speaking);
@@ -214,15 +214,16 @@ class LiveTranscriptSession {
           clearNote: !event.lagging,
         );
       case LiveFailure():
+        final note =
+            '${event.message} برای شنیدن بخش‌های ثبت‌نشده، فایل جلسه را پخش کنید. ($kIncompleteLiveTranscriptCode)';
         if (event.fatal) {
           state.value = current.copyWith(
             phase: LivePhase.failed,
             speaking: false,
-            note:
-                '${event.message}\nضبط ادامه دارد؛ بعد از پایان با «رونویسی کامل» متن را بسازید.',
+            note: 'ضبط ادامه دارد. $note',
           );
         } else {
-          state.value = current.copyWith(note: event.message);
+          state.value = current.copyWith(note: note);
         }
       case LiveDone():
         break;

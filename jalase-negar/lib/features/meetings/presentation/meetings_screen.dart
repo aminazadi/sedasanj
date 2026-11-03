@@ -8,7 +8,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
 import '../../upload/upload_controller.dart';
-import '../application/pipeline_controller.dart';
+import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
 
 enum _Filter {
@@ -557,7 +557,7 @@ class _MeetingTile extends ConsumerWidget {
         .then((reason) async {
           if (reason == SnackBarClosedReason.action) return;
           await container
-              .read(pipelineControllerProvider(meeting.id).notifier)
+              .read(meetingActionsProvider(meeting.id))
               .deleteMeeting();
           pending.restore(meeting.id);
         });
@@ -635,9 +635,7 @@ class _MeetingTile extends ConsumerWidget {
           _RenameDialog(initial: displayMeetingTitle(meeting.title)),
     );
     if (title == null) return;
-    await ref
-        .read(pipelineControllerProvider(meeting.id).notifier)
-        .renameMeeting(title);
+    await ref.read(meetingActionsProvider(meeting.id)).renameMeeting(title);
   }
 
   Future<void> _share(WidgetRef ref, Meeting meeting) async {
@@ -677,9 +675,7 @@ class _MeetingTile extends ConsumerWidget {
       ),
     );
     if (confirmed == true) {
-      await ref
-          .read(pipelineControllerProvider(meeting.id).notifier)
-          .deleteMeeting();
+      await ref.read(meetingActionsProvider(meeting.id)).deleteMeeting();
     }
   }
 }
@@ -757,7 +753,7 @@ class _SwipeDeleteBackground extends StatelessWidget {
 }
 
 /// Bottom area of a tile that is not complete: progress while the pipeline is
-/// running, a retry for failures, otherwise a plain status badge.
+/// running, an error message for failures, otherwise a plain status badge.
 class _StatusArea extends ConsumerWidget {
   const _StatusArea({required this.meeting});
 
@@ -776,9 +772,6 @@ class _StatusArea extends ConsumerWidget {
     );
     final uploading = counts != null && counts.$2 > 0 && counts.$1 < counts.$2;
 
-    if (status == MeetingStatus.transcribing) {
-      return _TranscribeProgress(id: meeting.id);
-    }
     if (status == MeetingStatus.uploading ||
         (uploading && status != MeetingStatus.processing)) {
       final sent = counts?.$1 ?? 0;
@@ -825,27 +818,6 @@ class _StatusArea extends ConsumerWidget {
     MeetingStatus.uploaded => 'ارسال‌شده',
     _ => '',
   };
-}
-
-class _TranscribeProgress extends ConsumerWidget {
-  const _TranscribeProgress({required this.id});
-
-  final String id;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final progress = ref.watch(
-      pipelineControllerProvider(id).select((s) => s.transcribeProgress),
-    );
-    final known = progress > 0;
-    return _ProgressPanel(
-      label: known
-          ? toPersianDigits('در حال رونویسی · ${(progress * 100).round()}٪')
-          : 'در حال رونویسی',
-      value: known ? progress.clamp(0.0, 1.0) : null,
-      busy: true,
-    );
-  }
 }
 
 class _ProgressPanel extends StatelessWidget {
@@ -896,18 +868,18 @@ class _ProgressPanel extends StatelessWidget {
   }
 }
 
-class _FailedPanel extends ConsumerWidget {
+class _FailedPanel extends StatelessWidget {
   const _FailedPanel({required this.meeting});
 
   final Meeting meeting;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final error = meeting.error;
     // Stored errors may be raw exceptions; only show human (Persian) text.
     final message = error != null && RegExp(r'[؀-ۿ]').hasMatch(error)
         ? error
-        : 'پردازش این جلسه ناموفق بود؛ دوباره تلاش کنید.';
+        : 'پردازش این جلسه ناموفق بود. برای بررسی، جزئیات جلسه را باز کنید.';
     return Container(
       padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 6, 8),
       decoration: BoxDecoration(
@@ -926,22 +898,6 @@ class _FailedPanel extends ConsumerWidget {
                 context,
               ).textTheme.labelSmall?.copyWith(color: SsColors.danger),
             ),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              foregroundColor: SsColors.danger,
-              visualDensity: VisualDensity.compact,
-            ),
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final provider = pipelineControllerProvider(meeting.id);
-              await ref.read(provider.notifier).transcribeMeeting();
-              final err = ref.read(provider).error;
-              if (err != null) {
-                messenger.showSnackBar(SnackBar(content: Text(err)));
-              }
-            },
-            child: const Text('تلاش مجدد'),
           ),
         ],
       ),

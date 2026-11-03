@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+const kIncompleteLiveTranscriptCode = 'JN-ASR-0001';
+
 /// Events a live engine reports while a recording is in progress.
 sealed class LiveEvent {
   const LiveEvent();
@@ -25,7 +27,7 @@ class LiveUtterance extends LiveEvent {
 }
 
 /// Speech that was detected but not decoded because the engine had fallen too
-/// far behind the microphone. The full transcription covers it later.
+/// far behind the microphone.
 class LiveSkipped extends LiveEvent {
   const LiveSkipped({required this.startMs, required this.endMs});
 

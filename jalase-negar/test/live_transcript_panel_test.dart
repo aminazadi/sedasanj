@@ -36,7 +36,7 @@ void main() {
     expect(find.textContaining('شروع به صحبت کنید'), findsOneWidget);
   });
 
-  testWidgets('shows lines, the listening cue and the draft caption', (
+  testWidgets('shows the live lines and cue without a retranscription hint', (
     tester,
   ) async {
     final state = ValueNotifier(
@@ -50,7 +50,7 @@ void main() {
     expect(find.text('سلام به همه'), findsOneWidget);
     expect(find.text('بریم سراغ دستور جلسه'), findsOneWidget);
     expect(find.text('در حال شنیدن…'), findsOneWidget);
-    expect(find.textContaining('پیش‌نویس زنده'), findsOneWidget);
+    expect(find.textContaining('رونویسی کامل'), findsNothing);
   });
 
   testWidgets('follows new lines as they arrive', (tester) async {

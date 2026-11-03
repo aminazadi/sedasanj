@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Removed post-recording retranscription from Jalase-Negar. Meeting details now show the saved transcript and audio player, and the meeting list no longer retries processing failures by transcribing the saved audio.
 - Added live transcription to Jalase-Negar recording: a long-lived isolate runs Silero VAD on the microphone stream and decodes each finished utterance with the selected Shenava model, shows it in a live panel while recording, and saves it as a draft (ASR identity `…|segmenter:silero-vad-live`) that the full transcription replaces; live failures or a slow phone never affect the recording, and the feature can be switched off from the recording screen.
 - Changed Jalase-Negar recording to disperse the illustration into windblown particles and show the PCM waveform and compact timer below the live transcript.
 - Redesigned the Jalase-Negar meetings list: date-grouped sections with pinned headers, search and status filter chips, square cards with soft shadow, transcript preview, per-stage progress panel, retry on failed meetings, swipe-to-delete with undo, rename and share actions, skeleton loading, and a recovery action on load errors.
