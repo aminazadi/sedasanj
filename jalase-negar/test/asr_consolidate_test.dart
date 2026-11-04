@@ -12,7 +12,9 @@ import 'package:jalase_negar/core/asr/energy_vad.dart';
 /// sedasanj/tests/test_asr_parity_contract.py.
 Map<String, dynamic> _fixture(String name) =>
     jsonDecode(
-          File('../sedasanj/tests/fixtures/asr_parity/$name').readAsStringSync(),
+          File(
+            '../sedasanj/tests/fixtures/asr_parity/$name',
+          ).readAsStringSync(),
         )
         as Map<String, dynamic>;
 
@@ -75,7 +77,9 @@ void main() {
             math.sin(2 * math.pi * (floor['freq'] as num) * t);
         for (final b in (c['bursts'] as List).cast<Map<String, dynamic>>()) {
           if (t >= (b['start'] as num) && t < (b['end'] as num)) {
-            x += (b['amp'] as num) * math.sin(2 * math.pi * (b['freq'] as num) * t);
+            x +=
+                (b['amp'] as num) *
+                math.sin(2 * math.pi * (b['freq'] as num) * t);
           }
         }
         samples[i] = x.toDouble();

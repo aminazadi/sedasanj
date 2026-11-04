@@ -347,14 +347,21 @@ async def accept_transcript(
     """Store the on-device transcript of a text meeting, replacing any earlier upload.
 
     The caller holds the meeting row locked. The same text again is a replay, different text
-    before `finish` replaces the previous upload.
+    replaces the previous upload: before `finish` as the first text, and on a completed meeting
+    as an edit made in the app (the caller then rebuilds the minutes). A meeting that is being
+    processed refuses it, since the minutes job is reading the text.
     """
     if meeting.input_kind != "text":
         raise ApiError(
             "meeting_transcript_invalid",
             "این جلسه برای ارسال صدا شروع شده؛ در اپ جلسه‌ی جدید شروع کنید",
         )
-    if meeting.status != "receiving":
+    if meeting.status == "processing":
+        raise ApiError(
+            "meeting_closed",
+            "جلسه در حال پردازش است؛ پس از پایان پردازش ویرایش متن را دوباره بفرستید",
+        )
+    if meeting.status not in ("receiving", "complete"):
         raise ApiError("meeting_closed", "این جلسه بسته شده است؛ جلسه‌ی جدید شروع کنید")
     validate_transcript(payload)
     digest = transcript_digest(payload)

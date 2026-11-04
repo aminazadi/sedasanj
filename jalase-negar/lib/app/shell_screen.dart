@@ -29,6 +29,11 @@ class ShellScreen extends ConsumerWidget {
     final index = _currentIndex(context);
 
     return Scaffold(
+      // Every tab scrolls behind the bar so it stays visible through the notch
+      // under the record button; tabs pad their scroll content by
+      // MediaQuery.paddingOf(context).bottom, which the Scaffold sets to the
+      // bar height.
+      extendBody: true,
       appBar: SsAppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,

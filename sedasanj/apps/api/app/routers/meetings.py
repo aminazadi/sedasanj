@@ -566,15 +566,34 @@ async def put_chunk(
 
 @router.put("/{meeting_id}/transcript", response_model=MeetingTranscriptOut)
 async def put_transcript(
-    meeting_id: UUID, payload: MeetingTranscriptIn, principal: MeetingsKeyDep
+    meeting_id: UUID, payload: MeetingTranscriptIn, request: Request, principal: MeetingsKeyDep
 ) -> MeetingTranscriptOut:
-    """Upload the on-device transcript of a text meeting; idempotent on its content hash."""
+    """Upload the on-device transcript of a text meeting; idempotent on its content hash.
+
+    On a completed meeting a changed text is an edit made in the app: it replaces the stored
+    text and queues a new minutes version, without billing the meeting again.
+    """
     assert principal.tenant_id is not None and principal.user_id is not None
+    rebuild_version: int | None = None
     async with session_scope(principal.tenant_id) as session:
         meeting = await _owned_meeting(
             session, meeting_id, principal.user_id, principal.tenant_id, lock=True
         )
+        was_complete = meeting.status == "complete"
         accepted = await meeting_ingest.accept_transcript(session, meeting, payload)
+        if was_complete and not accepted.replay:
+            rebuild_version = await _begin_minutes_rebuild(session, meeting, step="transcript-edit")
+            await audit.record(
+                session,
+                actor_type="api_key",
+                actor_id=principal.id,
+                tenant_id=principal.tenant_id,
+                action="meeting.transcript_edit",
+                payload={"meeting_id": str(meeting.id), "segments": accepted.segments},
+                ip=client_ip(request),
+            )
+    if rebuild_version is not None:
+        await _enqueue_minutes(principal.tenant_id, meeting_id, rebuild_version)
     return MeetingTranscriptOut(
         segments=accepted.segments, sha256=accepted.sha256, replay=accepted.replay
     )
@@ -1112,6 +1131,32 @@ async def delete_meeting(
     await session.execute(delete(Meeting).where(Meeting.id == meeting.id))
 
 
+async def _begin_minutes_rebuild(session: AsyncSession, meeting: Meeting, *, step: str) -> int:
+    """Put a completed meeting back to `processing` for a new minutes version; returns it."""
+    version = int(
+        (
+            await session.execute(
+                select(func.coalesce(func.max(MeetingMinutes.version), 0)).where(
+                    MeetingMinutes.meeting_id == meeting.id
+                )
+            )
+        ).scalar_one()
+    )
+    meeting.status = "processing"
+    meeting.error_code = None
+    meeting.updated_at = datetime.now(UTC)
+    meeting_progress.set_stage(meeting, "minutes", progress_pct=80)
+    await meeting_progress.record_event(
+        session,
+        meeting,
+        step_key=f"{step}:{version + 1}",
+        kind="minutes",
+        status="queued",
+        detail=meeting_progress.STAGE_LABELS["minutes"],
+    )
+    return version + 1
+
+
 @router.post("/{meeting_id}/reanalyze", status_code=status.HTTP_202_ACCEPTED)
 async def reanalyze_meeting(
     meeting_id: UUID, request: Request, principal: OperatorDep
@@ -1125,27 +1170,7 @@ async def reanalyze_meeting(
                 "meeting_closed",
                 "بازتحلیل فقط برای جلسه‌ی کامل‌شده ممکن است؛ منتظر پایان پردازش بمانید",
             )
-        version = int(
-            (
-                await session.execute(
-                    select(func.coalesce(func.max(MeetingMinutes.version), 0)).where(
-                        MeetingMinutes.meeting_id == meeting.id
-                    )
-                )
-            ).scalar_one()
-        )
-        meeting.status = "processing"
-        meeting.error_code = None
-        meeting.updated_at = datetime.now(UTC)
-        meeting_progress.set_stage(meeting, "minutes", progress_pct=80)
-        await meeting_progress.record_event(
-            session,
-            meeting,
-            step_key=f"reanalyze:{version + 1}",
-            kind="minutes",
-            status="queued",
-            detail=meeting_progress.STAGE_LABELS["minutes"],
-        )
+        version = await _begin_minutes_rebuild(session, meeting, step="reanalyze")
         await audit.record(
             session,
             actor_type="user",
@@ -1155,7 +1180,7 @@ async def reanalyze_meeting(
             payload={"meeting_id": str(meeting.id)},
             ip=client_ip(request),
         )
-    await _enqueue_minutes(principal.tenant_id, meeting_id, version + 1)
+    await _enqueue_minutes(principal.tenant_id, meeting_id, version)
     return {"status": "processing"}
 
 

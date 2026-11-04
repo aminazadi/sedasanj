@@ -128,6 +128,11 @@ class RecorderController extends Notifier<RecorderState> {
   Future<void> _chunkRows = Future.value();
   bool _chunkRegistrationFailed = false;
 
+  /// True from the moment a meeting row is created until its recording is
+  /// closed. The upload queue must not touch a meeting in this window.
+  bool get isCapturing =>
+      state.status != RecorderStatus.idle || _meetingId != null;
+
   @override
   RecorderState build() {
     ref.onDispose(_disposeResources);
@@ -263,6 +268,9 @@ class RecorderController extends Notifier<RecorderState> {
         },
       );
       final sendText = await ref.read(sendTranscriptEnabledProvider.future);
+      // Marked before the row exists so the upload queue never sees an open
+      // recording that looks abandoned.
+      _meetingId = meetingId;
       // The row exists from the first second, so a crash leaves a recoverable
       // meeting instead of orphan files.
       await repo.insert(
@@ -281,7 +289,6 @@ class RecorderController extends Notifier<RecorderState> {
       );
       ref.invalidate(meetingsProvider);
       _repo = repo;
-      _meetingId = meetingId;
 
       await _startLive(repo, meetingId);
       final warning = await RecordingService.start();
@@ -506,6 +513,9 @@ class RecorderController extends Notifier<RecorderState> {
       await liveDone;
       _reportFailure(_saveErrorCode, 'Save local recording', failure);
       if (ref.mounted) state = const RecorderState(error: _saveError);
+      // The row would stay "recording" and never be sent; the upload queue
+      // repairs it from the WAV on its next pass now that nothing is capturing.
+      unawaited(_resumeUpload());
       return;
     }
 

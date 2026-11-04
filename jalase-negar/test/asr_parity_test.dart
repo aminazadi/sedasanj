@@ -20,7 +20,8 @@ void main() {
 
   test('normalizePersianAsrText matches the contract vectors', () {
     final cases =
-        (jsonDecode(fixture.readAsStringSync()) as Map<String, dynamic>)['cases']
+        (jsonDecode(fixture.readAsStringSync())
+                as Map<String, dynamic>)['cases']
             as List<dynamic>;
     expect(cases.length, greaterThan(5));
     for (final raw in cases) {
@@ -34,19 +35,25 @@ void main() {
     }
   });
 
-  test('app output equals server output wherever no divergence is recorded', () {
-    final cases =
-        (jsonDecode(fixture.readAsStringSync()) as Map<String, dynamic>)['cases']
-            as List<dynamic>;
-    final agreeing = cases.where((c) => (c as Map).containsKey('app_today') == false);
-    expect(agreeing, isNotEmpty);
-    for (final raw in agreeing) {
-      final c = raw as Map<String, dynamic>;
-      expect(
-        normalizePersianAsrText(c['input'] as String),
-        c['server'],
-        reason: c['name'] as String,
+  test(
+    'app output equals server output wherever no divergence is recorded',
+    () {
+      final cases =
+          (jsonDecode(fixture.readAsStringSync())
+                  as Map<String, dynamic>)['cases']
+              as List<dynamic>;
+      final agreeing = cases.where(
+        (c) => (c as Map).containsKey('app_today') == false,
       );
-    }
-  });
+      expect(agreeing, isNotEmpty);
+      for (final raw in agreeing) {
+        final c = raw as Map<String, dynamic>;
+        expect(
+          normalizePersianAsrText(c['input'] as String),
+          c['server'],
+          reason: c['name'] as String,
+        );
+      }
+    },
+  );
 }

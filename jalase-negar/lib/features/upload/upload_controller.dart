@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/platform/api_client.dart';
 import '../../core/providers.dart';
 import '../meetings/application/meeting_providers.dart';
+import '../meetings/data/meeting_repository.dart';
+import '../recording/application/recorder_controller.dart';
 import '../settings/application/connection_controller.dart';
 import 'upload_queue.dart';
 
@@ -69,6 +71,23 @@ class UploadController extends Notifier<UploadState> {
     }
   }
 
+  /// A meeting still marked "recording" while the recorder is idle was cut
+  /// short (the final save failed, or the app was killed); it would otherwise
+  /// look live forever and never be sent.
+  Future<void> _closeAbandonedRecordings(MeetingRepository repo) async {
+    if (ref.read(recorderControllerProvider.notifier).isCapturing) return;
+    try {
+      final paths = await ref.read(appPathsProvider.future);
+      // Re-check: a recording may have started while the paths loaded.
+      if (ref.read(recorderControllerProvider.notifier).isCapturing) return;
+      if (await repo.recoverInterruptedRecordings(paths.chunksDir.path) > 0) {
+        ref.invalidate(meetingsProvider);
+      }
+    } catch (_) {
+      // Retried on the next pass; sending the other meetings must go on.
+    }
+  }
+
   Future<void> _pass() async {
     _wake?.cancel();
     final connectionStore = await ref.read(connectionStoreProvider.future);
@@ -79,6 +98,7 @@ class UploadController extends Notifier<UploadState> {
       return;
     }
     final repo = await ref.read(meetingRepositoryProvider.future);
+    await _closeAbandonedRecordings(repo);
     final queue = UploadQueue(
       store: repo,
       api: ApiClient(serverUrl: connection.serverUrl, token: token),

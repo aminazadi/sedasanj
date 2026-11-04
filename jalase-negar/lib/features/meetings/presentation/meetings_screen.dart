@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
+import '../../recording/application/recorder_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
+import 'share_meeting_audio.dart';
 
 enum _Filter {
   all('همه'),
@@ -177,7 +178,12 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                   ),
                 ],
               ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          // The shell extends the body behind the bottom bar so the list shows
+          // through the notch under the record button; leave room to scroll
+          // the last card clear of the bar.
+          SliverToBoxAdapter(
+            child: SizedBox(height: MediaQuery.paddingOf(context).bottom + 12),
+          ),
         ],
       ),
     );
@@ -439,12 +445,18 @@ class _MeetingTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     // Rebuilds only when this meeting itself changed (Meeting has value ==).
-    final meeting = ref.watch(
+    final stored = ref.watch(
       meetingsProvider.select(
         (a) => a.value?.where((m) => m.id == id).firstOrNull,
       ),
     );
-    if (meeting == null) return const SizedBox.shrink();
+    if (stored == null) return const SizedBox.shrink();
+    // "Recording" is only true while the recorder is open on this meeting;
+    // a stale row must read as recorded, never as a live capture.
+    final capturing = ref.watch(
+      recorderControllerProvider.select((s) => s.status != RecorderStatus.idle),
+    );
+    final meeting = capturing ? stored : stored.asClosedRecording();
     final preview =
         ref.watch(meetingPreviewProvider(id).select((a) => a.value)) ?? '';
     final canSwipe =
@@ -527,12 +539,28 @@ class _MeetingTile extends ConsumerWidget {
       child: canSwipe
           ? Dismissible(
               key: ValueKey('dismiss-${meeting.id}'),
-              direction: DismissDirection.endToStart,
-              background: const _SwipeDeleteBackground(),
+              // Swipe one way to rename (the card stays), the other to delete.
+              direction: DismissDirection.horizontal,
+              background: const _SwipeBackground.rename(),
+              secondaryBackground: const _SwipeBackground.delete(),
+              confirmDismiss: (direction) async {
+                if (direction != DismissDirection.startToEnd) return true;
+                await _rename(context, ref, meeting);
+                return false;
+              },
               onDismissed: (_) => _deleteWithUndo(context, meeting),
               child: card,
             )
-          : card,
+          : Dismissible(
+              key: ValueKey('rename-${meeting.id}'),
+              direction: DismissDirection.startToEnd,
+              background: const _SwipeBackground.rename(),
+              confirmDismiss: (_) async {
+                await _rename(context, ref, meeting);
+                return false;
+              },
+              child: card,
+            ),
     );
   }
 
@@ -581,7 +609,7 @@ class _MeetingTile extends ConsumerWidget {
         children: [
           Icon(icon, size: 18, color: color ?? SsColors.ink),
           const SizedBox(width: 10),
-          Text(label, style: style(color)),
+          Flexible(child: Text(label, style: style(color))),
         ],
       ),
     );
@@ -602,13 +630,12 @@ class _MeetingTile extends ConsumerWidget {
         position: PopupMenuPosition.under,
         onSelected: (value) => switch (value) {
           'rename' => _rename(context, ref, meeting),
-          'share' => _share(ref, meeting),
+          'share' => shareMeetingAudio(context, meeting),
           _ => _confirmDelete(context, ref, meeting),
         },
         itemBuilder: (context) => [
           item('rename', Icons.edit_outlined, 'تغییر نام'),
-          if (preview.isNotEmpty)
-            item('share', Icons.ios_share, 'اشتراک‌گذاری متن'),
+          item('share', Icons.ios_share, 'اشتراک‌گذاری فایل صوتی'),
           item(
             'delete',
             Icons.delete_outline,
@@ -632,17 +659,6 @@ class _MeetingTile extends ConsumerWidget {
     );
     if (title == null) return;
     await ref.read(meetingActionsProvider(meeting.id)).renameMeeting(title);
-  }
-
-  Future<void> _share(WidgetRef ref, Meeting meeting) async {
-    final repo = await ref.read(meetingRepositoryProvider.future);
-    final segments = await repo.segments(meeting.id);
-    final text = segments
-        .map((s) => s.text.trim())
-        .where((t) => t.isNotEmpty)
-        .join('\n');
-    if (text.isEmpty) return;
-    await SharePlus.instance.share(ShareParams(text: text));
   }
 
   Future<void> _confirmDelete(
@@ -720,28 +736,43 @@ class _RenameDialogState extends State<_RenameDialog> {
   }
 }
 
-class _SwipeDeleteBackground extends StatelessWidget {
-  const _SwipeDeleteBackground();
+class _SwipeBackground extends StatelessWidget {
+  const _SwipeBackground.rename()
+    : color = SsColors.primary,
+      icon = Icons.edit_outlined,
+      label = 'تغییر نام',
+      alignment = AlignmentDirectional.centerStart;
+
+  const _SwipeBackground.delete()
+    : color = SsColors.danger,
+      icon = Icons.delete_outline,
+      label = 'حذف',
+      alignment = AlignmentDirectional.centerEnd;
+
+  final Color color;
+  final IconData icon;
+  final String label;
+  final AlignmentDirectional alignment;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: SsColors.danger),
+      color: color,
       padding: const EdgeInsets.symmetric(horizontal: 22),
-      alignment: AlignmentDirectional.centerEnd,
-      child: const Row(
+      alignment: alignment,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(icon, color: Colors.white),
+          const SizedBox(width: 8),
           Text(
-            'حذف',
-            style: TextStyle(
+            label,
+            style: const TextStyle(
               fontFamily: 'Vazirmatn',
               color: Colors.white,
               fontWeight: FontWeight.w600,
             ),
           ),
-          SizedBox(width: 8),
-          Icon(Icons.delete_outline, color: Colors.white),
         ],
       ),
     );
@@ -761,22 +792,10 @@ class _StatusArea extends ConsumerWidget {
     if (status == MeetingStatus.failed) {
       return _FailedPanel(meeting: meeting);
     }
-    // `.value` keeps the previous progress while the provider reloads, so the
-    // progress row never flickers away between ticks.
-    final counts = ref.watch(
-      uploadProgressProvider(meeting.id).select((a) => a.value),
-    );
-    final uploading = counts != null && counts.$2 > 0 && counts.$1 < counts.$2;
-
-    if (status == MeetingStatus.uploading ||
-        (uploading && status != MeetingStatus.processing)) {
-      final sent = counts?.$1 ?? 0;
-      final all = counts?.$2 ?? 0;
-      return _ProgressPanel(
-        label: all == 0
-            ? 'در انتظار ارسال'
-            : toPersianDigits('ارسال $sent از $all تکه'),
-        value: all == 0 ? null : sent / all,
+    if (status == MeetingStatus.uploading) {
+      return const _ProgressPanel(
+        label: 'در حال ارسال متن جلسه',
+        value: null,
         busy: true,
       );
     }

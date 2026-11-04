@@ -826,3 +826,48 @@ async def test_text_meeting_takes_a_transcript_and_queues_the_minutes(world) -> 
     async with db.session_scope(workspace.tenant_id) as session:
         meeting = await session.get(Meeting, UUID(meeting_id))
     assert meeting is not None and meeting.duration_ms == 90_000 and meeting.received_ms == 90_000
+
+
+@requires_postgres
+async def test_edited_transcript_of_a_complete_meeting_rebuilds_the_minutes(world) -> None:
+    from app import db
+    from app.models import MeetingSegment
+    from app.services.queue import JOB_MEETING_MINUTES
+
+    client, workspace, queue, _storage = world
+    headers = await pair_token(client, workspace.admin)
+    created = await client.post(
+        "/v1/meetings/sessions", json=_session_body(input_kind="text"), headers=headers
+    )
+    meeting_id = created.json()["meeting_id"]
+    first = _transcript("سلام به همه", "بودجه را تأیید کردیم")
+    assert (
+        await client.put(f"/v1/meetings/{meeting_id}/transcript", json=first, headers=headers)
+    ).status_code == 200
+    finish = {"ended_at": datetime.now(UTC).isoformat(), "total_chunks": 0, "duration_ms": 5000}
+    assert (
+        await client.post(f"/v1/meetings/{meeting_id}/finish", json=finish, headers=headers)
+    ).status_code == 202
+
+    edited = _transcript("سلام به همه", "بودجه را رد کردیم")
+    busy = await client.put(f"/v1/meetings/{meeting_id}/transcript", json=edited, headers=headers)
+    assert busy.status_code == 409 and busy.json()["error"]["code"] == "meeting_closed"
+
+    async with db.session_scope(workspace.tenant_id) as session:
+        meeting = await session.get(Meeting, UUID(meeting_id))
+        assert meeting is not None
+        meeting.status = "complete"
+    jobs_before = len([job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES])
+
+    same = await client.put(f"/v1/meetings/{meeting_id}/transcript", json=first, headers=headers)
+    assert same.status_code == 200 and same.json()["replay"] is True
+    assert len([job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES]) == jobs_before
+
+    stored = await client.put(f"/v1/meetings/{meeting_id}/transcript", json=edited, headers=headers)
+    assert stored.status_code == 200 and stored.json()["replay"] is False
+    assert len([job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES]) == jobs_before + 1
+    async with db.session_scope(workspace.tenant_id) as session:
+        meeting = await session.get(Meeting, UUID(meeting_id))
+        rows = (await session.execute(select(MeetingSegment))).scalars().all()
+    assert meeting is not None and meeting.status == "processing"
+    assert [row.text for row in rows] == ["سلام به همه", "بودجه را رد کردیم"]

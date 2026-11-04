@@ -38,6 +38,7 @@ class Meeting {
     this.remoteMeetingId,
     this.asrIdentity,
     this.sendText = true,
+    this.textSyncPending = false,
   });
 
   final String id;
@@ -65,6 +66,10 @@ class Meeting {
   /// switch later never affects meetings already recorded.
   final bool sendText;
 
+  /// The text was edited after it was sent to SedaSanj and the server has not
+  /// taken the edit yet.
+  final bool textSyncPending;
+
   /// Value equality lets the list skip rebuilding tiles whose meeting did not
   /// change when the list is reloaded.
   @override
@@ -82,7 +87,8 @@ class Meeting {
       other.recordingState == recordingState &&
       other.remoteMeetingId == remoteMeetingId &&
       other.asrIdentity == asrIdentity &&
-      other.sendText == sendText;
+      other.sendText == sendText &&
+      other.textSyncPending == textSyncPending;
 
   @override
   int get hashCode => Object.hash(
@@ -99,7 +105,14 @@ class Meeting {
     remoteMeetingId,
     asrIdentity,
     sendText,
+    textSyncPending,
   );
+
+  /// The meeting as the list should show it when no recorder is open: a row
+  /// still marked [MeetingStatus.recording] was cut short, not live.
+  Meeting asClosedRecording() => status == MeetingStatus.recording
+      ? copyWith(status: MeetingStatus.recorded)
+      : this;
 
   Meeting copyWith({
     MeetingStatus? status,
@@ -113,6 +126,7 @@ class Meeting {
     String? remoteMeetingId,
     String? asrIdentity,
     bool? sendText,
+    bool? textSyncPending,
   }) => Meeting(
     id: id,
     title: title ?? this.title,
@@ -127,6 +141,7 @@ class Meeting {
     remoteMeetingId: remoteMeetingId ?? this.remoteMeetingId,
     asrIdentity: asrIdentity ?? this.asrIdentity,
     sendText: sendText ?? this.sendText,
+    textSyncPending: textSyncPending ?? this.textSyncPending,
   );
 
   factory Meeting.fromRow(Map<String, Object?> row) => Meeting(
@@ -143,6 +158,7 @@ class Meeting {
     remoteMeetingId: row['remote_meeting_id'] as String?,
     asrIdentity: row['asr_identity'] as String?,
     sendText: ((row['send_text'] as int?) ?? 1) != 0,
+    textSyncPending: ((row['text_sync_pending'] as int?) ?? 0) != 0,
   );
 
   Map<String, Object?> toRow() => {
@@ -159,6 +175,7 @@ class Meeting {
     'remote_meeting_id': remoteMeetingId,
     'asr_identity': asrIdentity,
     'send_text': sendText ? 1 : 0,
+    'text_sync_pending': textSyncPending ? 1 : 0,
   };
 }
 

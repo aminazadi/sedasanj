@@ -33,6 +33,7 @@ void main() {
   tearDownAll(() => root.delete(recursive: true));
 
   setUp(() {
+    _UploadQueue.kicks = 0;
     void mock(String name, Future<Object?> Function(MethodCall) handler) {
       final channel = MethodChannel(name);
       messenger.setMockMethodCallHandler(channel, handler);
@@ -110,6 +111,34 @@ void main() {
     expect(repo.registeredChunks, 1);
   });
 
+  test('is capturing from the first row until the recording is closed', () async {
+    final repo = _Meetings();
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    final recorder = container.read(recorderControllerProvider.notifier);
+
+    expect(recorder.isCapturing, isFalse);
+    await recorder.start();
+    expect(recorder.isCapturing, isTrue);
+    await sendAudio();
+    await recorder.stop();
+    expect(recorder.isCapturing, isFalse);
+  });
+
+  test('a failed final save leaves nothing capturing and wakes the queue', () async {
+    final repo = _Meetings()..failSave = true;
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    final recorder = container.read(recorderControllerProvider.notifier);
+
+    await recorder.start();
+    await sendAudio();
+    await recorder.stop();
+
+    expect(recorder.isCapturing, isFalse);
+    expect(_UploadQueue.kicks, greaterThan(0));
+  });
+
   test(
     'keeps the WAV and reports a short error if the local row fails',
     () async {
@@ -181,6 +210,8 @@ class _UploadQueue extends UploadController {
   @override
   UploadState build() => const UploadState();
 
+  static int kicks = 0;
+
   @override
-  Future<void> kick() async {}
+  Future<void> kick() async => kicks++;
 }

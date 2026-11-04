@@ -45,6 +45,18 @@ def test_transcript_must_be_ordered_in_time() -> None:
     assert unordered.value.code == "meeting_transcript_invalid"
 
 
+@pytest.mark.parametrize("state", ["processing", "canceled", "failed_terminal"])
+async def test_transcript_edit_is_refused_while_processing_or_closed(state: str) -> None:
+    meeting = SimpleNamespace(input_kind="text", status=state, transcript_sha256=None)
+    with pytest.raises(ApiError) as caught:
+        await meeting_ingest.accept_transcript(
+            None,  # type: ignore[arg-type]
+            meeting,  # type: ignore[arg-type]
+            _segments((0, 900, "سلام")),
+        )
+    assert caught.value.code == "meeting_closed"
+
+
 def test_transcript_size_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         meeting_ingest,

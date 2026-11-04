@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 
-import '../../../app/widgets/ss_toast.dart';
 import '../../../app/theme.dart';
+import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
+import '../data/transcript_edit.dart';
 import 'audio_waveform_player.dart';
+import 'share_meeting_audio.dart';
+import 'transcript_editor.dart';
 
 /// Plays the recording and shows the transcript stored for the meeting.
 class MeetingDetailScreen extends ConsumerWidget {
@@ -22,7 +23,9 @@ class MeetingDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(meetingDetailProvider(meetingId));
 
+    // An autosave reloads the meeting; keep the editor on screen meanwhile.
     return detail.when(
+      skipLoadingOnReload: true,
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, _) => Scaffold(body: Center(child: Text('خطا: $error'))),
@@ -31,7 +34,7 @@ class MeetingDetailScreen extends ConsumerWidget {
           return const Scaffold(body: Center(child: Text('جلسه پیدا نشد')));
         }
 
-        final transcript = _rawTranscript(data.segments);
+        final transcript = transcriptEditorText(data.segments);
 
         return Scaffold(
           appBar: SsAppBar(
@@ -47,8 +50,12 @@ class MeetingDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-          bottomNavigationBar: AudioWaveformPlayer(
-            path: data.meeting.audioPath,
+          // Hidden (not disposed) while the keyboard is up so editing keeps
+          // the whole screen and the playback position survives.
+          bottomNavigationBar: Visibility(
+            visible: MediaQuery.viewInsetsOf(context).bottom == 0,
+            maintainState: true,
+            child: AudioWaveformPlayer(path: data.meeting.audioPath),
           ),
           body: ListView(
             padding: const EdgeInsets.all(16),
@@ -63,23 +70,21 @@ class MeetingDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
               ],
-              _TranscriptCard(
-                transcript: transcript,
-                onCopy: transcript.isEmpty
-                    ? null
-                    : () async {
-                        await Clipboard.setData(
-                          ClipboardData(text: transcript),
-                        );
-                        if (!context.mounted) return;
-                        SsToastHost.show(context, 'متن کپی شد');
-                      },
-                onShare: transcript.isEmpty
-                    ? null
-                    : () => SharePlus.instance.share(
-                        ShareParams(text: transcript),
-                      ),
-              ),
+              if (transcript.isEmpty)
+                const _EmptyTranscriptCard()
+              else
+                TranscriptEditor(
+                  savedText: transcript,
+                  readOnly: data.meeting.status == MeetingStatus.uploading,
+                  notice: _editNotice(data.meeting),
+                  noticeActionLabel: data.meeting.textSyncPending
+                      ? 'ارسال دوباره به صداسنج'
+                      : null,
+                  onNoticeAction: () => _retrySync(context, ref),
+                  onSave: (text, {required settle}) => ref
+                      .read(meetingActionsProvider(meetingId))
+                      .saveTranscript(text, settle: settle),
+                ),
             ],
           ),
         );
@@ -87,16 +92,31 @@ class MeetingDetailScreen extends ConsumerWidget {
     );
   }
 
-  String _rawTranscript(List<Segment> segments) {
-    final sorted = [...segments]
-      ..sort((a, b) {
-        final byTime = a.startMs.compareTo(b.startMs);
-        return byTime != 0 ? byTime : a.channel.compareTo(b.channel);
-      });
-    return sorted
-        .map((segment) => segment.text.trim())
-        .where((text) => text.isNotEmpty)
-        .join('\n');
+  Future<void> _retrySync(BuildContext context, WidgetRef ref) async {
+    final save = await ref
+        .read(meetingActionsProvider(meetingId))
+        .retryTextSync();
+    if (!context.mounted) return;
+    SsToastHost.show(
+      context,
+      save.result == TranscriptSaveResult.synced
+          ? 'ویرایش برای صداسنج ارسال شد'
+          : 'ارسال نشد؛ ${save.problem ?? 'دوباره امتحان کنید'}',
+    );
+  }
+
+  /// What the user should know before editing text SedaSanj may hold.
+  String? _editNotice(Meeting meeting) {
+    if (meeting.status == MeetingStatus.uploading) {
+      return 'متن در حال ارسال به صداسنج است؛ پس از پایان ارسال می‌توانید آن را ویرایش کنید.';
+    }
+    if (!isTextSentToServer(meeting)) return null;
+    if (meeting.textSyncPending) {
+      return 'ویرایش‌های ذخیره‌شدهٔ این جلسه هنوز به صداسنج نرسیده‌اند؛ متن و '
+          'صورت‌جلسهٔ پنل تا ارسال، همان نسخهٔ قبلی است.';
+    }
+    return 'این متن پیش‌تر برای صداسنج ارسال شده است؛ با توقف ویرایش یا خروج از '
+        'صفحه، متن پنل به‌روز و صورت‌جلسه دوباره ساخته می‌شود.';
   }
 }
 
@@ -119,7 +139,7 @@ class _MeetingMenu extends ConsumerWidget {
         children: [
           Icon(icon, size: 18, color: color ?? SsColors.ink),
           const SizedBox(width: 10),
-          Text(label, style: TextStyle(color: color)),
+          Flexible(child: Text(label, style: TextStyle(color: color))),
         ],
       ),
     );
@@ -132,11 +152,14 @@ class _MeetingMenu extends ConsumerWidget {
         side: const BorderSide(color: SsColors.line),
       ),
       position: PopupMenuPosition.under,
-      onSelected: (value) => value == 'rename'
-          ? _rename(context, ref)
-          : _confirmDelete(context, ref),
+      onSelected: (value) => switch (value) {
+        'rename' => _rename(context, ref),
+        'share' => shareMeetingAudio(context, meeting),
+        _ => _confirmDelete(context, ref),
+      },
       itemBuilder: (context) => [
         item('rename', Icons.edit_outlined, 'ویرایش عنوان'),
+        item('share', Icons.ios_share, 'اشتراک‌گذاری فایل صوتی'),
         item(
           'delete',
           Icons.delete_outline,
@@ -260,45 +283,34 @@ class _SendTextCard extends StatelessWidget {
   }
 }
 
-class _TranscriptCard extends StatelessWidget {
-  const _TranscriptCard({
-    required this.transcript,
-    required this.onCopy,
-    required this.onShare,
-  });
-
-  final String transcript;
-  final VoidCallback? onCopy;
-  final VoidCallback? onShare;
+class _EmptyTranscriptCard extends StatelessWidget {
+  const _EmptyTranscriptCard();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return SsCard(
       title: 'متن جلسه',
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: const [
           IconButton(
             tooltip: 'کپی',
             visualDensity: VisualDensity.compact,
-            onPressed: onCopy,
-            icon: const Icon(Icons.copy, size: 20),
+            onPressed: null,
+            icon: Icon(Icons.copy, size: 20),
           ),
           IconButton(
             tooltip: 'اشتراک‌گذاری',
             visualDensity: VisualDensity.compact,
-            onPressed: onShare,
-            icon: const Icon(Icons.ios_share, size: 20),
+            onPressed: null,
+            icon: Icon(Icons.ios_share, size: 20),
           ),
         ],
       ),
-      child: transcript.isEmpty
-          ? Text(
-              'برای این جلسه متنی ذخیره نشده است. می‌توانید فایل صوتی را پخش کنید.',
-              style: theme.textTheme.bodySmall,
-            )
-          : SelectableText(transcript, style: theme.textTheme.bodyMedium),
+      child: Text(
+        'برای این جلسه متنی ذخیره نشده است. می‌توانید فایل صوتی را پخش کنید.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
     );
   }
 }

@@ -50,7 +50,8 @@ class MeetingRepository implements UploadStore, TranscriptStore {
   }
 
   /// Resets meetings left mid-pipeline by a killed app to a stable status.
-  Future<void> recoverStaleStatuses() => _db.db.rawUpdate('''
+  Future<void> recoverStaleStatuses() async {
+    await _db.db.rawUpdate('''
     UPDATE meetings SET status = CASE
       WHEN status = 'transcribing' AND EXISTS(
         SELECT 1 FROM segments WHERE meeting_id = meetings.id
@@ -59,6 +60,12 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     END
     WHERE status = 'transcribing'
   ''');
+    // A closed recording can never still be "recording".
+    await _db.db.rawUpdate('''
+    UPDATE meetings SET status = 'recorded'
+    WHERE status = 'recording' AND recording_state = 'finished'
+  ''');
+  }
 
   @override
   Future<List<Segment>> segments(String meetingId) async {
@@ -275,11 +282,19 @@ class MeetingRepository implements UploadStore, TranscriptStore {
   /// screen after the switch was off or a send failed for good.
   Future<void> requestSend(String id) => _db.db.rawUpdate(
     '''
-    UPDATE meetings SET send_text = 1, error = NULL,
+    UPDATE meetings SET send_text = 1, error = NULL, text_sync_pending = 0,
       remote_meeting_id = NULL, status = 'recorded'
     WHERE id = ? AND status IN ('recorded', 'transcribed', 'failed')
   ''',
     [id],
+  );
+
+  /// Marks whether an edit of an already sent text still has to reach SedaSanj.
+  Future<void> setTextSyncPending(String id, bool pending) => _db.db.update(
+    'meetings',
+    {'text_sync_pending': pending ? 1 : 0},
+    where: 'id = ?',
+    whereArgs: [id],
   );
 
   @override
