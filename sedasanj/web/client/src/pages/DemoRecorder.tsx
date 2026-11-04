@@ -52,7 +52,7 @@ export default function DemoRecorder() {
   const { session, loading, acceptSession } = useAuth();
   const navigate = useNavigate();
   const [token] = useState(() => window.location.hash.slice(1));
-  const [info, setInfo] = useState<RecordingInfo | null>(null);
+  const [info, setInfo] = useState<(RecordingInfo & { viaQr: boolean }) | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [elapsed, setElapsed] = useState(0);
@@ -74,7 +74,7 @@ export default function DemoRecorder() {
   const mounted = useRef(true);
   const startedAt = useRef(0);
   const [device] = useState(() => new URLSearchParams(window.location.search).get("device"));
-  const viaQr = device === "qr" || (device !== "same" && info !== null && session?.userId !== info.user_id);
+  const viaQr = info?.viaQr ?? false;
   const timer = useRef<ReturnType<typeof setInterval>>();
   const limitTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -105,21 +105,23 @@ export default function DemoRecorder() {
     };
   }, []);
   useEffect(() => {
-    if (loading) return;
+    if (loading || info) return;
     if (!token) { setError("لینک تست کامل نیست؛ دوباره QR را اسکن کنید."); return; }
     const controller = new AbortController();
     async function initialize() {
       try {
         const value = await request<RecordingInfo>("/v1/quick-demo/recording/status", { method: "POST", body: { token }, retry: false, signal: controller.signal });
         if (controller.signal.aborted) return;
-        setInfo({ ...value, prompt_url: "/quick-demo-instructions.mp3" });
-        if (value.completed && value.call_id && device !== "qr" && session?.userId === value.user_id) navigate(`/calls/${value.call_id}`, { replace: true });
+        const sameUser = session?.userId === value.user_id;
+        const fromQr = device === "qr" || (device !== "same" && !sameUser);
+        setInfo({ ...value, prompt_url: "/quick-demo-instructions.mp3", viaQr: fromQr });
+        if (value.completed && value.call_id && !fromQr && sameUser) navigate(`/calls/${value.call_id}`, { replace: true });
         else if (value.completed) setPhase("done");
       } catch (reason) { if (!controller.signal.aborted) setError((reason as Error).message); }
     }
     void initialize();
     return () => controller.abort();
-  }, [token, loading, session?.userId, device, navigate]);
+  }, [token, loading, session?.userId, device, info, navigate]);
   useEffect(() => {
     if (phase !== "permission") return;
     const timer = setTimeout(() => setPermissionStuck(true), 8000);
