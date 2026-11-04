@@ -45,6 +45,7 @@ from app.routers import (
     quick_demo,
     scheduled_reports,
     site_pages,
+    speaker_profiles,
     tasks,
     webhooks,
 )
@@ -335,6 +336,7 @@ def create_app() -> FastAPI:
         organization_memories,
         scheduled_reports,
         kpi,
+        speaker_profiles,
         meetings,
         ai_instructions,
         module_updates,

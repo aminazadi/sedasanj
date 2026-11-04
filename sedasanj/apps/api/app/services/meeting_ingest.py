@@ -20,9 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.errors import ApiError
 from app.metrics import meeting_chunks_total
-from app.models import AudioObject, Meeting, MeetingChunk, MeetingSegment, Tenant
-from app.schemas import MeetingTranscriptIn
-from app.services import billing
+from app.models import (
+    AudioObject,
+    Meeting,
+    MeetingChunk,
+    MeetingSegment,
+    MeetingSpeaker,
+    Tenant,
+)
+from app.schemas import MeetingTranscriptIn, MeetingTranscriptSegmentIn
+from app.services import billing, speaker_profiles
 from app.services.audio import probe_wav_file
 from app.services.queue import JOB_MEETING_CHUNK, QUEUE_MEETING, get_queue
 from app.services.storage import get_storage
@@ -311,14 +318,39 @@ class TranscriptAccepted:
     replay: bool
 
 
+def _segment_for_digest(segment: MeetingTranscriptSegmentIn) -> dict[str, Any]:
+    """Segment fields in the hashed form; newer optional fields join only when they are set.
+
+    Text sent before speaker details existed must keep its hash, or the app re-sending an
+    unchanged transcript would look like an edit and rebuild the minutes.
+    """
+    fields = segment.model_dump()
+    if not fields["overlap"]:
+        del fields["overlap"]
+    if fields["speaker_confidence"] is None:
+        del fields["speaker_confidence"]
+    return fields
+
+
 def transcript_digest(payload: MeetingTranscriptIn) -> str:
     """Stable hash of the segment list; the app may re-send the same text any number of times."""
-    canonical = json.dumps(
-        [segment.model_dump() for segment in payload.segments],
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    segments = [_segment_for_digest(segment) for segment in payload.segments]
+    document: Any = segments
+    if payload.speakers:
+        document = {
+            "segments": segments,
+            "speakers": [
+                {
+                    "idx": speaker.idx,
+                    "label": speaker.label,
+                    "profile": str(speaker.profile_client_id)
+                    if speaker.profile_client_id
+                    else None,
+                }
+                for speaker in sorted(payload.speakers, key=lambda item: item.idx)
+            ],
+        }
+    canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -379,6 +411,8 @@ async def accept_transcript(
             t_start_ms=segment.t_start_ms,
             t_end_ms=segment.t_end_ms,
             speaker_idx=segment.speaker,
+            overlap=segment.overlap,
+            speaker_confidence=segment.speaker_confidence,
             source="device_asr",
             text=segment.text.strip(),
         )
@@ -391,7 +425,67 @@ async def accept_transcript(
     meeting.asr_identity = payload.asr_identity
     meeting.updated_at = now
     await session.flush()
+    await _sync_speakers(session, meeting, payload)
     return TranscriptAccepted(segments=len(payload.segments), sha256=digest, replay=False)
+
+
+async def _sync_speakers(
+    session: AsyncSession, meeting: Meeting, payload: MeetingTranscriptIn
+) -> None:
+    """Record the names the app gave the speaker numbers, and the profile each one matched.
+
+    An app that sends no speaker list leaves the existing rows alone. A row the panel has linked
+    to a user keeps its label, so a re-sent transcript never undoes that rename.
+    """
+    if not payload.speakers:
+        return
+    wanted = {speaker.idx: speaker for speaker in payload.speakers}
+    profiles = await speaker_profiles.resolve_profile_ids(
+        session,
+        tenant_id=meeting.tenant_id,
+        user_id=meeting.owner_user_id,
+        client_ids={s.profile_client_id for s in payload.speakers if s.profile_client_id},
+    )
+    totals: dict[int, int] = {}
+    for segment in payload.segments:
+        if segment.speaker is not None and segment.text.strip():
+            totals[segment.speaker] = totals.get(segment.speaker, 0) + max(
+                0, segment.t_end_ms - segment.t_start_ms
+            )
+    existing = {
+        row.speaker_idx: row
+        for row in (
+            await session.execute(
+                select(MeetingSpeaker).where(MeetingSpeaker.meeting_id == meeting.id)
+            )
+        )
+        .scalars()
+        .all()
+    }
+    for idx, speaker in wanted.items():
+        profile_id = profiles.get(speaker.profile_client_id) if speaker.profile_client_id else None
+        row = existing.get(idx)
+        if row is None:
+            session.add(
+                MeetingSpeaker(
+                    tenant_id=meeting.tenant_id,
+                    meeting_id=meeting.id,
+                    speaker_idx=idx,
+                    label=speaker.label,
+                    profile_id=profile_id,
+                    total_ms=totals.get(idx, 0),
+                )
+            )
+            continue
+        if row.user_id is None:
+            row.label = speaker.label
+        row.profile_id = profile_id
+        row.total_ms = totals.get(idx, 0)
+    for idx, row in existing.items():
+        if idx not in wanted and row.user_id is None:
+            await session.delete(row)
+    meeting.speaker_count = len(wanted)
+    await session.flush()
 
 
 async def transcript_end_ms(session: AsyncSession, meeting_id: UUID) -> int | None:

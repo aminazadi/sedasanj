@@ -1881,11 +1881,40 @@ class MeetingTranscriptSegmentIn(BaseModel):
     t_end_ms: int = Field(ge=0, le=86_400_000)
     text: str = Field(min_length=1, max_length=4000)
     speaker: int | None = Field(default=None, ge=0, le=64)
+    # Spoken over another voice: the app sends the line once per speaker with the same times.
+    overlap: bool = False
+    # How sure the on-device speaker match was (0..100); omitted when the app has no score.
+    speaker_confidence: int | None = Field(default=None, ge=0, le=100)
+
+
+class MeetingTranscriptSpeakerIn(BaseModel):
+    """Names the app gave to the speaker numbers used in `segments`."""
+
+    idx: int = Field(ge=0, le=64)
+    label: str = Field(min_length=1, max_length=80)
+    # The `client_id` of the speaker profile this voice was matched to; empty for unknown voices.
+    profile_client_id: UUID | None = None
+
+    @field_validator("label")
+    @classmethod
+    def _label_is_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or any(ord(ch) < 32 for ch in cleaned):
+            raise ValueError("label must be printable text")
+        return cleaned
 
 
 class MeetingTranscriptIn(BaseModel):
     segments: list[MeetingTranscriptSegmentIn] = Field(min_length=1, max_length=20_000)
     asr_identity: str | None = Field(default=None, max_length=200)
+    speakers: list[MeetingTranscriptSpeakerIn] = Field(default_factory=list, max_length=65)
+
+    @model_validator(mode="after")
+    def _speaker_indexes_unique(self) -> MeetingTranscriptIn:
+        indexes = [speaker.idx for speaker in self.speakers]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("speakers must not repeat an idx")
+        return self
 
 
 class MeetingTranscriptOut(BaseModel):
@@ -1959,6 +1988,8 @@ class MeetingSegmentOut(BaseModel):
     t_end_ms: int
     speaker_idx: int | None
     text: str
+    overlap: bool = False
+    speaker_confidence: int | None = None
 
 
 class MeetingSpeakerOut(BaseModel):
@@ -1966,6 +1997,79 @@ class MeetingSpeakerOut(BaseModel):
     label: str
     user_id: UUID | None
     total_ms: int
+    profile_client_id: UUID | None = None
+
+
+# --- speaker profiles (people and voiceprints synced from the Jalase-Negar app) ---------------
+
+SPEAKER_MODEL_PATTERN = r"^[A-Za-z0-9._-]+$"
+
+
+class SpeakerVoiceprintIn(BaseModel):
+    client_id: UUID
+    model_id: str = Field(min_length=1, max_length=80, pattern=SPEAKER_MODEL_PATTERN)
+    model_version: str = Field(min_length=1, max_length=40, pattern=SPEAKER_MODEL_PATTERN)
+    dim: int = Field(ge=16, le=2048)
+    # Base64 of `dim` little-endian float32 values, computed on the phone.
+    embedding_b64: str = Field(min_length=8, max_length=11_000)
+    quality: int | None = Field(default=None, ge=0, le=100)
+    duration_ms: int | None = Field(default=None, ge=0, le=600_000)
+
+
+class SpeakerConsentIn(BaseModel):
+    at: datetime
+    version: str = Field(min_length=1, max_length=40)
+
+
+class SpeakerProfilePut(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
+    visibility: Literal["private", "org"] = "private"
+    # The version the app last saw; 0 creates the profile.
+    base_version: int = Field(ge=0, le=2_000_000_000)
+    consent: SpeakerConsentIn | None = None
+    voiceprints: list[SpeakerVoiceprintIn] = Field(default_factory=list, max_length=200)
+    remove_voiceprints: list[UUID] = Field(default_factory=list, max_length=200)
+
+    @field_validator("display_name")
+    @classmethod
+    def _name_is_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or any(ord(ch) < 32 for ch in cleaned):
+            raise ValueError("display_name must be printable text")
+        return cleaned
+
+
+class SpeakerVoiceprintOut(BaseModel):
+    client_id: UUID
+    model_id: str
+    model_version: str
+    dim: int
+    embedding_b64: str
+    quality: int | None
+    duration_ms: int | None
+
+
+class SpeakerProfileOut(BaseModel):
+    client_id: UUID
+    # Empty for a deleted profile: only the fact that it is gone is kept.
+    display_name: str
+    visibility: Literal["private", "org"]
+    version: int
+    change_seq: int
+    deleted: bool
+    # True for the caller's own profile; colleagues' shared profiles are read-only.
+    mine: bool
+    consent_at: datetime | None
+    consent_version: str | None
+    updated_at: datetime
+    voiceprints: list[SpeakerVoiceprintOut]
+
+
+class SpeakerChangesOut(BaseModel):
+    items: list[SpeakerProfileOut]
+    # Pass this back as `cursor`; it only moves forward.
+    next_cursor: int
+    has_more: bool
 
 
 class MeetingMinutesOut(BaseModel):

@@ -215,6 +215,14 @@ class Settings(BaseSettings):
     meeting_reserve_block_seconds: int = Field(default=1800, ge=60)
     meeting_max_duration_ms: int = Field(default=12 * 3600 * 1000, ge=60_000)
     meeting_transcript_max_chars: int = Field(default=2_000_000, ge=10_000)
+    # Speaker profiles (people and voiceprints from the Jalase-Negar app). The key is one Fernet
+    # key, or several separated by commas: the first encrypts, all of them decrypt (rotation).
+    voiceprint_encryption_key: str | None = None
+    speaker_max_profiles_per_user: int = Field(default=100, ge=1, le=2000)
+    speaker_max_voiceprints_per_profile: int = Field(default=24, ge=1, le=200)
+    speaker_sync_page_size: int = Field(default=100, ge=10, le=500)
+    speaker_tombstone_days: int = Field(default=90, ge=1, le=3650)
+    rate_limit_speaker_sync_per_minute: int = Field(default=60, ge=5, le=1200)
     webhook_max_per_tenant: int = 10
     webhook_auto_disable_failures: int = 10
     webhook_delivery_retention_days: int = 30

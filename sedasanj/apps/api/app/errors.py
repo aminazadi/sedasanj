@@ -27,6 +27,12 @@ ERROR_STATUS: dict[str, int] = {
     "meeting_minutes_failed": status.HTTP_502_BAD_GATEWAY,
     "meeting_transcript_missing": status.HTTP_409_CONFLICT,
     "meeting_transcript_invalid": 422,
+    "speaker_profile_not_found": status.HTTP_404_NOT_FOUND,
+    "speaker_profile_conflict": status.HTTP_409_CONFLICT,
+    "speaker_profile_limit": status.HTTP_409_CONFLICT,
+    "speaker_consent_required": 422,
+    "speaker_voiceprint_invalid": 422,
+    "speaker_storage_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "tenant_instructions_too_long": 422,
     "apk_invalid": 422,
     "apk_inspection_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -89,6 +95,7 @@ RETRYABLE_CODES = {
     "document_pdf_unavailable",
     "release_file_unavailable",
     "apk_inspection_unavailable",
+    "speaker_storage_unavailable",
 }
 
 
