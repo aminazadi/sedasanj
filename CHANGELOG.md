@@ -3,7 +3,9 @@
 ## 2026-11-04 — AMINAZADI
 
 - Shortened the Jalase-Negar final recording cue to 800 ms and showed a readiness message during playback.
+- Added a three-dot menu at the end of the Jalase-Negar meeting detail app bar (opposite the title) with "ویرایش عنوان" (rename dialog) and "حذف جلسه" (confirmation, then returns to the list).
 - Moved the Jalase-Negar meeting upload toggle into the section header with square corners and shortened the description of audio and transcript uploads.
+- Changed Jalase-Negar to send the meeting text, which the server turns into the minutes, together with the audio, which is stored for playback in the panel and never transcribed. Added a settings switch "متن جلسه به جلسه‌نگار ارسال شود" (default on, off sends nothing; snapshotted per meeting at record start, database v7 `send_text`), a "send this meeting's text" button on the detail screen for meetings not sent or failed, and a queue that uploads audio chunks while recording, then `PUT /transcript` and `finish` once recording ends. Meetings without a transcript are not sent and the user is told how to enable live transcription; a refused audio chunk never holds back the text. Sessions an older app version opened as audio-only are not reused.
 - Moved Jalase-Negar toast messages below the top toolbar, including the meeting deletion undo action.
 - Added a two-second tone after the Jalase-Negar countdown and before microphone capture, and made the countdown digits bolder.
 - Matched the Jalase-Negar recording header buttons and added a three-second audible countdown between the wind effect and microphone capture.
@@ -11,7 +13,7 @@
 - Removed post-recording retranscription from Jalase-Negar. Meeting details now show the saved transcript and audio player, and the meeting list no longer retries processing failures by transcribing the saved audio.
 - Added live transcription to Jalase-Negar recording: a long-lived isolate runs Silero VAD on the microphone stream and decodes each finished utterance with the selected Shenava model, shows it in a live panel while recording, and saves it as a draft (ASR identity `…|segmenter:silero-vad-live`) that the full transcription replaces; live failures or a slow phone never affect the recording, and the feature can be switched off from the recording screen.
 - Changed Jalase-Negar recording to disperse the illustration into windblown particles and show the PCM waveform and compact timer below the live transcript.
-- Redesigned the Jalase-Negar meetings list: date-grouped sections with pinned headers, search and status filter chips, square cards with soft shadow, transcript preview, per-stage progress panel, retry on failed meetings, swipe-to-delete with undo, rename and share actions, skeleton loading, and a recovery action on load errors.
+- Redesigned the Jalase-Negar meetings list: date-grouped sections with pinned headers, search and status filter chips, square cards with soft shadow, transcript preview, per-stage progress panel, retry on failed meetings, swipe-to-delete with undo, rename and share actions, skeleton loading, a recovery action on load errors, and the list now scrolls behind the bottom bar so it shows through the notch under the record button.
 - Changed the Jalase-Negar settings QR scan into a full-screen camera with a centred square scan frame (corner brackets, sweeping line, torch and close buttons); only the framed area is decoded.
 
 ## 2026-11-03 — AMINAZADI

@@ -102,6 +102,35 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('title menu offers renaming and deleting the meeting', (
+    tester,
+  ) async {
+    await _openDetail(
+      tester,
+      MeetingDetail(meeting: _meeting(MeetingStatus.recorded), segments: []),
+    );
+
+    await tester.tap(find.byTooltip('گزینه‌ها'));
+    await tester.pumpAndSettle();
+    expect(find.text('ویرایش عنوان'), findsOneWidget);
+    expect(find.text('حذف جلسه'), findsOneWidget);
+
+    await tester.tap(find.text('ویرایش عنوان'));
+    await tester.pumpAndSettle();
+    expect(find.text('ویرایش عنوان جلسه'), findsOneWidget);
+    await tester.tap(find.text('انصراف'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('گزینه‌ها'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حذف جلسه'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('حذف شود؟'), findsOneWidget);
+    await tester.tap(find.text('انصراف'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('failed meetings offer no audio transcription retry', (
     tester,
   ) async {

@@ -30,8 +30,8 @@ class UploadState {
   final int tick;
 }
 
-/// Runs [UploadQueue] whenever something may have changed: a chunk closed,
-/// the recording ended, the app started, connectivity returned, or a retry
+/// Runs [UploadQueue] whenever something may have changed: the recording
+/// ended, the app started, connectivity returned, or a retry
 /// delay elapsed. Passes never overlap; a kick during a pass runs one more.
 class UploadController extends Notifier<UploadState> {
   Timer? _wake;
@@ -113,7 +113,8 @@ final uploadQueueProvider = NotifierProvider<UploadController, UploadState>(
   UploadController.new,
 );
 
-/// (sent, total) chunk counts of a meeting, refreshed after each queue pass.
+/// (sent, total) audio chunk counts of a meeting, refreshed after each queue
+/// pass.
 final uploadProgressProvider = FutureProvider.family<(int, int), String>((
   ref,
   meetingId,

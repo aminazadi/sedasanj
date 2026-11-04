@@ -37,6 +37,7 @@ class Meeting {
     this.recordingState = 'finished',
     this.remoteMeetingId,
     this.asrIdentity,
+    this.sendText = true,
   });
 
   final String id;
@@ -59,6 +60,11 @@ class Meeting {
   /// the meeting is transcribed.
   final String? asrIdentity;
 
+  /// Whether this meeting's transcript is sent to SedaSanj. Snapshot of the
+  /// settings switch taken when the meeting is created, so changing the
+  /// switch later never affects meetings already recorded.
+  final bool sendText;
+
   /// Value equality lets the list skip rebuilding tiles whose meeting did not
   /// change when the list is reloaded.
   @override
@@ -75,7 +81,8 @@ class Meeting {
       other.error == error &&
       other.recordingState == recordingState &&
       other.remoteMeetingId == remoteMeetingId &&
-      other.asrIdentity == asrIdentity;
+      other.asrIdentity == asrIdentity &&
+      other.sendText == sendText;
 
   @override
   int get hashCode => Object.hash(
@@ -91,6 +98,7 @@ class Meeting {
     recordingState,
     remoteMeetingId,
     asrIdentity,
+    sendText,
   );
 
   Meeting copyWith({
@@ -104,6 +112,7 @@ class Meeting {
     String? recordingState,
     String? remoteMeetingId,
     String? asrIdentity,
+    bool? sendText,
   }) => Meeting(
     id: id,
     title: title ?? this.title,
@@ -117,6 +126,7 @@ class Meeting {
     recordingState: recordingState ?? this.recordingState,
     remoteMeetingId: remoteMeetingId ?? this.remoteMeetingId,
     asrIdentity: asrIdentity ?? this.asrIdentity,
+    sendText: sendText ?? this.sendText,
   );
 
   factory Meeting.fromRow(Map<String, Object?> row) => Meeting(
@@ -132,6 +142,7 @@ class Meeting {
     recordingState: (row['recording_state'] as String?) ?? 'finished',
     remoteMeetingId: row['remote_meeting_id'] as String?,
     asrIdentity: row['asr_identity'] as String?,
+    sendText: ((row['send_text'] as int?) ?? 1) != 0,
   );
 
   Map<String, Object?> toRow() => {
@@ -147,6 +158,7 @@ class Meeting {
     'recording_state': recordingState,
     'remote_meeting_id': remoteMeetingId,
     'asr_identity': asrIdentity,
+    'send_text': sendText ? 1 : 0,
   };
 }
 

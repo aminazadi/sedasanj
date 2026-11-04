@@ -60,6 +60,7 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     WHERE status = 'transcribing'
   ''');
 
+  @override
   Future<List<Segment>> segments(String meetingId) async {
     final rows = await _db.db.query(
       'segments',
@@ -221,7 +222,9 @@ class MeetingRepository implements UploadStore, TranscriptStore {
   Future<List<Meeting>> uploadableMeetings() async {
     final rows = await _db.db.query(
       'meetings',
-      where: "status IN ('recording', 'recorded', 'uploading', 'processing')",
+      where:
+          "send_text = 1 AND status IN "
+          "('recording', 'recorded', 'transcribed', 'uploading', 'processing')",
       orderBy: 'created_at ASC',
     );
     return rows.map(Meeting.fromRow).toList();
@@ -266,6 +269,25 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     },
     where: 'meeting_id = ? AND seq = ?',
     whereArgs: [meetingId, seq],
+  );
+
+  /// Queues the meeting's transcript for (re)sending, e.g. from the detail
+  /// screen after the switch was off or a send failed for good.
+  Future<void> requestSend(String id) => _db.db.rawUpdate(
+    '''
+    UPDATE meetings SET send_text = 1, error = NULL,
+      remote_meeting_id = NULL, status = 'recorded'
+    WHERE id = ? AND status IN ('recorded', 'transcribed', 'failed')
+  ''',
+    [id],
+  );
+
+  @override
+  Future<void> setSendText(String id, bool send) => _db.db.update(
+    'meetings',
+    {'send_text': send ? 1 : 0},
+    where: 'id = ?',
+    whereArgs: [id],
   );
 
   @override

@@ -10,6 +10,10 @@ import '../../models/application/models_controller.dart';
 /// Settings key: live transcription during recording (absent means on).
 const String kLiveTranscriptSettingKey = 'live_transcript_enabled';
 
+/// Settings key of the switch that sends each meeting's transcript to
+/// SedaSanj. Absent means on; audio is never sent either way.
+const String kSendTranscriptSettingKey = 'send_transcript_enabled';
+
 /// What a recording needs to start live transcription, or why it cannot.
 class LiveEngineSetup {
   const LiveEngineSetup.ready({required this.engine, required this.modelId})
@@ -93,4 +97,24 @@ class LiveTranscriptEnabled extends AsyncNotifier<bool> {
 final liveTranscriptEnabledProvider =
     AsyncNotifierProvider<LiveTranscriptEnabled, bool>(
       LiveTranscriptEnabled.new,
+    );
+
+/// The user's on/off choice for sending meeting transcripts to SedaSanj.
+class SendTranscriptEnabled extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    final db = await ref.watch(appDatabaseProvider.future);
+    return await db.getSetting(kSendTranscriptSettingKey) != '0';
+  }
+
+  Future<void> set(bool enabled) async {
+    final db = await ref.read(appDatabaseProvider.future);
+    await db.setSetting(kSendTranscriptSettingKey, enabled ? '1' : '0');
+    state = AsyncData(enabled);
+  }
+}
+
+final sendTranscriptEnabledProvider =
+    AsyncNotifierProvider<SendTranscriptEnabled, bool>(
+      SendTranscriptEnabled.new,
     );

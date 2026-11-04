@@ -15,17 +15,19 @@ class AppDatabase {
     final path = '${await getDatabasesPath()}/jalase_negar.db';
     final db = await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await _createV4(db);
         await _migrateToV5(db);
         await _migrateToV6(db);
+        await _migrateToV7(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
         if (oldVersion < 5) await _migrateToV5(db);
         if (oldVersion < 6) await _migrateToV6(db);
+        if (oldVersion < 7) await _migrateToV7(db);
       },
     );
     _instance = AppDatabase._(db);
@@ -122,6 +124,25 @@ class AppDatabase {
       "ALTER TABLE segments ADD COLUMN source TEXT NOT NULL DEFAULT 'device'",
     );
     await db.execute('ALTER TABLE meetings ADD COLUMN asr_identity TEXT');
+  }
+
+  /// v7 adds send_text, the per-meeting snapshot of the "send transcript"
+  /// switch. Meetings an older version left mid-upload start over: audio-only
+  /// sessions on the server cannot take a transcript.
+  static Future<void> _migrateToV7(Database db) async {
+    await db.execute(
+      'ALTER TABLE meetings ADD COLUMN send_text INTEGER NOT NULL DEFAULT 1',
+    );
+    await db.execute(
+      "UPDATE meetings SET remote_meeting_id = NULL, status = 'recorded' "
+      "WHERE status IN ('uploading', 'processing')",
+    );
+    await db.execute(
+      "UPDATE upload_chunks SET status = 'pending', attempts = 0, "
+      "next_attempt_at = NULL WHERE meeting_id IN "
+      "(SELECT id FROM meetings WHERE status = 'recorded' "
+      "AND remote_meeting_id IS NULL)",
+    );
   }
 
   Future<String?> getSetting(String key) async {

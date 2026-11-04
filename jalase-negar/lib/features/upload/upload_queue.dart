@@ -48,12 +48,14 @@ abstract class UploadStore {
     String? lastError,
     String? sha256,
   });
+  Future<List<Segment>> segments(String meetingId);
   Future<Meeting?> meeting(String id);
 
   /// Targeted writes: the recorder updates the same row while a meeting is
   /// still being captured, so the queue must never rewrite whole rows.
   Future<void> setRemoteMeetingId(String id, String remoteId);
   Future<void> setStatus(String id, MeetingStatus status, {String? error});
+  Future<void> setSendText(String id, bool send);
 }
 
 /// What a pass of the queue learned; the controller turns it into UI state
@@ -79,10 +81,11 @@ Duration uploadBackoff(int attempts, Random random) {
   );
 }
 
-/// Uploads meeting chunks to SedaSanj while the meeting is still recording,
-/// finishes the session once the last chunk is in, and follows server-side
-/// processing. Every step is driven by the stored state, so a killed app or a
-/// lost connection simply resumes on the next pass.
+/// Sends a meeting to SedaSanj: the audio as WAV chunks while it records (kept
+/// for playback in the panel, never transcribed there) and, once recording
+/// ends, the on-device transcript that the minutes are built from. Follows
+/// server-side processing afterwards. Every step is driven by the stored
+/// state, so a killed app or a lost connection simply resumes on the next pass.
 class UploadQueue {
   UploadQueue({
     required this.store,
@@ -127,7 +130,16 @@ class UploadQueue {
           continue;
         }
         lastError = e.message;
-        if (e.retryable) wakeIn(uploadBackoff(1, _random));
+        if (e.retryable) {
+          wakeIn(uploadBackoff(1, _random));
+        } else {
+          // The server refused this meeting for good; stop retrying it.
+          await store.setStatus(
+            meeting.id,
+            MeetingStatus.failed,
+            error: e.message,
+          );
+        }
       }
     }
     return UploadOutcome(
@@ -144,18 +156,46 @@ class UploadQueue {
     void Function(Duration) wakeIn,
   ) async {
     final live = meeting.recordingState == 'recording';
-    var chunks = await store.chunks(meeting.id);
-    if (chunks.isEmpty && live) return null;
-
     var current = meeting;
+    if (current.status == MeetingStatus.processing &&
+        current.remoteMeetingId != null) {
+      return _followProcessing(current, current.remoteMeetingId!, wakeIn);
+    }
+
+    var chunks = await store.chunks(current.id);
+    if (live && chunks.isEmpty) return null;
+
+    List<Segment> segments = const [];
+    if (!live) {
+      segments = [
+        for (final s in await store.segments(current.id))
+          if (s.text.trim().isNotEmpty) s,
+      ];
+      if (segments.isEmpty || current.asrIdentity == null) {
+        // Nothing to build minutes from (live transcript off, model missing,
+        // or silence). Stop trying; the detail screen can send it later.
+        await store.setSendText(current.id, false);
+        return 'برای یکی از جلسه‌ها متنی ساخته نشده بود و چیزی ارسال نشد؛ '
+            'رونویسی زنده را در تنظیمات روشن کنید و جلسه‌ی بعد را ضبط کنید.';
+      }
+    }
+
     if (current.remoteMeetingId == null) {
-      if (chunks.isEmpty) return null;
       final session = await api.createSession(
         clientMeetingId: current.id,
         title: current.title,
         startedAt: current.createdAt,
         appVersion: appVersion,
       );
+      if (session.inputKind != 'text') {
+        await store.setStatus(
+          current.id,
+          MeetingStatus.failed,
+          error:
+              'این جلسه با نسخه‌ی قدیمی اپ در صداسنج ثبت شده است؛ آن را در پنل ببینید و جلسه‌ی جدید ضبط کنید.',
+        );
+        return null;
+      }
       current = current.copyWith(remoteMeetingId: session.meetingId);
       await store.setRemoteMeetingId(current.id, session.meetingId);
       for (final chunk in chunks) {
@@ -168,8 +208,18 @@ class UploadQueue {
     }
     final remoteId = current.remoteMeetingId!;
 
-    if (current.status == MeetingStatus.processing) {
-      return _followProcessing(current, remoteId, wakeIn);
+    if (!live && current.status != MeetingStatus.uploading) {
+      current = current.copyWith(status: MeetingStatus.uploading);
+      await store.setStatus(current.id, MeetingStatus.uploading);
+    }
+    // Idempotent on the server (same content hash replays), so a retry after
+    // a dropped connection is safe.
+    if (!live) {
+      await api.putTranscript(
+        meetingId: remoteId,
+        segments: segments,
+        asrIdentity: current.asrIdentity,
+      );
     }
 
     final nowMs = _now().millisecondsSinceEpoch;
@@ -181,11 +231,6 @@ class UploadQueue {
       if (c.status == 'pending' && (c.nextAttemptAt ?? 0) > nowMs) {
         wakeIn(Duration(milliseconds: c.nextAttemptAt! - nowMs));
       }
-    }
-
-    if (due.isNotEmpty && !live && current.status != MeetingStatus.uploading) {
-      current = current.copyWith(status: MeetingStatus.uploading);
-      await store.setStatus(current.id, MeetingStatus.uploading);
     }
 
     String? problem;
@@ -204,10 +249,10 @@ class UploadQueue {
     }
 
     chunks = await store.chunks(current.id);
-    final allSent =
-        chunks.isNotEmpty && chunks.every((c) => c.status == 'sent');
-    if (!live && allSent) {
+    final settled = chunks.every((c) => c.status != 'pending');
+    if (!live && settled) {
       await _finish(current, remoteId, chunks);
+      wakeIn(const Duration(seconds: 5));
     }
     return problem;
   }
@@ -284,12 +329,17 @@ class UploadQueue {
     }
   }
 
+  /// Closes the session. Audio that could not be uploaded (a chunk the server
+  /// refused or a lost file) is dropped from the count so the text and the
+  /// minutes are never held back by it.
   Future<void> _finish(
     Meeting meeting,
     String remoteId,
     List<UploadChunk> chunks,
   ) async {
-    final total = chunks.map((c) => c.seq).reduce(max) + 1;
+    final audioComplete =
+        chunks.isNotEmpty && chunks.every((c) => c.status == 'sent');
+    final total = audioComplete ? chunks.map((c) => c.seq).reduce(max) + 1 : 0;
     try {
       await api.finish(
         meetingId: remoteId,
@@ -311,7 +361,8 @@ class UploadQueue {
         }
         return;
       }
-      rethrow;
+      // Already finished by an earlier pass that died before saving status.
+      if (e.code != 'meeting_closed') rethrow;
     }
     await store.setStatus(meeting.id, MeetingStatus.processing);
     // The server has everything; the chunk copies only cost disk space.

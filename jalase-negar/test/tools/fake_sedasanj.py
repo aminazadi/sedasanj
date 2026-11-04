@@ -1,11 +1,11 @@
 """Minimal SedaSanj meetings API stand-in for emulator tests.
 
-Implements the contract the app uses (pair, validate, sessions, chunks, status,
-finish) with in-memory state and verifies each chunk's sha256. Run:
+Implements the contract the app uses (pair, validate, text sessions, transcript,
+status, finish) with in-memory state. Audio chunks are accepted and kept only
+for playback, like the real server does for text meetings. Run:
     python3 test/tools/fake_sedasanj.py [port]
 The Android emulator reaches it at http://10.0.2.2:<port>.
 """
-import hashlib
 import json
 import re
 import sys
@@ -64,12 +64,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/v1/meetings/sessions":
             data = json.loads(self._body())
-            m = MEETINGS.setdefault(data["client_meeting_id"], {"id": "mtg-" + data["client_meeting_id"][:8], "chunks": {}, "status": "receiving"})
-            return self._send(200, {"meeting_id": m["id"], "status": m["status"], "received_seqs": sorted(m["chunks"]), "chunk_max_bytes": 5_000_000})
+            m = MEETINGS.setdefault(data["client_meeting_id"], {"id": "mtg-" + data["client_meeting_id"][:8], "chunks": {}, "segments": None, "status": "receiving"})
+            return self._send(200, {"meeting_id": m["id"], "status": m["status"], "received_seqs": [], "chunk_max_bytes": 5_000_000, "input_kind": data.get("input_kind", "audio"), "transcript_received": m["segments"] is not None})
         m = re.match(r"/v1/meetings/([^/]+)/finish", self.path)
         if m:
             data = json.loads(self._body())
             meeting = next(v for v in MEETINGS.values() if v["id"] == m.group(1))
+            if not meeting["segments"]:
+                return self._send(409, {"error": {"code": "meeting_transcript_missing", "message": "x"}})
             missing = [s for s in range(data["total_chunks"]) if s not in meeting["chunks"]]
             if missing:
                 return self._send(409, {"error": {"code": "meeting_incomplete_chunks", "message": "x", "missing_seqs": missing}})
@@ -81,17 +83,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self):
         if not self._authed():
             return
-        m = re.match(r"/v1/meetings/([^/]+)/chunks/(\d+)", self.path)
+        c = re.match(r"/v1/meetings/([^/]+)/chunks/(\d+)", self.path)
+        if c:
+            # Audio is stored for playback only; nothing is transcribed.
+            meeting = next(v for v in MEETINGS.values() if v["id"] == c.group(1))
+            meeting["chunks"][int(c.group(2))] = len(self._body())
+            return self._send(200, {"seq": int(c.group(2)), "status": "received"})
+        m = re.match(r"/v1/meetings/([^/]+)/transcript", self.path)
         if not m:
             return self._send(404, {})
-        boundary = self.headers["Content-Type"].split("boundary=")[1].encode()
-        fields, files = parse_multipart(self._body(), boundary)
-        audio = files["audio"]
-        if hashlib.sha256(audio).hexdigest() != fields["sha256"].lower():
-            return self._send(422, {"error": {"code": "meeting_chunk_invalid_audio", "message": "hash mismatch"}})
+        data = json.loads(self._body())
         meeting = next(v for v in MEETINGS.values() if v["id"] == m.group(1))
-        meeting["chunks"][int(m.group(2))] = len(audio)
-        self._send(200, {"seq": int(m.group(2)), "status": "received"})
+        meeting["segments"] = data["segments"]
+        self._send(200, {"segments": len(data["segments"]), "sha256": "x", "replay": False})
 
     def do_GET(self):
         if self.path == "/v1/meetings/config/validate":
@@ -103,7 +107,7 @@ class Handler(BaseHTTPRequestHandler):
             meeting = next(v for v in MEETINGS.values() if v["id"] == m.group(1))
             if meeting["status"] == "processing" and time.time() - FINISHED_AT[meeting["id"]] > 15:
                 meeting["status"] = "complete"
-            return self._send(200, {"status": meeting["status"], "received_seqs": sorted(meeting["chunks"]), "processed_seqs": [], "progress_pct": 50, "progress_detail": None, "error_code": None})
+            return self._send(200, {"status": meeting["status"], "received_seqs": [], "processed_seqs": [], "progress_pct": 50, "progress_detail": None, "error_code": None})
         self._send(404, {})
 
 

@@ -243,6 +243,7 @@ class RecorderController extends Notifier<RecorderState> {
           state = state.copyWith(chunkCount: chunk.seq + 1);
         },
       );
+      final sendText = await ref.read(sendTranscriptEnabledProvider.future);
       // The row exists from the first second, so a crash leaves a recoverable
       // meeting instead of orphan files.
       await repo.insert(
@@ -256,6 +257,7 @@ class RecorderController extends Notifier<RecorderState> {
           channels: 1,
           status: MeetingStatus.recording,
           recordingState: 'recording',
+          sendText: sendText,
         ),
       );
       ref.invalidate(meetingsProvider);

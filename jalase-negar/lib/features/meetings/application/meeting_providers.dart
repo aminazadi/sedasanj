@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
+import '../../upload/upload_controller.dart';
 import '../data/meeting.dart';
 
 class MeetingActions {
@@ -18,6 +19,16 @@ class MeetingActions {
     await repo.update(meeting.copyWith(title: trimmed, error: meeting.error));
     ref.invalidate(meetingsProvider);
     ref.invalidate(meetingDetailProvider(meetingId));
+  }
+
+  /// Sends this meeting's transcript now (works even when the settings
+  /// switch was off while it was recorded).
+  Future<void> sendText() async {
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    await repo.requestSend(meetingId);
+    ref.invalidate(meetingsProvider);
+    ref.invalidate(meetingDetailProvider(meetingId));
+    ref.read(uploadQueueProvider.notifier).kick();
   }
 
   Future<void> deleteMeeting() async {

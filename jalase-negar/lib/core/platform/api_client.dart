@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../../features/meetings/data/meeting.dart';
+
 /// Typed API failure with a Persian message that names the next action.
 class ApiException implements Exception {
   const ApiException({
@@ -51,11 +53,16 @@ class RemoteSession {
     required this.meetingId,
     required this.status,
     required this.receivedSeqs,
+    this.inputKind = 'audio',
   });
 
   final String meetingId;
   final String status;
   final List<int> receivedSeqs;
+
+  /// 'text' for sessions this app creates; 'audio' for sessions an older app
+  /// version opened (they cannot take a transcript).
+  final String inputKind;
 }
 
 class RemoteStatus {
@@ -94,6 +101,13 @@ abstract class MeetingUploadApi {
     required int endMs,
     required String sha256,
     String? deviceText,
+  });
+
+  /// Replaces the whole transcript of a text session (idempotent).
+  Future<void> putTranscript({
+    required String meetingId,
+    required List<Segment> segments,
+    String? asrIdentity,
   });
 
   Future<RemoteStatus> status(String meetingId);
@@ -174,10 +188,27 @@ ApiException mapDioError(DioException e) {
           statusCode: status,
         );
       }
+      if (code == 'meeting_transcript_missing') {
+        return ApiException(
+          message:
+              'متنی برای این جلسه به سرور نرسیده است؛ ارسال دوباره انجام می‌شود.',
+          code: code,
+          statusCode: status,
+        );
+      }
       if (code == 'meeting_token_limit') {
         return ApiException(
           message:
               'سقف دستگاه‌های متصل پر است؛ در پنل یکی از دستگاه‌ها را ابطال کنید.',
+          code: code,
+          statusCode: status,
+        );
+      }
+    case 422:
+      if (code == 'meeting_transcript_invalid') {
+        return ApiException(
+          message:
+              'متن جلسه برای سرور معتبر نیست (زمان‌ها یا اندازه)؛ اپ را به‌روز کنید یا جلسه را دوباره ضبط کنید.',
           code: code,
           statusCode: status,
         );
@@ -277,6 +308,7 @@ class ApiClient implements MeetingUploadApi {
           'sample_rate': 16000,
           'channels': 1,
           'app_version': appVersion,
+          'input_kind': 'text',
         },
       );
       final body = res.data!;
@@ -284,6 +316,7 @@ class ApiClient implements MeetingUploadApi {
         meetingId: body['meeting_id'] as String,
         status: body['status'] as String,
         receivedSeqs: _ints(body['received_seqs']),
+        inputKind: (body['input_kind'] as String?) ?? 'audio',
       );
     } on DioException catch (e) {
       throw mapDioError(e);
@@ -310,6 +343,35 @@ class ApiClient implements MeetingUploadApi {
           'sha256': sha256,
           if (deviceText != null) 'device_text': deviceText,
         }),
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  @override
+  Future<void> putTranscript({
+    required String meetingId,
+    required List<Segment> segments,
+    String? asrIdentity,
+  }) async {
+    try {
+      await _dio.put<Object?>(
+        '/v1/meetings/$meetingId/transcript',
+        data: {
+          'segments': [
+            for (final s in segments)
+              {
+                't_start_ms': s.startMs,
+                't_end_ms': s.endMs < s.startMs ? s.startMs : s.endMs,
+                'text': s.text.length > 4000
+                    ? s.text.substring(0, 4000)
+                    : s.text,
+              },
+          ],
+          'asr_identity': ?asrIdentity,
+        },
+        options: Options(sendTimeout: const Duration(minutes: 2)),
       );
     } on DioException catch (e) {
       throw mapDioError(e);
