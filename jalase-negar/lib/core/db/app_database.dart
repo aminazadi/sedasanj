@@ -29,6 +29,7 @@ class AppDatabase {
         if (oldVersion < 6) await _migrateToV6(db);
         if (oldVersion < 7) await _migrateToV7(db);
       },
+      onOpen: _ensureUploadChunksTable,
     );
     _instance = AppDatabase._(db);
     return _instance!;
@@ -92,8 +93,14 @@ class AppDatabase {
       "ALTER TABLE meetings ADD COLUMN recording_state TEXT NOT NULL DEFAULT 'finished'",
     );
     await db.execute('ALTER TABLE meetings ADD COLUMN remote_meeting_id TEXT');
+    await _ensureUploadChunksTable(db);
+  }
+
+  // Some existing databases have the meeting columns but are missing the
+  // queue table. Check even when the schema version did not change.
+  static Future<void> _ensureUploadChunksTable(Database db) async {
     await db.execute('''
-      CREATE TABLE upload_chunks (
+      CREATE TABLE IF NOT EXISTS upload_chunks (
         meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
         seq INTEGER NOT NULL,
         local_path TEXT NOT NULL,
@@ -130,6 +137,7 @@ class AppDatabase {
   /// switch. Meetings an older version left mid-upload start over: audio-only
   /// sessions on the server cannot take a transcript.
   static Future<void> _migrateToV7(Database db) async {
+    await _ensureUploadChunksTable(db);
     await db.execute(
       'ALTER TABLE meetings ADD COLUMN send_text INTEGER NOT NULL DEFAULT 1',
     );

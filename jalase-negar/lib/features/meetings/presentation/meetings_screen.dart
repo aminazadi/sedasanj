@@ -86,9 +86,11 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
     if (failed) {
       return SsEmptyState(
         title: 'بارگذاری فهرست جلسه‌ها ناموفق بود',
-        hint: 'دوباره تلاش کنید؛ اگر ادامه داشت برنامه را ببندید و باز کنید',
+        hint:
+            'دوباره تلاش کنید. اگر خطا تکرار شد، برنامه را ببندید و باز کنید. '
+            '(JN-MTG-0001)',
         action: FilledButton.icon(
-          onPressed: () => ref.invalidate(meetingsProvider),
+          onPressed: () => ref.invalidate(meetingRepositoryProvider),
           icon: const Icon(Icons.refresh, size: 18),
           label: const Text('تلاش مجدد'),
         ),
