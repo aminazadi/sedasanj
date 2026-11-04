@@ -1,5 +1,7 @@
 ## 2026-11-04 — AMINAZADI
 
+- Fixed Quick Demo microphone requests on QR and same-device paths, added browser permission diagnostics and recovery guidance, and deferred one-time QR sign-in until the recording is sent.
+- Added manual recording when guide playback is blocked and byte-range support for the guide audio on iOS.
 - Added opt-in Silero call transcription with tenant overrides, a telephony threshold, independent ASR failover and per-revision engine identity.
 - Preserved speaker roles and timestamps in raw and corrected call transcripts, including outbound and mono recordings.
 - Added a terminal no-speech error with Persian help, rollout metrics and alerts.

@@ -38,14 +38,14 @@ export default function QuickDemo() {
   const sessionId = demo?.session_id || params.get("session");
   const activePath = ["mobile", "voip", "same"].includes(params.get("path") || "") ? params.get("path") as "mobile" | "voip" | "same" : null;
   const showContent = params.get("stage") === "content" && activePath !== null;
-  const link = demo ? `${window.location.origin}/demo/record#${demo.token}` : "";
+  const link = demo ? `${window.location.origin}/demo/record?device=qr#${demo.token}` : "";
   const method = params.get("device") === "same" ? "same" : "qr";
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (session && showContent && (activePath === "mobile" || activePath === "same") && (!demo || expired) && !initiated.current) { initiated.current = true; void create(); }
   }, [session, showContent, activePath, demo, sessionId]);
   useEffect(() => {
-    if (session && showContent && activePath === "same" && demo && !expired) navigate(`/demo/record#${demo.token}`, { replace: true });
+    if (session && showContent && activePath === "same" && demo && !expired) navigate(`/demo/record?device=same#${demo.token}`, { replace: true });
   }, [session, showContent, activePath, demo, expired, navigate]);
   useEffect(() => {
     if (!session || !showContent || activePath !== "mobile" || !sessionId || callId) return;
@@ -129,7 +129,7 @@ export default function QuickDemo() {
     <div className="mb-5 flex w-full justify-center"><Link to="/" aria-label="صفحه اصلی"><BrandLogo animated className="block w-48 sm:w-56" title="صدا سنج" /></Link></div>
     <section className="quick-demo-qr-card relative w-full overflow-hidden border border-brand-200 bg-white/90 p-5 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-7">
       <header className="quick-demo-choice-heading">
-        {showContent ? <><button type="button" className="quick-demo-back" onClick={goBack} aria-label="بازگشت به انتخاب مسیر"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg></button><div><h1>{activePath === "mobile" ? "تست موبایل" : "نصب VoIP"}</h1></div></> : <div><h1>آماده‌اید؟</h1><p>از کدام مسیر تست کنیم؟</p></div>}
+        {showContent ? <><button type="button" className="quick-demo-back" onClick={goBack} aria-label="بازگشت به انتخاب مسیر"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg></button><div><h1>{activePath === "voip" ? "نصب VoIP" : activePath === "same" ? "تست با همین دستگاه" : "تست موبایل"}</h1></div></> : <div><h1>آماده‌اید؟</h1><p>از کدام مسیر تست کنیم؟</p></div>}
       </header>
       {!showContent && <div className="quick-demo-path-options" role="radiogroup" aria-label="مسیر تست">
         <label className="quick-demo-path-option"><input type="radio" name="demo-path" checked={activePath === "mobile"} onChange={() => selectPath("mobile")}/><span className="quick-demo-path-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.2"/><path d="M10 5h4M11 18.5h2"/></svg></span><span><strong>تست موبایل</strong><small>ضبط پیام با گوشی و اسکن QR</small></span></label>
@@ -171,7 +171,9 @@ export default function QuickDemo() {
             </div>
           </div>}
         </div>}
-        {activePath === "same" && <div className="quick-demo-same-device" role="status"><ProcessingIndicator size="lg" label="در حال آماده‌سازی تست با میکروفون"/><p>در حال آماده‌سازی تست با میکروفون همین گوشی یا کامپیوتر…</p></div>}
+        {activePath === "same" && <div className="quick-demo-same-device">
+          {error ? <><p className="demo-error" role="alert">{error}</p><button type="button" className="demo-button" onClick={() => void create()}>تلاش دوباره</button></> : <div role="status"><ProcessingIndicator size="lg" label="در حال آماده‌سازی تست با میکروفون"/><p>در حال آماده‌سازی تست با میکروفون همین گوشی یا کامپیوتر…</p></div>}
+        </div>}
       </div>}
     </section>
   </div></main>;

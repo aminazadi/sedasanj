@@ -5,6 +5,7 @@ import {
   isEmbeddedBrowser,
   microphoneErrorMessage,
   microphoneSupportIssue,
+  quickDemoMicrophoneIssues,
   requestMicrophone,
   speechErrorMessage,
 } from "../src/lib/microphone.mjs";
@@ -15,11 +16,19 @@ test("support issue separates insecure pages from missing APIs", () => {
   assert.equal(microphoneSupportIssue({ isSecureContext: true, hasGetUserMedia: true, hasMediaRecorder: true }), null);
 });
 
+test("a known permissions policy block is detected without assuming unsupported policy APIs block capture", () => {
+  const support = { isSecureContext: true, hasGetUserMedia: true, hasMediaRecorder: true };
+  assert.equal(microphoneSupportIssue({ ...support, policy: {} }), null);
+  assert.equal(microphoneSupportIssue({ ...support, policy: { allowsFeature: (name) => name === "microphone" } }), null);
+  assert.equal(microphoneSupportIssue({ ...support, policy: { allowsFeature: (name) => name !== "microphone" } }), "policy");
+});
+
 test("errors are classified by DOMException name", () => {
   assert.equal(classifyMicrophoneError({ name: "NotAllowedError" }), "denied");
   assert.equal(classifyMicrophoneError({ name: "NotFoundError" }), "no_device");
   assert.equal(classifyMicrophoneError({ name: "NotReadableError" }), "busy");
   assert.equal(classifyMicrophoneError({ name: "OverconstrainedError" }), "constraints");
+  assert.equal(classifyMicrophoneError({ name: "InvalidStateError" }), "inactive");
   assert.equal(classifyMicrophoneError(null), "unknown");
 });
 
@@ -37,17 +46,25 @@ test("denied message tells embedded-browser users to switch browser", () => {
   assert.equal(speechErrorMessage("no-speech"), "");
 });
 
-test("requestMicrophone retries with plain audio after a constraint failure", async () => {
+test("requestMicrophone requests plain audio synchronously on the initial call", async () => {
   const calls = [];
   const devices = {
     async getUserMedia(constraints) {
       calls.push(constraints);
-      if (calls.length === 1) throw Object.assign(new Error("x"), { name: "OverconstrainedError" });
       return "stream";
     },
   };
-  assert.equal(await requestMicrophone(devices), "stream");
-  assert.deepEqual(calls[1], { audio: true });
+  const pending = requestMicrophone(devices);
+  assert.deepEqual(calls, [{ audio: true }]);
+  assert.equal(await pending, "stream");
+});
+
+test("quick demo microphone diagnostics have stable codes and actionable messages", () => {
+  const codes = Object.values(quickDemoMicrophoneIssues).map(({ code }) => code);
+  assert.equal(new Set(codes).size, codes.length);
+  assert.equal(quickDemoMicrophoneIssues.denied.code, "quick_demo_mic_denied");
+  assert.match(quickDemoMicrophoneIssues.denied.message, /تنظیمات دستگاه/);
+  assert.match(quickDemoMicrophoneIssues.pending.message, /نوار آدرس/);
 });
 
 test("requestMicrophone does not retry when permission is denied", async () => {

@@ -10,6 +10,7 @@ const mimeTypes = {
   ".ico": "image/x-icon",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".mp3": "audio/mpeg",
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
@@ -213,14 +214,32 @@ async function serveStatic(request, response, pathname) {
   }
 
   const extension = path.extname(selectedPath);
-  response.writeHead(200, {
+  const headers = {
     "Content-Type": mimeTypes[extension] || "application/octet-stream",
     "Content-Length": fileInfo.size,
     "Cache-Control": pathname.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
     ...extraHeaders,
-  });
+  };
+  let range;
+  if (pathname === "/quick-demo-instructions.mp3") {
+    headers["Accept-Ranges"] = "bytes";
+    const match = request.method === "GET" && !request.headers["if-range"]
+      && /^bytes=(\d*)-(\d*)$/i.exec(request.headers.range || "");
+    if (match && (match[1] || match[2])) {
+      const start = match[1] ? Number(match[1]) : Math.max(fileInfo.size - Number(match[2]), 0);
+      const end = match[1] && match[2] ? Math.min(Number(match[2]), fileInfo.size - 1) : fileInfo.size - 1;
+      if (start > end) {
+        response.writeHead(416, { ...headers, "Content-Length": 0, "Content-Range": `bytes */${fileInfo.size}` }).end();
+        return;
+      }
+      range = { start, end };
+      headers["Content-Range"] = `bytes ${start}-${end}/${fileInfo.size}`;
+      headers["Content-Length"] = end - start + 1;
+    }
+  }
+  response.writeHead(range ? 206 : 200, headers);
   if (request.method === "HEAD") response.end();
-  else createReadStream(selectedPath).pipe(response);
+  else createReadStream(selectedPath, range).pipe(response);
 }
 
 const server = http.createServer(async (request, response) => {

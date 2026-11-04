@@ -39,7 +39,7 @@ export default function App() {
   const location = useLocation();
   const [initialLoaderComplete, setInitialLoaderComplete] = useState(false);
 
-  if (location.pathname === "/demo/record") return <DemoRecorder />;
+  if (location.pathname === "/demo/record") return <DemoRecorder key={location.search + location.hash} />;
   if (loading || !initialLoaderComplete) {
     return <RouteLoadingOverlay persist={loading} onComplete={() => setInitialLoaderComplete(true)} />;
   }
