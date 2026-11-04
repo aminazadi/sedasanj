@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Release signing comes from a key.properties file kept outside the repository: either
+// android/key.properties or the path in JALASE_KEY_PROPERTIES. Without it the release build falls
+// back to the debug key; the update server rejects such an APK, so it can never be published.
+val keyProperties = Properties().apply {
+    val path = System.getenv("JALASE_KEY_PROPERTIES")
+    val file = if (path.isNullOrBlank()) rootProject.file("key.properties") else File(path)
+    if (file.isFile) file.inputStream().use { load(it) }
 }
 
 android {
@@ -30,11 +41,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (keyProperties.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
