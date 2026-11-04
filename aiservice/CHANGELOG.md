@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Fixed GPU-only tasks that stayed queued with no compatible GPU and kept CPU queue workers alive across transient monitoring failures.
 - Added opt-in Silero segmentation for Shenava with streamed VAD frames, per-utterance context and quiet gain, Persian cleanup, deduplication and native span timestamps.
 - Scheduled Silero runs through CPU admission, retained model failover for missing artifacts and made silence terminal with a stable error code.
 

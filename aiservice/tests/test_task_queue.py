@@ -188,12 +188,42 @@ class TaskQueueTests(unittest.TestCase):
         )
         self.assertEqual("retrying", self.queue.get_task(task["task_id"])["status"])
 
-    def test_gpu_mode_does_not_silently_run_cuda_model_on_cpu_without_device(self):
+    def test_gpu_only_task_fails_actionably_when_no_gpu_can_run_it(self):
+        task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})
+        manager = self.queue.TaskManager()
+        with (
+            patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}),
+            patch.object(self.queue.gpu_runtime, "cuda_model_family", return_value=True),
+            patch.object(self.queue.gpu_runtime, "gpu_eligible", return_value=False),
+            patch.object(self.queue, "resolve_settings") as provider,
+        ):
+            claimed = manager._claim("cpu-worker")
+            self.assertIsNone(claimed["run"]["device_type"])
+            manager._run(claimed, admitted_slot=object())
+        provider.assert_not_called()
+        saved = self.queue.public_task(self.queue.get_task(task["task_id"]))
+        self.assertEqual((saved["status"], saved["error_code"]), ("failed", "gpu_unavailable"))
+        self.assertIn("change AISERVICE execution mode to Auto", saved["error"])
+
+    def test_gpu_only_task_waits_for_compatible_gpu_capacity(self):
         self.queue.enqueue("chat", "local", input_data={"messages": []})
-        with patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}), patch.object(
-            self.queue.gpu_runtime, "cuda_model_family", return_value=True
-        ), patch.object(self.queue.gpu_runtime, "gpu_eligible", return_value=False):
+        with (
+            patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}),
+            patch.object(self.queue.gpu_runtime, "cuda_model_family", return_value=True),
+            patch.object(self.queue.gpu_runtime, "gpu_eligible", return_value=True),
+        ):
             self.assertIsNone(self.queue.TaskManager()._claim("cpu-worker"))
+
+    def test_cpu_worker_recovers_from_admission_monitor_error(self):
+        manager = self.queue.TaskManager()
+        with (
+            patch.object(self.queue, "POLL_SECONDS", 0),
+            patch.object(self.queue, "admission_allowed", side_effect=[OSError(), True]),
+            patch.object(manager, "_claim", return_value={"task_id": "queued-task"}),
+            patch.object(manager, "_run", side_effect=lambda *_: manager.stop_event.set()) as run,
+        ):
+            manager._loop("cpu-worker")
+        run.assert_called_once()
 
     def test_stale_cancelled_worker_finishes_as_cancelled(self):
         task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})

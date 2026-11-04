@@ -71,6 +71,11 @@ CHAT_TASK_TIMEOUT_SECONDS = max(121, int(os.getenv("ASR_CHAT_TASK_TIMEOUT_SECOND
 POLL_SECONDS = max(0.1, float(os.getenv("ASR_TASK_POLL_SECONDS", ".5")))
 TERMINAL = {"succeeded", "partially_succeeded", "failed", "cancelled"}
 RUN_TERMINAL = {"succeeded", "failed", "cancelled", "skipped"}
+GPU_UNAVAILABLE_CODE = "gpu_unavailable"
+GPU_UNAVAILABLE_DETAIL = (
+    "Enable a compatible GPU and install the model's CUDA artifacts, "
+    "or change AISERVICE execution mode to Auto."
+)
 
 
 def uses_ninerouter(kind, model_id):
@@ -375,6 +380,13 @@ def public_task(task, include_result=True):
         run.get("error") == "asr_no_speech" for run in runs
     ):
         out["error_code"] = "asr_no_speech"
+    if task["kind"] != "chat_async" and task["status"] == "failed":
+        failed_runs = [run for run in runs if run["status"] == "failed"]
+        if failed_runs and all(
+            (run.get("error") or "").startswith(GPU_UNAVAILABLE_CODE + ":")
+            for run in failed_runs
+        ):
+            out["error_code"] = GPU_UNAVAILABLE_CODE
     if task["kind"] == "chat_async":
         out["status"] = "queued" if task["status"] == "retrying" else task["status"]
         out["error_code"] = ("task_timeout" if task["status"] == "failed" and any(x.get("error") == "task_timeout" for x in runs)
@@ -884,7 +896,9 @@ class TaskManager:
                     if gpu_runtime.cuda_model_family(kind, model_id) and not gpu_runtime.model_gpu_artifacts_ready(model_id):
                         device_reason = "gpu_artifacts_missing"
                     if settings["mode"] == "gpu" and gpu_runtime.cuda_model_family(kind, model_id):
-                        continue
+                        if gpu_runtime.gpu_eligible(kind, model_id):
+                            continue
+                        device_reason = GPU_UNAVAILABLE_CODE
                     if settings["mode"] == "auto" and gpu_runtime.gpu_eligible(kind, model_id):
                         try:
                             age_seconds = (datetime.now(timezone.utc) - datetime.fromisoformat(candidate["created_at"])).total_seconds()
@@ -897,9 +911,15 @@ class TaskManager:
                 run = db.execute("SELECT * FROM task_runs WHERE id=?", (candidate["next_run_id"],)).fetchone()
                 if not run:
                     continue
+                device_type = (
+                    "cuda_split" if gpu_group else "cuda" if gpu_id else
+                    "remote" if remote_only else "cpu"
+                )
+                if device_reason == GPU_UNAVAILABLE_CODE:
+                    device_type = None
                 if not db.execute(
                     "UPDATE task_runs SET status='processing',worker_id=?,device_id=?,device_type=?,device_reason=?,started_at=coalesce(started_at,?),attempt_started_at=?,heartbeat_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status IN ('pending','retrying')",
-                    (worker, gpu_id, "cuda_split" if gpu_group else "cuda" if gpu_id else "remote" if remote_only else "cpu", device_reason, stamp, stamp, stamp, stamp, run["id"]),
+                    (worker, gpu_id, device_type, device_reason, stamp, stamp, stamp, stamp, run["id"]),
                 ).rowcount:
                     continue
                 db.execute(
@@ -1008,13 +1028,17 @@ class TaskManager:
                 else:
                     self.stop_event.wait(POLL_SECONDS)
                 continue
-            if not admission_allowed(queue_depth() > 0):
-                self.stop_event.wait(POLL_SECONDS)
-                continue
-            slot = inference_slot(timeout=0)
             try:
+                if not admission_allowed(queue_depth() > 0):
+                    self.stop_event.wait(POLL_SECONDS)
+                    continue
+                slot = inference_slot(timeout=0)
                 slot.__enter__()
             except InferenceCapacityError:
+                self.stop_event.wait(POLL_SECONDS)
+                continue
+            except Exception:
+                logger.exception("Unable to check CPU inference admission")
                 self.stop_event.wait(POLL_SECONDS)
                 continue
             try:
@@ -1028,6 +1052,8 @@ class TaskManager:
                 continue
             try:
                 self._run(task, slot)
+            except Exception:
+                logger.exception("CPU inference worker could not persist the task outcome")
             finally:
                 slot.__exit__(None, None, None)
 
@@ -1182,6 +1208,8 @@ class TaskManager:
             args = json.loads(task["input_json"] or "{}")
             if task["cancel_requested"]:
                 raise CancelledError()
+            if run.get("device_reason") == GPU_UNAVAILABLE_CODE:
+                raise GPUUnavailableError(GPU_UNAVAILABLE_DETAIL)
             provider = resolve_settings()
             if task["kind"] == "asr":
                 with (nullcontext() if admitted_slot else inference_slot()):
@@ -1387,7 +1415,7 @@ class TaskManager:
                 current
                 and current["attempts"] < current["max_attempts"]
                 and not (get_task(task_id) or {}).get("cancel_requested")
-                and not isinstance(exc, (NoSpeechDetectedError, AsrModelUnavailableError))
+                and not isinstance(exc, (NoSpeechDetectedError, AsrModelUnavailableError, GPUUnavailableError))
                 and (not isinstance(exc, NineRouterError) or exc.retryable)
             )
             silero_no_speech = (
@@ -1398,6 +1426,8 @@ class TaskManager:
             )
             if silero_no_speech:
                 error = "asr_no_speech"
+            elif isinstance(exc, GPUUnavailableError) and task["kind"] != "chat_async":
+                error = f"{GPU_UNAVAILABLE_CODE}: {GPU_UNAVAILABLE_DETAIL}"
             elif task["kind"] == "chat_async":
                 error = "task_timeout" if isinstance(exc, ChatTaskTimeout) else "model_failure"
             else:
@@ -1438,6 +1468,10 @@ class TaskManager:
         final = get_task(task_id)
         if final and final["status"] in TERMINAL and final["input_path"]:
             _delete_input(final["input_path"])
+
+
+class GPUUnavailableError(RuntimeError):
+    pass
 
 
 class CancelledError(Exception):
