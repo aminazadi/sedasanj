@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../features/meetings/presentation/meeting_detail_screen.dart';
 import '../features/meetings/presentation/meetings_screen.dart';
 import '../features/models/presentation/models_screen.dart';
+import '../features/onboarding/intro/intro_progress.dart';
+import '../features/onboarding/intro/intro_screen.dart';
 import '../features/onboarding/tour_overlay.dart';
 import '../features/onboarding/tour_progress.dart';
 import '../features/onboarding/tour_step.dart';
@@ -23,6 +25,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/',
             redirect: (context, state) async {
               if (state.uri.queryParameters.containsKey('tour')) return null;
+              if (!await ref.read(introProgressProvider.future)) {
+                return '/intro';
+              }
               final seen = await ref.read(tourProgressProvider.future);
               return seen ? null : TourStep.welcome.location();
             },
@@ -33,6 +38,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const SettingsScreen(),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/intro',
+        builder: (context, state) =>
+            IntroScreen(replay: state.uri.queryParameters['replay'] == '1'),
       ),
       GoRoute(
         path: '/record',

@@ -152,6 +152,12 @@ class SettingsScreen extends ConsumerWidget {
           ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
+          onPressed: () => context.go('/intro?replay=1'),
+          icon: const Icon(Icons.slideshow_outlined),
+          label: const Text('معرفی جلسه‌نگار'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
           onPressed: () =>
               context.go(TourStep.welcome.location(fromSettings: true)),
           icon: const Icon(Icons.help_outline),
