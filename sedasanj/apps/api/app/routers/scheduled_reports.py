@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import defer
@@ -12,7 +13,8 @@ from sqlalchemy.orm import defer
 from app.deps import OrgAdminDep, TenantSession, client_ip
 from app.errors import ApiError
 from app.models import ScheduledReport, ScheduledReportRun, Tenant
-from app.services import audit
+from app.services import audit, document_pdf
+from app.services.call_export import TEHRAN, to_jalali
 from app.services.scheduled_reports import create_run, next_run_at
 
 router = APIRouter(prefix="/v1/scheduled-reports", tags=["scheduled reports"])
@@ -61,6 +63,7 @@ class RunSummary(BaseModel):
     id: UUID
     report_id: UUID
     name: str
+    title: str | None = None
     trigger: str
     status: str
     from_date: datetime
@@ -78,6 +81,7 @@ class RunOut(RunSummary):
     instructions: str
     timezone: str
     content: str | None
+    charts: list[dict] = Field(default_factory=list)
     sources: list[dict]
     coverage: dict
     memory_snapshot: list[dict]
@@ -285,6 +289,7 @@ async def list_runs(
                 .options(
                     defer(ScheduledReportRun.memory_snapshot),
                     defer(ScheduledReportRun.content),
+                    defer(ScheduledReportRun.charts),
                     defer(ScheduledReportRun.sources),
                     defer(ScheduledReportRun.instructions),
                 )
@@ -304,7 +309,9 @@ async def list_runs(
 
 
 @router.get("/runs/{run_id}", response_model=RunOut)
-async def get_run(run_id: UUID, principal: OrgAdminDep, session: TenantSession):
+async def get_run(
+    run_id: UUID, principal: OrgAdminDep, session: TenantSession
+) -> ScheduledReportRun:
     row = (
         await session.execute(
             select(ScheduledReportRun).where(
@@ -315,3 +322,35 @@ async def get_run(run_id: UUID, principal: OrgAdminDep, session: TenantSession):
     if row is None:
         raise ApiError("not_found", "report run not found")
     return row
+
+
+@router.get("/runs/{run_id}/pdf", response_class=Response)
+async def download_run_pdf(
+    run_id: UUID, principal: OrgAdminDep, session: TenantSession
+) -> Response:
+    run = await get_run(run_id, principal, session)
+    if run.status != "succeeded" or not run.content:
+        raise ApiError(
+            "document_not_ready",
+            "گزارش هنوز آماده نیست؛ وضعیت اجرا را در آرشیو گزارش‌ها بررسی کنید.",
+        )
+    try:
+        zone = ZoneInfo(run.timezone)
+    except (ValueError, ZoneInfoNotFoundError):
+        zone = TEHRAN
+    window = f"{to_jalali(run.from_date, zone)} تا {to_jalali(run.to_date, zone)}"
+    metadata = [("بازه گزارش", window.translate(document_pdf.DIGITS))]
+    if run.title and run.title != run.name:
+        metadata.append(("نام زمان‌بندی", run.name))
+    metadata.append(("منطقه زمانی", zone.key))
+    return await document_pdf.download(
+        document_pdf.Document(
+            title=run.title or run.name,
+            kind="گزارش زمان‌بندی‌شده",
+            metadata=metadata,
+            markdown=run.content,
+            charts=run.charts,
+        ),
+        "scheduled-report",
+        run.id,
+    )

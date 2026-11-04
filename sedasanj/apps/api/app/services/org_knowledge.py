@@ -121,8 +121,9 @@ SOURCES: tuple[Source, ...] = (
     Source(
         "scheduled_report",
         "گزارش زمان‌بندی‌شده",
-        "SELECT r.id AS source_id, NULL::uuid AS call_id, 'admin' AS access, r.name AS title, "
-        "r.name || E'\\n' || r.content AS content, "
+        "SELECT r.id AS source_id, NULL::uuid AS call_id, 'admin' AS access, "
+        "coalesce(r.title, r.name) AS title, coalesce(r.title, r.name) || E'\\n' || r.content "
+        "AS content, "
         "coalesce(r.completed_at, r.created_at) AS updated_at "
         "FROM scheduled_report_runs r WHERE r.tenant_id = :tenant_id "
         "AND r.status = 'succeeded' AND r.content IS NOT NULL",

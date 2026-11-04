@@ -1,5 +1,7 @@
 ## 2026-11-04 — AMINAZADI
 
+- Added run-specific Persian titles and database-backed charts to the scheduled-report archive, with all twelve supported chart types available in report criteria.
+- Added private A4 PDF downloads and print layouts for scheduled reports and selected meeting minutes, with the bundled Persian font and SedaSanj branding.
 - Fixed Quick Demo microphone requests on QR and same-device paths, added browser permission diagnostics and recovery guidance, and deferred one-time QR sign-in until the recording is sent.
 - Added manual recording when guide playback is blocked and byte-range support for the guide audio on iOS.
 - Preserved the Quick Demo recording device across authentication changes so QR uploads keep their result handoff.

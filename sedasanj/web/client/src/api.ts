@@ -190,6 +190,7 @@ export const fmt = {
 };
 
 export const STATUS_LABELS: Record<string, string> = {
+  answered: "پاسخ‌داده‌شده",
   missed: "بی‌پاسخ",
   no_answer: "بی‌پاسخ",
   busy: "مشغول",

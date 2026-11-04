@@ -43,9 +43,9 @@ SENTIMENT_LABELS = {
 TRAJECTORY_LABELS = {"improved": "بهبود", "worsened": "افت", "stable": "ثابت"}
 
 
-def to_jalali(moment: datetime) -> str:
-    """`YYYY/MM/DD HH:MM:SS` in the Jalali calendar and Tehran time (Latin digits)."""
-    local = moment.astimezone(TEHRAN)
+def to_jalali(moment: datetime, zone: ZoneInfo = TEHRAN) -> str:
+    """`YYYY/MM/DD HH:MM:SS` in the Jalali calendar (Tehran by default, Latin digits)."""
+    local = moment.astimezone(zone)
     gy, gm, gd = local.year, local.month, local.day
     cumulative = (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
     gy2 = gy + 1 if gm > 2 else gy

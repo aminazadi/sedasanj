@@ -96,6 +96,7 @@ def test_invalid_report_configuration(changes):
         ("POST", f"/{uuid4()}/run", {"idempotency_key": str(uuid4())}),
         ("GET", "/runs", None),
         ("GET", f"/runs/{uuid4()}", None),
+        ("GET", f"/runs/{uuid4()}/pdf", None),
     ],
 )
 @pytest.mark.parametrize("role", ["operator", "viewer"])
@@ -294,7 +295,7 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
         AsyncMock(return_value=[{"call_id": call, "summary": "Evidence"}]),
     )
     monkeypatch.setattr(reports.knowledge, "vector_transcript_context", AsyncMock(return_value=[]))
-    tool = AsyncMock(return_value={"count": 3, "items": []})
+    tool = AsyncMock(return_value={"count": 3, "items": [], "call_types": {"answered": 3}})
     monkeypatch.setattr(reports, "_tool", tool)
     monkeypatch.setattr(
         reports.assistant_agent, "plan", AsyncMock(return_value=assistant_agent.AgentPlan(None, []))
@@ -302,7 +303,8 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
     client = SimpleNamespace(
         complete=AsyncMock(
             side_effect=RuntimeError("provider failed") if fail else None,
-            return_value=f'گزارش <call-sources>["{call}"]</call-sources>',
+            return_value=f'# کیفیت پاسخ‌گویی به مشتریان\n\nگزارش {call}\n'
+            f'<call-sources>["{call}"]</call-sources>',
         ),
         close=AsyncMock(),
     )
@@ -322,6 +324,9 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
         staged_retry.assert_awaited_once()
         assert report_row.window_start < run.to_date
     else:
+        assert run.title == "کیفیت پاسخ‌گویی به مشتریان"
+        assert run.content.startswith(f"گزارش [مشاهده تماس](/calls/{call})")
+        assert run.charts[0]["data"] == [{"label": "answered", "value": 3}]
         assert "ایندکس وکتوری" in run.content
         assert run.sources == [{"call_id": str(call)}]
         assert "Important rule" in client.complete.await_args.args[1]

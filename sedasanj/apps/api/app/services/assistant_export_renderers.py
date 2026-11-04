@@ -5,8 +5,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import re
-from pathlib import Path
 from typing import Any
 
 from app.errors import ApiError
@@ -115,65 +113,35 @@ def render(
 
 
 def render_pdf(columns: dict[str, str], rows: list[dict[str, Any]]) -> bytes:
-    import arabic_reshaper
-    from bidi.algorithm import get_display
     from reportlab.lib.pagesizes import A4
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfgen.canvas import Canvas
 
-    font = "AssistantVazirmatn"
-    if font not in pdfmetrics.getRegisteredFontNames():
-        path = Path(__file__).resolve().parents[1] / "assets/fonts/Vazirmatn-Regular.ttf"
-        pdfmetrics.registerFont(TTFont(font, str(path)))
-    output = io.BytesIO()
-    canvas = Canvas(output, pagesize=A4)
-    width, height = A4
-    margin, size, leading = 40, 10, 18
-    y = height - margin
-    canvas.setTitle("خروجی دستیار صداسنج")
+    from app.services.pdf_text import FONT, PDF_RENDER_LOCK, register_font, wrap_rtl
 
-    def visual(text: str) -> str:
-        return str(get_display(arabic_reshaper.reshape(text), base_dir="R"))
+    with PDF_RENDER_LOCK:
+        register_font()
+        output = io.BytesIO()
+        canvas = Canvas(output, pagesize=A4)
+        width, height = A4
+        margin, size, leading = 40, 10, 18
+        y = height - margin
+        canvas.setTitle("خروجی دستیار صداسنج")
 
-    def line(text: str) -> None:
-        nonlocal y
-        if y < margin + leading:
-            canvas.showPage()
-            y = height - margin
-        canvas.setFont(font, size)
-        canvas.drawRightString(width - margin, y, visual(text))
-        y -= leading
+        def paragraph(text: str) -> None:
+            nonlocal y
+            for line in wrap_rtl(text, size, width - 2 * margin):
+                if y < margin + leading:
+                    canvas.showPage()
+                    y = height - margin
+                canvas.setFont(FONT, size)
+                canvas.drawRightString(width - margin, y, line)
+                y -= leading
 
-    def paragraph(text: str) -> None:
-        # Wrap logical text before shaping so each visual line has correct bidi order.
-        for part in text.splitlines() or [""]:
-            current = ""
-            for token in re.findall(r"\S+\s*", part):
-                if (
-                    pdfmetrics.stringWidth(visual(current + token), font, size)
-                    <= width - 2 * margin
-                ):
-                    current += token
-                    continue
-                if current:
-                    line(current.rstrip())
-                    current = ""
-                for char in token:
-                    if (
-                        pdfmetrics.stringWidth(visual(current + char), font, size)
-                        > width - 2 * margin
-                    ):
-                        line(current)
-                        current = ""
-                    current += char
-            line(current.rstrip())
-
-    paragraph("خروجی دستیار صداسنج")
-    for index, row in enumerate(rows, 1):
-        paragraph(f"ردیف {index}")
-        for key, label in columns.items():
-            paragraph(f"{label}: {cell_text(row.get(key))}")
-        y -= leading / 2
-    canvas.save()
-    return output.getvalue()
+        paragraph("خروجی دستیار صداسنج")
+        for index, row in enumerate(rows, 1):
+            paragraph(f"ردیف {index}")
+            for key, label in columns.items():
+                paragraph(f"{label}: {cell_text(row.get(key))}")
+            y -= leading / 2
+        canvas.save()
+        return output.getvalue()

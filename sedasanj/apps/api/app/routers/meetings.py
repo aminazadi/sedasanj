@@ -80,12 +80,14 @@ from app.security import generate_api_key, hash_api_key
 from app.services import (
     audit,
     billing,
+    document_pdf,
     entitlements,
     meeting_ingest,
     meeting_progress,
     ratelimit,
 )
 from app.services.api_scopes import MOBILE_KEY_SCOPES
+from app.services.call_export import to_jalali
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.meeting_scope import (
     apply_meeting_scope,
@@ -849,6 +851,36 @@ def _minutes_out(row: MeetingMinutes) -> MeetingMinutesOut:
     )
 
 
+async def _selected_minutes(session: AsyncSession, meeting_id: UUID) -> MeetingMinutes | None:
+    return (
+        await session.execute(
+            select(MeetingMinutes)
+            .where(MeetingMinutes.meeting_id == meeting_id)
+            .order_by(MeetingMinutes.is_selected.desc(), MeetingMinutes.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+def _minutes_markdown(minutes: MeetingMinutesOut) -> str:
+    if minutes.content_md.strip():
+        return minutes.content_md
+    parts = [minutes.summary]
+    if minutes.decisions:
+        parts.append("## تصمیم‌ها\n\n" + "\n".join(f"- {item}" for item in minutes.decisions))
+    if minutes.action_items:
+        actions = []
+        for item in minutes.action_items:
+            text = str(item.get("text") or "")
+            if item.get("assignee"):
+                text += f" (مسئول: {item['assignee']})"
+            if item.get("due"):
+                text += f" - مهلت: {item['due']}"
+            actions.append(f"- {text}")
+        parts.append("## اقدام‌ها\n\n" + "\n".join(actions))
+    return "\n\n".join(part for part in parts if part.strip())
+
+
 @router.get("/app-download")
 async def latest_app_download(response: Response, session: ControlSession) -> dict[str, str]:
     latest = (
@@ -906,14 +938,7 @@ async def get_meeting(
         .scalars()
         .all()
     )
-    selected = (
-        await session.execute(
-            select(MeetingMinutes)
-            .where(MeetingMinutes.meeting_id == meeting.id)
-            .order_by(MeetingMinutes.is_selected.desc(), MeetingMinutes.version.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    selected = await _selected_minutes(session, meeting.id)
     events = (
         (
             await session.execute(
@@ -959,6 +984,39 @@ async def get_meeting(
             )
             for e in events
         ],
+    )
+
+
+@router.get("/{meeting_id}/minutes/pdf", response_class=Response)
+async def download_meeting_minutes(
+    meeting_id: UUID, session: TenantSession, principal: UserDep
+) -> Response:
+    meeting = await _visible_meeting(session, meeting_id, principal)
+    selected = await _selected_minutes(session, meeting.id)
+    markdown = _minutes_markdown(_minutes_out(selected)) if selected is not None else ""
+    if not markdown.strip():
+        raise ApiError(
+            "document_not_ready",
+            "صورت‌جلسه هنوز آماده نیست؛ وضعیت پردازش جلسه را بررسی کنید.",
+        )
+    owner = await session.get(User, meeting.owner_user_id)
+    metadata = [("زمان جلسه", to_jalali(meeting.started_at).translate(document_pdf.DIGITS))]
+    if owner:
+        metadata.append(("برگزارکننده", owner.display_name or owner.email))
+    if meeting.duration_ms is not None:
+        minutes, seconds = divmod(round(meeting.duration_ms / 1000), 60)
+        metadata.append(("مدت", f"{minutes}:{seconds:02d}".translate(document_pdf.DIGITS)))
+    assert selected is not None
+    metadata.append(("نسخه صورت‌جلسه", document_pdf.number(selected.version)))
+    return await document_pdf.download(
+        document_pdf.Document(
+            title=meeting.title or "جلسه بدون عنوان",
+            kind="صورت‌جلسه",
+            metadata=metadata,
+            markdown=markdown,
+        ),
+        "meeting-minutes",
+        meeting.id,
     )
 
 

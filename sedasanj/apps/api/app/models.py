@@ -2906,6 +2906,7 @@ class ScheduledReportRun(Base):
     trigger: Mapped[str] = mapped_column(String(16), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200))
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
     from_date: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     to_date: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
@@ -2919,6 +2920,9 @@ class ScheduledReportRun(Base):
         JSONB, nullable=False, default=list
     )
     content: Mapped[str | None] = mapped_column(Text)
+    charts: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     sources: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
     )
@@ -3151,3 +3155,54 @@ class NotificationLog(Base):
         ),
     )
 
+
+
+class OrganizationBackupSettings(Base):
+    __tablename__ = "organization_backup_settings"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    cadence: Mapped[str] = mapped_column(Text, nullable=False, default="daily")
+    local_time: Mapped[str] = mapped_column(String(5), nullable=False, default="02:00")
+    weekday: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=5)
+    destination: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    ftp_secret: Mapped[str | None] = mapped_column(Text)
+    recovery_secret: Mapped[str | None] = mapped_column(Text)
+    next_run_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class OrganizationDataRun(Base):
+    __tablename__ = "organization_data_runs"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    transfer_state: Mapped[str | None] = mapped_column(String(16))
+    transfer_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    options: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    secret: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    checksum: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(Text)
+    due_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class OrganizationImportReceipt(Base):
+    __tablename__ = "organization_import_receipts"
+
+    run_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

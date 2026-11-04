@@ -726,7 +726,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         ]
         chart_types = args.chart_types or ["bar", "radar"]
         result["charts"] = [
-            _chart_payload(
+            chart_payload(
                 f"operator-performance-{index}",
                 "عملکرد اپراتورها",
                 chart_type,
@@ -899,7 +899,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
         title = "توزیع وضعیت تماس‌ها"
         secondary_label = None
     result["charts"] = [
-        _chart_payload(
+        chart_payload(
             f"{args.view}-{index}",
             title,
             chart_type,
@@ -913,7 +913,7 @@ async def _visualize_statistics(ctx: ToolContext, raw: ToolArguments) -> dict[st
     return result
 
 
-def _chart_payload(
+def chart_payload(
     chart_id: str,
     title: str,
     chart_type: ChartType,

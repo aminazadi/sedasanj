@@ -7,6 +7,7 @@ import { CAN_MANAGE_MEETINGS, isOrgAdmin, useAuth } from "../auth";
 import AudioWaveformPlayer from "../components/AudioWaveformPlayer";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ConversationBubble from "../components/ConversationBubble";
+import DocumentActions from "../components/DocumentActions";
 import FormDialog from "../components/FormDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import MeetingStatusBadge from "../components/MeetingStatusBadge";
@@ -205,7 +206,7 @@ export default function MeetingDetailPage() {
 
   function downloadMinutes() {
     if (!detail?.minutes) return;
-    downloadTextFile(`${safeDownloadName(title, "meeting")}-minutes.txt`, `${title}\n\n${meetingMinutesMarkdown(detail.minutes)}\n`);
+    downloadTextFile(`${safeDownloadName(title, "meeting")}-minutes.txt`, `${title}\n\n${meetingMinutesMarkdown(detail.minutes, title)}\n`);
   }
 
   if (!detail && !meeting.error) return <Loading />;
@@ -226,6 +227,11 @@ export default function MeetingDetailPage() {
     { label: "دانلود صورت‌جلسه", onClick: downloadMinutes, disabled: !detail.minutes },
     ...(canDelete ? [{ label: "حذف جلسه", onClick: () => setDeleteOpen(true), disabled: busy }] : []),
   ];
+  const minutesMarkdown = detail.minutes ? meetingMinutesMarkdown(detail.minutes, title) : "";
+  const minutesMetadata: Array<[string, string]> = [["زمان جلسه", fmt.dateTime(detail.started_at)]];
+  if (detail.owner_name) minutesMetadata.push(["برگزارکننده", detail.owner_name]);
+  if (detail.duration_ms !== null) minutesMetadata.push(["مدت", fmt.duration(detail.duration_ms)]);
+  if (detail.minutes) minutesMetadata.push(["نسخه صورت‌جلسه", fmt.int(detail.minutes.version)]);
 
   return (
     <div className="space-y-4">
@@ -242,7 +248,14 @@ export default function MeetingDetailPage() {
               {detail.speaker_count > 0 ? <span>{fmt.int(detail.speaker_count)} گوینده</span> : null}
             </p>
           </div>
-          <OverflowMenu label="عملیات بیشتر جلسه" actions={menuActions} />
+          <div className="flex flex-wrap items-start gap-2">
+            {minutesMarkdown ? (
+              <DocumentActions key={detail.id} path={`/v1/meetings/${detail.id}/minutes/pdf`} title={title} kind="صورت‌جلسه" metadata={minutesMetadata}>
+                <MarkdownMessage content={minutesMarkdown} print />
+              </DocumentActions>
+            ) : null}
+            <OverflowMenu label="عملیات بیشتر جلسه" actions={menuActions} />
+          </div>
         </div>
         {detail.audio_available ? (
           <div className="mt-5 border-t border-[color:var(--line)] pt-4">

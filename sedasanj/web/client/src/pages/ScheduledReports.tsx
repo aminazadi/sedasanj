@@ -2,6 +2,8 @@ import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
+import { AssistantCharts } from "../components/AssistantCharts";
+import DocumentActions from "../components/DocumentActions";
 import FormDialog from "../components/FormDialog";
 import reportArt from "../assets/scheduled-report.webp";
 import MarkdownMessage from "../components/MarkdownMessage";
@@ -11,11 +13,12 @@ import { FilterSelect, useFilterBar } from "@cbi/web-shared/components/FilterBar
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { chart } from "@cbi/web-shared/theme";
+import type { AssistantChart } from "../types";
 
 type ReportInput = { name: string; instructions: string; enabled: boolean; schedule_mode: "interval" | "fixed"; interval_hours: number | null; fixed_hours: number[]; max_retries: number; retry_base_minutes: number };
 type Report = ReportInput & { id: string; next_run_at: string | null; archived_at: string | null };
-type Run = { id: string; report_id: string; name: string; instructions: string; trigger: string; status: string; from_date: string; to_date: string; timezone: string; content: string | null; error_detail: string | null; created_at: string; sources: {call_id: string}[]; model: string | null; attempt_count: number; max_retries: number; next_attempt_at: string | null; coverage: Record<string, unknown> };
-type RunSummary = Pick<Run, "id" | "report_id" | "name" | "trigger" | "status" | "from_date" | "to_date" | "created_at" | "error_detail" | "attempt_count" | "max_retries" | "next_attempt_at" | "coverage">;
+type Run = { id: string; report_id: string; name: string; title?: string | null; instructions: string; trigger: string; status: string; from_date: string; to_date: string; timezone: string; content: string | null; charts?: AssistantChart[]; error_detail: string | null; created_at: string; sources: {call_id: string}[]; model: string | null; attempt_count: number; max_retries: number; next_attempt_at: string | null; coverage: Record<string, unknown> };
+type RunSummary = Pick<Run, "id" | "report_id" | "name" | "title" | "trigger" | "status" | "from_date" | "to_date" | "created_at" | "error_detail" | "attempt_count" | "max_retries" | "next_attempt_at" | "coverage">;
 const empty: ReportInput = { name: "", instructions: "", enabled: true, schedule_mode: "interval", interval_hours: 24, fixed_hours: [], max_retries: 3, retry_base_minutes: 5 };
 const statuses: Record<string, string> = { queued: "در صف", running: "در حال ساخت", succeeded: "آماده", failed: "ناموفق" };
 const STATUS_COLORS: Record<string, string> = { queued: chart.warning, running: chart.cyan, succeeded: chart.primary, failed: chart.danger };
@@ -41,6 +44,33 @@ function TriggerBadge({ trigger }: { trigger: string }) {
   return <span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">{trigger === "manual" ? "اجرای دستی" : "زمان‌بندی‌شده"}</span>;
 }
 
+function reportPeriod(run: Run) {
+  const format = (timeZone: string) => new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+    dateStyle: "short", timeStyle: "short", timeZone,
+  });
+  let timezone = run.timezone;
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = format(timezone);
+  } catch {
+    timezone = "Asia/Tehran";
+    formatter = format(timezone);
+  }
+  return { timezone, window: `${formatter.format(new Date(run.from_date))} تا ${formatter.format(new Date(run.to_date))}` };
+}
+
+function ReportDocumentActions({ run, content, period }: { run: Run; content: string; period: ReturnType<typeof reportPeriod> }) {
+  const metadata: Array<[string, string]> = [["بازه گزارش", period.window]];
+  if (run.title && run.title !== run.name) metadata.push(["نام زمان‌بندی", run.name]);
+  metadata.push(["منطقه زمانی", period.timezone]);
+  return (
+    <DocumentActions path={`/v1/scheduled-reports/runs/${run.id}/pdf`} title={run.title || run.name} kind="گزارش زمان‌بندی‌شده" metadata={metadata}>
+      <MarkdownMessage content={content} print />
+      <AssistantCharts charts={run.charts ?? []} print />
+    </DocumentActions>
+  );
+}
+
 export default function ScheduledReports() {
   const [PAGE_SIZE] = useTablePageSize();
   const [params, setParams] = useSearchParams();
@@ -55,6 +85,7 @@ export default function ScheduledReports() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<Run | null>(null);
+  const period = detail ? reportPeriod(detail) : null;
   const [form, setForm] = useState<ReportInput>({ ...empty });
   const [editing, setEditing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -153,6 +184,7 @@ export default function ScheduledReports() {
       >
         <label><span>نام گزارش</span><input required maxLength={200} value={form.name} onChange={event => setForm({...form, name: event.target.value})} autoFocus /></label>
         <label><span>معیارها و دستور گزارش</span><textarea rows={6} required minLength={2} maxLength={12000} value={form.instructions} onChange={event => setForm({...form, instructions: event.target.value})} placeholder="مثلاً دلایل نارضایتی مشتریان، کیفیت پاسخ‌گویی و اقدام‌های لازم را با شواهد تماس بررسی کن."/></label>
+        <p>نوع نمودار را هم می‌توانید در معیارها بنویسید. برای نمونه، «روند روزانه تماس‌ها را با نمودار خطی نمایش بده».</p>
         <label><span>روش زمان‌بندی</span><select value={form.schedule_mode} onChange={event => setForm({...form, schedule_mode: event.target.value as ReportInput["schedule_mode"], interval_hours: event.target.value === "interval" ? 24 : null, fixed_hours: event.target.value === "fixed" ? [9] : []})}><option value="interval">هر چند ساعت از زمان فعال‌سازی</option><option value="fixed">ساعت‌های ثابت در منطقهٔ زمانی سازمان</option></select></label>
         {form.schedule_mode === "interval"
           ? <label><span>فاصلهٔ اجرا (ساعت)</span><input type="number" min={1} max={8760} required value={form.interval_hours ?? 24} onChange={event => setForm({...form, interval_hours: Number(event.target.value)})}/></label>
@@ -201,16 +233,24 @@ export default function ScheduledReports() {
       {!reports.length && !loading ? <div className="card"><Empty>گزارشی تعریف نشده است.</Empty></div> : null}
     </> : <>
       {filterBar.fields}
-      {detail && detail.id === selected ? <article className="card">
+      {detail && period && detail.id === selected ? <article className="card">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div><h2 className="font-bold">{detail.name}</h2><p className="mt-1 text-xs text-slate-500">{fmt.dateTime(detail.from_date)} تا {fmt.dateTime(detail.to_date)} · {detail.timezone}</p></div>
-          <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => change({run: null})}>بستن گزارش</button>
+          <div className="min-w-0">
+            <h2 className="break-words text-lg font-bold">{detail.title || detail.name}</h2>
+            <p className="mt-1 text-xs text-slate-500">{period.window} · <bdi>{period.timezone}</bdi></p>
+            {detail.title && detail.title !== detail.name ? <p className="mt-1 text-xs text-slate-500">نام زمان‌بندی {detail.name}</p> : null}
+          </div>
+          <div className="flex flex-wrap items-start gap-2">
+            {detail.status === "succeeded" && detail.content ? <ReportDocumentActions key={detail.id} run={detail} content={detail.content} period={period} /> : null}
+            <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => change({run: null})}>بستن گزارش</button>
+          </div>
         </div>
         <div className="mb-4 flex flex-wrap items-center gap-2"><RunStatusBadge run={detail} /><TriggerBadge trigger={detail.trigger} /><span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">تلاش {fmt.int(detail.attempt_count)} از {fmt.int(detail.max_retries + 1)}</span>{detail.next_attempt_at ? <span className="text-xs text-slate-500">تلاش بعدی: {fmt.dateTime(detail.next_attempt_at)}</span> : null}</div>
         {detail.error_detail ? <p className="mb-4 border border-[#B2AC88] border-s-4 bg-[#F2F0EF] p-3 text-sm text-slate-700" style={{ borderInlineStartColor: chart.warning }}>{detail.error_detail}</p> : null}
         <div className="mb-4 grid gap-3 sm:grid-cols-3">{([["تماس‌ها", detail.coverage.calls], ["تماس‌های ایندکس‌شده", detail.coverage.indexed_calls], ["شواهد معنایی", detail.coverage.semantic_results]] as Array<[string, unknown]>).map(([label, value]) => <div key={String(label)} className="border border-[#B2AC88] bg-[#F2F0EF] p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-bold text-[#4B6E48]">{fmt.int(Number(value || 0))}</div></div>)}</div>
         {Array.isArray(detail.coverage.warnings) && detail.coverage.warnings.length ? <ul className="mb-4 list-inside list-disc text-sm text-slate-600">{detail.coverage.warnings.map((warning, index) => <li key={index}>{String(warning)}</li>)}</ul> : null}
         {detail.content ? <MarkdownMessage content={detail.content}/> : detail.status === "failed" ? null : <p role="status" className="text-sm text-slate-500">{detail.error_detail || "گزارش در حال آماده‌سازی است…"}</p>}
+        <AssistantCharts charts={detail.charts ?? []} />
         <details className="mt-4 border-t border-[#B2AC88] pt-3"><summary className="cursor-pointer text-sm text-[#4B6E48]">معیارهای این اجرا</summary><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{detail.instructions}</p></details>
         {detail.sources.length ? <div className="mt-4 flex flex-wrap gap-2">{detail.sources.map(source => <Link className="btn-ghost h-9 px-3 py-0 text-xs inline-flex items-center" key={source.call_id} to={`/calls/${source.call_id}`}>مشاهده تماس {source.call_id.slice(0, 8)}</Link>)}</div> : null}
       </article> : null}
@@ -218,7 +258,7 @@ export default function ScheduledReports() {
         {loading ? <SkeletonTable columns={RUN_COLUMNS} rows={runs.length ? Math.min(runs.length, PAGE_SIZE) : 6} /> : runs.length === 0 ? <Empty>گزارشی در این فیلتر وجود ندارد.</Empty> : <table className="table" dir="rtl">
           <thead><tr>{RUN_COLUMNS.map((column, index) => <th key={index}>{column.label}</th>)}</tr></thead>
           <tbody>{runs.map(run => <tr key={run.id} className={`table-row-link ${run.id === selected ? "font-bold" : ""}`} role="link" tabIndex={0} aria-current={run.id === selected} onClick={() => change({run: run.id})} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); change({run: run.id}); } }}>
-            <td>{run.name}</td>
+            <td>{run.title || run.name}</td>
             <td>{fmt.dateTime(run.created_at)}</td>
             <td><TriggerBadge trigger={run.trigger} /></td>
             <td>{fmt.int(run.attempt_count)} از {fmt.int(run.max_retries + 1)}{run.next_attempt_at ? <small className="block text-xs text-slate-500">بعدی: {fmt.dateTime(run.next_attempt_at)}</small> : null}</td>

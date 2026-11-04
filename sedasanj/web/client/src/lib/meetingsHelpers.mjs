@@ -110,8 +110,12 @@ export function meetingTranscriptText(title, turns) {
   return `${title}\n\n${lines.join("\n\n")}\n`;
 }
 
-export function meetingMinutesMarkdown(minutes) {
-  if (typeof minutes.content_md === "string" && minutes.content_md.trim()) return minutes.content_md.trim();
+export function meetingMinutesMarkdown(minutes, title) {
+  if (typeof minutes.content_md === "string" && minutes.content_md.trim()) {
+    const content = minutes.content_md.trim();
+    const heading = /^#[ \t]+(.+?)[ \t]*#*(?:\r?\n|$)/.exec(content);
+    return title && heading?.[1].trim() === title.trim() ? content.slice(heading[0].length).trim() : content;
+  }
   const parts = [minutes.summary.trim()];
   if (minutes.decisions.length) parts.push(`## تصمیم‌ها\n\n${minutes.decisions.map((item) => `- ${item}`).join("\n")}`);
   if (minutes.action_items.length) {

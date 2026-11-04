@@ -6,6 +6,13 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ERROR_STATUS: dict[str, int] = {
+    "org_archive_invalid": 422,
+    "org_archive_too_large": 413,
+    "org_archive_mapping": 422,
+    "org_archive_review_changed": 409,
+    "org_archive_unavailable": 503,
+    "org_backup_destination": 422,
+    "org_backup_ftp_failed": 502,
     "jalase_negar_release_not_found": status.HTTP_404_NOT_FOUND,
     "meeting_not_found": status.HTTP_404_NOT_FOUND,
     "meeting_closed": status.HTTP_409_CONFLICT,
@@ -55,6 +62,8 @@ ERROR_STATUS: dict[str, int] = {
     "coach_unavailable": status.HTTP_409_CONFLICT,
     "export_expired": 410,
     "export_too_large": 422,
+    "document_not_ready": status.HTTP_409_CONFLICT,
+    "document_pdf_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "conflict": status.HTTP_409_CONFLICT,
     "subscription_exists": status.HTTP_409_CONFLICT,
     "change_conflict": status.HTTP_409_CONFLICT,
@@ -77,6 +86,7 @@ RETRYABLE_CODES = {
     "payment_gateway_unavailable",
     "meeting_asr_failed",
     "meeting_minutes_failed",
+    "document_pdf_unavailable",
     "release_file_unavailable",
     "apk_inspection_unavailable",
 }

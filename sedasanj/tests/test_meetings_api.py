@@ -85,6 +85,7 @@ def test_panel_routes_use_the_user_jwt() -> None:
         "/v1/meetings/{meeting_id}",
         "/v1/meetings/{meeting_id}/audio/content",
         "/v1/meetings/{meeting_id}/minutes",
+        "/v1/meetings/{meeting_id}/minutes/pdf",
         "/v1/meetings/{meeting_id}/reanalyze",
         "/v1/meetings/{meeting_id}/retry",
         "/v1/meetings/devices/pairing-codes",
