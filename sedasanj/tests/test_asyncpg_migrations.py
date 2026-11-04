@@ -30,6 +30,7 @@ MIGRATIONS = (
     "0061_assistant_exports.py",
     "0072_operator_call_coachings.py",
     "0093_meetings.py",
+    "0097_jalase_negar_releases.py",
 )
 
 

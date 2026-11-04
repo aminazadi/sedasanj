@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,14 @@ class Storage(abc.ABC):
 
     @abc.abstractmethod
     async def delete(self, key: str) -> None: ...
+
+    @abc.abstractmethod
+    async def list_keys(self, prefix: str) -> list[tuple[str, datetime]]:
+        """Every object under ``prefix`` with its last-modified time (UTC)."""
+        ...
+
+    @abc.abstractmethod
+    async def exists(self, key: str) -> bool: ...
 
     @abc.abstractmethod
     async def presigned_url(self, key: str, expires_in: int) -> str: ...
@@ -109,6 +118,35 @@ class S3Storage(Storage):
         async with self._client() as client:
             await client.delete_object(Bucket=self.bucket, Key=key)
 
+    async def list_keys(self, prefix: str) -> list[tuple[str, datetime]]:
+        found: list[tuple[str, datetime]] = []
+        async with self._client() as client:
+            token: str | None = None
+            while True:
+                options: dict[str, Any] = {"Bucket": self.bucket, "Prefix": prefix}
+                if token:
+                    options["ContinuationToken"] = token
+                page = await client.list_objects_v2(**options)
+                for item in page.get("Contents", []):
+                    modified = item["LastModified"]
+                    if modified.tzinfo is None:
+                        modified = modified.replace(tzinfo=UTC)
+                    found.append((item["Key"], modified))
+                if not page.get("IsTruncated"):
+                    return found
+                token = page.get("NextContinuationToken")
+
+    async def exists(self, key: str) -> bool:
+        async with self._client() as client:
+            try:
+                await client.head_object(Bucket=self.bucket, Key=key)
+            except client.exceptions.ClientError as error:
+                code = str(error.response.get("Error", {}).get("Code", ""))
+                if code in {"404", "NoSuchKey", "NotFound"}:
+                    return False
+                raise
+            return True
+
     async def presigned_url(self, key: str, expires_in: int) -> str:
         async with self._client(public=True) as client:
             url: str = await client.generate_presigned_url(
@@ -130,15 +168,18 @@ class MemoryStorage(Storage):
     def __init__(self, bucket: str = "audio") -> None:
         self.bucket = bucket
         self.objects: dict[str, bytes] = {}
+        self.modified: dict[str, datetime] = {}
 
     async def ensure_bucket(self) -> None:
         return None
 
     async def put(self, key: str, body: bytes, content_type: str = "audio/wav") -> None:
         self.objects[key] = body
+        self.modified[key] = datetime.now(UTC)
 
     async def put_path(self, key: str, path: Path, content_type: str = "audio/wav") -> None:
         self.objects[key] = path.read_bytes()
+        self.modified[key] = datetime.now(UTC)
 
     async def get(self, key: str) -> bytes:
         return self.objects[key]
@@ -154,6 +195,17 @@ class MemoryStorage(Storage):
 
     async def delete(self, key: str) -> None:
         self.objects.pop(key, None)
+        self.modified.pop(key, None)
+
+    async def list_keys(self, prefix: str) -> list[tuple[str, datetime]]:
+        return [
+            (key, self.modified.get(key, datetime.now(UTC)))
+            for key in sorted(self.objects)
+            if key.startswith(prefix)
+        ]
+
+    async def exists(self, key: str) -> bool:
+        return key in self.objects
 
     async def presigned_url(self, key: str, expires_in: int) -> str:
         return f"memory://{self.bucket}/{key}?expires_in={expires_in}"

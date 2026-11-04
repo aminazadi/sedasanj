@@ -310,6 +310,32 @@ export interface ModuleRelease {
   installations: number;
 }
 
+export type JalaseNegarReleaseStatus = "draft" | "published" | "revoked";
+
+export interface JalaseNegarRelease {
+  id: string;
+  package_name: string;
+  version_name: string;
+  version_code: number;
+  min_sdk: number;
+  abis: string[];
+  title: string;
+  changelog_html: string;
+  changelog_plain: string;
+  artifact_sha256: string;
+  artifact_size: number;
+  signing_cert_sha256: string;
+  status: JalaseNegarReleaseStatus;
+  published_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JalaseNegarReleasePage extends Page<JalaseNegarRelease> {
+  latest_published_code: number | null;
+}
+
 export interface ModuleZipInspection {
   rawname: string;
   version: string;

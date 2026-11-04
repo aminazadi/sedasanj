@@ -38,6 +38,7 @@ from app.errors import ApiError
 from app.models import (
     ApiKey,
     AudioObject,
+    JalaseNegarRelease,
     Meeting,
     MeetingChunk,
     MeetingEvent,
@@ -827,6 +828,35 @@ def _minutes_out(row: MeetingMinutes) -> MeetingMinutesOut:
         is_selected=row.is_selected,
         created_at=row.created_at,
     )
+
+
+@router.get("/app-download")
+async def latest_app_download(response: Response, session: ControlSession) -> dict[str, str]:
+    latest = (
+        await session.execute(
+            select(JalaseNegarRelease.id, JalaseNegarRelease.artifact_key)
+            .where(JalaseNegarRelease.status == "published")
+            .order_by(JalaseNegarRelease.version_code.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    if latest is None:
+        raise ApiError(
+            "jalase_negar_release_not_found",
+            "هنوز نسخه‌ای از جلسه‌نگار منتشر نشده است؛ بعداً دوباره بررسی کنید",
+        )
+    try:
+        available = await get_storage().exists(latest.artifact_key)
+    except Exception:  # noqa: BLE001 - storage outages use the same retryable API error
+        logger.warning("jalase_negar_download_lookup_failed release_id=%s", latest.id)
+        available = False
+    if not available:
+        raise ApiError(
+            "release_file_unavailable",
+            "فایل جلسه‌نگار در دسترس نیست؛ چند دقیقه دیگر دوباره تلاش کنید",
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return {"download_path": f"/v1/jalase-negar/android/releases/{latest.id}/download"}
 
 
 @router.get("/{meeting_id}", response_model=MeetingDetail)

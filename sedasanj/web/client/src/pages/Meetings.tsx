@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { fmt, MEETING_STATUS_LABELS, query, request } from "../api";
+import { ApiError, fmt, MEETING_STATUS_LABELS, query, request } from "../api";
 import { isOrgAdmin, useAuth } from "../auth";
 import { Empty, ErrorBox, Pagination, SummaryCell } from "../components/Widgets";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
@@ -224,7 +224,31 @@ export default function Meetings() {
   const [filters, setFilters] = useState<MeetingFilters>(applied);
   const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(null);
   const [search, setSearch] = useState(applied.q);
+  const [findingApp, setFindingApp] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const hasAppliedFilters = Object.values(applied).some(Boolean);
+
+  async function downloadApp() {
+    setFindingApp(true);
+    setDownloadError(null);
+    try {
+      const { download_path } = await request<{ download_path: string }>("/v1/meetings/app-download", {
+        headers: { "Cache-Control": "no-cache" },
+      });
+      const link = document.createElement("a");
+      link.href = download_path;
+      link.download = "";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      setDownloadError(error instanceof ApiError && error.code === "jalase_negar_release_not_found"
+        ? "هنوز نسخه‌ای از جلسه‌نگار منتشر نشده است. بعداً دوباره بررسی کنید."
+        : "دریافت فایل جلسه‌نگار ممکن نشد. چند دقیقه دیگر دوباره تلاش کنید.");
+    } finally {
+      setFindingApp(false);
+    }
+  }
 
   const owners = useResource<Page<User> | null>(
     (signal) => (orgAdmin ? request<Page<User>>("/v1/auth/users?limit=200&offset=0", { signal }) : Promise.resolve(null)),
@@ -305,8 +329,19 @@ export default function Meetings() {
       <PageHeader
         title="جلسات"
         description={orgAdmin ? "جلسه‌های ضبط‌شده با اپ جلسه‌نگار برای همه‌ی اعضای سازمان" : "جلسه‌هایی که شما با اپ جلسه‌نگار ضبط کرده‌اید"}
-        actions={<div className="flex flex-wrap items-end justify-end gap-3">{filterBar.toolbar}</div>}
+        actions={
+          <div className="flex flex-wrap items-end justify-end gap-3">
+            {filterBar.toolbar}
+            <button type="button" className="btn-ghost min-h-[42px] rounded-none px-3" disabled={findingApp} onClick={downloadApp}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+                <path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" />
+              </svg>
+              {findingApp ? "در حال بررسی نسخه…" : "دانلود اپلیکیشن"}
+            </button>
+          </div>
+        }
       />
+      <ErrorBox message={downloadError} className="!rounded-none" />
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[16rem] flex-1">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400">

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
@@ -10,6 +11,7 @@ from app.config import get_settings
 from app.db import dispose_engine
 from app.logging import configure_logging
 from app.metrics import start_metrics_server
+from app.routers.jalase_negar_releases import sweep_orphan_files
 from app.services import outbox, queue
 from app.services.maintenance import refresh_failure_gauge, refresh_queue_depth
 from app.services.scheduled_reports import schedule_due_reports
@@ -23,6 +25,12 @@ async def dispatch_tick(ctx: dict[str, Any]) -> str:
     if now - float(ctx.get("last_reports", 0.0)) >= 60:
         await schedule_due_reports()
         ctx["last_reports"] = now
+    if now - float(ctx.get("last_apk_sweep", 0.0)) >= 600:
+        ctx["last_apk_sweep"] = now
+        try:
+            await sweep_orphan_files()
+        except Exception:  # noqa: BLE001 - storage may be down; the outbox must keep flowing
+            logging.getLogger(__name__).warning("jalase_negar_apk_sweep_error")
     delivered = await outbox.dispatch_pending()
     ctx["last_dispatch"] = now
     if now - float(ctx.get("last_metrics", 0.0)) >= 15.0:

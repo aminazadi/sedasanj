@@ -57,6 +57,8 @@ _CONTROL_ONLY = {
     "module_installations",
     "module_update_events",
     "module_diagnostics",
+    # Android release catalogue for the Jalase-Negar app: platform-wide, never a tenant's data.
+    "jalase_negar_releases",
 }
 _GLOBAL_REFERENCE = {"plans", "plan_versions"}
 

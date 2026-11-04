@@ -2561,6 +2561,46 @@ class ModuleRelease(Base):
     )
 
 
+class JalaseNegarRelease(Base):
+    """A verified Jalase-Negar Android APK offered to installed apps; global, not tenant-scoped."""
+
+    __tablename__ = "jalase_negar_releases"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    package_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    version_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    version_code: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    min_sdk: Mapped[int] = mapped_column(Integer, nullable=False)
+    abis: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), nullable=False, server_default=text("'{}'::varchar[]")
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    changelog_html: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    changelog_plain: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    artifact_key: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    signing_cert_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("version_code", name="jalase_negar_releases_version_code_key"),
+        UniqueConstraint("version_name", name="jalase_negar_releases_version_name_key"),
+        CheckConstraint(
+            "status IN ('draft','published','revoked')", name="jalase_negar_releases_status_check"
+        ),
+    )
+
+
 class ModuleInstallation(Base):
     """One FreePBX host running the module, refreshed on every update check."""
 

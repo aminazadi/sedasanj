@@ -1998,3 +1998,50 @@ class MeetingSpeakerPatch(BaseModel):
 class MeetingPatch(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     speakers: list[MeetingSpeakerPatch] | None = Field(default=None, max_length=64)
+
+
+JalaseNegarReleaseStatus = Literal["draft", "published", "revoked"]
+
+
+class JalaseNegarReleaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    package_name: str
+    version_name: str
+    version_code: int
+    min_sdk: int
+    abis: list[str]
+    title: str
+    changelog_html: str
+    changelog_plain: str
+    artifact_sha256: str
+    artifact_size: int
+    signing_cert_sha256: str
+    status: JalaseNegarReleaseStatus
+    published_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JalaseNegarReleaseUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    changelog_html: str | None = Field(default=None, max_length=200_000)
+
+
+class JalaseNegarUpdateOffer(BaseModel):
+    id: UUID
+    version: str
+    version_code: int
+    title: str
+    notes: str
+    size: int
+    sha256: str
+    min_sdk: int
+    published_at: datetime | None
+    download_path: str
+
+
+class JalaseNegarUpdateCheckOut(BaseModel):
+    update: JalaseNegarUpdateOffer | None

@@ -218,6 +218,13 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 200 * 1024 * 1024
     max_extracted_audio_bytes: int = 512 * 1024 * 1024
     max_module_release_bytes: int = 200 * 1024 * 1024
+    # Jalase-Negar Android releases: the APK is checked with aapt2 and apksigner, and only a
+    # signing certificate listed here (comma separated SHA-256 fingerprints) is accepted.
+    max_jalase_negar_apk_bytes: int = 200 * 1024 * 1024
+    jalase_negar_apk_cert_sha256: str = ""
+    jalase_negar_aapt2_path: str = "aapt2"
+    jalase_negar_apksigner_path: str = "apksigner"
+    jalase_negar_orphan_grace_minutes: int = Field(default=120, ge=10, le=10_080)
     max_archive_compression_ratio: int = Field(default=100, ge=1, le=1000)
     min_billable_seconds: int = 30
     duration_mismatch_tolerance: float = Field(default=0.2, ge=0.0, le=1.0)

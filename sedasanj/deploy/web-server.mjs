@@ -19,7 +19,22 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+// APK uploads (Jalase-Negar releases) may be large; everything else keeps the API's own limits.
+const APK_UPLOAD_PATH = "/v1/admin/jalase-negar/releases";
+const APK_UPLOAD_LIMIT = (Number(process.env.MAX_JALASE_NEGAR_APK_BYTES) || 200 * 1024 * 1024) + 1024 * 1024;
+
+function rejectTooLarge(response) {
+  const body = JSON.stringify({ error: { code: "archive_too_large", message: "the APK is larger than the allowed size; shrink the build", retryable: false } });
+  response.writeHead(413, { "content-type": "application/json", "content-length": Buffer.byteLength(body), connection: "close" });
+  response.end(body);
+}
+
 function proxyApi(request, response) {
+  const isApkUpload = request.method === "POST" && request.url.split("?")[0] === APK_UPLOAD_PATH;
+  if (isApkUpload && Number(request.headers["content-length"]) > APK_UPLOAD_LIMIT) {
+    request.resume();
+    return rejectTooLarge(response);
+  }
   const headers = { ...request.headers };
   headers.host = request.headers.host;
   headers["x-real-ip"] = request.socket.remoteAddress;
@@ -45,6 +60,18 @@ function proxyApi(request, response) {
     response.end();
   });
   request.on("aborted", () => upstream.destroy());
+  if (isApkUpload) {
+    // Chunked bodies carry no Content-Length, so count what actually flows through.
+    let received = 0;
+    request.on("data", (chunk) => {
+      received += chunk.length;
+      if (received > APK_UPLOAD_LIMIT && !response.headersSent) {
+        upstream.destroy();
+        rejectTooLarge(response);
+        request.destroy();
+      }
+    });
+  }
   request.pipe(upstream);
 }
 

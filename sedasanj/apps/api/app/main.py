@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.config import get_settings
 from app.db import assert_database_runtime_ready, assert_rls_enforced, dispose_engine
-from app.errors import install_error_handlers
+from app.errors import error_body, install_error_handlers
 from app.logging import configure_logging, log_context
 from app.metrics import http_request_seconds, http_requests_total
 from app.route_inspection import api_routes, auth_kind, scope_names
@@ -36,6 +36,7 @@ from app.routers import (
     ingest,
     integration_api,
     internal_tools,
+    jalase_negar_releases,
     kpi,
     meetings,
     module_updates,
@@ -109,7 +110,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # Operations carrying one of these tags are never published: the assistant is reachable only
 # from the signed-in SedaSanj panel, never by third parties.
 PRIVATE_OPENAPI_TAGS = frozenset(
-    {"admin", "internal", "assistant", "call assistant", "organization memory", "meetings"}
+    {
+        "admin",
+        "internal",
+        "assistant",
+        "call assistant",
+        "organization memory",
+        "meetings",
+        "jalase-negar updates",
+    }
 )
 
 
@@ -274,6 +283,21 @@ def create_app() -> FastAPI:
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
         log_context(request_id=request_id, tenant_id=None, call_id=None)
+        if request.method == "POST" and request.url.path == "/v1/admin/jalase-negar/releases":
+            # Multipart bodies are spooled before the handler runs, so refuse oversized ones here.
+            limit = get_settings().max_jalase_negar_apk_bytes + 1024 * 1024
+            declared = request.headers.get("content-length", "")
+            if declared.isdigit() and int(declared) > limit:
+                return JSONResponse(
+                    status_code=413,
+                    content=error_body(
+                        "archive_too_large",
+                        "the APK is larger than the allowed size; shrink the build",
+                        False,
+                        request_id,
+                    ),
+                    headers={"X-Request-ID": request_id},
+                )
         started = time.perf_counter()
         response = await call_next(request)
         elapsed = time.perf_counter() - started
@@ -284,6 +308,9 @@ def create_app() -> FastAPI:
         ).inc()
         http_request_seconds.labels(method=request.method, path=path).observe(elapsed)
         response.headers["X-Request-ID"] = request_id
+        if request.url.path.startswith("/v1/jalase-negar/android/"):
+            # A revoked release must stop being offered or served at once, errors included.
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     install_error_handlers(app)
@@ -311,6 +338,7 @@ def create_app() -> FastAPI:
         meetings,
         ai_instructions,
         module_updates,
+        jalase_negar_releases,
         help,
         site_pages,
         admin,

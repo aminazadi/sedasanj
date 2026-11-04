@@ -167,3 +167,13 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "oldest queued notify job is older than 15 minutes"
+
+  - name: jalase-negar-updates
+    rules:
+      - alert: JalaseNegarApkDownloadFailing
+        # Missing or unreachable update files: the app keeps offering a build users cannot fetch.
+        expr: sum(increase(cbi_jalase_negar_download_total{result="unavailable"}[15m])) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Jalase-Negar APK downloads are failing; check MinIO and the published release file"

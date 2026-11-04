@@ -24,8 +24,9 @@ from plan_helpers import requires_postgres, scratch  # noqa: F401  (scratch is a
 from plan_routes import api_routes, dependency_calls, scope_names
 from sqlalchemy import select, text
 
-from app import deps
-from app.models import ApiKey, AudioObject, Meeting, MeetingChunk
+from app import db, deps
+from app.models import ApiKey, AudioObject, JalaseNegarRelease, Meeting, MeetingChunk
+from app.services import jalase_negar_releases as apks
 from app.services.queue import QUEUE_MEETING, set_queue
 from app.services.storage import MemoryStorage, set_storage
 
@@ -80,6 +81,7 @@ def test_panel_routes_use_the_user_jwt() -> None:
     ]
     assert {route.path for route in panel} >= {
         "/v1/meetings",
+        "/v1/meetings/app-download",
         "/v1/meetings/{meeting_id}",
         "/v1/meetings/{meeting_id}/audio/content",
         "/v1/meetings/{meeting_id}/minutes",
@@ -92,7 +94,11 @@ def test_panel_routes_use_the_user_jwt() -> None:
 
 def test_static_routes_are_declared_before_the_meeting_id_catch_all() -> None:
     order = [(sorted(r.methods)[0], r.path) for r in _routes()]
-    for static in ("/v1/meetings/devices", "/v1/meetings/config/validate"):
+    for static in (
+        "/v1/meetings/devices",
+        "/v1/meetings/config/validate",
+        "/v1/meetings/app-download",
+    ):
         assert order.index(("GET", static)) < order.index(("GET", "/v1/meetings/{meeting_id}"))
 
 
@@ -126,6 +132,62 @@ async def world(
         set_queue(None)
         set_storage(None)
         get_settings.cache_clear()
+
+
+@requires_postgres
+async def test_app_download_uses_the_latest_published_release(world) -> None:
+    client, workspace, _queue, storage = world
+    path = "/v1/meetings/app-download"
+    payload = b"apk contents"
+    releases = [
+        JalaseNegarRelease(
+            id=uuid4(),
+            version_name=f"2.0.{code}",
+            version_code=code,
+            status=state,
+            package_name=apks.PACKAGE_NAME,
+            min_sdk=24,
+            title="Test release",
+            artifact_key=f"test-app/{uuid4()}.apk",
+            artifact_size=len(payload),
+            artifact_sha256=sha256(payload),
+            signing_cert_sha256="a" * 64,
+        )
+        for code, state in enumerate(("published", "published", "revoked", "draft"), start=1)
+    ]
+    async with db.control_session_scope() as session:
+        session.add_all(releases)
+    try:
+        assert (await client.get(path)).status_code == 401
+        latest = releases[1]
+        missing = await client.get(path, headers=workspace.operator)
+        assert missing.status_code == 503
+        assert missing.json()["error"]["code"] == "release_file_unavailable"
+
+        await storage.put(latest.artifact_key, payload, apks.APK_MIME)
+        response = await client.get(path, headers=workspace.operator)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        download_path = response.json()["download_path"]
+        assert download_path == f"/v1/jalase-negar/android/releases/{latest.id}/download"
+        apk = await client.get(download_path)
+        assert apk.content == payload
+        assert apk.headers["content-type"] == apks.APK_MIME
+        assert apk.headers["content-disposition"] == 'attachment; filename="jalase-negar-2.0.2.apk"'
+
+        async with db.control_session_scope() as session:
+            for release in releases[:2]:
+                stored = await session.get(JalaseNegarRelease, release.id)
+                assert stored is not None
+                stored.status = "revoked"
+        assert (await client.get(download_path)).status_code == 404
+        empty = await client.get(path, headers=workspace.admin)
+        assert empty.status_code == 404
+        assert empty.json()["error"]["code"] == "jalase_negar_release_not_found"
+    finally:
+        async with db.control_session_scope() as session:
+            for release in releases:
+                await session.delete(release)
 
 
 def _session_body(client_id: UUID | None = None, **extra: object) -> dict[str, object]:
