@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.deps import ControlSession, OrgAdminDep, PublicSession, UserDep, client_ip
@@ -18,7 +19,7 @@ from app.schemas import (
     ApiKeyOut,
     ApiKeyUpdate,
     ArchiveFormat,
-    LoginRequest,
+    CustomerLoginRequest,
     LoginStep,
     ProfileUpdate,
     RefreshRequest,
@@ -43,6 +44,7 @@ from app.security import (
     verify_totp,
 )
 from app.services import audit, identity_projection, operator_scope, ratelimit
+from app.services.phone_identity import mobile_accounts, normalize_mobile
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -55,21 +57,53 @@ def _token_pair(access: str, refresh: str) -> TokenPair:
     )
 
 
-@router.post("/check", response_model=LoginStep)
-async def check_login(payload: LoginRequest, session: PublicSession) -> LoginStep:
-    await ratelimit.enforce(f"login-check:{payload.email.lower()}", 10)
-    candidates = (
-        (await session.execute(select(User).where(User.email == payload.email))).scalars().all()
-    )
-    user = next(
-        (item for item in candidates if verify_password(item.password_hash, payload.password)),
-        None,
-    )
+async def _password_user(
+    payload: CustomerLoginRequest, session: AsyncSession, rate_bucket: str, ip: str | None
+) -> User:
+    await ratelimit.enforce(f"{rate_bucket}-ip:{ip}", 60)
+    identifier = payload.identifier
+    is_email = "@" in identifier
+    if is_email:
+        identifier = identifier.lower()
+        await ratelimit.enforce(f"{rate_bucket}:{identifier}", 10)
+        candidates = (
+            (await session.execute(select(User).where(User.email == identifier))).scalars().all()
+        )
+        user = next(
+            (
+                candidate
+                for candidate in candidates
+                if verify_password(candidate.password_hash, payload.password)
+            ),
+            None,
+        )
+    else:
+        identifier = normalize_mobile(identifier)
+        await ratelimit.enforce(f"{rate_bucket}:{identifier}", 10)
+        matches = [
+            candidate
+            for candidate, _ in await mobile_accounts(session, identifier)
+            if verify_password(candidate.password_hash, payload.password)
+        ]
+        if len(matches) > 1:
+            raise ApiError(
+                "login_mobile_ambiguous",
+                "این شماره و گذرواژه برای چند حساب یکسان است. با ایمیل حساب موردنظر وارد شوید.",
+            )
+        user = next(iter(matches), None)
     if user is None:
-        raise ApiError("unauthorized", "email or password is incorrect")
+        raise ApiError("unauthorized", "ایمیل، شماره موبایل یا گذرواژه را بررسی کنید.")
     tenant = await session.get(Tenant, user.tenant_id)
     if tenant is None or tenant.status != "active":
-        raise ApiError("tenant_suspended", "tenant is not active")
+        raise ApiError("tenant_suspended", "حساب سازمانی فعال نیست؛ با پشتیبانی تماس بگیرید.")
+    return user
+
+
+@router.post("/check", response_model=LoginStep)
+async def check_login(
+    payload: CustomerLoginRequest, request: Request, session: PublicSession
+) -> LoginStep:
+    user = await _password_user(payload, session, "login-check", client_ip(request))
     return LoginStep(requires_totp=bool(user.totp_secret))
 
 
@@ -122,28 +156,17 @@ async def totp_disable(
 
 
 @router.post("/login", response_model=TokenPair)
-async def login(payload: LoginRequest, request: Request, session: PublicSession) -> TokenPair:
-    await ratelimit.enforce(f"login:{payload.email.lower()}", 10)
-    # The same address may exist in several tenants, so every candidate is checked.
-    candidates = (
-        (await session.execute(select(User).where(User.email == payload.email))).scalars().all()
-    )
-    user = next(
-        (
-            candidate
-            for candidate in candidates
-            if verify_password(candidate.password_hash, payload.password)
-        ),
-        None,
-    )
-    if user is None:
-        raise ApiError("unauthorized", "email or password is incorrect")
+async def login(
+    payload: CustomerLoginRequest, request: Request, session: PublicSession
+) -> TokenPair:
+    user = await _password_user(payload, session, "login", client_ip(request))
+    password_hash = user.password_hash
+    current = await session.get(User, user.id, with_for_update=True, populate_existing=True)
+    if current is None or current.password_hash != password_hash:
+        raise ApiError("unauthorized", "گذرواژه را دوباره وارد کنید.")
+    user = current
     if user.totp_secret and not verify_totp(user.totp_secret, payload.totp_code):
-        raise ApiError("unauthorized", "two-factor code is invalid")
-
-    tenant = await session.get(Tenant, user.tenant_id)
-    if tenant is None or tenant.status != "active":
-        raise ApiError("tenant_suspended", "tenant is not active")
+        raise ApiError("unauthorized", "کد ورود دومرحله‌ای را دوباره وارد کنید.")
 
     settings = get_settings()
     token, token_hash = generate_refresh_token()
@@ -169,18 +192,22 @@ async def login(payload: LoginRequest, request: Request, session: PublicSession)
 @router.post("/refresh", response_model=TokenPair)
 async def refresh(payload: RefreshRequest, session: PublicSession) -> TokenPair:
     token_hash = hash_refresh_token(payload.refresh_token)
-    stored = (
-        await session.execute(
-            select(RefreshToken).where(RefreshToken.token_hash == token_hash).with_for_update()
-        )
-    ).scalar_one_or_none()
+    user_id = await session.scalar(
+        select(RefreshToken.user_id).where(RefreshToken.token_hash == token_hash)
+    )
+    if user_id is None:
+        raise ApiError("unauthorized", "refresh token is not usable")
+    # Lock the account first so password changes can revoke refresh tokens atomically.
+    user = await session.get(User, user_id, with_for_update=True)
+    if user is None:
+        raise ApiError("unauthorized", "user no longer exists")
+    stored = await session.scalar(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash).with_for_update()
+    )
     now = datetime.now(UTC)
     if stored is None or stored.revoked_at is not None or stored.expires_at <= now:
         raise ApiError("unauthorized", "refresh token is not usable")
 
-    user = await session.get(User, stored.user_id)
-    if user is None:
-        raise ApiError("unauthorized", "user no longer exists")
     tenant = await session.get(Tenant, user.tenant_id)
     if tenant is None or tenant.status != "active":
         raise ApiError("tenant_suspended", "tenant is not active")

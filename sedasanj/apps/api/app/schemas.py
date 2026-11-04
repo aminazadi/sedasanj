@@ -14,6 +14,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.networks import validate_email
 
 from app.sentiment import delta_and_trajectory, normalize_sentiment, valence
 from app.services.api_scopes import DEFAULT_NEW_KEY_SCOPES, MAX_ALLOWED_CIDRS, normalize_cidrs
@@ -41,6 +42,20 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
     totp_code: str | None = None
+
+
+class CustomerLoginRequest(BaseModel):
+    identifier: str = Field(
+        min_length=1, max_length=320, validation_alias=AliasChoices("identifier", "email")
+    )
+    password: str
+    totp_code: str | None = None
+
+    @field_validator("identifier")
+    @classmethod
+    def _normalize_identifier(cls, value: str) -> str:
+        value = value.strip()
+        return validate_email(value)[1] if "@" in value else value
 
 
 class TotpCheck(BaseModel):

@@ -87,7 +87,7 @@ export default function App() {
         {operator ? null : <Route path="/account" element={<Account />} />}
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
         {orgAdmin ? <Route path="/billing/change-plan" element={<ChangePlan />} /> : null}
-        {orgAdmin ? <Route path="/account-settings" element={<AccountSettings />} /> : null}
+        <Route path="/account-settings" element={<AccountSettings />} />
         {orgAdmin ? <Route path="/kpi-settings" element={<Navigate to="/account-settings?tab=kpi" replace />} /> : null}
         {orgAdmin ? <Route path="/payment-result" element={<PaymentResult />} /> : null}
         {operator ? null : <Route path="/install" element={<Install />} />}

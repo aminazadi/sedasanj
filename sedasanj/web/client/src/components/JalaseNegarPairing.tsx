@@ -7,7 +7,6 @@ import ConfirmDialog from "./ConfirmDialog";
 import { ErrorBox } from "./Widgets";
 import type { MeetingDevice, MeetingPairingCode } from "../types";
 
-/** Profile card that pairs the Jalase Negar app: a one-time pairing code (QR or file), plus the paired devices. */
 export default function JalaseNegarPairing() {
   const [pairing, setPairing] = useState<MeetingPairingCode | null>(null);
   const [devices, setDevices] = useState<MeetingDevice[]>([]);

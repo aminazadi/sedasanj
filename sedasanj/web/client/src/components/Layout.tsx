@@ -66,7 +66,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
     items: [
       { to: "/profile", label: "پروفایل من", icon: userIcon },
       { to: "/account", label: "اعتبار و اشتراک", icon: walletIcon, hideForOperator: true },
-      { to: "/account-settings", label: "تنظیمات حساب", icon: settingsIcon, orgAdminOnly: true },
+      { to: "/account-settings", label: "تنظیمات حساب", icon: settingsIcon },
       { to: "/install", label: "راه‌اندازی", icon: rocketIcon, hideForOperator: true },
       { to: "/freepbx-servers", label: "سرورهای تلفنی", icon: serverIcon, orgAdminOnly: true },
       { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: historyIcon, hideForOperator: true },

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, MEETING_STATUS_LABELS, query, request } from "../api";
 import { isOrgAdmin, useAuth } from "../auth";
 import { Empty, ErrorBox, Pagination, SummaryCell } from "../components/Widgets";
@@ -128,7 +128,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
         {meetings.loading ? (
           <SkeletonTable columns={columns} rows={meetings.data ? Math.min(items.length || EMPTY_PREVIOUS_ROWS, PAGE_SIZE) : FIRST_LOAD_ROWS} />
         ) : items.length === 0 ? (
-          <Empty>هنوز جلسه‌ای ثبت نشده است. جلسه را با اپ جلسه‌نگار ضبط کنید؛ اتصال اپ از «پروفایل من» انجام می‌شود.</Empty>
+          <Empty>هنوز جلسه‌ای ثبت نشده است. برای ضبط جلسه، <Link className="underline" to="/account-settings?tab=integrations">اپ جلسه‌نگار را متصل کنید</Link>.</Empty>
         ) : (
           <table className="table" dir="rtl">
             <thead>

@@ -15,7 +15,7 @@ export default function Login() {
   const method = params.get("method") === "password" ? "password" : "phone";
   const next = params.get("next");
   const destination = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,10 +29,10 @@ export default function Login() {
     setError(null);
     try {
       if (step === "password") {
-        const result = await request<{ requires_totp: boolean }>("/v1/auth/check", { method: "POST", body: { email, password }, retry: false });
+        const result = await request<{ requires_totp: boolean }>("/v1/auth/check", { method: "POST", body: { identifier, password }, retry: false });
         if (result.requires_totp) { setStep("totp"); return; }
       }
-      await login(email, password, totp);
+      await login(identifier, password, totp);
       navigate(destination);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "ورود ناموفق بود");
@@ -57,21 +57,25 @@ export default function Login() {
   return (
     <AuthShell>
           <div className="auth-form">
-            <div className="demo-device-tabs login-method-tabs" role="group" aria-label="روش ورود">{([['phone', 'شماره موبایل'], ['password', 'ایمیل و رمز']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={method === value} onClick={() => setParams((current) => { const changed = new URLSearchParams(current); changed.set("method", value); return changed; }, { replace: true })}>{label}</button>)}</div>
+            <div className="demo-device-tabs login-method-tabs" role="group" aria-label="روش ورود">{([['phone', 'کد پیامکی'], ['password', 'گذرواژه']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={method === value} onClick={() => setParams((current) => { const changed = new URLSearchParams(current); changed.set("method", value); return changed; }, { replace: true })}>{label}</button>)}</div>
             {method === "phone" ? <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate(destination); }}/> : <>
             <form onSubmit={submit}>
               <ErrorBox message={error} />
               {step === "password" ? (<>
-              <label className="label font-medium text-slate-700" htmlFor="email">
-                ایمیل
+              <label className="label font-medium text-slate-700" htmlFor="login-identifier">
+                ایمیل یا شماره موبایل
               </label>
               <input
-                id="email"
+                id="login-identifier"
                 className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
-                type="email"
+                type="text"
                 dir="ltr"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
+                maxLength={320}
                 required
               />
               <label className="label font-medium text-slate-700" htmlFor="password">
@@ -81,6 +85,7 @@ export default function Login() {
                 id="password"
                 className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
                 type="password"
+                autoComplete="current-password"
                 dir="ltr"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -101,7 +106,7 @@ export default function Login() {
                 value={fmt.digits(totp)}
                 onChange={(event) => setTotp(normalizeOtp(event.target.value))}
               />
-              <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}><Icon name="back" size={18}/>بازگشت و ویرایش ایمیل یا گذرواژه</button>
+              <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}><Icon name="back" size={18}/>بازگشت و ویرایش اطلاعات ورود</button>
               </>)}
               <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>
                 {busy ? "در حال ورود…" : step === "totp" ? <><Icon name="login" size={18}/>تأیید و ورود</> : <>ادامه<Icon name="arrow" size={18}/></>}

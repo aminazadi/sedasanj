@@ -1,5 +1,8 @@
 ## 2026-11-05 — AMINAZADI
 
+- Moved Jalase Negar pairing and device management from the profile to Account Settings for all user roles.
+- Added profile password changes verified by SMS and the account's configured second factor.
+- Enabled password sign-in with a mobile number or email address.
 - Added encrypted organization archive downloads and additive cross-organization import with relationship remapping, member review, and media recovery.
 - Added daily and weekly organization backups with FTP and FTPS delivery, connection testing, and persistent run history.
 - Redesigned the organization data tab with responsive backup, import, and history panels.

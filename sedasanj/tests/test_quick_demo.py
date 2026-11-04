@@ -38,6 +38,7 @@ from app.security import (
     decode_access_token,
     generate_totp_secret,
     hash_password,
+    totp_code,
 )
 from app.services import demo_settings, queue, ratelimit, smsir, storage
 from app.services.audio import probe_wav_bytes
@@ -258,6 +259,93 @@ async def test_existing_mobile_logs_into_same_organization_without_new_trial(dem
                 .where(TrialClaim.mobile == first.mobile)
             )
         ).scalar_one() == 1
+
+
+async def test_password_sign_in_accepts_mobile_and_legacy_email(demo_env):
+    env = demo_env
+    first = await login(env)
+    second = await login(env)
+    password = "test-only-password"
+    async with control_session_scope() as session:
+        first_user = await session.get(User, first.user_id)
+        second_user = await session.get(User, second.user_id)
+        first_user.password_hash = hash_password(password)
+        second_user.password_hash = hash_password("different-test-password")
+        second_user.mobile_number = first.mobile
+        email = first_user.email
+    mobile = "+۹۸ " + first.mobile[1:].translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+    payload = {"identifier": mobile, "password": password}
+    checked = await env.client.post("/v1/auth/check", json=payload)
+    assert checked.json() == {"requires_totp": False}
+    response = await env.client.post("/v1/auth/login", json=payload)
+    assert response.status_code == 200, response.text
+    assert decode_access_token(response.json()["access_token"])["sub"] == str(first.user_id)
+
+    async with control_session_scope() as session:
+        second_user = await session.get(User, second.user_id)
+        second_user.password_hash = hash_password(password)
+    for endpoint in ("/v1/auth/check", "/v1/auth/login"):
+        ambiguous = await env.client.post(endpoint, json=payload)
+        assert ambiguous.status_code == 409
+        assert ambiguous.json()["error"]["code"] == "login_mobile_ambiguous"
+    legacy = await env.client.post("/v1/auth/login", json={"email": email, "password": password})
+    assert legacy.status_code == 200, legacy.text
+
+
+async def test_password_change_requires_matching_sms_and_totp_and_consumes_grant(demo_env):
+    env = demo_env
+    account = await login(env)
+    old_password = "old-test-password"
+    secret = generate_totp_secret()
+    async with control_session_scope() as session:
+        user = await session.get(User, account.user_id)
+        user.password_hash = hash_password(old_password)
+        user.totp_secret = secret
+        await session.execute(
+            update(PhoneOtp)
+            .where(PhoneOtp.mobile == account.mobile)
+            .values(created_at=datetime.now(UTC) - timedelta(minutes=2))
+        )
+    send_url = "/v1/auth/phone/password/request"
+    change_url = "/v1/auth/phone/password/change"
+    assert (await env.client.post(send_url)).status_code == 401
+    sent = await env.client.post(send_url, headers=account.headers)
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["requires_totp"] is True
+    assert (await env.client.post(send_url, headers=account.headers)).status_code == 429
+
+    unrelated, _ = await verify(env, mobile_number())
+    password = "new-test-password"
+    rejected = await env.client.post(
+        change_url,
+        json={"verified_token": unrelated["verified_token"], "new_password": password},
+        headers=account.headers,
+    )
+    assert rejected.json()["error"]["code"] == "password_change_verification_required"
+    verified = await env.client.post(
+        "/v1/auth/phone/verify",
+        json={"otp_id": sent.json()["otp_id"], "code": env.sent[account.mobile]},
+    )
+    payload = {"verified_token": verified.json()["verified_token"], "new_password": password}
+    rejected = await env.client.post(change_url, json=payload, headers=account.headers)
+    assert rejected.json()["error"]["code"] == "password_change_totp_required"
+    current_totp = totp_code(secret, int(datetime.now(UTC).timestamp()) // 30)
+    payload["totp_code"] = current_totp
+    responses = await asyncio.gather(
+        *(env.client.post(change_url, json=payload, headers=account.headers) for _ in range(2))
+    )
+    assert sorted(response.status_code for response in responses) == [200, 400]
+    renewed = next(response.json() for response in responses if response.status_code == 200)
+    for token, expected in ((account.pair["refresh_token"], 401), (renewed["refresh_token"], 200)):
+        refresh = await env.client.post("/v1/auth/refresh", json={"refresh_token": token})
+        assert refresh.status_code == expected
+    credentials = {"identifier": account.mobile, "totp_code": current_totp}
+    old_login = await env.client.post(
+        "/v1/auth/login", json={**credentials, "password": old_password}
+    )
+    new_login = await env.client.post("/v1/auth/login", json={**credentials, "password": password})
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200, new_login.text
 
 
 async def test_rotated_and_expired_qr_are_rejected(demo_env):

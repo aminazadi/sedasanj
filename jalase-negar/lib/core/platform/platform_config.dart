@@ -74,7 +74,7 @@ PairingPayload parsePairingPayload(
 }) {
   if (decoded is! Map || decoded['schema'] != kConfigSchema) {
     throw const ConfigParseException(
-      'این فایل یا QR مربوط به جلسه‌نگار نیست؛ از صفحه‌ی پروفایل پنل، کانفیگ اپ را دوباره بگیرید.',
+      'این فایل یا QR مربوط به جلسه‌نگار نیست؛ از «تنظیمات حساب ← اتصال‌ها» در پنل، فایل تنظیمات اپ را دوباره بگیرید.',
     );
   }
   if (decoded['version'] != kConfigVersion) {
