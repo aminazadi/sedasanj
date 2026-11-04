@@ -4,10 +4,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
+import '../../onboarding/tour_overlay.dart';
+import '../../onboarding/tour_step.dart';
+import '../../recording/application/live_engine_provider.dart';
+import '../../upload/upload_controller.dart';
 import '../application/connection_controller.dart';
+import 'meeting_upload_card.dart';
 import 'qr_scan_screen.dart';
 
 /// SedaSanj connection screen: pair with a QR code, a config file or pasted
@@ -28,7 +34,10 @@ class SettingsScreen extends ConsumerWidget {
       children: [
         SsCard(
           title: 'وضعیت اتصال',
-          trailing: SsBadge(connection == null ? 'متصل نیست' : 'متصل'),
+          trailing: TourTarget(
+            step: TourStep.connection,
+            child: SsBadge(connection == null ? 'متصل نیست' : 'متصل'),
+          ),
           child: connection == null
               ? const Text(
                   'در پنل صداسنج از صفحه‌ی پروفایل، «اتصال اپ جلسه‌نگار» را باز کنید '
@@ -45,6 +54,8 @@ class SettingsScreen extends ConsumerWidget {
                   ],
                 ),
         ),
+        const SizedBox(height: 12),
+        const _SendTranscriptCard(),
         if (state?.error != null) ...[
           const SizedBox(height: 12),
           SsCard(
@@ -136,6 +147,13 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () =>
+              context.go(TourStep.welcome.location(fromSettings: true)),
+          icon: const Icon(Icons.help_outline),
+          label: const Text('راهنمای تعاملی'),
+        ),
       ],
     );
   }
@@ -194,6 +212,22 @@ class _Row extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SendTranscriptCard extends ConsumerWidget {
+  const _SendTranscriptCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(sendTranscriptEnabledProvider).value ?? true;
+    return MeetingUploadCard(
+      enabled: enabled,
+      onChanged: (value) async {
+        await ref.read(sendTranscriptEnabledProvider.notifier).set(value);
+        if (value) ref.read(uploadQueueProvider.notifier).kick();
+      },
     );
   }
 }

@@ -1,21 +1,31 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/meetings/presentation/meeting_detail_screen.dart';
 import '../features/meetings/presentation/meetings_screen.dart';
 import '../features/models/presentation/models_screen.dart';
+import '../features/onboarding/tour_overlay.dart';
+import '../features/onboarding/tour_progress.dart';
+import '../features/onboarding/tour_step.dart';
 import '../features/recording/presentation/recording_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import 'shell_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final router = GoRouter(
     routes: [
       ShellRoute(
-        builder: (context, state, child) => ShellScreen(child: child),
+        builder: (context, state, child) =>
+            _withTour(state, ShellScreen(child: child)),
         routes: [
           GoRoute(
             path: '/',
+            redirect: (context, state) async {
+              if (state.uri.queryParameters.containsKey('tour')) return null;
+              final seen = await ref.read(tourProgressProvider.future);
+              return seen ? null : TourStep.welcome.location();
+            },
             builder: (context, state) => const MeetingsScreen(),
           ),
           GoRoute(
@@ -26,7 +36,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/record',
-        builder: (context, state) => const RecordingScreen(),
+        builder: (context, state) => _withTour(state, const RecordingScreen()),
       ),
       GoRoute(
         path: '/meeting/:id',
@@ -35,8 +45,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/models',
-        builder: (context, state) => const ModelsScreen(),
+        builder: (context, state) => _withTour(state, const ModelsScreen()),
       ),
     ],
   );
+  ref.onDispose(router.dispose);
+  return router;
 });
+
+Widget _withTour(GoRouterState state, Widget child) {
+  final step = TourStep.fromUri(state.uri);
+  if (step == null) return child;
+  return TourOverlay(
+    step: step,
+    fromSettings: state.uri.queryParameters['from'] == 'settings',
+    child: child,
+  );
+}

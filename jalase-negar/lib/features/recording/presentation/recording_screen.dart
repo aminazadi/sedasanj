@@ -10,6 +10,8 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../onboarding/tour_overlay.dart';
+import '../../onboarding/tour_step.dart';
 import '../application/live_engine_provider.dart';
 import '../application/recorder_controller.dart';
 import 'live_transcript_panel.dart';
@@ -167,7 +169,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const _LiveToggle(),
+                    const TourTarget(step: TourStep.live, child: _LiveToggle()),
                     const SizedBox(width: 4),
                     _MicMenu(state: state, controller: controller),
                   ],
@@ -224,11 +226,14 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                                 : const SizedBox.shrink(),
                           RecorderStatus.idle => _ControlColumn(
                             label: 'شروع ضبط',
-                            child: _DiamondButton(
-                              pulse: true,
-                              half: 38,
-                              icon: Icons.mic,
-                              onTap: _prepare,
+                            child: TourTarget(
+                              step: TourStep.recording,
+                              child: _DiamondButton(
+                                pulse: true,
+                                half: 38,
+                                icon: Icons.mic,
+                                onTap: _prepare,
+                              ),
                             ),
                           ),
                           RecorderStatus.saving => const Column(

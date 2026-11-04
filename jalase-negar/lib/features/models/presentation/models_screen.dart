@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/download_manager.dart';
 import '../../../core/models/model_spec.dart';
 import '../../../core/utils/format.dart';
+import '../../onboarding/tour_overlay.dart';
+import '../../onboarding/tour_step.dart';
 import '../application/models_controller.dart';
 import '../../../app/widgets/ss_widgets.dart';
 
@@ -14,7 +16,17 @@ class ModelsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(modelsControllerProvider);
     return Scaffold(
-      appBar: SsAppBar(title: const Text('مدل‌های هوش مصنوعی')),
+      appBar: SsAppBar(
+        title: Padding(
+          padding: Navigator.canPop(context)
+              ? EdgeInsets.zero
+              : const EdgeInsetsDirectional.only(start: 12),
+          child: const TourTarget(
+            step: TourStep.models,
+            child: Text('مدل‌های هوش مصنوعی'),
+          ),
+        ),
+      ),
       body: state.loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

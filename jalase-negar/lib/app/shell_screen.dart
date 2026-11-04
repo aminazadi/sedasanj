@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../features/onboarding/tour_overlay.dart';
+import '../features/onboarding/tour_step.dart';
 import '../features/upload/upload_controller.dart';
 import 'theme.dart';
 import 'widgets/brand_logo.dart';
@@ -266,11 +269,14 @@ class _SsBottomBar extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: _NavTab(
-                    glyph: _Glyph.sessions,
-                    label: 'جلسات',
-                    selected: selectedIndex == 0,
-                    onTap: () => onSelected(0),
+                  child: TourTarget(
+                    step: TourStep.meetings,
+                    child: _NavTab(
+                      glyph: _Glyph.sessions,
+                      label: 'جلسات',
+                      selected: selectedIndex == 0,
+                      onTap: () => onSelected(0),
+                    ),
                   ),
                 ),
                 const SizedBox(width: _slotWidth),
