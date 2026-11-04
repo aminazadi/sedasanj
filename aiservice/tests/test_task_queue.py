@@ -329,6 +329,90 @@ class TaskQueueTests(unittest.TestCase):
             self.assertEqual(1, saved["cancel_requested"])
             self.assertEqual("failed", storage.row("SELECT status FROM usage WHERE id=?", (task["usage_id"],))["status"])
 
+    def test_silero_multipart_contract_queues_known_models_before_installation(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from asr_service.api.routers import tasks
+
+        app = FastAPI()
+        app.include_router(tasks.router)
+        app.dependency_overrides[tasks.authorize] = lambda: tasks.Principal(is_admin=True)
+        with (
+            patch.object(tasks, "MODEL_DIR", storage.MODEL_DIR),
+            patch.object(tasks, "TASK_DIR", self.queue.TASK_DIR),
+            patch.object(tasks, "configured_models", return_value=set()),
+            TestClient(app) as client,
+        ):
+            options = {
+                "models": ["shenava-koochik-v1-5-rnnt", "buzzasr-persian"],
+                "segmenter": "silero_vad", "engine_profile": "telephony",
+                "silero_threshold": "0.4",
+            }
+            files = {"file": ("call.wav", b"RIFF", "audio/wav")}
+            response = client.post("/v1/audio/transcriptions", data=options, files=files)
+            self.assertEqual(response.status_code, 202, response.text)
+            task = self.queue.get_task(response.json()["task_id"])
+            saved = json.loads(task["input_json"])
+            self.assertEqual(saved["engine_profile"], "telephony")
+            self.assertEqual(saved["silero_threshold"], 0.4)
+            self.assertEqual(response.json()["models"], options["models"])
+            invalid = client.post(
+                "/v1/audio/transcriptions",
+                data={**options, "engine_profile": "jalase_negar"}, files=files,
+            )
+            self.assertEqual(invalid.status_code, 422)
+
+    def _silero_task(self):
+        path = Path(self.temp.name) / "call.wav"
+        path.touch()
+        task, _ = self.queue.enqueue(
+            "asr", models=["shenava-koochik-v1-5-rnnt", "buzzasr-persian"],
+            input_data={"segmenter": "silero_vad", "silero_threshold": 0.4},
+            input_path=str(path), response_format="verbose_json",
+        )
+        return task
+
+    def test_silero_claims_cpu_and_keeps_native_span_timestamps(self):
+        task = self._silero_task()
+        manager = self.queue.TaskManager()
+        segments = [{"id": 0, "start": 0.2, "end": 0.5, "text": "سلام",
+                     "timestamp_source": "silero_vad"}]
+        with (
+            patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}),
+            patch.object(self.queue, "transcribe", return_value=("سلام", segments, 1.0, 0.3)) as decode,
+            patch("asr_service.services.speech_segmentation.normalize_transcription") as normalize,
+        ):
+            self.assertIsNone(manager._claim("gpu", "test-device"))
+            claimed = manager._claim("cpu")
+            self.assertEqual(claimed["run"]["device_reason"], "silero_vad_cpu")
+            manager._run(claimed, admitted_slot=object())
+        self.assertEqual(decode.call_args.kwargs["silero_threshold"], 0.4)
+        normalize.assert_not_called()
+        result = self.queue.public_task(self.queue.get_task(task["task_id"]))["result"]
+        self.assertEqual(result["results"][0]["result"]["segments"], segments)
+
+    def test_silero_silence_is_terminal_without_fallback(self):
+        task = self._silero_task()
+        manager = self.queue.TaskManager()
+        with patch.object(self.queue, "transcribe", side_effect=self.queue.NoSpeechDetectedError):
+            manager._run(manager._claim("cpu"), admitted_slot=object())
+        status = self.queue.public_task(self.queue.get_task(task["task_id"]))
+        self.assertEqual((status["status"], status["error_code"]), ("failed", "asr_no_speech"))
+        self.assertEqual(
+            [run["status"] for run in self.queue.get_runs(task["task_id"])],
+            ["failed", "skipped"],
+        )
+
+    def test_unavailable_silero_model_advances_to_fallback(self):
+        task = self._silero_task()
+        manager = self.queue.TaskManager()
+        with patch.object(self.queue, "transcribe", side_effect=self.queue.AsrModelUnavailableError):
+            manager._run(manager._claim("cpu"), admitted_slot=object())
+        saved = self.queue.get_task(task["task_id"])
+        self.assertEqual(saved["status"], "queued")
+        self.assertEqual(manager._claim("cpu")["run"]["model_id"], "buzzasr-persian")
+
     def test_first_success_skips_remaining_failover_models(self):
         calls = []
         self.queue.process_text = lambda model, text, operation, style, *_args: (

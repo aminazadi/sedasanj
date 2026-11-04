@@ -1,4 +1,5 @@
 import io, os, threading
+from pathlib import Path
 from functools import lru_cache
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
@@ -10,7 +11,11 @@ DEVICE = os.getenv("ASR_DEVICE", "cpu")
 
 
 class NoSpeechDetectedError(RuntimeError):
- """Raised only after decoding the original recording without VAD also fails."""
+ """Raised when the selected ASR pipeline cannot recognize any speech."""
+
+
+class AsrModelUnavailableError(RuntimeError):
+ """An ASR artifact must be installed before this model can run."""
 
 
 def _enabled(name, default=False):
@@ -58,7 +63,8 @@ def _load(mid, device_index):
   return WhisperModel(str(root),**options)
  import sherpa_onnx
  if spec.architecture=="nemoCtc":return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(model=str(root/"model.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS)
- return sherpa_onnx.OfflineRecognizer.from_transducer(encoder=str(root/"encoder.int8.onnx"),decoder=str(root/"decoder.int8.onnx"),joiner=str(root/"joiner.int8.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS,model_type="nemo_transducer")
+ from .vad_segment_decoder import CONTRACT
+ return sherpa_onnx.OfflineRecognizer.from_transducer(encoder=str(root/"encoder.int8.onnx"),decoder=str(root/"decoder.int8.onnx"),joiner=str(root/"joiner.int8.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS,model_type="nemo_transducer",decoding_method=CONTRACT["decoding_method"],max_active_paths=CONTRACT["max_active_paths"])
 def load(mid):return _load(mid,gpu_runtime.current_device_index())
 def evict_model(mid):
  _load.cache_clear()
@@ -76,11 +82,48 @@ def _decode_whisper(engine, source, options):
  return [segment for segment in segments if segment["text"]], info
 
 
-def transcribe(path,mid,beam,vad,prompt,on_event=None):
+def supports_silero(mid):
+ spec = CATALOG.get(mid)
+ return spec is not None and spec.architecture in {"nemoCtc", "transducer"}
+
+
+def _transcribe_vad_segments(path, mid, event, threshold):
+ from . import vad_segment_decoder as vsd
+
+ silero = MODEL_DIR / "silero-vad" / "silero_vad.onnx"
+ if not silero.is_file():
+  raise AsrModelUnavailableError("Install silero-vad before using segmenter=silero_vad")
+ event(f"Loading ASR model {mid}")
+ engine = _load(mid, None)
+ event("ASR model is ready")
+
+ def decode(samples):
+  with _engine_lock(mid):
+   stream = engine.create_stream()
+   stream.accept_waveform(vsd.SAMPLE_RATE, samples)
+   engine.decode_stream(stream)
+   return stream.result.text
+
+ event("Decoding audio with Silero VAD segmentation")
+ vad = vsd.SileroVad(str(silero), **({"threshold": threshold} if threshold is not None else {}))
+ try:
+  segments, duration = vsd.decode_file(Path(path), vad, decode, event)
+ except vsd.NoVadSpeechError as exc:
+  raise NoSpeechDetectedError("Silero VAD segmentation produced no text") from exc
+ text = " ".join(segment["text"] for segment in segments)
+ return text, segments, duration, sum(segment["end"] - segment["start"] for segment in segments)
+
+
+def transcribe(path,mid,beam,vad,prompt,on_event=None,*,segmenter=None,silero_threshold=None):
  event=on_event or (lambda _message:None)
  path=str(path)
  if not os.path.isfile(path):raise FileNotFoundError(f"Audio input does not exist: {path}")
- spec=CATALOG[mid];event(f"Loading ASR model {mid}");engine=load(mid);event("ASR model is ready")
+ spec=CATALOG[mid]
+ if segmenter and not (MODEL_DIR / mid / ".complete").is_file():
+  raise AsrModelUnavailableError("Install the selected ASR model before retrying")
+ if segmenter == "silero_vad" and supports_silero(mid):
+  return _transcribe_vad_segments(path, mid, event, silero_threshold)
+ event(f"Loading ASR model {mid}");engine=load(mid);event("ASR model is ready")
  if spec.architecture in {"nemoCtc","transducer"} and gpu_runtime.current_device_index() is not None:
   event("Decoding audio with sherpa-onnx CUDA")
   text,d=engine.transcribe(path);text=normalize(text)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-04 — AMINAZADI
+
+- Added opt-in Silero segmentation for Shenava with streamed VAD frames, per-utterance context and quiet gain, Persian cleanup, deduplication and native span timestamps.
+- Scheduled Silero runs through CPU admission, retained model failover for missing artifacts and made silence terminal with a stable error code.
+
 ## 2026-11-02 — AMINAZADI
 
 - Raised the decision-model install smoke test timeout from 60s to a configurable 600s (DECISION_SMOKE_TIMEOUT_SECONDS) because loading GLiNER2.5 on a slow CPU exceeded 60s, and reported timeouts with an actionable message.

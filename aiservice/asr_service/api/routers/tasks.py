@@ -9,6 +9,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -29,6 +30,7 @@ from asr_service.infrastructure.ninerouter import NineRouterError, configured_mo
 from asr_service.infrastructure.storage import MODEL_DIR, connect, execute, now, row
 from asr_service.services import object_storage
 from asr_service.services.audio_compression import GzipAudioError, decompress_gzip
+from asr_service.services.inference import supports_silero
 from asr_service.services.ingress import (
     HTTP_MAX_BODY_BYTES,
     UploadCapacityError,
@@ -190,7 +192,7 @@ def upload_public(upload, include_part_endpoint=False):
     return output
 
 
-def ordered_models(single, multiple, kind):
+def ordered_models(single, multiple, kind, *, defer_local_availability=False):
     """Validate a backward-compatible single model or an ordered model list."""
     if (single is None) == (multiple is None):
         raise HTTPException(400, "Specify exactly one of model or models")
@@ -207,11 +209,10 @@ def ordered_models(single, multiple, kind):
         raise HTTPException(503, str(error))
     for model_id in values:
         local_model = CATALOG.get(model_id)
-        local_available = (
-            local_model is not None
-            and local_model.kind == kind
-            and (MODEL_DIR / model_id / ".complete").exists()
-        )
+        known_local = local_model is not None and local_model.kind == kind
+        if defer_local_availability and known_local:
+            continue
+        local_available = known_local and (MODEL_DIR / model_id / ".complete").exists()
         if not local_available and model_id not in remote:
             raise HTTPException(
                 400,
@@ -353,6 +354,13 @@ async def transcription(
     diarize: bool = Form(
         False, description="Run local two-speaker diarization for mono audio."
     ),
+    segmenter: str | None = Form(
+        None,
+        pattern="^silero_vad$",
+        description="Optional speech segmenter. silero_vad cuts speech like the Jalase-Negar app (Shenava models only).",
+    ),
+    engine_profile: Literal["jalase_negar", "telephony"] | None = Form(None),
+    silero_threshold: float | None = Form(None, gt=0, lt=1),
     turn_min_seconds: float = Form(0.3, ge=0.1, le=3.0),
     turn_padding_seconds: float = Form(0.2, ge=0.0, le=1.0),
     idempotency_key: str | None = Header(
@@ -364,8 +372,18 @@ async def transcription(
 ):
     """Validate, spool, and enqueue an asynchronous audio transcription."""
 
-    selected_models = ordered_models(model, models, "asr")
+    if (engine_profile and not segmenter) or (
+        silero_threshold is not None and engine_profile != "telephony"
+    ):
+        raise HTTPException(
+            422, "Use engine_profile with silero_vad and set silero_threshold only for telephony"
+        )
+    selected_models = ordered_models(
+        model, models, "asr", defer_local_availability=segmenter == "silero_vad"
+    )
     require_access(principal, "transcription", selected_models)
+    if segmenter and not supports_silero(selected_models[0]):
+        raise HTTPException(422, "Select a Shenava model first when using silero_vad")
     if response_format not in {"json", "verbose_json", "text", "srt", "vtt"}:
         raise HTTPException(400, "Unsupported response_format")
     if audio_encoding not in {"identity", "gzip"}:
@@ -427,6 +445,11 @@ async def transcription(
             "turn_min_seconds": turn_min_seconds,
             "turn_padding_seconds": turn_padding_seconds,
         }
+        if segmenter:
+            input_data.update(
+                segmenter=segmenter, engine_profile=engine_profile,
+                silero_threshold=silero_threshold,
+            )
         if audio_encoding == "gzip":
             input_data.update(
                 audio_encoding="gzip",
@@ -452,6 +475,13 @@ async def transcription(
         if not created:
             Path(temp).unlink(missing_ok=True)
         temp = ""
+        if created and (request_id := request.headers.get("x-request-id")):
+            try:
+                trace_id = uuid.UUID(request_id)
+            except ValueError:
+                pass
+            else:
+                log_task(task["task_id"], f"Platform request {trace_id}", event_type="request")
     except OverflowError:
         raise HTTPException(503, "Task queue is full", headers={"Retry-After": "10"})
     except IdempotencyConflict:

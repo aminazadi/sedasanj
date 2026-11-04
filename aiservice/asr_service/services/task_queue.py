@@ -38,7 +38,7 @@ from asr_service.infrastructure.storage import (
 from . import object_storage
 from . import gpu_runtime
 from .audio_compression import decompress_gzip
-from .inference import NoSpeechDetectedError, transcribe
+from .inference import AsrModelUnavailableError, NoSpeechDetectedError, supports_silero, transcribe
 from .ingress import ensure_spool_capacity
 from .resources import (
     DECISION_MAX_CONCURRENT,
@@ -371,6 +371,10 @@ def public_task(task, include_result=True):
     out["status_url"] = f"/v1/tasks/{task['task_id']}"
     out["result_url"] = (f"/v1/tasks/{task['task_id']}/result"
                          if has_result or task["kind"] == "chat_async" else None)
+    if task["kind"] == "asr" and task["status"] == "failed" and any(
+        run.get("error") == "asr_no_speech" for run in runs
+    ):
+        out["error_code"] = "asr_no_speech"
     if task["kind"] == "chat_async":
         out["status"] = "queued" if task["status"] == "retrying" else task["status"]
         out["error_code"] = ("task_timeout" if task["status"] == "failed" and any(x.get("error") == "task_timeout" for x in runs)
@@ -696,6 +700,9 @@ class TaskManager:
                 self._skip_remaining(task["task_id"], succeeded["position"])
                 self._finish_parent(task["task_id"])
                 continue
+            if any(run["status"] == "failed" and run["error"] == "asr_no_speech" for run in runs):
+                self._finish_parent(task["task_id"])
+                continue
             if any(x["status"] in {"pending", "retrying"} for x in runs):
                 execute(
                     "UPDATE tasks SET status='queued',worker_id=NULL,heartbeat_at=NULL,available_at=?,updated_at=? WHERE task_id=?",
@@ -836,7 +843,15 @@ class TaskManager:
                 model_id = candidate["next_model_id"]
                 device_reason = None
                 route_kind = "asr" if kind == "asr" else "llm" if kind in {"chat", "chat_async", "text"} else kind
-                remote = uses_ninerouter(route_kind, model_id) if route_kind in {"asr", "llm"} else False
+                cpu_silero = (
+                    kind == "asr"
+                    and supports_silero(model_id)
+                    and json.loads(candidate["input_json"] or "{}").get("segmenter") == "silero_vad"
+                )
+                remote = (
+                    not cpu_silero and route_kind in {"asr", "llm"}
+                    and uses_ninerouter(route_kind, model_id)
+                )
                 if remote_only != remote:
                     continue
                 if not gpu_id and not remote:
@@ -852,6 +867,8 @@ class TaskManager:
                         if active >= limit:
                             continue
                 if gpu_id:
+                    if cpu_silero:
+                        continue
                     if gpu_group_model_id and model_id != gpu_group_model_id:
                         continue
                     selected_group = gpu_runtime.split_devices(kind, model_id)
@@ -860,6 +877,8 @@ class TaskManager:
                         continue
                     if gpu_group and {device["uuid"] for device in selected_group} != {device["uuid"] for device in gpu_group}:
                         continue
+                elif cpu_silero:
+                    device_reason = "silero_vad_cpu"
                 elif not remote:
                     settings = gpu_runtime.get_settings()
                     if gpu_runtime.cuda_model_family(kind, model_id) and not gpu_runtime.model_gpu_artifacts_ready(model_id):
@@ -1017,6 +1036,11 @@ class TaskManager:
         if not task or task["status"] in TERMINAL:
             return
         runs = get_runs(task_id)
+        silence = next((run for run in runs if run["error"] == "asr_no_speech"
+                        and run["status"] == "failed"), None)
+        if silence:
+            self._skip_remaining(task_id, silence["position"], reason="asr_no_speech")
+            runs = get_runs(task_id)
         if any(x["status"] not in RUN_TERMINAL for x in runs):
             execute(
                 "UPDATE tasks SET status='queued',available_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=? AND status='running' AND cancel_requested=0",
@@ -1108,23 +1132,23 @@ class TaskManager:
                 dedupe_key=f"task:{task_id}:{status}",
             )
 
-    def _skip_remaining(self, task_id, succeeded_position):
+    def _skip_remaining(self, task_id, position, *, reason="failover_not_needed"):
         stamp = now()
         skipped = rows(
             "SELECT id FROM task_runs WHERE task_id=? AND position>? "
             "AND status IN ('pending','retrying')",
-            (task_id, succeeded_position),
+            (task_id, position),
         )
         execute(
             "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,"
-            "error='failover_not_needed',worker_id=NULL,heartbeat_at=NULL "
+            "error=?,worker_id=NULL,heartbeat_at=NULL "
             "WHERE task_id=? AND position>? AND status IN ('pending','retrying')",
-            (stamp, stamp, task_id, succeeded_position),
+            (stamp, stamp, reason, task_id, position),
         )
         for run in skipped:
             log_run(
                 run["id"],
-                "Skipped because an earlier failover model succeeded",
+                f"Skipped remaining model: {reason}",
                 event_type="skipped",
             )
 
@@ -1155,16 +1179,26 @@ class TaskManager:
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
         try:
+            args = json.loads(task["input_json"] or "{}")
             if task["cancel_requested"]:
                 raise CancelledError()
-            args = json.loads(task["input_json"] or "{}")
             provider = resolve_settings()
             if task["kind"] == "asr":
                 with (nullcontext() if admitted_slot else inference_slot()):
                     local_input, temporary_input = _materialize_input(task)
                     try:
+                        remote_asr = (
+                            not (args.get("segmenter") == "silero_vad" and supports_silero(run["model_id"]))
+                            and uses_ninerouter("asr", run["model_id"])
+                        )
+
+                        def report_asr_event(message):
+                            if (get_task(task_id) or {}).get("cancel_requested"):
+                                raise CancelledError()
+                            log_run(run["id"], message)
+
                         def decode_audio(audio_path):
-                            if uses_ninerouter("asr", run["model_id"]):
+                            if remote_asr:
                                 return NineRouterClient(provider).transcribe(
                                     run["model_id"], audio_path, args.get("prompt")
                                 )
@@ -1174,7 +1208,12 @@ class TaskManager:
                                 args.get("beam_size", 2),
                                 args.get("vad_filter", True),
                                 args.get("prompt"),
-                                lambda message: log_run(run["id"], message),
+                                report_asr_event,
+                                **(
+                                    {"segmenter": args["segmenter"],
+                                     "silero_threshold": args.get("silero_threshold")}
+                                    if args.get("segmenter") else {}
+                                ),
                             )
                             return {
                                 "text": decoded_text,
@@ -1184,7 +1223,7 @@ class TaskManager:
                                 "model": run["model_id"],
                                 "segments": decoded_segments,
                             }
-                        if uses_ninerouter("asr", run["model_id"]):
+                        if remote_asr:
                             log_run(run["id"], "Submitting audio to 9Router")
                         try:
                             result = decode_audio(Path(local_input))
@@ -1199,15 +1238,21 @@ class TaskManager:
                             }
                         from .speech_segmentation import normalize_transcription
 
-                        result = normalize_transcription(
-                            local_input,
-                            result,
-                            decode_audio,
-                            ensure_timestamps=bool(args.get("ensure_timestamps", False)),
-                            diarize=bool(args.get("diarize", False)),
-                            min_seconds=float(args.get("turn_min_seconds", 0.3)),
-                            padding_seconds=float(args.get("turn_padding_seconds", 0.2)),
+                        # VAD-segmented results already carry real span timestamps.
+                        already_segmented = any(
+                            isinstance(row, dict) and row.get("timestamp_source") == "silero_vad"
+                            for row in result.get("segments") or []
                         )
+                        if not already_segmented:
+                            result = normalize_transcription(
+                                local_input,
+                                result,
+                                decode_audio,
+                                ensure_timestamps=bool(args.get("ensure_timestamps", False)),
+                                diarize=bool(args.get("diarize", False)),
+                                min_seconds=float(args.get("turn_min_seconds", 0.3)),
+                                padding_seconds=float(args.get("turn_padding_seconds", 0.2)),
+                            )
                     finally:
                         if temporary_input:
                             Path(local_input).unlink(missing_ok=True)
@@ -1342,10 +1387,21 @@ class TaskManager:
                 current
                 and current["attempts"] < current["max_attempts"]
                 and not (get_task(task_id) or {}).get("cancel_requested")
-                and not isinstance(exc, NoSpeechDetectedError)
+                and not isinstance(exc, (NoSpeechDetectedError, AsrModelUnavailableError))
                 and (not isinstance(exc, NineRouterError) or exc.retryable)
             )
-            error = ("task_timeout" if isinstance(exc, ChatTaskTimeout) else "model_failure") if task["kind"] == "chat_async" else f"{type(exc).__name__}: {exc}"[:4000]
+            silero_no_speech = (
+                task["kind"] == "asr"
+                and isinstance(exc, NoSpeechDetectedError)
+                and args.get("segmenter") == "silero_vad"
+                and supports_silero(run["model_id"])
+            )
+            if silero_no_speech:
+                error = "asr_no_speech"
+            elif task["kind"] == "chat_async":
+                error = "task_timeout" if isinstance(exc, ChatTaskTimeout) else "model_failure"
+            else:
+                error = f"{type(exc).__name__}: {exc}"[:4000]
             log_run(run["id"], f"Attempt failed: {error}" if task["kind"] == "chat_async"
                     else f"Attempt failed: {error}\n{traceback.format_exc(limit=20)[:12000]}", "error", "failed")
             if retry:

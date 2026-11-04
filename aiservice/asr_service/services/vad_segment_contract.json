@@ -1,0 +1,18 @@
+{
+  "sample_rate": 16000,
+  "pre_roll_samples": 12000,
+  "post_roll_samples": 12000,
+  "target_rms": 0.08,
+  "max_gain": 8.0,
+  "threshold": 0.35,
+  "min_silence_seconds": 0.9,
+  "min_speech_seconds": 0.2,
+  "max_speech_seconds": 30.0,
+  "window_size": 512,
+  "duplicate_window_ms": 1200,
+  "duplicate_min_chars": 8,
+  "duplicate_token_ratio": 0.85,
+  "recent_keep": 8,
+  "decoding_method": "greedy_search",
+  "max_active_paths": 4
+}

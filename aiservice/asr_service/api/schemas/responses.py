@@ -436,6 +436,7 @@ class SegmentResponse(ApiSchema):
     avg_logprob: float | None = None
     no_speech_prob: float | None = None
     compression_ratio: float | None = None
+    timestamp_source: str | None = None
 
 
 class TranscriptionResponse(ApiSchema):

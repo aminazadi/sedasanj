@@ -2,6 +2,9 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../models/model_spec.dart';
 
+const String kAsrDecodingMethod = 'greedy_search';
+const int kAsrMaxActivePaths = 4;
+
 /// Builds the offline Shenava recognizer used by both the post-recording
 /// transcriber and the live engine, so the two decode with the same settings.
 sherpa.OfflineRecognizer createOfflineRecognizer({
@@ -39,8 +42,8 @@ sherpa.OfflineRecognizer createOfflineRecognizer({
       // The official Shenava sherpa exports are validated with greedy
       // decoding. It is also substantially faster on mobile CPUs, allowing
       // transcript chunks to reach the UI sooner.
-      decodingMethod: 'greedy_search',
-      maxActivePaths: 4,
+      decodingMethod: kAsrDecodingMethod,
+      maxActivePaths: kAsrMaxActivePaths,
     ),
   );
 }

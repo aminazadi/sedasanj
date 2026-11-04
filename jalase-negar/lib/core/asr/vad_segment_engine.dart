@@ -12,6 +12,11 @@ import 'live_asr_engine.dart';
 import 'live_pipeline.dart';
 import 'recognizer_factory.dart';
 
+const double kSileroThreshold = 0.35;
+const double kSileroMinSilenceSeconds = 0.9;
+const double kSileroMinSpeechSeconds = 0.2;
+const int kSileroWindowSize = 512;
+
 /// Everything the live isolate needs to load its models. Plain data, so it
 /// can cross the isolate boundary.
 class VadSegmentConfig {
@@ -24,7 +29,7 @@ class VadSegmentConfig {
     this.decoderPath,
     this.joinerPath,
     this.numThreads = 2,
-    this.minSilenceSeconds = 0.9,
+    this.minSilenceSeconds = kSileroMinSilenceSeconds,
     this.maxBacklogMs = 60000,
   });
 
@@ -341,10 +346,11 @@ class _SherpaVad implements LiveVad {
         config: sherpa.VadModelConfig(
           sileroVad: sherpa.SileroVadModelConfig(
             model: config.vadModelPath,
-            threshold: 0.35,
+            threshold: kSileroThreshold,
             minSilenceDuration: config.minSilenceSeconds,
-            minSpeechDuration: 0.2,
-            maxSpeechDuration: 30.0,
+            minSpeechDuration: kSileroMinSpeechSeconds,
+            windowSize: kSileroWindowSize,
+            maxSpeechDuration: kAsrWindowSeconds,
           ),
           sampleRate: kAsrSampleRate,
           numThreads: 1,

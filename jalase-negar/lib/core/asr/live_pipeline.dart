@@ -206,7 +206,7 @@ class LivePipeline {
         continue;
       }
       _recent.add((startMs, endMs, key));
-      if (_recent.length > 8) _recent.removeAt(0);
+      if (_recent.length > kAsrRecentKeep) _recent.removeAt(0);
       events.add(LiveUtterance(startMs: startMs, endMs: endMs, text: text));
     }
     return events;

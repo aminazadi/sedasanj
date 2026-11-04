@@ -10,6 +10,10 @@ const double kMaxQuietGain = 8.0;
 const int kAsrPreRollSamples = (kAsrSampleRate * 3) ~/ 4;
 const int kAsrPostRollSamples = (kAsrSampleRate * 3) ~/ 4;
 const int kAsrHistorySamples = kAsrSampleRate * 3;
+const int kAsrDuplicateWindowMs = 1200;
+const int kAsrDuplicateMinChars = 8;
+const double kAsrDuplicateTokenRatio = 0.85;
+const int kAsrRecentKeep = 8;
 
 /// Segmentation name of the draft written while recording: Silero VAD fed
 /// live, gain applied per utterance, no coverage pass and no denoiser.
@@ -46,11 +50,13 @@ bool isDuplicateTranscript({
       .where((token) => token.isNotEmpty)
       .toSet();
   return emitted.any((item) {
-    final overlaps = item.$1 < endMs + 1200 && item.$2 > startMs - 1200;
+    final overlaps =
+        item.$1 < endMs + kAsrDuplicateWindowMs &&
+        item.$2 > startMs - kAsrDuplicateWindowMs;
     if (!overlaps) return false;
     final previous = item.$3;
     if (previous == candidate) return true;
-    if (candidate.length >= 8 &&
+    if (candidate.length >= kAsrDuplicateMinChars &&
         (previous.contains(candidate) || candidate.contains(previous))) {
       return true;
     }
@@ -61,7 +67,7 @@ bool isDuplicateTranscript({
     if (candidateTokens.length < 3 || previousTokens.length < 3) return false;
     final shared = candidateTokens.intersection(previousTokens).length;
     final shorter = math.min(candidateTokens.length, previousTokens.length);
-    return shared / shorter >= 0.85;
+    return shared / shorter >= kAsrDuplicateTokenRatio;
   });
 }
 
