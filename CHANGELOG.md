@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Added Jalase-Negar Android release publishing and in-app update suggestions: a super-admin «نسخه‌های جلسه‌نگار» panel page (draft, notes, publish and revoke with password/TOTP confirmation, audit trail) over `/v1/admin/jalase-negar/releases`; APK checks with aapt2/apksigner (package, production certificate from `JALASE_NEGAR_APK_CERT_SHA256`, no debug/test/split, strictly higher versionCode serialised by a lock); stable codes `apk_invalid`, `apk_inspection_unavailable`, `release_version_conflict`, `release_file_unavailable` with help articles (migrations 0097/0098); a public no-store `GET /v1/jalase-negar/android/update` and range-capable download; orphan-file sweeper and a download-failure alert; and an app updater module that checks `https://api.sedasanj.ir` on every cold start without pairing, shows a Persian dialog («دریافت نسخه»/«بعداً») only on the home screen after the intro and tour, and adds «بررسی به‌روزرسانی» in Settings. Public release stays blocked until the distributed APK's certificate is confirmed as the production key.
 - Fixed Jalase-Negar recording completion so upload preparation failures no longer block local saving or opening the meeting details, and replaced raw finalization errors with short Persian messages.
 - Added a first-run interactive Jalase-Negar tour with live control highlights, step navigation, locally remembered dismissal, and replay from Settings.
 - Shortened the Jalase-Negar final recording cue to 800 ms and showed a readiness message during playback.

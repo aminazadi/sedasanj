@@ -11,6 +11,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
 import '../../recording/application/live_engine_provider.dart';
+import '../../updates/presentation/update_check_card.dart';
 import '../../upload/upload_controller.dart';
 import '../application/connection_controller.dart';
 import 'meeting_upload_card.dart';
@@ -56,6 +57,8 @@ class SettingsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         const _SendTranscriptCard(),
+        const SizedBox(height: 12),
+        const UpdateCheckCard(),
         if (state?.error != null) ...[
           const SizedBox(height: 12),
           SsCard(

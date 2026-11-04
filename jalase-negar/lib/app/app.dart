@@ -3,6 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
+import '../features/updates/application/update_controller.dart';
+import '../features/updates/presentation/update_prompt_host.dart';
 import 'router.dart';
 import 'splash_screen.dart';
 import 'theme.dart';
@@ -17,6 +19,15 @@ class JalaseNegarApp extends ConsumerStatefulWidget {
 
 class _JalaseNegarAppState extends ConsumerState<JalaseNegarApp> {
   bool _splashDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fire and forget: the splash, recording and sign-in never wait for the network.
+    Future<void>.microtask(
+      () => ref.read(updateControllerProvider.notifier).checkOnLaunch(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +75,8 @@ class _RouterApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: buildAppTheme(),
-      builder: (context, child) => SsToastHost(child: child!),
+      builder: (context, child) =>
+          SsToastHost(child: UpdatePromptHost(child: child!)),
       routerConfig: ref.watch(routerProvider),
     );
   }
