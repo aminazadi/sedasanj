@@ -7,9 +7,10 @@ import '../data/update_environment.dart';
 
 final updateClientProvider = Provider<UpdateClient>((ref) => UpdateClient());
 
-final updateEnvironmentProvider = Provider<Future<UpdateEnvironment?> Function()>(
-  (ref) => readUpdateEnvironment,
-);
+final updateEnvironmentProvider =
+    Provider<Future<UpdateEnvironment?> Function()>(
+      (ref) => readUpdateEnvironment,
+    );
 
 /// Opens a download link in the external browser; false when none could open it.
 final updateLauncherProvider = Provider<Future<bool> Function(Uri)>(
@@ -117,7 +118,8 @@ class UpdateController extends Notifier<UpdateState> {
       }
       final offer = await ref.read(updateClientProvider).check(environment);
       // Only strictly newer builds are ever shown, whatever the server says.
-      final usable = offer != null && offer.versionCode > environment.versionCode
+      final usable =
+          offer != null && offer.versionCode > environment.versionCode
           ? offer
           : null;
       state = state.copyWith(
@@ -138,7 +140,8 @@ class UpdateController extends Notifier<UpdateState> {
   /// message when the browser could not be opened.
   Future<String?> download() async {
     final offer = state.offer;
-    if (offer == null) return 'پیشنهاد به‌روزرسانی دیگر معتبر نیست؛ دوباره بررسی کنید.';
+    if (offer == null)
+      return 'پیشنهاد به‌روزرسانی دیگر معتبر نیست؛ دوباره بررسی کنید.';
     try {
       final opened = await ref.read(updateLauncherProvider)(offer.downloadUri);
       if (opened) return null;

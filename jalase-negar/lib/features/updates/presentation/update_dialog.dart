@@ -68,7 +68,8 @@ class UpdateDialog extends ConsumerWidget {
                 children: [
                   _VersionRow(
                     label: 'نسخه‌ی نصب‌شده',
-                    value: '${installed.versionName} (${installed.versionCode})',
+                    value:
+                        '${installed.versionName} (${installed.versionCode})',
                   ),
                   _VersionRow(
                     label: 'نسخه‌ی پیشنهادی',
@@ -150,4 +151,3 @@ class _VersionRow extends StatelessWidget {
     ),
   );
 }
-
