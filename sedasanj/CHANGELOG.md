@@ -3,6 +3,7 @@
 - Added encrypted organization archive downloads and additive cross-organization import with relationship remapping, member review, and media recovery.
 - Added daily and weekly organization backups with FTP and FTPS delivery, connection testing, and persistent run history.
 - Redesigned the organization data tab with responsive backup, import, and history panels.
+- Displayed the next automatic backup in the organization time zone and refreshed it after the scheduled time.
 
 ## 2026-11-04 — AMINAZADI
 

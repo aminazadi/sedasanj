@@ -78,6 +78,12 @@ function fileSize(bytes: number) {
   return `${fmt.decimal(bytes / 1024 ** power, 1)} ${units[power]}`;
 }
 
+function scheduledTime(iso: string, timezone: string) {
+  return new Date(iso).toLocaleString("fa-IR-u-ca-persian", {
+    dateStyle: "short", timeStyle: "short", timeZone: timezone,
+  });
+}
+
 function recoveryKey() {
   const bytes = window.crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -214,6 +220,19 @@ export default function OrganizationData() {
   }, []);
 
   useEffect(() => { void loadSettings(); }, [loadSettings]);
+
+  const nextRunAt = settings?.next_run_at;
+  useEffect(() => {
+    if (!nextRunAt) return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      if (document.hidden || Date.now() < Date.parse(nextRunAt)) return;
+      void request<Settings>(`${API}/backup/settings`).then((value) => {
+        if (!stopped) setSettings(value);
+      }).catch(() => undefined);
+    }, 30_000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [nextRunAt]);
 
   useEffect(() => {
     let stopped = false;
@@ -427,7 +446,7 @@ export default function OrganizationData() {
             </select></label>}
           </div>
           <div className="org-data-muted">منطقهٔ زمانی <bdi>{settings.timezone}</bdi>
-            {settings.next_run_at && <> · اجرای بعدی <bdi>{fmt.dateTime(settings.next_run_at)}</bdi></>}
+            {settings.next_run_at && <> · اجرای بعدی <bdi>{scheduledTime(settings.next_run_at, settings.timezone)}</bdi></>}
           </div>
         </div>
         <div className="org-data-schedule">
