@@ -32,6 +32,12 @@ AUTH_MARKERS = (
 )
 
 
+ASR_NO_SPEECH_DETAIL = (
+    "در این فایل گفتاری شناسایی نشد. فایل را پخش کنید و اگر مکالمه شنیده می‌شود، "
+    "کد خطا را برای پشتیبانی بفرستید."
+)
+
+
 class ProviderError(RuntimeError):
     """Typed failure from VoiceSanj / OpenAI-compatible ASR or LLM HTTP APIs."""
 
@@ -224,6 +230,7 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
     if any(
         marker in text.lower()
         for marker in (
+            "asr_no_speech",
             "nospeechdetected",
             "no speech",
             "produced no text",
@@ -231,8 +238,7 @@ def classify_failure(exc: BaseException, *, kind: str) -> tuple[str, str, bool |
     ):
         return (
             f"{kind}_no_speech",
-            "در این فایل گفتاری شناسایی نشد (سکوت، صدای بسیار ضعیف یا فقط نوار انتظار). "
-            "تلاش دوباره نتیجه را عوض نمی‌کند.",
+            ASR_NO_SPEECH_DETAIL,
             False,
         )
     if any(

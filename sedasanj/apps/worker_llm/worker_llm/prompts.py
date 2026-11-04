@@ -9,7 +9,12 @@ INTERNAL_CALL_NOTICE = (
 
 
 def with_call_context(text: str, direction: str | None) -> str:
-    """Prefix the transcript with a notice when the call is between two colleagues."""
+    """Supply speaker context for new transcripts and admin-customized prompts."""
+    if "[speaker_" in text:
+        text = (
+            "[یادداشت سامانه: برچسب‌های speaker_1 و speaker_2 شناسه گوینده یا کانال هستند. "
+            "نقش مشتری یا اپراتور را فقط با شواهد مکالمه تعیین کن.]\n\n" + text
+        )
     if direction == "internal":
         return f"{INTERNAL_CALL_NOTICE}\n\n{text}"
     return text

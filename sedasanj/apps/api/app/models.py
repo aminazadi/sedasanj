@@ -83,6 +83,12 @@ class Tenant(Base):
         Integer, nullable=False, server_default=text("30")
     )
     max_operators: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("5"))
+    call_asr_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'inherit'")
+    )
+    call_asr_profile: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'inherit'")
+    )
     operator_ranking_visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -591,6 +597,7 @@ class AsrTranscriptRevision(Base):
     asr_model: Mapped[str | None] = mapped_column(Text)
     asr_version: Mapped[str | None] = mapped_column(Text)
     ai_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    asr_identity: Mapped[str | None] = mapped_column(Text)
     speaker_mode: Mapped[str | None] = mapped_column(Text)
     timestamp_source: Mapped[str | None] = mapped_column(Text)
     metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

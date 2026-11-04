@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings, normalize_api_key
 from app.db import get_sessionmaker
-from app.models import KpiConfiguration, PlatformSetting
+from app.models import KpiConfiguration, PlatformSetting, Tenant
 from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
 from app.services.platform_secrets import decrypt_secret, secret_storage_error
 from app.services.provider_errors import ProviderError
@@ -34,6 +34,10 @@ OVERRIDE_KEYS = (
     "asr_provider",
     "asr_base_url",
     "asr_api_key",
+    "call_asr_mode",
+    "call_asr_profile",
+    "call_asr_telephony_threshold",
+    "call_asr_fallback_models",
     "audio_preprocessing_enabled",
     "audio_denoiser_model",
     "audio_enhancement_model",
@@ -345,6 +349,13 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "asr_provider": "voicesanj",
         "asr_base_url": settings.voicesanj_base_url,
         "asr_api_key": "",
+        "call_asr_mode": settings.call_asr_mode,
+        "call_asr_profile": settings.call_asr_profile,
+        "call_asr_telephony_threshold": (
+            str(settings.call_asr_telephony_threshold)
+            if settings.call_asr_telephony_threshold is not None else ""
+        ),
+        "call_asr_fallback_models": json.dumps(settings.call_asr_fallback_models),
         "audio_preprocessing_enabled": str(settings.audio_preprocessing_enabled).lower(),
         "audio_denoiser_model": settings.audio_denoiser_model,
         "audio_enhancement_model": settings.audio_enhancement_model,
@@ -514,6 +525,13 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "asr_api_key_configured": bool(asr_api_key.strip()),
         "asr_api_key_hint": mask_api_key(asr_api_key),
         "local_asr_available": get_settings().asr_engine not in {"voicesanj", "whisper"},
+        "call_asr_mode": values["call_asr_mode"],
+        "call_asr_profile": values["call_asr_profile"],
+        "call_asr_telephony_threshold": (
+            float(values["call_asr_telephony_threshold"])
+            if values["call_asr_telephony_threshold"] else None
+        ),
+        "call_asr_fallback_models": _string_list(values["call_asr_fallback_models"]),
         "audio_preprocessing_enabled": _as_bool(values["audio_preprocessing_enabled"]),
         "audio_denoiser_model": values["audio_denoiser_model"],
         "audio_enhancement_model": values["audio_enhancement_model"],
@@ -609,31 +627,38 @@ async def resolve_provider_settings(
     *,
     capability: str | None = None,
     provider_override: str | None = None,
+    call_tenant: Tenant | None = None,
 ) -> Settings:
     """Env settings overlaid with admin platform overrides for provider calls."""
     base = get_settings()
     overrides = await effective_models(session)
+    call_mode = overrides["call_asr_mode"]
+    call_profile = overrides["call_asr_profile"]
+    if call_tenant is not None:
+        if call_tenant.call_asr_mode not in {None, "inherit"}:
+            call_mode = call_tenant.call_asr_mode
+        if call_tenant.call_asr_profile not in {None, "inherit"}:
+            call_profile = call_tenant.call_asr_profile
     api_key = normalize_api_key(overrides.get("api_key")) or None
     asr_api_key = normalize_api_key(overrides.get("asr_api_key")) or None
     decision_api_key = normalize_api_key(overrides.get("decision_api_key")) or None
     embedding_api_key = normalize_api_key(overrides.get("embedding_api_key")) or None
     correction_audio_models = _string_list(overrides["correction_audio_models"])
     correction_text_models = _string_list(overrides["correction_text_models"])
-    use_correction_audio = _as_bool(overrides["correction_enabled"]) and overrides[
-        "correction_mode"
-    ] in {"audio_only", "two_stage"}
-    active_asr_model = (
-        correction_audio_models[0]
-        if use_correction_audio and correction_audio_models
-        else overrides["asr_model"]
-    )
     asr_engine = "voicesanj"
     runtime = base.model_copy(
         update={
             "asr_engine": asr_engine,
             "asr_model_name": overrides["asr_model"],
             "whisper_model": overrides["asr_model"],
-            "voicesanj_asr_model": active_asr_model,
+            "voicesanj_asr_model": overrides["asr_model"],
+            "call_asr_mode": call_mode,
+            "call_asr_profile": call_profile,
+            "call_asr_telephony_threshold": (
+                float(overrides["call_asr_telephony_threshold"])
+                if overrides["call_asr_telephony_threshold"] else None
+            ),
+            "call_asr_fallback_models": _string_list(overrides["call_asr_fallback_models"]),
             "llm_client": "voicesanj",
             "llm_model": overrides["llm_model"],
             "voicesanj_llm_model": overrides["llm_model"],
@@ -735,7 +760,7 @@ async def resolve_provider_settings(
         return runtime
     provider_key = "asr_ai_provider" if capability == "asr" else f"{capability}_provider"
     provider = provider_override or overrides.get(provider_key, "aiservice")
-    if provider != "ninerouter_direct":
+    if provider != "ninerouter_direct" or (capability == "asr" and call_mode == "vad_segment"):
         return runtime.model_copy(update={"active_ai_provider": "aiservice"})
     if overrides.get("ninerouter_configuration_error"):
         raise ProviderError(

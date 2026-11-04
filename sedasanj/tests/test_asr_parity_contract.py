@@ -27,8 +27,9 @@ from app.services.audio import (
     AudioPreprocessingConfig,
     compute_gain_db,
 )
+from app.services.call_speakers import render_turns
 from worker_asr.engine import AsrSegment
-from worker_asr.main import CHANNEL_LABELS, TURN_MERGE_GAP_MS, consolidate_segments
+from worker_asr.main import TURN_MERGE_GAP_MS, consolidate_segments
 
 FIXTURES = Path(__file__).parent / "fixtures" / "asr_parity"
 
@@ -62,7 +63,10 @@ def test_platform_defaults_match_the_contract() -> None:
     assert fields["asr_language"].default == "fa"
     assert fields["turn_merge_gap_ms"].default == CONSTANTS["merge"]["turn_merge_gap_ms"]
     assert CONSTANTS["merge"]["turn_merge_gap_ms"] == TURN_MERGE_GAP_MS
-    assert {int(k): v for k, v in CONSTANTS["channel_labels"].items()} == CHANNEL_LABELS
+    for channel, label in CONSTANTS["channel_labels"].items():
+        assert render_turns([(int(channel), 0, "سلام")], "inbound", "dual_channel") == (
+            f"[{label} 00:00] سلام"
+        )
 
 
 def test_ingest_accepts_only_contract_formats() -> None:

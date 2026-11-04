@@ -969,6 +969,9 @@ export default function CallDetailPage() {
           <h2 className="text-sm font-bold">علت توقف پردازش</h2>
           {call.error_code ? <p className="mt-1 text-xs font-semibold">کد خطا: {call.error_code}</p> : null}
           {call.error_detail ? <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-6" dir="auto">{call.error_detail}</p> : null}
+          {call.error_code === "asr_no_speech" ? (
+            <Link className="mt-2 inline-block text-xs underline" to="/help/errors/asr_no_speech">راهنمای تشخیص گفتار</Link>
+          ) : null}
         </section>
       ) : null}
 
@@ -1236,6 +1239,8 @@ export default function CallDetailPage() {
                   ]}
                   details={displayRevision ? [
                     { term: "مدل", value: displayRevision.asr_model ?? "نامشخص", ltr: true },
+                    ...(displayRevision.asr_identity ? [{ term: "هویت موتور", value: displayRevision.asr_identity, ltr: true }] : []),
+                    ...(displayRevision.error_detail ? [{ term: "علت توقف", value: displayRevision.error_detail }] : []),
                     { term: "زمان‌بندی", value: displayRevision.timestamp_source ?? "نامشخص", ltr: true },
                     { term: "ایجاد", value: fmt.dateTime(displayRevision.created_at) },
                     { term: "تصحیح", value: displayRevision.correction_status ? ({ queued: "در صف", running: "در حال اجرا", validating: "در حال اعتبارسنجی", succeeded: "موفق", failed: "ناموفق" } as const)[displayRevision.correction_status] : "انجام نشده" },

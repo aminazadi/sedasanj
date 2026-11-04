@@ -15,6 +15,7 @@ from app.metrics import jobs_failed_retryable, oldest_job_seconds, provider_task
 from app.models import (
     AnalysisRun,
     AnalysisStep,
+    AsrTranscriptRevision,
     AudioObject,
     Call,
     CreditGrant,
@@ -307,11 +308,11 @@ async def _prepare_tenant_renewals(tenant_id: UUID, now: datetime) -> int:
 def reanalysis_recovery_context(
     call: Call, latest_run: AnalysisRun | None, run_count: int
 ) -> tuple[bool, str | None]:
-    if call.status != "analyzing":
+    if call.status not in {"transcribed", "analyzing"}:
         return False, None
     metadata = latest_run.result if latest_run is not None and latest_run.result else {}
     tagged = metadata.get("_reanalysis") is True
-    legacy = "_reanalysis" not in metadata and run_count > 1
+    legacy = call.status == "analyzing" and "_reanalysis" not in metadata and run_count > 1
     if not (tagged or legacy):
         return False, None
     previous = metadata.get("_previous_status")
@@ -459,6 +460,23 @@ async def reconcile_stuck_calls() -> int:
             if recovered_call is None:
                 continue
             analysis_run_id: UUID | None = None
+            asr_revision_id: UUID | None = None
+            if kind == "asr":
+                revision = await session.scalar(
+                    select(AsrTranscriptRevision)
+                    .where(
+                        AsrTranscriptRevision.call_id == call_id,
+                        AsrTranscriptRevision.tenant_id == tenant_id,
+                        AsrTranscriptRevision.status.in_(("queued", "running")),
+                    )
+                    .order_by(AsrTranscriptRevision.created_at.desc())
+                    .limit(1)
+                )
+                if revision is not None:
+                    asr_revision_id = revision.id
+                    previous_status = str(
+                        (revision.metrics or {}).get("previous_status") or "complete"
+                    )
             if kind == "emotion":
                 analysis_run_id = (
                     await session.execute(
@@ -491,6 +509,8 @@ async def reconcile_stuck_calls() -> int:
                 call_id=call_id,
                 kind=kind,
                 analysis_run_id=analysis_run_id,
+                asr_revision_id=asr_revision_id,
+                retranscription=asr_revision_id is not None,
                 recovery=True,
                 reanalysis=reanalysis,
                 previous_status=previous_status,

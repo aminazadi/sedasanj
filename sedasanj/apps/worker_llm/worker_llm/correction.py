@@ -83,6 +83,14 @@ async def _stage_analysis(
             message="تحلیل متن تصحیح‌شده در صف پردازش قرار گرفت",
             step_key=f"{job.id}:queued:0",
         )
+        previous_status = (revision.metrics or {}).get("previous_status")
+        reanalysis = revision.trigger == "manual" or isinstance(previous_status, str)
+        if reanalysis:
+            run.result = {
+                **(run.result or {}),
+                "_reanalysis": True,
+                "_previous_status": previous_status or "complete",
+            }
         return await outbox.stage_job(
             session,
             job_id=job.id,
@@ -90,10 +98,8 @@ async def _stage_analysis(
             call_id=call_id,
             kind="llm",
             analysis_run_id=run.id,
-            reanalysis=revision.trigger == "manual",
-            previous_status=(revision.metrics or {}).get("previous_status")
-            if revision.trigger == "manual"
-            else None,
+            reanalysis=reanalysis,
+            previous_status=previous_status if reanalysis else None,
         )
 
 
@@ -108,7 +114,10 @@ async def _fail(
             capability="correction",
             provider_override=revision.ai_provider if revision is not None else None,
         )
-        is_manual = revision is not None and revision.trigger == "manual"
+        previous_status = (revision.metrics or {}).get("previous_status") if revision else None
+        reanalysis = revision is not None and (
+            revision.trigger == "manual" or isinstance(previous_status, str)
+        )
         if revision is not None:
             revision.error_code = code
             revision.error_detail = detail[:2000]
@@ -117,7 +126,7 @@ async def _fail(
         call_id=call_id,
         kind="correction",
         correction_run_id=revision_id,
-        reanalysis=is_manual,
+        reanalysis=reanalysis,
         error_code=code,
         error_detail=detail,
         retryable=retryable,
@@ -129,7 +138,7 @@ async def _fail(
             if revision is not None:
                 revision.status = "failed"
                 revision.completed_at = datetime.now(UTC)
-                if revision.trigger == "manual":
+                if reanalysis:
                     call = await session.get(Call, call_id)
                     if call is not None:
                         call.status = str(

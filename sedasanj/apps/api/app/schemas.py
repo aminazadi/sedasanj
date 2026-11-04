@@ -473,6 +473,7 @@ class AsrTranscriptRevisionOut(BaseModel):
     full_text: str | None = None
     asr_model: str | None = None
     asr_version: str | None = None
+    asr_identity: str | None = None
     speaker_mode: str | None = None
     timestamp_source: str | None = None
     error_code: str | None = None
@@ -1192,6 +1193,8 @@ class TenantUpdate(BaseModel):
     audio_retention_days: int | None = None
     timezone: str | None = None
     max_operators: int | None = Field(default=None, ge=0)
+    call_asr_mode: Literal["inherit", "legacy", "vad_segment"] | None = None
+    call_asr_profile: Literal["inherit", "jalase_negar", "telephony"] | None = None
 
 
 class TenantOut(BaseModel):
@@ -1206,6 +1209,8 @@ class TenantOut(BaseModel):
     max_operators: int
     created_at: datetime
     price_per_minute_toman: int = 0
+    call_asr_mode: Literal["inherit", "legacy", "vad_segment"] = "inherit"
+    call_asr_profile: Literal["inherit", "jalase_negar", "telephony"] = "inherit"
 
 
 class TenantDetail(TenantOut):
@@ -1334,6 +1339,10 @@ class SettingsUpdate(BaseModel):
     assistant_export_ttl_minutes: int | None = Field(default=None, ge=1, le=1440)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
+    call_asr_mode: Literal["legacy", "vad_segment"] | None = None
+    call_asr_profile: Literal["jalase_negar", "telephony"] | None = None
+    call_asr_telephony_threshold: float | None = Field(default=None, gt=0, lt=1)
+    call_asr_fallback_models: list[str] | None = Field(default=None, max_length=4)
     correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
     correction_text_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
     correction_prompt: str | None = Field(default=None, min_length=20, max_length=20_000)

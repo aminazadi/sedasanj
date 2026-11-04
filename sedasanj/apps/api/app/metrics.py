@@ -42,6 +42,17 @@ llm_provider_wait_seconds = Histogram(
 )
 provider_tasks = Gauge("cbi_provider_tasks", "Provider analysis steps", ["status"])
 asr_seconds_processed = Counter("cbi_asr_seconds_processed", "Audio seconds transcribed")
+asr_call_attempts = Counter(
+    "cbi_asr_call_attempts_total",
+    "Call transcription attempts by mode and result",
+    ["mode", "code"],
+)
+asr_call_realtime_factor = Histogram(
+    "cbi_asr_call_realtime_factor",
+    "Track preparation, provider queue and inference seconds divided by call duration",
+    ["mode"],
+    buckets=(0.1, 0.25, 0.5, 1, 2, 4, 8, 16),
+)
 llm_tokens_per_second = Histogram("cbi_llm_tokens_per_second", "Observed llama-server throughput")
 llm_json_failures_total = Counter(
     "cbi_llm_json_failures_total", "LLM outputs that failed schema validation", ["stage"]

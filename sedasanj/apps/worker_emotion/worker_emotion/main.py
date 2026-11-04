@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.db import dispose_engine, resolve_tenant_for_call, session_scope
 from app.logging import configure_logging, log_context
 from app.metrics import start_metrics_server
-from app.models import AudioObject, Call, CallInsight, Job, Transcript, Utterance
+from app.models import AnalysisRun, AudioObject, Call, CallInsight, Job, Transcript, Utterance
 from app.schemas import DualPartySentiment, PartySentiment, SentimentPoint, SentimentWindow
 from app.sentiment import merge_sentiment_profile
 from app.services import outbox, pipeline, processing_events, progress, queue
@@ -193,6 +193,12 @@ async def _stage_llm(
     async with session_scope(tenant_id) as session:
         runtime = await resolve_provider_settings(session)
         call = await session.get(Call, call_id)
+        run = await session.get(AnalysisRun, analysis_run_id)
+        metadata = (run.result or {}) if run is not None else {}
+        reanalysis = metadata.get("_reanalysis") is True
+        previous_status = (
+            str(metadata.get("_previous_status") or "complete") if reanalysis else None
+        )
         if runtime.correction_enabled and call is not None:
             transcript = await session.get(Transcript, call_id)
             if transcript is None:
@@ -203,6 +209,7 @@ async def _stage_llm(
                 transcript=transcript,
                 runtime=runtime,
                 trigger="automatic",
+                reanalysis_previous_status=previous_status,
             )
             return outbox_id if created else None
         active = (
@@ -253,6 +260,8 @@ async def _stage_llm(
             call_id=call_id,
             kind="llm",
             analysis_run_id=analysis_run_id,
+            reanalysis=reanalysis,
+            previous_status=previous_status,
         )
 
 

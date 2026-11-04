@@ -76,6 +76,26 @@ groups:
         annotations:
           summary: "oldest queued LLM job is above 60 seconds"
 
+      - alert: CallSileroAsrFailures
+        expr: sum(increase(cbi_asr_call_attempts_total{mode="vad_segment",code!="succeeded",code!="asr_no_speech"}[15m])) >= 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "five or more Silero call ASR errors in fifteen minutes"
+          runbook: "docs/runbook.md#call-asr-silero"
+
+      - alert: CallSileroNoSpeechHigh
+        expr: |
+          sum(increase(cbi_asr_call_attempts_total{mode="vad_segment",code="asr_no_speech"}[15m])) >= 5
+          and
+          sum(increase(cbi_asr_call_attempts_total{mode="vad_segment",code="asr_no_speech"}[15m]))
+          > 0.20 * sum(increase(cbi_asr_call_attempts_total{mode="vad_segment"}[15m]))
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "more than 20 percent of Silero call ASR attempts detected no speech"
+          runbook: "docs/runbook.md#call-asr-silero"
+
       - alert: DurableOutboxDelayed
         expr: cbi_outbox_pending > 0 and cbi_outbox_oldest_seconds > 30
         for: 2m
@@ -160,6 +180,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "oldest queued ASR job is older than 15 minutes"
+          runbook: "docs/runbook.md#call-asr-silero"
 
       - alert: OldestNotifyJobDelayed
         expr: cbi_oldest_job_seconds{kind="notify"} > 900

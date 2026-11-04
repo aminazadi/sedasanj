@@ -65,6 +65,7 @@ from app.services import (
     audit,
     billing,
     call_export,
+    call_retranscription,
     call_scope,
     contacts,
     entitlements,
@@ -528,9 +529,12 @@ async def _load_call(
     call_id: UUID,
     tenant_id: UUID,
     principal: Principal | None = None,
+    *,
+    lock: bool = False,
 ) -> Call:
+    statement = select(Call).where(Call.id == call_id, Call.tenant_id == tenant_id)
     call = (
-        await session.execute(select(Call).where(Call.id == call_id, Call.tenant_id == tenant_id))
+        await session.execute(statement.with_for_update() if lock else statement)
     ).scalar_one_or_none()
     if call is None:
         raise ApiError("not_found", "call not found")
@@ -981,90 +985,23 @@ async def retranscribe_call(
                 .with_for_update()
             )
         ).scalar_one()
-        transcript = await session.get(Transcript, call_id)
-        if transcript is None:
-            raise ApiError("invalid_request", "برای این تماس هنوز نسخه متنی وجود ندارد.")
-        audio = (
-            await session.execute(
-                select(AudioObject).where(
-                    AudioObject.id == call.audio_id,
-                    AudioObject.tenant_id == tenant_id,
-                    AudioObject.deleted_at.is_(None),
-                )
-            )
-        ).scalar_one_or_none()
-        if audio is None:
-            raise ApiError("not_found", "فایل صوتی این تماس در دسترس نیست.")
-        active = (
-            await session.execute(
-                select(AsrTranscriptRevision.id).where(
-                    AsrTranscriptRevision.call_id == call_id,
-                    AsrTranscriptRevision.tenant_id == tenant_id,
-                    AsrTranscriptRevision.status.in_(("queued", "running")),
-                )
-            )
-        ).scalar_one_or_none()
-        if active is not None:
-            raise ApiError("conflict_idempotency", "بازپردازش دیگری برای این تماس فعال است.")
-        previous_status = call.status
-        models = await effective_models(session)
-        revision = AsrTranscriptRevision(
-            call_id=call_id,
-            tenant_id=tenant_id,
-            status="queued",
-            trigger="manual",
-            metrics={"previous_status": previous_status},
-            ai_provider=models["asr_ai_provider"],
-            asr_model=capability_model(models, "asr"),
-        )
-        session.add(revision)
-        job = Job(
-            tenant_id=tenant_id,
-            call_id=call_id,
-            kind="asr",
-            status="queued",
-            attempt=0,
-            run_after=datetime.now(UTC),
-            ai_provider=models["asr_ai_provider"],
-            ai_model=capability_model(models, "asr"),
-        )
-        session.add(job)
-        await session.flush()
-        await processing_events.record(
-            session,
-            tenant_id=tenant_id,
-            call_id=call_id,
-            kind="asr",
-            status="queued",
-            progress_pct=5,
-            message="ساخت نسخه جدید متن بدون کسر اعتبار در صف قرار گرفت",
-            step_key=f"{job.id}:queued:0",
-        )
+        staged = await call_retranscription.stage(session, call)
+        assert staged is not None
+        revision_id, outbox_id = staged
         await audit.record(
             session,
             actor_type="user",
             actor_id=principal.id,
             tenant_id=tenant_id,
             action="call.retranscribe",
-            payload={"call_id": str(call_id), "asr_revision_id": str(revision.id)},
+            payload={"call_id": str(call_id), "asr_revision_id": str(revision_id)},
             ip=client_ip(request),
-        )
-        outbox_id = await outbox.stage_job(
-            session,
-            job_id=job.id,
-            tenant_id=tenant_id,
-            call_id=call_id,
-            kind="asr",
-            recovery=True,
-            retranscription=True,
-            previous_status=previous_status,
-            asr_revision_id=revision.id,
         )
     try:
         await outbox.dispatch_one(outbox_id)
     except Exception:
         logger.exception("immediate retranscription dispatch failed; durable dispatcher will retry")
-    return {"status": "queued", "asr_revision_id": str(revision.id)}
+    return {"status": "queued", "asr_revision_id": str(revision_id)}
 
 
 @router.get(
@@ -1153,6 +1090,7 @@ async def transcript_versions(
                 full_text=revision.full_text,
                 asr_model=revision.asr_model,
                 asr_version=revision.asr_version,
+                asr_identity=revision.asr_identity,
                 speaker_mode=revision.speaker_mode,
                 timestamp_source=revision.timestamp_source,
                 error_code=revision.error_code,
@@ -1197,7 +1135,7 @@ async def activate_transcript_version(
     assert principal.tenant_id is not None
     tenant_id = principal.tenant_id
     async with session_scope(tenant_id) as session:
-        call = await _load_call(session, call_id, tenant_id, principal)
+        call = await _load_call(session, call_id, tenant_id, principal, lock=True)
         transcript = await session.get(Transcript, call_id)
         revision = await session.get(AsrTranscriptRevision, revision_id)
         if (
@@ -1207,16 +1145,7 @@ async def activate_transcript_version(
             or revision.tenant_id != tenant_id
         ):
             raise ApiError("not_found", "نسخه متن یافت نشد.")
-        pending = (
-            await session.execute(
-                select(AsrTranscriptRevision.id).where(
-                    AsrTranscriptRevision.call_id == call_id,
-                    AsrTranscriptRevision.status.in_(("queued", "running")),
-                )
-            )
-        ).scalar_one_or_none()
-        if pending is not None:
-            raise ApiError("conflict_idempotency", "بازپردازش فعال باید ابتدا تمام شود.")
+        await call_retranscription.ensure_no_active(session, call)
         await activate_existing(session, transcript=transcript, revision=revision)
         runtime = await resolve_provider_settings(session, capability="correction")
         correction = None
@@ -1389,7 +1318,7 @@ async def correct_call_transcript(
     assert principal.tenant_id is not None
     tenant_id = principal.tenant_id
     async with session_scope(tenant_id) as session:
-        call = await _load_call(session, call_id, tenant_id, principal)
+        call = await _load_call(session, call_id, tenant_id, principal, lock=True)
         transcript = (
             await session.execute(
                 select(Transcript).where(
@@ -1402,6 +1331,7 @@ async def correct_call_transcript(
                 "not_found",
                 "متن تماس هنوز آماده نشده است؛ پس از اتمام تبدیل صوت به متن دوباره تلاش کنید.",
             )
+        await call_retranscription.ensure_no_active(session, call)
         runtime = await resolve_provider_settings(session)
         if not runtime.correction_enabled:
             raise ApiError("invalid_request", "تصحیح هوشمند در تنظیمات ادمین غیرفعال است.")
@@ -1438,7 +1368,7 @@ async def reanalyze_call(call_id: UUID, request: Request, principal: OperatorDep
     run_id: UUID
 
     async with session_scope(tenant_id) as session:
-        call = await _load_call(session, call_id, tenant_id, principal)
+        call = await _load_call(session, call_id, tenant_id, principal, lock=True)
         transcript = (
             await session.execute(
                 select(Transcript).where(
@@ -1471,6 +1401,7 @@ async def reanalyze_call(call_id: UUID, request: Request, principal: OperatorDep
                 "conflict_idempotency", "an analysis job is already queued for this call"
             )
 
+        await call_retranscription.ensure_no_active(session, call)
         previous_status = call.status
         call.status = "analyzing"
         call.error_code = None

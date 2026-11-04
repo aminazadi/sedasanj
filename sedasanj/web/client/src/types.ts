@@ -88,6 +88,7 @@ export interface AsrTranscriptRevision {
   full_text: string | null;
   asr_model: string | null;
   asr_version: string | null;
+  asr_identity: string | null;
   speaker_mode: string | null;
   timestamp_source: string | null;
   error_code: string | null;

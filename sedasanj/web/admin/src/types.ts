@@ -7,7 +7,12 @@ export interface Kpis {
   jobs_failed_retryable: number;
 }
 
+export type CallAsrMode = "legacy" | "vad_segment";
+export type CallAsrProfile = "jalase_negar" | "telephony";
+
 export interface Tenant {
+  call_asr_mode: CallAsrMode | "inherit";
+  call_asr_profile: CallAsrProfile | "inherit";
   id: string;
   name: string;
   status: string;
@@ -151,6 +156,10 @@ export interface PlatformSettings {
   assistant_enabled_tools: string[];
   correction_enabled: boolean;
   correction_mode: "text_only" | "audio_only" | "two_stage";
+  call_asr_mode: CallAsrMode;
+  call_asr_profile: CallAsrProfile;
+  call_asr_telephony_threshold: number | null;
+  call_asr_fallback_models: string[];
   correction_audio_models: string[];
   correction_text_models: string[];
   correction_prompt: string;

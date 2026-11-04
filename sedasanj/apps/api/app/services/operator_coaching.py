@@ -36,6 +36,8 @@ from app.models import (
 )
 from app.schemas import COACH_DIMENSION_KEYS, CoachDimension, CoachResult
 from app.services import extensions, knowledge, queue, tenant_ai_instructions
+from app.services.call_speakers import INTERNAL_CALLEE_LABEL, INTERNAL_CALLER_LABEL
+from app.services.call_speakers import speaker_labels as speaker_labels
 from app.services.operator_scope import number_matches
 from app.services.operator_scoring import default_score_criteria
 from app.services.organization_memory import append_untrusted_context
@@ -174,23 +176,6 @@ def ensure_rubric_dimensions(result: CoachResult, dimensions: list[dict[str, Any
 
 def prompt_fingerprint(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
-
-
-INTERNAL_CALLER_LABEL = "همکار تماس‌گیرنده"
-INTERNAL_CALLEE_LABEL = "همکار پاسخ‌دهنده"
-
-
-def speaker_labels(direction: str | None, speaker_mode: str | None) -> dict[int, str]:
-    """Channel to speaker mapping; mirrors the labels shown on the call detail page."""
-    if (speaker_mode or "").startswith("mono"):
-        return {0: "گوینده ۱", 1: "گوینده ۲"}
-    if direction == "inbound":
-        return {0: "مشتری", 1: "اپراتور"}
-    if direction == "outbound":
-        return {0: "اپراتور", 1: "مشتری"}
-    if direction == "internal":
-        return {0: INTERNAL_CALLER_LABEL, 1: INTERNAL_CALLEE_LABEL}
-    return {0: "کانال ۱", 1: "کانال ۲"}
 
 
 def format_transcript(utterances: list[Any], labels: dict[int, str]) -> tuple[str, bool]:

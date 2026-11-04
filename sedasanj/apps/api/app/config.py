@@ -117,6 +117,10 @@ class Settings(BaseSettings):
     # Runtime carrier only — set from admin Settings via resolve_provider_settings.
     voicesanj_api_key: str | None = None
     voicesanj_asr_model: str = "buzzasr-persian"
+    call_asr_mode: Literal["legacy", "vad_segment"] = "legacy"
+    call_asr_profile: Literal["jalase_negar", "telephony"] = "jalase_negar"
+    call_asr_telephony_threshold: float | None = Field(default=None, gt=0, lt=1)
+    call_asr_fallback_models: list[str] = Field(default_factory=list)
     voicesanj_llm_model: str = "dorna-8b-q4_k_m"
     voicesanj_text_correction_style: Literal["formal", "semi_formal", "action"] = "formal"
     voicesanj_correction_timeout_seconds: float = 120.0
@@ -215,7 +219,7 @@ class Settings(BaseSettings):
     webhook_auto_disable_failures: int = 10
     webhook_delivery_retention_days: int = 30
 
-    max_upload_bytes: int = 200 * 1024 * 1024
+    max_upload_bytes: int = 512 * 1024 * 1024
     max_extracted_audio_bytes: int = 512 * 1024 * 1024
     max_module_release_bytes: int = 200 * 1024 * 1024
     # Jalase-Negar Android releases: the APK is checked with aapt2 and apksigner, and only a

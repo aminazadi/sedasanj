@@ -14,6 +14,7 @@ from app.models import (
     TranscriptRevision,
     Utterance,
 )
+from app.services.call_speakers import speaker_mode
 
 
 def timestamp_source(rows: list[tuple[int, Any]]) -> str:
@@ -37,6 +38,7 @@ async def activate_new(
     audio_channels: int,
     ai_provider: str = "aiservice",
     revision: AsrTranscriptRevision | None = None,
+    asr_identity: str | None = None,
 ) -> tuple[Transcript, AsrTranscriptRevision]:
     now = datetime.now(UTC)
     if revision is None:
@@ -53,16 +55,20 @@ async def activate_new(
     revision.full_text = full_text
     revision.asr_model = asr_model
     revision.asr_version = asr_version
+    revision.asr_identity = asr_identity
+    revision.error_code = None
+    revision.error_detail = None
     revision.ai_provider = ai_provider
-    revision.speaker_mode = (
-        "dual_channel"
-        if audio_channels == 2
-        else "mono_diarized"
-        if any((segment.metadata or {}).get("speaker") is not None for _, segment in rows)
-        else "mono_unknown"
+    revision.speaker_mode = speaker_mode(
+        audio_channels,
+        diarized=any((segment.metadata or {}).get("speaker") is not None for _, segment in rows),
     )
     revision.timestamp_source = timestamp_source(rows)
-    revision.metrics = {"segments": len(rows), "audio_channels": audio_channels}
+    revision.metrics = {
+        **(revision.metrics or {}),
+        "segments": len(rows),
+        "audio_channels": audio_channels,
+    }
     revision.completed_at = now
     revision.activated_at = now
     await session.execute(

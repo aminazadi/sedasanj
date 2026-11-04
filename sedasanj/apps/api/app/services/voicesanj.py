@@ -4,6 +4,8 @@ import asyncio
 import gzip
 import logging
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,15 +13,28 @@ from uuid import uuid4
 import httpx
 
 from app.config import Settings, normalize_api_key
-from app.services.provider_errors import ProviderError, classify_http, inspect_payload
+from app.logging import request_id_var
+from app.services.provider_errors import (
+    ASR_NO_SPEECH_DETAIL,
+    ProviderError,
+    classify_http,
+    inspect_payload,
+)
 
 logger = logging.getLogger(__name__)
 
 TERMINAL_STATUSES = frozenset({"succeeded", "partially_succeeded", "failed", "cancelled"})
 TEXT_PROCESS_MAX_CHARS = 12_000
-SPEAKER_MARKER = re.compile(r"\[(caller|agent)\s+(\d+:\d{2})\]")
+SPEAKER_MARKER = re.compile(r"\[(caller|agent|speaker_[0-9]+)\s+(\d+:\d{2})\]")
 
 VOICESANJ_USER_AGENT = "cbi-voice-analytics/httpx"
+
+
+def _compress_audio(source: Path, target: Path) -> None:
+    with source.open("rb") as audio, target.open("wb") as output, gzip.GzipFile(
+        filename="", fileobj=output, mode="wb", compresslevel=6, mtime=0
+    ) as zip_audio:
+        shutil.copyfileobj(audio, zip_audio)
 
 
 class VoiceSanjClient:
@@ -130,6 +145,9 @@ class VoiceSanjClient:
         prompt: str | None = None,
         ensure_timestamps: bool = True,
         diarize: bool = False,
+        segmenter: str | None = None,
+        engine_profile: str | None = None,
+        silero_threshold: float | None = None,
         turn_min_seconds: float = 0.3,
         turn_padding_seconds: float = 0.2,
     ) -> dict[str, Any]:
@@ -140,19 +158,23 @@ class VoiceSanjClient:
                 "شناسه مدل پیاده‌سازی صوت خالی است.",
                 retryable=False,
             )
-        original_audio = path.read_bytes()
-        audio = gzip.compress(original_audio, compresslevel=6, mtime=0)
         form: dict[str, str | list[str]] = {
             "response_format": response_format,
             "beam_size": str(beam_size),
             "vad_filter": "true" if vad_filter else "false",
             "audio_encoding": "gzip",
-            "uncompressed_audio_bytes": str(len(original_audio)),
+            "uncompressed_audio_bytes": str(path.stat().st_size),
             "ensure_timestamps": "true" if ensure_timestamps else "false",
             "diarize": "true" if diarize else "false",
             "turn_min_seconds": str(turn_min_seconds),
             "turn_padding_seconds": str(turn_padding_seconds),
         }
+        if segmenter:
+            form["segmenter"] = segmenter
+        if engine_profile:
+            form["engine_profile"] = engine_profile
+        if silero_threshold is not None:
+            form["silero_threshold"] = str(silero_threshold)
         if models:
             form["models"] = model_ids
         else:
@@ -163,19 +185,19 @@ class VoiceSanjClient:
             **self._headers,
             "Idempotency-Key": f"asr-{uuid4()}",
         }
+        if request_id := request_id_var.get():
+            headers["X-Request-ID"] = request_id
         async with httpx.AsyncClient(timeout=self._http_timeout, http2=False) as client:
-            response = await client.post(
-                f"{self._base}{self._settings.aiservice_asr_path}",
-                headers=headers,
-                files={
-                    "file": (
-                        f"{path.name}.gz",
-                        audio,
-                        "application/gzip",
+            with tempfile.TemporaryDirectory(prefix="cbi-asr-upload-") as scratch:
+                compressed = Path(scratch) / "audio.wav.gz"
+                await asyncio.to_thread(_compress_audio, path, compressed)
+                with compressed.open("rb") as audio:
+                    response = await client.post(
+                        f"{self._base}{self._settings.aiservice_asr_path}",
+                        headers=headers,
+                        files={"file": (f"{path.name}.gz", audio, "application/gzip")},
+                        data=form,
                     )
-                },
-                data=form,
-            )
             if response.status_code not in (200, 202):
                 classified = classify_http(response.status_code, response.text, kind="asr")
                 if classified is not None:
@@ -265,6 +287,8 @@ class VoiceSanjClient:
             inspect_payload(latest, kind=kind)
 
         if status in {"failed", "cancelled"}:
+            if kind == "asr" and latest.get("error_code") == "asr_no_speech":
+                raise ProviderError("asr_no_speech", ASR_NO_SPEECH_DETAIL, retryable=False)
             detail = str(latest.get("error") or status)
             raise RuntimeError(f"voicesanj task {status}: {detail}")
 

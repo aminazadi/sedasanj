@@ -42,7 +42,7 @@ def test_full_text_labels_channels_and_sorts_by_time() -> None:
         (1, AsrSegment(t_start_ms=4_000, t_end_ms=6_000, text="بله بفرمایید")),
         (0, AsrSegment(t_start_ms=0, t_end_ms=3_000, text="سلام")),
     ]
-    text = build_full_text(rows)
+    text = build_full_text(rows, direction="inbound", mode="dual_channel")
     lines = text.splitlines()
     assert lines[0].startswith("[caller 00:00]")
     assert "سلام" in lines[0]

@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
+from app.logging import request_id_var
 from app.metrics import outbox_dispatch_seconds, outbox_oldest_seconds, outbox_pending
 from app.models import JobOutbox, Tenant, TenantDatabaseRegistry
 from app.services import queue
@@ -119,6 +120,11 @@ async def stage_job(
         retranscription=retranscription,
     )
     payload["tenant_id"] = str(tenant_id)
+    if kind == "asr":
+        try:
+            payload["request_id"] = str(UUID(request_id_var.get() or ""))
+        except ValueError:
+            payload["request_id"] = str(call_id)
     return await stage(
         session,
         tenant_id=tenant_id,

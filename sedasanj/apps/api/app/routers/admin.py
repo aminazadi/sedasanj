@@ -527,6 +527,8 @@ async def create_tenant(
         audio_retention_days=payload.audio_retention_days,
         max_concurrent_jobs=payload.max_concurrent_jobs,
         max_operators=payload.max_operators,
+        call_asr_mode="inherit",
+        call_asr_profile="inherit",
         status="provisioning" if get_settings().tenant_databases_enabled else "active",
     )
     session.add(tenant)
@@ -1199,6 +1201,8 @@ async def update_platform_settings(
     payload: SettingsUpdate, request: Request, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, object]:
     changes = payload.model_dump(exclude_none=True)
+    if "call_asr_telephony_threshold" in payload.model_fields_set:
+        changes.setdefault("call_asr_telephony_threshold", "")
     embedding_configuration_changed = bool(
         {"embedding_provider", "embedding_model", "ninerouter_embedding_model"} & changes.keys()
     )
@@ -1211,6 +1215,7 @@ async def update_platform_settings(
     coach_prompt = changes.pop("coach_prompt", None)
     meeting_prompt = changes.pop("meeting_prompt", None)
     optional_blank_keys = {
+        "call_asr_telephony_threshold",
         "coach_model",
         "ninerouter_coach_model",
         "ninerouter_coach_prompt",
@@ -1392,6 +1397,17 @@ async def update_platform_settings(
         if not normalized or len(normalized) != len(set(normalized)):
             raise ApiError("invalid_request", f"{key} must contain unique model ids")
         changes[key] = normalized
+    if "call_asr_fallback_models" in changes:
+        models = [model.strip() for model in changes["call_asr_fallback_models"]]
+        if (
+            any(not model or len(model) > 200 for model in models)
+            or len(set(models)) != len(models)
+        ):
+            raise ApiError(
+                "call_asr_settings_invalid",
+                "مدل‌های جایگزین تماس را با شناسه‌های معتبر و بدون تکرار انتخاب کنید.",
+            )
+        changes["call_asr_fallback_models"] = models
     denoiser_model = changes.get("audio_denoiser_model")
     if denoiser_model is not None and denoiser_model not in DENOISER_MODELS:
         raise ApiError("invalid_request", f"unknown denoiser model: {denoiser_model}")

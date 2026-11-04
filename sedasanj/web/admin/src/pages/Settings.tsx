@@ -115,10 +115,14 @@ function ModelPriorityList({
   value,
   models,
   onChange,
+  min = 1,
+  max = 5,
 }: {
   id: string;
   label: string;
   value: string[];
+  min?: number;
+  max?: number;
   models: ProviderModel[];
   onChange: (value: string[]) => void;
 }) {
@@ -140,11 +144,11 @@ function ModelPriorityList({
             <span className="min-w-0 flex-1 truncate text-sm" dir="ltr">{modelId}</span>
             <button type="button" className="btn-ghost px-2" disabled={index === 0} onClick={() => move(index, -1)} aria-label="انتقال به بالا">↑</button>
             <button type="button" className="btn-ghost px-2" disabled={index === value.length - 1} onClick={() => move(index, 1)} aria-label="انتقال به پایین">↓</button>
-            <button type="button" className="btn-ghost px-2 text-rose-700" disabled={value.length === 1} onClick={() => onChange(value.filter((item) => item !== modelId))}>حذف</button>
+            <button type="button" className="btn-ghost px-2 text-rose-700" disabled={value.length <= min} onClick={() => onChange(value.filter((item) => item !== modelId))}>حذف</button>
           </li>
         ))}
       </ol>
-      <select id={id} className="input" value="" onChange={(event) => event.target.value && onChange([...value, event.target.value])}>
+      <select id={id} className="input" value="" disabled={value.length >= max} onChange={(event) => event.target.value && onChange([...value, event.target.value])}>
         <option value="">افزودن مدل fallback</option>
         {available.map((model) => <option key={model.id} value={model.id}>{modelOptionLabel(model)}</option>)}
       </select>
@@ -310,6 +314,10 @@ export default function Settings() {
       } else if (activeTab === "models") {
         Object.assign(body, {
           asr_model: settings.asr_model,
+          call_asr_mode: settings.call_asr_mode,
+          call_asr_profile: settings.call_asr_profile,
+          call_asr_telephony_threshold: settings.call_asr_telephony_threshold,
+          call_asr_fallback_models: settings.call_asr_fallback_models,
           llm_model: settings.llm_model,
           chat_model: settings.chat_model,
           decision_model: settings.decision_model,
@@ -616,6 +624,34 @@ export default function Settings() {
             ارائه‌دهنده ASR مستقل از سرویس تحلیل متن انتخاب می‌شود.
           </p>
         </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="call-asr-mode">حالت تبدیل صدای تماس</label>
+            <select id="call-asr-mode" className="input rounded-none" value={settings.call_asr_mode}
+              onChange={(event) => setSettings({ ...settings, call_asr_mode: event.target.value as PlatformSettings["call_asr_mode"] })}>
+              <option value="legacy">مسیر استاندارد</option>
+              <option value="vad_segment">قطعه‌بندی گفتار جلسه‌نگار</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">حالت جلسه‌نگار با مدل شنوا در AISERVICE اجرا می‌شود.</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="call-asr-profile">پروفایل تشخیص گفتار</label>
+            <select id="call-asr-profile" className="input rounded-none" value={settings.call_asr_profile}
+              onChange={(event) => setSettings({ ...settings, call_asr_profile: event.target.value as PlatformSettings["call_asr_profile"] })}>
+              <option value="jalase_negar">جلسه‌نگار</option>
+              <option value="telephony">تلفنی</option>
+            </select>
+            <label className="label mt-2" htmlFor="call-asr-threshold">آستانه تشخیص گفتار در پروفایل تلفنی</label>
+            <input id="call-asr-threshold" className="input rounded-none" dir="ltr" type="number" step="any"
+              placeholder="0.35" value={settings.call_asr_telephony_threshold ?? ""}
+              onChange={(event) => setSettings({
+                ...settings, call_asr_telephony_threshold: event.target.value === "" ? null : Number(event.target.value),
+              })} />
+          </div>
+        </div>
+        <ModelPriorityList id="call-asr-fallback-models" label="مدل‌های جایگزین تبدیل صدای تماس"
+          value={settings.call_asr_fallback_models} models={asrModels} min={0} max={4}
+          onChange={(call_asr_fallback_models) => setSettings({ ...settings, call_asr_fallback_models })} />
         <div><label className="label">مسیر اجرای ASR</label><select className="input" value={settings.asr_ai_provider} onChange={(event) => setSettings({ ...settings, asr_ai_provider: event.target.value as PlatformSettings["asr_ai_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select></div>
         {settings.asr_ai_provider === "ninerouter_direct" ? <><ModelSelect id="ninerouter-asr-model" label="مدل مستقیم ASR" value={settings.ninerouter_asr_model} models={nineRouterAsrModels} sourceLabel="9Router" onChange={(ninerouter_asr_model) => setSettings({ ...settings, ninerouter_asr_model })} /><div><label className="label">پرامپت مستقیم ASR</label><textarea className="input min-h-32" value={settings.ninerouter_direct_asr_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_asr_prompt: event.target.value })} /></div></> : null}
         <div>

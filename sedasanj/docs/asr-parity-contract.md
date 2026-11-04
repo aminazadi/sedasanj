@@ -109,3 +109,16 @@ cd jalase-negar && flutter test test/asr_parity_test.dart
 ## ۹. تغییر قرارداد
 
 fixtureها را همراه تغییر کد سرور و پورت اپ در یک تغییر به‌روز کنید و نسخهٔ سند را بالا ببرید. `consolidation.json` با اسکریپت از پیاده‌سازی سرور تولید و دستی بازبینی شده است؛ مقدار جدید را بدون بازبینی از خروجی کد کپی نکنید.
+
+## Silero call ASR
+
+AISERVICE reads its defaults from `aiservice/asr_service/services/vad_segment_contract.json`. The
+Flutter contract test checks the live engine's defaults against the same file. Both segmented
+paths strip the combining mark produced by mapping `ۀ` and emit plain `ه`. Legacy AISERVICE
+normalization keeps its existing behavior.
+
+AISERVICE stays pinned to sherpa-onnx 1.12.39 and Jalase-Negar uses 1.13.6. The server uses the CPU
+INT8 transducer and bounded file reads, while the phone uses a live buffer and can skip work when
+audio capture falls behind. The offline server can use the full available post-roll at each span.
+Measure audio parity on both runtimes before treating their outputs as equivalent. The rollout
+runbook defines the WER gate, the PBX lab checks and the tenant rollback.

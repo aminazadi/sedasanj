@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import tempfile
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -235,9 +235,10 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
             text = str(item.get("text") or "").strip()
             if not text:
                 continue
-            start_ms = int(float(item.get("start") or 0) * 1000)
+            to_ms = round if item.get("timestamp_source") == "silero_vad" else int
+            start_ms = to_ms(float(item.get("start") or 0) * 1000)
             end_raw = item.get("end")
-            end_ms = int(float(end_raw) * 1000) if end_raw is not None else duration
+            end_ms = to_ms(float(end_raw) * 1000) if end_raw is not None else duration
             if end_ms <= start_ms:
                 next_start_ms = duration
                 for candidate in raw_segments[index + 1 :]:
@@ -279,18 +280,20 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
     return [AsrSegment(t_start_ms=0, t_end_ms=duration, text=text)]
 
 
+SHENAVA_CALL_MODEL = "shenava-koochik-v1-5-rnnt"
+
+
 class VoiceSanjEngine(AsrEngine):
     """Remote Persian ASR via aiservice.voicesanj.ir (async task + poll)."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self.model_name = settings.voicesanj_asr_model
-        self._models = (
-            settings.correction_audio_models
-            if settings.correction_enabled
-            and settings.correction_mode in {"audio_only", "two_stage"}
-            else [settings.voicesanj_asr_model]
-        )
+        self._silero = settings.call_asr_mode == "vad_segment"
+        self.model_name = SHENAVA_CALL_MODEL if self._silero else settings.voicesanj_asr_model
+        fallbacks = settings.call_asr_fallback_models
+        if self._silero and not fallbacks:
+            fallbacks = [settings.voicesanj_asr_model]
+        self._models = list(dict.fromkeys([self.model_name, *fallbacks]))
         self.model_version = "voicesanj"
         self._prompt = settings.ninerouter_asr_prompt or None
         self._client = VoiceSanjClient(
@@ -319,13 +322,21 @@ class VoiceSanjEngine(AsrEngine):
             vad_filter=True,
             prompt=self._prompt,
             ensure_timestamps=True,
-            diarize=diarize and self._settings.mono_diarization_enabled,
+            diarize=diarize and not self._silero and self._settings.mono_diarization_enabled,
+            segmenter="silero_vad" if self._silero else None,
+            engine_profile=self._settings.call_asr_profile if self._silero else None,
+            silero_threshold=(
+                self._settings.call_asr_telephony_threshold
+                if self._silero and self._settings.call_asr_profile == "telephony" else None
+            ),
             turn_min_seconds=self._settings.turn_min_seconds,
             turn_padding_seconds=self._settings.turn_padding_seconds,
         )
-        if payload.get("model"):
-            self.model_name = str(payload["model"])
-        return _segments_from_whisper(payload, path)
+        model = str(payload.get("model") or self.model_name)
+        return [
+            replace(row, metadata={**(row.metadata or {}), "asr_model": model})
+            for row in _segments_from_whisper(payload, path)
+        ]
 
 
 class FixtureEngine(AsrEngine):

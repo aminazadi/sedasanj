@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, normalize_api_key
 from app.models import (
+    AsrTranscriptRevision,
     Call,
     Job,
     Transcript,
@@ -21,6 +22,7 @@ from app.models import (
     Utterance,
 )
 from app.services import outbox, processing_events, progress
+from app.services.call_speakers import render_turns
 from app.services.ninerouter import NineRouterClient, retry_json_chat
 from app.services.organization_memory import build_context
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
@@ -95,6 +97,7 @@ async def create_revision(
     transcript: Transcript,
     runtime: Settings,
     trigger: str,
+    reanalysis_previous_status: str | None = None,
 ) -> tuple[TranscriptRevision, Job, UUID, bool]:
     existing = (
         await session.execute(
@@ -130,7 +133,7 @@ async def create_revision(
     if trigger == "manual":
         identity = f"{identity}:{uuid4()}"
     idempotency_key = "correction-" + hashlib.sha256(identity.encode()).hexdigest()
-    previous_status = call.status
+    previous_status = reanalysis_previous_status or (call.status if trigger == "manual" else None)
     revision = TranscriptRevision(
         call_id=call.id,
         tenant_id=call.tenant_id,
@@ -148,7 +151,7 @@ async def create_revision(
         memory_snapshot=memory.snapshot,
         memory_context=memory.text,
         memory_sha256=memory.sha256,
-        metrics={"previous_status": previous_status} if trigger == "manual" else {},
+        metrics={"previous_status": previous_status} if previous_status else {},
     )
     session.add(revision)
     job = Job(
@@ -471,7 +474,16 @@ async def activate_revision(
                 metadata_json=item.get("metadata"),
             )
         )
-    corrected_text = "\n".join(item["corrected_text"] for item in segments)
+    call = await session.get(Call, transcript.call_id)
+    asr = (
+        await session.get(AsrTranscriptRevision, transcript.active_asr_revision_id)
+        if transcript.active_asr_revision_id else None
+    )
+    corrected_text = render_turns(
+        ((item["channel"], item["t_start_ms"], item["corrected_text"]) for item in segments),
+        call.direction if call else None,
+        asr.speaker_mode if asr else None,
+    )
     now = datetime.now(UTC)
     revision.status = "succeeded"
     revision.corrected_text = corrected_text

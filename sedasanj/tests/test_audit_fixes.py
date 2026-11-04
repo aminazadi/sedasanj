@@ -87,6 +87,8 @@ async def test_reanalysis_rejects_a_retryable_llm_job(
         requested_call_id: object,
         requested_tenant_id: object,
         principal: object | None = None,
+        *,
+        lock: bool = False,
     ) -> Call:
         assert requested_call_id == call_id
         assert requested_tenant_id == tenant_id
@@ -130,6 +132,8 @@ async def test_reanalysis_explains_when_transcript_is_not_ready(
         requested_call_id: object,
         requested_tenant_id: object,
         principal: object | None = None,
+        *,
+        lock: bool = False,
     ) -> Call:
         assert requested_call_id == call_id
         assert requested_tenant_id == tenant_id

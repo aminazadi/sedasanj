@@ -30,7 +30,10 @@ export default function TenantDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [topup, setTopup] = useState({ minutes: 100, toman: "", note: "" });
-  const [settingsDraft, setSettingsDraft] = useState({ max_concurrent_jobs: 0, audio_retention_days: 0 });
+  const [settingsDraft, setSettingsDraft] = useState<
+    Pick<TenantDetail, "max_concurrent_jobs" | "audio_retention_days" | "call_asr_mode" | "call_asr_profile">
+  >({ max_concurrent_jobs: 0, audio_retention_days: 0, call_asr_mode: "inherit", call_asr_profile: "inherit" });
+  const [savingSettings, setSavingSettings] = useState(false);
   const [commerce, setCommerce] = useState<{subscriptions:Array<Record<string,unknown>>;orders:Array<Record<string,unknown>>;credit_grants:Array<Record<string,unknown>>;reservations:Array<Record<string,unknown>>;assistant_messages_total:number;audit:Array<Record<string,unknown>>}|null>(null);
 
   async function reload() {
@@ -46,7 +49,12 @@ export default function TenantDetailPage() {
       setLedger(entries.items);
       setLedgerTotal(entries.total);
       setCommerce(commerceData);
-      setSettingsDraft({ max_concurrent_jobs: detail.max_concurrent_jobs, audio_retention_days: detail.audio_retention_days });
+      setSettingsDraft({
+        max_concurrent_jobs: detail.max_concurrent_jobs,
+        audio_retention_days: detail.audio_retention_days,
+        call_asr_mode: detail.call_asr_mode,
+        call_asr_profile: detail.call_asr_profile,
+      });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -87,11 +95,16 @@ export default function TenantDetailPage() {
   }
 
   async function patchTenant(body: Record<string, unknown>) {
+    setSavingSettings(true);
+    setError(null);
     try {
       await request(`/v1/admin/tenants/${tenantId}`, { method: "PATCH", body });
+      setNotice("تنظیمات سازمان ذخیره شد.");
       await reload();
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setSavingSettings(false);
     }
   }
 
@@ -192,7 +205,26 @@ export default function TenantDetailPage() {
               onChange={(event) => setSettingsDraft({...settingsDraft, audio_retention_days: Number(fmt.latinDigits(event.target.value))})}
             />
           </div>
-          <button className="btn" type="button" onClick={() => void patchTenant({max_concurrent_jobs: settingsDraft.max_concurrent_jobs, audio_retention_days: settingsDraft.audio_retention_days})}>ذخیره تنظیمات</button>
+          <div>
+            <label className="label" htmlFor="tenant-call-asr-mode">حالت تبدیل صدای تماس</label>
+            <select id="tenant-call-asr-mode" className="input rounded-none" value={settingsDraft.call_asr_mode}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, call_asr_mode: event.target.value as TenantDetail["call_asr_mode"] })}>
+              <option value="inherit">تنظیم پیش‌فرض سامانه</option>
+              <option value="legacy">مسیر استاندارد</option>
+              <option value="vad_segment">قطعه‌بندی گفتار جلسه‌نگار</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="tenant-call-asr-profile">پروفایل تشخیص گفتار</label>
+            <select id="tenant-call-asr-profile" className="input rounded-none" value={settingsDraft.call_asr_profile}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, call_asr_profile: event.target.value as TenantDetail["call_asr_profile"] })}>
+              <option value="inherit">تنظیم پیش‌فرض سامانه</option>
+              <option value="jalase_negar">جلسه‌نگار</option>
+              <option value="telephony">تلفنی</option>
+            </select>
+          </div>
+          <button className="btn" type="button" disabled={savingSettings}
+            onClick={() => void patchTenant(settingsDraft)}>ذخیره تنظیمات</button>
         </div>
       </div>
 

@@ -274,6 +274,9 @@ async def test_retranscription_creates_revision_without_reserving_credit(
     )
 
     class Session(_Session):
+        async def scalar(self, _statement: object) -> None:
+            return None
+
         async def get(self, model: object, key: object) -> object | None:
             if model is Transcript and key == call.id:
                 return transcript
@@ -319,7 +322,7 @@ async def test_retranscription_creates_revision_without_reserving_credit(
     async def models(session: object) -> dict[str, str]:
         return {"asr_ai_provider": "aiservice", "asr_model": "asr-model"}
 
-    monkeypatch.setattr(calls, "effective_models", models)
+    monkeypatch.setattr(calls.call_retranscription, "effective_models", models)
     principal = Principal(kind="user", id=uuid4(), tenant_id=tenant.id, role="operator")
 
     result = await calls.retranscribe_call(call.id, None, principal)  # type: ignore[arg-type]
