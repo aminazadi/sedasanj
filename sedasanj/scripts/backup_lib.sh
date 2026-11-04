@@ -47,7 +47,7 @@ verify_dump_file() {
 
 # Every service that writes to PostgreSQL, Redis or MinIO. Only those defined in the
 # Compose project are touched, so older deployments without a worker still work.
-WRITER_SERVICES="api worker-asr worker-emotion worker-llm worker-notify worker-dispatch worker-provision"
+WRITER_SERVICES="api worker-asr worker-emotion worker-llm worker-notify worker-meeting worker-dispatch worker-provision"
 
 defined_writers() {
   local defined svc

@@ -56,6 +56,7 @@ packages = [
     "apps/worker_asr/worker_asr",
     "apps/worker_llm/worker_llm",
     "apps/worker_notify/worker_notify",
+    "apps/worker_meeting/worker_meeting",
     "apps/worker_dispatch/worker_dispatch",
     "apps/worker_emotion/worker_emotion",
     "apps/worker_provision/worker_provision",
@@ -73,7 +74,7 @@ torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["apps/api", "apps/worker_asr", "apps/worker_emotion", "apps/worker_llm", "apps/worker_notify", "apps/worker_provision", "apps/agent"]
+src = ["apps/api", "apps/worker_asr", "apps/worker_emotion", "apps/worker_llm", "apps/worker_notify", "apps/worker_meeting", "apps/worker_provision", "apps/agent"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "C4", "SIM"]
@@ -81,7 +82,7 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "C4", "SIM"]
 ignore = ["ASYNC230", "ASYNC240"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "worker_asr", "worker_emotion", "worker_llm", "worker_notify", "worker_provision", "cbi_agent"]
+known-first-party = ["app", "worker_asr", "worker_emotion", "worker_llm", "worker_notify", "worker_meeting", "worker_provision", "cbi_agent"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -89,7 +90,7 @@ strict = true
 warn_return_any = true
 disallow_untyped_defs = true
 plugins = []
-mypy_path = "apps/api:apps/worker_asr:apps/worker_emotion:apps/worker_llm:apps/worker_notify:apps/worker_provision:apps/worker_dispatch:apps/agent"
+mypy_path = "apps/api:apps/worker_asr:apps/worker_emotion:apps/worker_llm:apps/worker_notify:apps/worker_meeting:apps/worker_provision:apps/worker_dispatch:apps/agent"
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
@@ -106,6 +107,7 @@ pythonpath = [
     "apps/worker_emotion",
     "apps/worker_llm",
     "apps/worker_notify",
+    "apps/worker_meeting",
     "apps/worker_provision",
     "apps/worker_dispatch",
     "apps/agent",

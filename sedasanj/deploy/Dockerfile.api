@@ -23,7 +23,7 @@ COPY apps ./apps
 COPY scripts ./scripts
 RUN python scripts/install_project_dependencies.py
 
-ENV PYTHONPATH=/srv/app/apps/api:/srv/app/apps/worker_asr:/srv/app/apps/worker_emotion:/srv/app/apps/worker_llm:/srv/app/apps/worker_notify:/srv/app/apps/worker_dispatch:/srv/app/apps/worker_provision:/srv/app/apps/agent
+ENV PYTHONPATH=/srv/app/apps/api:/srv/app/apps/worker_asr:/srv/app/apps/worker_emotion:/srv/app/apps/worker_llm:/srv/app/apps/worker_notify:/srv/app/apps/worker_meeting:/srv/app/apps/worker_dispatch:/srv/app/apps/worker_provision:/srv/app/apps/agent
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]

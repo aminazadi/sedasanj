@@ -10,6 +10,7 @@
     "./components/FilterBar": "./components/FilterBar.tsx",
     "./components/Skeleton": "./components/Skeleton.tsx",
     "./components/ToggleSwitch": "./components/ToggleSwitch.tsx",
+    "./components/AiInstructionsEditor": "./components/AiInstructionsEditor.tsx",
     "./lib/otp": "./lib/otp.ts",
     "./lib/resourceState": "./lib/resourceState.ts",
     "./lib/useResource": "./lib/useResource.ts",

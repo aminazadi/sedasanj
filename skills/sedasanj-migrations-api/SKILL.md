@@ -9,7 +9,7 @@ Work from `sedasanj/` (the Python project root, `pyproject.toml`).
 
 ## Alembic rules (verified from `apps/api/alembic/versions/`)
 
-- Latest revision is `0053_module_releases`; new files continue the numeric prefix (`0054_…`) and set `down_revision` to the previous revision id. Keep a single head.
+- Latest revision is `0096_meeting_text_help_content` (check `ls apps/api/alembic/versions`); new files continue the numeric prefix (`0097_…`) and set `down_revision` to the previous revision id. Keep a single head.
 - One SQL statement per `op.execute(...)`, no trailing `;` (asyncpg runs them one at a time; see `tests/test_asyncpg_migrations.py`).
 - Every new table needs `GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO cbi_app`.
 - Tenant tables: `tenant_id`, `ENABLE` + `FORCE ROW LEVEL SECURITY`, policy on `app.tenant_id` / `app.staff` as in `0053`.

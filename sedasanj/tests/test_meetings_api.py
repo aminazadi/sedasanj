@@ -41,6 +41,7 @@ def test_app_routes_need_the_meetings_scope_and_a_mobile_token() -> None:
         ("GET", "/v1/meetings/config/validate"),
         ("POST", "/v1/meetings/sessions"),
         ("PUT", "/v1/meetings/{meeting_id}/chunks/{seq}"),
+        ("PUT", "/v1/meetings/{meeting_id}/transcript"),
         ("POST", "/v1/meetings/{meeting_id}/finish"),
         ("POST", "/v1/meetings/{meeting_id}/cancel"),
     }
@@ -687,3 +688,79 @@ async def test_audio_content_supports_ranges_and_disappears_with_retention(world
         (await session.get(AudioObject, audio.id)).deleted_at = datetime.now(UTC)
     gone = await client.get(f"/v1/meetings/{meeting_id}/audio/content", headers=workspace.admin)
     assert gone.status_code == 404
+
+
+def _transcript(*texts: str) -> dict[str, object]:
+    return {
+        "asr_identity": "test",
+        "segments": [
+            {"t_start_ms": i * 2000, "t_end_ms": i * 2000 + 1500, "text": text}
+            for i, text in enumerate(texts)
+        ],
+    }
+
+
+@requires_postgres
+async def test_text_meeting_takes_a_transcript_and_queues_the_minutes(world) -> None:
+    from app import db
+    from app.models import MeetingSegment
+    from app.services.queue import JOB_MEETING_MINUTES
+
+    client, workspace, queue, _storage = world
+    headers = await pair_token(client, workspace.admin)
+    created = await client.post(
+        "/v1/meetings/sessions", json=_session_body(input_kind="text"), headers=headers
+    )
+    assert created.status_code == 201 and created.json()["input_kind"] == "text"
+    meeting_id = created.json()["meeting_id"]
+
+    early = await client.post(
+        f"/v1/meetings/{meeting_id}/finish",
+        json={"ended_at": datetime.now(UTC).isoformat(), "total_chunks": 0, "duration_ms": 5000},
+        headers=headers,
+    )
+    assert early.status_code == 409
+    assert early.json()["error"]["code"] == "meeting_transcript_missing"
+
+    # Audio rides along for playback but is never queued for transcription.
+    audio = await _put(client, headers, meeting_id, 0, wav_bytes(1))
+    assert audio.status_code == 200
+    assert not [job for job in queue.jobs if job[1] == "transcribe_meeting_chunk"]
+
+    body = _transcript("سلام به همه", "بودجه را تأیید کردیم")
+    stored = await client.put(f"/v1/meetings/{meeting_id}/transcript", json=body, headers=headers)
+    assert stored.status_code == 200 and stored.json()["segments"] == 2
+    assert stored.json()["replay"] is False
+    replay = await client.put(f"/v1/meetings/{meeting_id}/transcript", json=body, headers=headers)
+    assert replay.json()["replay"] is True and replay.json()["sha256"] == stored.json()["sha256"]
+
+    changed = _transcript("متن اصلاح‌شده")
+    await client.put(f"/v1/meetings/{meeting_id}/transcript", json=changed, headers=headers)
+    async with db.session_scope(workspace.tenant_id) as session:
+        rows = (await session.execute(select(MeetingSegment))).scalars().all()
+    assert [row.text for row in rows] == ["متن اصلاح‌شده"]
+    assert {row.source for row in rows} == {"device_asr"}
+
+    backwards = _transcript("الف", "ب")
+    backwards["segments"][1]["t_start_ms"] = 0  # type: ignore[index]
+    backwards["segments"][0]["t_start_ms"] = 5000  # type: ignore[index]
+    refused = await client.put(
+        f"/v1/meetings/{meeting_id}/transcript", json=backwards, headers=headers
+    )
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "meeting_transcript_invalid"
+
+    finish = {"ended_at": datetime.now(UTC).isoformat(), "total_chunks": 1, "duration_ms": 90_000}
+    done = await client.post(f"/v1/meetings/{meeting_id}/finish", json=finish, headers=headers)
+    assert done.status_code == 202 and done.json()["status"] == "processing"
+    minutes_jobs = [job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES]
+    assert len(minutes_jobs) == 1 and minutes_jobs[0][2]["version"] == 1
+    assert len([job for job in queue.jobs if job[1] == "assemble_meeting_audio"]) == 1
+
+    again = await client.post(f"/v1/meetings/{meeting_id}/finish", json=finish, headers=headers)
+    assert again.status_code == 202
+    assert len([job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES]) == 1
+
+    async with db.session_scope(workspace.tenant_id) as session:
+        meeting = await session.get(Meeting, UUID(meeting_id))
+    assert meeting is not None and meeting.duration_ms == 90_000 and meeting.received_ms == 90_000

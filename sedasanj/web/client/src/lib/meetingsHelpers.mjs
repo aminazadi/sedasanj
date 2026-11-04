@@ -111,6 +111,7 @@ export function meetingTranscriptText(title, turns) {
 }
 
 export function meetingMinutesMarkdown(minutes) {
+  if (typeof minutes.content_md === "string" && minutes.content_md.trim()) return minutes.content_md.trim();
   const parts = [minutes.summary.trim()];
   if (minutes.decisions.length) parts.push(`## تصمیم‌ها\n\n${minutes.decisions.map((item) => `- ${item}`).join("\n")}`);
   if (minutes.action_items.length) {
@@ -122,9 +123,11 @@ export function meetingMinutesMarkdown(minutes) {
 
 // Maps a meeting to the pseudo-status the pipeline card understands. The progress bands are a
 // presentation assumption (transcription first, then speakers, then minutes) until the API reports the stage.
-export function meetingPipelineStatus(status, progressPct) {
+export function meetingPipelineStatus(status, progressPct, inputKind = "audio") {
   if (status === "receiving") return "receiving";
   if (status !== "processing") return status;
+  // Text meetings arrive already transcribed: the only server stage is the minutes.
+  if (inputKind === "text") return "minuting";
   const progress = meetingProgress(status, progressPct);
   if (progress < 50) return "transcribing";
   if (progress < 75) return "diarizing";

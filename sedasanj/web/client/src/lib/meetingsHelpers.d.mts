@@ -31,4 +31,4 @@ export function formatClock(ms: number): string;
 export function meetingProgress(status: string, progressPct: number): number;
 export function meetingTranscriptText(title: string, turns: SpeakerTurn[]): string;
 export function meetingMinutesMarkdown(minutes: { summary: string; decisions: string[]; action_items: MeetingActionItem[] }): string;
-export function meetingPipelineStatus(status: string, progressPct: number): string;
+export function meetingPipelineStatus(status: string, progressPct: number, inputKind?: string): string;

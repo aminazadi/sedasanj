@@ -271,7 +271,7 @@ export default function MeetingDetailPage() {
         <ProcessingCard
           title="مسیر پردازش جلسه"
           steps={MEETING_PIPELINE_STEPS}
-          status={meetingPipelineStatus(detail.status, detail.progress_pct)}
+          status={meetingPipelineStatus(detail.status, detail.progress_pct, detail.input_kind)}
           progressPct={meetingProgress(detail.status, detail.progress_pct)}
           detail={detail.progress_detail}
         />
@@ -297,8 +297,8 @@ export default function MeetingDetailPage() {
         {tab === "minutes" ? (
           detail.minutes ? (
             <div className="space-y-6" role="tabpanel">
-              <MarkdownMessage content={detail.minutes.summary} />
-              {detail.minutes.decisions.length ? (
+              {detail.minutes.content_md?.trim() ? <MarkdownMessage content={detail.minutes.content_md} /> : <MarkdownMessage content={detail.minutes.summary} />}
+              {detail.minutes.content_md?.trim() ? null : detail.minutes.decisions.length ? (
                 <div>
                   <h2 className="mb-2 font-bold">تصمیم‌ها</h2>
                   <ul className="list-disc space-y-1 pr-5 text-sm leading-7">
@@ -306,7 +306,7 @@ export default function MeetingDetailPage() {
                   </ul>
                 </div>
               ) : null}
-              {detail.minutes.action_items.length ? (
+              {detail.minutes.content_md?.trim() ? null : detail.minutes.action_items.length ? (
                 <div>
                   <h2 className="mb-2 font-bold">اقدام‌ها</h2>
                   <ul className="divide-y divide-slate-100 border border-[color:var(--line)]">

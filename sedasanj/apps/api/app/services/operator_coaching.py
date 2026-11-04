@@ -35,7 +35,7 @@ from app.models import (
     Utterance,
 )
 from app.schemas import COACH_DIMENSION_KEYS, CoachDimension, CoachResult
-from app.services import extensions, knowledge, queue
+from app.services import extensions, knowledge, queue, tenant_ai_instructions
 from app.services.operator_scope import number_matches
 from app.services.operator_scoring import default_score_criteria
 from app.services.organization_memory import append_untrusted_context
@@ -594,6 +594,7 @@ async def coach_call(
         base_prompt = await effective_coach_prompt(session)
         if is_internal:
             base_prompt = f"{base_prompt}\n\n{INTERNAL_CALL_PROMPT}"
+        org_instructions = await tenant_ai_instructions.get(session, tenant_id, "coach")
         runtime = await resolve_provider_settings(session, capability="coach")
         history_limit = int(models["coach_history_limit"])
         task_titles = [str(item) for item in (insight.action_items or [])] if insight else []
@@ -635,7 +636,11 @@ async def coach_call(
                 )
             history_text = format_history(rows, patterns, total)
         system = append_untrusted_context(
-            f"{base_prompt}\n\n{OUTPUT_CONTRACT}", history_text, "operator_coach_history"
+            tenant_ai_instructions.compose_system_prompt(
+                base_prompt, OUTPUT_CONTRACT, org_instructions
+            ),
+            history_text,
+            "operator_coach_history",
         )
         system = append_untrusted_context(
             system, json.dumps(dimensions, ensure_ascii=False), "organization_score_rubric"
@@ -664,7 +669,7 @@ async def coach_call(
             row.result = result.model_dump(mode="json")
             row.narrative = narrative
             row.model = model_name
-            row.prompt_hash = prompt_fingerprint(base_prompt)
+            row.prompt_hash = prompt_fingerprint(f"{base_prompt}\n{org_instructions}")
             row.embed_text = result_embed_text(result)
             row.vector_status = vector_status
             row.completed_at = datetime.now(UTC)

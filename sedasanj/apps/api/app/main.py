@@ -22,6 +22,7 @@ from app.route_inspection import api_routes, auth_kind, scope_names
 from app.routers import (
     account,
     admin,
+    ai_instructions,
     assistant,
     assistant_exports,
     auth,
@@ -308,6 +309,7 @@ def create_app() -> FastAPI:
         scheduled_reports,
         kpi,
         meetings,
+        ai_instructions,
         module_updates,
         help,
         site_pages,

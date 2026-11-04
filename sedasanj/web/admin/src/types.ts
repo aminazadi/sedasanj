@@ -101,6 +101,7 @@ export interface PlatformSettings {
   extract_prompt: string;
   assistant_instructions: string;
   coach_prompt: string;
+  meeting_prompt: string;
   api_key_configured: boolean;
   api_key_hint: string;
   voicesanj_base_url: string;
@@ -135,6 +136,7 @@ export interface PlatformSettings {
   analysis_route: "durable" | "ninerouter";
   chat_route: "durable" | "synchronous" | "ninerouter";
   coach_route: "durable" | "synchronous" | "ninerouter";
+  meeting_route: "durable" | "synchronous" | "ninerouter";
   decision_route: "native" | "ninerouter" | "typed";
   embedding_route: "native" | "ninerouter";
   ninerouter_asr_prompt: string;
@@ -168,6 +170,12 @@ export interface PlatformSettings {
   ninerouter_coach_model: string;
   ninerouter_coach_prompt: string;
   ninerouter_direct_coach_prompt: string;
+  meeting_provider: "aiservice" | "ninerouter_direct";
+  meeting_model: string;
+  meeting_block_chars: number;
+  ninerouter_meeting_model: string;
+  ninerouter_meeting_prompt: string;
+  ninerouter_direct_meeting_prompt: string;
   correction_provider: "aiservice" | "ninerouter_direct";
   decision_provider: "aiservice" | "ninerouter_direct";
   embedding_provider: "aiservice" | "ninerouter_direct";

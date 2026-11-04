@@ -303,6 +303,27 @@ services:
       resources:
         limits: { cpus: "2", memory: 4G }
 
+  worker-meeting:
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_meeting.main.WorkerSettings"]
+    environment: *python-env
+    dns: *external-dns
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      replicas: 1
+      resources:
+        limits: { cpus: "1", memory: 512M }
+
   worker-llm:
     build: *api-build
     restart: unless-stopped

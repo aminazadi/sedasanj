@@ -164,6 +164,7 @@ class Settings(BaseSettings):
     analysis_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     assistant_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     coach_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
+    meeting_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     correction_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     decision_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
     embedding_provider: Literal["aiservice", "ninerouter_direct"] = "aiservice"
@@ -208,6 +209,8 @@ class Settings(BaseSettings):
     meeting_pairing_ttl_minutes: int = Field(default=15, ge=1, le=120)
     meeting_min_balance_seconds: int = Field(default=600, ge=0)
     meeting_reserve_block_seconds: int = Field(default=1800, ge=60)
+    meeting_max_duration_ms: int = Field(default=12 * 3600 * 1000, ge=60_000)
+    meeting_transcript_max_chars: int = Field(default=2_000_000, ge=10_000)
     webhook_max_per_tenant: int = 10
     webhook_auto_disable_failures: int = 10
     webhook_delivery_retention_days: int = 30

@@ -12,7 +12,9 @@ import pytest
 from app.errors import ERROR_STATUS
 from app.services.help_content import sanitize_help_html
 
-MIGRATION = Path(__file__).parents[1] / "apps/api/alembic/versions/0094_meetings_help_content.py"
+VERSIONS = Path(__file__).parents[1] / "apps/api/alembic/versions"
+MIGRATION = VERSIONS / "0094_meetings_help_content.py"
+TEXT_MIGRATION = VERSIONS / "0096_meeting_text_help_content.py"
 
 
 @pytest.fixture(scope="module")
@@ -24,9 +26,20 @@ def migration() -> ModuleType:
     return module
 
 
-def test_every_meeting_code_has_a_help_row(migration: ModuleType) -> None:
-    seeded = {code for code, *_ in migration.ERRORS}
-    assert seeded == {code for code in ERROR_STATUS if code.startswith("meeting_")}
+@pytest.fixture(scope="module")
+def text_migration() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("meeting_text_help_migration", TEXT_MIGRATION)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_meeting_code_has_a_help_row(migration: ModuleType, text_migration: ModuleType) -> None:
+    seeded = {code for code, *_ in migration.ERRORS} | {code for code, *_ in text_migration.ERRORS}
+    assert seeded >= {code for code in ERROR_STATUS if code.startswith("meeting_")}
+    assert "tenant_instructions_too_long" in seeded
+    assert text_migration.down_revision == "0095_meeting_text_ingest"
     assert all(len(code) <= 40 for code in seeded)
     assert migration.down_revision == "0093_meetings"
 

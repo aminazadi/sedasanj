@@ -326,6 +326,12 @@ export default function Settings() {
           coach_min_duration_seconds: settings.coach_min_duration_seconds,
           ninerouter_coach_model: settings.ninerouter_coach_model,
           ninerouter_direct_coach_prompt: settings.ninerouter_direct_coach_prompt,
+          meeting_route: settings.meeting_route,
+          meeting_provider: settings.meeting_provider,
+          meeting_model: settings.meeting_model,
+          meeting_block_chars: settings.meeting_block_chars,
+          ninerouter_meeting_model: settings.ninerouter_meeting_model,
+          ninerouter_direct_meeting_prompt: settings.ninerouter_direct_meeting_prompt,
           decision_route: settings.decision_route,
           embedding_route: settings.embedding_route,
           asr_ai_provider: settings.asr_ai_provider,
@@ -354,6 +360,9 @@ export default function Settings() {
         }
         if (settings.coach_route === "ninerouter") {
           body.ninerouter_coach_prompt = settings.ninerouter_coach_prompt;
+        }
+        if (settings.meeting_route === "ninerouter") {
+          body.ninerouter_meeting_prompt = settings.ninerouter_meeting_prompt;
         }
         if (settings.decision_route === "ninerouter") {
           body.ninerouter_decision_prompt = settings.ninerouter_decision_prompt;
@@ -404,6 +413,7 @@ export default function Settings() {
         body.extract_prompt = settings.extract_prompt;
         body.assistant_instructions = settings.assistant_instructions;
         body.coach_prompt = settings.coach_prompt;
+        body.meeting_prompt = settings.meeting_prompt;
       }
       // Persist only this tab's changed fields, including explicit blank values.
       for (const key of Object.keys(body)) {
@@ -1037,6 +1047,42 @@ export default function Settings() {
 
       <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div>
+          <h2 className="font-bold text-slate-900">صورت‌جلسهٔ جلسات</h2>
+          <p className="mt-1 text-xs leading-6 text-slate-500">اپ جلسه‌نگار فقط متن جلسه را می‌فرستد و صورت‌جلسهٔ حرفه‌ای از روی همان متن ساخته می‌شود. مسیر و مدل آن را اینجا انتخاب کنید؛ پرامپت در برگهٔ «پرامپت‌ها» ویرایش می‌شود.</p>
+        </div>
+        <div>
+          <label className="label">مسیر صورت‌جلسه</label>
+          <select className="input mb-2" value={settings.meeting_provider} onChange={(event) => setSettings({ ...settings, meeting_provider: event.target.value as PlatformSettings["meeting_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select>
+          <ModelSelect
+            id="meeting-model"
+            label="مدل صورت‌جلسه"
+            value={settings.meeting_provider === "ninerouter_direct" ? settings.ninerouter_meeting_model : settings.meeting_model}
+            models={settings.meeting_provider === "ninerouter_direct" ? nineRouterLlmModels : llmModels}
+            sourceLabel={settings.meeting_provider === "ninerouter_direct" ? "9Router" : "AISERVICE"}
+            onChange={(value) => setSettings(settings.meeting_provider === "ninerouter_direct" ? { ...settings, ninerouter_meeting_model: value } : { ...settings, meeting_model: value })}
+          />
+          <select className="input mt-2" disabled={settings.meeting_provider === "ninerouter_direct"} value={settings.meeting_route} onChange={(event) => setSettings({ ...settings, meeting_route: event.target.value as PlatformSettings["meeting_route"] })}>
+            <option value="durable">/v1/chat/tasks — صف durable AISERVICE</option>
+            <option value="synchronous">/v1/chat/completions — پاسخ مستقیم AISERVICE</option>
+            <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
+          </select>
+        </div>
+        {settings.meeting_provider === "aiservice" && settings.meeting_route === "ninerouter" ? (
+          <div>
+            <label className="label" htmlFor="ninerouter-meeting-prompt">دستور تکمیلی صورت‌جلسه در 9Router</label>
+            <textarea id="ninerouter-meeting-prompt" className="input min-h-40 resize-y" maxLength={20000} value={settings.ninerouter_meeting_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_meeting_prompt: event.target.value })} />
+          </div>
+        ) : null}
+        {settings.meeting_provider === "ninerouter_direct" ? <div><label className="label">پرامپت مستقیم صورت‌جلسه</label><textarea className="input min-h-40" value={settings.ninerouter_direct_meeting_prompt} onChange={(event) => setSettings({ ...settings, ninerouter_direct_meeting_prompt: event.target.value })} /></div> : null}
+        <div>
+          <label className="label" htmlFor="meeting-block-chars">اندازهٔ هر بلوک متن برای جلسه‌های طولانی (نویسه)</label>
+          <input id="meeting-block-chars" className="input" type="number" min="2000" max="60000" step="1000" value={settings.meeting_block_chars} onChange={(event) => setSettings({ ...settings, meeting_block_chars: Number(event.target.value) })} />
+          <p className="field-hint">متن کوتاه‌تر از این مقدار یک‌جا پردازش می‌شود؛ متن بلندتر بلوک‌به‌بلوک خلاصه و سپس به صورت‌جلسه تبدیل می‌شود.</p>
+        </div>
+      </section>
+
+      <section className={`${activeTab === "models" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div>
           <h2 className="font-bold text-slate-900">تصمیم‌گیری محلی AISERVICE</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">مدل اصلی و fallback را از مدل‌های واقعاً قابل دسترس AISERVICE انتخاب کنید.</p>
         </div>
@@ -1125,6 +1171,25 @@ export default function Settings() {
           maxLength={100000}
           value={settings.coach_prompt}
           onChange={(event) => setSettings({ ...settings, coach_prompt: event.target.value })}
+        />
+      </section>
+      <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-slate-900">پرامپت صورت‌جلسهٔ جلسات</h2>
+            <p className="mt-1 text-xs leading-6 text-slate-500">
+              سبک و قواعد نگارش صورت‌جلسه. قالب خروجی JSON توسط سیستم ثابت اضافه می‌شود و با ویرایش این متن خراب نمی‌شود. دستور سفارشی هر سازمان بعد از این متن اضافه می‌شود. خالی‌کردن متن و ذخیره، پرامپت پیش‌فرض را برمی‌گرداند.
+            </p>
+          </div>
+          <button type="button" className="btn-ghost shrink-0 text-xs" onClick={() => setSettings({ ...settings, meeting_prompt: "" })}>بازگردانی پیش‌فرض</button>
+        </div>
+        <textarea
+          className="input min-h-96 resize-y font-mono text-sm leading-6"
+          dir="rtl"
+          spellCheck={false}
+          maxLength={100000}
+          value={settings.meeting_prompt}
+          onChange={(event) => setSettings({ ...settings, meeting_prompt: event.target.value })}
         />
       </section>
       <button className="btn">

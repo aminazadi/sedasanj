@@ -1278,6 +1278,7 @@ class SettingsUpdate(BaseModel):
     extract_prompt: str | None = Field(default=None, max_length=100_000)
     assistant_instructions: str | None = Field(default=None, max_length=100_000)
     coach_prompt: str | None = Field(default=None, max_length=100_000)
+    meeting_prompt: str | None = Field(default=None, max_length=100_000)
     api_key: str | None = None
     voicesanj_base_url: str | None = None
     asr_provider: Literal["local", "voicesanj", "openai_compatible"] | None = None
@@ -1305,6 +1306,7 @@ class SettingsUpdate(BaseModel):
     analysis_route: Literal["durable", "ninerouter"] | None = None
     chat_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     coach_route: Literal["durable", "synchronous", "ninerouter"] | None = None
+    meeting_route: Literal["durable", "synchronous", "ninerouter"] | None = None
     decision_route: Literal["native", "ninerouter", "typed"] | None = None
     embedding_route: Literal["native", "ninerouter"] | None = None
     ninerouter_asr_prompt: str | None = Field(default=None, max_length=20_000)
@@ -1345,6 +1347,7 @@ class SettingsUpdate(BaseModel):
     assistant_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     correction_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     coach_provider: Literal["aiservice", "ninerouter_direct"] | None = None
+    meeting_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     decision_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     embedding_provider: Literal["aiservice", "ninerouter_direct"] | None = None
     ninerouter_base_url: str | None = None
@@ -1369,6 +1372,11 @@ class SettingsUpdate(BaseModel):
     ninerouter_coach_model: str | None = Field(default=None, max_length=200)
     ninerouter_coach_prompt: str | None = Field(default=None, max_length=20_000)
     ninerouter_direct_coach_prompt: str | None = Field(default=None, max_length=20_000)
+    meeting_model: str | None = Field(default=None, max_length=200)
+    meeting_block_chars: int | None = Field(default=None, ge=2000, le=60_000)
+    ninerouter_meeting_model: str | None = Field(default=None, max_length=200)
+    ninerouter_meeting_prompt: str | None = Field(default=None, max_length=20_000)
+    ninerouter_direct_meeting_prompt: str | None = Field(default=None, max_length=20_000)
 
 
 class KnowledgeRetryRequest(BaseModel):
@@ -1855,6 +1863,26 @@ class MeetingSessionIn(BaseModel):
     sample_rate: Literal[16000]
     channels: Literal[1]
     app_version: str = Field(min_length=1, max_length=40)
+    # "text": the app sends the on-device transcript and never uploads audio.
+    input_kind: Literal["audio", "text"] = "audio"
+
+
+class MeetingTranscriptSegmentIn(BaseModel):
+    t_start_ms: int = Field(ge=0, le=86_400_000)
+    t_end_ms: int = Field(ge=0, le=86_400_000)
+    text: str = Field(min_length=1, max_length=4000)
+    speaker: int | None = Field(default=None, ge=0, le=64)
+
+
+class MeetingTranscriptIn(BaseModel):
+    segments: list[MeetingTranscriptSegmentIn] = Field(min_length=1, max_length=20_000)
+    asr_identity: str | None = Field(default=None, max_length=200)
+
+
+class MeetingTranscriptOut(BaseModel):
+    segments: int
+    sha256: str
+    replay: bool = False
 
 
 class MeetingSessionOut(BaseModel):
@@ -1862,6 +1890,8 @@ class MeetingSessionOut(BaseModel):
     status: str
     received_seqs: list[int]
     chunk_max_bytes: int
+    input_kind: str = "audio"
+    transcript_received: bool = False
 
 
 class MeetingChunkOut(BaseModel):
@@ -1903,6 +1933,7 @@ class MeetingListItem(BaseModel):
     progress_detail: str | None
     error_code: str | None
     audio_available: bool
+    input_kind: str = "audio"
 
 
 class MeetingPage(BaseModel):
@@ -1933,8 +1964,13 @@ class MeetingMinutesOut(BaseModel):
     content_md: str
     structured: Any | None
     model: str | None
+    provider: str | None = None
     is_selected: bool
     created_at: datetime
+    # Flat view of `structured` for the panel; empty when the minutes have another shape.
+    summary: str = ""
+    decisions: list[str] = Field(default_factory=list)
+    action_items: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MeetingEventOut(BaseModel):

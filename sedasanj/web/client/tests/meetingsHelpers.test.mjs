@@ -100,6 +100,14 @@ test("exports carry the title, timestamps and speaker names", () => {
   assert.match(markdown, /- ارسال گزارش \(مسئول: سارا\)/);
 });
 
+test("rendered minutes win over the flat fields, and text meetings go straight to the minutes stage", async () => {
+  const { meetingPipelineStatus } = await import("../src/lib/meetingsHelpers.mjs");
+  assert.equal(meetingMinutesMarkdown({ content_md: "  # صورت‌جلسه\n- الف  ", summary: "x", decisions: [], action_items: [] }), "# صورت‌جلسه\n- الف");
+  assert.equal(meetingPipelineStatus("processing", 5, "text"), "minuting");
+  assert.equal(meetingPipelineStatus("processing", 5), "transcribing");
+  assert.equal(meetingPipelineStatus("complete", 100, "text"), "complete");
+});
+
 test("processing meetings map to a pipeline stage by progress band", async () => {
   const { meetingPipelineStatus } = await import("../src/lib/meetingsHelpers.mjs");
   assert.equal(meetingPipelineStatus("receiving", 0), "receiving");

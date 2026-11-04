@@ -1,10 +1,22 @@
 import { DataTable } from "../components/DataTable";
 import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import AiInstructionsEditor, { type AiInstructions } from "@cbi/web-shared/components/AiInstructionsEditor";
 import { Link, useParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { Empty, ErrorBox, Loading, Pagination, Stat } from "../components/Widgets";
 import type { LedgerEntry, Page, TenantDetail, TenantUser } from "../types";
+
+function TenantAiInstructions({ tenantId }: { tenantId: string }) {
+  const path = `/v1/admin/tenants/${tenantId}/ai-instructions`;
+  const load = useCallback(() => request<AiInstructions>(path), [path]);
+  const save = useCallback(
+    (changes: Partial<Pick<AiInstructions, "coach" | "meeting">>) =>
+      request<AiInstructions>(path, { method: "PUT", body: changes }),
+    [path],
+  );
+  return <AiInstructionsEditor load={load} save={save} audience="staff" />;
+}
 
 export default function TenantDetailPage() {
   const [limit] = useTablePageSize();
@@ -239,6 +251,11 @@ export default function TenantDetailPage() {
         <section className="card md:col-span-2 overflow-x-auto"><h2 className="mb-3 font-bold">سفارش‌های سازمان</h2>
           {commerce.orders.length === 0 ? <Empty /> : <DataTable tableId="tenantdetail_4" className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>ایجاد</th><th>پرداخت</th></tr></thead><tbody>{commerce.orders.map((row) => <tr key={String(row.id)}><td dir="ltr">{String(row.number)}</td><td>{String(row.kind)}</td><td>{String(row.status)}</td><td>{fmt.toman(Number(row.amount_toman))}</td><td>{fmt.dateTime(String(row.created_at))}</td><td>{row.paid_at ? fmt.dateTime(String(row.paid_at)) : "—"}</td></tr>)}</tbody></DataTable>}
         </section>
+      </div> : null}
+
+      {tenantId ? <div className="card">
+        <h2 className="mb-2 font-bold">دستورهای سفارشی هوش مصنوعی</h2>
+        <TenantAiInstructions tenantId={tenantId} />
       </div> : null}
 
       <div className="card">

@@ -72,6 +72,8 @@ from app.schemas import (
     MeetingSessionOut,
     MeetingSpeakerOut,
     MeetingStatusOut,
+    MeetingTranscriptIn,
+    MeetingTranscriptOut,
 )
 from app.security import generate_api_key, hash_api_key
 from app.services import (
@@ -88,7 +90,13 @@ from app.services.meeting_scope import (
     apply_meeting_scope,
     sees_all,
 )
-from app.services.queue import JOB_MEETING_CHUNK, JOB_MEETING_MINUTES, QUEUE_MEETING, get_queue
+from app.services.queue import (
+    JOB_MEETING_AUDIO,
+    JOB_MEETING_CHUNK,
+    JOB_MEETING_MINUTES,
+    QUEUE_MEETING,
+    get_queue,
+)
 from app.services.storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -389,6 +397,8 @@ async def create_session(
             status=existing.status,
             received_seqs=await meeting_ingest.received_seqs(session, existing.id),
             chunk_max_bytes=settings.meeting_chunk_max_bytes,
+            input_kind=existing.input_kind,
+            transcript_received=existing.transcript_sha256 is not None,
         )
 
     tenant = await _tenant_active_check(session, tenant_id)
@@ -417,6 +427,7 @@ async def create_session(
         sample_rate=payload.sample_rate,
         channels=payload.channels,
         app_version=payload.app_version,
+        input_kind=payload.input_kind,
     )
     try:
         async with session.begin_nested():
@@ -439,6 +450,8 @@ async def create_session(
             status=winner.status,
             received_seqs=await meeting_ingest.received_seqs(session, winner.id),
             chunk_max_bytes=settings.meeting_chunk_max_bytes,
+            input_kind=winner.input_kind,
+            transcript_received=winner.transcript_sha256 is not None,
         )
 
     block = min(settings.meeting_reserve_block_seconds, balance.seconds)
@@ -467,6 +480,7 @@ async def create_session(
         status=meeting.status,
         received_seqs=[],
         chunk_max_bytes=settings.meeting_chunk_max_bytes,
+        input_kind=meeting.input_kind,
     )
 
 
@@ -521,6 +535,7 @@ async def put_chunk(
             meeting = await _owned_meeting(
                 session, meeting_id, principal.user_id, principal.tenant_id, lock=True
             )
+            text_mode = meeting.input_kind == "text"
             accepted = await meeting_ingest.accept_chunk(
                 session,
                 meeting,
@@ -537,12 +552,31 @@ async def put_chunk(
     assert accepted is not None
     # Queue after the commit so a worker never sees a chunk that is not yet visible. A failed
     # enqueue is harmless: the chunk stays `received` and the reconciler picks it up.
-    if accepted.status == "received" and await meeting_ingest.enqueue_chunk(
-        principal.tenant_id, meeting_id, accepted.chunk_id
+    # Text meetings keep the audio for playback only; nothing is transcribed on the server.
+    if (
+        not text_mode
+        and accepted.status == "received"
+        and await meeting_ingest.enqueue_chunk(principal.tenant_id, meeting_id, accepted.chunk_id)
     ):
         async with session_scope(principal.tenant_id) as session:
             await meeting_ingest.mark_queued(session, accepted.chunk_id)
     return MeetingChunkOut(seq=accepted.seq, status=accepted.status)
+
+
+@router.put("/{meeting_id}/transcript", response_model=MeetingTranscriptOut)
+async def put_transcript(
+    meeting_id: UUID, payload: MeetingTranscriptIn, principal: MeetingsKeyDep
+) -> MeetingTranscriptOut:
+    """Upload the on-device transcript of a text meeting; idempotent on its content hash."""
+    assert principal.tenant_id is not None and principal.user_id is not None
+    async with session_scope(principal.tenant_id) as session:
+        meeting = await _owned_meeting(
+            session, meeting_id, principal.user_id, principal.tenant_id, lock=True
+        )
+        accepted = await meeting_ingest.accept_transcript(session, meeting, payload)
+    return MeetingTranscriptOut(
+        segments=accepted.segments, sha256=accepted.sha256, replay=accepted.replay
+    )
 
 
 @router.get("/{meeting_id}/status", response_model=MeetingStatusOut)
@@ -584,7 +618,9 @@ async def finish_meeting(
             return MeetingFinishOut(meeting_id=meeting.id, status=meeting.status)
         if meeting.status != "receiving":
             raise ApiError("meeting_closed", "این جلسه بسته شده است؛ جلسه‌ی جدید شروع کنید")
+        text_mode = meeting.input_kind == "text"
         have = set(await meeting_ingest.received_seqs(session, meeting.id))
+        # A text meeting may carry audio for playback; when it does, every chunk must be in.
         missing = [seq for seq in range(payload.total_chunks) if seq not in have]
         if missing:
             raise ApiError(
@@ -593,27 +629,39 @@ async def finish_meeting(
                 extra={"missing_seqs": missing[:1000]},
             )
         now = datetime.now(UTC)
+        if text_mode:
+            await meeting_ingest.prepare_text_finish(session, meeting, payload.duration_ms)
         meeting.status = "processing"
         meeting.ended_at = payload.ended_at
         meeting.finish_requested_at = now
         meeting.total_chunks = payload.total_chunks
-        meeting.duration_ms = payload.duration_ms
+        if not text_mode:
+            meeting.duration_ms = payload.duration_ms
         meeting.updated_at = now
-        meeting.progress_pct = meeting_progress.compute_progress(
-            total_chunks=meeting.total_chunks,
-            received_chunks=meeting.received_chunks,
-            processed_chunks=meeting.processed_chunks,
-        )
-        meeting_progress.set_stage(meeting, "processing")
+        if text_mode:
+            meeting_progress.set_stage(meeting, "minutes", progress_pct=5)
+        else:
+            meeting.progress_pct = meeting_progress.compute_progress(
+                total_chunks=meeting.total_chunks,
+                received_chunks=meeting.received_chunks,
+                processed_chunks=meeting.processed_chunks,
+            )
+            meeting_progress.set_stage(meeting, "processing")
         await meeting_progress.record_event(
             session,
             meeting,
             step_key="finished",
             kind="pipeline",
             status="processing",
-            detail=meeting_progress.STAGE_LABELS["processing"],
+            detail=meeting_progress.STAGE_LABELS["minutes" if text_mode else "processing"],
         )
-        return MeetingFinishOut(meeting_id=meeting.id, status=meeting.status)
+        result = MeetingFinishOut(meeting_id=meeting.id, status=meeting.status)
+    if text_mode:
+        # After the commit, so the worker always finds the processing meeting.
+        await _enqueue_minutes(principal.tenant_id, meeting_id, 1)
+        if payload.total_chunks > 0:
+            await _enqueue_audio(principal.tenant_id, meeting_id)
+    return result
 
 
 @router.post("/{meeting_id}/cancel", response_model=MeetingFinishOut)
@@ -679,6 +727,7 @@ def _list_item(meeting: Meeting, owner_name: str | None, audio_available: bool) 
         "progress_detail": meeting.progress_detail,
         "error_code": meeting.error_code,
         "audio_available": audio_available,
+        "input_kind": meeting.input_kind,
     }
 
 
@@ -759,11 +808,22 @@ async def _audio_available(session: AsyncSession, meeting: Meeting) -> bool:
 
 
 def _minutes_out(row: MeetingMinutes) -> MeetingMinutesOut:
+    structured = row.structured if isinstance(row.structured, dict) else {}
+    decisions = structured.get("decisions")
+    actions = structured.get("action_items")
     return MeetingMinutesOut(
+        summary=str(structured.get("summary") or ""),
+        decisions=[str(item) for item in decisions] if isinstance(decisions, list) else [],
+        action_items=(
+            [item for item in actions if isinstance(item, dict)]
+            if isinstance(actions, list)
+            else []
+        ),
         version=row.version,
         content_md=row.content_md,
         structured=row.structured,
         model=row.model,
+        provider=row.provider,
         is_selected=row.is_selected,
         created_at=row.created_at,
     )
@@ -1080,6 +1140,23 @@ async def _enqueue_minutes(tenant_id: UUID, meeting_id: UUID, version: int) -> N
     except Exception:
         logger.warning(
             "meeting minutes enqueue failed",
+            extra={"extra_fields": {"meeting_id": str(meeting_id)}},
+            exc_info=True,
+        )
+
+
+async def _enqueue_audio(tenant_id: UUID, meeting_id: UUID) -> None:
+    """Queue the joining of a text meeting's audio chunks; the worker reconciler retries."""
+    try:
+        await get_queue().enqueue(
+            QUEUE_MEETING,
+            JOB_MEETING_AUDIO,
+            {"tenant_id": str(tenant_id), "meeting_id": str(meeting_id)},
+            job_id=f"meeting-audio:{meeting_id}",
+        )
+    except Exception:
+        logger.warning(
+            "meeting audio enqueue failed; the reconciler will retry",
             extra={"extra_fields": {"meeting_id": str(meeting_id)}},
             exc_info=True,
         )

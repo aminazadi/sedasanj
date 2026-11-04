@@ -1,4 +1,4 @@
-"""The eleven meeting error codes: status, retry semantics and body shape."""
+"""The meeting error codes: status, retry semantics and body shape."""
 
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ MEETING_CODES = {
     "meeting_asr_failed": 502,
     "meeting_diarization_failed": 502,
     "meeting_minutes_failed": 502,
+    "meeting_transcript_missing": 409,
+    "meeting_transcript_invalid": 422,
 }
 
 

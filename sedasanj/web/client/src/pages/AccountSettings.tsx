@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
+import AiInstructionsPanel from "../components/AiInstructionsPanel";
 import ScoreRubricSettings from "../components/ScoreRubricSettings";
 import Account, { type AccountSection } from "./Account";
 import KpiSettings from "./KpiSettings";
@@ -6,6 +7,7 @@ import { PageHeader } from "../components/PageHeader";
 
 const TABS = [
   { id: "scoring", label: "امتیاز عملکرد", description: "معیارهای ارزیابی تماس" },
+  { id: "ai", label: "دستورهای هوش مصنوعی", description: "صورت‌جلسه و مربی" },
   { id: "kpi", label: "KPI و تیم‌ها", description: "داشبورد، اهداف و اعضا" },
   { id: "users", label: "کاربران", description: "دسترسی اعضای سازمان" },
   { id: "integrations", label: "اتصال‌ها", description: "کلید API و وب‌هوک" },
@@ -25,12 +27,13 @@ export default function AccountSettings() {
 
   return <div className="space-y-4">
     <PageHeader title="تنظیمات حساب" description="مدیریت معیارهای ارزیابی، KPI و تنظیمات سازمان" actions={<Link className="btn-ghost" to="/scheduled-reports?tab=settings">تنظیم گزارش‌های زمان‌بندی‌شده</Link>} />
-    <nav className="panel-tabs sm:grid-cols-2 xl:grid-cols-5" aria-label="بخش‌های تنظیمات حساب">
+    <nav className="panel-tabs sm:grid-cols-2 xl:grid-cols-6" aria-label="بخش‌های تنظیمات حساب">
       {TABS.map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => selectTab(item.id)} className="panel-tab">
         <span className="block font-bold">{item.label}</span><span className="mt-1 block text-xs opacity-75">{item.description}</span>
       </button>)}
     </nav>
     {tab === "scoring" ? <ScoreRubricSettings /> : null}
+    {tab === "ai" ? <AiInstructionsPanel /> : null}
     {tab === "kpi" ? <KpiSettings embedded /> : null}
     {tab === "users" || tab === "integrations" || tab === "data" ? <Account key={tab} section={tab as AccountSection} /> : null}
   </div>;

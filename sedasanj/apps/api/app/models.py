@@ -1477,11 +1477,16 @@ class Meeting(Base):
     audio_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("audio_objects.id", ondelete="SET NULL")
     )
+    input_kind: Mapped[str] = mapped_column(Text, server_default=text("'audio'"))
+    transcript_sha256: Mapped[str | None] = mapped_column(Text)
+    transcript_received_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    asr_identity: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "client_meeting_id", name="meetings_client_unique"),
+        CheckConstraint("input_kind IN ('audio','text')", name="meetings_input_kind_check"),
         CheckConstraint(f"status IN ({_in_list(MEETING_STATUSES)})", name="meetings_status_check"),
         CheckConstraint("progress_pct BETWEEN 0 AND 100", name="meetings_progress_pct_check"),
         Index("idx_meetings_owner", "tenant_id", "owner_user_id", text("started_at DESC")),
@@ -1547,7 +1552,9 @@ class MeetingSegment(Base):
     text: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("source IN ('server_asr')", name="meeting_segments_source_check"),
+        CheckConstraint(
+            "source IN ('server_asr','device_asr')", name="meeting_segments_source_check"
+        ),
         Index("idx_meeting_segments_time", "meeting_id", "t_start_ms"),
         Index("idx_meeting_segments_chunk", "chunk_id"),
     )
@@ -1626,10 +1633,37 @@ class MeetingMinutes(Base):
     content_md: Mapped[str] = mapped_column(Text)
     structured: Mapped[Any | None] = mapped_column(JSONB)
     model: Mapped[str | None] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(Text)
+    prompt_sha256: Mapped[str | None] = mapped_column(Text)
     is_selected: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
 
     __table_args__ = (CheckConstraint("version >= 1", name="meeting_minutes_version_check"),)
+
+
+class TenantAiInstruction(Base):
+    """Organization-written text appended to the coach or meeting-minutes prompt."""
+
+    __tablename__ = "tenant_ai_instructions"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    scope: Mapped[str] = mapped_column(Text, primary_key=True)
+    instructions: Mapped[str] = mapped_column(Text)
+    updated_by_type: Mapped[str] = mapped_column(Text)
+    updated_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("scope IN ('coach','meeting')", name="tenant_ai_instructions_scope_check"),
+        CheckConstraint(
+            "updated_by_type IN ('user','staff')", name="tenant_ai_instructions_actor_check"
+        ),
+        CheckConstraint(
+            "char_length(instructions) <= 8000", name="tenant_ai_instructions_length_check"
+        ),
+    )
 
 
 class MeetingEvent(Base):

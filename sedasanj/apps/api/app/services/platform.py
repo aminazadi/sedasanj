@@ -21,6 +21,8 @@ ASSISTANT_INSTRUCTIONS_KEY = "assistant-instructions"
 COACH_PROMPT_KEY = "operator-coach-prompt"
 # Lives in a subfolder so it is not offered as an analysis prompt_version.
 COACH_PROMPT_VERSION = "coach/operator-coach-fa-v1"
+MEETING_PROMPT_KEY = "meeting-minutes-prompt"
+MEETING_PROMPT_VERSION = "meetings/minutes-fa-v1"
 OVERRIDE_KEYS = (
     "asr_model",
     "llm_provider",
@@ -105,6 +107,13 @@ OVERRIDE_KEYS = (
     "ninerouter_coach_model",
     "ninerouter_coach_prompt",
     "ninerouter_direct_coach_prompt",
+    "meeting_provider",
+    "meeting_route",
+    "meeting_model",
+    "meeting_block_chars",
+    "ninerouter_meeting_model",
+    "ninerouter_meeting_prompt",
+    "ninerouter_direct_meeting_prompt",
 )
 
 AISERVICE_ROUTES = {
@@ -122,6 +131,11 @@ AISERVICE_ROUTES = {
         "ninerouter": "/v1/ninerouter/chat/completions",
     },
     "coach_route": {
+        "durable": "/v1/chat/tasks",
+        "synchronous": "/v1/chat/completions",
+        "ninerouter": "/v1/ninerouter/chat/completions",
+    },
+    "meeting_route": {
         "durable": "/v1/chat/tasks",
         "synchronous": "/v1/chat/completions",
         "ninerouter": "/v1/ninerouter/chat/completions",
@@ -144,6 +158,7 @@ __all__ = (
     "effective_extract_prompt",
     "effective_assistant_instructions",
     "effective_coach_prompt",
+    "effective_meeting_minutes_prompt",
     "mask_api_key",
     "normalize_api_key",
     "resolve_provider_settings",
@@ -160,6 +175,7 @@ def capability_model(values: dict[str, str], capability: str) -> str:
                 "analysis": "ninerouter_analysis_model",
                 "assistant": "ninerouter_assistant_model",
                 "coach": "ninerouter_coach_model",
+                "meeting": "ninerouter_meeting_model",
                 "decision": "ninerouter_decision_model",
                 "embedding": "ninerouter_embedding_model",
             }.get(capability, ""),
@@ -171,6 +187,7 @@ def capability_model(values: dict[str, str], capability: str) -> str:
             "analysis": "llm_model",
             "assistant": "chat_model",
             "coach": "coach_model",
+            "meeting": "meeting_model",
             "decision": "decision_model",
             "embedding": "embedding_model",
         }.get(capability, ""),
@@ -231,6 +248,18 @@ async def effective_coach_prompt(session: AsyncSession) -> str:
     if row is not None and row.value.strip():
         return row.value.strip()
     return load_prompt(COACH_PROMPT_VERSION)
+
+
+async def effective_meeting_minutes_prompt(session: AsyncSession) -> str:
+    """Return the admin-managed meeting-minutes prompt, falling back to the packaged default."""
+    if get_settings().tenant_databases_enabled:
+        async with get_sessionmaker()() as control:
+            row = await control.get(PlatformSetting, MEETING_PROMPT_KEY)
+    else:
+        row = await session.get(PlatformSetting, MEETING_PROMPT_KEY)
+    if row is not None and row.value.strip():
+        return row.value.strip()
+    return load_prompt(MEETING_PROMPT_VERSION)
 
 
 def _default_asr_model(settings: Settings) -> str:
@@ -401,6 +430,13 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "ninerouter_coach_model": "",
         "ninerouter_coach_prompt": "",
         "ninerouter_direct_coach_prompt": "",
+        "meeting_provider": "aiservice",
+        "meeting_route": "durable",
+        "meeting_model": "",
+        "meeting_block_chars": "12000",
+        "ninerouter_meeting_model": "",
+        "ninerouter_meeting_prompt": "",
+        "ninerouter_direct_meeting_prompt": "",
     }
     settings_session = session
     if get_settings().tenant_databases_enabled:
@@ -448,6 +484,8 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         values["chat_model"] = values["llm_model"]
     if "coach_model" not in row_keys:
         values["coach_model"] = values["chat_model"]
+    if "meeting_model" not in row_keys:
+        values["meeting_model"] = values["chat_model"]
     return values
 
 
@@ -467,6 +505,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "extract_prompt": await effective_extract_prompt(session, values["prompt_version"]),
         "assistant_instructions": await effective_assistant_instructions(session),
         "coach_prompt": await effective_coach_prompt(session),
+        "meeting_prompt": await effective_meeting_minutes_prompt(session),
         "api_key_configured": bool(api_key.strip()),
         "api_key_hint": mask_api_key(api_key),
         "voicesanj_base_url": values["voicesanj_base_url"],
@@ -555,6 +594,13 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "ninerouter_coach_model": values["ninerouter_coach_model"],
         "ninerouter_coach_prompt": values["ninerouter_coach_prompt"],
         "ninerouter_direct_coach_prompt": values["ninerouter_direct_coach_prompt"],
+        "meeting_provider": values["meeting_provider"],
+        "meeting_route": values["meeting_route"],
+        "meeting_model": values["meeting_model"],
+        "meeting_block_chars": int(values["meeting_block_chars"]),
+        "ninerouter_meeting_model": values["ninerouter_meeting_model"],
+        "ninerouter_meeting_prompt": values["ninerouter_meeting_prompt"],
+        "ninerouter_direct_meeting_prompt": values["ninerouter_direct_meeting_prompt"],
     }
 
 
@@ -670,6 +716,21 @@ async def resolve_provider_settings(
                 ),
             }
         )
+    if capability == "meeting":
+        runtime = runtime.model_copy(
+            update={
+                "llm_model": overrides["meeting_model"] or runtime.llm_model,
+                "voicesanj_llm_model": overrides["meeting_model"] or runtime.voicesanj_llm_model,
+                "aiservice_chat_path": AISERVICE_ROUTES["meeting_route"][
+                    overrides["meeting_route"]
+                ],
+                "ninerouter_chat_prompt": (
+                    overrides["ninerouter_meeting_prompt"]
+                    if overrides["meeting_route"] == "ninerouter"
+                    else ""
+                ),
+            }
+        )
     if capability is None:
         return runtime
     provider_key = "asr_ai_provider" if capability == "asr" else f"{capability}_provider"
@@ -687,6 +748,7 @@ async def resolve_provider_settings(
         "analysis": "ninerouter_analysis_model",
         "assistant": "ninerouter_assistant_model",
         "coach": "ninerouter_coach_model",
+        "meeting": "ninerouter_meeting_model",
         "decision": "ninerouter_decision_model",
         "embedding": "ninerouter_embedding_model",
     }.get(capability)
@@ -697,6 +759,7 @@ async def resolve_provider_settings(
         "analysis": "ninerouter_direct_analysis_prompt",
         "assistant": "ninerouter_direct_assistant_prompt",
         "coach": "ninerouter_direct_coach_prompt",
+        "meeting": "ninerouter_direct_meeting_prompt",
         "correction": "ninerouter_direct_correction_prompt",
         "decision": "ninerouter_direct_decision_prompt",
     }.get(capability)
@@ -706,6 +769,7 @@ async def resolve_provider_settings(
             "analysis_provider": overrides["analysis_provider"],
             "assistant_provider": overrides["assistant_provider"],
             "coach_provider": overrides["coach_provider"],
+            "meeting_provider": overrides["meeting_provider"],
             "correction_provider": overrides["correction_provider"],
             "decision_provider": overrides["decision_provider"],
             "embedding_provider": overrides["embedding_provider"],
@@ -717,7 +781,7 @@ async def resolve_provider_settings(
             "ninerouter_read_timeout_seconds": float(overrides["ninerouter_read_timeout_seconds"]),
             "ninerouter_direct_prompt": overrides.get(prompt_key, "") if prompt_key else "",
             "llm_client": "ninerouter"
-            if capability in {"analysis", "assistant", "coach", "correction"}
+            if capability in {"analysis", "assistant", "coach", "meeting", "correction"}
             else runtime.llm_client,
             "llm_model": direct_model or runtime.llm_model,
             "voicesanj_llm_model": direct_model or runtime.voicesanj_llm_model,

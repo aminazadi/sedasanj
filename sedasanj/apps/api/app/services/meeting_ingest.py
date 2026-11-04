@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import math
 from dataclasses import dataclass
@@ -12,14 +13,15 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.errors import ApiError
 from app.metrics import meeting_chunks_total
-from app.models import AudioObject, Meeting, MeetingChunk, Tenant
+from app.models import AudioObject, Meeting, MeetingChunk, MeetingSegment, Tenant
+from app.schemas import MeetingTranscriptIn
 from app.services import billing
 from app.services.audio import probe_wav_file
 from app.services.queue import JOB_MEETING_CHUNK, QUEUE_MEETING, get_queue
@@ -300,3 +302,118 @@ async def settle_meeting(session: AsyncSession, meeting: Meeting) -> int:
 
 async def release_meeting(session: AsyncSession, meeting: Meeting) -> None:
     await billing.release(session, tenant_id=meeting.tenant_id, meeting_id=meeting.id)
+
+
+@dataclass(frozen=True)
+class TranscriptAccepted:
+    segments: int
+    sha256: str
+    replay: bool
+
+
+def transcript_digest(payload: MeetingTranscriptIn) -> str:
+    """Stable hash of the segment list; the app may re-send the same text any number of times."""
+    canonical = json.dumps(
+        [segment.model_dump() for segment in payload.segments],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def validate_transcript(payload: MeetingTranscriptIn) -> None:
+    """Order and size rules that a plain schema cannot express."""
+    total_chars = 0
+    previous_start = 0
+    for segment in payload.segments:
+        if segment.t_end_ms < segment.t_start_ms or segment.t_start_ms < previous_start:
+            raise ApiError(
+                "meeting_transcript_invalid",
+                "زمان بخش‌های متن باید صعودی باشد؛ اپ را به‌روز کنید و متن را دوباره بفرستید",
+            )
+        previous_start = segment.t_start_ms
+        total_chars += len(segment.text)
+    if total_chars > get_settings().meeting_transcript_max_chars:
+        raise ApiError(
+            "meeting_transcript_invalid",
+            "متن جلسه از سقف مجاز بزرگ‌تر است؛ جلسه‌های طولانی را در چند جلسه ضبط کنید",
+        )
+
+
+async def accept_transcript(
+    session: AsyncSession, meeting: Meeting, payload: MeetingTranscriptIn
+) -> TranscriptAccepted:
+    """Store the on-device transcript of a text meeting, replacing any earlier upload.
+
+    The caller holds the meeting row locked. The same text again is a replay, different text
+    before `finish` replaces the previous upload.
+    """
+    if meeting.input_kind != "text":
+        raise ApiError(
+            "meeting_transcript_invalid",
+            "این جلسه برای ارسال صدا شروع شده؛ در اپ جلسه‌ی جدید شروع کنید",
+        )
+    if meeting.status != "receiving":
+        raise ApiError("meeting_closed", "این جلسه بسته شده است؛ جلسه‌ی جدید شروع کنید")
+    validate_transcript(payload)
+    digest = transcript_digest(payload)
+    if meeting.transcript_sha256 == digest:
+        return TranscriptAccepted(segments=len(payload.segments), sha256=digest, replay=True)
+    await session.execute(
+        delete(MeetingSegment).where(
+            MeetingSegment.meeting_id == meeting.id, MeetingSegment.source == "device_asr"
+        )
+    )
+    session.add_all(
+        MeetingSegment(
+            tenant_id=meeting.tenant_id,
+            meeting_id=meeting.id,
+            t_start_ms=segment.t_start_ms,
+            t_end_ms=segment.t_end_ms,
+            speaker_idx=segment.speaker,
+            source="device_asr",
+            text=segment.text.strip(),
+        )
+        for segment in payload.segments
+        if segment.text.strip()
+    )
+    now = datetime.now(UTC)
+    meeting.transcript_sha256 = digest
+    meeting.transcript_received_at = now
+    meeting.asr_identity = payload.asr_identity
+    meeting.updated_at = now
+    await session.flush()
+    return TranscriptAccepted(segments=len(payload.segments), sha256=digest, replay=False)
+
+
+async def transcript_end_ms(session: AsyncSession, meeting_id: UUID) -> int | None:
+    return (
+        await session.execute(
+            select(func.max(MeetingSegment.t_end_ms)).where(MeetingSegment.meeting_id == meeting_id)
+        )
+    ).scalar_one_or_none()
+
+
+def clamp_text_duration(requested_ms: int, transcript_end: int) -> int:
+    """Billable length of a text meeting: what the app says, bounded by the text and a cap."""
+    return min(max(requested_ms, transcript_end), get_settings().meeting_max_duration_ms)
+
+
+async def prepare_text_finish(session: AsyncSession, meeting: Meeting, requested_ms: int) -> None:
+    """Check the text is there and hold enough credit for the whole meeting before processing."""
+    end_ms = await transcript_end_ms(session, meeting.id)
+    if meeting.transcript_sha256 is None or end_ms is None:
+        raise ApiError(
+            "meeting_transcript_missing",
+            "متن جلسه هنوز نرسیده است؛ در اپ «ارسال متن این جلسه» را بزنید",
+        )
+    duration_ms = clamp_text_duration(requested_ms, int(end_ms))
+    tenant = await session.get(Tenant, meeting.tenant_id)
+    if tenant is None:
+        raise ApiError("unauthorized", "tenant not found")
+    await _ensure_block(
+        session, meeting=meeting, tenant=tenant, needed_seconds=math.ceil(duration_ms / 1000)
+    )
+    meeting.duration_ms = duration_ms
+    meeting.received_ms = duration_ms

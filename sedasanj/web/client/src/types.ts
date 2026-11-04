@@ -810,6 +810,8 @@ export interface MeetingListItem {
   speaker_count: number;
   summary: string | null;
   progress_pct: number;
+  /** "text": the app sent only the on-device transcript, never audio. */
+  input_kind?: "audio" | "text";
   /** True while the meeting is still being received or analysed. */
   processing: boolean;
 }
@@ -843,6 +845,10 @@ export interface MeetingActionItem {
 
 export interface MeetingMinutes {
   version: number;
+  /** Full rendered minutes (markdown); older minutes may have only the flat fields below. */
+  content_md?: string;
+  model?: string | null;
+  provider?: string | null;
   summary: string;
   decisions: string[];
   action_items: MeetingActionItem[];
