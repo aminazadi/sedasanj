@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     tenant_migration_max_attempts: int = Field(default=5, ge=1, le=20)
     tenant_migration_drain_seconds: int = Field(default=1800, ge=30, le=7200)
     tenant_migration_rollback_days: int = Field(default=7, ge=1, le=90)
+    org_archive_max_bytes: int = Field(default=10 * 1024**3, ge=1024, le=30 * 1024**3)
+    org_archive_expanded_max_bytes: int = Field(default=20 * 1024**3, ge=1024)
+    org_backup_allow_plain_ftp: bool = False
     tenant_backup_enabled: bool = True
     tenant_backup_interval_hours: int = Field(default=24, ge=1, le=168)
     tenant_backup_retention_days: int = Field(default=30, ge=1, le=3650)

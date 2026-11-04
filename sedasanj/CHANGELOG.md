@@ -1,5 +1,12 @@
+## 2026-11-05 — AMINAZADI
+
+- Added encrypted organization archive downloads and additive cross-organization import with relationship remapping, member review, and media recovery.
+- Added daily and weekly organization backups with FTP and FTPS delivery, connection testing, and persistent run history.
+- Redesigned the organization data tab with responsive backup, import, and history panels.
+
 ## 2026-11-04 — AMINAZADI
 
+- Fixed organization archive help article slugs and their error-code links so migration 0102 satisfies the help-center slug constraint.
 - Added run-specific Persian titles and database-backed charts to the scheduled-report archive, with all twelve supported chart types available in report criteria.
 - Added private A4 PDF downloads and print layouts for scheduled reports and selected meeting minutes, with the bundled Persian font and SedaSanj branding.
 - Fixed Quick Demo microphone requests on QR and same-device paths, added browser permission diagnostics and recovery guidance, and deferred one-time QR sign-in until the recording is sent.

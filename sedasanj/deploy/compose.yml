@@ -16,6 +16,9 @@ x-python-env: &python-env
   TENANT_MIGRATION_MAX_ATTEMPTS: ${TENANT_MIGRATION_MAX_ATTEMPTS:-5}
   TENANT_MIGRATION_DRAIN_SECONDS: ${TENANT_MIGRATION_DRAIN_SECONDS:-1800}
   TENANT_MIGRATION_ROLLBACK_DAYS: ${TENANT_MIGRATION_ROLLBACK_DAYS:-7}
+  ORG_ARCHIVE_MAX_BYTES: ${ORG_ARCHIVE_MAX_BYTES:-10737418240}
+  ORG_ARCHIVE_EXPANDED_MAX_BYTES: ${ORG_ARCHIVE_EXPANDED_MAX_BYTES:-21474836480}
+  ORG_BACKUP_ALLOW_PLAIN_FTP: ${ORG_BACKUP_ALLOW_PLAIN_FTP:-false}
   TENANT_BACKUP_ENABLED: ${TENANT_BACKUP_ENABLED:-true}
   TENANT_BACKUP_INTERVAL_HOURS: ${TENANT_BACKUP_INTERVAL_HOURS:-24}
   TENANT_BACKUP_RETENTION_DAYS: ${TENANT_BACKUP_RETENTION_DAYS:-30}
@@ -387,6 +390,29 @@ services:
     deploy:
       resources:
         limits: { cpus: "0.25", memory: 256M }
+
+  worker-organization-data:
+    <<: *hardening
+    build: *api-build
+    restart: unless-stopped
+    command: ["python", "-m", "app.services.organization_data.worker"]
+    environment:
+      <<: *python-env
+      SERVICE_NAME: worker-organization-data
+    dns: *external-dns
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1G }
 
   worker-provision:
     <<: *hardening

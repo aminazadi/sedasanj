@@ -48,6 +48,8 @@ _CONTROL_ONLY = {
     "tenant_data_migrations",
     "identity_projection_outbox",
     "tenant_backups",
+    "organization_backup_settings",
+    "organization_data_runs",
     "identity_projection_state",
     "contact_leads",
     # Pairing codes are redeemed before the tenant is known, so only the control database sees them.

@@ -242,7 +242,8 @@ async function serveStatic(request, response, pathname) {
   else createReadStream(selectedPath, range).pipe(response);
 }
 
-const server = http.createServer(async (request, response) => {
+// The archive endpoint counts streamed bytes in the API. Allow large uploads on slow links.
+const server = http.createServer({ requestTimeout: 7_200_000 }, async (request, response) => {
   try {
     const pathname = new URL(request.url, "http://localhost").pathname;
     if (pathname.startsWith("/v1/") || pathname === "/socket.io" || pathname.startsWith("/socket.io/")) {

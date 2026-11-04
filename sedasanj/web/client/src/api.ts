@@ -97,12 +97,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const access = tokens.access();
   if (access) headers.Authorization = `Bearer ${access}`;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
-  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
+  const isBinary = typeof Blob !== "undefined" && body instanceof Blob;
+  if (body !== undefined && !isForm) {
+    headers["Content-Type"] = isBinary ? "application/octet-stream" : "application/json";
+  }
 
   const response = await fetch(path, {
     method,
     headers,
-    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm || isBinary ? (body as FormData | Blob) : JSON.stringify(body),
     redirect: raw ? "manual" : "follow",
     signal: options.signal,
   });

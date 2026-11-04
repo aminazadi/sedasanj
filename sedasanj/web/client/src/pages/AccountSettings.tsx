@@ -1,7 +1,8 @@
 import { Link, useSearchParams } from "react-router-dom";
 import AiInstructionsPanel from "../components/AiInstructionsPanel";
 import ScoreRubricSettings from "../components/ScoreRubricSettings";
-import Account, { type AccountSection } from "./Account";
+import Account from "./Account";
+import OrganizationData from "./OrganizationData";
 import KpiSettings from "./KpiSettings";
 import { PageHeader } from "../components/PageHeader";
 
@@ -11,7 +12,7 @@ const TABS = [
   { id: "kpi", label: "KPI و تیم‌ها", description: "داشبورد، اهداف و اعضا" },
   { id: "users", label: "کاربران", description: "دسترسی اعضای سازمان" },
   { id: "integrations", label: "اتصال‌ها", description: "کلید API و وب‌هوک" },
-  { id: "data", label: "داده‌ها", description: "خروجی و مدیریت داده" },
+  { id: "data", label: "داده‌ها", description: "بک‌آپ، بازیابی و خروجی" },
 ] as const;
 
 export default function AccountSettings() {
@@ -35,6 +36,7 @@ export default function AccountSettings() {
     {tab === "scoring" ? <ScoreRubricSettings /> : null}
     {tab === "ai" ? <AiInstructionsPanel /> : null}
     {tab === "kpi" ? <KpiSettings embedded /> : null}
-    {tab === "users" || tab === "integrations" || tab === "data" ? <Account key={tab} section={tab as AccountSection} /> : null}
+    {tab === "users" || tab === "integrations" ? <Account key={tab} section={tab} /> : null}
+    {tab === "data" ? <OrganizationData /> : null}
   </div>;
 }

@@ -13,7 +13,6 @@ import WebhookDeliveries from "../components/WebhookDeliveries";
 import CreditTopUp from "../components/CreditTopUp";
 import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
-import ConfirmDialog from "../components/ConfirmDialog";
 import FormDialog from "../components/FormDialog";
 import addUserArt from "../assets/add-user.webp";
 import type {
@@ -89,7 +88,7 @@ function withOffset(params: URLSearchParams, name: string, value: number): URLSe
   return next;
 }
 
-export type AccountSection = "billing" | "users" | "integrations" | "data";
+export type AccountSection = "billing" | "users" | "integrations";
 
 export default function Account({ section = "billing" }: { section?: AccountSection }) {
   const [limit] = useTablePageSize();
@@ -109,8 +108,6 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [hookSecret, setHookSecret] = useState<string | null>(null);
-  const [dataDeletionOpen, setDataDeletionOpen] = useState(false);
-  const [dataDeleting, setDataDeleting] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [orders, setOrders] = useState<Array<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>([]);
   const [params, setParams] = useSearchParams();
@@ -132,20 +129,6 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [userDialogBusy, setUserDialogBusy] = useState(false);
   const [userDialogError, setUserDialogError] = useState<string | null>(null);
   const [hookForm, setHookForm] = useState({ url: "", events: ["call.complete"] as string[] });
-
-  async function deleteAccountData() {
-    setDataDeleting(true);
-    setError(null);
-    try {
-      await request<void>("/v1/account/data", { method: "DELETE" });
-      setDataDeletionOpen(false);
-      await reload();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setDataDeleting(false);
-    }
-  }
 
   async function reload() {
     setError(null);
@@ -262,25 +245,6 @@ export default function Account({ section = "billing" }: { section?: AccountSect
     } catch (err) {
       setError((err as Error).message);
     }
-  }
-
-  function exportUrl(format: string) {
-    return `/v1/account/export?format=${format}`;
-  }
-
-  async function download(format: string) {
-    const response = await fetch(exportUrl(format), {
-      headers: { Authorization: `Bearer ${localStorage.getItem("cbi.access") ?? ""}` },
-    });
-    if (!response.ok) {
-      setError("خروجی گرفتن ناموفق بود");
-      return;
-    }
-    const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `cbi-export.${format}`;
-    link.click();
   }
 
   if (loading || (section === "billing" && !balance && !error)) return <Loading />;
@@ -512,25 +476,6 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           </div>
           </> : null}
 
-          {section === "data" ? <>
-          <div className="card">
-            <h2 className="mb-2 font-bold">داده‌های سازمان</h2>
-            <div className="flex flex-wrap gap-2">
-              <button className="btn-ghost" onClick={() => void download("json")}>
-                خروجی JSON
-              </button>
-              <button className="btn-ghost" onClick={() => void download("csv")}>
-                خروجی CSV
-              </button>
-              <button
-                className="btn-danger"
-                onClick={() => setDataDeletionOpen(true)}
-              >
-                حذف کامل داده‌ها
-              </button>
-            </div>
-          </div>
-          </> : null}
         </>
       ) : null}
       <FormDialog open={userDialogOpen} title="افزودن کاربر" description="کاربر جدید با ایمیل و گذرواژهٔ موقت وارد پنل می‌شود." art={addUserArt} submitLabel="افزودن کاربر" busy={userDialogBusy} error={userDialogError} onClose={() => setUserDialogOpen(false)} onSubmit={() => void createUser()}>
@@ -543,16 +488,6 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           <p>برای اپراتور حداقل یکی از شماره موبایل یا شماره داخلی لازم است. اپراتور فقط تماس‌هایی را می‌بیند که خودش یک سمت آن باشد.</p>
         </> : null}
       </FormDialog>
-      <ConfirmDialog
-        open={dataDeletionOpen}
-        title="حذف کامل داده‌ها"
-        description="همه تماس‌ها، متن‌ها، تحلیل‌ها، کارهای مرتبط و فایل‌های صوتی برای همیشه حذف می‌شوند. این عملیات قابل بازگشت نیست."
-        confirmLabel="حذف کامل داده‌ها"
-        destructive
-        busy={dataDeleting}
-        onCancel={() => setDataDeletionOpen(false)}
-        onConfirm={() => void deleteAccountData()}
-      />
     </div>
   );
 }

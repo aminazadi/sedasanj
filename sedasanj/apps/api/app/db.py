@@ -228,7 +228,7 @@ async def apply_rls_context(
 
 @asynccontextmanager
 async def session_scope(
-    tenant_id: UUID | None = None, *, staff: bool = False
+    tenant_id: UUID | None = None, *, staff: bool = False, repeatable_read: bool = False
 ) -> AsyncIterator[AsyncSession]:
     """Transactional session with RLS context applied; commits on clean exit."""
     engine = await _tenant_engine(tenant_id) if tenant_id is not None and not staff else None
@@ -240,6 +240,8 @@ async def session_scope(
     async with maker() as session:
         await session.begin()
         try:
+            if repeatable_read:
+                await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
             await apply_rls_context(session, tenant_id, staff=staff)
             yield session
             await session.commit()

@@ -149,6 +149,7 @@ run llm env WORKER_METRICS_PORT=9102 uv run arq worker_llm.main.WorkerSettings
 run notify env WORKER_METRICS_PORT=9103 uv run arq worker_notify.main.WorkerSettings
 run meeting env WORKER_METRICS_PORT=9105 uv run arq worker_meeting.main.WorkerSettings
 run dispatch env WORKER_METRICS_PORT=9104 uv run arq worker_dispatch.main.WorkerSettings
+run organization-data env WORKER_METRICS_PORT=9106 PYTHONPATH=apps/api uv run python -m app.services.organization_data.worker
 run client npm --prefix web/client run dev
 run admin npm --prefix web/admin run dev
 
