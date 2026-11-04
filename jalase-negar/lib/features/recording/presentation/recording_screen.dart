@@ -116,11 +116,12 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
     final controller = ref.read(recorderControllerProvider.notifier);
 
     ref.listen(recorderControllerProvider, (previous, next) {
-      if (next.savedMeetingId != null) {
-        context.pushReplacement('/meeting/${next.savedMeetingId}');
-      }
       if (next.error != null && next.error != previous?.error) {
         SsToastHost.show(context, next.error!);
+      }
+      final meetingId = next.savedMeetingId;
+      if (meetingId != null && meetingId != previous?.savedMeetingId) {
+        context.pushReplacement('/meeting/$meetingId');
       }
     });
 

@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/app/theme.dart';
+import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 import 'package:jalase_negar/core/audio/wav.dart';
 import 'package:jalase_negar/core/utils/format.dart';
@@ -52,6 +54,46 @@ void main() {
     final cue = await readWavInfo('assets/audio/countdown-final.wav');
     expect(cue.duration, _finalCueDuration);
     expect(cue.channels, 1);
+  });
+
+  testWidgets('opens the saved meeting even with a finalization warning', (
+    tester,
+  ) async {
+    final recorder = _Recorder();
+    final router = GoRouter(
+      initialLocation: '/record',
+      routes: [
+        GoRoute(
+          path: '/record',
+          builder: (_, _) => const RecordingScreen(
+            liveTranscript: SizedBox.expand(key: _transcript),
+          ),
+        ),
+        GoRoute(
+          path: '/meeting/:id',
+          builder: (_, state) =>
+              Scaffold(body: Text('جزئیات ${state.pathParameters['id']}')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [recorderControllerProvider.overrideWith(() => recorder)],
+        child: MaterialApp.router(
+          theme: buildAppTheme(),
+          routerConfig: router,
+          builder: (_, child) => SsToastHost(child: child!),
+        ),
+      ),
+    );
+    recorder.update();
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.stop));
+    await tester.pumpAndSettle();
+
+    expect(find.text('جزئیات test-meeting'), findsOneWidget);
+    expect(find.textContaining('JN-REC-0004'), findsOneWidget);
   });
 
   testWidgets('wind and all cues finish before the recording layout opens', (
@@ -330,6 +372,14 @@ class _Recorder extends RecorderController {
 
   @override
   Future<void> resume() async => update();
+
+  @override
+  Future<void> stop({String? streamError}) async {
+    state = const RecorderState(
+      savedMeetingId: 'test-meeting',
+      error: 'جلسه ذخیره شد. پخش صدا را در جزئیات بررسی کنید. (JN-REC-0004)',
+    );
+  }
 }
 
 class _StartSound implements RecordingStartSound {

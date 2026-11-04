@@ -2,6 +2,7 @@
 
 ## 2026-11-04 — AMINAZADI
 
+- Fixed Jalase-Negar recording completion so upload preparation failures no longer block local saving or opening the meeting details, and replaced raw finalization errors with short Persian messages.
 - Added a first-run interactive Jalase-Negar tour with live control highlights, step navigation, locally remembered dismissal, and replay from Settings.
 - Shortened the Jalase-Negar final recording cue to 800 ms and showed a readiness message during playback.
 - Added a three-dot menu at the end of the Jalase-Negar meeting detail app bar (opposite the title) with "ویرایش عنوان" (rename dialog) and "حذف جلسه" (confirmation, then returns to the list).

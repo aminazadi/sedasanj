@@ -30,6 +30,13 @@ const int kRecordSampleRate = 16000;
 /// wait for upload.
 const int kMinFreeDiskMb = 500;
 
+const _saveErrorCode = 'JN-REC-0003';
+const _finalizationWarningCode = 'JN-REC-0004';
+const _saveError =
+    'ذخیرهٔ ضبط کامل نشد. برنامه را دوباره باز کنید و فهرست جلسات را بررسی کنید. ($_saveErrorCode)';
+const _finalizationWarning =
+    'جلسه ذخیره شد. پخش صدا و وضعیت ارسال را در جزئیات بررسی کنید. ($_finalizationWarningCode)';
+
 enum RecorderStatus { idle, recording, paused, saving }
 
 class RecorderState {
@@ -119,6 +126,7 @@ class RecorderController extends Notifier<RecorderState> {
   bool _userPaused = false;
   bool _failing = false;
   Future<void> _chunkRows = Future.value();
+  bool _chunkRegistrationFailed = false;
 
   @override
   RecorderState build() {
@@ -234,12 +242,23 @@ class RecorderController extends Notifier<RecorderState> {
         sampleRate: kRecordSampleRate,
         channels: 1,
       );
+      _chunkRows = Future.value();
+      _chunkRegistrationFailed = false;
       _chunks = ChunkWriter(
         dir: paths.meetingChunksDir(meetingId),
         onChunk: (chunk) {
-          _chunkRows = _chunkRows.then(
-            (_) => repo.insertChunk(meetingId, chunk),
-          );
+          _chunkRows = _chunkRows.then((_) async {
+            try {
+              await repo.insertChunk(meetingId, chunk);
+            } catch (error) {
+              _chunkRegistrationFailed = true;
+              _reportFailure(
+                _finalizationWarningCode,
+                'Register upload chunk',
+                error,
+              );
+            }
+          });
           state = state.copyWith(chunkCount: chunk.seq + 1);
         },
       );
@@ -286,7 +305,8 @@ class RecorderController extends Notifier<RecorderState> {
       _failing = false;
       _subscription = stream.listen(
         _onPcm,
-        onError: (Object e) => _fail('خطا در دریافت صدا: $e'),
+        onError: (Object error) =>
+            _captureFailed('Receive microphone audio', error),
       );
       _stateSubscription = recorder.onStateChanged().listen(_onRecorderState);
       _startTicker();
@@ -333,11 +353,17 @@ class RecorderController extends Notifier<RecorderState> {
         state.status != RecorderStatus.saving) {
       waveform.addPcm(pcm);
     }
-    // Both writers swallow no errors: a failed write surfaces through the
-    // returned future and stops the recording with the audio kept so far.
-    _writer?.add(pcm);
+    _writer
+        ?.add(pcm)
+        .catchError(
+          (Object error) => _captureFailed('Write recording audio', error),
+        );
     _live?.feed(pcm);
-    _chunks?.add(pcm).catchError((Object e) => _fail('خطا در نوشتن فایل: $e'));
+    _chunks
+        ?.add(pcm)
+        .catchError(
+          (Object error) => _captureFailed('Write upload chunk', error),
+        );
   }
 
   void _onRecorderState(RecordState recorderState) {
@@ -359,6 +385,12 @@ class RecorderController extends Notifier<RecorderState> {
 
   /// A failing stream or disk stops the recording and keeps what was
   /// captured, so a long meeting is never lost to one write error.
+  Future<void> _captureFailed(String operation, Object error) async {
+    if (_failing || state.status == RecorderStatus.saving) return;
+    _reportFailure(_finalizationWarningCode, operation, error);
+    await _fail(_finalizationWarning);
+  }
+
   Future<void> _fail(String message) async {
     if (_failing) return;
     _failing = true;
@@ -410,55 +442,93 @@ class RecorderController extends Notifier<RecorderState> {
     waveform.clear();
     _ticker?.cancel();
     _diskTimer?.cancel();
-    await WakelockPlus.disable();
 
     final meetingId = _meetingId;
     final repo = _repo;
     final chunks = _chunks;
     final writer = _writer;
+    final recorder = _recorder;
+
+    String? error = streamError;
+    Future<void> finishOptional(
+      String operation,
+      Future<void> Function() action,
+    ) async {
+      try {
+        await action();
+      } catch (failure) {
+        _reportFailure(_finalizationWarningCode, operation, failure);
+        error ??= _finalizationWarning;
+      }
+    }
+
+    await finishOptional('Stop microphone', () async {
+      await recorder?.stop();
+    });
+    await finishOptional(
+      'Release microphone',
+      () async => await recorder?.dispose(),
+    );
+    await finishOptional(
+      'Close microphone stream',
+      () async => await _subscription?.cancel(),
+    );
+    await finishOptional(
+      'Close recorder state stream',
+      () async => await _stateSubscription?.cancel(),
+    );
+    _subscription = null;
+    _stateSubscription = null;
+    _recorder = null;
     _meetingId = null;
+    _repo = null;
     _chunks = null;
     _writer = null;
 
-    String? error = streamError;
-    Future<void> liveDone = Future<void>.value();
-    try {
-      await _subscription?.cancel();
-      _subscription = null;
-      // The microphone stream is closed, so the transcript can finish while
-      // the audio files are still being closed below.
-      liveDone = _finishLive();
-      await _stateSubscription?.cancel();
-      _stateSubscription = null;
-      await _recorder?.stop();
-      await _recorder?.dispose();
-      _recorder = null;
-      await RecordingService.stop();
-      try {
-        await chunks?.close();
-      } catch (e) {
-        error ??= 'آخرین بخش صدا ذخیره نشد: $e';
-      }
-      await writer?.close();
-      await _chunkRows;
-      await liveDone;
+    // Flush the draft after capture ends, in parallel with closing the WAVs.
+    final liveDone = finishOptional('Finalize live transcript', _finishLive);
+    await finishOptional('Stop recording service', RecordingService.stop);
+    await finishOptional('Release wake lock', WakelockPlus.disable);
+    await finishOptional(
+      'Close upload chunks',
+      () async => await chunks?.close(),
+    );
+    await _chunkRows;
+    if (_chunkRegistrationFailed) error ??= _finalizationWarning;
 
-      if (meetingId == null || repo == null) {
-        state = RecorderState(error: error ?? 'ضبط ناقص بود');
-        return;
+    try {
+      if (meetingId == null || repo == null || writer == null) {
+        throw StateError('Missing active recording data');
       }
-      await repo.finishRecording(
-        meetingId,
-        chunks?.duration ?? writer?.duration ?? Duration.zero,
-      );
-      ref.invalidate(meetingsProvider);
-      ref.invalidate(meetingDetailProvider(meetingId));
-      ref.invalidate(meetingPreviewProvider(meetingId));
-      ref.read(uploadQueueProvider.notifier).kick();
-      state = RecorderState(savedMeetingId: meetingId, error: error);
-    } catch (e) {
-      state = RecorderState(error: error ?? e.toString());
+      await Future.wait([writer.close(), liveDone]);
+      await repo.finishRecording(meetingId, writer.duration);
+    } catch (failure) {
+      await liveDone;
+      _reportFailure(_saveErrorCode, 'Save local recording', failure);
+      if (ref.mounted) state = const RecorderState(error: _saveError);
+      return;
     }
+
+    if (!ref.mounted) return;
+    ref.invalidate(meetingsProvider);
+    ref.invalidate(meetingDetailProvider(meetingId));
+    ref.invalidate(meetingPreviewProvider(meetingId));
+    state = RecorderState(savedMeetingId: meetingId, error: error);
+    unawaited(_resumeUpload());
+  }
+
+  Future<void> _resumeUpload() async {
+    try {
+      await ref.read(uploadQueueProvider.notifier).kick();
+    } catch (error) {
+      _reportFailure(_finalizationWarningCode, 'Resume upload queue', error);
+    }
+  }
+
+  void _reportFailure(String code, String operation, Object error) {
+    debugPrint(
+      '$code: $operation failed (${error.runtimeType}). Check the meeting list and retry.',
+    );
   }
 
   void _disposeResources() {
