@@ -2,6 +2,7 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Fixed SS-SVC-0001 `worker_failed` at `stage=decode_audio` for multi-minute calls: the Sherpa CUDA worker now decodes audio in chunks of at most 30 s (`ASR_SHERPA_GPU_CHUNK_SECONDS`) cut at quiet points instead of one whole-file decode, and failure messages include the worker exception type (`exception=`) and recognize ONNX Runtime allocation failures as `cuda_out_of_memory`.
 - Changed the Jalase-Negar Android release to 1.1.2 (build 7), including the latest tab spacing, action buttons, and inline recording attendee selector.
 - Added safe Sherpa CUDA failure diagnostics with worker stage, exit status, signal and recognized failure categories, including GPU OOM counter integration and troubleshooting guidance.
 - Changed the Jalase-Negar Android release to 1.1.2 (build 6) with the latest integrated app changes.

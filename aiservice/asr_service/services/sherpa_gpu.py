@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .sherpa_gpu_diagnostics import STAGE_PREFIX, worker_failure
+from .sherpa_gpu_diagnostics import EXCEPTION_PREFIX, STAGE_PREFIX, worker_failure
 
 
 class SherpaGpuError(RuntimeError):
@@ -128,17 +128,44 @@ def main():
     stage("read_audio")
     audio, sample_rate = sf.read(payload["path"], dtype="float32", always_2d=True)
     audio = audio.mean(axis=1)
-    stream = recognizer.create_stream()
-    stage("accept_waveform")
-    stream.accept_waveform(sample_rate, audio)
-    stage("decode_audio")
-    recognizer.decode_stream(stream)
+    # Decoding a whole call at once makes encoder memory grow with its length;
+    # short probes pass while multi-minute calls fail. Bound every decode.
+    from .sherpa_gpu_chunks import DEFAULT_CHUNK_SECONDS, chunk_bounds
+
+    try:
+        chunk_seconds = float(
+            os.getenv("ASR_SHERPA_GPU_CHUNK_SECONDS", DEFAULT_CHUNK_SECONDS)
+        )
+    except ValueError:
+        chunk_seconds = DEFAULT_CHUNK_SECONDS
+    bounds = chunk_bounds(audio, sample_rate, max(1.0, chunk_seconds))
+    texts = []
+    for start, end in bounds:
+        stage("accept_waveform")
+        stream = recognizer.create_stream()
+        stream.accept_waveform(sample_rate, audio if len(bounds) == 1 else audio[start:end])
+        stage("decode_audio")
+        recognizer.decode_stream(stream)
+        texts.append(stream.result.text.strip())
     stage("serialize_result")
     json.dump(
-        {"text": stream.result.text, "duration": len(audio) / sample_rate}, sys.stdout
+        {
+            "text": " ".join(text for text in texts if text),
+            "duration": len(audio) / sample_rate,
+        },
+        sys.stdout,
     )
     return 0
 
 
+def _run():
+    try:
+        return main()
+    except Exception as exc:
+        # Type name only: messages and tracebacks may contain paths or transcripts.
+        print(f"{EXCEPTION_PREFIX}{type(exc).__name__}", file=sys.stderr, flush=True)
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_run())

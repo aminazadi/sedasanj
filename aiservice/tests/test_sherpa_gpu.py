@@ -308,6 +308,78 @@ class SherpaGpuTests(unittest.TestCase):
             json.loads(output.getvalue()), {"text": "speech", "duration": 2.0}
         )
 
+    def test_long_audio_is_split_at_quiet_points_into_bounded_decodes(self):
+        import numpy as np
+
+        from asr_service.services.sherpa_gpu_chunks import chunk_bounds
+
+        rate = 16000
+        samples = np.ones(rate * 75, dtype=np.float32)
+        for second in (27, 55):  # a quiet gap inside each cut-search window
+            samples[rate * second : rate * second + 1600] = 0
+        bounds = chunk_bounds(samples, rate, 30)
+        self.assertEqual(bounds[0][0], 0)
+        self.assertEqual(bounds[-1][1], len(samples))
+        for (_, end), (start, _) in zip(bounds, bounds[1:]):
+            self.assertEqual(end, start)
+        self.assertTrue(all(0 < end - start <= rate * 30 for start, end in bounds))
+        self.assertTrue(rate * 27 <= bounds[0][1] <= rate * 27 + 1600)
+        self.assertEqual(chunk_bounds(samples[: rate * 30], rate, 30), [(0, rate * 30)])
+
+    def test_child_decodes_long_audio_in_chunks_and_joins_text(self):
+        import numpy as np
+
+        audio = np.ones((16000 * 70, 1), dtype=np.float32)
+        soundfile = Mock(read=Mock(return_value=(audio, 16000)))
+        sherpa = Mock(__version__="1.12.39+cuda12.cudnn9")
+        recognizer = sherpa.OfflineRecognizer.from_transducer.return_value
+        lengths = []
+        texts = iter(["one", "two", "three"])
+
+        def create_stream():
+            stream = Mock()
+
+            def accept(rate, samples):
+                lengths.append(len(samples))
+                stream.result.text = next(texts)
+
+            stream.accept_waveform.side_effect = accept
+            return stream
+
+        recognizer.create_stream.side_effect = create_stream
+        payload = io.StringIO(
+            json.dumps({"root": "/m", "path": "/a.wav", "threads": 2, "architecture": "transducer"})
+        )
+        output = io.StringIO()
+        with (
+            patch.dict(sys.modules, {"sherpa_onnx": sherpa, "soundfile": soundfile}),
+            patch.object(sys, "platform", "darwin"),
+            patch.object(sys, "stdin", payload),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(sherpa_gpu.main(), 0)
+        self.assertEqual(len(lengths), 3)
+        self.assertTrue(all(length <= 16000 * 30 for length in lengths))
+        self.assertEqual(sum(lengths), 16000 * 70)
+        self.assertEqual(
+            json.loads(output.getvalue()), {"text": "one two three", "duration": 70.0}
+        )
+
+    def test_worker_exception_type_is_reported_without_message(self):
+        stderr = (
+            "SHERPA_GPU_STAGE=decode_audio\n"
+            "SHERPA_GPU_EXCEPTION=RuntimeError\n/secret/path.wav transcript text\n"
+        )
+        message = worker_failure(stderr, 1)
+        self.assertIn("stage=decode_audio", message)
+        self.assertIn("exception=RuntimeError", message)
+        self.assertNotIn("secret", message)
+        self.assertNotIn("exception=", worker_failure("SHERPA_GPU_EXCEPTION=bad name; x", 1))
+        self.assertIn(
+            "reason=cuda_out_of_memory",
+            worker_failure("Failed to allocate memory for requested buffer", 1),
+        )
+
     def test_gpu_transcription_uses_child_result_and_normalizes_text(self):
         model = Mock()
         model.transcribe.return_value = ("ي ك", 2.5)

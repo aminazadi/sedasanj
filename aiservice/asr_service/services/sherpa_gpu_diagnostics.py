@@ -1,8 +1,11 @@
 """Summarize native worker failures without exposing arbitrary stderr or input."""
 
+import re
 import signal
 
 STAGE_PREFIX = "SHERPA_GPU_STAGE="
+EXCEPTION_PREFIX = "SHERPA_GPU_EXCEPTION="
+_EXCEPTION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 STAGES = (
     "parent_guard",
     "import_runtime",
@@ -18,7 +21,12 @@ STAGES = (
 # Only fixed signatures and messages may cross the native worker boundary.
 FAILURES = (
     (
-        ("out of memory", "cuda_error_out_of_memory", "cudaerrormemoryallocation"),
+        (
+            "out of memory",
+            "cuda_error_out_of_memory",
+            "cudaerrormemoryallocation",
+            "failed to allocate memory",
+        ),
         "cuda_out_of_memory",
         "CUDA out of memory; reduce audio length or GPU concurrency",
     ),
@@ -80,6 +88,12 @@ def worker_failure(stderr, returncode=None, *, reason=None):
     for line in stderr.splitlines():
         if line.startswith(STAGE_PREFIX) and line[len(STAGE_PREFIX) :] in STAGES:
             stage = line[len(STAGE_PREFIX) :]
+    exception = None
+    for line in stderr.splitlines():
+        if line.startswith(EXCEPTION_PREFIX):
+            name = line[len(EXCEPTION_PREFIX) :]
+            if _EXCEPTION_NAME.fullmatch(name):
+                exception = name
     lowered = stderr.lower()
     action = "Compare the original task audio and leased GPU with the successful short-audio probe"
     if reason is None:
@@ -99,6 +113,8 @@ def worker_failure(stderr, returncode=None, *, reason=None):
     elif reason == "invalid_result":
         action = "Rebuild the GPU image and retry with the original task audio"
     details = [f"reason={reason}", f"stage={stage}"]
+    if exception:
+        details.append(f"exception={exception}")
     if returncode is not None:
         details.append(f"exit_code={returncode}")
         if returncode < 0:
