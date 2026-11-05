@@ -86,30 +86,8 @@ class SpeakerLinesCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _precise(BuildContext context, WidgetRef ref) async {
-    SsToastHost.show(context, 'پردازش دقیق شروع شد؛ ممکن است چند دقیقه طول بکشد');
-    final outcome = await ref
-        .read(meetingActionsProvider(meetingId))
-        .runPreciseProcessing();
-    if (!context.mounted) return;
-    SsToastHost.show(
-      context,
-      switch (outcome.status) {
-        PreciseStatus.done =>
-          'پردازش دقیق تمام شد؛ ${toPersianDigits('${outcome.changedLines}')} خط تغییر کرد',
-        PreciseStatus.needsModels =>
-          'مدل‌های «تشخیص گوینده» نصب نیستند؛ از بخش «مدل‌ها» دانلودشان کنید.',
-        PreciseStatus.tooLong =>
-          'ضبط برای پردازش دقیق روی گوشی بیش از حد طولانی است (حداکثر ۴۰ دقیقه).',
-        PreciseStatus.busy => 'تا پایان ضبط یا ارسال جلسه، پردازش دقیق ممکن نیست.',
-        PreciseStatus.failed =>
-          'پردازش دقیق انجام نشد و چیزی تغییر نکرد؛ دوباره امتحان کنید.',
-      },
-    );
-    if (outcome.status == PreciseStatus.needsModels && context.mounted) {
-      context.push('/models');
-    }
-  }
+  Future<void> _precise(BuildContext context, WidgetRef ref) =>
+      runPreciseWithToast(context, ref, meetingId);
 
   Future<void> _edit(BuildContext context, WidgetRef ref, int index) async {
     final people = ref.read(peopleProvider).value ?? const [];
@@ -122,10 +100,8 @@ class SpeakerLinesCard extends ConsumerWidget {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => _PickerSheet(
-        segment: segments[index],
-        choices: choices,
-      ),
+      builder: (context) =>
+          _PickerSheet(segment: segments[index], choices: choices),
     );
     if (action == null || !context.mounted) return;
     final actions = ref.read(meetingActionsProvider(meetingId));
@@ -154,6 +130,33 @@ class SpeakerLinesCard extends ConsumerWidget {
   }
 }
 
+/// Runs the whole-recording speaker analysis and tells the user the result.
+Future<void> runPreciseWithToast(
+  BuildContext context,
+  WidgetRef ref,
+  String meetingId,
+) async {
+  SsToastHost.show(context, 'پردازش دقیق شروع شد؛ ممکن است چند دقیقه طول بکشد');
+  final outcome = await ref
+      .read(meetingActionsProvider(meetingId))
+      .runPreciseProcessing();
+  if (!context.mounted) return;
+  SsToastHost.show(context, switch (outcome.status) {
+    PreciseStatus.done =>
+      'پردازش دقیق تمام شد؛ ${toPersianDigits('${outcome.changedLines}')} خط تغییر کرد',
+    PreciseStatus.needsModels =>
+      'مدل‌های «تشخیص گوینده» نصب نیستند؛ از بخش «مدل‌ها» دانلودشان کنید.',
+    PreciseStatus.tooLong =>
+      'ضبط برای پردازش دقیق روی گوشی بیش از حد طولانی است (حداکثر ۴۰ دقیقه).',
+    PreciseStatus.busy => 'تا پایان ضبط یا ارسال جلسه، پردازش دقیق ممکن نیست.',
+    PreciseStatus.failed =>
+      'پردازش دقیق انجام نشد و چیزی تغییر نکرد؛ دوباره امتحان کنید.',
+  });
+  if (outcome.status == PreciseStatus.needsModels && context.mounted) {
+    context.push('/models');
+  }
+}
+
 sealed class _EditAction {
   const _EditAction();
 }
@@ -179,7 +182,8 @@ class _Line extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final low = !segment.speakerManual &&
+    final low =
+        !segment.speakerManual &&
         segment.speaker != null &&
         (segment.speakerConfidence ?? 100) < 60;
     return InkWell(
@@ -273,7 +277,11 @@ class _PickerSheet extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('نام این گوینده'),
-        content: TextField(controller: controller, autofocus: true, maxLength: 80),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

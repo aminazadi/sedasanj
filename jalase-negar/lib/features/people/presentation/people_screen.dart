@@ -21,7 +21,6 @@ class PeopleScreen extends ConsumerWidget {
     final people = ref.watch(peopleProvider);
     final modelInstalled = ref.watch(speakerModelInstalledProvider).value;
     return Scaffold(
-      appBar: SsAppBar(title: const Text('افراد و صدا')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/people/new'),
         icon: const Icon(Icons.person_add_alt_1),
@@ -35,6 +34,8 @@ class PeopleScreen extends ConsumerWidget {
           96 + MediaQuery.paddingOf(context).bottom,
         ),
         children: [
+          Text('افراد و صدا', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
           const _SyncCard(),
           const SizedBox(height: 12),
           if (modelInstalled == false) ...[
@@ -129,7 +130,8 @@ class _SyncCard extends ConsumerWidget {
     } else if (sync.lastError != null) {
       status = '${sync.lastError} ($kPeopleSyncErrorCode)';
     } else if (sync.pending > 0) {
-      status = '${toPersianDigits('${sync.pending}')} تغییر منتظر ارسال به صداسنج است.';
+      status =
+          '${toPersianDigits('${sync.pending}')} تغییر منتظر ارسال به صداسنج است.';
     } else if (sync.lastSyncAt != null) {
       status =
           'همگام با صداسنج؛ آخرین بار ${formatJalaliDay(sync.lastSyncAt!)} ${formatClock(sync.lastSyncAt!)}';
@@ -201,9 +203,15 @@ class _PersonTile extends ConsumerWidget {
                           : SsColors.primary,
                     ),
                     if (!person.mine)
-                      const SsBadge('همکار (فقط‌خواندنی)', color: SsColors.neutral)
+                      const SsBadge(
+                        'همکار (فقط‌خواندنی)',
+                        color: SsColors.neutral,
+                      )
                     else if (person.shared)
-                      const SsBadge('اشتراکی با سازمان', color: SsColors.neutral),
+                      const SsBadge(
+                        'اشتراکی با سازمان',
+                        color: SsColors.neutral,
+                      ),
                     if (person.pendingSync)
                       const SsBadge('منتظر ارسال', color: SsColors.warning),
                     if (!installed && person.voiceprintCount > 0)
@@ -213,7 +221,7 @@ class _PersonTile extends ConsumerWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_left),
+          const Icon(Icons.chevron_right) /* mirrors to point left in RTL */,
         ],
       ),
     );

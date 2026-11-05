@@ -19,7 +19,8 @@ class ShellScreen extends ConsumerWidget {
 
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
-    if (location.startsWith('/settings')) return 1;
+    if (location == '/people') return 1;
+    if (location.startsWith('/settings')) return 2;
     return 0;
   }
 
@@ -93,14 +94,18 @@ class ShellScreen extends ConsumerWidget {
       body: child,
       bottomNavigationBar: _SsBottomBar(
         selectedIndex: index,
-        onSelected: (i) => context.go(i == 0 ? '/' : '/settings'),
+        onSelected: (i) => context.go(switch (i) {
+          0 => '/',
+          1 => '/people',
+          _ => '/settings',
+        }),
         onRecord: () => context.push('/record'),
       ),
     );
   }
 }
 
-enum _Glyph { sessions, settings, mic }
+enum _Glyph { sessions, people, settings, mic }
 
 /// Hand-drawn 24-grid line icons so the bar does not depend on stock Material
 /// glyphs (the old mic tab duplicated the record button).
@@ -139,6 +144,29 @@ class _GlyphPainter extends CustomPainter {
             bar,
           );
         }
+      case _Glyph.people:
+        // Two heads-and-shoulders: a front person and a smaller one behind.
+        canvas.drawCircle(const Offset(10, 8), 3.4, line);
+        canvas.drawPath(
+          Path()
+            ..moveTo(3.5, 20)
+            ..quadraticBezierTo(3.5, 13.5, 10, 13.5)
+            ..quadraticBezierTo(16.5, 13.5, 16.5, 20),
+          line,
+        );
+        canvas.drawArc(
+          Rect.fromCircle(center: const Offset(16.5, 8.6), radius: 2.7),
+          -1.9,
+          3.9,
+          false,
+          line,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(18.2, 13.9)
+            ..quadraticBezierTo(20.5, 14.6, 20.5, 19),
+          line,
+        );
       case _Glyph.settings:
         const rows = [(6.5, 15.0), (12.0, 8.5), (17.5, 16.0)];
         for (final (y, kx) in rows) {
@@ -277,23 +305,39 @@ class _SsBottomBar extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: TourTarget(
-                    step: TourStep.meetings,
-                    child: _NavTab(
-                      glyph: _Glyph.sessions,
-                      label: 'جلسات',
-                      selected: selectedIndex == 0,
-                      onTap: () => onSelected(0),
-                    ),
+                  flex: 2,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TourTarget(
+                          step: TourStep.meetings,
+                          child: _NavTab(
+                            glyph: _Glyph.sessions,
+                            label: 'جلسات',
+                            selected: selectedIndex == 0,
+                            onTap: () => onSelected(0),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: _NavTab(
+                          glyph: _Glyph.people,
+                          label: 'افراد',
+                          selected: selectedIndex == 1,
+                          onTap: () => onSelected(1),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: _slotWidth),
                 Expanded(
+                  flex: 2,
                   child: _NavTab(
                     glyph: _Glyph.settings,
                     label: 'تنظیمات',
-                    selected: selectedIndex == 1,
-                    onTap: () => onSelected(1),
+                    selected: selectedIndex == 2,
+                    onTap: () => onSelected(2),
                   ),
                 ),
               ],

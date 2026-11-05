@@ -11,6 +11,7 @@ import '../data/meeting.dart';
 import '../data/transcript_edit.dart';
 import 'audio_waveform_player.dart';
 import 'share_meeting_audio.dart';
+import 'detected_speakers_card.dart';
 import 'speaker_lines_card.dart';
 import 'transcript_editor.dart';
 
@@ -68,6 +69,14 @@ class MeetingDetailScreen extends ConsumerWidget {
                   failed: data.meeting.status == MeetingStatus.failed,
                   onSend: () =>
                       ref.read(meetingActionsProvider(meetingId)).sendText(),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (transcript.isNotEmpty &&
+                  data.meeting.status != MeetingStatus.uploading) ...[
+                DetectedSpeakersCard(
+                  meetingId: meetingId,
+                  segments: data.segments,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -148,7 +157,9 @@ class _MeetingMenu extends ConsumerWidget {
         children: [
           Icon(icon, size: 18, color: color ?? SsColors.ink),
           const SizedBox(width: 10),
-          Flexible(child: Text(label, style: TextStyle(color: color))),
+          Flexible(
+            child: Text(label, style: TextStyle(color: color)),
+          ),
         ],
       ),
     );

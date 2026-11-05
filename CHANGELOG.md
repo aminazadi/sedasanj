@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-05 — AMINAZADI
+
+- Moved Jalase-Negar «افراد» into the bottom navigation, fixed the RTL direction of its list arrow, and added automatic speaker discovery: unnamed voices found in a meeting can be named once, which creates a person with voiceprints taken from that meeting's clean speech (with consent) and names all of its lines.
+
 ## 2026-11-04 — AMINAZADI
 
 - Fixed Jalase-Negar meeting lists blocked by a missing upload queue table and made the retry button restart local meeting recovery.

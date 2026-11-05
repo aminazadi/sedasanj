@@ -41,6 +41,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             builder: (context, state) => const SettingsScreen(),
           ),
+          GoRoute(
+            path: '/people',
+            builder: (context, state) => const PeopleScreen(),
+          ),
         ],
       ),
       GoRoute(
@@ -56,10 +60,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/meeting/:id',
         builder: (context, state) =>
             MeetingDetailScreen(meetingId: state.pathParameters['id']!),
-      ),
-      GoRoute(
-        path: '/people',
-        builder: (context, state) => const PeopleScreen(),
       ),
       GoRoute(
         path: '/people/new',

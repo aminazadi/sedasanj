@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/models/model_catalog.dart';
 import '../../../core/providers.dart';
@@ -10,6 +11,9 @@ import '../../settings/application/connection_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../data/meeting_repository.dart';
 import '../data/meeting.dart';
+import '../data/speaker_discovery.dart' as discovery;
+import '../data/speaker_edit.dart';
+import '../../people/data/person.dart';
 import '../data/transcript_edit.dart';
 
 /// Whether SedaSanj already holds this meeting's text (so an edit must be
@@ -59,6 +63,28 @@ final textSyncApiProvider = FutureProvider<MeetingUploadApi?>((ref) async {
 final preciseRunnerProvider = Provider<PreciseRunner>(
   (ref) => runPreciseInIsolate,
 );
+
+/// Builds voiceprints from a meeting's audio. Overridden in tests.
+final voiceprintExtractorProvider = Provider<VoiceprintExtractor>(
+  (ref) => extractVoiceprintsInIsolate,
+);
+
+enum NameSpeakerStatus {
+  /// A person was created (or found) and the lines were given to them.
+  done,
+
+  /// The speaker model is not installed.
+  needsModels,
+
+  /// Too little clean speech from this voice to make a voiceprint.
+  tooShort,
+
+  /// The recording is still being recorded or uploaded.
+  busy,
+
+  /// Nothing was changed.
+  failed,
+}
 
 enum PreciseStatus {
   /// Speakers were re-labelled.
@@ -226,6 +252,77 @@ class MeetingActions {
     }
     await saveSegments(relabelled);
     return PreciseOutcome(PreciseStatus.done, changedLines: changed);
+  }
+
+  /// Turns an unnamed voice of this meeting into a person: its clean speech
+  /// becomes the voiceprints, and every line of that voice gets the name.
+  /// [consentGiven] must be true: the person agreed to their voice being kept.
+  Future<NameSpeakerStatus> nameDetectedSpeaker({
+    required String label,
+    required String name,
+    required PersonVisibility visibility,
+    required bool consentGiven,
+  }) async {
+    final cleanName = name.trim();
+    if (!consentGiven || cleanName.isEmpty) return NameSpeakerStatus.failed;
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    final meeting = await repo.byId(meetingId);
+    if (meeting == null ||
+        meeting.status == MeetingStatus.recording ||
+        meeting.status == MeetingStatus.uploading) {
+      return NameSpeakerStatus.busy;
+    }
+    final store = await ref.read(modelStoreProvider.future);
+    const embedding = ModelCatalog.speakerEmbedding;
+    if (!await store.isInstalled(embedding))
+      return NameSpeakerStatus.needsModels;
+    final segments = await repo.segments(meetingId);
+    final groups = discovery.voiceprintGroups(segments, label);
+    if (groups.isEmpty) return NameSpeakerStatus.tooShort;
+    final List<ExtractedVoiceprint> samples;
+    try {
+      samples = await ref.read(voiceprintExtractorProvider)(
+        VoiceprintRequest(
+          wavPath: meeting.audioPath,
+          embeddingModelPath: store.filePath(embedding, embedding.files[0]),
+          groups: groups,
+        ),
+      );
+    } catch (_) {
+      return NameSpeakerStatus.failed;
+    }
+    if (samples.isEmpty) return NameSpeakerStatus.tooShort;
+    final people = await ref.read(peopleRepositoryProvider.future);
+    final person = await people.create(
+      name: cleanName,
+      visibility: visibility,
+      consentAt: DateTime.now(),
+      consentVersion: kSpeakerConsentVersion,
+    );
+    const uuid = Uuid();
+    await people.addVoiceprints(person.clientId, [
+      for (final sample in samples)
+        Voiceprint(
+          clientId: uuid.v4(),
+          personId: person.clientId,
+          modelId: embedding.id,
+          modelVersion: ModelCatalog.speakerEmbeddingVersion,
+          embedding: sample.embedding,
+          createdAt: DateTime.now(),
+          durationMs: sample.durationMs,
+        ),
+    ]);
+    ref.read(peopleActionsProvider).samplesAdded();
+    // Read the lines only now: the user may have edited while this ran.
+    final current = await repo.segments(meetingId);
+    await saveSegments(
+      discovery.nameDetectedSpeaker(
+        current,
+        label,
+        SpeakerChoice(name: person.name, personId: person.clientId),
+      ),
+    );
+    return NameSpeakerStatus.done;
   }
 
   /// Sends the stored text again after an edit could not reach SedaSanj.

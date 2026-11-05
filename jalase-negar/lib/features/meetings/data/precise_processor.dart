@@ -32,7 +32,8 @@ class PreciseRequest {
   final List<Map<String, Object?>> enrolled;
 }
 
-typedef PreciseRunner = Future<PreciseAnalysis> Function(PreciseRequest request);
+typedef PreciseRunner =
+    Future<PreciseAnalysis> Function(PreciseRequest request);
 
 /// Runs [analyzePrecise] in a separate isolate, so the screen stays smooth.
 Future<PreciseAnalysis> runPreciseInIsolate(PreciseRequest request) =>
@@ -47,24 +48,7 @@ Future<PreciseAnalysis> analyzePrecise(PreciseRequest request) async {
   if (info.duration > kPreciseMaxDuration) {
     throw const FormatException('recording_too_long');
   }
-  final pieces = <Float32List>[];
-  var total = 0;
-  await for (final chunk in readChannelSamples(
-    request.wavPath,
-    info: info,
-    channel: 0,
-    targetSampleRate: kAsrSampleRate,
-  )) {
-    pieces.add(chunk.samples);
-    total += chunk.samples.length;
-  }
-  final audio = Float32List(total);
-  var at = 0;
-  for (final piece in pieces) {
-    audio.setRange(at, at + piece.length, piece);
-    at += piece.length;
-  }
-  pieces.clear();
+  final audio = await _loadAudio(request.wavPath, info);
 
   final diarizer = SherpaDiarizer.tryCreate(
     segmentationModelPath: request.segmentationModelPath,
@@ -149,4 +133,95 @@ Float32List _gather(Float32List audio, List<(int, int)> spans) {
     at += piece.length;
   }
   return joined;
+}
+
+Future<Float32List> _loadAudio(String wavPath, WavInfo info) async {
+  final pieces = <Float32List>[];
+  var total = 0;
+  await for (final chunk in readChannelSamples(
+    wavPath,
+    info: info,
+    channel: 0,
+    targetSampleRate: kAsrSampleRate,
+  )) {
+    pieces.add(chunk.samples);
+    total += chunk.samples.length;
+  }
+  final audio = Float32List(total);
+  var at = 0;
+  for (final piece in pieces) {
+    audio.setRange(at, at + piece.length, piece);
+    at += piece.length;
+  }
+  return audio;
+}
+
+/// Plain data for the isolate that builds voiceprints from a meeting.
+class VoiceprintRequest {
+  const VoiceprintRequest({
+    required this.wavPath,
+    required this.embeddingModelPath,
+    required this.groups,
+  });
+
+  final String wavPath;
+  final String embeddingModelPath;
+
+  /// Each group is a list of `[startMs, endMs]` pairs of one speaker; one
+  /// embedding is made per group.
+  final List<List<List<int>>> groups;
+}
+
+/// An embedding made from one group of spans, and how long that speech was.
+class ExtractedVoiceprint {
+  const ExtractedVoiceprint({
+    required this.embedding,
+    required this.durationMs,
+  });
+
+  final Float32List embedding;
+  final int durationMs;
+}
+
+typedef VoiceprintExtractor =
+    Future<List<ExtractedVoiceprint>> Function(VoiceprintRequest request);
+
+Future<List<ExtractedVoiceprint>> extractVoiceprintsInIsolate(
+  VoiceprintRequest request,
+) => Isolate.run(() => extractVoiceprints(request));
+
+/// Embeds each group of a speaker's spans. Groups that are too short or that
+/// the model rejects are skipped.
+Future<List<ExtractedVoiceprint>> extractVoiceprints(
+  VoiceprintRequest request,
+) async {
+  sherpa.initBindings();
+  final info = await readWavInfo(request.wavPath);
+  if (info.duration > kPreciseMaxDuration) {
+    throw const FormatException('recording_too_long');
+  }
+  final audio = await _loadAudio(request.wavPath, info);
+  final embedder = SherpaVoiceEmbedder.tryCreate(
+    request.embeddingModelPath,
+    numThreads: 2,
+  );
+  if (embedder == null) throw const FormatException('models_unavailable');
+  try {
+    final out = <ExtractedVoiceprint>[];
+    for (final group in request.groups) {
+      final sample = _gather(audio, [for (final g in group) (g[0], g[1])]);
+      if (sample.length < 2 * kAsrSampleRate) continue;
+      final embedding = embedder.embed(sample);
+      if (embedding == null) continue;
+      out.add(
+        ExtractedVoiceprint(
+          embedding: embedding,
+          durationMs: sample.length * 1000 ~/ kAsrSampleRate,
+        ),
+      );
+    }
+    return out;
+  } finally {
+    embedder.free();
+  }
 }
