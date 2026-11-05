@@ -76,6 +76,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
 ];
 
 const PAGE_TITLES: Record<string, string> = {
+  "/account-settings/data/history": "تاریخچهٔ بک‌آپ و بازیابی",
   "/checkout": "پرداخت و تمدید",
   "/payment-result": "نتیجه پرداخت",
   "/about": "درباره ما",

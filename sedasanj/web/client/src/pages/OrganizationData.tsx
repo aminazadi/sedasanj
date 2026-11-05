@@ -1,26 +1,20 @@
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
-import { Icon, type IconifyIcon } from "@iconify/react";
+import { Icon } from "@iconify/react";
 import calendarClockIcon from "@iconify-icons/lucide/calendar-clock";
 import databaseIcon from "@iconify-icons/lucide/database";
 import downloadIcon from "@iconify-icons/lucide/download";
 import fileUpIcon from "@iconify-icons/lucide/file-up";
 import historyIcon from "@iconify-icons/lucide/history";
 import keyRoundIcon from "@iconify-icons/lucide/key-round";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { downloadFile, fmt, query, request } from "../api";
+import trashIcon from "@iconify-icons/lucide/trash-2";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { downloadFile, fmt, request } from "../api";
 import ConfirmDialog from "../components/ConfirmDialog";
-import { ErrorBox, Pagination } from "../components/Widgets";
-import { useTablePageSize } from "../lib/useTablePagination";
-import "./organization-data.css";
+import { ErrorBox } from "../components/Widgets";
+import { API, Card, ERRORS, fileSize, ORGANIZATION_DATA_HISTORY_PATH, State, type Run } from "./organizationDataShared";
 
-const API = "/v1/account/data";
 const DAYS = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"];
-const KINDS = { manual: "بک‌آپ دستی", scheduled: "بک‌آپ زمان‌بندی‌شده", import: "بازیابی" };
-const STATES: Record<string, string> = {
-  uploading: "در انتظار فایل", queued: "در صف", running: "در حال اجرا", review: "آمادهٔ بررسی",
-  succeeded: "آماده", failed: "ناموفق", expired: "منقضی",
-};
 const TABLE_LABELS: Record<string, string> = {
   audio_objects: "فایل‌های صوتی", calls: "تماس‌ها", contacts: "مخاطبان", pbx_extensions: "داخلی‌ها",
   teams: "تیم‌ها", team_memberships: "اعضای تیم", call_operator_assignments: "تخصیص اپراتورها",
@@ -39,20 +33,6 @@ const TABLE_LABELS: Record<string, string> = {
   meeting_events: "رویدادهای جلسه", tenant_ai_instructions: "دستورهای هوش مصنوعی",
   scheduled_reports: "تعریف گزارش‌ها", scheduled_report_runs: "گزارش‌های آرشیوشده",
 };
-const ERRORS: Record<string, string> = {
-  org_archive_invalid: "فایل اصلی و کلید همان بک‌آپ را دوباره بررسی کنید.",
-  org_archive_too_large: "حجم فایل از سقف مجاز بیشتر است.",
-  org_archive_unavailable: "فضای ذخیره‌سازی و تنظیمات سامانه را بررسی کنید.",
-  org_archive_review_changed: "مقصد تغییر کرده است. پیش‌نمایش جدید را بررسی کنید.",
-  org_archive_mapping: "اعضای مقصد تغییر کرده‌اند. نگاشت را دوباره انتخاب کنید.",
-  org_backup_destination: "میزبان، مسیر و نوع اتصال را بررسی کنید.",
-  org_backup_ftp_failed: "مسیر، مجوز نوشتن و گواهی مقصد را بررسی کنید.",
-  forbidden: "دسترسی مدیر سازمان را بررسی کنید.",
-};
-
-type Kind = keyof typeof KINDS;
-type Count = { new: number; duplicate: number; skipped: number };
-type Owner = { id: string; label: string; fallback: number; target: string; explicit: boolean };
 type Member = { id: string; label: string; role: string };
 type Destination = {
   protocol: "ftp" | "ftps"; host: string; port: number; directory: string; username: string;
@@ -62,21 +42,7 @@ type Settings = {
   destination: Partial<Destination>; timezone: string; next_run_at: string | null;
   has_password: boolean; has_recovery_key: boolean; allow_plain_ftp: boolean; max_bytes: number;
 };
-type Run = {
-  id: string; kind: Kind; phase: string; state: string; transfer_state: string | null;
-  transfer_attempts: number; next_attempt_at: string | null; error_code: string | null;
-  size_bytes: number | null; checksum: string | null; created_at: string; expires_at: string;
-  can_review: boolean; can_upload: boolean; can_download: boolean;
-  summary: { counts?: Record<string, Count | number>; owners?: Owner[]; omitted?: Record<string, number> };
-};
-
 const EMPTY_DESTINATION: Destination = { protocol: "ftps", host: "", port: 21, directory: "/", username: "" };
-
-function fileSize(bytes: number) {
-  const units = ["بایت", "کیلوبایت", "مگابایت", "گیگابایت"];
-  const power = Math.min(3, Math.max(0, Math.floor(Math.log(Math.max(1, bytes)) / Math.log(1024))));
-  return `${fmt.decimal(bytes / 1024 ** power, 1)} ${units[power]}`;
-}
 
 function scheduledTime(iso: string, timezone: string) {
   return new Date(iso).toLocaleString("fa-IR-u-ca-persian", {
@@ -89,28 +55,17 @@ function recoveryKey() {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function Card({ title, icon, children }: { title: string; icon: IconifyIcon; children: ReactNode }) {
-  return <section className="org-data-card">
-    <h2 className="org-data-heading"><Icon icon={icon} aria-hidden="true" />{title}</h2>
-    {children}
-  </section>;
-}
-
 function DataSkeleton() {
   return <div className="org-data-grid" role="status" aria-label="در حال بارگذاری داده‌های سازمان">
     {[0, 1].map((item) => <div className="org-data-card" key={item}>
       <div className="org-data-heading"><span className="org-data-skeleton w-36" /></div>
       <div className="org-data-body space-y-4">
-        <span className="org-data-skeleton w-4/5" /><span className="org-data-skeleton h-16 w-full" />
-        <span className="org-data-skeleton h-10 w-2/3" />
+        <span className="org-data-skeleton w-4/5" /><span className="org-data-skeleton !h-16 w-full" />
+        <span className="org-data-skeleton !h-10 w-2/3" />
       </div>
     </div>)}
-    <div className="org-data-card org-data-wide org-data-body"><span className="org-data-skeleton h-20 w-full" /></div>
+    <div className="org-data-card org-data-wide org-data-body"><span className="org-data-skeleton w-2/5" /></div>
   </div>;
-}
-
-function State({ value }: { value: string }) {
-  return <span className={`org-data-status org-data-status--${value}`}>{STATES[value] ?? value}</span>;
 }
 
 function Review({
@@ -183,22 +138,14 @@ export default function OrganizationData() {
   const [file, setFile] = useState<File | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [activeRun, setActiveRun] = useState<Run | null>(null);
-  const [history, setHistory] = useState<{ items: Run[]; total: number }>({ items: [], total: 0 });
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState<"apply" | "delete" | "rotate" | null>(null);
-  const [limit] = useTablePageSize();
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   const requestedRun = params.get("archive_run");
   const runId = requestedRun && /^[a-f0-9-]{36}$/i.test(requestedRun) ? requestedRun : null;
-  const requestedKind = params.get("archive_kind") ?? "";
-  const requestedState = params.get("archive_state") ?? "";
-  const kind = Object.hasOwn(KINDS, requestedKind) ? requestedKind : "";
-  const state = ["active", "review", "succeeded", "failed", "expired"].includes(requestedState) ? requestedState : "";
-  const rawOffset = Number(params.get("archive_offset"));
-  const offset = Number.isInteger(rawOffset) && rawOffset > 0 && rawOffset <= 10000 ? rawOffset : 0;
 
   function changeQuery(values: Record<string, string | null>) {
     setParams((current) => {
@@ -235,17 +182,18 @@ export default function OrganizationData() {
   }, [nextRunAt]);
 
   useEffect(() => {
+    if (!runId) {
+      setActiveRun(null);
+      return;
+    }
     let stopped = false;
     let pending = false;
     async function refresh() {
       if (pending) return;
       pending = true;
       try {
-        const page = await request<{ items: Run[]; total: number }>(`${API}/runs${query({
-          limit, offset, kind, state,
-        })}`);
-        const current = runId ? await request<Run>(`${API}/runs/${runId}`) : null;
-        if (!stopped) { setHistory(page); setActiveRun(current); }
+        const run = await request<Run>(`${API}/runs/${runId}`);
+        if (!stopped) setActiveRun(run);
       } catch (cause) {
         if (!stopped) setError((cause as Error).message);
       } finally { pending = false; }
@@ -253,7 +201,7 @@ export default function OrganizationData() {
     void refresh();
     const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 5000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [kind, state, limit, offset, runId, refreshVersion]);
+  }, [runId, refreshVersion]);
 
   const reviewId = activeRun?.can_review ? activeRun.id : null;
   useEffect(() => {
@@ -315,19 +263,6 @@ export default function OrganizationData() {
     }, "فایل دریافت شد و در صف بررسی قرار گرفت.");
   }
 
-  function download(run: Run) {
-    void act("download", async () => {
-      const url = `${API}/runs/${run.id}/download`;
-      await request<void>(url, { method: "POST" });
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "";
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-    });
-  }
-
   if (!form || !settings) return error
     ? <div className="space-y-3"><ErrorBox message={error} />
       <button className="btn-ghost" onClick={() => { setError(null); void loadSettings(); }}>تلاش دوباره</button></div>
@@ -336,7 +271,7 @@ export default function OrganizationData() {
   const current = activeRun?.kind === "import" ? activeRun : null;
   const selectedBusy = current?.state === "queued" || current?.state === "running";
 
-  return <div className="org-data-grid" dir="rtl">
+  return <div className="org-data-grid org-data-controls" dir="rtl">
     {(error || notice) && <div className="org-data-wide" aria-live="polite">
       <ErrorBox message={error} />{notice && <p className="org-data-notice" role="status">{notice}</p>}
     </div>}
@@ -346,8 +281,7 @@ export default function OrganizationData() {
         <div className="org-data-actions">
           <button className="btn" type="button" disabled={!!busy || !settings.has_recovery_key}
             onClick={() => void act("backup", async () => {
-              const run = await request<Run>(`${API}/backup`, { method: "POST" });
-              changeQuery({ archive_run: run.id, archive_kind: null, archive_state: null, archive_offset: null });
+              await request<Run>(`${API}/backup`, { method: "POST" });
             }, "بک‌آپ در صف آماده‌سازی است. فایل را پس از آماده‌شدن از تاریخچه دریافت کنید.")}>
             <Icon icon={downloadIcon} aria-hidden="true" /> ساخت بک‌آپ باینری
           </button>
@@ -356,6 +290,9 @@ export default function OrganizationData() {
             <Icon icon={keyRoundIcon} aria-hidden="true" />
             {settings.has_recovery_key ? "تولید کلید جدید" : "ساخت کلید بازیابی"}
           </button>
+          <Link className="btn-ghost" to={ORGANIZATION_DATA_HISTORY_PATH}>
+            <Icon icon={historyIcon} aria-hidden="true" /> تاریخچهٔ بک‌آپ و بازیابی
+          </Link>
         </div>
         {!settings.has_recovery_key && !pendingKey && <p className="org-data-muted">برای ساخت اولین بک‌آپ، کلید بازیابی بسازید.</p>}
         {pendingKey && <div className="org-data-review">
@@ -484,52 +421,13 @@ export default function OrganizationData() {
       </form>
     </Card>
     <div className="org-data-wide">
-      <Card title="تاریخچهٔ بک‌آپ و بازیابی" icon={historyIcon}>
-        <div className="org-data-body">
-          <div className="org-data-actions">
-            <label><span>نوع عملیات</span><select aria-label="نوع عملیات" value={kind}
-              onChange={(event) => changeQuery({ archive_kind: event.target.value || null, archive_offset: null })}>
-              <option value="">همه</option>{Object.entries(KINDS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}
-            </select></label>
-            <label><span>وضعیت</span><select aria-label="وضعیت" value={state}
-              onChange={(event) => changeQuery({ archive_state: event.target.value || null, archive_offset: null })}>
-              <option value="">همه</option><option value="active">در جریان</option>
-              {(["review", "succeeded", "failed", "expired"]).map((key) => <option value={key} key={key}>{STATES[key]}</option>)}
-            </select></label>
-          </div>
-          {history.items.length ? <ul className="org-data-history">
-            {history.items.map((run) => <li key={run.id}>
-              <div className="org-data-run-name">
-                <strong>{KINDS[run.kind]}</strong><span>{fmt.dateTime(run.created_at)}</span>
-                {run.size_bytes !== null && <span>{fileSize(run.size_bytes)}</span>}
-              </div>
-              <div className="org-data-run-status">
-                <State value={run.state} />
-                {run.transfer_state && <div className="org-data-actions"><bdi>FTP</bdi><State value={run.transfer_state} /></div>}
-                {run.next_attempt_at && <small>تلاش بعدی {fmt.dateTime(run.next_attempt_at)}</small>}
-                {run.error_code && <a className="org-data-help" href={`/help/errors/${run.error_code}`}>
-                  {ERRORS[run.error_code] ?? "راهنمای رفع خطا"}</a>}
-                {!!Object.values(run.summary.omitted ?? {}).reduce((sum, count) => sum + count, 0) &&
-                  <small>{fmt.int(Object.values(run.summary.omitted ?? {}).reduce((sum, count) => sum + count, 0))} رکورد در فایل قرار نگرفت</small>}
-              </div>
-              <div className="org-data-actions">
-                {run.can_download && <button type="button" className="btn-ghost" disabled={!!busy} onClick={() => download(run)}>دانلود فایل</button>}
-                {(run.can_review || run.can_upload) && <button
-                  type="button" className="btn-ghost" onClick={() => changeQuery({ archive_run: run.id })}>ادامهٔ بازیابی</button>}
-              </div>
-            </li>)}
-          </ul> : <p className="org-data-empty">عملیاتی برای نمایش وجود ندارد.</p>}
-          <Pagination page={Math.floor(offset / limit) + 1} hasPrevious={offset > 0}
-            hasNext={offset + limit < history.total && offset + limit <= 10000} total={history.total}
-            onPrevious={() => changeQuery({ archive_offset: offset > limit ? String(offset - limit) : null })}
-            onNext={() => changeQuery({ archive_offset: String(offset + limit) })} />
+      <Card title="حذف داده‌های تماس" icon={trashIcon}>
+        <div className="org-data-danger">
+          <p className="org-data-muted">حذف تماس‌ها، متن‌ها، تحلیل‌ها و فایل‌های صوتی برگشت‌پذیر نیست.</p>
+          <button className="btn-danger" type="button" disabled={!!busy} onClick={() => setDialog("delete")}>حذف کامل داده‌های تماس</button>
         </div>
       </Card>
     </div>
-    <section className="org-data-wide org-data-danger">
-      <div><h2 className="font-bold">حذف داده‌های تماس</h2><p className="org-data-muted">حذف تماس‌ها، متن‌ها، تحلیل‌ها و فایل‌های صوتی برگشت‌پذیر نیست.</p></div>
-      <button className="btn-danger" type="button" disabled={!!busy} onClick={() => setDialog("delete")}>حذف کامل داده‌های تماس</button>
-    </section>
     <ConfirmDialog open={dialog === "apply"} title="تأیید ورود داده‌ها" confirmLabel="ورود داده‌ها" busy={!!busy}
       description="رکوردهای جدید طبق پیش‌نمایش اضافه می‌شوند. داده‌های فعلی مقصد حفظ می‌شوند."
       onCancel={() => setDialog(null)} onConfirm={() => current && void act("apply", async () => {

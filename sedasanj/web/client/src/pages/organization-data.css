@@ -20,8 +20,9 @@
   min-height: 3.25rem;
   padding: .75rem 1rem;
   border-block-end: 1px solid var(--line);
-  background-image: repeating-linear-gradient(135deg, transparent 0 7px, rgb(75 110 72 / .08) 7px 8px, transparent 8px 13px);
-  color: #345331;
+  position: relative;
+  isolation: isolate;
+  color: #4b6e48;
   font-size: 1rem;
   font-weight: 700;
 }
@@ -49,23 +50,23 @@
 
 .org-data-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 
-.org-data-actions button, .org-data-file > span { display: inline-flex; align-items: center; gap: .4rem; }
+.org-data-actions :is(button, a), .org-data-file > span { display: inline-flex; align-items: center; gap: .4rem; }
 
-.org-data-grid label { display: grid; gap: .3rem; min-width: 0; font-size: .82rem; }
+.org-data-controls label { display: grid; gap: .3rem; min-width: 0; font-size: .82rem; }
 
-.org-data-grid input, .org-data-grid select, .org-data-grid button {
+.org-data-controls input, .org-data-controls select, .org-data-controls button {
   border-radius: 0;
   font-family: inherit;
 }
 
-.org-data-grid input:not([type="checkbox"]), .org-data-grid select {
+.org-data-controls input:not([type="checkbox"]), .org-data-controls select {
   min-width: 0;
   min-height: 2.65rem;
   border: 1px solid var(--line-strong);
   padding: .35rem .55rem;
 }
 
-.org-data-grid :is(button, input, select, a, summary):focus-visible {
+.org-data-controls :is(button, input, select, a, summary):focus-visible {
   outline: 2px solid #4b6e48;
   outline-offset: 2px;
 }
@@ -80,7 +81,7 @@
 .org-data-file:hover { background: rgb(75 110 72 / .07); }
 .org-data-file:focus-within { outline: 2px solid #4b6e48; outline-offset: 2px; }
 .org-data-file-name { color: #526052; overflow-wrap: anywhere; }
-.org-data-grid .org-data-file input {
+.org-data-controls .org-data-file input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -141,7 +142,6 @@
   flex-wrap: wrap;
   gap: .65rem;
   padding: .9rem 1rem;
-  border: 1px solid var(--line);
   border-inline-start: 2px solid #be123c;
 }
 

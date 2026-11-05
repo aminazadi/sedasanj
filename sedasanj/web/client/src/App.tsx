@@ -4,6 +4,8 @@ import Layout from "./components/Layout";
 import { isOperator, isOrgAdmin, useAuth } from "./auth";
 import Account from "./pages/Account";
 import AccountSettings from "./pages/AccountSettings";
+import OrganizationDataHistory from "./pages/OrganizationDataHistory";
+import { ORGANIZATION_DATA_HISTORY_PATH } from "./pages/organizationDataShared";
 import About from "./pages/About";
 import { HelpArticlePage, HelpErrorPage, HelpHome } from "./pages/Help";
 import ApiDocs from "./pages/ApiDocs";
@@ -88,6 +90,7 @@ export default function App() {
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
         {orgAdmin ? <Route path="/billing/change-plan" element={<ChangePlan />} /> : null}
         <Route path="/account-settings" element={<AccountSettings />} />
+        {orgAdmin ? <Route path={ORGANIZATION_DATA_HISTORY_PATH} element={<OrganizationDataHistory />} /> : null}
         {orgAdmin ? <Route path="/kpi-settings" element={<Navigate to="/account-settings?tab=kpi" replace />} /> : null}
         {orgAdmin ? <Route path="/payment-result" element={<PaymentResult />} /> : null}
         {operator ? null : <Route path="/install" element={<Install />} />}

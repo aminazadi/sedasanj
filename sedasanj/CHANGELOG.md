@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Moved organization backup and restore history to a dedicated page with URL-backed filters, downloads, and links to resume restores.
+- Matched organization data section headings to the panel's dotted title bands.
 - Moved Jalase Negar pairing and device management from the profile to Account Settings for all user roles.
 - Added profile password changes verified by SMS and the account's configured second factor.
 - Enabled password sign-in with a mobile number or email address.

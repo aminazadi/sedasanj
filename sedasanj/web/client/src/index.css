@@ -1424,7 +1424,8 @@ html {
   color: #4b6e48;
 }
 
-.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child::before {
+.panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child::before,
+.panel-shell .org-data-heading::before {
   position: absolute;
   inset: 0;
   z-index: -1;
