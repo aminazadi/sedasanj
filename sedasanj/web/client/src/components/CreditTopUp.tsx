@@ -4,6 +4,7 @@ import { ApiError, fmt, request } from "../api";
 import { billingErrorMessage } from "../lib/billingErrors.mjs";
 import { startPayment, type GatewayCode } from "../lib/payment";
 import PaymentMethodPicker from "./PaymentMethodPicker";
+import DocumentTabs from "./DocumentTabs";
 import { Empty } from "./Widgets";
 import type { Package } from "../types";
 
@@ -116,10 +117,16 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
 
   return (
     <div className="topup">
-      <div className="period-switch" role="tablist" aria-label="نوع خرید اعتبار">
-        <button type="button" role="tab" aria-selected={mode === "custom"} className={mode === "custom" ? "active" : ""} onClick={() => setMode("custom")}>تعداد دلخواه دقیقه</button>
-        <button type="button" role="tab" aria-selected={mode === "package"} className={mode === "package" ? "active" : ""} onClick={() => setMode("package")}>بسته‌های آماده</button>
-      </div>
+      <DocumentTabs
+        value={mode}
+        onChange={setMode}
+        label="نوع خرید اعتبار"
+        align="start"
+        options={[
+          { value: "custom", label: "تعداد دلخواه دقیقه" },
+          { value: "package", label: "بسته‌های آماده" },
+        ]}
+      />
 
       {mode === "custom" ? (
         <div className="topup-custom">
