@@ -9,6 +9,9 @@
 - Added daily and weekly organization backups with FTP and FTPS delivery, connection testing, and persistent run history.
 - Redesigned the organization data tab with responsive backup, import, and history panels.
 - Displayed the next automatic backup in the organization time zone and refreshed it after the scheduled time.
+- Added server-side speaker profiles for Jalase-Negar: people and encrypted voiceprints with owner/organisation visibility, consent records, optimistic versions, tombstones and a commit-ordered change feed for cross-device sync.
+- Added overlap and speaker-confidence fields to meeting segments and speaker-to-profile links on meeting speakers, keeping existing transcript hashes unchanged.
+- Added the speaker error codes and Persian help articles, and the `VOICEPRINT_ENCRYPTION_KEY` setting.
 
 ## 2026-11-04 — AMINAZADI
 

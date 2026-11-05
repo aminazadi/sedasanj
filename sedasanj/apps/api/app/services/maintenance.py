@@ -32,7 +32,7 @@ from app.models import (
     User,
     WebhookDelivery,
 )
-from app.services import commerce, outbox, pipeline, queue, subscription_state
+from app.services import commerce, outbox, pipeline, queue, speaker_profiles, subscription_state
 from app.services.commerce_settings import get_commerce_settings
 from app.services.storage import get_storage
 
@@ -352,6 +352,7 @@ async def run_retention() -> int:
                     - timedelta(days=get_settings().webhook_delivery_retention_days),
                 )
             )
+            await speaker_profiles.purge_tombstones(session, tenant_id)
     if deleted:
         logger.info("retention deleted audio", extra={"extra_fields": {"objects": deleted}})
     return deleted

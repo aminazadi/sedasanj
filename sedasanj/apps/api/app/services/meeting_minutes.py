@@ -20,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
 from app.errors import ApiError
-from app.models import Meeting, MeetingAnalysisStep, MeetingMinutes, MeetingSegment
+from app.models import (
+    Meeting,
+    MeetingAnalysisStep,
+    MeetingMinutes,
+    MeetingSegment,
+    MeetingSpeaker,
+)
 from app.services import meeting_ingest, meeting_progress, tenant_ai_instructions
 from app.services.platform import (
     effective_meeting_minutes_prompt,
@@ -105,13 +111,23 @@ def format_clock(ms: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
 
 
-def format_transcript(segments: list[MeetingSegment]) -> str:
+def format_transcript(segments: list[MeetingSegment], labels: dict[int, str] | None = None) -> str:
+    """One line per segment: clock, speaker and text.
+
+    The speaker is the name the app gave (`labels`) or "گوینده n". A line spoken over another
+    voice says so, so the minutes do not treat the garbled mix as one clear statement.
+    """
+    names = labels or {}
     lines: list[str] = []
     for segment in segments:
         text = segment.text.strip()
         if not text:
             continue
-        speaker = f"گوینده {segment.speaker_idx + 1}: " if segment.speaker_idx is not None else ""
+        speaker = ""
+        if segment.speaker_idx is not None:
+            name = names.get(segment.speaker_idx) or f"گوینده {segment.speaker_idx + 1}"
+            mixed = " (هم‌زمان با دیگران)" if getattr(segment, "overlap", False) else ""
+            speaker = f"{name}{mixed}: "
         lines.append(f"[{format_clock(segment.t_start_ms)}] {speaker}{text}")
     return "\n".join(lines)
 
@@ -278,7 +294,17 @@ async def _load_context(tenant_id: UUID, meeting_id: UUID, version: int) -> _Con
             .scalars()
             .all()
         )
-        transcript = format_transcript(segments)
+        labels = {
+            row.speaker_idx: row.label
+            for row in (
+                await session.execute(
+                    select(MeetingSpeaker).where(MeetingSpeaker.meeting_id == meeting_id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        transcript = format_transcript(segments, labels)
         if not transcript:
             raise ApiError(
                 "meeting_transcript_missing",

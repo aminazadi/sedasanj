@@ -45,6 +45,10 @@ def test_app_routes_need_the_meetings_scope_and_a_mobile_token() -> None:
         ("PUT", "/v1/meetings/{meeting_id}/transcript"),
         ("POST", "/v1/meetings/{meeting_id}/finish"),
         ("POST", "/v1/meetings/{meeting_id}/cancel"),
+        # People and voiceprints synced from the app (tests/test_speaker_profiles.py).
+        ("GET", "/v1/meetings/speaker-profiles/changes"),
+        ("PUT", "/v1/meetings/speaker-profiles/{client_id}"),
+        ("DELETE", "/v1/meetings/speaker-profiles/{client_id}"),
     }
     found = {
         (method, route.path)
