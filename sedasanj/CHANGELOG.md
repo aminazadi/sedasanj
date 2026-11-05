@@ -1,5 +1,9 @@
 ## 2026-11-05 — AMINAZADI
 
+- Matched the password-change card header, content spacing, and responsive illustration layout to the two-factor authentication card.
+
+- Added an illustration and a live resend countdown ring to the profile password-change card; the resend button re-enables when the timer ends.
+
 - Fixed minimal sidebar navigation to dismiss tooltips on activation and route changes, ignore touch hover, and preserve keyboard-only focus hints.
 
 - Matched credit top-up tabs to the shared right-aligned, square green panel tabs while preserving URL selection and keyboard navigation.

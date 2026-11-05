@@ -1580,3 +1580,15 @@ html {
 @media (max-width: 640px) { .pay-method { padding: 10px 12px; } .topup-packages { grid-template-columns: 1fr 1fr; } }
 
 .help-date { color: #64748b; font-size: .85rem; margin: -.5rem 0 1rem; }
+
+/* Password verification resend countdown */
+.password-otp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.password-timer { position: relative; display: grid; place-items: center; width: 3.5rem; height: 3.5rem; flex: none; }
+.password-timer-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(#4b6e48 calc(var(--progress, 0) * 360deg), #cfc9b5 0);
+  -webkit-mask: radial-gradient(circle, transparent 0 1.3rem, #000 calc(1.3rem + 0.5px));
+  mask: radial-gradient(circle, transparent 0 1.3rem, #000 calc(1.3rem + 0.5px));
+  transition: background 0.4s linear;
+}
+.password-timer-text { font-size: 0.8rem; font-weight: 700; color: #4b6e48; font-variant-numeric: tabular-nums; }
