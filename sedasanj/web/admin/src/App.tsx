@@ -21,6 +21,7 @@ import HelpErrorCodes from "./pages/HelpErrorCodes";
 import HelpMediaPage from "./pages/HelpMedia";
 import JalaseNegarReleaseEditor from "./pages/JalaseNegarReleaseEditor";
 import JalaseNegarReleases from "./pages/JalaseNegarReleases";
+import ModelReleases from "./pages/ModelReleases";
 import ModuleFleet from "./pages/ModuleFleet";
 import ModuleReleaseEditor from "./pages/ModuleReleaseEditor";
 import ModuleReleases from "./pages/ModuleReleases";
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/sales" element={<Sales />} />
         <Route path="/installations" element={<Installations />} />
         <Route path="/jalase-negar-releases" element={<JalaseNegarReleases />} />
+        <Route path="/model-releases" element={<ModelReleases />} />
         <Route path="/jalase-negar-releases/:releaseId" element={<JalaseNegarReleaseEditor />} />
         <Route path="/module-releases" element={<ModuleReleases />} />
         <Route path="/module-releases/:releaseId" element={<ModuleReleaseEditor />} />

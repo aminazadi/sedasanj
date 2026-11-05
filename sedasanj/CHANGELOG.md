@@ -1,7 +1,1337 @@
 ## 2026-11-05 — AMINAZADI
 
-- Added staged rollout (`rollout_percent`), a forced minimum build (`min_supported_version_code`) and a stable/beta channel to Jalase-Negar releases, with a deterministic bucket from the app's anonymous install id and the matching admin fields.
-- Added an anonymous, rate-limited install-result report endpoint, the `cbi_jalase_negar_update_install_total` counter, the `update_checksum_mismatch`, `update_downgrade_rejected` and `update_install_blocked` codes and their Persian help articles; migration 0104 also merges the two 0103 heads.
 - Added server-side speaker profiles for Jalase-Negar: people and encrypted voiceprints with owner/organisation visibility, consent records, optimistic versions, tombstones and a commit-ordered change feed for cross-device sync.
 - Added overlap and speaker-confidence fields to meeting segments and speaker-to-profile links on meeting speakers, keeping existing transcript hashes unchanged.
 - Added the speaker error codes and Persian help articles, and the `VOICEPRINT_ENCRYPTION_KEY` setting.
+- Added staged rollout (`rollout_percent`), a forced minimum build (`min_supported_version_code`) and a stable/beta channel to Jalase-Negar releases, with a deterministic bucket from the app's anonymous install id and the matching admin fields.
+- Added an anonymous, rate-limited install-result report endpoint, the `cbi_jalase_negar_update_install_total` counter, the `update_checksum_mismatch`, `update_downgrade_rejected` and `update_install_blocked` codes and their Persian help articles; migration 0104 also merges the two 0103 heads.
+- Added an ML model registry in the main MinIO (`ml-models/`): GPU servers publish ONNX models with an `ml:publish` integration key (platform tenant, IP allowlist, rate limit, server-checked SHA-256, idempotent per kind and version), the `latest` channel keeps one copy, the `champion` channel keeps the previous version for `ML_MODEL_PREV_RETENTION_HOURS` unless pinned, and staff download models from the admin panel with Range support and audit.
+- Added super-admin promote, rollout, pin, revoke and delete actions for models, the `ml_model_*` and `ml_publish_forbidden` error codes with Persian help, an orphan sweeper, and `scripts/create_ml_publisher_key.py`.
+- Replaced assistant export cards with inline file links and type icons in full and quick chats; moved expiry feedback to click-triggered toasts and removed mandatory expiry notices.
+- Matched meeting and report document headers to call details, centered single-line meeting tabs, hid completed processing timelines, and replaced transcript chat bubbles with readable speaker sections.
+- Added Persian rich text editing for minutes and report runs, fixed bottom save actions, optimistic conflict protection, role checks, and audited saves.
+- Matched browser print and downloadable PDF document styles, including local fonts, tables, live edits, and original charts; added PDF file sharing with a download fallback.
+- Added document editing, sharing, and concurrent-edit recovery help content in migration 0105.
+- Added expiring email verification and password reset links for organization members.
+- Added an organization user editor for display names, mobile numbers, and extensions, with a URL-backed member selection.
+- Restricted platform-shaping staff actions (staff management, tenants, plans, gateways, refunds, settings) to `super_admin`, read the staff role from the database on every request, and added a test that fails when a mutating admin route lacks a role check.
+- Fixed signup verification codes so failed attempts are committed and capped, added rate limits, and made a verified code single use.
+- Required the current password and an SMS-verified new number to change the profile mobile number.
+- Made production refuse to start without a valid `PLATFORM_SECRETS_KEY` or when `JWT_SECRET` equals `API_KEY_PEPPER`, and limited debug verification codes to explicit local runs (`ALLOW_INSECURE_DEV`).
+- Switched arq job serialization from pickle to JSON for the API and every worker, and put a password on Redis in `deploy/compose.yml` (new required `REDIS_PASSWORD`; drain the queues before deploying).
+- Added CSP, HSTS, framing, nosniff, referrer and permissions headers to the web server, plus a header connection limit and sitemap escaping.
+- Stopped organization import uploads from holding a database connection while streaming, and added stall and total-time limits.
+- Verified SMTP certificates and refused to send SMTP credentials without TLS.
+- Blocked the carrier-grade NAT range in the webhook URL guard, and validated `X-Request-ID` and bounded the metrics path label.
+- Stopped echoing token parser details in authentication errors.
+- Moved the browser panels' refresh token into an HttpOnly, SameSite=Strict, path-scoped cookie (opt-in with `X-Auth-Transport: cookie`; the body token still works for the mobile app), kept the access token in memory only, and migrated existing localStorage sessions on first refresh.
+
+- Moved organization backup and restore history to a dedicated page with URL-backed filters, downloads, and links to resume restores.
+- Matched organization data section headings to the panel's dotted title bands.
+- Moved Jalase Negar pairing and device management from the profile to Account Settings for all user roles.
+- Added profile password changes verified by SMS and the account's configured second factor.
+- Enabled password sign-in with a mobile number or email address.
+- Added encrypted organization archive downloads and additive cross-organization import with relationship remapping, member review, and media recovery.
+- Added daily and weekly organization backups with FTP and FTPS delivery, connection testing, and persistent run history.
+- Redesigned the organization data tab with responsive backup, import, and history panels.
+- Displayed the next automatic backup in the organization time zone and refreshed it after the scheduled time.
+
+## 2026-11-04 — AMINAZADI
+
+- Fixed organization archive help article slugs and their error-code links so migration 0102 satisfies the help-center slug constraint.
+- Added run-specific Persian titles and database-backed charts to the scheduled-report archive, with all twelve supported chart types available in report criteria.
+- Added private A4 PDF downloads and print layouts for scheduled reports and selected meeting minutes, with the bundled Persian font and SedaSanj branding.
+- Fixed Quick Demo microphone requests on QR and same-device paths, added browser permission diagnostics and recovery guidance, and deferred one-time QR sign-in until the recording is sent.
+- Added manual recording when guide playback is blocked and byte-range support for the guide audio on iOS.
+- Preserved the Quick Demo recording device across authentication changes so QR uploads keep their result handoff.
+- Added opt-in Silero call transcription with tenant overrides, a telephony threshold, independent ASR failover and per-revision engine identity.
+- Preserved speaker roles and timestamps in raw and corrected call transcripts, including outbound and mono recordings.
+- Added a terminal no-speech error with Persian help, rollout metrics and alerts.
+- Aligned the default archive upload limit with the module and Compose at 512 MiB.
+- Added a tenant-scoped, paced retranscription command with dry-run and repeatable campaign IDs.
+- Changed `PUT /v1/meetings/{id}/transcript` to accept an edited text for a completed text meeting: different text replaces the stored `device_asr` segments, queues a new minutes version without billing again and audits `meeting.transcript_edit`; identical text is still a replay, and a meeting that is processing or closed answers `meeting_closed` (409). Extracted `_begin_minutes_rebuild`, shared with `POST /reanalyze`.
+- Added a download button next to the Meetings filters that streams the latest published Jalase-Negar Android APK from the admin release catalog.
+- Added text-only meetings: migrations `0095_meeting_text_ingest` (`meetings.input_kind` / `transcript_sha256` / `transcript_received_at` / `asr_identity`, `device_asr` segment source, `meeting_minutes.provider` / `prompt_sha256`, RLS table `tenant_ai_instructions`) and `0096_meeting_text_help_content` (help articles `meetings-send-transcript`, `meetings-custom-instructions` and pages for the three new error codes). `POST /v1/meetings/sessions` accepts `input_kind`, `PUT /v1/meetings/{id}/transcript` stores the app's transcript idempotently by SHA-256, `finish` on a text meeting clamps the duration (`meeting_max_duration_ms`, 12 h), queues the minutes and, when the app uploaded audio chunks, requires all of them. Text meetings still accept audio chunks for playback only: they are stored but never queued for transcription. New error codes `meeting_transcript_missing` (409), `meeting_transcript_invalid` (422), `tenant_instructions_too_long` (422).
+- Added the `worker-meeting` service (arq queue `q:meeting`): `reanalyze_meeting_minutes` builds professional Persian minutes from the transcript (map-reduce over long transcripts with idempotent `meeting_analysis_steps`, one JSON repair, deterministic Markdown rendering, billing settled on the meeting duration and released on terminal failure) and a 5-minute reconciler requeues stuck meetings. `transcribe_meeting_chunk` is a logged no-op: audio meetings from older app versions are deprecated and are not processed. Wired into compose, the API image, Prometheus, `dev.sh` and the backup writer list.
+- Added the `assemble_meeting_audio` worker job (`services/meeting_audio.py`): after `finish` it joins a text meeting's uploaded chunks into one WAV (`full.wav`, attached as `meetings.audio_id`, the file the panel streams with `Range`) and deletes the chunk copies; the 5-minute reconciler requeues meetings whose chunks were never joined.
+- Added the `meeting` capability to platform settings: choose AISERVICE or 9Router direct, route, model name, block size and the main minutes prompt (`meeting_prompt`, restorable to the packaged default) in the admin Settings page.
+- Added custom AI instructions for the coach and for meetings: `GET/PUT /v1/org/ai-instructions` (org admin) and `GET/PUT /v1/admin/tenants/{id}/ai-instructions` (staff), up to 8000 characters per scope, appended to the base prompt inside an untrusted-context boundary so the JSON output contract stays in code; the coach's `prompt_hash` now covers the organisation text. UI: new "دستورهای هوش مصنوعی" tab in the org panel account settings and a card on the admin tenant page.
+- Changed the org panel meeting detail to render the server-built minutes (`content_md`) and to show "preparing minutes" for text meetings; `MeetingMinutesOut` gained `provider` and flat `summary` / `decisions` / `action_items`.
+
+## 2026-11-03 — AMINAZADI
+
+- Fixed the profile page crashing when loading the meeting app device list.
+
+## 2026-11-01 — AMINAZADI
+
+- Added the Meetings backend (plan steps S1–S3): migration `0093_meetings` (tables `meetings`, `meeting_chunks`, `meeting_segments`, `meeting_chunk_speakers`, `meeting_speakers`, `meeting_analysis_steps`, `meeting_minutes`, `meeting_events`, control-database `meeting_pairing_codes`; `api_keys.user_id`/`kind`; `meeting_id` on `credit_reservations` and `ledger_entries`; `credit_reservations.call_id` now nullable) and the `/v1/meetings` API: one-time pairing codes swapped for a personal `meetings:write` token (`kind='mobile'`, at most 5 active devices, hash-only storage, revocable), idempotent sessions by `client_meeting_id`, chunk `PUT` idempotent by `(meeting_id, seq)` and SHA-256 with WAV PCM16/16 kHz/mono validation and the tenant's `audio_retention_days`, status, finish (lists `missing_seqs`), cancel, and the panel list/detail/audio (`Range`)/PATCH/DELETE/reanalyze/retry/minutes routes visible to the owner and `org_admin`. Credit is reserved in 1800 s blocks (`billing.reserve/settle/release` accept `meeting_id`) and settled once on the recorded length. Added the 11 `meeting_*` error codes (`ApiError` can now carry extra body fields), rate limits `rate_limit_meeting_chunks_per_minute` and `rate_limit_meeting_pairing_per_minute`, the `meetings:write` scope (kept out of integration keys, which also no longer list or modify mobile tokens) and the chunk metrics. Migration `0094_meetings_help_content` seeds the help articles (`meetings-overview`, `meetings-connect-app`, `meetings-processing-states`) and one article plus `help_error_codes` row per `meeting_*` code. Workers (S4–S6) and alerts are not part of this change.
+
+- Added the Meetings pages to the org panel (plan step S7): `/meetings` list (filters `q`, `status`, `owner_id`, `from`, `to`, `page`, `page_size` in the URL, 3-second polling while a meeting is receiving or processing, refresh slot, delete confirmation) and `/meetings/:meetingId` detail with `?tab=minutes|transcript|speakers`, processing card and timeline, speaker turns via `ConversationBubble` (accent colour per speaker for more than two speakers), click-to-seek on the audio player, speaker rename and title edit dialogs, minutes with decisions and action items, text downloads and an overflow menu (reanalyze, retry, delete); added the "جلسات" navigation item and the "اتصال اپ جلسه‌نگار" profile card (one-time pairing code, QR, downloadable `sedasanj.jalase-negar.config` file, device list and revoke). Coded against the `/v1/meetings` contract before the backend landed. `OverflowMenu` and `ProcessingTimeline` moved out of `CallDetail` into shared components; `ProcessingCard`, `AudioWaveformPlayer` and `ConversationBubble` gained optional props with unchanged defaults. Helpers in `lib/meetingsHelpers.mjs` with unit tests.
+
+- Added an illustrated empty state (new trend illustration) to the dashboard daily-trend panel when the selected metric has fewer than two days of data, instead of an empty axis grid with a single dot.
+
+- Changed the empty states of the dashboard "needs your attention" and "goal progress" panels to the shared illustrated empty state (`PanelEmpty`): a new matching all-clear illustration (completed checklist) for no pending items and the existing goal illustration (bars and target) for no goals, replacing the plain check box and dashed box; `DashboardEmpty` now reuses the same component.
+
+- Fixed the microphone permission prompt not appearing in the quick demo recorder and the Persian speech button: `getUserMedia` is now the first call inside the tap (no automatic start without a user gesture, no pre-awaited audio setup), a plain `{ audio: true }` fallback covers constraint failures, the 15-second hard timeout was replaced by a retry hint, in-app browsers get a copy-link notice, and denied/missing/busy/insecure/unsupported cases show distinct Persian messages; speech recognition errors are surfaced instead of failing silently. Shared helpers live in `lib/microphone.mjs` with unit tests.
+
+- Added a voicemail messages page (`/voicemails`) reusing the calls list pinned to `call_type = voicemail`, with its own menu item and without the upload form and status filter.
+
+- Aligned dashboard panel rows: every split row now uses equal columns and stretches its cards to the same height instead of the wide 1.35/1 ratio with top-aligned, uneven cards.
+
+- Added a collapsible minimal client sidebar (icon-only navigation, rotated vertical logo, persisted preference, hover tooltips) and made the assistant page always use the minimal sidebar, removing its menu toggle button.
+
+- Reordered call details so the metric cards sit above a two-column row (smart summary first, follow-up tasks second) on desktop, and removed the conversation rhythm chart.
+
+- Removed per-minute contact CSV import throttling and the 60-second browser retry countdown so validation and import batches proceed consecutively; updated the Persian help guide.
+
+- Hidden the analysis progress card and processing execution report on completed call details while retaining them for ongoing, failed and canceled processing.
+
+- Moved call task creation beside the all-tasks link and grouped the shared task status selector with card header actions.
+
+- Added Persian deployment recovery steps for migration 0091 parameter type conflicts, including rebuild commands and successful migration checks.
+
+- Fixed migration 0091 failing with asyncpg AmbiguousParameterError by binding the task help article title, summary and plain text independently; corrected the PostgreSQL regression fixture to use the deployed VARCHAR/TEXT column types.
+
+- Replaced dropdown arrows across client and admin native selects, searchable selects and table page-size controls with the shared Lucide chevron-down icon at a consistent 20px size.
+
+- Replaced task call selection with the shared searchable dropdown, including server-side search and pagination, retained selection, retry feedback and native-dialog-safe menu rendering without a duplicated selection prompt.
+
+- Fixed the table row-count dropdown with an explicit clickable trigger and a portalled, keyboard-accessible menu that stays visible above clipped tables and near the bottom of the viewport.
+
+- Added a task follow-up workspace for organization administrators and operators with server-side filtering, sorting, counts and pagination; shared headers, filters, tables and an illustrated task-creation dialog with URL-persisted views, filters and selected tasks.
+- Added manual tasks on accessible customer calls, administrator-managed assignees constrained by current call access, an in-progress workflow, immutable follow-up notes, paginated activity history and version-based concurrent edit protection.
+- Updated task summaries, overdue alerts, call details and assistant exports for the expanded workflow and organization timezone; added tenant-isolated activity storage and Persian help for task conflicts and assignment errors.
+
+- Moved the calls refresh action beside export in the search toolbar and made it an accessible icon-only button while keeping refresh state inside the table section.
+
+- Added a calls-table refresh button that refetches the current page with its applied filters, updates only the table section, and prevents repeat clicks while loading.
+
+- Fixed supplementary dashboard analyses with independent cards, consistent executive headers and metric tiles, contained table scrolling, balanced chart sizing and compact empty states.
+
+- Added shared 10/25/50/100/200-row selectors to customer and admin data tables, with URL-backed pagination, saved per-screen browser preferences, first-page resets that preserve filters, matching API limits and a Persian help article.
+
+- Removed contact CSV file-size and row-count caps and added sequential, bounded browser uploads with separate validation/import percentages, automatic rate-limit pauses, cross-batch duplicate tracking, partial-failure guidance and a Persian help article.
+
+# Changelog
+
+## 2026-10-31 — AMINAZADI
+
+- Fixed Persian speech input in the assistant repeating text and repeatedly cutting out on mobile (Chrome/Android with Google speech): on mobile it now captures one utterance per tap instead of a continuous auto-restart loop, and cumulative final results re-emitted by the engine are merged instead of appended. Desktop behaviour is unchanged. Added `speechResults.test.mjs`.
+
+- Fixed the quick-demo phone recorder hanging on "waiting for microphone access": after a QR scan the recorder no longer auto-starts (mobile browsers need a tap to show the microphone prompt and to play audio), it asks the user to tap and allow the microphone, unlocks guide playback inside that tap, and shows an actionable message if the permission prompt never appears within 15 seconds (e.g. QR opened in an in-app scanner browser). After sending, the phone shows a confirmation and the desktop page that displayed the QR continues to the call; the same-device flow is unchanged.
+
+- Added admin management of public footer descriptions, headings, copyright and ordered navigation/legal links alongside trust badges, with shared rendering across public pages, validated HTTP/site-path destinations, audit tracking and a help article.
+
+- Fixed the quick-demo QR link failing with "internal server error" when opened on a phone: `POST /v1/quick-demo/recording/login` read a non-existent `User.disabled_at` attribute (only `StaffUser` has it), so every first-time login from a QR scan raised `AttributeError`; the same-device flow never hit it because the user was already signed in. The organization status is still checked by `recording_session`. Added `test_qr_link_logs_in_a_phone_once`. Also reworded the same-device option on the quick-demo page in plain Persian ("همین گوشی یا کامپیوتر" instead of "دیوایس").
+
+- Replaced every rotating spinner in the client app (demo account creation and organization sign-in, demo recording upload, quick-demo QR and same-device test, assistant socket reconnect, indeterminate call-audio loading) with the assistant's four-square `ProcessingIndicator`, now available in `sm`/`md`/`lg` sizes; removed the unused `.demo-spinner` styles.
+
+- Rebuilt the published customer OpenAPI document from the real route table (`app/route_inspection.py`): each operation's security is derived from its dependencies (API key, user token or public) instead of its path prefix, key operations carry `x-required-scope`, 401/403/429 responses use a documented `Error` schema, and the description covers authentication, scopes, errors, pagination, idempotency and webhooks. Rate-limited responses now send `Retry-After` (also exposed to browsers through CORS). Tests in `tests/test_customer_openapi_contract.py`.
+
+- Completed webhook management: `GET /v1/webhooks/{id}`, `PATCH` (url, events, active, description; re-enabling clears the failure counter), `POST /{id}/rotate-secret` (the old secret also signs `X-CBI-Signature-Previous` for 24 hours), `POST /{id}/test` (signed `webhook.ping`), `GET /{id}/deliveries` (status, error class, latency; `failed_only`), `POST /deliveries/{id}/redeliver` and `GET /events` (event catalog and signature recipe). Deliveries now carry `X-CBI-Delivery` (stable per webhook, event and call) and `X-CBI-Attempt`, payloads have `version: 1`, a retried notify job skips webhooks that already accepted the event, and ten consecutive failures disable the webhook and email the organization admins. Secrets are stored encrypted with `PLATFORM_SECRETS_KEY` (legacy plaintext values still work), secrets must be at least 16 characters, at most 10 webhooks per tenant, https only in production, management endpoints rate-limited, delivery log kept 30 days. Migrations `0084_webhook_management` and `0085_webhook_help_content`; the account page and a new delivery-log component expose test, log, rotate and enable/disable. Tests in `tests/test_webhook_management.py`.
+
+- Added the integration read API for scoped API keys: `GET /v1/integration/calls` (cursor pagination; filters `from`, `to`, `number`, `external_reference`, `campaign_id`, `source`, `status`), `GET /v1/integration/calls/{id}`, `GET /v1/integration/calls/by-external/{reference}` and `GET /v1/integration/contacts/lookup?phone=`, guarded by new scopes `calls:read` and `contacts:read` with a separate read rate-limit bucket. `POST /v1/crm/outcomes` now has a typed response, optional `metadata` (20 simple keys) and `strict_match`; added `POST /v1/crm/outcomes/bulk` (up to 500, per-item results) and `GET /v1/crm/outcomes`. Ingest with an `Idempotency-Key` now answers `409 conflict_idempotency` when the same unique ID is resent with different caller or dialed numbers. Help article and error page via migration `0083_integration_api_help_content`. Tests in `tests/test_integration_api.py`; route-level isolation tests now use `tests/plan_routes.py` because FastAPI 0.141 hides route paths behind `_IncludedRouter` (the earlier assistant isolation checks had been vacuous).
+
+- Added the `speech-telephony-adaptive` audio enhancement model so a faint caller leg is no longer lost next to a strong operator leg: each channel is measured on its own (ffmpeg `loudnorm` analysis), lifted to a target loudness with a static gain (new admin settings `audio_target_loudness_lufs`, default -20, and `audio_max_gain_db`, default 30), and peak-limited; a channel quieter than -55 LUFS is treated as silent and never amplified, so line noise is not turned into hallucinated text. The ASR worker logs `asr channel level matched` with `measured_lufs`, `gain_db` and `silent` per channel, and the ASR version identity records the target and cap. Audio preparation stays off by default and the other models are unchanged. Help article via migration `0082_audio_levels_help_content`. Tests in `tests/test_audio_validation.py`, `tests/test_dual_channel_asr.py` and `tests/test_config.py`.
+
+- Made internal (extension-to-extension) calls first-class: a call between two active synced extensions is classified `internal` at ingest, on manual upload, and retroactively for the last 30 days after every extension sync; migration `0087_internal_calls` backfills existing calls, adds the `calls_direction_check` constraint and a help article. Internal calls are now left out of customer KPIs, `/analytics/summary`, assistant analytics/operator performance and CRM/sales knowledge by default (new KPI setting `include_internal_calls`, explicit `direction=internal` filters still work; the dashboard gains an `internal_calls` summary and an «داخلی» filter option). The operator coach labels the speakers as colleagues, receives the caller/callee extensions and names, uses a collaboration prompt and rubric (request clarity, responsiveness, tone, hand-off), and keeps history separate from customer calls; call summaries get an internal-call notice, and customer follow-up tasks and operator scores are skipped. Tests in `tests/test_internal_calls.py`.
+
+- Added API key scopes (`ingest:write`, `crm:write`, `module:sync`; there is no assistant scope), optional expiry and source-address allowlist, key rotation with a 24-hour overlap (`POST /v1/auth/api-keys/{id}/rotate`), revoked keys in the key list (`include_revoked`), a throttled `last_used_at` write plus `last_used_ip`, and audit events for denied key requests. New error codes `api_key_scope_denied`, `api_key_expired` and `ip_not_allowed`. Existing keys keep their previous access; new keys default to `ingest:write` and `module:sync`. Migrations `0080_api_key_scopes` and `0081_api_key_help_content`; key manager UI updated. Tests in `tests/test_api_key_scopes.py`.
+
+- Sealed the assistant from outside access: disabled the default `/docs`, `/redoc` and `/openapi.json`, filtered every assistant, internal and admin operation out of the public customer OpenAPI document by tag, applied the configured `CORS_ORIGINS` to the assistant socket (an empty list had disabled origin checks), made the tool gateway re-load the caller from the database and reject unknown, foreign-tenant or wrongly-roled users, scoped `graph_context` to calls the tenant session can see, and added `PUT` and `X-Request-ID` to CORS. Tests in `tests/test_assistant_isolation.py` and `tests/test_tool_gateway.py`.
+
+- Aligned the KPI and teams settings tab with real behavior: the "show team goal to operator" switch now actually hides team-scoped goals from operator dashboards, funnel stages are chosen with switches (required stages locked) instead of free text, `taxonomy_version` is bumped automatically when stages or objections change, thresholds and goal targets are range-checked in the UI and API (`hot_opportunity_threshold` >= `probable_confidence_threshold`, goal target 1-100), and each threshold and dashboard widget has a short explanation. Help article via migration `0086_kpi_settings_help_content`. Tests in `tests/test_sales_kpi.py`.
+
+- Made the assistant's vector index cover organization data. Calls without a summary now get transcript chunks, chunk sets are embedded before the previous set is replaced, the chunk cap is 10000, and a new `org_knowledge_chunks` table (migration `0076_org_knowledge_chunks`) indexes organization memories, sales insights, CRM outcomes, follow-up tasks, KPI goals, teams, contacts and scheduled reports with `tenant`/`call`/`admin` access levels. New assistant tool `search_knowledge`; `search_transcripts` now always combines exact-word, transcript-vector and summary-vector hits and returns `semantic_search: "unavailable"` instead of silently dropping vector failures. The backfill tick runs vector indexing before the graph so failing graph rows no longer starve it; admin knowledge coverage now reports `org_sources`. Help article via migration `0077_assistant_knowledge_help_content`. Tests in `tests/test_org_knowledge.py` and `tests/test_knowledge_chunks.py`.
+
+- Combined prompt-defined coach dimensions with the active organization operator-scoring rubric (titles, descriptions, weights and level descriptions), shared the scoring defaults when no rubric exists, and preserved omitted rubric dimensions without fabricated scores. Existing reports require coach regeneration.
+
+- Moved the smart summary and its keywords above the operator coach section on the call detail page, preserving summary loading and empty states.
+
+- Removed the background color and geometric pattern from operator coach summaries in the call detail section and full report dialog.
+
+- Redesigned the call-detail operator coach section as a graphic summary: overall score ring, a radar of the scored dimensions, the most important issue, and count tiles for issues, strengths, missed opportunities and drills. The full report (narrative, dimension bars, issues with quotes and better phrases, strength/opportunity/drill lists) moved into a modal opened with "مشاهدهٔ تفصیل تحلیل"; its open state lives in the URL as `?coach=detail`.
+- Rebuilt the client dashboard (`/`) as an executive view: a plain-language verdict for the period with sales, conversion and customer satisfaction; six headline KPIs (calls, answer rate, opportunities, conversation quality, on-time follow-up, sales value) each with its change against the previous equal-length period and a daily sparkline; "needs your attention" grouped by urgency and business priority with expandable items; goal progress; one daily trend chart with a calls/sales/quality/satisfaction switch; a horizontal funnel that marks the stage with the biggest drop; a team leaderboard with quality change; and a voice-of-customer panel (sentiment mix, top objections and topics). Filters moved next to the date range, and the remaining analyses (CRM metrics, tasks, unanswered call types, talk balance, voicemail, breakdowns, operator and campaign tables, recent calls) stay in the collapsible "extra analyses" section. Chart metric, funnel view, expanded attention group and details state live in the URL. `GET /v1/kpi/dashboard` now also returns `answer_rate`, `satisfaction_rate`, previous-period wins, opportunities, quality and revenue, per-day quality and satisfaction counts, per-operator previous quality, goal validity windows, and three new action types: `operator_quality_drop` (quality fell 10+ points with a sufficient sample), `missed_peak` (weekday/hour slot with 10+ calls and 20%+ unanswered, managers only) and `angry_customer` (angry caller without a follow-up task). Daily trend buckets now use the organization's timezone instead of UTC. Migration `0074_executive_dashboard_help_content` adds the dashboard help article. Added tests in `tests/test_sales_kpi.py` and `web/client/tests/dashboardInsights.test.mjs`.
+- Fixed the assistant answering "no data" for requests like "what happened today": it planned only `get_current_time` and never queried calls. The system prompt now carries the organization's current time with ready-made today/yesterday ranges, `get_current_time` returns the organization timezone with day boundaries, a plan made only of the time tool is replanned once toward a data tool, and an enabled-tools list without any valid data tool now falls back to all tools. Added tests in `tests/test_assistant_agent_tools.py`.
+- Fixed searchable contact and operator menus appearing behind sticky extension-table cells or being clipped by scrolling containers; menus now track their triggers and fit above or below them within the viewport.
+- Moved the extensions table out of the phonebook page into its own `/extensions` page ("داخلی‌ها") with a navigation entry, and replaced the contact/operator assignment selects with a new reusable `SearchSelect` dropdown that has a search box (matches name, phone number or email, folds Arabic letters) and keyboard support. The operator picker in the KPI team-assignment dialog uses the same `SearchSelect`.
+- Added separate Issabel TGZ release inspection and signing, product-aware update and fleet APIs, compatibility metadata, error help pages, and Issabel filters/configuration exports in both panels.
+- Added the AI operator coach: after each answered call is analysed, a new worker job (`coach_operator_call`) produces evidence-backed feedback (headline, narrative, nine scored dimensions, ranked issues with verbatim quotes, ready-to-say replacement phrases, strengths, missed opportunities and next-call drills). Quotes that cannot be found in the transcript are dropped. The model also receives the same operator's earlier coaching, retrieved by pgvector similarity plus the most recent items, so issues are marked new, recurring or improving. Migration `0072_operator_call_coachings` stores results and embeddings (tenant RLS), `0073_operator_coach_help_content` adds the help guide and the `coach_unavailable` error article, and `GET /v1/calls/{id}/operator-coach` plus `POST …/regenerate` expose it (operators see only their own calls, organization managers see all). The call detail page shows a new section after the follow-up tasks. Admin settings gained a coach block (enable switch, AISERVICE or 9Router provider, model, route, history size, minimum duration) and an editable coach prompt with a packaged Persian default; the JSON contract stays code-owned. Added `tests/test_operator_coaching.py`.
+- Sped up the calls search: migration `0070_calls_search_trgm_indexes` adds trigram GIN indexes for dialed number, call summary and contact name/company; queries fold Arabic letters and Persian/Arabic digits and escape `%`/`_`; the search box debounce dropped from 400 ms to 200 ms. Added `tests/test_calls_search_fold.py`.
+- Added a visible call search box (transcript, summary, numbers, phonebook contact name or company) applied from the URL `q` parameter, and a calls export dialog with selectable columns and XLSX or CSV output backed by `GET /v1/calls/export` (same filters and operator scope as the list, Jalali Tehran dates, formula-safe cells, billing column hidden from operators, 20,000-row cap with `export_too_large`, rate limit and `calls.export` audit event). Added `tests/test_call_export.py` and the `calls-export.svg` dialog artwork.
+
+## 2026-10-30 — AMINAZADI
+
+- Fixed the animated operator-awareness illustration flattened by WebP conversion by restoring its original SVG, removing static responsive replacements, and protecting animated SVG delivery with asset regression checks.
+
+- Converted static site and panel images, payment artwork, public logos, social preview and favicon to WebP, preserved existing raster pixels and transparency, added responsive image variants and density-aware dialog backgrounds, prioritized the landing hero, and documented image delivery with asset integrity checks.
+
+- Seeded the help center with five plan and billing articles and one article plus `help_error_codes` row for each billing API error code (migration `0069_billing_help_content`), added `docs/plans-and-subscriptions.md` (plan and subscription lifecycle, quotas, notices, settings), documented the API error codes in the error-code skill, and updated the latest-migration pointer in `AGENTS.md`. Added `tests/test_billing_help_content.py`.
+
+- Made the staff `stop_now` action also clear a scheduled downgrade and cancel open plan changes (it only changed the status before), and added `tests/test_subscription_actions.py` (stop, extend, extend trial, customer cancel and resume). CI now runs the admin panel's unit tests.
+
+- Reworked the admin plan pages to match the new catalog API: the plan list shows plans without a version (so a new plan can get its first version), the new-version form starts from the plan's latest version and validates numbers before sending, publish/retire/visibility/sale-stop ask for a reason in a dialog (a forced retirement of the only live version needs a second confirmation), plan flags `sellable` and `is_trial` can be set, and the subscription count links to the filtered subscription list. Plan, subscription and package lists keep their filters and paging in the URL, subscription actions validate the day count (1..3660), packages are edited inline with a reason, the tenant page shows tables instead of raw JSON, and the commerce settings page gained grace days, payment window, order expiry, order cap, credit limits and presets, renewal price policy, featured plan and the default per-minute rate.
+- Added `npm run test:unit` and a first test for the admin panel.
+
+- Added the customer subscription controls to the client panel: `SubscriptionPanel` on the billing page (plan, state, grace deadline, scheduled change, cancel at period end, resume, cancel a scheduled change) and a new change-plan page `/billing/change-plan` (upgrade is paid with a stable idempotency key, downgrade is scheduled for renewal). Billing order lists keep their paging in the URL (`ledger`, `orders`) and the prepaid-credit mode in `topup`.
+- Made checkout, sign-up, landing and credit top-up data-driven: plan codes are no longer a fixed union, `GET /v1/plans` also returns `featured`, `is_trial`, `sellable` and `monthly_included_minutes`, an unknown or unsellable plan shows a message instead of silently falling back to the demo/bronze plan, the landing page shows trial days and a contact link for plans without a price, and the credit limits and presets come from `GET /v1/billing/credit-settings`. Checkout reuses one idempotency key per distinct purchase, shows the tax line, links the terms, and no longer puts a label above its heading.
+- Added `src/lib/billingErrors.mjs` (error code to Persian text with the next step) with unit tests.
+
+- Added subscription notices by email (`services/subscription_notices.py`, run from the worker's reconciler cron): renewal due at 7 and 1 days, trial ending at 2 days, grace started and subscription expired, sent to the organization admins. A `notification_log` table (migration `0068_notification_log`) makes each notice go out once per subscription period, retries a failed send up to 3 times, and skips unpaid sign-ups that lapsed. SMS delivery is not included: it needs admin-managed SMS.ir template IDs per notice. Added `tests/test_subscription_notices.py`.
+
+- Added the plan flags `is_trial` and `sellable` (migration `0067_plan_flags_grant_check`) and replaced every `code == "demo"` check with them, so a plan created in the admin can be a trial or be withdrawn from sale without code changes; sign-up now rejects a plan that is not sellable (`plan_not_sellable`).
+- Hardened the plan catalog: publishing needs a price above zero for a sellable plan and `trial_days` for a trial plan, rejects a past `effective_at`, and retires the previous live version; retiring the only live version of an active plan needs `force` (`plan_in_use`, 409); plan updates need a `reason`, cannot deactivate `demo`/`legacy_custom`, and audit the number of live subscriptions; a duplicate plan code returns `plan_code_exists` (409). `GET /v1/admin/commerce/plans` now lists plans that have no version yet.
+- Replaced the per-tenant walks in the admin plan and subscription lists with single SQL queries (filter, count and page in the database) when tenant databases are off; added a `plan_code` filter to the subscription list.
+- Split the 402 for an inactive subscription (`subscription_inactive`) from `quota_exceeded`/`insufficient_credit`; the agent still sees HTTP 402. Package updates now require a super admin, take an optional `reason`, and reject a name used by another active package. Added a CHECK on `credit_grants.source`.
+- Added `tests/test_plan_catalog.py`.
+
+- Made plan minutes one grant per quota window for every code path (`services/plan_credit.py`, key `plan-credit:{subscription}:{window}`): demo sign-up and the first upload can no longer both grant the trial, a mid-window upgrade grants the pro-rated extra minutes (and a refund takes the unused part back), and lapsed monthly grants are expired before a hold is checked so expired minutes never allow a call. Retried calls now spend plan minutes before charging the balance.
+- Unified the assistant message quota with the plan-minute window (the subscription anniversary month instead of the Tehran calendar month, counting reserved and succeeded messages) and enforced `assistant_source_limit` on cited sources.
+- Replaced the hard-coded 7 000 toman demo rate and the `trial_days or 7` fallback: the default overage price is the admin setting `commerce.default_price_per_minute_toman`, and a demo plan without `trial_days` now fails sign-up with `plan_not_sellable`. Added `tests/test_plan_credit.py`.
+
+- Applied the admin `tax_percent` to subscription, renewal, upgrade, prepaid-credit and installation orders as a separate `tax` line (rounded half up), exposed `net_toman`/`tax_percent`/`tax_toman`/`total_toman` on the checkout and credit quotes, and stored net, tax, percent and line items on invoices (migration `0066_invoice_tax_breakdown`). Prepaid credit balance now excludes tax. The default stays 0, so prices do not change until an admin sets it.
+- Added `GET /v1/billing/credit-settings` and made the prepaid-credit limits (`credit_min_minutes`, `credit_max_minutes`) and the order cap (`max_order_toman`, error `order_amount_too_large`) admin settings instead of constants; the credit line unit price is rounded and the line total is authoritative.
+- Made order creation race-safe (a concurrent request with the same idempotency key now replays the order instead of failing with a database error), wrote an audit event and the invoice breakdown when an order is fulfilled, and serialized operator-quota checks per tenant with an advisory lock.
+- Reworked refunds: a replay of a finished refund returns the original refund, refunding an upgrade restores the previous plan and operators, refunding an early renewal removes only the added year, and refunding a first purchase cancels the subscription and revokes unused plan minutes.
+- Added `tests/test_commerce_money.py` and moved the shared PostgreSQL fixtures to `tests/plan_helpers.py`.
+
+- Added a single owner for subscription status changes (`services/subscription_state.py`): a derived `grace` state (`commerce.grace_days`, default 3) keeps a paid plan working while its renewal order stays payable, lapsed unpaid sign-ups expire after `commerce.payment_window_days` (default 7), expiry now also covers suspended tenants and cancels open scheduled changes, and stale never-attempted draft orders are canceled after `commerce.order_ttl_days`.
+- Changed entitlement selection to prefer `active`, then `trialing`, `pending_payment`, `expired`, `canceled` (instead of the newest row), so an unpaid sign-up row can no longer shadow a paid plan.
+- Rejected buying a different plan while a paid plan is running (`subscription_exists`, 409): plan switches go through `POST /v1/subscription/change`. Early renewal of the same plan now extends the term and keeps the anniversary instead of moving `period_start` into the future; any other purchase starts a fresh term; proration uses the paid year containing today.
+- Reworked `POST /v1/subscription/change`: the idempotency key is checked first and bound to the request (`conflict_idempotency` on reuse with another payload), a new request cancels earlier open changes, no-op and ended-period requests are rejected (`change_conflict`), the demo plan is not selectable (`plan_not_sellable`), and `POST /v1/subscription/changes/{id}/cancel` cancels a scheduled downgrade or unpaid upgrade. `GET /v1/subscription` now returns `scheduled_change` and `grace_ends_at`. Paid upgrades re-check the subscription and plan version, record the previous plan, cancel a pending downgrade, and mark the change `failed` (audited) instead of mutating a lapsed row. Resume now accepts trialing subscriptions.
+- Added commerce settings `grace_days`, `payment_window_days`, `order_ttl_days`, `renewal_price_policy` (`keep`/`latest`), `max_order_toman`, credit limits and presets, and `featured_plan_code`; renewal orders skip inactive plans and can follow the latest published price. Migration `0065_sub_change_idempotency` adds idempotency and previous-plan columns to `subscription_changes`. Plan-code regexes in sign-up, checkout and change requests were relaxed to any valid code, validated against the database.
+- Added `tests/test_subscription_lifecycle.py` (purchase guard, early renewal, idempotent and cancelable downgrade, prorated upgrade, failed upgrade, grace and expiry, pending sign-up shadowing, proration window).
+
+- Added an SVG favicon (`web/client/public/favicon.svg`): a square waveform of five equal-width bars in the site palette (green `#4b6e48` ground, sand `#b2ac88` side bars, canvas `#f2f0ef` center bar), no rounded corners, linked from `index.html`.
+- Fixed admin plan-version creation failing with a NOT NULL violation: the retired `monthly_price_toman` column now defaults to 0 (migration `0063_plan_monthly_default`, model synced and the model check constraint now includes the monthly price).
+- Fixed the admin subscriptions list returning only the last subscription per tenant, ignoring the search filter and raising `UnboundLocalError` for a tenant without subscriptions (`admin_subscriptions` appended outside its row loop).
+- Widened order, order-item, invoice, refund, ledger, reservation, balance-cache and subscription-extra money columns to `bigint` so a maximum prepaid credit order (1,000,000 minutes) no longer overflows 32 bits, and added `amount_toman >= 0` checks on orders and invoices (migration `0064_money_bigint`; the checks are `NOT VALID`, so legacy rows are not scanned).
+- Narrowed the entitlement row lock to the tenant's subscription (`FOR UPDATE OF subscriptions`) so assistant requests no longer lock shared plan and plan-version rows, and stopped `entitlements.effective` from writing `expired` on a read; expiry is now written only by the reconciler.
+- Isolated failures per tenant in subscription expiry and renewal-order preparation (the worker logs and continues), added an explicit `tenant_id` filter to both queries instead of relying on RLS alone, and wrapped both sweeps in `reconciler_cron`.
+- Added `tests/test_plans_regression.py` (PostgreSQL scratch database via `PAYMENT_TEST_DSN`) covering plan-version creation, the subscriptions list, 64-bit order amounts, the lock scope, read-only entitlements and per-tenant renewal isolation.
+
+- Added hard-coded technical SEO for all public pages: per-route Persian title, description, keywords, canonical, hreflang, Open Graph/Twitter cards and JSON-LD (Organization, WebSite, SoftwareApplication, WebPage subtypes, BreadcrumbList, TechArticle for help articles) in `web/client/src/seo/siteSeo.ts`; the build prerenders the head into `dist/<route>/index.html`, the web server serves `robots.txt`, a live `sitemap.xml` (static routes + published help articles), help-article metadata, `noindex` headers for the logged-in app and a 301 for trailing slashes. Added `SITE_URL` build arg, admin `robots.txt` (`Disallow: /`), `docs/seo.md` and `tests/seo.test.mjs`.
+- Gave each public page hero (about, contact, help, legal) its own illustration file (`page-hero-<page>.webp`) via `HeroArt page=…`; the files now hold page-specific illustrations (team room, reception, knowledge base, legal meeting), converted to 1500×750 transparent WebP. Added `docs/page-illustrations.md` with per-page style-matched image prompts.
+- Made the striped end cap of the floating «چرا صداسنج؟» button red (`#c62828`) instead of green.
+- Fixed the sign-up card header: the title no longer inherits the landing hero `h1` size (now 24px), the plan image is smaller, the plan name moved into the step line instead of a label above the title, and the «have an account» link has more space below the button.
+- Applied the same right-to-left shimmer to «بهتر کار می‌کنند» in the awareness section.
+- Replaced the animated wavy underline under «همه را بشنوید.» in the homepage hero with a light shimmer that sweeps over the red text (CSS gradient clipped to the text; static under reduced motion).
+- Added space between the description and the button in the homepage quick-demo section (36px, forced over the marketing `p` margin reset).
+- Redesigned the empty state of the help-center article list: existing `empty-state.svg` illustration on the dot pattern with a square-cornered card, a distinct message for search vs. no articles, and a «show all articles» button that clears the search.
+- Stopped the hero section of inner public pages (about, contact, legal, help) from stretching to the full viewport height; only the homepage hero keeps `min-height: calc(100svh - header)`.
+- Redesigned the decorative panel of the sign-in/sign-up pages: it now uses the panel-sidebar green gradient and dot pattern with geometric square outlines, types admin-managed messages with a caret (type, hold, erase, next), shows a per-message CTA button after typing, and has step bars; reduced-motion shows plain text swaps and hover/focus pauses rotation. New `auth_aside` page type (messages with optional CTA text+link, `type_speed_ms`, `hold_seconds`) in `site_pages` service/router, an admin editor under «صفحه‌های سایت → پنل صفحه ورود و ثبت‌نام» (new `number` field kind), `AuthAside` component, tests in `tests/test_site_pages.py` and docs in `docs/auth-aside.md`.
+- Rewrote the homepage hero copy around the main customer concern (managers hear only a few calls out of thousands): headline «شما فقط چند تماس از هزاران تماس را می‌شنوید. / بقیه‌اش چه؟ / همه را بشنوید.» and a new description; the small lead line may now wrap.
+- On mobile (≤760px) the hero video play button now sits above the headline instead of below the buttons (`order: -1`); the scroll-hint clearance moved to the text block.
+- Recoloured the floating «چرا صداسنج؟» button from black/yellow to the project's palette (cream bar with dark-green text, green border, hard green shadow, olive avatar frame and a green/cream striped end cap, so it stays visible on both light and dark sections), keeping the square shape.
+- Added an admin-editable caption (`play_caption`, default «نیاز به راهنمایی دارین؟», empty hides it) directly under the play triangle inside the homepage hero play box: bold light Persian text with a dark shadow over the darkened avatar, no letter-spacing/uppercase so the script stays joined; the button keeps its aria-label.
+- Removed the caption under the homepage hero video play button; the button keeps its Persian aria-label.
+- Added icons to the buttons on the public pages (landing, about, contact, help, login, signup, quick demo, video story CTA) using the shared `SiteIcon` set (new: back, copy, download, key, login, play, refresh, search, send, userPlus); leading icons sit at the RTL start and forward arrows point left.
+- Made the hero video button caption readable over the photo without a background box: bold dark-green text with a soft cream halo (`text-shadow`) instead of thin primary-colour text.
+- Gave the story panel's top bar (progress, countdown, close) a solid dark-green 58px background so it covers the black letterbox band baked into the top of the uploaded intro video instead of showing as a stray black strip.
+- Documented the landing video story panel (admin fields, behaviour, errors) in `docs/landing-video-story.md` and the media `Range` support in `docs/help-center.md`.
+- Added `Range` support (206/416, `Accept-Ranges`) to the public help-media endpoint and `Storage.iter_chunks(byte_range=…)` so uploaded videos seek and play in Safari/iOS; tests in `tests/test_help_center.py`.
+- Replaced the landing video lightbox with a Websima-style story panel in the project's natural dark-green/olive/cream palette with square corners (the floating button keeps its black/yellow look): a bottom-corner modal with progress bar and countdown, tap-to-pause, the assistant's four-square processing mark as the loader (now the shared `ProcessingIndicator` component), clickable question buttons that each play their own answer video (answered questions drop off the list), a home button back to the intro video, replay, and a closing call to action (button + phone) after the last answer. Everything is admin-editable in «صفحه‌های سایت → ویدئوی صفحه اصلی»: button label, GIF avatar, intro video, autoplay, panel side, up to 8 question/video pairs and the CTA texts/link/phone. Backend: `LandingVideoContent` gained `autoplay`, `panel_position`, `questions`, `cta_*` (all defaulted, so stored content stays valid); each question needs text and a video, and every video id is checked to be an uploaded video on save The panel defaults to the right-hand corner (admin can switch it to the left) and its icons are natural-sized (34px close button with a 16px bold X, 56px play/replay button with a 28px glyph, 38px home button with a 20px glyph). (`site_pages` service/router, tests in `tests/test_site_pages.py`). Admin: the editor is now fully schema-driven (new `image`/`video`/`checkbox` field kinds, media pickers inside repeated rows).
+- Made the hero video button's play triangle transparent (thin white outline, faint fill) and lightened the avatar behind it so the GIF shows through the icon.
+- Styled the hero video button caption like the scroll-down hint: small uppercase light text with wide letter-spacing in the primary colour that widens on hover.
+- Changed the hero video button caption to English («Click to watch the intro video», LTR) and removed its background box.
+- Showed the admin-managed GIF avatar behind the play icon of the homepage hero video button (`WhyVideoPlay`), darkened so the white triangle stays readable; falls back to the plain box when there is no avatar or it fails to load.
+- Restyled the floating «چرا صداسنج؟» button from a red pill to a black square-cornered bar with yellow text, a yellow-framed square avatar, a hard yellow offset shadow that lifts on hover, and a yellow/black diagonal-stripe end cap (`.why-video-button` in `Landing.css`).
+- Replaced the invented placeholder payment gateway icons (client and admin `assets/payments/{saman,behpardakht,zarinpal,zibal}.svg`) with the real brand marks: Saman/SEP symbol from sep.ir, Bank Mellat emblem from Wikimedia Commons (`Bank_Mellat_Logo2.svg`, cropped to the emblem), ZarinPal mark from zarinpal.com (64px raster embedded, no vector source found) and the Zibal diamonds from zibal.ir; each sits on a plain white square.
+- Added extension-aware file icons to the assistant's downloadable export cards: a reusable `FileTypeIcon` component (`components/FileTypeIcon.tsx`) picks the icon, colour and badge from the file name extension (falling back to the export format) for xlsx/csv, pdf, json, md, txt, plus doc, slides, archive, image and audio, with a generic icon for unknown types; `ExportFileCard` now shows it beside the file name.
+- Added a large square play button with a pulsing border to the homepage hero (opposite the headline) with the caption «برای دیدن ویدئوی معرفی کلیک کنید» (part of the same button) that opens the admin-managed landing video in the lightbox; it stays hidden until a video is uploaded. The video state and lightbox are now shared (`useWhyVideo`, `WhyVideoDialog`, `WhyVideoPlay` in `WhyVideoButton.tsx`), and the floating «چرا صداسنج؟» button only appears after the hero scrolls out of view so it no longer overlaps the scroll hint.
+- Added a scroll-down hint at the bottom of the homepage hero: a Latin «SCROLL DOWN» label above a square mouse icon whose wheel dot slides down in a loop; click smooth-scrolls to the features section (instant under `prefers-reduced-motion`, which also stops the animation) with the Persian aria-label «رفتن به بخش بعدی».
+- Faded the hero illustration further behind the headline and subtitle (stronger canvas overlay on the text side, on desktop and mobile) so the text stands out from the picture.
+- Made the homepage hero fill the first screen: its minimum height is the viewport height (`100svh`) minus the header, with the content vertically centred.
+- Replaced the homepage hero background with the new office illustration (`assets/hero-office.webp`), mirrored horizontally in CSS (`.site-hero::before` with `scaleX(-1)`) and covered by the existing left-fading canvas gradient (`.site-hero::after`) so the headline stays readable on desktop and mobile.
+- Changed the header «ورود به پنل» button on the landing and public pages to the outline style so it no longer competes with the primary «تست رایگان» button.
+- Changed the homepage hero headline to target the manager's blind spot («بدون شنیدن حتی یک تماس، بدانید در فروش‌تان واقعاً چه می‌گذرد.», second line in red) and rewrote the hero subtitle to say that the platform listens to every call and surfaces only the important opportunities and risks with a clear action, laid out as three lines (small black lead line, black «بدانید در فروش‌تان», red «واقعاً چه می‌گذرد.» with the wavy underline) on desktop and mobile, plus a wider subtitle without orphan words.
+- Removed the small label above headings on the about, contact and legal pages (fields dropped from the page schema; stored legacy fields are ignored instead of rejected), keeping square corners throughout.
+- Added admin-editable public pages: "درباره ما", "تماس با ما" and the three legal pages (terms, privacy, cancellation) are now stored as plain-text JSON in `platform_settings` (`site_page_<slug>`), served by `GET /v1/site/pages/{slug}` and edited from the new admin "صفحه‌های سایت" page (`/v1/admin/site-pages`, audited, with reset-to-default, link-scheme validation and no HTML), so no migration is needed.
+- Redesigned the about, contact, legal, help-center, sign-in and sign-up pages in the landing page's olive/sand square style with a shared header and footer (`PublicPageFrame`, `AuthShell`) and removed the old blue public-page CSS; legal pages ship with the previous placeholder text until the business enters the real terms.
+- Added a floating "چرا صداسنج؟" button to the landing page whose label, GIF/image avatar and video are managed from the admin "صفحه‌های سایت" page (new `landing_video` site page, media uploaded through the help media library); clicking it plays the video in a lightbox, and the button stays hidden until a video is uploaded.
+- Added a "مقالات و آموزش‌ها" section to the landing page that shows the three latest published help articles linking to their single pages, a `kind` filter and newest-first ordering on `GET /v1/help/articles`, and a publish date, page title and "more articles" list on the single article page.
+- Added a "use cases" section to the landing page: an interactive voice tree with six sectors (government with dedicated install, finance, healthcare, sales, support, e-commerce) with a hub showing an animated heartbeat trace, a signal travelling along the active branch, hover/focus/keyboard selection and a square borderless transparent panel with a concrete manager scenario per sector with sourced figures where available (Inspection Organization, Central Insurance, a Tehran outpatient no-show study, HBR lead-response study), a faded dot pattern and a large faded sector illustration in its corner, square hub and nodes with project-style green line-art SVG illustrations per sector, plus a "کاربردها" nav link.
+- Changed the admin login page to match the client login: dotted background, centered logo above a square card, and the title "ورود به پنل مدیریت".
+- Added a "preview of your customers' satisfaction" section to the landing page after the use cases: the five sentiment emojis from the manager dashboard with illustrative counts and shares that count up and down with a different leading emoji on every tick (stops under `prefers-reduced-motion`).
+- Added Zibal, SEP (Saman) and Behpardakht Mellat payment gateways next to ZarinPal, with encrypted per-gateway credentials, an admin "Payment gateways" page with connection test, and a client payment-method picker that lists only enabled gateways (migration `0062_payment_gateways`).
+- Changed payments so every bank return is validated (token, attempt, order reference, amount), verified server-to-server, persisted before fulfilment and recovered by a per-minute reconciler (pending verification, Mellat settle, expiry); duplicate payments are superseded and gateway reversal is used for refunds where the bank supports it.
+- Added credit top-up by minutes at the organization's per-minute tariff with a live server quote, pay buttons for unpaid orders and installation fees, and payment result illustrations with receipt and automatic pending-status refresh.
+- Fixed bank callbacks answering the buyer with a JSON error: they now always redirect to the payment result page, and ZarinPal requests use the current `payment.zarinpal.com` endpoint.
+- Fixed payment-callback edge cases: mismatching or replayed bank returns no longer fail or downgrade a real payment, superseded attempts are reversed best-effort, stale redirects now expire after many checks, undecryptable gateway credentials disable only that gateway, malformed phone numbers and terminal numbers are no longer sent to banks, and the receipt shows the attempt that paid the order.
+- Fixed credit top-up creating a new draft order on every click and a stale price flashing while the minutes field changes.
+
+- Standardized vertical spacing between marketing landing page sections to 72px (48px on mobile) and made the awareness illustration cards tilted and scattered, including mid-canvas positions, with the magnifier following them.
+- Swapped the order of the pricing and security sections on the marketing landing page so security now comes before pricing.
+- Added a slow periodic gloss sweep, a smooth hover scale with a refined glowing border, and a lighter hero backdrop to the solid buttons and hero on the marketing landing page.
+- Replaced the homepage hero backdrop with a call-center illustration showing operators on calls (`hero-call-center.webp`), blended into the page canvas with multiply so its white background matches.
+
+- Added an animated hand-drawn wavy underline (draw, hold, erase on a 6.5s interval) under the red hero headline.
+
+- Added a compact dark-green homepage "operator awareness" section: a yellow-highlighted headline, a sourced statistic in the subtitle (Pierce, Snow and McAfee, Management Science 2015: about 7% higher revenue after employee monitoring across 392 restaurants; the source line names the restaurant setting) and an dotted background that fades out behind the text, and an animated illustration with eight right-aligned call cards that change one at a time (position and tick/cross/warning status) while a black magnifier (1.9x zoom) inspects them and the rings rotate; animation is disabled under prefers-reduced-motion.
+
+- Changed the homepage hero headline to the hidden-pain wording «مشتری‌هایتان در مکالمات حرف می‌زنند؛ شما می‌شنوید؟» with balanced line breaks and the second sentence in red.
+
+- Fixed assistant export downloads hanging on "در حال دریافت": object-store streaming used a body API that failed mid-response; it now streams with `iter_chunks`. The server expiry notice is no longer appended when the reply already states the expiry.
+
+- Changed assistant tools to run through a signed internal webhook (`POST /v1/internal/tools/{name}`, HMAC with timestamp, nonce and per-call idempotency, in-process fallback) and removed manual tool selection from the assistant UI so the assistant always chooses tools by itself.
+
+- Fixed the assistant answering file requests with a CSV pasted in chat: file export is now always enabled (no longer dependent on the saved tool list), accepts a newest-first `limit` such as "last 10 calls", and a file request that skips `export_data` is re-planned once before answering.
+
+- Added bounded, administrator-configurable assistant tool discovery with Persian/English catalog search and automatic selection of multiple allowed tools; repaired incomplete export plans, supported JSON fallback for incompatible native tool schemas, hid disabled tools from context choices, preserved actionable API errors, and identified missing export migrations or storage failures with dedicated codes.
+
+- Fixed production dialog illustrations and the admin login background by quoting CSS asset URLs, including SVG data URLs generated by Vite.
+
+- Redesigned the assistant tool and date dropdowns with shared selection cards, explicit date fields and inset removable context chips in both full and quick chat; preserved calendar interaction outside the composer and kept quick-chat context tabs in the URL.
+- Redesigned the assistant date-range tab with quick presets (today, last 7/30/90 days), a single range card with a from → to arrow that highlights when set or invalid, and a status hint with a tone marker.
+- Made the assistant context panel compact and consistent with the rest of the client: shorter panel, flat list-style tool rows with the solid green selected state, per-tab selection counts, select-all for tools, a footer count of selected items and kind-labelled attachment chips.
+
+- Fixed the assistant stop button and loading state never clearing after a finished reply: the LLM worker's final run update waited on a row lock held by its own still-open stream transaction, so `message:completed` was never published; the bookkeeping now runs after that transaction commits, and terminal socket events are no longer held back while a conversation join is pending on the client.
+- Added scoped assistant exports for calls and analysis, contacts, follow-up tasks and transcripts in CSV, JSON, XLSX, PDF, Markdown and TXT, with authenticated owner/admin downloads, enforced expiry, tenant-aware cleanup, audited access, Persian expiry cards and administrator controls (migration `0061_assistant_exports`); restored file cards after socket reconnection, preserved expiry notices when answer generation fails, and compensated uploaded objects when their database commit fails.
+
+- Fixed Persian voice typing getting garbled in long dictation and never stopping: text finalised before the browser restarts recognition is now kept (earlier words no longer vanish or repeat), an interim phrase that only echoes the last final phrase is dropped, routine `no-speech`/`aborted` errors no longer end the session, and listening stops by itself after 2.5 s of silence once the user has spoken (7 s if they never start).
+- Restyled the client panel sidebar: the active item is now a rounded translucent pill with an accent bar instead of a full-width white block (the stray square marker is gone), items have a soft hover, icons and group titles use consistent colours and contrast, dividers are subtle, the background has a gentle vertical gradient, and the user card at the bottom has a rounded gradient avatar and a ghost logout button.
+- Added province and city to phonebook contacts: the contact form has dependent province → city drop-downs for all 31 provinces and about 1,300 cities of Iran (dataset vendored from the MIT-licensed `iran-cities-json` npm package into `app/data/iran_geo.json`, rebuilt with `scripts/build_iran_geo.py`, served by `GET /v1/contacts/geo`). CSV import and export gained «استان» and «شهر» columns; imported names are matched to the list (Arabic ي/ك, "استان" prefix and spacing are tolerated) and rows with unknown names are reported per line, and updating an existing contact with a new province resets its old city. Search also covers province and city. Added migration `0059_contact_geo`.
+- Added the staff-only `GET /v1/admin/assistant/knowledge-coverage` endpoint (optional `tenant_id`): per tenant and in total it reports how many call summaries and transcripts the assistant can retrieve with the current embedding model (ready, failed, pending, missing, wrong-model, partial, stale, possibly truncated, blocked by a missing summary) and the row counts of data that is never embedded (sales insights, CRM outcomes, operator scores, follow-up tasks, KPI goals, teams, contacts, organisation memories, scheduled report runs, chat messages). It is read-only and gives the baseline for the assistant-coverage work.
+- Added a phonebook (دفترچه تلفن): organisation admins can add, edit, delete, search, import (CSV with a dry-run preview, skip or update of existing numbers, row-level error report) and export contacts; operators can view it. The contact's title is now shown above the number in the calls table and the call detail header (and the call text export). Numbers are matched after normalisation, so `+98…`, `0098…`, `09…` and Persian digits find the same contact. Added migration `0057_contacts` (tenant table with RLS) and `GET/POST/PATCH/DELETE /v1/contacts`, `POST /v1/contacts/import`, `GET /v1/contacts/export|template`; the user guide is in `docs/contacts-phonebook.md`.
+- Fixed assistant transcript indexing: each transcript chunk is now inserted inside its own savepoint, so one bad embedding (for example a different vector dimension) no longer aborts the surrounding analysis transaction; the 100-chunk cap (about the first 100,000 characters) was raised to 2,000 chunks; a call with failed chunks is now backed off with exponential delay instead of being retried on every backfill tick; and the knowledge backfill now re-indexes calls with partial, failed, wrong-model or stale (`source_revision_id` differs from the active transcript revision) chunks instead of treating one ready chunk as complete. Migration `0058_transcript_chunks_any_dimension` removes the fixed 384 dimension from `transcript_chunks.embedding`.
+- Added state illustrations to the call-detail sections (sentiment trend, speaker share, transcript, smart summary, extracted entities, follow-up tasks) and to the empty states of the full-page and quick assistant (chat, training, temporary chat). They are drawn in the same layered-card, pedestal and circuit-line style as the landing artwork (`CallStateArt`), with three states — empty (dashed ghost), processing (animated, none under reduced motion) and failed (red break and badge) — and state-specific Persian messages that name the next action (e.g. re-transcribe).
+- Added a customer-satisfaction quick-stats section to the client dashboard for organisation admins and operators: the five sentiments as large emoji (😄 🙂 😐 😢 😡) with the call count, label and share below each, following the dashboard "sentiment" widget switch. Moved the KPI team, assignment and goal forms and the add-user form into landing-style dialogs with their own artwork (action bar pinned to the bottom, date pickers rendered inside the dialog).
+- Changed the client panel status chips (call status, sentiment, sales outcome, trend, FreePBX server and update state) to explicit state colours (green, red, amber, blue, violet, orange, grey) instead of the olive-mapped theme palette, so different states are distinguishable; customer sentiment now shows an emoji (😡 😢 😐 🙂 😄). Also darkened panel text, made tables flush with their cards, and removed the doubled row highlight on hover.
+- Changed panel borders in the client and admin panels to a softer, semi-transparent olive line (`--line`, `--line-strong`) for cards, fields, buttons, tabs and tables. Fixed cards that hold form fields (KPI settings, teams, goals, score rubric): they now keep their frame and padding, so section title bands no longer overhang the card and a frame no longer appears only on hover; the score rubric header now gets the same title band, and destructive buttons use a lighter red outline.
+- Changed the client panel's account pages (profile, credit and subscription, account settings, setup, FreePBX servers, module changelog, API docs) to one consistent design: sidebar icons now come from the same Lucide set as the rest of the panel instead of hand-drawn paths (settings, setup and version-history icons were mismatched); buttons and ghost buttons share one height and size, destructive actions use a shared `btn-danger` style, status chips use shared `badge-*` tones, and forms use visible labels with shared hint and success styles. Page spacing and widths are unified, the setup page lost its duplicate header and now matches its menu name, the account-settings shortcut moved into the page header, and loading and empty states use the shared components. Order, subscription, installation and KPI-goal values that were shown as raw English codes are now Persian.
+
+## 2026-10-29 — AMINAZADI
+
+- Changed loading in the client and admin panels: changing a filter, page or range now reloads only the data region (the table or dashboard sections) instead of the whole page, keeping the header, filter bar and range picker mounted; the previous data stays until the new response arrives and stale or out-of-order responses are dropped (`useResource`, with abortable `request()`). While data loads, a shared skeleton built from the real table markup, headers and card chrome is shown instead of the animated logo, with no animation under reduced motion. The logo loader now appears only on first load and hard refresh. Done for Calls, Operator scores, the dashboard, the assistant (switching a conversation reloads only the message pane and switching a tab only the conversation list) and the admin audit log, subscriptions, jobs, help articles and tenants; other pages show a generic skeleton until they get their own.
+- Changed every table filter area in the client and admin panels (calls, dashboard analysis, subscriptions, jobs, audit log, help articles) to one shared `FilterBar` component: one multi-select dropdown (switches) chooses which filters are shown, each can also be removed with its trash icon, and an icon-only clear button appears only while something is filtered. It replaces `TableFilters`.
+- Added a consistent arrow indicator to every dropdown in the client and admin interfaces.
+- Changed the client and admin panels to use the landing page artwork: every panel page now has an illustrated header banner chosen by route, empty states show an illustration instead of a plain icon, and the three pages without a header (credit and subscription, FreePBX servers, module changelog) got one. Section titles inside cards now sit on a dotted band separated from the content by a line. Dropdowns always show an arrow, and cards that hold form fields or other cards become plain sections without frame, fill or padding so borders are never nested. Section titles wrapped next to a description or action get the same band. Every data table with no rows now shows the empty-state illustration.
+- Fixed upload replay so a call whose audio storage or metadata step failed is no longer acknowledged as a successful replay; the failed attempt is retired and the FreePBX module's retry ingests the recording again instead of deleting the audio.
+- Changed API client IP resolution to use the connection address resolved by uvicorn proxy headers instead of trusting the first client-supplied X-Forwarded-For value.
+- Registered the `conflict` and `worker_timeout` API error codes, replaced the unregistered `validation_error` with `invalid_request`, and added a test that checks every literal API error code against the registry.
+- Rebuilt backup and restore: tenant databases, a host-side audio mirror and an encrypted secrets bundle (`.env` keys, database roles, release signing seed) are now backed up with `pg_restore --list` verification, SHA-256 checksums, atomic temp-then-rename writes, keep-last-N pruning and an optional off-host rsync target; restore now stops every writer, takes a pre-restore snapshot, restores into fresh databases swapped in by rename with `--exit-on-error --single-transaction`, re-applies role grants, requires confirmation (`--yes` to skip), and a new `restore_tenant.sh` restores a single tenant. Documented a monthly restore drill.
+- Fixed missed-call ingestion idempotency to target the tenant/unique-ID columns directly, avoiding reliance on a PostgreSQL constraint name that differs in the deployed database.
+- Fixed FreePBX global database handle corruption during CDR lookups in module 1.3.7.
+- Fixed background FreePBX CDR bootstrap variable scope in module 1.3.6.
+- Released FreePBX module 1.3.5 with voicemail parse-back repair and URL-persisted administration tabs.
+
+## 2026-10-28 — AMINAZADI
+
+- Released FreePBX module 1.3.4 with English update-check and release-history error messages.
+- Released FreePBX module 1.3.3 with an English release-history tab title.
+- Released FreePBX module 1.3.2 with direct recognition of effective settings in `cdr_general_custom.conf`.
+- Fixed FreePBX missed-call validation to honor effective CDR settings from included configuration files and released module 1.3.1.
+- Repaired organization database provisioning by accepting stable master secrets through deterministic Fernet-key derivation, added regression coverage, documented key stability, and persisted admin database pagination in the URL.
+- Reversed module-release back-link arrows to match the right-to-left navigation direction.
+- Added automatic persistent Ed25519 release-key generation, backup and restore support, and embedded the matching public key into uploaded FreePBX module archives before signing.
+- Added a pre-start Redis AOF integrity check with timestamped backup and automatic repair for truncated append-only files, and pinned the Redis image version.
+- Documented the required host memory-overcommit setting for reliable Redis persistence.
+- Changed Python dependency mirror handling from simultaneous index merging to isolated sequential fallback, preventing malformed mirror responses from aborting Docker builds.
+- Persisted local inference and emotion model caches in the project-root `models` directory so redeployments reuse existing downloads.
+- Added one-time migration from the legacy Docker emotion-model volume and excluded project-root model artifacts from Git and Docker build contexts.
+
+## 2026-10-22 — AMINAZADI
+
+- پایدارسازی اجرای دستیار سوکتی با وضعیت مستقل گفتگو، ادغام رویدادها بر اساس توالی، بازیابی پاسخ‌ها و مدیریت قطع اتصال، توقف و اجرای گیرکرده.
+- جلوگیری از ویرایش یا حذف گفتگوی دارای اجرای فعال و رفع رقابت میان لغو اجرا و ذخیره پاسخ.
+- افزودن تلاش مجدد قابل تنظیم برای گزارش زمان‌بندی‌شده با حفظ بازه تا موفقیت، جلوگیری از اجرای تکراری، نمایش جزئیات تلاش و هشدارهای عملیاتی.
+- محافظت صفحه گزارش‌ها در برابر پاسخ‌های polling دیررس و افزودن آزمون‌های گذار فرانت و بک‌اند.
+- جلوگیری از اجرای هم‌زمان job تکراری دستیار و بازنویسی نتیجهٔ نهایی با رویداد یا تلاش دیررس؛ رفع رقابت تلاش‌های گزارش و اجرای تکراری ساعت ثابت در تغییر ساعت فصلی.
+- پایدارسازی لینک گفتگوی موقت، بازیابی پیام‌های در حال ارسال هنگام snapshot و حفظ متن گفتگوی موقت پس از قطع اتصال در گفتگوی دیگر.
+
+## 2026-10-19 — AMINAZADI
+
+- Fixed a Socket.IO conversation-join race that could miss a completed reply and restore stale processing state in existing chats.
+
+## 2026-10-17 — AMINAZADI
+
+- کوتاه‌کردن متن ورودی‌های تاریخ فیلتر تماس‌ها برای جلوگیری از شکست دوخطی و تکرار برچسب شروع و پایان.
+
+## 2026-10-17 — AMINAZADI
+
+- بازطراحی بازنشانی رمز کاربران ادمین با فرم اختصاصی، تأیید تکرار رمز و پیام‌های خطای قابل‌فهم.
+- نمایش هشدار ابطال نشست‌های فعال و بازخورد موفقیت پس از تغییر رمز.
+
+## 2026-10-17 — AMINAZADI
+
+- ساده‌سازی ورود پنل ادمین به نام کاربری و رمز عبور و حذف مرحله کد دومرحله‌ای از صفحه ورود.
+
+## 2026-10-17 — AMINAZADI
+
+- تماس‌های پیام‌گیر صوتی و تست سریع را با متن و شاخص‌های مخصوص پیام نمایش می‌دهد و نمودارها و امتیازهای دوطرفه را فقط برای تماس پاسخ‌داده‌شده نگه می‌دارد.
+- برای تماس‌های بی‌پاسخ و ناموفق جزئیات رخداد متناسب نمایش می‌دهد و بخش‌های خالی پردازش و پیگیری را حذف می‌کند.
+
+## 2026-10-17 — AMINAZADI
+
+- محدودیت خرید اشتراک به دوره سالانه تغییر کرد و قیمت پلن‌های برنز، نقره‌ای و طلایی و تعرفه پردازش هر دقیقه به‌روزرسانی شد.
+- سهمیه دقیقه رایگان بر اساس پلن، در دوره‌های ماهانه اشتراک تخصیص می‌یابد و پیام‌های دستیار نیز ماهانه بر مبنای تقویم تهران محاسبه می‌شوند.
+- تعرفه و سهمیه دقیقه قابل تنظیم سازمانی از پنل و API حذف شد و قیمت تماس هنگام رزرو برای تسویه ثابت می‌ماند.
+
+## 2026-10-17 — AMINAZADI
+
+- Added shared organization-manager scheduled assistant reports with hourly intervals, local fixed hours, pause/resume, manual execution, and immutable report archives.
+- Added durable tenant-scoped scheduling and worker execution with RLS, outbox delivery, duplicate prevention, quota accounting, memory snapshots, and visible failures without automatic generation retries.
+- Combined all active organization memories, time-bounded vector evidence, and exact analytics; reports disclose incomplete indexing and sampled evidence coverage.
+- Added an independent reports page and settings entry with URL-backed archive filters, pagination, and direct report links.
+
+## 2026-10-17 — AMINAZADI
+
+- Added a module download link to the VoIP configuration files panel after API key creation.
+
+## 2026-10-17 — AMINAZADI
+
+- Made the VoIP setup and module download buttons equal in size and shortened the API key button label.
+
+## 2026-10-17 — AMINAZADI
+
+- Added a GitHub module download button to the quick demo VoIP setup screen.
+
+## 2026-10-17 — AMINAZADI
+
+- Overlapped the cloud phone integration copy with the artwork and added a soft fading halo behind the text.
+
+## 2026-10-17 — AMINAZADI
+
+- Added cloud phone integration copy and a GitHub module download link below the landing page integration artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied recording review illustration and cropped its transparent margins to tighten spacing above the review text.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied FreePBX and Issabel integration illustration, shortened the VoIP setup description, fixed the clipped card bottom, and tightened the gap below the artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied organization profile illustration to the organization name entry step in the quick demo dialog.
+
+## 2026-10-17 — AMINAZADI
+
+- Sized the quick demo phone entry illustration using its full aspect ratio and tightened the gap before the phone field again.
+
+## 2026-10-17 — AMINAZADI
+
+- Added one-click API key creation to the VoIP quick demo with copyable credentials and downloadable FreePBX and Python Agent configuration files.
+
+## 2026-10-17 — AMINAZADI
+
+- Balanced mobile integration banner spacing by reducing its upward shift and applying a smaller negative bottom margin.
+
+## 2026-10-17 — AMINAZADI
+
+- Restored spacing below the mobile integration banner while keeping its top whitespace reduced.
+
+## 2026-10-17 — AMINAZADI
+
+- Removed excess top whitespace from the mobile integration banner artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Replaced the mobile integration banner with the latest supplied portrait artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Increased the vertical spacing above and below the integration banner.
+
+## 2026-10-17 — AMINAZADI
+
+- Increased the top and bottom padding of the security section on desktop and mobile.
+
+## 2026-10-17 — AMINAZADI
+
+- Matched the security items to the feature cards with desktop dividers and mobile separators.
+
+## 2026-10-17 — AMINAZADI
+
+- Increased the integration banner image transparency slightly.
+
+## 2026-10-17 — AMINAZADI
+
+- Slightly reduced the desktop and tablet integration banner width.
+
+## 2026-10-17 — AMINAZADI
+
+- Replaced the desktop and tablet integration banner with the latest supplied artwork.
+
+## 2026-10-17 — AMINAZADI
+
+- Removed the workflow timeline's bottom margin to bring the integration banner closer to the content above it.
+
+## 2026-10-17 — AMINAZADI
+
+- Expanded the integration banner width and minimized surrounding vertical spacing.
+
+## 2026-10-17 — AMINAZADI
+
+- Reduced top and bottom spacing around the integration banner on desktop and mobile.
+
+## 2026-10-17 — AMINAZADI
+
+- Removed excess vertical spacing around the integration banner and increased its transparency.
+
+## 2026-10-17 — AMINAZADI
+
+- Reduced the centered integration banner width and increased its transparency.
+
+## 2026-10-17 — AMINAZADI
+
+- Centered the integration banner at its natural aspect ratio and applied slight transparency.
+
+## 2026-10-17 — AMINAZADI
+
+- Replaced the desktop and tablet telephony integration banner with the supplied wide artwork while preserving the mobile portrait image.
+
+## 2026-10-17 — AMINAZADI
+
+- Added the supplied portrait integration artwork as the mobile version of the landing page banner.
+
+## 2026-10-16 — AMINAZADI
+
+- Added a full-width telephony integration banner section above the pricing plans.
+
+## 2026-10-16 — AMINAZADI
+
+- Tightened oversized landing page spacing in the feature grid, workflow, and security section.
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced vertical padding between landing page sections on desktop and mobile.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed the landing hero action to «تست رایگان» and wired it to open the quick demo dialog.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the three start tones with one 1.5-second beep and added a square pause or resume control during recording with the equalizer hidden.
+
+- Removed the square recorder button shell, reduced the centered equalizer to 20 bars, and kept each bar square-cornered.
+
+- Moved the square recorder equalizer into the button center, replacing the speaker and stop icons with a shared waveform component.
+
+- Increased the recorder equalizer to 120 bars and removed bar corner rounding.
+
+- Replaced the radial recorder rays with compact equalizer bars along the square edges and extended each of the three start tones to 600 ms.
+
+- Removed the quick demo recorder header copy, enlarged its square audio button, and positioned the animated equalizer around its edge.
+
+- Added the dotted brand background to the quick demo recording page.
+
+- Added the supplied welcome audio to the quick demo, followed it with three beeps and automatic recording, and added a square equalizer control with send and rerecord actions.
+
+- Applied the quick demo QR login migration to the local database to resolve the server error during phone QR login.
+
+- Replaced the route selection prompt with the selected route title after advancing to the next stage.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved the quick demo back icon beside «آماده‌اید؟» in the route selection header.
+
+## 2026-10-16 — AMINAZADI
+
+- Right-aligned the quick demo flow, moved back navigation into an icon button beside the stage title, and replaced the path symbols with phone and VoIP handset icons.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed the VoIP path description to «اتصال به صداسنج از طریق سامانه تلفنی».
+
+## 2026-10-16 — AMINAZADI
+
+- Rotated quick demo QR sessions after a test completes or its call is deleted, preserving plan-based usage for repeated tests.
+
+## 2026-10-16 — AMINAZADI
+
+- Enabled one-time QR login on the recording device and navigated to call details as soon as upload acceptance returns the call ID.
+
+## 2026-10-16 — AMINAZADI
+
+- Reordered the quick demo choices and renamed the VoIP option to «نصب در VOIP».
+
+## 2026-10-16 — AMINAZADI
+
+- Added a same-device recording route that opens the recorder with a temporary session link and reminds users to check their microphone.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved the phone scan instruction below the QR and refined the QR frame with brand colors and scan-safe contrast.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the numbered scan and recording steps beneath the quick demo QR.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the trailing radio indicator and enlarged the mobile and VoIP icons on the quick demo path choices.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced quick demo tabs with a URL-persisted route question and radio choices, with a back action from either route.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved «آماده‌اید؟» above the quick demo tabs and added the route selection prompt beneath it.
+
+## 2026-10-16 — AMINAZADI
+
+- Added URL-persisted «تست موبایل» and «نصب VoIP» tabs to the quick demo page, keeping the QR flow in the first tab and the second panel empty.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the QR center logo and the «تست سریع صداسنج» heading from the quick demo screen.
+
+## 2026-10-16 — AMINAZADI
+
+- Styled the automatically generated demo QR with a branded frame, centered logo, and concise scan instructions.
+
+## 2026-10-16 — AMINAZADI
+
+- Automatically creates and displays the quick demo QR after login without requiring a button click, including when reopening with a stale session query.
+
+## 2026-10-16 — AMINAZADI
+
+- Simplified the quick demo connection screen to a QR code and made its short-lived recording link work without a configured audio prompt.
+
+## 2026-10-16 — AMINAZADI
+
+- Rendered quick demo as a standalone page outside the authenticated dashboard layout and matched its connection state to the main login shell.
+
+## 2026-10-16 — AMINAZADI
+
+- Matched the quick demo phone login screen to the main login page layout.
+
+## 2026-10-16 — AMINAZADI
+
+- Updated the pricing section heading to «پلن مناسب سازمان شما».
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced the billing period controls and animated plan prices when switching between monthly and annual billing.
+
+## 2026-10-16 — AMINAZADI
+
+- Lowered the ingot silhouettes and increased spacing between the gold ingot and its star.
+
+## 2026-10-16 — AMINAZADI
+
+- Added a small gold star beside the gold plan ingot.
+
+## 2026-10-16 — AMINAZADI
+
+- Updated the bronze, silver, and gold icons to match the reference ingot silhouette with a beveled rectangular body.
+
+## 2026-10-16 — AMINAZADI
+
+- Reshaped the bronze, silver, and gold icons into ingots with a broad top face and tapered sides.
+
+## 2026-10-16 — AMINAZADI
+
+- Unified bronze, silver, and gold plan artwork as matching ingot icons in tier-specific colors.
+
+## 2026-10-16 — AMINAZADI
+
+- Refined the bronze and silver plan artwork with clearer trophy and faceted-gem silhouettes.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the bronze and silver pricing icons with distinct tier-specific symbols.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the extra bottom strokes from the gold and silver pricing icons.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed the silver plan icon to a silver-gray color and removed the highlight strokes from plan artwork.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed shadows from pricing plan artwork.
+
+## 2026-10-16 — AMINAZADI
+
+- Matched pricing artwork colors to each plan tier and aligned the offset shadow and highlight strokes with each icon's paths.
+
+## 2026-10-16 — AMINAZADI
+
+- Added editable layered 3D-style SVG artwork above each pricing plan title and removed the plan subtitle text.
+
+## 2026-10-16 — AMINAZADI
+
+- Added subtle dotted backgrounds to pricing plan cards and primary-colored dots to the featured plan.
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced desktop and mobile landing header heights and adjusted logo and action sizing to match.
+
+## 2026-10-16 — AMINAZADI
+
+- Fixed mobile feature separators by overriding the more specific desktop column borders and row rules.
+
+## 2026-10-16 — AMINAZADI
+
+- Changed mobile separators in the landing feature list to single horizontal rules beneath each feature, with no extra gaps.
+
+## 2026-10-16 — AMINAZADI
+
+- Added single-line separators beneath timeline stages on mobile layouts.
+
+## 2026-10-16 — AMINAZADI
+
+- Updated the homepage hero headline to «بدون صداسنج هیچ مرکز تماسی موثر نیست».
+
+## 2026-10-16 — AMINAZADI
+
+- Updated the workflow section heading to «از مکالمه تا اقدام همه زیر ذره‌بین».
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the workflow report table and step labels, enlarged timeline icons and titles, and clarified the right-to-left animated curved path for desktop and mobile layouts.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed the workflow sample report and step labels, enlarged stage titles, and clarified timeline direction with animated arrow markers.
+
+## 2026-10-16 — AMINAZADI
+
+- Reworked the landing workflow into an animated five-stage timeline with a responsive path and detailed organization call report preview.
+
+## 2026-10-16 — AMINAZADI
+
+- Redesigned the landing workflow as a responsive three-step process above a wider, action-oriented call report preview.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the dotted landing hero background with the provided transparent office illustration and removed the separate hero photo.
+
+## 2026-10-16 — AMINAZADI
+
+- Increased Markazi Text heading sizes by approximately 20% and tightened their line heights on the landing page.
+
+## 2026-10-16 — AMINAZADI
+
+- Added the locally hosted Google Fonts Markazi Text Arabic subset for all landing page headings while keeping body text in Vazirmatn.
+
+## 2026-10-16 — AMINAZADI
+
+- Explicitly applied the locally bundled Vazirmatn font to landing page headings and verified the client uses no remote font imports.
+
+## 2026-10-16 — AMINAZADI
+
+- Rewrote the landing hero headline and supporting copy to make the organizational cost of unobserved customer calls clear and motivate action.
+
+## 2026-10-16 — AMINAZADI
+
+- Added thin dividers between the six landing features, adapting to horizontal separators on mobile.
+- Expanded the landing page features to six manager-focused capabilities: reporting, operator evaluation, searchable transcripts, conversation analysis, follow-up management, and the organization assistant.
+
+## 2026-10-16 — AMINAZADI
+
+- Removed rounded corners and box shadows across all client and admin interface elements.
+
+## 2026-10-16 — AMINAZADI
+
+- Reduced login card padding, added a visible border, and removed its rounded corners.
+
+## 2026-10-16 — AMINAZADI
+
+- Linked the centered client login logo to the home page.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved the client login logo above the form card, increased its size, and limited its animation to a single autoplay.
+
+## 2026-10-16 — AMINAZADI
+
+- Added an assistant tool that returns the current UTC date, time, ISO datetime, and Unix timestamp, and made it available by default and configurable in admin assistant settings.
+
+## 2026-10-16 — AMINAZADI
+
+- Redesigned the public landing page with the panel’s forest-green and warm neutral palette, square corners, flat surfaces, and spacious responsive sections.
+- Removed heading overlines and promotional decorations, simplified feature and workflow previews, and retained live administrator-managed pricing.
+- Persisted the billing period in the URL and added pricing loading, empty, error, and retry states.
+
+## 2026-10-16 — AMINAZADI
+
+- Replaced the client login screen background image and overlay with a full-screen dotted background.
+- Simplified the client login page by removing the promotional panel and centering the logo above the form.
+
+## 2026-10-16 — AMINAZADI
+
+- Added interrupt controls to the assistant composer and quick-chat widget, with socket cancellation for persistent and ephemeral replies.
+- Resolved assistant stream completions after navigating to another conversation so training and other chat requests do not remain stuck waiting for a completion event.
+- Prevented completed assistant runs with a persisted reply from being restored as active, clearing stale chat processing indicators and allowing follow-up messages.
+
+## 2026-10-16 — AMINAZADI
+
+- Added opt-in FreePBX voicemail scanning and a dedicated upload endpoint with idempotent, zero-credit audio transcription and analysis.
+- Added voicemail call metadata, playback and transcript visibility, separate dashboard metrics, and tenant-scoped assistant search and statistics.
+
+## 2026-10-16 — AMINAZADI
+
+- Expanded metadata-only call ingestion to distinguish no-answer, busy, congestion, failed, and canceled Asterisk dispositions and added the matching FreePBX module release.
+- Added linkedid-based read-only CDR polling, persistent cursor and retry spool, admin configuration and CDR readiness guidance, and backward-compatible module profiles.
+- Added call-type visibility to assistant search results and updated the calls filter and dashboard distribution.
+
+## 2026-10-16 — AMINAZADI
+
+- Fixed call detail requests failing when `call_type` was passed twice to the response schema.
+
+## 2026-10-16 — AMINAZADI
+
+- Moved assistant socket connection status from the composer to the chat toolbar, showing a loading indicator only while connecting.
+- Released the assistant composer when completion, cancellation, or restored conversation state has no active run, and synchronized generated conversation titles after replies.
+
+## 2026-10-16 — AMINAZADI
+
+- Added metadata-only missed-call ingestion, tenant-scoped listing and details, assistant statistics, and dashboard trends without entering audio processing or billing.
+
+## 2026-10-14 — AMINAZADI
+
+- Aligned Persian speech input callbacks across both assistant composers so the client TypeScript and Docker builds complete successfully.
+
+## 2026-10-14 — AMINAZADI
+
+- Fixed assistant archive-tab navigation by deriving the selected conversation view from the URL and preventing stale conversation loads from restoring the chat view.
+- Replaced the dashboard's frequent-topic bars with a responsive word cloud that scales labels by frequency and shows each count in a badge.
+
+## 2026-10-14 — AMINAZADI
+
+- Changed the quick assistant button's fading outline animation to the primary color.
+
+## 2026-10-14 — AMINAZADI
+
+- Reorganized the client navigation with a dedicated account settings workspace for operator scoring, KPI configuration, users, integrations, and organization data.
+- Matched the operator-score page heading and empty result state to the KPI dashboard, while keeping the selected period and pagination in the URL.
+- Reused the dashboard’s date-range control for operator scores, including its URL-persistent custom Jalali range.
+- Standardized customer-panel page headers for dashboards, calls, tasks, profile, account settings, KPI settings, API documentation, and installation requests.
+- Moved two-factor authentication into the redesigned personal profile and kept billing and subscription activity on a focused account page.
+- Preserved account settings tabs, KPI goal pagination, and operator score date filters in URL query parameters; redirected the former KPI settings route.
+
+## 2026-10-14 — AMINAZADI
+
+- Rebuilt the primary dashboard as a role-scoped KPI workspace with URL-persistent Jalali date ranges, daily performance trends, sales funnel, customer sentiment, operator comparison, talk balance, coaching, urgent actions, and period-scoped recent calls.
+- Extended the KPI dashboard contract with daily trend, sentiment, talk-balance, and organization-managed widget visibility data while preserving tenant and operator data isolation.
+- Added manager controls for organization-wide KPI dashboard widgets through the existing versioned and audited KPI settings workflow.
+- Replaced the sales-funnel bars with a stage-shaped visual funnel and added task completion, open-task, and overdue-task dashboard charts.
+- Split dashboard funnel reporting into nested contact-to-opportunity and sales-progression funnels, excluding losses from both funnel bodies and removing artificial widths for empty stages.
+- Standardized both funnel cards with the dashboard card heading style and made every stage render in a fixed wide-to-narrow sequence, including zero-value stages.
+- Rebuilt both dashboard funnels as continuous SVG funnels with centered in-stage labels and counts, removing the detached stage-detail text.
+- Put each funnel stage label and value on a single aligned line, widened the lower funnel and outlet, and applied a progressive warm color scale.
+- Added in-stage count badges, compacted the funnel body, widened its lower outlet, and placed stage conversion details in an aligned side panel.
+- Centered both funnel diagrams at a fixed standard width to preserve balanced card spacing.
+- Centered dashboard empty states with bordered contextual icons and replaced range-selector shadows with clear border-based states.
+- Refined the responsive RTL daily performance chart and added detailed customer-sentiment donut, distribution, counts, and share visualizations.
+- Strengthened empty-state icon containers with explicit two-pixel borders for clear visual separation.
+- Moved detailed analytics filters, breakdowns, operator performance, and campaign reports into the dashboard and removed the standalone analytics page.
+- Updated empty-state icon borders to a thin line that inherits the primary icon color.
+- Fixed responsive RTL chart sizing and axis layout, removed card shadows, and separated detailed analytics sections with divider lines.
+- Replaced overlapping sentiment chart labels with spaced distribution meters, added full dividers between analytics panels, and widened funnel lower stages and outlets.
+- Increased the taper of both dashboard funnels while keeping their stage labels and counts centered.
+
+## 2026-10-14 — AMINAZADI
+
+- Compacted and aligned assistant cited-call table columns, moving call summaries into the expandable detail row.
+
+## 2026-10-14 — AMINAZADI
+
+- Included archived assistant-training conversations in the manager archive tab.
+
+## 2026-10-14 — AMINAZADI
+
+- Removed internal call identifiers from assistant source cards and expanded their ordered table with caller and recipient numbers, operator extension, direction, duration, status, and summary.
+- Supplied the assistant call-search and call-detail tools with complete permitted call metadata, analysis fields, and the latest available transcript.
+
+## 2026-10-14 — AMINAZADI
+
+- Enforced Persian digits for all visible panel text, including asynchronously rendered content, while preserving editable and machine-readable fields.
+
+## 2026-10-14 — AMINAZADI
+
+- Replaced the memory filter control with the primary funnel icon and closed memory popovers on outside click or Escape.
+
+## 2026-10-14 — AMINAZADI
+
+- Replaced the organization-memory panel's persistent description and filter fields with compact accessible icon controls beside its close action.
+
+## 2026-10-14 — AMINAZADI
+
+- Standardized visible panel counts, timers, and playback rates on Persian digits while keeping machine-readable form input values intact.
+
+- Applied a lighter typography scale across the authenticated panel while preserving hierarchy for headings, labels, controls, and emphasis.
+
+## 2026-10-14 — AMINAZADI
+
+- Hid call-tool and date-range controls from the organization-memory training composer.
+
+## 2026-10-14 — AMINAZADI
+
+- Positioned the organization-memory panel divider between the inspector and the training conversation.
+
+## 2026-10-14 — AMINAZADI
+
+- Added Chrome Persian speech-to-text controls to both full and quick assistant prompt composers.
+- Added active-listening styling and an animated voice waveform to assistant prompt composers.
+- Kept Chrome speech recognition active across pauses and rendered interim Persian transcription in the composer as the user speaks.
+- Automatically stop active speech recognition as soon as an assistant message is sent.
+
+## 2026-10-14 — AMINAZADI
+
+- Moved organization memories from the training transcript into a responsive side inspector with URL-persistent visibility, filters, selection, and mobile overlay behavior.
+
+## 2026-10-13 — AMINAZADI
+
+- Ensured the launcher’s square border pulse remains visible when reduced-motion browser preferences are enabled.
+
+## 2026-10-13 — AMINAZADI
+
+- Changed the quick assistant launcher animation to an expanding, fading square border pulse.
+
+## 2026-10-13 — AMINAZADI
+
+- Consolidated the assistant sidebar navigation into URL-persistent Chats, Archives, and manager-only Training tabs.
+
+## 2026-10-13 — AMINAZADI
+
+- Standardized assistant visual entry points with the AI bot icon across the sidebar, assistant workspace, and quick-chat launcher.
+
+## 2026-10-13 — AMINAZADI
+
+- Replaced the quick assistant launcher glyph with a standard chat icon and refined the launcher motion into a direct border-pulse effect.
+
+## 2026-10-13 — AMINAZADI
+
+- Added manager-only interactive assistant training with tenant-isolated, reviewable, versioned organization memories and conflict-aware approval workflows.
+- Applied approved organization memory to manager/operator assistant chats, transcript correction, single- and multi-stage call analysis, and operator scoring with immutable per-run snapshots.
+- Added organization-memory administration, exports, audit events, optimistic concurrency, idempotent publishing, URL-persistent training views, filters, and conversation selection.
+- Added migration `0043_organization_memory`, tenant provisioning coverage, role/RLS protections, regression tests, and manager-only analysis snapshot visibility.
+
+## 2026-10-13 — AMINAZADI
+
+- Simplified the floating assistant launcher to a standard icon-only button and moved its motion-safe pulse and float animation onto the button itself.
+
+## 2026-10-13 — AMINAZADI
+
+- Reduced dashboard statistic-card height by tightening their vertical spacing and scaling their icons to match the compact layout.
+
+## 2026-10-13 — AMINAZADI
+
+- Preserved each in-flight assistant reply independently while switching conversations, so returning to a conversation restores its live typing and tool-progress indicator instead of appearing idle.
+- Replaced tool-backed call IDs in assistant responses with clean internal call links that navigate within the panel.
+- Localized the assistant's `Internal Server Error` alert to Persian.
+- Applied the pending assistant chat migrations through `0042_chat_message_ordinal`, restoring streamed-message persistence for databases that were still at revision `0040_asr_transcript_revisions`.
+- Enlarged the assistant context-tag removal controls and used a consistent close icon for operator, conversation, date-range, and tool attachments.
+
+## 2026-10-13 — AMINAZADI
+
+- Moved assistant error alerts into the chat header opposite the temporary-chat and transcript-download controls, making server errors immediately visible without displacing the composer.
+
+## 2026-10-13 — AMINAZADI
+
+- Made assistant chat message order deterministic with a persisted database ordinal, covering message display, context construction, retries, edits, and tail deletion even when PostgreSQL assigns identical transaction timestamps.
+
+## 2026-10-13 — AMINAZADI
+
+- Added a role-scoped floating assistant widget for organization managers and operators outside the full assistant workspace.
+- Added URL-persistent quick-chat visibility, accessible close behavior, new-conversation startup, shared assistant response rendering, context selection, message actions, citations, charts, and tool progress.
+- Closed assistant context popovers when users click outside the composer in both the full workspace and quick-chat widget.
+- Moved quick-chat range and tool controls into the composer surface and matched the send action height to the text area.
+- Replaced the quick-chat trigger with the large outlined conversation icon, removed the duplicate header icon, and animated the panel from the trigger on open and close.
+- Restored the existing quick-chat trigger layout while retaining the larger outlined conversation icon.
+
+## 2026-10-13 — AMINAZADI
+
+- Limited each assistant message's call table to the tool-backed calls explicitly used in its final answer, excluding broad search and background rows.
+- Replaced the active conversation's sidebar chat icon with its processing marker while a response is streaming.
+- Reworked the assistant processing marker as a smaller, shadow-free four-cell pulse aligned with the original sidebar treatment.
+- Refined the shared assistant processing marker into a shadow-free rotating multicolor square ring.
+- Removed the assistant response-loading state from the message bubble so it renders without a border, padding, avatar, or bubble tail.
+- Added a motion-safe, palette-matched animated square processing marker to the exact assistant conversation sidebar item receiving a streamed response.
+- Added the dotted surface treatment to the assistant conversation sidebar for visual consistency with the main panel navigation.
+- Automatically collapse the main desktop navigation on the assistant workspace, preserving the assistant conversation sidebar and placing its single motion-safe menu toggle beside the conversation and archive tabs.
+- Replaced the client-panel brand asset with the refined Sedasanj SVG and introduced a motion-safe animated logo across hard-load, SPA route transitions, inline page loading states, and the panel sidebar.
+- Rebuilt the logo motion with a coordinated 1.6-second GSAP pen timeline, isolated filled-letter and dot masks, and an independent Canvas particle emitter with outward drift, damping, and fade; autoplay runs once with hover replay, reduced-motion support, resize handling, and animation cleanup.
+- Refined the "ص" glyph with an eased continuous bowl gesture and a synchronized connected tail, keeping particles on the drawing path.
+- Unified the "ص" bowl and tail into one uninterrupted pen path and timeline to eliminate the stop and acceleration jump at their join; selected dot masks by stroke identity.
+- Corrected the "س" pen coverage and completed its exact silhouette within its own drawing interval instead of the final logo reveal.
+- Softened SPA route loading with a translucent backdrop, progressive blur, opacity fade, and a restrained logo entrance to prevent the loading background from flashing between pages.
+- Converted the route-loading overlay to a near-transparent glass surface with a stronger backdrop blur while retaining its fade transition.
+- Delayed mounting each target route until its loading animation completes, then revealed the target content through the overlay fade.
+- Limited the branded glass loading overlay to initial application boot so SPA navigation remains immediate.
+- Kept the initial loader mounted until its full animation completes, even when authentication resolves sooner.
+- Added a center-cleared, radially faded dot pattern behind the initial loading logo.
+
+## 2026-10-09 — AMINAZADI
+
+- Enabled upstream streaming exclusively for direct 9Router chat calls; normalized Chat Completions and Responses text/tool streams, retained JSON compatibility, and excluded reasoning from displayed answers.
+- Hardened assistant SSE framing and cleanup, bounded optional title generation, and added safe error codes without logging conversation content.
+- Fixed silent settings submission caused by invalid hidden-tab fields, removed unrelated AISERVICE-key dependencies, retained unsaved tab drafts, and added visible save feedback.
+- Added non-persisting 9Router connection/model previews, independent model discovery results, effective provider/model validation, and recoverable encrypted-secret configuration errors.
+- Audited direct ASR, analysis, assistant, correction, decision, and embedding routing; fixed ASR model metadata, correction prompt/deadline handling, and AISERVICE-independent decisions with confidence-threshold enforcement.
+- Validated malformed/truncated chat and embedding responses, rejected non-finite vectors, redacted direct-provider credentials, and prevented replay after partial assistant streams.
+- Documented deployment prerequisites and added provider/settings regression coverage. Live-provider and deployment verification remain pending.
+
+## 2026-10-09 — AMINAZADI
+
+- Isolated PyTorch wheel downloads from dependency resolution so all transitive Python packages are installed through the configured Iranian PyPI mirror instead of `files.pythonhosted.org`.
+- Switched deployment Python package installation to the free Novin Cloud PyPI mirror hosted in Iran while preserving explicit overrides and the dedicated PyTorch wheel index.
+
+## 2026-10-05 — AMINAZADI
+
+- Added an encrypted, admin-managed direct 9Router integration with independent ASR, analysis, assistant, correction, decision, and embedding routing while preserving all existing AISERVICE paths.
+
+## 2026-10-04 — AMINAZADI
+
+- Added a fully Persian customer presentation document covering active Sedasanj capabilities, customer value, architecture, security, resilience, onboarding, and the near-term assistant training and scheduled reporting roadmap.
+
+## 2026-10-03 — AMINAZADI
+
+- Made per-minute analysis pricing tenant-specific across admin creation, active subscriptions, tenant settings, and billing consumption.
+- Added tenant-scoped manual transcription recovery for terminal ASR failures, including fresh auditable jobs, durable dispatch, retry-safe credit holds, and a call-detail recovery action.
+- Displayed calls semantically from caller to recipient with a directional arrow and translated call-direction values into Persian.
+- Preserved timestamped conversational turns for 9Router OpenAI-compatible transcription responses and repaired invalid zero-length segment timestamps before transcript correction.
+- Added timestamp-safe VAD and two-speaker diarization across ASR providers, immutable transcript revision history with no-charge retranscription and rollback, version-aware conversation metrics and exports, and warning-only correction uncertainty with structural model failover.
+- Added a safe text-format fallback and compatible response normalization for empty 9Router transcription JSON responses, while preventing deterministic empty transcripts from entering the retry loop.
+- Recovered empty remote ASR responses through VAD window decoding and allowed a silent stereo channel to be skipped without discarding the speaking channel.
+- Accepted correction JSON embedded in prose or Markdown and safely resegmented monolithic correction text against immutable source segment identities with explicit uncertainty provenance.
+- Normalized caller and dialed numbers from Asterisk and manual uploads to English digits and the canonical Iranian local format while preserving internal extensions.
+- Added distinct, accessible color badges for call processing statuses, sentiments, and sales outcomes across call lists and details.
+- Highlighted a newly selected Jalali date with the primary color before confirming date-time values.
+- Changed transcript-correction model priority to submit one AISERVICE task at a time and advance to the next text model only after the current model ends in technical failure.
+- Fixed route-aware AI model settings so inactive optional 9Router prompts no longer block saving, and exposed safe rejected-model details for ASR failures.
+- Installed backend runtime and emotion dependencies directly from `pyproject.toml` without building the local project package, preserving binary-only installation for core services while allowing FunASR's source-only transitive dependencies to use an explicitly bootstrapped build backend.
+- Removed the privileged PostgreSQL settings lookup from Apache AGE readiness checks so the backend can start with its restricted runtime role while still verifying extensions, graph initialization, and live Cypher execution.
+- Unified operator scoring with canonical call assignments, allowed previously ineligible calls to recover after an operator mapping is added, prevented AMI destination extensions from being misidentified as answering operators, and added database support for scores requiring manual review.
+
+## 2026-10-02 — AMINAZADI
+
+- Added an automatic native AISERVICE fallback when the configured 9Router embedding endpoint rejects an indexing request with HTTP 422.
+- Added independent admin-managed 9Router prompts for ASR, analysis, assistant chat, and typed decisions, with conditional controls and route-scoped request injection.
+
+## 2026-10-02 — AMINAZADI
+
+- Synchronized tenant schema verification with the live Alembic migration head and executed tenant upgrades through the worker's active Python environment to prevent false runtime revision mismatches.
+- Preloaded Apache AGE for every PostgreSQL connection, pinned local PostgreSQL 17 to its matching AGE release, initialized fixed graph labels under the database owner for safe non-superuser writes, added full graph readiness checks and repair migrations, centralized Cypher execution, and restored local-only retries for graph failures without resending content to the embedding provider.
+
+## 2026-10-02 — AMINAZADI
+
+- Ensured manual transcript-correction requests always run the configured text model instead of silently copying the existing transcript when automatic correction is set to audio-only mode.
+
+- Added each transcript message's call-relative date and time beneath its bubble with an accessible copy action.
+
+- Aligned conversation avatars with their corresponding message bubble arrows.
+
+- Removed the border, rounding, and padding around each operator score criterion row for a cleaner compact layout.
+
+## 2026-10-02 — AMINAZADI
+
+- Updated the assistant composer guidance to explain searchable operator and previous-conversation mentions plus the dedicated date-range and tool buttons.
+
+## 2026-10-02 — AMINAZADI
+
+- Generated concise Persian conversation titles with the assistant after the first successful response and applied the resulting title immediately to the conversation list.
+
+## 2026-10-02 — AMINAZADI
+
+- Removed the typed at-mention query from the composer after selection, leaving only the structured attachment badge on the sent message.
+
+## 2026-10-02 — AMINAZADI
+
+- Persisted selected assistant context on user messages and displayed operator, conversation, date-range, and tool attachments inside the sent message with accessible high-contrast colors.
+
+## 2026-10-02 — AMINAZADI
+
+- Rendered the shared Jalali date picker through a viewport-positioned high-z-index portal so calendars no longer expand or scroll parent layouts, and compacted the assistant context buttons with matching icons.
+
+## 2026-10-02 — AMINAZADI
+
+- Displayed the assistant date-range and tool selectors as distinct outlined buttons opposite the rotating composer guide.
+
+## 2026-10-02 — AMINAZADI
+
+- Added inline searchable at-mentions for organization operators and previous conversations, with date-range and multi-tool selectors placed beside the assistant composer guide.
+
+## 2026-10-02 — AMINAZADI
+
+- Added structured assistant attachments for organization-admin operator mentions, multiple previous conversations, Jalali date ranges, and multiple explicitly selected read-only tools, with server-enforced tenant, owner, role, date, and tool restrictions.
+
+## 2026-10-02 — AMINAZADI
+
+- Removed the scroll-to-end button shadow and increased its spacing above the assistant prompt.
+
+## 2026-10-02 — AMINAZADI
+
+- Changed assistant-message text to black for stronger readability.
+
+## 2026-10-02 — AMINAZADI
+
+- Added a centered fixed scroll-to-end control above the assistant prompt while a response is streaming and the user has scrolled away from the latest message.
+
+## 2026-10-02 — AMINAZADI
+
+- Added self-service profile completion for organization managers and operators, including personal introduction and preferred communication style, and supplied this read-only identity and organization context to the assistant for warm name-based personalization.
+- Explicitly restricted the assistant from wallet charges, payments, settings changes, and every other organization mutation while preserving authorized read-only analysis.
+
+## 2026-10-02 — AMINAZADI
+
+- Compacted the desktop calls-table filters into a minimal single-row layout while retaining responsive multi-row and mobile accordion behavior.
+- Restored table filter controls inside their desktop cards while preserving the collapsed mobile accordion behavior across the customer and admin panels.
+- Expanded the assistant visualization tool to support bar, horizontal bar, line, area, pie, donut, radar, radial bar, scatter, composed, treemap, and funnel charts with exact status, daily trend, and operator-performance datasets.
+
+## 2026-10-02 — AMINAZADI
+
+- Positioned message times opposite their action icons and aligned each avatar with the message-bubble pointer instead of the action row.
+
+## 2026-10-02 — AMINAZADI
+
+- Displayed each assistant-chat message time in Tehran time beneath its bubble alongside the compact message actions.
+
+## 2026-10-02 — AMINAZADI
+
+- Improved edit-mode action contrast with an outlined light cancel button and a warm-white primary submit button on user-message bubbles.
+
+## 2026-10-02 — AMINAZADI
+
+- Added compact edit and copy actions below user messages, copy and retry actions below assistant messages, and branch-safe regeneration for failed or edited assistant conversations.
+- Added explicit confirmation before editing an earlier user message, with tenant-scoped deletion of every later stored message before generating the replacement response.
+
+## 2026-10-02 — AMINAZADI
+
+- Repaired the processing-event database constraint so voice-emotion and transcript-correction jobs can persist lifecycle and retry events without failing the worker transaction.
+
+## 2026-10-02 — AMINAZADI
+
+- Allowed the assistant tool migration chain to complete on PostgreSQL installations without Apache AGE, while retaining graph initialization wherever the extension is available.
+- Restored assistant conversation message loading by ensuring the durable assistant tool-run table can be created independently of the optional graph extension.
+
+## 2026-10-02 — AMINAZADI
+
+- Migrated legacy assistant embedding routing from the obsolete 9Router default to AISERVICE native embeddings and repeated Apache AGE graph initialization during the same repair upgrade.
+- Added a tenant-scoped statistical visualization tool to assistant chat with responsive bar and donut charts, automatically using two columns for compatible charts and a full-width column when needed while retaining the textual answer.
+- Replaced every Fluent Emoji 3D icon in the customer and admin panels with locally bundled Lucide line icons from the project's Iconify integration, including shared statistic cards and call-detail metrics.
+- Fixed assistant knowledge health and retry handling so graph failures are counted, displayed, and retried alongside vector failures, and added an idempotent Apache AGE repair migration for databases that missed graph initialization.
+- Replaced assistant call-source cards with a compact responsive table whose rows expand as URL-persistent accordions for full metadata, summaries, classifications, and call navigation.
+- Replaced the assistant's compact call-source links with responsive detail cards and persisted tenant-scoped call metadata including numbers, direction, duration, status, extension, intent, sentiment, and summary for each cited call.
+- Rebuilt the calls list around URL-persistent status, direction, intent, sentiment, number, text, and Tehran-aware date filters with deterministic backend offset pagination, accurate totals, and direct reloadable page navigation.
+- Rendered Markdown safely in both user and assistant chat messages, including lists, tables, links, quotes, and code, and required assistant responses to present dates in the Persian Jalali calendar with Persian digits.
+- Restored desktop and tablet table filters, added palette-aligned alternating row highlights across both panels, and pinned each row's trailing action controls during horizontal scrolling.
+- Replaced the inactive call-audio action icon with an accessible circular progress indicator that reports download progress and remains active through waveform extraction.
+- Fixed multi-model ASR multipart uploads so HTTPX `AsyncClient` receives an asynchronous request stream instead of failing before the AISERVICE request is sent.
+- Fixed first-run organization database provisioning when the unflushed job attempt counter has not yet received its database default, allowing migration, schema version, and backup stages to proceed.
+- Made transcript-correction actions immediately observable beside the control, including queued, running, validating, accepted, and API-error feedback, while preventing an active automatic correction from appearing as an inert enabled action.
+- Added Apache AGE to the PostgreSQL 17 local-development image, initialized the shared knowledge graph through an idempotent migration, granted graph schema runtime privileges, and aligned isolated-tenant schema verification with the current migration head.
+- Rebuilt the organizational assistant as a scoped tool-driven agent with six read-only call, transcript, analytics, analysis, and operator-performance tools; live SSE execution timelines; persistent tool-run history; safe tenant/operator enforcement; structured planning fallback; and differentiated provider, indexing, and empty-result failures.
+- Activated hybrid transcript retrieval with revision-aware overlapping chunks, vector/full-text lookup, retry metadata and backoff, independent graph/vector health, admin knowledge diagnostics, and audited retry controls.
+- Extended AISERVICE chat request contracts for OpenAI-compatible assistant/tool messages, tool definitions, and tool-choice forwarding while preserving existing requests without tools.
+- Added URL-persistent assistant settings for tool mode, execution limits, enabled tools, and live knowledge-index health without exposing provider secrets.
+- Rebuilt transcript correction as a durable asynchronous pipeline with immutable raw transcripts, revision history, segment-level validation, deterministic idempotency, provider task tracking, retries, timeouts, and strict failure handling before downstream analysis.
+- Added the admin `?tab=correction` settings surface for automatic execution, two-stage mode, ordered local/9Router audio and text model fallbacks, correction prompt, validation limits, retries, timeout, failure policy, and a live staged path test.
+- Extended AISERVICE text processing with backward-compatible segment input, strict structured correction output, uncertain-item preservation, actual model and usage metadata, and mixed local/9Router ordered fallback lists.
+- Standardized all speech transcription through `/v1/audio/transcriptions`, removed fixed 30-second client-side audio slicing, and retained AISERVICE VAD processing for complete per-channel tracks.
+- Changed the call correction endpoint to return `202` with a durable correction run, exposed reload-safe correction state and errors, and made successful corrected revisions the official source for analysis, summaries, KPIs, and operator scoring without re-billing manual reruns.
+- Replaced the detached corrected-text panel with final transcript bubbles, added a URL-persistent raw/final selector, highlighted uncertain segments, and derived speaker labels only from a valid call direction with neutral channel labels otherwise.
+- Restricted assistant grounding to summaries retrieved from the vector index, removing full-transcript, lexical-search, graph, and aggregate-statistics fallbacks from model context.
+- Added accessible hover and keyboard-focus tooltips to the assistant export and temporary-chat controls.
+- Added UTF-8 text export to call details with speaker-separated transcript turns, timestamps, call metadata, and the corrected transcript when available.
+- Added UTF-8 text export for completed messages in persistent, archived, and temporary assistant conversations.
+- Shortened the overview credit unit from «تومان» to «ت» and replaced the credit-card purse artwork with a credit card across customer and admin statistic cards.
+- Matched each chat bubble tail background to its parent bubble surface.
+- Enabled the admin-selectable 9Router route for conversation analysis and carried it through persisted settings into the analysis worker's synchronous AISERVICE proxy call.
+- Recognized AISERVICE models explicitly sourced from 9Router as remotely available even when their upstream owner is OpenAI, Codex, or another provider.
+- Added selectable native AISERVICE and 9Router routes for typed decisions and embeddings, defaulted new embedding configuration to the native `/v1/embeddings` endpoint, and persisted the active settings tab in the URL query.
+- Organized the admin settings page into accessible, responsive tabs for AISERVICE connection, models and routes, audio processing, prompts, and security, with independent per-tab saves.
+- Rebuilt the admin AI settings surface around explicit ASR, analysis, assistant, decision, fallback, and embedding workloads, with route controls, live capability counts, availability warnings, and model selection sourced from AISERVICE.
+- Replaced the fabricated embedding default and hard-coded model suggestions with the authenticated AISERVICE `kind=all` catalog so unavailable model identifiers can no longer be newly selected from the admin UI.
+- Removed transcript content from desktop grid-row sizing so the insight sidebar alone defines the matched panel height and long conversations scroll internally instead of expanding the page.
+- Removed the transcript panel's intermediate grid wrapper so the card directly inherits the insight sidebar row height and its internal chat scroller fills that matched height.
+- Made the desktop transcript scroller flex to the full remaining height of the sidebar-aligned conversation panel, eliminating the unused blank area below short conversations.
+- Increased the desktop conversation viewport to a 680–820 pixel height so more transcript messages remain visible before internal scrolling.
+- Matched the conversation transcript panel height to its adjacent insight sidebar on desktop, including the loading-state layout, while preserving the stacked mobile flow and transcript scrolling.
+- Replaced the money-bag glyph on credit statistic cards with a Fluent Emoji 3D purse in both customer and admin panels while retaining the money bag for sales value and revenue.
+- Replaced the shared chart palette across overview, call-detail, and analytics visualizations with project-aligned green, olive, and neutral tones, removing purple, yellow, orange, blue, and saturated default colors.
+- Added context-specific Fluent Emoji 3D icons to every shared statistic card and reproduced the reference card's soft texture fade beneath each icon in both customer and admin panels.
+- Increased the completed-step checkmark size in the call-analysis pipeline without changing its marker dimensions or layout spacing.
+- Matched every shared customer and admin statistic card to the call-metric visual language with a warm surface, olive border, fine dotted texture, square corners, and no shadow while leaving non-statistic panels plain.
+- Unified customer and admin cards through the shared card component, including sales KPI statistics, two-factor settings, API documentation, and call-detail surfaces, without applying the dotted texture globally.
+- Restored the original customer and admin card surfaces and limited the dotted texture to the existing intentionally textured components.
+- Bound every Jalali date-picker surface, border, neutral, primary, hover, selected, and focus state to the project's exact palette tokens and removed the browser's blue focus outline.
+- Aligned the Jalali date picker with the project's standard surface and neutral border tokens while reserving the primary color for navigation, hover, focus, today, and selected states.
+- Smoothed the single-call metric-card dot fade with a longer multi-step opacity transition around each icon.
+- Removed all Jalali date-picker shadows and enforced a bordered primary-color treatment for its container, navigation, focus, today, and selected-date states.
+- Extended the dotted texture farther across single-call metric cards while preserving a clear area around each icon.
+- Restyled the shared Jalali date picker across the customer and admin panels with the project green, beige, and warm-white palette, responsive sizing, polished navigation, and distinct selected, today, hover, and keyboard-focus states.
+
+- Replaced the outlined phone symbol in the single-call header with a larger border-free Fluent Emoji 3D telephone icon.
+- Made follow-up task cards denser and replaced the labeled edit action with a compact accessible icon button.
+- Replaced the single-call metric glyphs with locally bundled Fluent Emoji 3D icons and softly faded the dotted texture around their background-free top-left placement.
+- Moved call follow-up tasks directly below the processing report on the single-call page.
+- Corrected the secure Asterisk setup list's RTL indentation and spacing so its text and numbering keep a consistent distance from the right edge.
+- Reduced and balanced the top spacing above the assistant conversation and archive tabs.
+- Added an explicit cancel action to assistant conversation title editing and reset the temporary title on button or Escape cancellation.
+- Replaced the malformed conversation-pin glyph with a standard upright pushpin, hid row actions until hover or keyboard focus, and let chat titles use the full available width before truncating around visible actions.
+- Replaced native browser confirmations with one accessible, responsive project confirmation dialog across call deletion, assistant conversation actions, and complete account-data deletion.
+- Added centered, section-specific illustrated empty states to call sentiment, speaker share, transcript, follow-up tasks, smart summary, and extracted entities panels.
+- Added persistent assistant conversation pinning with unpin controls, tenant-safe API state, audit metadata, and a dedicated pinned section above regular chats.
+- Added explicit confirmation dialogs before assistant conversation deletion and archiving, and moved archived conversations into their own dedicated sidebar view.
+- Replaced the temporary-chat lock symbol with a conversation-and-clock icon and pinned its launcher to the top-left corner of the chat workspace.
+- Moved the assistant composer guidance inside the prompt field and added a rotating typewriter sequence for the send shortcut, AI fallibility notice, and future `@` mention guidance without changing the composer footprint.
+- Added privacy-first temporary assistant chats whose messages and conversation history remain only in the current browser page and are never persisted as chat records.
+- Added tenant-safe assistant conversation archiving, restore controls, a dedicated archived section, audit metadata, and exclusion of archived conversations from active cross-chat context.
+
+## 2026-10-01 — AMINAZADI
+
+- Matched the transcript correction control height and vertical alignment to its adjacent model-information icon button.
+- Replaced the call action menu and labeled back control with standalone icon buttons and accessible tooltips for navigation, audio, assistant, reanalysis, and deletion.
+- Aligned transcript correction opposite the conversation heading and moved the ASR model name into an accessible information-button tooltip.
+- Added consistent spacing between legend icons and labels across every customer-panel chart.
+- Unified transcript turns with the assistant chat's shared directional bubbles, avatars, tails, spacing, colors, and responsive sizing.
+- Added a deliberate task-list exception that uses a polished square primary checkbox for completion while retaining switches everywhere else.
+- Removed the divider from the call-detail hero and tightened its vertical padding, header spacing, content gap, title spacing, and metadata wrapping.
+- Added the call-analysis fine-dot texture to the full navigation sidebar in both the customer and admin panels.
+- Removed the circular clipping from the assistant new-conversation action so it follows the panel's square, radius-free design language.
+- Localized customer webhook event switch labels into Persian while preserving their existing API event identifiers.
+- Stabilized animated toggle alignment with explicit track and thumb geometry so utility generation and RTL inheritance cannot shift the control during transitions.
+- Added direction-aware animated thumb movement and track-color transitions to every shared admin and customer toggle.
+- Reworked toggle thumb placement with direction-aware flex alignment so RTL states use the correct logical side and the thumb remains evenly inset inside the track.
+- Vertically centered the shared toggle thumb and enforced the primary green track color independently of RTL direction and generated utility availability.
+- Fixed shared toggle thumb positioning in RTL layouts by isolating its movement from inherited text direction and containing it within the track.
+- Replaced every checkbox in the admin and customer panels with one shared accessible toggle-switch component, including settings, plans, checkout consent, webhook events, protected exports, and follow-up completion.
+- Stretched the assistant send button to the full composer height, including the keyboard-shortcut hint row.
+- Corrected the follow-up tasks palette with a high-contrast green active filter, beige inactive filters, distinct open and completed status treatments, and palette-aligned task cards.
+- Added a fast queued typewriter effect for streamed assistant responses and prevented the completed message from skipping unfinished animation frames.
+- Added `Ctrl + Enter` message submission to the assistant composer with an inline shortcut hint while preserving plain Enter for new lines.
+- Added distinct square user and assistant avatars beside every chat message with clear spacing from the directional bubble tails.
+- Added compact bottom-aligned directional tails to user and assistant message bubbles with seamless rotated fills that preserve each bubble border without hollow or detached outlines.
+- Replaced the assistant's three-dot typing indicator with an animated shimmer treatment for the Persian thinking-and-result status text.
+- Added an accessible animated three-dot typing indicator while the assistant is waiting to stream its first response content.
+- Unified the desktop assistant conversation list and chat area into one bordered panel separated by a single divider.
+- Replaced blue assistant chat accents with the shared green, beige, and warm-white palette, fixed the prompt composer at the bottom of the visible chat panel, and removed its floating shadowed container so the full footer is the prompt area.
+- Added a palette-matched chat icon to the assistant empty state when no messages exist.
+- Made customer and admin dialogs vertically scrollable on mobile viewports so all fields and actions remain reachable.
+- Converted table filter panels in the customer, organization, operator, and admin interfaces into collapsed mobile accordions while preserving their expanded desktop layout.
+- Contained every customer and admin table's horizontal overflow within its own card or scroll wrapper on mobile, preventing tables and grid children from widening the page.
+- Removed the outer border from the assistant conversation drawer on mobile while retaining the desktop panel border.
+- Added route-aware page titles beside the mobile hamburger menu across dashboard, call, assistant, reporting, account, setup, payment, and informational pages.
+- Removed the Sedasanj logo beside the customer panel title in the mobile header while preserving the logo inside the navigation drawer.
+- Added a responsive assistant conversation drawer on mobile with a compact trigger, backdrop, Escape handling, and automatic close after selection.
+- Switched the assistant conversation sidebar to a light surface while preserving the main sidebar's navigation structure, spacing, active states, and interactions.
+- Replaced the assistant sidebar's gray surface with a dark forest treatment and converted the new-conversation action into an accessible floating button.
+- Fixed the assistant conversation sidebar to the desktop viewport with full-page height and independent internal scrolling.
+- Matched the assistant conversation panel exactly to the main sidebar structure and navigation states while retaining a distinct neutral background.
+- Removed the filled background from both sidebar account cards and adjusted the logout control for the green sidebar surface.
+- Restyled the assistant conversation list to match the main panel sidebar, including grouped navigation, full-width chat items, active-state treatment, action controls, and bounded scrolling.
+- Changed role and identifier text in both sidebar account cards to warm white for consistent contrast.
+- Replaced blue across the in-progress call pipeline and primary chart palette with vivid system-aligned greens.
+- Unified customer and admin sidebar hover styling with the active-item green and warm-white color treatment, removing the third gray navigation state.
+- Replaced muted chart colors with a vivid accessible categorical palette across sentiment, trajectory, speaker, trend, and sales-funnel visualizations.
+- Added a distinct neutral-gray hover state with warm-white text and icons to every customer and admin sidebar item, including the active route.
+- Further softened the processing-card dot texture for a more understated appearance.
+- Reduced the processing-card dot opacity for a softer background texture.
+- Increased the processing-card dot contrast and applied the pattern through an override-safe background declaration.
+- Added a subtle fine-dot background pattern to the call analysis pipeline card.
+- Persisted the selected call-audio playback speed in browser storage and automatically restored it for subsequent recordings.
+- Refined the call waveform with left-to-right seeking, a clearer progress indicator, uniform controls, playback-speed cycling, and authenticated audio download.
+- Replaced the compact native call audio control with a responsive waveform player featuring playback, seeking, elapsed time, duration, and mute controls in the call header.
+- Increased processing-timeline status icon size and adjusted adjacent spacing for clearer scanning.
+- Replaced the processing-report text arrow with a larger outlined SVG chevron and retained the open-state rotation.
+- Replaced the call-detail telephone emoji and heavy filled tile with a crisp outlined phone icon on a light, palette-matched surface.
+- Changed all call-detail header typography, numbers, controls, and icons to black for maximum clarity.
+- Removed green typography and icons from the call-detail header, retaining green only as the top accent rule.
+- Replaced green in the call-header badges with light warm-white and beige surfaces plus neutral gray text.
+- Reworked the call-detail header with the exact shared palette, replacing the blue gradient, blue icon treatment, red status, and mismatched action-menu colors.
+- Standardized RTL select controls in both panels with a palette-matched chevron and consistent spacing from the left edge.
+- Removed gray from both sidebars and established explicit states: green base, warm-white active navigation, beige hover/account surfaces, and green active indicators.
+- Applied the exact four supplied palette values directly in both panel stylesheets: green navigation/actions, warm-white canvas/cards/inputs, beige borders, and gray secondary content; removed all corner radii from authenticated customer and admin surfaces, including charts and tooltips.
+- Unified the customer and admin panel color systems around the shared `#4B6E48`, `#B2AC88`, `#898989`, and `#F2F0EF` palette, including navigation, controls, states, and data visualizations.
+- Applied the grouped desktop sidebar, responsive right-side drawer, standalone white logo, and role-aware navigation to the customer panel.
+- Fixed the sidebar logo filter so the source image background blends into the dark sidebar instead of rendering as a white rectangle.
+- Simplified the admin sidebar header to the standalone white Sedasanj logo on its dark background.
+- Redesigned the admin navigation as a grouped desktop sidebar and an accessible right-side drawer with a hamburger trigger on tablet and mobile layouts.
+- Pinned all production database, cache, object-storage, model-cache, and observability volumes to stable, configurable Docker volume names so repository directory changes cannot create empty replacement data stores.
+
+## 2026-09-30 — AMINAZADI
+
+- Ensured idempotent seed runs provision the legacy active subscription required by assistant entitlements, including repair of tenants created after commerce migrations.
+- Added configurable external DNS resolvers to AI-facing application containers and classified provider DNS/network failures as retryable instead of terminal generic ASR failures.
+- Fixed native AISERVICE ASR requests being rejected when the upstream service also has an independently configured 9Router speech model.
+- Added a complete local environment template and corrected development commands to run Alembic, seeding, and Uvicorn through the project-managed Python environment with the local Docker ports.
+- Switched the local PostgreSQL image to PostgreSQL 17 with pgvector so the full local migration chain can run without rebuilding or deleting existing local data.
+- Restricted every AI workload to the single admin-managed AISERVICE connection, added explicit per-model endpoint routing for ASR, durable analysis, assistant chat, typed decisions, and embeddings, and made AISERVICE ASR uploads always use documented gzip multipart transport.
+- Unified every admin and customer date input on the shared Jalali date-time picker, including KPI goal windows and customer/admin installation scheduling.
+- Added an admin-managed LLM provider switch shared by call analysis and the intelligent assistant, ensuring AISERVICE routing no longer depends on the deployment environment default.
+- Normalized object-shaped top-level LLM sentiment output before extraction validation so valid analyses no longer fail after JSON repair.
+- Repaired legacy tenant balance-cache nulls, added runtime normalization for billing and payment mutations, and enforced zero defaults to prevent admin top-up failures.
+- Fixed tenant control-plane migration compatibility with asyncpg by executing each PostgreSQL command separately.
+- Fixed asyncpg compatibility across identity projection, tenant backup, hybrid knowledge, and sales KPI migrations by preventing multi-command prepared statements and added migration regression coverage.
+
+## 2026-09-29 — AMINAZADI
+
+- Hardened the sales KPI center after review: enforced operator-scoped CRM metrics and private filter data, corrected AI opportunity denominators and cumulative funnel math, added prior-period deltas and anomaly actions, applied the configured SLA and confidence thresholds, activated versioned sales taxonomies in prompts and stored results, made CRM ingestion concurrency-safe, and sequenced completion webhooks after operator scoring.
+- Added regression coverage for KPI ratios, cumulative funnel behavior, opportunity eligibility, and taxonomy validation.
+
+## 2026-09-29 — AMINAZADI
+
+- Added a tenant-safe sales KPI center with AI/CRM outcome separation, conversion coverage, sales funnel, campaign/source analysis, operator coaching, action center, team and time-bound membership management, versioned KPI settings, dated goals, and responsive manager/operator dashboards.
+- Added structured sales extraction with evidence, confidence, funnel stage, objections, product, win/loss reason, and next action; added CRM-authoritative idempotent outcome ingestion and signed `sales.insight` webhook delivery.
+- Extended VoIP ingest with campaign, source, and external reference metadata while preserving unknown attribution when metadata is absent.
+- Added automated database-per-organization provisioning, encrypted tenant connection registry, lazy tenant routing, isolated PostgreSQL roles, pgvector/Apache AGE database bootstrap, resumable legacy-tenant migration, validation, rollback windows, provisioning worker, and admin migration monitoring.
+- Added canonical call-to-operator assignments, strict self-only operator retrieval, operator access to the call assistant, immutable privacy instructions, and deterministic polite refusal for cross-tenant and cross-operator requests.
+- Added the pinned PostgreSQL 16 image build with pgvector and Apache AGE plus tenant migration configuration and security tests.
+- Added a central identity source of truth with durable, idempotent operator projection, bounded provisioning retries, sequential fleet schema upgrades, encrypted per-tenant dumps, retention cleanup, checksums, and backup visibility in the admin panel.
+- Added AISERVICE typed-decision settings, scoped credentials, GLiNER2.5 primary scoring, Laya fallback, confidence-aware operator score review states, and bounded 30-second remote-ASR chunks for long calls.
+- Added opportunistic gzip multipart encoding for AISERVICE ASR uploads using its documented `audio_encoding` contract.
+- Added five-level decision rubrics and removed LLM-generated JSON from operator scoring.
+- Added tenant-aware durable outbox dispatch, worker database resolution, payment callback routing, maintenance fan-out, canonical operator-call authorization, and stale identity-projection rejection.
+- Added resumable destructive-safe tenant copying with maintenance-first draining, zero-row validation, canonical content digests, guarded rollback, and automatic vector/AGE knowledge backfill.
+- Added admin-managed embedding provider settings and hybrid assistant retrieval with model-scoped vectors and tenant-local Apache AGE graph context.
+- Hardened tenant cutover and fleet upgrades against stale-source fallback, preserved pre-migration tenant states, added runtime identity/schema/extension/graph verification, and removed pooled session-level RLS privilege leakage.
+- Routed platform operations and commerce administration across tenant databases, added tenant-safe financial mutations and global plan-reference synchronization, and fixed job draining under forced RLS.
+- Paused outbox delivery for non-active tenants, prevented stale-source outbox resolution after cutover, and re-armed copied queued jobs to avoid loss during the maintenance boundary.
+
+## 2026-09-27 — AMINAZADI
+
+- Added an admin-selectable, independently credentialed OpenAI-compatible ASR provider for 9Router.
+- Changed the AI provider default and saved legacy VoiceSanj URL normalization to HTTPS, with a clear redirect error.
+- Released FreePBX module 1.1.7 with read-only answered-extension lookup from exact-uniqueid CDR records and sidecar-safe JSON queue handling.
+- Released FreePBX module 1.1.6 with sidecar-aware sweep filtering and explicit empty-recording diagnosis.
+- Released FreePBX module 1.1.5 with lossless INI configuration encoding and deployed-runtime verification.
+- Released FreePBX module 1.1.4 with legacy SQLite compatibility and recovery of inbound metadata after pre-upload state failures.
+- Released FreePBX module 1.1.3 with GSM executable permission repair and runtime-aware import validation.
+- Released FreePBX module 1.1.2 with verified migration from legacy core-patch backups and fail-closed handling for mismatched states.
+- Released FreePBX module 1.1.1 with mandatory pre-installation backups, checksum verification, and a controlled restore helper.
+- Added authenticated ingest configuration validation for API keys, transport, and optional ZIP passwords.
+- Marked insufficient-credit and quota responses as retryable without losing queued calls.
+- Added separate browser-generated FreePBX JSON and Python Agent TOML downloads.
+- Added local re-entry and validation for exporting existing API-key configuration without storing the secret.
+- Added Python Agent credit-blocked scheduling and durable dead-letter metadata.
+- Added the standalone FreePBX module 1.1.0 release with PHP 7.4 compatibility, versioned import, atomic apply and rollback, explicit transports, durable queue states, retention cleanup, and pinned binary checks.
+# Unreleased
+
+- AMINAZADI: Redesigned plan-specific signup pages to match the login page layout and display the official artwork for the selected plan.
+- AMINAZADI: Display OTP destination numbers in local Iranian format without the +98 country prefix.
+- AMINAZADI: Log phone OTP codes only in development when SMS.ir credentials or its verification template are not configured; production still rejects the request.
+- AMINAZADI: Centered the OTP delivery hint showing the destination mobile number.
+- AMINAZADI: Moved the OTP expiry countdown into a clock button, revealed resend after expiry, and removed link underlines in phone auth.
+- AMINAZADI: Replaced single OTP fields with six digit inputs supporting paste and keyboard navigation, and disabled browser validation tooltips in phone authentication.
+- AMINAZADI: Slightly reduced the close icon size and weight.
+- AMINAZADI: Fixed close icon sizing by increasing selector specificity so inherited button typography no longer overrides it.
+- AMINAZADI: Increased only the quick demo dialog close icon size while keeping its button dimensions unchanged.
+- AMINAZADI: Enlarged the quick demo dialog close control and removed the SMS delivery helper text from phone entry.
+- AMINAZADI: Restored a stronger top-only mobile glow, increased section height, and positioned copy above the agent's head.
+- AMINAZADI: Limited the mobile hero-style gradient to the top edge, moved the copy higher, and cleared the image around the agent.
+- AMINAZADI: Raised the mobile quick demo content, sized its button to fit, and spaced the arrow icon from its label.
+- AMINAZADI: Centered the mobile quick demo copy at the top of the section.
+- AMINAZADI: Applied the hero's canvas-tinted gradient treatment to the quick demo background, mirrored behind the left-side copy.
+- AMINAZADI: Removed the section-wide tint and confined a subtle transparent glow to the copy area.
+- AMINAZADI: Reframed the quick demo background to show more of the lower image area across screen sizes.
+- AMINAZADI: Reduced the quick demo section height and copy side glow, and shifted the desktop background image to move the agent away from the text.
+- AMINAZADI: Matched the quick demo section's translucent halo to the hero and reduced excess top space by reframing the background.
+- AMINAZADI: Removed the solid light background from the quick demo section and limited the white glow to the copy area.
+- AMINAZADI: Changed the quick demo section heading to «همین حالا امتحان کنید».
+- AMINAZADI: Placed the quick demo heading directly above its copy and removed the copy panel background.
+- AMINAZADI: Refined quick demo section layout, image framing, white glow, and copy placement across desktop, tablet, and mobile widths.
+- AMINAZADI: Removed the kicker text above the quick demo heading.
+- AMINAZADI: Centered the quick demo heading above the background image and moved its supporting copy and action to the left.
+- AMINAZADI: Set the quick demo section image as its full-width background and added responsive white glow treatment behind the copy.
+- AMINAZADI: Removed the quick demo section background and added the provided call center image.
+- AMINAZADI: Added authenticated Socket.IO assistant delivery with durable queued conversation runs, ordered resumable event storage, Redis fan-out, ephemeral live socket replies, and WebSocket proxy support.

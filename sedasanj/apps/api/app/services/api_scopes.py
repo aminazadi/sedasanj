@@ -12,6 +12,10 @@ API_KEY_SCOPES: tuple[str, ...] = (
     "contacts:read",
 )
 MEETING_SCOPE = "meetings:write"
+# Machine publisher for the ML model registry. Like MEETING_SCOPE it is not in API_KEY_SCOPES, so a
+# tenant admin cannot mint it from the panel; the key is created with
+# `scripts/create_ml_publisher_key.py` for the platform tenant named in ML_PUBLISHER_TENANT_ID.
+ML_PUBLISH_SCOPE = "ml:publish"
 # Personal mobile tokens (api_keys.kind = 'mobile') carry only this scope. It is deliberately not
 # in API_KEY_SCOPES: integration keys created from the panel can never hold it.
 MOBILE_KEY_SCOPES: tuple[str, ...] = (MEETING_SCOPE,)

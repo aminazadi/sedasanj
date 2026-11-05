@@ -138,6 +138,32 @@ class UpdateController extends Notifier<UpdateState> {
   /// "Later": set the offer aside until the next cold start.
   void postpone() => state = state.copyWith(dismissed: true);
 
+  /// Registers the periodic background update check and starts publishing the
+  /// calm-moment inputs. Safe to call more than once.
+  Future<void> startBackgroundUpdates() async {
+    _backgroundStarted = true;
+    final native = ref.read(updateNativeProvider);
+    ref.read(updateCalmPublisherProvider);
+    await native.scheduleBackgroundUpdates();
+  }
+
+  /// The user left the app: the calm-moment inputs are published and the
+  /// worker gets one chance to apply a downloaded update. No-op until
+  /// [startBackgroundUpdates] ran (for example in widget tests).
+  Future<void> onAppPaused() async {
+    if (!_backgroundStarted) return;
+    await ref.read(updateCalmPublisherProvider.notifier).publish();
+    await ref.read(updateNativeProvider).runUpdatePassSoon();
+  }
+
+  /// "Download version": first try the one-tap install of an update the background
+  /// worker already downloaded and verified; otherwise hand the download to
+  /// the browser. Returns a Persian error message when neither worked.
+  Future<String?> download() async {
+    final offer = state.offer;
+    if (offer == null) {
+      return 'پیشنهاد به‌روزرسانی دیگر معتبر نیست؛ دوباره بررسی کنید.';
+    }
     try {
       if (offer.canAutoInstall &&
           await ref.read(updateNativeProvider).installDownloaded()) {
@@ -146,3 +172,15 @@ class UpdateController extends Notifier<UpdateState> {
     } catch (_) {
       // Falls back to the browser below.
     }
+    try {
+      final opened = await ref.read(updateLauncherProvider)(offer.downloadUri);
+      if (opened) return null;
+    } catch (_) {
+      // Falls through to the shared message below.
+    }
+    return 'مرورگر باز نشد؛ یک مرورگر نصب یا فعال کنید و دوباره «دریافت نسخه» را بزنید.';
+  }
+}
+
+final updateControllerProvider =
+    NotifierProvider<UpdateController, UpdateState>(UpdateController.new);
