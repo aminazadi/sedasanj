@@ -1563,6 +1563,10 @@ class MeetingSegment(Base):
     t_start_ms: Mapped[int] = mapped_column(BigInteger)
     t_end_ms: Mapped[int] = mapped_column(BigInteger)
     speaker_idx: Mapped[int | None] = mapped_column(SmallInteger)
+    # Spoken over another voice; the line then repeats once per speaker with the same times.
+    overlap: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # How sure the on-device match was, 0..100; None when the app did not say.
+    speaker_confidence: Mapped[int | None] = mapped_column(SmallInteger)
     source: Mapped[str] = mapped_column(Text, server_default=text("'server_asr'"))
     # Declared last: the attribute name shadows sqlalchemy's text() inside this class body.
     text: Mapped[str] = mapped_column(Text)
@@ -1601,7 +1605,89 @@ class MeetingSpeaker(Base):
     user_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    # The profile the app matched this speaker to; empty for unknown voices.
+    profile_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("speaker_profiles.id", ondelete="SET NULL")
+    )
     total_ms: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+
+
+class SpeakerSyncState(Base):
+    """Per-tenant change counter for speaker profile sync (see migration 0102)."""
+
+    __tablename__ = "speaker_sync_state"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    seq: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+
+
+class SpeakerProfile(Base):
+    """A person a Jalase-Negar user defined; voiceprints are what the phone learned about them."""
+
+    __tablename__ = "speaker_profiles"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    owner_user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("users.id"))
+    # Chosen by the app so a retried create never makes a second person.
+    client_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True))
+    display_name: Mapped[str] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(Text, server_default=text("'private'"))
+    # Once shared, colleagues must hear about it when the profile is made private or deleted.
+    was_shared: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    change_seq: Mapped[int] = mapped_column(BigInteger)
+    consent_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    consent_version: Mapped[str | None] = mapped_column(Text)
+    deleted_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "client_id", name="speaker_profiles_client_unique"),
+        CheckConstraint(
+            "char_length(display_name) BETWEEN 1 AND 80", name="speaker_profiles_name_check"
+        ),
+        CheckConstraint(
+            "visibility IN ('private','org')", name="speaker_profiles_visibility_check"
+        ),
+        CheckConstraint("version >= 1", name="speaker_profiles_version_check"),
+        Index("idx_speaker_profiles_changes", "tenant_id", "change_seq"),
+    )
+
+
+class SpeakerVoiceprint(Base):
+    """One enrolment sample's embedding; the bytes are encrypted, never logged or exported."""
+
+    __tablename__ = "speaker_voiceprints"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    profile_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("speaker_profiles.id", ondelete="CASCADE")
+    )
+    client_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True))
+    model_id: Mapped[str] = mapped_column(Text)
+    model_version: Mapped[str] = mapped_column(Text)
+    dim: Mapped[int] = mapped_column(SmallInteger)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    quality: Mapped[int | None] = mapped_column(SmallInteger)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "profile_id", "client_id", "model_id", name="speaker_voiceprints_sample_unique"
+        ),
+        CheckConstraint("dim BETWEEN 16 AND 2048", name="speaker_voiceprints_dim_check"),
+        Index("idx_speaker_voiceprints_profile", "profile_id"),
+    )
 
 
 class MeetingAnalysisStep(Base):
