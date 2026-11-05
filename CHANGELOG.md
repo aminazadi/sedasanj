@@ -2,6 +2,8 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Changed the Jalase-Negar Android release version to 1.0.2 (build 3).
+- Fixed the Jalase-Negar update controller lint and translated its code comments into English.
 - Fixed PBX party attribution and added an administrator review workflow for historical call ownership.
 - Added extension-aware call search, export fields, and operator mapping conflict indicators.
 

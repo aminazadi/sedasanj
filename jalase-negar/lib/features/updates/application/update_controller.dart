@@ -32,7 +32,7 @@ class UpdateState {
   /// The newest compatible build the server offered, if any.
   final AppUpdateOffer? offer;
 
-  /// "بعداً" was chosen: no more automatic prompts until the next cold start.
+  /// "Later" was chosen: no more automatic prompts until the next cold start.
   final bool dismissed;
   final bool checking;
 
@@ -133,15 +133,16 @@ class UpdateController extends Notifier<UpdateState> {
     }
   }
 
-  /// "بعداً": set the offer aside until the next cold start.
+  /// "Later": set the offer aside until the next cold start.
   void postpone() => state = state.copyWith(dismissed: true);
 
-  /// "دریافت نسخه": hand the download to the browser. Returns a Persian error
+  /// "Download version": hand the download to the browser. Returns a Persian error
   /// message when the browser could not be opened.
   Future<String?> download() async {
     final offer = state.offer;
-    if (offer == null)
+    if (offer == null) {
       return 'پیشنهاد به‌روزرسانی دیگر معتبر نیست؛ دوباره بررسی کنید.';
+    }
     try {
       final opened = await ref.read(updateLauncherProvider)(offer.downloadUri);
       if (opened) return null;
