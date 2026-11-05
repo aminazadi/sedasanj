@@ -1,6 +1,6 @@
 """Jalase-Negar releases: staged rollout, forced minimum version and release channel.
 
-Also merges the two 0103 heads (account access help and speaker help content) into one.
+Follows speaker help content in the single integrated migration chain.
 """
 
 from alembic import op

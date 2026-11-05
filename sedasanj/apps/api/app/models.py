@@ -1613,7 +1613,7 @@ class MeetingSpeaker(Base):
 
 
 class SpeakerSyncState(Base):
-    """Per-tenant change counter for speaker profile sync (see migration 0102)."""
+    """Per-tenant change counter for speaker profile sync (see migration 0106)."""
 
     __tablename__ = "speaker_sync_state"
 
@@ -2718,7 +2718,7 @@ class JalaseNegarRelease(Base):
 
 
 class MlModelRelease(Base):
-    """One published ML model artifact in `ml-models/`; global, never copied into a tenant database."""
+    """A global ML artifact in `ml-models/`, never copied into a tenant database."""
 
     __tablename__ = "ml_model_releases"
 
