@@ -37,6 +37,8 @@ from app.metrics import (
 from app.models import JalaseNegarRelease
 from app.schemas import (
     JalaseNegarInstallReportIn,
+    JalaseNegarLatestOut,
+    JalaseNegarLatestRelease,
     JalaseNegarReleaseOut,
     JalaseNegarReleaseStatus,
     JalaseNegarReleaseUpdate,
@@ -559,6 +561,43 @@ async def check_for_update(
             published_at=chosen.published_at,
             download_path=f"/v1/jalase-negar/android/releases/{chosen.id}/download",
             mandatory=apks.is_mandatory(chosen, version_code),
+        )
+    )
+
+
+@router.get("/v1/jalase-negar/android/latest", response_model=JalaseNegarLatestOut)
+async def latest_release(request: Request, response: Response) -> JalaseNegarLatestOut:
+    """Public: the newest fully rolled-out stable APK, for the landing-page download card."""
+    response.headers.update(_NO_STORE)
+    await ratelimit.enforce(f"jalase-negar-latest:{client_ip(request)}", 60, 60)
+    async with control_session_scope() as session:
+        row = (
+            (
+                await session.execute(
+                    select(JalaseNegarRelease)
+                    .where(
+                        JalaseNegarRelease.status == "published",
+                        JalaseNegarRelease.channel == "stable",
+                        JalaseNegarRelease.rollout_percent == 100,
+                    )
+                    .order_by(JalaseNegarRelease.version_code.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+    if row is None:
+        return JalaseNegarLatestOut(release=None)
+    return JalaseNegarLatestOut(
+        release=JalaseNegarLatestRelease(
+            id=row.id,
+            version=row.version_name,
+            size=row.artifact_size,
+            sha256=row.artifact_sha256,
+            min_sdk=row.min_sdk,
+            published_at=row.published_at,
+            download_path=f"/v1/jalase-negar/android/releases/{row.id}/download",
         )
     )
 

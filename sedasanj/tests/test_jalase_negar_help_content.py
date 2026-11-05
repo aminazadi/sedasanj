@@ -87,3 +87,17 @@ def test_upgrade_binds_every_value(migration: ModuleType, monkeypatch: pytest.Mo
     migration.upgrade()
     assert len([s for s in statements if "INTO help_error_codes" in s[0]]) == 4
     assert all(";" not in sql for sql, _ in statements)
+
+
+def test_install_article_migration_is_sound() -> None:
+    path = Path(__file__).parents[1] / "apps/api/alembic/versions/0115_jalase_negar_install_help.py"
+    spec = importlib.util.spec_from_file_location("jalase_negar_install_help", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.down_revision == "0114_primary_organization_admin"
+    assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", module.SLUG)
+    body_html, body_plain = module._body()
+    assert "<ol>" in body_html and "QR" in body_plain
+    cleaned, _ = sanitize_help_html(body_html)
+    assert cleaned.count("<li>") == body_html.count("<li>") == 5

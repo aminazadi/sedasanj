@@ -28,18 +28,21 @@ void main() {
     expect(request.headers.containsKey('Authorization'), isFalse);
   });
 
-  test('parses an offer and resolves the download link on the origin', () async {
-    final offer = await clientWith(
-      FakeAdapter(body: offerJson()),
-    ).check(installedApp);
-    expect(offer!.version, '1.0.2');
-    expect(offer.versionCode, 3);
-    expect(offer.notes, contains('رفع خطا'));
-    expect(
-      offer.downloadUri.toString(),
-      'https://api.sedasanj.ir/v1/jalase-negar/android/releases/abc/download',
-    );
-  });
+  test(
+    'parses an offer and resolves the download link on the origin',
+    () async {
+      final offer = await clientWith(
+        FakeAdapter(body: offerJson()),
+      ).check(installedApp);
+      expect(offer!.version, '1.0.2');
+      expect(offer.versionCode, 3);
+      expect(offer.notes, contains('رفع خطا'));
+      expect(
+        offer.downloadUri.toString(),
+        'https://api.sedasanj.ir/v1/jalase-negar/android/releases/abc/download',
+      );
+    },
+  );
 
   for (final path in [
     'https://evil.example/v1/jalase-negar/android/releases/abc/download',
@@ -61,7 +64,11 @@ void main() {
   }
 
   test('an invalid body is a failed check, not a crash', () async {
-    for (final body in [<String, Object?>{}, 'nope', {'update': 5}]) {
+    for (final body in [
+      <String, Object?>{},
+      'nope',
+      {'update': 5},
+    ]) {
       expect(
         () => clientWith(FakeAdapter(body: body)).check(installedApp),
         throwsA(isA<UpdateCheckException>()),
@@ -69,20 +76,23 @@ void main() {
     }
   });
 
-  test('server errors and rate limits become a Persian retry message', () async {
-    for (final status in [429, 500, 503]) {
-      await expectLater(
-        clientWith(FakeAdapter(status: status, body: {})).check(installedApp),
-        throwsA(
-          isA<UpdateCheckException>().having(
-            (e) => e.message,
-            'message',
-            contains('دوباره'),
+  test(
+    'server errors and rate limits become a Persian retry message',
+    () async {
+      for (final status in [429, 500, 503]) {
+        await expectLater(
+          clientWith(FakeAdapter(status: status, body: {})).check(installedApp),
+          throwsA(
+            isA<UpdateCheckException>().having(
+              (e) => e.message,
+              'message',
+              contains('دوباره'),
+            ),
           ),
-        ),
-      );
-    }
-  });
+        );
+      }
+    },
+  );
 
   test('offline maps to a message that names an action', () async {
     await expectLater(

@@ -146,19 +146,22 @@ void main() {
     expect(container.read(updateControllerProvider).pending, isTrue);
   });
 
-  test('download opens only the central origin and reports a failure', () async {
-    final opened = <Uri>[];
-    var container = containerFor(_FakeClient(offerJson()), opened: opened);
-    addTearDown(container.dispose);
-    var notifier = container.read(updateControllerProvider.notifier);
-    await notifier.checkOnLaunch();
-    expect(await notifier.download(), isNull);
-    expect(opened.single.origin, 'https://api.sedasanj.ir');
+  test(
+    'download opens only the central origin and reports a failure',
+    () async {
+      final opened = <Uri>[];
+      var container = containerFor(_FakeClient(offerJson()), opened: opened);
+      addTearDown(container.dispose);
+      var notifier = container.read(updateControllerProvider.notifier);
+      await notifier.checkOnLaunch();
+      expect(await notifier.download(), isNull);
+      expect(opened.single.origin, 'https://api.sedasanj.ir');
 
-    container = containerFor(_FakeClient(offerJson()), launches: false);
-    addTearDown(container.dispose);
-    notifier = container.read(updateControllerProvider.notifier);
-    await notifier.checkOnLaunch();
-    expect(await notifier.download(), contains('مرورگر'));
-  });
+      container = containerFor(_FakeClient(offerJson()), launches: false);
+      addTearDown(container.dispose);
+      notifier = container.read(updateControllerProvider.notifier);
+      await notifier.checkOnLaunch();
+      expect(await notifier.download(), contains('مرورگر'));
+    },
+  );
 }

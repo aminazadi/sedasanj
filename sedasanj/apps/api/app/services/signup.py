@@ -69,6 +69,7 @@ async def create_account(
         email=email,
         password_hash=hash_password(password),
         role="org_admin",
+        is_primary_admin=True,
         mobile_number=mobile,
         display_name=manager_name.strip(),
     )

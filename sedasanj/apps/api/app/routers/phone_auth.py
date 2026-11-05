@@ -73,7 +73,12 @@ async def issue_tokens(session: AsyncSession, user: User) -> TokenPair:
         )
     )
     return TokenPair(
-        access_token=create_access_token(subject=user.id, tenant_id=user.tenant_id, role=user.role),
+        access_token=create_access_token(
+            subject=user.id,
+            tenant_id=user.tenant_id,
+            role=user.role,
+            panel_permissions=user.panel_permissions,
+        ),
         refresh_token=refresh,
         expires_in=settings.access_token_ttl_minutes * 60,
     )

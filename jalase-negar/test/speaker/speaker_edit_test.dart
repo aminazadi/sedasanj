@@ -9,18 +9,23 @@ import 'package:jalase_negar/features/meetings/data/precise_labels.dart';
 import 'package:jalase_negar/features/meetings/data/speaker_edit.dart';
 import 'package:jalase_negar/features/people/data/enrollment_quality.dart';
 
-Segment seg(int a, int b, String text,
-        {String? speaker, String? pid, bool manual = false}) =>
-    Segment(
-      channel: 0,
-      startMs: a,
-      endMs: b,
-      text: text,
-      speaker: speaker,
-      speakerPersonId: pid,
-      speakerManual: manual,
-      speakerConfidence: speaker == null ? null : 70,
-    );
+Segment seg(
+  int a,
+  int b,
+  String text, {
+  String? speaker,
+  String? pid,
+  bool manual = false,
+}) => Segment(
+  channel: 0,
+  startMs: a,
+  endMs: b,
+  text: text,
+  speaker: speaker,
+  speakerPersonId: pid,
+  speakerManual: manual,
+  speakerConfidence: speaker == null ? null : 70,
+);
 
 void main() {
   group('speaker edit', () {
@@ -92,14 +97,23 @@ void main() {
         seg(1000, 2000, 'درود', speaker: 'ناشناس 1'),
         seg(2000, 3000, 'باز', speaker: 'علی', pid: 'a'),
       ];
-      expect(labeledTranscriptText(segs), 'علی: سلام\nناشناس 1: درود\nعلی: باز');
+      expect(
+        labeledTranscriptText(segs),
+        'علی: سلام\nناشناس 1: درود\nعلی: باز',
+      );
       expect(speakersIn(segs).map((c) => c.name), ['علی', 'ناشناس 1']);
     });
 
     test('overlap share', () {
       final segs = [
         seg(0, 3000, 'a'),
-        Segment(channel: 0, startMs: 3000, endMs: 4000, text: 'b', overlap: true),
+        Segment(
+          channel: 0,
+          startMs: 3000,
+          endMs: 4000,
+          text: 'b',
+          overlap: true,
+        ),
       ];
       expect(overlapShare(segs), closeTo(0.25, 1e-9));
     });
@@ -140,10 +154,9 @@ void main() {
     });
 
     test('a line outside the analysis keeps its label', () {
-      final out = applyPreciseLabels(
-        [seg(9000, 9500, 'دیر', speaker: 'ناشناس 3')],
-        analysis,
-      );
+      final out = applyPreciseLabels([
+        seg(9000, 9500, 'دیر', speaker: 'ناشناس 3'),
+      ], analysis);
       expect(out.single.speaker, 'ناشناس 3');
     });
   });
@@ -184,7 +197,11 @@ void main() {
 
     test('a long clean clip passes with a quality score', () {
       final r = assessEnrollmentSample(tone(30, 0.3));
-      expect(r.issue, EnrollmentIssue.ok, reason: '${r.speechMs}ms ${r.snrDb}dB');
+      expect(
+        r.issue,
+        EnrollmentIssue.ok,
+        reason: '${r.speechMs}ms ${r.snrDb}dB',
+      );
       expect(r.quality, inInclusiveRange(1, 100));
     });
   });

@@ -1,0 +1,21 @@
+.demo-dialog:has(.demo-dialog-actions) {
+  overflow-x: hidden;
+}
+
+.demo-dialog .demo-phone-form {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.demo-dialog .demo-phone-form > :not(.demo-dialog-actions) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.demo-dialog .demo-phone-form > p[dir="ltr"] {
+  overflow-wrap: anywhere;
+}
+
+.demo-dialog .demo-phone-form fieldset {
+  min-inline-size: 0;
+}

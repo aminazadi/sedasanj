@@ -1,6 +1,7 @@
 import { cssImageSetFor } from "../lib/imageSources";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import "./quick-demo.css";
+import "./form-dialog.css";
 
 interface FormDialogProps {
   open: boolean;

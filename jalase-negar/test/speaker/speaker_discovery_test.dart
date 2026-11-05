@@ -3,16 +3,21 @@ import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/meetings/data/speaker_discovery.dart';
 import 'package:jalase_negar/features/meetings/data/speaker_edit.dart';
 
-Segment seg(String? who, int from, int to, {bool overlap = false, String? id}) =>
-    Segment(
-      channel: 0,
-      startMs: from,
-      endMs: to,
-      text: 'متن $from',
-      speaker: who,
-      speakerPersonId: id,
-      overlap: overlap,
-    );
+Segment seg(
+  String? who,
+  int from,
+  int to, {
+  bool overlap = false,
+  String? id,
+}) => Segment(
+  channel: 0,
+  startMs: from,
+  endMs: to,
+  text: 'متن $from',
+  speaker: who,
+  speakerPersonId: id,
+  overlap: overlap,
+);
 
 void main() {
   test('finds numbered unknown voices, most talkative first', () {
@@ -39,7 +44,10 @@ void main() {
     final groups = voiceprintGroups(segments, 'ناشناس 1');
     expect(groups.length, 3);
     for (final g in groups) {
-      expect(g.fold<int>(0, (a, s) => a + s[1] - s[0]), greaterThanOrEqualTo(8000));
+      expect(
+        g.fold<int>(0, (a, s) => a + s[1] - s[0]),
+        greaterThanOrEqualTo(8000),
+      );
       expect(g.every((s) => s[0] < 60000), isTrue);
     }
     expect(voiceprintGroups(segments, 'ناشناس 9'), isEmpty);

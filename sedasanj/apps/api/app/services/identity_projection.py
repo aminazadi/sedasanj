@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select, text, update
@@ -18,13 +19,15 @@ from app.models import (
 from app.services import extensions
 
 
-def _user_payload(user: User) -> dict[str, str | None]:
+def _user_payload(user: User) -> dict[str, Any]:
     return {
         "id": str(user.id),
         "tenant_id": str(user.tenant_id),
         "email": user.email,
         "password_hash": user.password_hash,
         "role": user.role,
+        "panel_permissions": user.panel_permissions,
+        "is_primary_admin": bool(user.is_primary_admin),
         "mobile_number": user.mobile_number,
         "extension": user.extension,
         "display_name": user.display_name,
@@ -119,6 +122,8 @@ async def _apply(row: IdentityProjectionOutbox) -> None:
                         "email": statement.excluded.email,
                         "password_hash": statement.excluded.password_hash,
                         "role": statement.excluded.role,
+                        "panel_permissions": statement.excluded.panel_permissions,
+                        "is_primary_admin": statement.excluded.is_primary_admin,
                         "mobile_number": statement.excluded.mobile_number,
                         "extension": statement.excluded.extension,
                         "display_name": statement.excluded.display_name,

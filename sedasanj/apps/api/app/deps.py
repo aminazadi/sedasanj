@@ -17,7 +17,7 @@ from app.errors import ApiError
 from app.logging import log_context
 from app.models import ApiKey, StaffUser, Tenant, User
 from app.security import API_KEY_PREFIX, decode_access_token, hash_api_key
-from app.services import audit, ratelimit
+from app.services import audit, panel_access, ratelimit
 from app.services.api_scopes import ip_allowed
 
 LAST_USED_WRITE_INTERVAL = timedelta(seconds=60)
@@ -37,6 +37,7 @@ class Principal:
     # Set only for personal mobile tokens (api_keys.kind = 'mobile').
     user_id: UUID | None = None
     key_kind: str | None = None
+    panel_permissions: frozenset[str] | None = None
 
 
 def settings_dep() -> Settings:
@@ -75,10 +76,14 @@ async def current_user(
             role=user.role,
             mobile_number=user.mobile_number,
             extension=user.extension,
+            panel_permissions=frozenset(
+                panel_access.effective_sections(user.role, user.panel_permissions)
+            ),
         )
     await _assert_tenant_active(tenant_id)
     log_context(tenant_id=str(principal.tenant_id))
     request.state.principal = principal
+    panel_access.assert_request_access(principal, request.url.path, request.method)
     await ratelimit.enforce(f"user:{principal.id}", get_settings().rate_limit_reads_per_minute)
     return principal
 
@@ -165,6 +170,14 @@ async def current_api_key(
         scopes = frozenset(api_key.scopes)
         key_user_id = api_key.user_id
         key_kind = api_key.kind
+        key_panel_permissions = None
+        if key_kind == "mobile":
+            owner = await session.get(User, key_user_id)
+            if owner is None or owner.tenant_id != tenant_id:
+                raise ApiError("unauthorized", "mobile token owner no longer exists")
+            key_panel_permissions = frozenset(
+                panel_access.effective_sections(owner.role, owner.panel_permissions)
+            )
 
     await _assert_tenant_active(tenant_id)
     log_context(tenant_id=str(tenant_id))
@@ -176,7 +189,9 @@ async def current_api_key(
         scopes=scopes,
         user_id=key_user_id,
         key_kind=key_kind,
+        panel_permissions=key_panel_permissions,
     )
+    panel_access.assert_request_access(principal, request.url.path, request.method)
     request.state.principal = principal
     return principal
 

@@ -15,6 +15,7 @@ import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
 import EditOrganizationUser from "../components/EditOrganizationUser";
 import OperatorExtensionInput from "../components/OperatorExtensionInput";
+import PanelAccessEditor from "../components/PanelAccessEditor";
 import FormDialog from "../components/FormDialog";
 import addUserArt from "../assets/add-user.webp";
 import type {
@@ -76,6 +77,7 @@ const EMPTY_USER = {
   role: "operator",
   mobile_number: "",
   extension: "",
+  panel_permissions: null as string[] | null,
 };
 
 function offsetParam(params: URLSearchParams, name: string): number {
@@ -375,7 +377,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td dir="ltr">{user.email}</td>
-                    <td>{ROLE_LABELS[user.role] ?? user.role}</td>
+                    <td>{user.is_primary_admin ? "مدیر اصلی سازمان" : ROLE_LABELS[user.role] ?? user.role}</td>
                     <td dir="ltr">{user.mobile_number ? fmt.digits(user.mobile_number) : "—"}</td>
                     <td dir="ltr">{user.extension ? fmt.digits(user.extension) : "—"}</td>
                     <td>{fmt.date(user.created_at)}</td>
@@ -387,6 +389,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                         </button>
                         <button
                           className="btn-danger"
+                          disabled={user.is_primary_admin}
                           onClick={async () => {
                             await request<void>(`/v1/auth/users/${user.id}`, { method: "DELETE" });
                             await reload();
@@ -501,10 +504,12 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           onSaved={reload}
         />
       ) : null}
-      <FormDialog open={userDialogOpen} title="افزودن کاربر" description="کاربر جدید با ایمیل و گذرواژهٔ موقت وارد پنل می‌شود." art={addUserArt} submitLabel="افزودن کاربر" busy={userDialogBusy} error={userDialogError} onClose={() => setUserDialogOpen(false)} onSubmit={() => void createUser()}>
+      <FormDialog open={userDialogOpen} wide title="افزودن کاربر" description="کاربر جدید با ایمیل و گذرواژهٔ موقت وارد پنل می‌شود." art={addUserArt} submitLabel="افزودن کاربر" busy={userDialogBusy} error={userDialogError} onClose={() => setUserDialogOpen(false)} onSubmit={() => void createUser()}>
         <label><span>ایمیل</span><input type="email" dir="ltr" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required /></label>
         <label><span>گذرواژه (حداقل ۸ نویسه)</span><input type="password" dir="ltr" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} minLength={8} required /></label>
         <label><span>نقش</span><select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}><option value="org_admin">مدیر سازمان</option><option value="operator">اپراتور</option><option value="viewer">بیننده</option></select></label>
+        <PanelAccessEditor role={userForm.role} value={userForm.panel_permissions} disabled={userDialogBusy}
+          onChange={panel_permissions => setUserForm({ ...userForm, panel_permissions })} />
         {userForm.role === "operator" ? <>
           <label><span>شماره موبایل اپراتور</span><input dir="ltr" inputMode="tel" value={userForm.mobile_number} onChange={(event) => setUserForm({ ...userForm, mobile_number: event.target.value })} /></label>
           <OperatorExtensionInput value={userForm.extension} disabled={userDialogBusy}

@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
-import '../../recording/application/live_engine_provider.dart';
 import '../application/people_providers.dart';
 import '../data/person.dart';
 
@@ -21,11 +20,6 @@ class PeopleScreen extends ConsumerWidget {
     final people = ref.watch(peopleProvider);
     final modelInstalled = ref.watch(speakerModelInstalledProvider).value;
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/people/new'),
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('افزودن فرد'),
-      ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
           16,
@@ -34,10 +28,6 @@ class PeopleScreen extends ConsumerWidget {
           96 + MediaQuery.paddingOf(context).bottom,
         ),
         children: [
-          Text('افراد و صدا', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          const _SyncCard(),
-          const SizedBox(height: 12),
           if (modelInstalled == false) ...[
             SsCard(
               title: 'مدل تشخیص گوینده نصب نیست',
@@ -61,8 +51,6 @@ class PeopleScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
           ],
-          const _SpeakerIdSwitch(),
-          const SizedBox(height: 12),
           people.when(
             loading: () => const Padding(
               padding: EdgeInsets.all(32),
@@ -88,74 +76,6 @@ class PeopleScreen extends ConsumerWidget {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SpeakerIdSwitch extends ConsumerWidget {
-  const _SpeakerIdSwitch();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final enabled = ref.watch(speakerIdEnabledProvider).value ?? true;
-    return SsCard(
-      child: SsSwitchTile(
-        value: enabled,
-        onChanged: (v) => ref.read(speakerIdEnabledProvider.notifier).set(v),
-        title: const Text('نوشتن نام گوینده در متن'),
-        subtitle: const Text(
-          'هنگام ضبط، نام هر گوینده کنار متن می‌آید. روی گوشی‌های ضعیف می‌توانید خاموشش کنید.',
-        ),
-      ),
-    );
-  }
-}
-
-class _SyncCard extends ConsumerWidget {
-  const _SyncCard();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sync = ref.watch(speakerSyncProvider);
-    final theme = Theme.of(context);
-    final String status;
-    if (!sync.connected) {
-      status =
-          'اپ به صداسنج وصل نیست؛ افراد فقط روی همین گوشی هستند. برای نسخه‌ی پشتیبان و بازیابی روی گوشی دیگر، از «تنظیمات» وصل شوید.';
-    } else if (sync.needsReconnect) {
-      status =
-          'دسترسی اپ به صداسنج ابطال شده است؛ از «تنظیمات» دوباره وصل شوید.';
-    } else if (sync.lastError != null) {
-      status = '${sync.lastError} ($kPeopleSyncErrorCode)';
-    } else if (sync.pending > 0) {
-      status =
-          '${toPersianDigits('${sync.pending}')} تغییر منتظر ارسال به صداسنج است.';
-    } else if (sync.lastSyncAt != null) {
-      status =
-          'همگام با صداسنج؛ آخرین بار ${formatJalaliDay(sync.lastSyncAt!)} ${formatClock(sync.lastSyncAt!)}';
-    } else {
-      status = 'در حال همگام‌سازی با صداسنج…';
-    }
-    return SsCard(
-      title: 'همگام‌سازی',
-      trailing: sync.running
-          ? const SsProcessingMark()
-          : IconButton(
-              tooltip: 'همگام‌سازی اکنون',
-              visualDensity: VisualDensity.compact,
-              onPressed: sync.connected
-                  ? () => ref.read(speakerSyncProvider.notifier).kick()
-                  : null,
-              icon: const Icon(Icons.sync, size: 20),
-            ),
-      child: Text(
-        status,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: sync.lastError != null || sync.needsReconnect
-              ? SsColors.danger
-              : null,
-        ),
       ),
     );
   }

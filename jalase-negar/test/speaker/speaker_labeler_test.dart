@@ -37,7 +37,11 @@ class FakeEmbedder implements VoiceEmbedder {
     // 0.1 -> Ali axis, 0.2 -> Sara axis, a blend sits between them.
     final ali = (0.2 - mean) / 0.1;
     final sara = (mean - 0.1) / 0.1;
-    return unit([ali.clamp(0, 1).toDouble(), sara.clamp(0, 1).toDouble(), 0.05]);
+    return unit([
+      ali.clamp(0, 1).toDouble(),
+      sara.clamp(0, 1).toDouble(),
+      0.05,
+    ]);
   }
 }
 
@@ -90,17 +94,26 @@ void main() {
 
     test('two similar enrolled voices are not guessed between', () {
       final twins = [
-        EnrolledVoice(personId: 'a', name: 'الف', centroid: unit([1, 0.02, 0]), samples: 2),
-        EnrolledVoice(personId: 'b', name: 'ب', centroid: unit([1, -0.02, 0]), samples: 2),
+        EnrolledVoice(
+          personId: 'a',
+          name: 'الف',
+          centroid: unit([1, 0.02, 0]),
+          samples: 2,
+        ),
+        EnrolledVoice(
+          personId: 'b',
+          name: 'ب',
+          centroid: unit([1, -0.02, 0]),
+          samples: 2,
+        ),
       ];
       expect(SpeakerMatcher(twins).identify(unit([1, 0, 0])).known, isFalse);
     });
 
     test('an unreliable match never gets a high confidence', () {
-      final id = SpeakerMatcher(enrolled).identify(
-        unit([1, 0, 0.05]),
-        reliable: false,
-      );
+      final id = SpeakerMatcher(
+        enrolled,
+      ).identify(unit([1, 0, 0.05]), reliable: false);
       expect(id.known, isTrue);
       expect(id.confidence, lessThanOrEqualTo(55));
     });
@@ -113,12 +126,14 @@ void main() {
   });
 
   group('SpeakerLabeler', () {
-    SpeakerLabeler labeler({List<SpeakerTurn>? turns, FakeEmbedder? embedder}) =>
-        SpeakerLabeler(
-          diarizer: turns == null ? null : FakeDiarizer(turns),
-          embedder: embedder ?? FakeEmbedder(),
-          matcher: SpeakerMatcher(enrolled),
-        );
+    SpeakerLabeler labeler({
+      List<SpeakerTurn>? turns,
+      FakeEmbedder? embedder,
+    }) => SpeakerLabeler(
+      diarizer: turns == null ? null : FakeDiarizer(turns),
+      embedder: embedder ?? FakeEmbedder(),
+      matcher: SpeakerMatcher(enrolled),
+    );
 
     test('a single-speaker utterance becomes one named part', () {
       final parts = labeler().label(audio([(3, aliVoice)]), startMs: 10000);
@@ -145,11 +160,7 @@ void main() {
 
     test('overlap is labelled with both people and low confidence', () {
       // Ali 0–4 s, Sara 3–7 s; the mixed second sounds like their blend.
-      final speech = audio([
-        (3, aliVoice),
-        (1, 0.15),
-        (3, saraVoice),
-      ]);
+      final speech = audio([(3, aliVoice), (1, 0.15), (3, saraVoice)]);
       final embedder = FakeEmbedder();
       final parts = labeler(
         turns: [
@@ -182,13 +193,16 @@ void main() {
       expect(parts.single.speakers.single.name, 'علی');
     });
 
-    test('a very short utterance carries the previous speaker with low confidence', () {
-      final l = labeler();
-      l.label(audio([(3, aliVoice)]), startMs: 0);
-      final parts = l.label(audio([(0.4, saraVoice)]), startMs: 5000);
-      expect(parts.single.speakers.single.name, 'علی');
-      expect(parts.single.confidence, lessThanOrEqualTo(25));
-    });
+    test(
+      'a very short utterance carries the previous speaker with low confidence',
+      () {
+        final l = labeler();
+        l.label(audio([(3, aliVoice)]), startMs: 0);
+        final parts = l.label(audio([(0.4, saraVoice)]), startMs: 5000);
+        expect(parts.single.speakers.single.name, 'علی');
+        expect(parts.single.confidence, lessThanOrEqualTo(25));
+      },
+    );
 
     test('a short utterance is never segmented', () {
       final diarizer = FakeDiarizer(const []);

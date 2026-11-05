@@ -19,16 +19,15 @@ void main() {
       expect(flat(parts), ['0-3000:0', '3000-7000:1']);
     });
 
-    test('overlap of at least half a second becomes its own two-speaker part', () {
-      final parts = planParts([t(0, 4000, 0), t(3000, 7000, 1)]);
-      expect(flat(parts), [
-        '0-3000:0',
-        '3000-4000:0+1',
-        '4000-7000:1',
-      ]);
-      expect(parts[1].overlap, isTrue);
-      expect(parts[0].overlap, isFalse);
-    });
+    test(
+      'overlap of at least half a second becomes its own two-speaker part',
+      () {
+        final parts = planParts([t(0, 4000, 0), t(3000, 7000, 1)]);
+        expect(flat(parts), ['0-3000:0', '3000-4000:0+1', '4000-7000:1']);
+        expect(parts[1].overlap, isTrue);
+        expect(parts[0].overlap, isFalse);
+      },
+    );
 
     test('a brief overlap goes to the speaker who keeps talking', () {
       // 300 ms of cross-talk at the hand-over: not worth a mixed line.
@@ -39,15 +38,18 @@ void main() {
       expect(parts.last.speakers, [1]);
     });
 
-    test('a very short interjection is folded into the surrounding speaker', () {
-      final parts = planParts([
-        t(0, 4000, 0),
-        t(4000, 4500, 1),
-        t(4500, 9000, 0),
-      ]);
-      expect(flat(parts), ['0-9000:0']);
-      expect(parts.single.shaky, isTrue);
-    });
+    test(
+      'a very short interjection is folded into the surrounding speaker',
+      () {
+        final parts = planParts([
+          t(0, 4000, 0),
+          t(4000, 4500, 1),
+          t(4500, 9000, 0),
+        ]);
+        expect(flat(parts), ['0-9000:0']);
+        expect(parts.single.shaky, isTrue);
+      },
+    );
 
     test('silence between turns is not part of any part', () {
       final parts = planParts([t(0, 2000, 0), t(5000, 8000, 1)]);

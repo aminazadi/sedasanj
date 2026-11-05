@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/app/shell_screen.dart';
 import 'package:jalase_negar/app/theme.dart';
+import 'package:jalase_negar/features/meetings/application/meeting_providers.dart';
 import 'package:jalase_negar/features/people/application/people_providers.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
 
@@ -24,7 +25,8 @@ void main() {
               for (final path in ['/', '/people', '/settings', '/guide'])
                 GoRoute(
                   path: path,
-                  builder: (context, state) => Center(child: Text('Page $path')),
+                  builder: (context, state) =>
+                      Center(child: Text('Page $path')),
                 ),
             ],
           ),
@@ -40,6 +42,7 @@ void main() {
           overrides: [
             uploadQueueProvider.overrideWith(_IdleUpload.new),
             speakerSyncProvider.overrideWith(_IdleSpeakerSync.new),
+            speakerAnalysisProvider.overrideWith(_IdleAnalysis.new),
           ],
           child: MaterialApp.router(
             routerConfig: router,
@@ -72,6 +75,11 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+}
+
+class _IdleAnalysis extends SpeakerAnalysisController {
+  @override
+  SpeakerAnalysisState build() => const SpeakerAnalysisState();
 }
 
 class _IdleUpload extends UploadController {

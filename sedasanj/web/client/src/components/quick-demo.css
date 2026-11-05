@@ -12,7 +12,7 @@
 .demo-dialog::backdrop{background:rgb(14 25 17 / .55);backdrop-filter:blur(4px)}
 .demo-dialog-close{position:absolute;top:8px;left:12px;border:0;background:transparent;font-size:36px;font-weight:300;line-height:1;color:#64748b;cursor:pointer}
 .demo-phone-form{display:grid;gap:18px}
-.demo-phone-form h2{font-size:1.4rem;font-weight:700;margin:0}
+.demo-phone-form h2,.marketing-site .demo-phone-form h2{font-size:1.3rem;line-height:1.6;font-weight:700;margin:0}
 .demo-phone-form p{font-size:.9rem;line-height:1.8;color:#64748b;margin:0}
 .demo-phone-form .demo-code-hint{text-align:center}
 .demo-phone-form label{display:grid;gap:8px;font-size:.85rem;font-weight:600}

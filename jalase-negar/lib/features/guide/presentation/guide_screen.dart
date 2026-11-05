@@ -19,8 +19,6 @@ class GuideScreen extends StatelessWidget {
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       children: [
-        Text('راهنما', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
         _GuideTile(
           icon: Icons.help_outline,
           title: 'راهنمای تعاملی',

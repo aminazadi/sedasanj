@@ -53,6 +53,7 @@ from app.services import (
     identity_projection,
     member_account_actions,
     operator_scope,
+    panel_access,
     ratelimit,
 )
 from app.services.phone_identity import mobile_accounts, normalize_mobile
@@ -196,7 +197,12 @@ async def login(
         action="auth.login",
         ip=client_ip(request),
     )
-    access = create_access_token(subject=user.id, tenant_id=user.tenant_id, role=user.role)
+    access = create_access_token(
+        subject=user.id,
+        tenant_id=user.tenant_id,
+        role=user.role,
+        panel_permissions=user.panel_permissions,
+    )
     return auth_cookies.deliver_pair(
         request,
         response,
@@ -244,7 +250,12 @@ async def refresh(
             expires_at=now + timedelta(days=settings.refresh_token_ttl_days),
         )
     )
-    access = create_access_token(subject=user.id, tenant_id=user.tenant_id, role=user.role)
+    access = create_access_token(
+        subject=user.id,
+        tenant_id=user.tenant_id,
+        role=user.role,
+        panel_permissions=user.panel_permissions,
+    )
     return auth_cookies.deliver_pair(
         request,
         response,
@@ -533,6 +544,23 @@ async def me(session: ControlSession, principal: UserDep) -> UserOut:
     return UserOut.model_validate(user)
 
 
+@router.get("/panel-access-options")
+async def panel_access_options(principal: UserDep) -> list[dict[str, object]]:
+    return [
+        {
+            "key": key,
+            "label": label,
+            "roles": [
+                role
+                for role in ("org_admin", "operator", "viewer")
+                if key in panel_access.role_sections(role)
+            ],
+            "assignable": principal.panel_permissions is None or key in principal.panel_permissions,
+        }
+        for key, label in panel_access.SECTION_LABELS.items()
+    ]
+
+
 def _mobile_or_none(value: str | None) -> str | None:
     if not value or not value.strip():
         return None
@@ -643,6 +671,7 @@ async def create_user(
     principal: OrgAdminDep,
 ) -> UserOut:
     assert principal.tenant_id is not None
+    panel_access.assert_can_delegate(principal, payload.role, payload.panel_permissions)
     existing = (
         await session.execute(select(User).where(User.email == payload.email))
     ).scalar_one_or_none()
@@ -666,6 +695,7 @@ async def create_user(
         email=payload.email,
         password_hash=hash_password(payload.password),
         role=payload.role,
+        panel_permissions=payload.panel_permissions,
         mobile_number=payload.mobile_number,
         extension=payload.extension,
         display_name=payload.display_name,
@@ -679,7 +709,11 @@ async def create_user(
         actor_id=principal.id,
         tenant_id=principal.tenant_id,
         action="user.create",
-        payload={"user_id": str(user.id), "role": payload.role},
+        payload={
+            "user_id": str(user.id),
+            "role": payload.role,
+            "panel_permissions": user.panel_permissions,
+        },
         ip=client_ip(request),
     )
     return UserOut.model_validate(user)
@@ -723,6 +757,11 @@ async def request_member_password_reset(
     principal: OrgAdminDep,
 ) -> None:
     user = await _member_for_account_action(session, principal.tenant_id, user_id, request)
+    if user.is_primary_admin:
+        raise ApiError(
+            "primary_admin_protected",
+            "مدیر اصلی سازمان را فقط خودش می‌تواند ویرایش کند؛ کاربر دیگری را انتخاب کنید.",
+        )
     await member_account_actions.issue(session, user, principal.id, "password", user.email)
 
 
@@ -794,12 +833,34 @@ async def update_user(
         raise ApiError("not_found", "user not found")
     changes = payload.model_dump(exclude_unset=True)
     next_role = str(changes.get("role", user.role))
+    if user.is_primary_admin and (
+        user.id != principal.id
+        or next_role != user.role
+        or (
+            "panel_permissions" in changes
+            and changes["panel_permissions"] != user.panel_permissions
+        )
+    ):
+        raise ApiError(
+            "primary_admin_protected",
+            "نقش و دسترسی مدیر اصلی سازمان قابل تغییر نیست؛ کاربر دیگری را انتخاب کنید.",
+        )
     if "role" in changes and changes["role"] is None:
         raise ApiError("invalid_request", "نقش معتبر انتخاب کنید و دوباره ذخیره کنید.")
     if user.id == principal.id and next_role != user.role:
         raise ApiError(
             "invalid_request", "برای تغییر نقش حساب خودتان از مدیر سازمان دیگری بخواهید اقدام کند."
         )
+    if "panel_permissions" in changes or next_role != user.role:
+        selected = changes.get("panel_permissions", user.panel_permissions)
+        if user.id == principal.id and selected != user.panel_permissions:
+            raise ApiError(
+                "invalid_request",
+                "برای تغییر دسترسی خودتان از مدیر سازمان دیگری بخواهید اقدام کند.",
+            )
+        if selected != user.panel_permissions or next_role != user.role:
+            panel_access.assert_can_delegate(principal, next_role, selected)
+    previous_access = {"role": user.role, "panel_permissions": user.panel_permissions}
     next_mobile = changes.get("mobile_number", user.mobile_number)
     next_extension = changes.get("extension", user.extension)
     becoming_operator = user.role != "operator" and next_role == "operator"
@@ -834,7 +895,12 @@ async def update_user(
         actor_id=principal.id,
         tenant_id=principal.tenant_id,
         action="user.update",
-        payload={"user_id": str(user.id), "role": user.role},
+        payload={
+            "user_id": str(user.id),
+            "role": user.role,
+            "panel_permissions": user.panel_permissions,
+            "previous_access": previous_access,
+        },
         ip=client_ip(request),
     )
     return UserOut.model_validate(user)
@@ -852,6 +918,10 @@ async def delete_user(
     user = await session.get(User, user_id)
     if user is None or user.tenant_id != principal.tenant_id:
         raise ApiError("not_found", "user not found")
+    if user.is_primary_admin:
+        raise ApiError(
+            "primary_admin_protected", "مدیر اصلی سازمان قابل حذف نیست؛ کاربر دیگری را انتخاب کنید."
+        )
     await identity_projection.stage_user_projection(session, user, operation="delete")
     await session.delete(user)
     await audit.record(

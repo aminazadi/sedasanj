@@ -131,6 +131,59 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('send icon shows only for text that was not sent', (
+    tester,
+  ) async {
+    await _openDetail(
+      tester,
+      MeetingDetail(
+        meeting: _meeting(MeetingStatus.recorded).copyWith(sendText: false),
+        segments: const [
+          Segment(channel: 0, startMs: 0, endMs: 400, text: 'سلام'),
+        ],
+      ),
+    );
+    expect(find.byTooltip('ارسال به صداسنج'), findsOneWidget);
+    expect(find.text('گوینده‌ها'), findsOneWidget);
+  });
+
+  testWidgets('speakers tab offers extraction when none were found', (
+    tester,
+  ) async {
+    await _openDetail(
+      tester,
+      MeetingDetail(
+        meeting: _meeting(MeetingStatus.recorded),
+        segments: const [
+          Segment(channel: 0, startMs: 0, endMs: 400, text: 'سلام'),
+        ],
+      ),
+    );
+    await tester.tap(find.text('گوینده‌ها'));
+    await tester.pumpAndSettle();
+    expect(find.text('گوینده‌ها هنوز استخراج نشده‌اند'), findsOneWidget);
+    expect(find.text('استخراج گوینده‌ها'), findsOneWidget);
+  });
+
+  testWidgets('no send icon while speakers are being identified', (
+    tester,
+  ) async {
+    await _openDetail(
+      settle: false,
+      tester,
+      MeetingDetail(
+        meeting: _meeting(
+          MeetingStatus.recorded,
+        ).copyWith(sendText: false, speakersState: 'analyzing'),
+        segments: const [
+          Segment(channel: 0, startMs: 0, endMs: 400, text: 'سلام'),
+        ],
+      ),
+    );
+    expect(find.byTooltip('ارسال به صداسنج'), findsNothing);
+    expect(find.textContaining('در حال استخراج گوینده‌ها'), findsWidgets);
+  });
+
   testWidgets('failed meetings offer no audio transcription retry', (
     tester,
   ) async {
@@ -157,7 +210,11 @@ class _IdleUploadController extends UploadController {
   UploadState build() => const UploadState();
 }
 
-Future<void> _openDetail(WidgetTester tester, MeetingDetail detail) async {
+Future<void> _openDetail(
+  WidgetTester tester,
+  MeetingDetail detail, {
+  bool settle = true,
+}) async {
   final meeting = detail.meeting;
   await tester.pumpWidget(
     ProviderScope(
@@ -172,10 +229,14 @@ Future<void> _openDetail(WidgetTester tester, MeetingDetail detail) async {
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump(const Duration(milliseconds: 300));
+  }
 
   expect(find.byType(AudioWaveformPlayer), findsOneWidget);
-  expect(find.text('متن جلسه'), findsOneWidget);
+  expect(find.text('متن جلسه'), findsWidgets);
   expect(find.text('تبدیل صوت به متن'), findsNothing);
   expect(find.byIcon(Icons.transcribe), findsNothing);
 }

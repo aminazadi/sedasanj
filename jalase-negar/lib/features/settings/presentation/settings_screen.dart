@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../onboarding/tour_overlay.dart';
@@ -62,6 +63,8 @@ class SettingsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         const _SendTranscriptCard(),
+        const SizedBox(height: 12),
+        const _SpeakerNameCard(),
         const SizedBox(height: 12),
         const UpdateCheckCard(),
         if (state?.error != null) ...[
@@ -229,6 +232,34 @@ class _SendTranscriptCard extends ConsumerWidget {
         await ref.read(sendTranscriptEnabledProvider.notifier).set(value);
         if (value) ref.read(uploadQueueProvider.notifier).kick();
       },
+    );
+  }
+}
+
+class _SpeakerNameCard extends ConsumerWidget {
+  const _SpeakerNameCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(speakerIdEnabledProvider).value ?? true;
+    const title = 'نوشتن نام گوینده در متن';
+    return SsCard(
+      title: title,
+      trailing: Semantics(
+        label: title,
+        toggled: enabled,
+        child: SsSwitch(
+          value: enabled,
+          onChanged: (v) => ref.read(speakerIdEnabledProvider.notifier).set(v),
+        ),
+      ),
+      child: Text(
+        'هنگام ضبط، نام هر گوینده کنار متن می‌آید. روی گوشی‌های ضعیف '
+        'می‌توانید خاموشش کنید.',
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: SsColors.ink),
+      ),
     );
   }
 }

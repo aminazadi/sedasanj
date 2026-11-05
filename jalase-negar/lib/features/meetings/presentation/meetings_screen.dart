@@ -11,6 +11,7 @@ import '../../recording/application/recorder_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
+import 'send_meeting_action.dart';
 import 'share_meeting_audio.dart';
 
 enum _Filter {
@@ -492,6 +493,22 @@ class _MeetingTile extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (canSendMeetingText(meeting, hasText: preview.isNotEmpty))
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 20,
+                      tooltip: 'ارسال به صداسنج',
+                      icon: const Icon(
+                        Icons.cloud_upload_outlined,
+                        color: SsColors.primary,
+                      ),
+                      onPressed: () =>
+                          sendMeetingToSedasanj(context, ref, meeting.id),
+                    ),
+                  ),
                 _menu(context, ref, meeting, preview),
               ],
             ),
@@ -792,19 +809,16 @@ class _StatusArea extends ConsumerWidget {
     if (status == MeetingStatus.failed) {
       return _FailedPanel(meeting: meeting);
     }
+    if (meeting.analyzingSpeakers &&
+        (status == MeetingStatus.recorded ||
+            status == MeetingStatus.transcribed)) {
+      return const _BusyLine('در حال استخراج گوینده‌ها');
+    }
     if (status == MeetingStatus.uploading) {
-      return const _ProgressPanel(
-        label: 'در حال ارسال متن جلسه',
-        value: null,
-        busy: true,
-      );
+      return const _BusyLine('در حال ارسال به صداسنج');
     }
     if (status == MeetingStatus.processing) {
-      return const _ProgressPanel(
-        label: 'در حال پردازش در صداسنج',
-        value: null,
-        busy: true,
-      );
+      return const _BusyLine('در حال پردازش در صداسنج');
     }
     return Align(
       alignment: AlignmentDirectional.centerStart,
@@ -835,50 +849,27 @@ class _StatusArea extends ConsumerWidget {
   };
 }
 
-class _ProgressPanel extends StatelessWidget {
-  const _ProgressPanel({
-    required this.label,
-    required this.value,
-    required this.busy,
-  });
+/// The app's own loading mark with one line of text; no bar, no background.
+class _BusyLine extends StatelessWidget {
+  const _BusyLine(this.label);
 
   final String label;
-  final double? value;
-  final bool busy;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(color: SsColors.selected),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              if (busy) ...[
-                const SsProcessingMark(size: 14),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: SsColors.primaryDark,
-                  ),
-                ),
-              ),
-            ],
+    return Row(
+      children: [
+        const SsProcessingMark(size: 14),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: SsColors.primaryDark),
           ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: value,
-            minHeight: 5,
-            color: SsColors.primary,
-            backgroundColor: Colors.white,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

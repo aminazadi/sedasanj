@@ -121,7 +121,7 @@ export default function PhoneAuth({ onSuccess, renderArtwork }: { onSuccess: (pa
   if (busy && step === "organization") return <div className="demo-progress" role="status"><ProcessingIndicator size="lg" label="در حال ورود به سازمان"/><h3>در حال ورود به سازمان</h3><p>حساب سازمانی شما در حال آماده‌سازی است…</p></div>;
   return <form className={`demo-phone-form${step === "code" && renderArtwork ? " has-otp-artwork" : ""}`} onSubmit={submit} noValidate dir="rtl">
     {renderArtwork?.(step)}
-    <h2>{step === "phone" ? "" : step === "code" ? "تأیید شماره موبایل" : pending.accounts.length ? "ورود به سازمان" : "نام سازمان شما چیست؟"}</h2>
+    {step === "organization" && <h2>{pending.accounts.length ? "ورود به سازمان" : "نام سازمان شما چیست؟"}</h2>}
     {step !== "phone" && <p className={step === "code" ? "demo-code-hint" : undefined}>{step === "code" ? `کد ارسال‌شده به ${fmt.digits(localMobileNumber(pending.mobile))} را وارد کنید.` : pending.accounts.length ? "حساب موجود شما آماده ورود است." : "پلن دمو به‌صورت خودکار برای سازمان شما فعال می‌شود."}</p>}
     {error && <p className="demo-error" role="alert">{error}</p>}
     {step === "phone" && <label>شماره موبایل<input autoFocus type="tel" inputMode="tel" autoComplete="tel" dir="ltr" placeholder="09121234567" required value={pending.mobile} onChange={(e) => setPending({ ...pending, mobile: fmt.latinDigits(e.target.value) })}/></label>}

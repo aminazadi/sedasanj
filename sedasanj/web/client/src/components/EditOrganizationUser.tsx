@@ -3,6 +3,7 @@ import { ApiError, request } from "../api";
 import type { User } from "../types";
 import FormDialog from "./FormDialog";
 import OperatorExtensionInput from "./OperatorExtensionInput";
+import PanelAccessEditor from "./PanelAccessEditor";
 
 type UserFields = Pick<User, "display_name" | "mobile_number" | "extension" | "role">;
 
@@ -18,6 +19,7 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
   const [newEmail, setNewEmail] = useState("");
   const [accountNote, setAccountNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [permissions, setPermissions] = useState<string[] | null>(null);
   const path = `/v1/auth/users/${encodeURIComponent(userId)}`;
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
     void request<User>(path).then((member) => {
       if (!active) return;
       setUser(member);
+      setPermissions(member.panel_permissions ?? null);
       setFields({
         role: member.role,
         display_name: member.display_name,
@@ -46,6 +49,7 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
     if (!fields || !user || busy) return;
     const body = {
       role: fields.role,
+      panel_permissions: permissions,
       display_name: fields.display_name?.trim() || null,
       mobile_number: fields.mobile_number?.trim() || null,
       extension: fields.extension?.trim() || null,
@@ -68,6 +72,10 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
         setNumberError("شماره موبایل یا داخلی معتبر وارد کنید.");
       } else if (err instanceof ApiError && err.code === "quota_exceeded") {
         setError("ظرفیت اپراتورهای پلن تکمیل است؛ از بخش اشتراک ظرفیت را افزایش دهید.");
+      } else if (err instanceof ApiError && err.code === "primary_admin_protected") {
+        setError("مدیر اصلی سازمان محافظت شده است؛ برای تغییر نقش یا دسترسی، کاربر دیگری را انتخاب کنید.");
+      } else if (err instanceof ApiError && err.code === "panel_access_denied") {
+        setError("فقط دسترسی‌هایی را می‌توانید واگذار کنید که خودتان دارید؛ از مدیر سازمان بخواهید بررسی کند.");
       } else if (err instanceof ApiError && err.code === "forbidden") {
         setError("اجازهٔ ویرایش کاربران را ندارید؛ از مدیر سازمان بخواهید اقدام کند.");
       } else {
@@ -102,13 +110,13 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
   }
 
   return (
-    <FormDialog open title="ویرایش کاربر" submitLabel="ذخیره" busy={busy}
+    <FormDialog open wide title="ویرایش کاربر" submitLabel="ذخیره" busy={busy}
       error={error} submitDisabled={!fields} onClose={onClose} onSubmit={() => void save()}>
       {user && fields ? <>
         <p dir="ltr">{user.email}</p>
         <label>
           <span>نقش و سطح دسترسی</span>
-          <select value={fields.role} disabled={busy}
+          <select value={fields.role} disabled={busy || user.is_primary_admin}
             onChange={(event) => edit("role", event.target.value)}>
             <option value="org_admin">مدیر سازمان</option>
             <option value="operator">اپراتور</option>
@@ -116,6 +124,8 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
           </select>
         </label>
         {fields.role === "operator" ? <p>اپراتور به تماس‌های مرتبط با موبایل یا داخلی خودش دسترسی دارد؛ حداقل یکی از این شماره‌ها را وارد کنید.</p> : null}
+        {user.is_primary_admin ? <p role="status">مدیر اصلی سازمان؛ نقش و دسترسی این حساب قابل تغییر نیست.</p> : null}
+        <PanelAccessEditor role={fields.role} value={permissions} onChange={setPermissions} disabled={busy || user.is_primary_admin} />
         <label>
           <span>نام نمایشی</span>
           <input value={fields.display_name ?? ""} maxLength={120} disabled={busy}

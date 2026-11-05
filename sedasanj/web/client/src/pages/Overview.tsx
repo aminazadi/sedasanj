@@ -1,3 +1,4 @@
+import { hasPanelAccess } from "../lib/panelAccess";
 import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -218,10 +219,10 @@ export default function Overview() {
     const filterQuery = { from: selectedRange.from, to: selectedRange.to, direction, campaign_id: campaign, source, intent, certainty, team_id: team, operator_id: operatorId };
     const [data, recent] = await Promise.all([
       request<KpiDashboard>(`/v1/kpi/dashboard${query({ ...filterQuery, operator_offset: operatorOffset, campaign_offset: campaignOffset, table_limit: tableLimit })}`, { signal }),
-      request<CallPage>(`/v1/calls${query({ limit: tableLimit, offset: recentOffset, ...filterQuery })}`, { signal }),
+      hasPanelAccess(session, "calls") ? request<CallPage>(`/v1/calls${query({ limit: tableLimit, offset: recentOffset, ...filterQuery })}`, { signal }) : Promise.resolve({ items: [], total: 0, page: 1, page_size: tableLimit, pages: 0, next_cursor: null } as CallPage),
     ]);
     return { data, recent };
-  }, [tableLimit, recentOffset, campaign, campaignOffset, certainty, direction, fromInput, intent, operatorId, operatorOffset, range, selectedRange.from, selectedRange.to, source, team, toInput]);
+  }, [session?.panelPermissions, tableLimit, recentOffset, campaign, campaignOffset, certainty, direction, fromInput, intent, operatorId, operatorOffset, range, selectedRange.from, selectedRange.to, source, team, toInput]);
 
   // The previous result stays available while a new one loads: filter options, widget set and row counts come from it.
   const previous = dashboard.data?.data;
@@ -281,7 +282,7 @@ export default function Overview() {
             <div className="exec-split">{details.talkBalance}{details.coaching}</div>
             {details.voicemail}
             <DashboardCard title="اعتراض‌ها، محصولات و موضوعات" hint="در همان بازه و فیلترهای داشبورد">{details.breakdowns}</DashboardCard>
-            {details.operatorsTable}{details.campaignsTable}{details.recent}
+            {details.operatorsTable}{details.campaignsTable}{hasPanelAccess(session, "calls") ? details.recent : null}
           </> : <DetailsSkeleton operator={operator} previous={previous} />}
         </div> : null}
       </DashboardDetails>

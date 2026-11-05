@@ -55,7 +55,8 @@ class _Harness {
                   builder: (context) => TextButton(
                     onPressed: () => showDialog<void>(
                       context: context,
-                      builder: (_) => const AlertDialog(content: Text('دیالوگ دیگر')),
+                      builder: (_) =>
+                          const AlertDialog(content: Text('دیالوگ دیگر')),
                     ),
                     child: const Text('باز کردن دیالوگ'),
                   ),
@@ -107,10 +108,7 @@ class _Harness {
   }
 }
 
-Future<_Harness> harness(
-  WidgetTester tester, {
-  bool launches = true,
-}) async {
+Future<_Harness> harness(WidgetTester tester, {bool launches = true}) async {
   final h = _Harness(tester, _Client(), <Uri>[], launches);
   await h.start();
   return h;
@@ -132,8 +130,10 @@ void main() {
     expect(find.text('بعداً'), findsOneWidget);
 
     final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
-    expect((dialog.shape! as RoundedRectangleBorder).borderRadius,
-        BorderRadius.zero);
+    expect(
+      (dialog.shape! as RoundedRectangleBorder).borderRadius,
+      BorderRadius.zero,
+    );
     expect(
       Directionality.of(tester.element(find.text('دریافت نسخه'))),
       TextDirection.rtl,
@@ -225,8 +225,10 @@ void main() {
     await h.launchCheck();
     await tester.tap(find.text('دریافت نسخه'));
     await tester.pumpAndSettle();
-    expect(h.opened.single.toString(),
-        'https://api.sedasanj.ir/v1/jalase-negar/android/releases/abc/download');
+    expect(
+      h.opened.single.toString(),
+      'https://api.sedasanj.ir/v1/jalase-negar/android/releases/abc/download',
+    );
     expect(find.text('نسخه‌ی جدید جلسه‌نگار'), findsOneWidget);
   });
 

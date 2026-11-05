@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../features/onboarding/tour_overlay.dart';
 import '../features/onboarding/tour_step.dart';
 import '../features/people/application/people_providers.dart';
+import '../features/meetings/application/meeting_providers.dart';
 import '../features/upload/upload_controller.dart';
 import 'theme.dart';
 import 'widgets/brand_logo.dart';
@@ -29,9 +30,19 @@ class ShellScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Keeps the upload queue alive for the whole app session.
     ref.watch(uploadQueueProvider.select((s) => s.running));
+    // Resumes speaker analysis left over from an earlier run.
+    ref.watch(speakerAnalysisProvider.select((s) => s.running));
     // Keeps people sync alive for the whole session.
     ref.watch(speakerSyncProvider.select((s) => s.running));
     final index = _currentIndex(context);
+    // Tabs other than the sessions list show their own title in the header
+    // instead of the brand logo and the models shortcut.
+    final pageTitle = switch (index) {
+      1 => 'افراد و صدا',
+      2 => 'تنظیمات',
+      3 => 'راهنما',
+      _ => null,
+    };
 
     return Scaffold(
       // Every tab scrolls behind the bar so it stays visible through the notch
@@ -39,64 +50,87 @@ class ShellScreen extends ConsumerWidget {
       // MediaQuery.paddingOf(context).bottom, which the Scaffold sets to the
       // bar height.
       extendBody: true,
-      appBar: SsAppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Same animated wordmark as the web panel's sidebar.
-            const Flexible(
-              child: Padding(
-                padding: EdgeInsetsDirectional.only(start: 16),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: SsBrandLogo(width: 104),
-                ),
-              ),
-            ),
-          ],
-        ),
-        centerTitle: false,
-        actions: [
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
-            child: Center(
-              child: Semantics(
-                button: true,
-                label: 'دانلود مدل‌ها',
-                child: InkWell(
-                  onTap: () => context.push('/models'),
-                  child: Container(
-                    height: 34,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: SsColors.ink.withValues(alpha: 0.06),
-                      border: Border.all(
-                        color: SsColors.ink.withValues(alpha: 0.25),
+      appBar: pageTitle != null
+          ? SsAppBar(
+              title: Text(pageTitle),
+              centerTitle: false,
+              actions: [
+                if (index == 1)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 12),
+                    child: Center(
+                      child: FilledButton.icon(
+                        onPressed: () => context.push('/people/new'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 34),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.person_add_alt_1, size: 18),
+                        label: const Text('افزودن فرد'),
                       ),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.file_download_outlined, size: 19),
-                        SizedBox(width: 6),
-                        Text(
-                          'دانلود مدل‌ها',
-                          style: TextStyle(
-                            fontFamily: 'Vazirmatn',
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500,
-                            color: SsColors.ink,
+                  ),
+              ],
+            )
+          : SsAppBar(
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Same animated wordmark as the web panel's sidebar.
+                  const Flexible(
+                    child: Padding(
+                      padding: EdgeInsetsDirectional.only(start: 16),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: SsBrandLogo(width: 104),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              centerTitle: false,
+              actions: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 12),
+                  child: Center(
+                    child: Semantics(
+                      button: true,
+                      label: 'دانلود مدل‌ها',
+                      child: InkWell(
+                        onTap: () => context.push('/models'),
+                        child: Container(
+                          height: 34,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: SsColors.ink.withValues(alpha: 0.06),
+                            border: Border.all(
+                              color: SsColors.ink.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.file_download_outlined, size: 19),
+                              SizedBox(width: 6),
+                              Text(
+                                'دانلود مدل‌ها',
+                                style: TextStyle(
+                                  fontFamily: 'Vazirmatn',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: SsColors.ink,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
       body: child,
       bottomNavigationBar: _SsBottomBar(
         selectedIndex: index,

@@ -1,0 +1,185 @@
+[
+  {
+    "key": "dashboard",
+    "label": "داشبورد",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "calls",
+    "label": "تماس‌ها و پیام‌های صوتی",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "meetings",
+    "label": "جلسات",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "contacts",
+    "label": "دفترچه تلفن",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "extensions",
+    "label": "داخلی‌ها",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "tasks",
+    "label": "کارها",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "assistant",
+    "label": "دستیار تماس‌ها",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "reports",
+    "label": "گزارش‌های زمان‌بندی‌شده",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "scores",
+    "label": "امتیازها",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "billing",
+    "label": "اعتبار و اشتراک",
+    "roles": [
+      "org_admin",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "scoring_settings",
+    "label": "تنظیمات امتیاز عملکرد",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "ai_settings",
+    "label": "تنظیمات هوش مصنوعی",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "kpi_settings",
+    "label": "تنظیمات KPI و تیم‌ها",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "users",
+    "label": "مدیریت کاربران و دسترسی‌ها",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "integrations",
+    "label": "اتصال‌ها، کلید API و وب‌هوک",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "data",
+    "label": "بک‌آپ، بازیابی و خروجی داده‌ها",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "setup",
+    "label": "راه‌اندازی",
+    "roles": [
+      "org_admin",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "pbx_servers",
+    "label": "سرورهای تلفنی",
+    "roles": [
+      "org_admin"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "releases",
+    "label": "تغییرات نسخه‌ها",
+    "roles": [
+      "org_admin",
+      "viewer"
+    ],
+    "assignable": true
+  },
+  {
+    "key": "api_docs",
+    "label": "مستندات API",
+    "roles": [
+      "org_admin",
+      "operator",
+      "viewer"
+    ],
+    "assignable": true
+  }
+]

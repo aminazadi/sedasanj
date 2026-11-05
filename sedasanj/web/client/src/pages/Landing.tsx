@@ -124,7 +124,6 @@ function UseCases() {
   return <section className="site-section site-usecases" id="usecases">
     <div className="site-container">
       <h2>مشتری‌تان چیزی می‌گوید که فقط تلفن می‌شنود</h2>
-      <p className="site-intro">صداسنج آن را می‌شنود و به تصمیم برای شما تبدیل می‌کند.</p>
       <div className="uc-stage">
         <div className="uc-orbit" role="tablist" aria-label="حوزه‌های کاربرد صداسنج" aria-orientation="vertical">
           <svg className="uc-branches" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -134,7 +133,7 @@ function UseCases() {
           </svg>
           <div className="uc-core" aria-hidden="true"><span className="uc-ring"/><span className="uc-ring uc-ring-late"/><svg className="uc-pulse" viewBox="0 0 24 24" width="44" height="44" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path className="uc-pulse-base" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/><path className="uc-pulse-beat" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/></svg></div>
           {useCases.map((item, index) => <button key={item.id} ref={(el) => { refs.current[index] = el; }} type="button" role="tab" id={`usecase-tab-${item.id}`} aria-selected={index === active} aria-controls="usecase-panel" tabIndex={index === active ? 0 : -1} className={`uc-node${ucNodes[index].y < 45 ? " is-above" : ""}${index === active ? " is-active" : ""}`} style={{ left: `${ucNodes[index].x}%`, top: `${ucNodes[index].y}%` }} onClick={() => setActive(index)} onMouseEnter={() => setActive(index)} onKeyDown={(event) => onKey(event, index)}>
-            <span className="uc-node-dot"><img src={ucPhotos[item.id].src} alt={ucPhotos[item.id].alt} width={120} height={120} loading="lazy" decoding="async"/></span><span className="uc-node-label">{item.label}</span>
+            <span className="uc-node-dot"><img src={ucPhotos[item.id].src} alt={ucPhotos[item.id].alt} width={120} height={120} loading="lazy" decoding="async"/></span><span className="uc-node-label">{ucShortLabels[item.id] ?? item.label}</span>
           </button>)}
         </div>
         <div className="uc-bubble" role="tabpanel" id="usecase-panel" aria-labelledby={`usecase-tab-${current.id}`} key={current.id}>
@@ -146,6 +145,128 @@ function UseCases() {
       </div>
     </div>
   </section>;
+}
+
+type AppRelease = { id: string; version: string; size: number; sha256: string; min_sdk: number; published_at: string | null; download_path: string };
+const ANDROID_BY_SDK: Array<[number, number]> = [[35, 15], [34, 14], [33, 13], [31, 12], [30, 11], [29, 10], [28, 9], [26, 8], [24, 7], [23, 6], [21, 5]];
+function androidVersion(sdk: number): number | null {
+  return ANDROID_BY_SDK.find(([level]) => sdk >= level)?.[1] ?? null;
+}
+const appFeatures: Array<{ icon: IconName; title: string; body: string }> = [
+  { icon: "headset", title: "ضبط جلسه با یک لمس", body: "جلسه را روی گوشی ضبط کنید؛ متن فارسی هم‌زمان با ضبط ساخته می‌شود." },
+  { icon: "users", title: "تفکیک گوینده‌ها", body: "برای افراد حاضر نمونهٔ صدا ثبت کنید تا هر جمله به گوینده‌اش نسبت داده شود." },
+  { icon: "refresh", title: "اتصال به صداسنج", body: "با اسکن یک QR به سازمان خود وصل شوید و جلسه‌ها را به پنل بفرستید." },
+];
+const LIVE_LINES = [
+  "سلام و وقت بخیر، جلسه‌ی امروز را با مرور گزارش فروش هفته‌ی گذشته شروع می‌کنیم.",
+  "فروش نسبت به هفته‌ی قبل حدود ده درصد بالاتر رفته و بیشترین رشد مربوط به شعبه‌ی غرب بوده است.",
+  "ولی تعداد شکایت‌های مربوط به تأخیر در ارسال هم کمی زیاد شده و باید بررسی‌اش کنیم.",
+  "بله، بیشتر این تأخیرها از انبار مرکزی بوده. با مسئول انبار صحبت کرده‌ام و برنامه‌ی تازه‌ای می‌دهند.",
+  "عالیه. پس تا پنجشنبه گزارش کامل را برای همه ارسال کنید تا در جلسه‌ی بعد درباره‌اش تصمیم بگیریم.",
+  "موضوع بعدی بودجه‌ی تبلیغات فصل آینده است؛ پیشنهاد من این است که سهم کانال‌های آنلاین بیشتر شود.",
+  "موافقم، چون هزینه‌ی جذب مشتری در آن کانال‌ها نسبت به سه ماه پیش حدود بیست درصد کمتر شده است.",
+  "باشه، پیگیری‌ها را همین امروز در سامانه ثبت می‌کنم و برای تیم می‌فرستم.",
+  "خیلی خوب، اگر نکتهٔ دیگری نیست جلسه را همین‌جا تمام می‌کنیم. ممنون از همه.",
+];
+function LiveTyping() {
+  const words = LIVE_LINES.map((line) => line.split(" "));
+  const [shown, setShown] = useState<number[]>(() => (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? words.map((w) => w.length) : [0]));
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setTimeout(() => {
+      const line = shown.length - 1;
+      if (shown[line] < words[line].length) setShown([...shown.slice(0, line), shown[line] + 1]);
+      else if (line < words.length - 1) setShown([...shown, 0]);
+      else setShown([0]);
+    }, shown[shown.length - 1] >= words[shown.length - 1].length ? (shown.length === words.length ? 4000 : 650) : 110);
+    return () => window.clearTimeout(timer);
+  }, [shown]);
+  const box = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    if (shown.length === 1 && shown[0] === 0) { el.scrollTop = 0; stick.current = true; return; }
+    if (stick.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [shown]);
+  return <div className="rec-lines" ref={box} onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollTop >= el.scrollHeight - el.clientHeight - 48; }}>{shown.map((count, i) => <p key={i}>{words[i].slice(0, count).join(" ")}{i === shown.length - 1 && count < words[i].length && <span className="rec-caret"/>}</p>)}</div>;
+}
+
+const ucShortLabels: Record<string, string> = {
+  gov: "دولتی",
+  finance: "بانک و بیمه",
+  health: "درمان",
+  sales: "فروش",
+  support: "پشتیبانی",
+  commerce: "فروشگاه آنلاین",
+};
+
+function RecClock() {
+  const [sec, setSec] = useState(167);
+  useEffect(() => {
+    const id = window.setInterval(() => setSec((v) => v + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+  const ss = String(sec % 60).padStart(2, "0");
+  return <span dir="ltr">{mm}:{ss}</span>;
+}
+
+function AppDownload() {
+  const [release, setRelease] = useState<AppRelease | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  function load() {
+    setState("loading");
+    request<{ release: AppRelease | null }>("/v1/jalase-negar/android/latest")
+      .then((data) => { setRelease(data.release); setState("ready"); })
+      .catch(() => setState("error"));
+  }
+  useEffect(load, []);
+  const android = release ? androidVersion(release.min_sdk) : null;
+  const facts = release ? [
+    { label: "نسخه", value: fmt.digits(release.version), ltr: true },
+    { label: "حجم", value: `${fmt.decimal(release.size / 1048576)} مگابایت` },
+    ...(android ? [{ label: "اندروید", value: `${fmt.digits(String(android))} به بالا` }] : []),
+  ] : [];
+  return <section className="site-hero site-app" id="app"><div className="site-container site-split site-app-grid">
+    <div className="site-app-copy">
+      <h2 className="site-hero-title site-hero-title-flow"><span className="site-hero-title-lead">اپلیکیشن اندروید جلسه‌نگار</span>راحت‌تر و هر زمان<br/><span className="site-hero-title-accent">صورت‌جلسه‌ای حرفه‌ای</span> داشته باشید</h2>
+      <p className="site-app-pitch">جلسه‌های حضوری هم <strong>شنیده شوند و مکتوب بمانند.</strong> فقط ضبط را بزنید؛ <em>رونویسی فارسی</em> و <em>ارسال به پنل سازمان</em> را خود جلسه‌نگار انجام می‌دهد.</p>
+      <ul className="site-app-features">{appFeatures.map((item) => <li key={item.title}><Icon name={item.icon} size={18}/><span>{item.title}</span></li>)}</ul>
+      <div className="site-actions">
+        {state === "ready" && release && <a className="site-button" href={release.download_path} download><Icon name="download" size={18}/>دانلود جلسه‌نگار</a>}
+        {state === "loading" && <button className="site-button" type="button" disabled aria-busy="true"><Icon name="download" size={18}/>در حال بررسی نسخه…</button>}
+        {state === "error" && <button className="site-button site-button-outline" type="button" onClick={load}><Icon name="refresh" size={18}/>تلاش دوباره</button>}
+        {state === "ready" && !release && <button className="site-button" type="button" disabled><Icon name="download" size={18}/>نسخه به‌زودی منتشر می‌شود</button>}
+        <Link className="site-button site-button-outline" to="/help/jalase-negar-android-install"><Icon name="layers" size={18}/>راهنمای نصب</Link>
+      </div>
+      {release && <dl className="site-app-facts">{facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd dir={fact.ltr ? "ltr" : undefined}>{fact.value}</dd></div>)}</dl>}
+    </div>
+    <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده، موج صدا و دکمه‌های توقف موقت و پایان">
+      <div className="site-app-phone" aria-hidden="true">
+        <svg className="phone-app-icon" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="44" fill="#4b6e48"/><rect x="85" y="22" width="22" height="148" fill="#fff"/><rect x="54" y="54" width="22" height="84" fill="#b9b48f"/><rect x="116" y="54" width="22" height="84" fill="#b9b48f"/><rect x="24" y="76" width="22" height="40" fill="#b9b48f"/><rect x="146" y="76" width="22" height="40" fill="#b9b48f"/></svg>
+        <span className="phone-btn phone-btn-power"/><span className="phone-btn phone-btn-vol"/>
+        <div className="site-app-screen">
+          <span className="phone-camera"/>
+          <div className="phone-status"><span dir="ltr">12:30</span><div><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M2 20h3V15H2zM7 20h3V11H7zM12 20h3V7h-3zM17 20h3V3h-3z"/></svg><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 17a5 5 0 0 1 6 0"/></svg><b><i/></b></div></div>
+          <div className="rec-bar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>ضبط جلسه</span></div>
+          <div className="rec-panel">
+            <div className="rec-panel-head">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h6M16 15h1"/></svg>
+              <b>متن زنده</b><i/><span>در حال شنیدن…</span>
+            </div>
+            <LiveTyping/>
+          </div>
+          <div className="rec-monitor"><RecClock/><div className="rec-wave">{Array.from({ length: 46 }, (_, i) => <i key={i} style={{ "--h": `${12 + Math.abs(Math.sin(i * 1.7) * 62 + Math.cos(i * 0.6) * 22)}%`, "--d": `${(i % 9) * 90}ms` } as CSSProperties}/>)}</div></div>
+          <div className="rec-controls">
+            <div><span className="rec-diamond rec-diamond-outline"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></span><small>توقف موقت</small></div>
+            <div><span className="rec-diamond rec-diamond-stop"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 6h12v12H6z"/></svg></span><small>پایان و ذخیره</small></div>
+          </div>
+          <span className="phone-home"/>
+        </div>
+      </div>
+    </div>
+  </div></section>;
 }
 
 const SAT_ORDER = ["happy", "satisfied", "neutral", "sad", "angry"] as const;
@@ -202,7 +323,6 @@ function SatisfactionShowcase() {
   return <section className="site-section site-satisfaction" id="satisfaction" ref={ref}>
     <div className="site-container">
       <h2>پیش‌نمایشی از رضایت مشتریان شما</h2>
-      <p className="site-intro">همان نمایی که مدیر و اپراتورها در داشبورد صداسنج می‌بینند: احساس مشتری در هر تماس تحلیل و از «عصبانی» تا «خوشحال» شمرده می‌شود.</p>
       <div className="sat-grid">
         {SAT_ORDER.map((key, i) => <div className="sat-item" key={key} style={{ "--sat-tone": SAT_TONES[key] } as CSSProperties}>
           <span className={`sat-emoji${i === top && visible ? " is-top" : ""}`} role="img" aria-label={SENTIMENT_LABELS[key]}>{SAT_EMOJI[key]}</span>
@@ -229,7 +349,6 @@ function LatestArticles() {
   if (!items || items.length === 0) return null;
   return <section className="site-section site-articles" id="articles"><div className="site-container">
     <h2>مقالات و آموزش‌ها</h2>
-    <p className="site-intro">راهنمای نصب، نکات تحلیل مکالمات و پاسخ پرسش‌های متداول.</p>
     <div className="site-article-grid">{items.map((a) => <article key={a.id}>
       {a.published_at ? <time dateTime={a.published_at}>{faDate.format(new Date(a.published_at))}</time> : null}
       <h3><Link to={`/help/${a.slug}`}>{a.title}</Link></h3>
@@ -273,13 +392,13 @@ export default function Landing() {
     <header className="site-header"><div className="site-container site-nav">
       <a href="#top" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></a>
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
-        <a href="#features" onClick={() => setMenuOpen(false)}>امکانات</a><a href="#usecases" onClick={() => setMenuOpen(false)}>کاربردها</a><a href="#pricing" onClick={() => setMenuOpen(false)}>تعرفه‌ها</a><Link to="/help">مقالات</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link>
+        <a href="#features" onClick={() => setMenuOpen(false)}>امکانات</a><a href="#usecases" onClick={() => setMenuOpen(false)}>کاربردها</a><a href="#app" onClick={() => setMenuOpen(false)}>اپلیکیشن</a><a href="#pricing" onClick={() => setMenuOpen(false)}>تعرفه‌ها</a><Link to="/help">مقالات</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link>
       </nav>
       <div className="site-nav-actions"><Link className="site-button site-button-outline" to="/login"><Icon name="login" size={18}/>ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
     <main id="top">
       <section className="site-hero" ref={heroRef}><img className="site-hero-backdrop" src={heroBackdrop} srcSet={srcSetFor(heroBackdrop)} sizes="max(100vw, 160svh)" alt="" aria-hidden="true" width={1774} height={887} fetchPriority="high" decoding="async"/><div className="site-container site-split">
-        <div><h1 className="site-hero-title"><span className="site-hero-title-lead">شما فقط چند تماس از هزاران تماس را می‌شنوید.</span><span>بقیه‌اش چه؟</span><span className="site-hero-title-accent">همه را بشنوید.</span></h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}><Icon name="play" size={18}/>تست رایگان</button><a className="site-button site-button-outline" href="#features"><Icon name="layers" size={18}/>مشاهده امکانات</a></div></div>
+        <div><h1 className="site-hero-title site-hero-title-flow">هر آنچه از <span className="site-hero-title-accent">پردازش صوت</span> در سازمانتان نیاز دارید</h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}><Icon name="play" size={18}/>تست رایگان</button><a className="site-button site-button-outline" href="#features"><Icon name="layers" size={18}/>مشاهده امکانات</a></div></div>
         <div className="site-hero-play"><WhyVideoPlay video={whyVideo}/></div>
       </div>
         <button className="site-scroll-down" type="button" aria-label="رفتن به بخش بعدی" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}><span className="site-scroll-text" dir="ltr">Scroll Down</span><span className="site-scroll-icon" aria-hidden="true"/></button>
@@ -287,7 +406,7 @@ export default function Landing() {
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-awareness" id="awareness"><div className="site-container site-awareness-grid">
         <div>
-          <h2>وقتی بدانند شنیده می‌شوند، <span className="site-awareness-hl">بهتر کار می‌کنند</span></h2>
+          <h2>وقتی بدانند شنیده می‌شوند، <span className="site-awareness-hl">بهتر عمل می‌کنند</span></h2>
           <p>در پژوهشی، وقتی عملکرد کارکنان پایش شد، فروش حدود <mark>۷ درصد</mark> بالاتر رفت.</p>
           <small>Management Science، ۲۰۱۵؛ بررسی ۳۹۲ رستوران · <a href="https://econpapers.repec.org/RePEc:inm:ormnsc:v:61:y:2015:i:10:p:2299-2319" target="_blank" rel="noopener noreferrer">منبع پژوهش</a></small>
         </div>
@@ -317,8 +436,8 @@ export default function Landing() {
       <SatisfactionShowcase/>
       <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={srcSetFor(integrationBannerMobile) || integrationBannerMobile} sizes="100vw"/><img src={integrationBanner} srcSet={srcSetFor(integrationBanner)} sizes="(max-width: 1160px) 100vw, 1160px" width={1600} height={536} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
       <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
-      <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2><p className="site-intro">قابلیت‌های اصلی مشترک؛ ظرفیت متناسب با نیاز تیم شما. اشتراک‌ها سالانه هستند.</p>
-        {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
+      <AppDownload/>
+      <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2>        {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}><Icon name="refresh" size={18}/>تلاش دوباره</button></div>}
         {plansState === "ready" && !plans.length && <p className="site-status">در حال حاضر پلنی برای نمایش وجود ندارد.</p>}
         <div className="site-plans">{plans.map((plan) => { const trial = plan.is_trial; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; const buyable = trial || price != null; return <article className={`site-plan${plan.featured ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={trial ? null : price} formatted={trial ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!trial && price != null && <span>تومان / سال</span>}{trial && plan.trial_days ? <span>{fmt.int(plan.trial_days)} روز آزمایشی</span> : null}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.monthly_included_minutes)} دقیقه رایگان {trial ? "در دوره آزمایشی" : "در ماه"}</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul>{buyable ? <Link className={`site-button${plan.featured ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}<Icon name="arrow" size={18}/></Link> : <Link className="site-button site-button-outline" to="/contact">تماس با فروش<Icon name="arrow" size={18}/></Link>}</article>; })}</div>

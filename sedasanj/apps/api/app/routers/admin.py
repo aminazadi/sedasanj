@@ -612,6 +612,7 @@ async def create_tenant(
             email=payload.admin_email,
             password_hash=hash_password(payload.admin_password),
             role="org_admin",
+            is_primary_admin=True,
         )
     )
     session.add(TenantBalanceCache(tenant_id=tenant.id, seconds=0, toman=0))

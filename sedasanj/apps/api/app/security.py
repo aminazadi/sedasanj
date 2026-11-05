@@ -96,6 +96,7 @@ def create_access_token(
     tenant_id: UUID | None,
     role: str,
     actor: Literal["user", "staff"] = "user",
+    panel_permissions: list[str] | None = None,
 ) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
@@ -108,6 +109,10 @@ def create_access_token(
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.access_token_ttl_minutes)).timestamp()),
     }
+    if actor == "user":
+        from app.services.panel_access import effective_sections
+
+        claims["panel_permissions"] = effective_sections(role, panel_permissions)
     return jwt.encode(claims, settings.jwt_secret, algorithm=JWT_ALGORITHM)
 
 

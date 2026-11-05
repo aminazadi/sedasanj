@@ -80,9 +80,7 @@ List<LiveUtterance> run(UtteranceLabeler? labeler, CountingDecoder decoder) {
     decoder: decoder,
     labeler: labeler,
   );
-  return [
-    ...pipeline.feed(pcm(8)),
-  ].whereType<LiveUtterance>().toList();
+  return [...pipeline.feed(pcm(8))].whereType<LiveUtterance>().toList();
 }
 
 void main() {
@@ -99,7 +97,12 @@ void main() {
       final decoder = CountingDecoder();
       final out = run(
         ScriptedLabeler([
-          const LabeledPart(startMs: 0, endMs: 8000, speakers: [ali], confidence: 90),
+          const LabeledPart(
+            startMs: 0,
+            endMs: 8000,
+            speakers: [ali],
+            confidence: 90,
+          ),
         ]),
         decoder,
       );
@@ -112,14 +115,28 @@ void main() {
       final decoder = CountingDecoder();
       final out = run(
         ScriptedLabeler([
-          const LabeledPart(startMs: 0, endMs: 4000, speakers: [ali], confidence: 90),
-          const LabeledPart(startMs: 4000, endMs: 8000, speakers: [sara], confidence: 85),
+          const LabeledPart(
+            startMs: 0,
+            endMs: 4000,
+            speakers: [ali],
+            confidence: 90,
+          ),
+          const LabeledPart(
+            startMs: 4000,
+            endMs: 8000,
+            speakers: [sara],
+            confidence: 85,
+          ),
         ]),
         decoder,
       );
       expect(out.map((u) => u.speaker!.name), ['علی', 'سارا']);
       expect(out.map((u) => (u.startMs, u.endMs)), [(0, 4000), (4000, 8000)]);
-      expect(decoder.lengths, hasLength(2), reason: 'each stretch decoded alone');
+      expect(
+        decoder.lengths,
+        hasLength(2),
+        reason: 'each stretch decoded alone',
+      );
       expect(decoder.lengths.first, lessThan(8 * kAsrSampleRate));
     });
 
@@ -127,7 +144,12 @@ void main() {
       final decoder = CountingDecoder();
       final out = run(
         ScriptedLabeler([
-          const LabeledPart(startMs: 0, endMs: 3000, speakers: [ali], confidence: 90),
+          const LabeledPart(
+            startMs: 0,
+            endMs: 3000,
+            speakers: [ali],
+            confidence: 90,
+          ),
           const LabeledPart(
             startMs: 3000,
             endMs: 5000,
@@ -135,7 +157,12 @@ void main() {
             overlap: true,
             confidence: 40,
           ),
-          const LabeledPart(startMs: 5000, endMs: 8000, speakers: [sara], confidence: 85),
+          const LabeledPart(
+            startMs: 5000,
+            endMs: 8000,
+            speakers: [sara],
+            confidence: 85,
+          ),
         ]),
         decoder,
       );
@@ -154,16 +181,21 @@ void main() {
   });
 
   group('consolidation keeps speakers apart', () {
-    AsrTurn turn(int from, int to, String text, String? speaker, {bool overlap = false}) =>
-        AsrTurn(
-          channel: 0,
-          startMs: from,
-          endMs: to,
-          text: text,
-          speaker: speaker,
-          speakerPersonId: speaker,
-          overlap: overlap,
-        );
+    AsrTurn turn(
+      int from,
+      int to,
+      String text,
+      String? speaker, {
+      bool overlap = false,
+    }) => AsrTurn(
+      channel: 0,
+      startMs: from,
+      endMs: to,
+      text: text,
+      speaker: speaker,
+      speakerPersonId: speaker,
+      overlap: overlap,
+    );
 
     test('same speaker close in time still merges', () {
       final turns = consolidateSegments([
@@ -204,11 +236,22 @@ void main() {
   group('Segment speaker display', () {
     test('labeledText is `نام: متن`, with both names for overlap', () {
       const one = Segment(
-        channel: 0, startMs: 0, endMs: 1, text: 'سلام', speaker: 'علی');
+        channel: 0,
+        startMs: 0,
+        endMs: 1,
+        text: 'سلام',
+        speaker: 'علی',
+      );
       expect(one.labeledText, 'علی: سلام');
       const two = Segment(
-        channel: 0, startMs: 0, endMs: 1, text: 'سلام',
-        speaker: 'علی', speaker2: 'سارا', overlap: true);
+        channel: 0,
+        startMs: 0,
+        endMs: 1,
+        text: 'سلام',
+        speaker: 'علی',
+        speaker2: 'سارا',
+        overlap: true,
+      );
       expect(two.labeledText, 'علی / سارا: سلام');
       const none = Segment(channel: 0, startMs: 0, endMs: 1, text: 'سلام');
       expect(none.labeledText, 'سلام');
@@ -217,11 +260,23 @@ void main() {
     test('editing a line\'s text keeps its speaker', () {
       const original = [
         Segment(
-          channel: 0, startMs: 0, endMs: 1000, text: 'سلام دنیا',
-          speaker: 'علی', speakerPersonId: 'ali', speakerConfidence: 80),
+          channel: 0,
+          startMs: 0,
+          endMs: 1000,
+          text: 'سلام دنیا',
+          speaker: 'علی',
+          speakerPersonId: 'ali',
+          speakerConfidence: 80,
+        ),
         Segment(
-          channel: 0, startMs: 1000, endMs: 2000, text: 'خداحافظ',
-          speaker: 'سارا', speakerPersonId: 'sara', speakerManual: true),
+          channel: 0,
+          startMs: 1000,
+          endMs: 2000,
+          text: 'خداحافظ',
+          speaker: 'سارا',
+          speakerPersonId: 'sara',
+          speakerManual: true,
+        ),
       ];
       final edited = applyTranscriptEdit(original, 'سلام دوستان\nخداحافظ');
       expect(edited[0].speaker, 'علی');
@@ -237,12 +292,30 @@ void main() {
 
     test('numbers speakers in order of appearance and links profiles', () {
       final payload = buildTranscriptPayload(const [
-        Segment(channel: 0, startMs: 0, endMs: 1000, text: 'الف',
-            speaker: 'علی', speakerPersonId: aliId, speakerConfidence: 88),
-        Segment(channel: 0, startMs: 1000, endMs: 2000, text: 'ب',
-            speaker: 'ناشناس 1'),
-        Segment(channel: 0, startMs: 2000, endMs: 3000, text: 'ج',
-            speaker: 'علی', speakerPersonId: aliId),
+        Segment(
+          channel: 0,
+          startMs: 0,
+          endMs: 1000,
+          text: 'الف',
+          speaker: 'علی',
+          speakerPersonId: aliId,
+          speakerConfidence: 88,
+        ),
+        Segment(
+          channel: 0,
+          startMs: 1000,
+          endMs: 2000,
+          text: 'ب',
+          speaker: 'ناشناس 1',
+        ),
+        Segment(
+          channel: 0,
+          startMs: 2000,
+          endMs: 3000,
+          text: 'ج',
+          speaker: 'علی',
+          speakerPersonId: aliId,
+        ),
       ]);
       expect(payload.speakers, [
         {'idx': 0, 'label': 'علی', 'profile_client_id': aliId},
@@ -253,37 +326,57 @@ void main() {
       expect(payload.segments[1].containsKey('speaker_confidence'), isFalse);
     });
 
-    test('an overlapping line is sent once per speaker with the same times', () {
-      final payload = buildTranscriptPayload(const [
-        Segment(channel: 0, startMs: 3000, endMs: 5000, text: 'هم‌زمان',
-            speaker: 'علی', speakerPersonId: aliId,
-            speaker2: 'سارا', speaker2PersonId: saraId,
-            overlap: true, speakerConfidence: 40),
-      ]);
-      expect(payload.segments, hasLength(2));
-      for (final s in payload.segments) {
-        expect(s['t_start_ms'], 3000);
-        expect(s['t_end_ms'], 5000);
-        expect(s['overlap'], isTrue);
-        expect(s['speaker_confidence'], 40);
-      }
-      expect(payload.segments.map((s) => s['speaker']), [0, 1]);
-      expect(payload.speakers.map((s) => s['label']), ['علی', 'سارا']);
-    });
+    test(
+      'an overlapping line is sent once per speaker with the same times',
+      () {
+        final payload = buildTranscriptPayload(const [
+          Segment(
+            channel: 0,
+            startMs: 3000,
+            endMs: 5000,
+            text: 'هم‌زمان',
+            speaker: 'علی',
+            speakerPersonId: aliId,
+            speaker2: 'سارا',
+            speaker2PersonId: saraId,
+            overlap: true,
+            speakerConfidence: 40,
+          ),
+        ]);
+        expect(payload.segments, hasLength(2));
+        for (final s in payload.segments) {
+          expect(s['t_start_ms'], 3000);
+          expect(s['t_end_ms'], 5000);
+          expect(s['overlap'], isTrue);
+          expect(s['speaker_confidence'], 40);
+        }
+        expect(payload.segments.map((s) => s['speaker']), [0, 1]);
+        expect(payload.speakers.map((s) => s['label']), ['علی', 'سارا']);
+      },
+    );
 
     test('a transcript without speakers has no speaker fields at all', () {
       final payload = buildTranscriptPayload(const [
         Segment(channel: 0, startMs: 0, endMs: 1000, text: 'الف'),
       ]);
       expect(payload.speakers, isEmpty);
-      expect(payload.segments.single.keys.toSet(),
-          {'t_start_ms', 't_end_ms', 'text'});
+      expect(payload.segments.single.keys.toSet(), {
+        't_start_ms',
+        't_end_ms',
+        'text',
+      });
     });
 
     test('voices beyond the platform limit are sent without a speaker', () {
       final payload = buildTranscriptPayload([
         for (var i = 0; i < 70; i++)
-          Segment(channel: 0, startMs: i * 10, endMs: i * 10 + 5, text: 't$i', speaker: 'ناشناس $i'),
+          Segment(
+            channel: 0,
+            startMs: i * 10,
+            endMs: i * 10 + 5,
+            text: 't$i',
+            speaker: 'ناشناس $i',
+          ),
       ]);
       expect(payload.speakers, hasLength(kMaxSpeakerIdx + 1));
       expect(payload.segments.last.containsKey('speaker'), isFalse);
@@ -291,8 +384,14 @@ void main() {
 
     test('a profile id that is not a UUID is not linked', () {
       final payload = buildTranscriptPayload(const [
-        Segment(channel: 0, startMs: 0, endMs: 1, text: 'x',
-            speaker: 'علی', speakerPersonId: 'not-a-uuid'),
+        Segment(
+          channel: 0,
+          startMs: 0,
+          endMs: 1,
+          text: 'x',
+          speaker: 'علی',
+          speakerPersonId: 'not-a-uuid',
+        ),
       ]);
       expect(payload.speakers.single.containsKey('profile_client_id'), isFalse);
     });

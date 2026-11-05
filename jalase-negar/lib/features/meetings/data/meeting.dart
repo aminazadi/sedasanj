@@ -39,6 +39,7 @@ class Meeting {
     this.asrIdentity,
     this.sendText = true,
     this.textSyncPending = false,
+    this.speakersState = 'done',
   });
 
   final String id;
@@ -70,6 +71,12 @@ class Meeting {
   /// taken the edit yet.
   final bool textSyncPending;
 
+  /// 'pending' / 'analyzing' while the people of the recording are being
+  /// identified (nothing is sent meanwhile), 'done' otherwise.
+  final String speakersState;
+
+  bool get analyzingSpeakers => speakersState != 'done';
+
   /// Value equality lets the list skip rebuilding tiles whose meeting did not
   /// change when the list is reloaded.
   @override
@@ -88,7 +95,8 @@ class Meeting {
       other.remoteMeetingId == remoteMeetingId &&
       other.asrIdentity == asrIdentity &&
       other.sendText == sendText &&
-      other.textSyncPending == textSyncPending;
+      other.textSyncPending == textSyncPending &&
+      other.speakersState == speakersState;
 
   @override
   int get hashCode => Object.hash(
@@ -106,6 +114,7 @@ class Meeting {
     asrIdentity,
     sendText,
     textSyncPending,
+    speakersState,
   );
 
   /// The meeting as the list should show it when no recorder is open: a row
@@ -127,6 +136,7 @@ class Meeting {
     String? asrIdentity,
     bool? sendText,
     bool? textSyncPending,
+    String? speakersState,
   }) => Meeting(
     id: id,
     title: title ?? this.title,
@@ -142,6 +152,7 @@ class Meeting {
     asrIdentity: asrIdentity ?? this.asrIdentity,
     sendText: sendText ?? this.sendText,
     textSyncPending: textSyncPending ?? this.textSyncPending,
+    speakersState: speakersState ?? this.speakersState,
   );
 
   factory Meeting.fromRow(Map<String, Object?> row) => Meeting(
@@ -159,6 +170,7 @@ class Meeting {
     asrIdentity: row['asr_identity'] as String?,
     sendText: ((row['send_text'] as int?) ?? 1) != 0,
     textSyncPending: ((row['text_sync_pending'] as int?) ?? 0) != 0,
+    speakersState: (row['speakers_state'] as String?) ?? 'done',
   );
 
   Map<String, Object?> toRow() => {
@@ -176,6 +188,7 @@ class Meeting {
     'asr_identity': asrIdentity,
     'send_text': sendText ? 1 : 0,
     'text_sync_pending': textSyncPending ? 1 : 0,
+    'speakers_state': speakersState,
   };
 }
 

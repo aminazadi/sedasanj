@@ -61,7 +61,10 @@ void main() {
     expect(stored.changeSeq, greaterThan(0));
     expect(server.profiles[ali.clientId]!.voiceprints, hasLength(2));
     expect(server.received.single.baseVersion, 0);
-    expect((await repo.voiceprints(ali.clientId)).every((v) => v.synced), isTrue);
+    expect(
+      (await repo.voiceprints(ali.clientId)).every((v) => v.synced),
+      isTrue,
+    );
   });
 
   test('the outbox survives the app being killed', () async {
@@ -124,10 +127,9 @@ void main() {
     expect(second.baseVersion, 1);
     expect([for (final v in second.voiceprints) v.clientId], ['s2']);
     expect(second.removeVoiceprints, ['s1']);
-    expect(
-      server.profiles[p.clientId]!.voiceprints.map((v) => v.clientId),
-      ['s2'],
-    );
+    expect(server.profiles[p.clientId]!.voiceprints.map((v) => v.clientId), [
+      's2',
+    ]);
   });
 
   test('a sample removed before it ever synced needs no request', () async {
@@ -171,59 +173,67 @@ void main() {
     expect(await repo.cursor(), server.seq);
   });
 
-  test('pulls page by page and keeps the cursor of the last stored page', () async {
-    for (var i = 0; i < 5; i++) {
-      server.addExisting('00000000-0000-4000-8000-00000000000$i', 'نفر $i', [
-        remoteVoiceprint('v$i', [1, 0, 0, 0]),
-      ]);
-    }
-    final repo = await open();
-    final paged = SyncEngine(
-      repository: repo,
-      api: server,
-      pageSize: 2,
-      random: Random(1),
-      now: () => clock,
-    );
-    expect((await paged.syncOnce()).pulled, 5);
-    expect(server.changeCalls, 3);
-    final again = await paged.syncOnce();
-    expect(again.pulled, 0, reason: 'nothing changed after the cursor');
-  });
+  test(
+    'pulls page by page and keeps the cursor of the last stored page',
+    () async {
+      for (var i = 0; i < 5; i++) {
+        server.addExisting('00000000-0000-4000-8000-00000000000$i', 'نفر $i', [
+          remoteVoiceprint('v$i', [1, 0, 0, 0]),
+        ]);
+      }
+      final repo = await open();
+      final paged = SyncEngine(
+        repository: repo,
+        api: server,
+        pageSize: 2,
+        random: Random(1),
+        now: () => clock,
+      );
+      expect((await paged.syncOnce()).pulled, 5);
+      expect(server.changeCalls, 3);
+      final again = await paged.syncOnce();
+      expect(again.pulled, 0, reason: 'nothing changed after the cursor');
+    },
+  );
 
-  test('a conflict is merged: the local edit lands on the server version', () async {
-    final repo = await open();
-    final p = await repo.create(
-      name: 'علی',
-      consentAt: DateTime.utc(2026, 11, 5),
-      consentVersion: kSpeakerConsentVersion,
-    );
-    await engine(repo).syncOnce();
-    // Another phone adds a sample, this phone renames offline.
-    server.profiles[p.clientId] = RemoteProfile(
-      clientId: p.clientId,
-      displayName: 'علی',
-      visibility: 'private',
-      version: 5,
-      changeSeq: ++server.seq,
-      deleted: false,
-      mine: true,
-      voiceprints: [remoteVoiceprint('other', [0, 1, 0, 0])],
-    );
-    await repo.update(p.clientId, name: 'علی‌اکبر');
+  test(
+    'a conflict is merged: the local edit lands on the server version',
+    () async {
+      final repo = await open();
+      final p = await repo.create(
+        name: 'علی',
+        consentAt: DateTime.utc(2026, 11, 5),
+        consentVersion: kSpeakerConsentVersion,
+      );
+      await engine(repo).syncOnce();
+      // Another phone adds a sample, this phone renames offline.
+      server.profiles[p.clientId] = RemoteProfile(
+        clientId: p.clientId,
+        displayName: 'علی',
+        visibility: 'private',
+        version: 5,
+        changeSeq: ++server.seq,
+        deleted: false,
+        mine: true,
+        voiceprints: [
+          remoteVoiceprint('other', [0, 1, 0, 0]),
+        ],
+      );
+      await repo.update(p.clientId, name: 'علی‌اکبر');
 
-    final outcome = await engine(repo).syncOnce();
+      final outcome = await engine(repo).syncOnce();
 
-    expect(outcome.ok, isTrue);
-    expect(server.profiles[p.clientId]!.displayName, 'علی‌اکبر');
-    expect(server.profiles[p.clientId]!.version, 6);
-    expect(
-      (await repo.voiceprints(p.clientId)).map((v) => v.clientId),
-      contains('other'),
-      reason: 'the other phone\'s sample is kept',
-    );
-    expect(await repo.pendingCount(), 0);
-  });
+      expect(outcome.ok, isTrue);
+      expect(server.profiles[p.clientId]!.displayName, 'علی‌اکبر');
+      expect(server.profiles[p.clientId]!.version, 6);
+      expect(
+        (await repo.voiceprints(p.clientId)).map((v) => v.clientId),
+        contains('other'),
+        reason: 'the other phone\'s sample is kept',
+      );
+      expect(await repo.pendingCount(), 0);
+    },
+  );
 
   test('a person deleted elsewhere beats a local edit', () async {
     final repo = await open();
@@ -250,19 +260,22 @@ void main() {
     expect((await repo.person(p.clientId))!.name, 'علی محلی');
   });
 
-  test('deleting reaches the server and other phones see a tombstone', () async {
-    final repo = await open();
-    final p = await repo.create(name: 'علی');
-    await engine(repo).syncOnce();
+  test(
+    'deleting reaches the server and other phones see a tombstone',
+    () async {
+      final repo = await open();
+      final p = await repo.create(name: 'علی');
+      await engine(repo).syncOnce();
 
-    await repo.delete(p.clientId);
-    expect(await repo.person(p.clientId), isNull);
-    expect(await repo.pendingCount(), 1);
-    await engine(repo).syncOnce();
+      await repo.delete(p.clientId);
+      expect(await repo.person(p.clientId), isNull);
+      expect(await repo.pendingCount(), 1);
+      await engine(repo).syncOnce();
 
-    expect(server.profiles[p.clientId]!.deleted, isTrue);
-    expect(await repo.pendingCount(), 0);
-  });
+      expect(server.profiles[p.clientId]!.deleted, isTrue);
+      expect(await repo.pendingCount(), 0);
+    },
+  );
 
   test('a person the server never saw is deleted without a request', () async {
     final repo = await open();

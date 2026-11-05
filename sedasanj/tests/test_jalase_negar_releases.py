@@ -690,6 +690,28 @@ async def test_update_check_follows_compatibility_and_revocation(env: Env) -> No
 
 
 @needs_database
+async def test_latest_release_is_public_and_follows_revocation(env: Env) -> None:
+    empty = await env.client.get("/v1/jalase-negar/android/latest")
+    assert empty.status_code == 200 and empty.json() == {"release": None}
+
+    low = (await env.upload(5)).json()
+    high = (await env.upload(7)).json()
+    await env.publish(low["id"])
+    await env.publish(high["id"])
+
+    latest = await env.client.get("/v1/jalase-negar/android/latest")
+    release = latest.json()["release"]
+    assert latest.headers["cache-control"] == "no-store"
+    assert release["id"] == high["id"] and release["version"] == "1.0.7"
+    assert release["download_path"] == f"/v1/jalase-negar/android/releases/{high['id']}/download"
+    assert release["size"] > 0 and len(release["sha256"]) == 64
+
+    await env.revoke(high["id"])
+    fallback = await env.client.get("/v1/jalase-negar/android/latest")
+    assert fallback.json()["release"]["id"] == low["id"]
+
+
+@needs_database
 async def test_update_check_validates_input(env: Env) -> None:
     assert (await env.check(code=0)).status_code == 422
     assert (await env.check(abis="a;b")).status_code == 422

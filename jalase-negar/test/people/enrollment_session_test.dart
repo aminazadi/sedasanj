@@ -68,41 +68,43 @@ void main() {
     expect(p.requiredCount, 1);
   });
 
-  test('accepted recordings are stored one by one; refused ones are not',
-      () async {
-    final (db, _) = await openTestDb();
-    final repo = repoFor(db);
-    final person = await repo.create(name: 'علی');
-    final recorder = FakeRecorder();
-    final embedder = FakeEmbedder();
-    var quality = _short;
-    final session = EnrollmentSession(
-      personId: person.clientId,
-      prompts: prompts,
-      recorder: recorder,
-      embedder: embedder,
-      repository: repo,
-      assess: (_) => quality,
-    );
+  test(
+    'accepted recordings are stored one by one; refused ones are not',
+    () async {
+      final (db, _) = await openTestDb();
+      final repo = repoFor(db);
+      final person = await repo.create(name: 'علی');
+      final recorder = FakeRecorder();
+      final embedder = FakeEmbedder();
+      var quality = _short;
+      final session = EnrollmentSession(
+        personId: person.clientId,
+        prompts: prompts,
+        recorder: recorder,
+        embedder: embedder,
+        repository: repo,
+        assess: (_) => quality,
+      );
 
-    await session.start();
-    expect(session.state.value.phase, EnrollmentPhase.recording);
-    expect(await session.stop(), isFalse);
-    expect(session.state.value.message, isNotEmpty);
-    expect(await repo.voiceprints(person.clientId), isEmpty);
-    expect(session.canFinish, isFalse);
+      await session.start();
+      expect(session.state.value.phase, EnrollmentPhase.recording);
+      expect(await session.stop(), isFalse);
+      expect(session.state.value.message, isNotEmpty);
+      expect(await repo.voiceprints(person.clientId), isEmpty);
+      expect(session.canFinish, isFalse);
 
-    quality = _good;
-    await session.start();
-    expect(await session.stop(), isTrue);
-    expect(session.state.value.index, 1);
-    await session.start();
-    expect(await session.stop(), isTrue);
-    expect(await repo.voiceprints(person.clientId), hasLength(2));
-    expect(session.canFinish, isTrue);
-    expect(await repo.pendingCount(), greaterThan(0));
-    await session.dispose();
-  });
+      quality = _good;
+      await session.start();
+      expect(await session.stop(), isTrue);
+      expect(session.state.value.index, 1);
+      await session.start();
+      expect(await session.stop(), isTrue);
+      expect(await repo.voiceprints(person.clientId), hasLength(2));
+      expect(session.canFinish, isTrue);
+      expect(await repo.pendingCount(), greaterThan(0));
+      await session.dispose();
+    },
+  );
 
   test('a missing embedding refuses the sample and tells what to do', () async {
     final (db, _) = await openTestDb();

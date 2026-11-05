@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,7 +61,11 @@ try {
     }, "user access forms");
     const report = JSON.parse(result);
     assert.equal(report.passed, true, report.error);
-    console.log(`PASS ${width}px: roles, sensitive proof, synced extensions, custom values, and errors`);
+    if (process.env.USER_ACCESS_SCREENSHOTS) {
+      const screenshot = await cdp("Page.captureScreenshot");
+      await writeFile(join(process.env.USER_ACCESS_SCREENSHOTS, `access-${width}.png`), Buffer.from(screenshot.data, "base64"));
+    }
+    console.log(`PASS ${width}px: role and section access, project switches, protected owner, no horizontal overflow, and extensions`);
   }
 } finally {
   socket?.close();

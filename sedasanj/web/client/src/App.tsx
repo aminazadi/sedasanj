@@ -1,3 +1,5 @@
+import { canVisitPanel, panelHome } from "./lib/panelAccess";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
@@ -67,6 +69,11 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );
+  }
+
+  if (!canVisitPanel(session, location.pathname, location.search)) {
+    if (location.pathname === "/") return <Navigate to={panelHome(session)} replace />;
+    return <Layout><div className="card space-y-3" role="alert"><h1 className="text-xl font-bold">دسترسی این بخش فعال نیست</h1><p>از مدیر سازمان بخواهید دسترسی این بخش را برای حساب شما بررسی کند.</p><Link className="btn-ghost" to="/profile">رفتن به پروفایل</Link></div></Layout>;
   }
 
   const operator = isOperator(session.role);

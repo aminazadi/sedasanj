@@ -1,3 +1,4 @@
+import { canVisitPanel, hasPanelAccess } from "../lib/panelAccess";
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconifyIcon } from "@iconify/react";
@@ -230,7 +231,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
 
       <nav className={`sidebar-scroll flex-1 overflow-y-auto py-4 ${collapsed ? "px-2" : "px-3"}`} aria-label="منوی اصلی">
         {NAVIGATION.map((group) => {
-          const items = group.items.filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin));
+          const items = group.items.filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin) && canVisitPanel(session, item.to));
           if (!items.length) return null;
           return (
             <div className={collapsed ? "mb-4 border-b border-white/10 pb-4 last:border-b-0" : "mb-6"} key={group.label}>
@@ -364,8 +365,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{orgAdmin && !isAssistantPage ? <ModuleUpdateBanner /> : null}{children}</main>
-        {!isAssistantPage ? <QuickAssistantWidget /> : null}
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{orgAdmin && hasPanelAccess(session, "pbx_servers") && !isAssistantPage ? <ModuleUpdateBanner /> : null}{children}</main>
+        {!isAssistantPage && hasPanelAccess(session, "assistant") ? <QuickAssistantWidget /> : null}
       </div>
     </>
   );
