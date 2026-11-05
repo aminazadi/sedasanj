@@ -45,6 +45,16 @@ class ModelsScreen extends ConsumerWidget {
                 for (final item in state.byKind(ModelKind.denoiser))
                   _ModelCard(item: item),
                 const _SectionHeader(
+                  title: 'تشخیص گوینده',
+                  subtitle:
+                      'برای «افراد و صدا»: نوشتن نام هر گوینده کنار متن، آفلاین روی گوشی',
+                ),
+                for (final item in [
+                  ...state.byKind(ModelKind.speakerEmbedding),
+                  ...state.byKind(ModelKind.speakerSegmentation),
+                ])
+                  _ModelCard(item: item),
+                const _SectionHeader(
                   title: 'مدل‌های شنوا (گفتار به متن)',
                   subtitle:
                       'برای بالاترین دقت «شنوا کوچیک ۱۱۴M» را انتخاب کنید؛ مدل‌های سبک‌تر سریع‌ترند',

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../speaker/speaker_matcher.dart';
+
 const kIncompleteLiveTranscriptCode = 'JN-ASR-0001';
 
 /// Events a live engine reports while a recording is in progress.
@@ -19,11 +21,25 @@ class LiveUtterance extends LiveEvent {
     required this.startMs,
     required this.endMs,
     required this.text,
+    this.speaker,
+    this.speaker2,
+    this.overlap = false,
+    this.speakerConfidence,
   });
 
   final int startMs;
   final int endMs;
   final String text;
+
+  /// Who spoke, when speaker identification is on.
+  final SpeakerIdentity? speaker;
+
+  /// The second voice of an overlapping stretch.
+  final SpeakerIdentity? speaker2;
+  final bool overlap;
+
+  /// 0..100, null when speakers were not identified.
+  final int? speakerConfidence;
 }
 
 /// Speech that was detected but not decoded because the engine had fallen too

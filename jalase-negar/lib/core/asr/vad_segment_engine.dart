@@ -7,6 +7,10 @@ import 'dart:typed_data';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../models/model_spec.dart';
+import '../speaker/sherpa_speaker.dart';
+import '../speaker/speaker_labeler.dart';
+import '../speaker/speaker_matcher.dart';
+import '../../features/people/data/person.dart';
 import 'asr_common.dart';
 import 'live_asr_engine.dart';
 import 'live_pipeline.dart';
@@ -31,6 +35,9 @@ class VadSegmentConfig {
     this.numThreads = 2,
     this.minSilenceSeconds = kSileroMinSilenceSeconds,
     this.maxBacklogMs = 60000,
+    this.speakerEmbeddingPath = '',
+    this.speakerSegmentationPath = '',
+    this.enrolled = const [],
   });
 
   final String vadModelPath;
@@ -47,6 +54,15 @@ class VadSegmentConfig {
   /// Same default as the post-recording transcriber so both cut speech alike.
   final double minSilenceSeconds;
   final int maxBacklogMs;
+
+  /// Speaker identification: the embedding model, the optional overlap-aware
+  /// segmentation model, and the people to recognise. Empty means off.
+  final String speakerEmbeddingPath;
+  final String speakerSegmentationPath;
+  final List<Map<String, Object?>> enrolled;
+
+  bool get identifiesSpeakers =>
+      speakerEmbeddingPath.isNotEmpty && enrolled.isNotEmpty;
 }
 
 /// Live transcription with the same models as the post-recording transcript:
@@ -218,6 +234,8 @@ void _liveEntry(_Init init) {
 
   sherpa.OfflineRecognizer? recognizer;
   LivePipeline? pipeline;
+  SherpaVoiceEmbedder? embedder;
+  SherpaDiarizer? diarizer;
   try {
     sherpa.initBindings();
     final config = init.config;
@@ -246,10 +264,32 @@ void _liveEntry(_Init init) {
       numThreads: math.max(1, config.numThreads),
     );
     recognizer = created;
+    SpeakerLabeler? labeler;
+    if (config.identifiesSpeakers) {
+      // Speaker identification is optional: if its models do not load the
+      // transcript simply has no names.
+      embedder = SherpaVoiceEmbedder.tryCreate(config.speakerEmbeddingPath);
+      if (embedder != null) {
+        diarizer = config.speakerSegmentationPath.isEmpty
+            ? null
+            : SherpaDiarizer.tryCreate(
+                segmentationModelPath: config.speakerSegmentationPath,
+                embeddingModelPath: config.speakerEmbeddingPath,
+              );
+        labeler = SpeakerLabeler(
+          diarizer: diarizer,
+          embedder: embedder,
+          matcher: SpeakerMatcher([
+            for (final e in config.enrolled) EnrolledVoice.fromMap(e),
+          ]),
+        );
+      }
+    }
     pipeline = LivePipeline(
       vadFactory: () => _SherpaVad(config),
       decoder: _SherpaDecoder(created),
       maxBacklogMs: config.maxBacklogMs,
+      labeler: labeler,
     );
     out.send(const LiveReady());
   } catch (_) {
@@ -261,6 +301,10 @@ void _liveEntry(_Init init) {
     );
     recognizer?.free();
     recognizer = null;
+    embedder?.free();
+    embedder = null;
+    diarizer?.free();
+    diarizer = null;
     pipeline = null;
   }
 
@@ -277,6 +321,10 @@ void _liveEntry(_Init init) {
   void shutdown() {
     recognizer?.free();
     recognizer = null;
+    embedder?.free();
+    embedder = null;
+    diarizer?.free();
+    diarizer = null;
     pipeline = null;
     out.send(const LiveDone());
     inbox.close();

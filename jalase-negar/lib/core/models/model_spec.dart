@@ -1,5 +1,15 @@
 /// What a model is used for in the pipeline.
-enum ModelKind { asr, vad, denoiser }
+enum ModelKind {
+  asr,
+  vad,
+  denoiser,
+
+  /// Turns a voice into an embedding (who is speaking).
+  speakerEmbedding,
+
+  /// Finds speaker changes and overlapping speech.
+  speakerSegmentation,
+}
 
 enum AsrArchitecture { nemoCtc, transducer }
 

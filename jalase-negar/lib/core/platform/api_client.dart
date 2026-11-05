@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../../features/meetings/data/meeting.dart';
+import '../../features/people/data/speaker_payload.dart';
+import 'speaker_api.dart';
 
 /// Typed API failure with a Persian message that names the next action.
 class ApiException implements Exception {
@@ -10,6 +12,7 @@ class ApiException implements Exception {
     this.statusCode,
     this.requiresReconnect = false,
     this.missingSeqs = const [],
+    this.details = const {},
   });
 
   final String message;
@@ -21,6 +24,10 @@ class ApiException implements Exception {
 
   /// Chunk numbers the server is still missing (`meeting_incomplete_chunks`).
   final List<int> missingSeqs;
+
+  /// Extra fields of the server's error body (e.g. `current` of a speaker
+  /// profile conflict).
+  final Map<String, Object?> details;
 
   /// Worth retrying later without any user action.
   bool get retryable =>
@@ -131,10 +138,12 @@ ApiException mapDioError(DioException e) {
   final status = e.response?.statusCode;
   String? code;
   var missing = const <int>[];
+  var details = const <String, Object?>{};
   final data = e.response?.data;
   if (data is Map && data['error'] is Map) {
     final error = data['error'] as Map;
     code = error['code']?.toString();
+    details = {for (final e in error.entries) e.key.toString(): e.value};
     final rawMissing = error['missing_seqs'];
     if (rawMissing is List) {
       missing = [
@@ -220,15 +229,49 @@ ApiException mapDioError(DioException e) {
         statusCode: status,
       );
   }
+  final speaker = _speakerError(status, code, details);
+  if (speaker != null) return speaker;
   return ApiException(
     message: 'خطای سرور (${status.toString()})؛ کمی بعد دوباره تلاش کنید.',
     code: code,
     statusCode: status,
+    details: details,
+  );
+}
+
+/// Persian explanations of the speaker-profile errors, each naming the next
+/// action (see the `speaker_*` help articles).
+ApiException? _speakerError(
+  int status,
+  String? code,
+  Map<String, Object?> details,
+) {
+  final message = switch (code) {
+    'speaker_profile_conflict' =>
+      'این فرد روی دستگاه دیگری تغییر کرده است؛ اپ تغییرات را ادغام می‌کند و دوباره می‌فرستد.',
+    'speaker_profile_not_found' =>
+      'این فرد روی سرور پیدا نشد؛ فهرست افراد را تازه کنید.',
+    'speaker_profile_limit' =>
+      'تعداد افراد یا نمونه‌های صدا به سقف رسیده است؛ مواردِ بی‌استفاده را حذف کنید.',
+    'speaker_consent_required' =>
+      'برای ذخیره‌ی ردصدا باید رضایت همان فرد ثبت شود؛ مرحله‌ی رضایت‌نامه را کامل کنید و تاریخ و ساعت گوشی را بررسی کنید.',
+    'speaker_voiceprint_invalid' =>
+      'ردصدای ارسالی معتبر نیست؛ نمونه‌ی صدا را دوباره ضبط کنید.',
+    'speaker_storage_unavailable' =>
+      'ذخیره‌ی امن ردصدا روی سرور آماده نیست؛ چند دقیقه بعد دوباره تلاش می‌شود، و اگر ادامه داشت به مدیر صداسنج اطلاع دهید.',
+    _ => null,
+  };
+  if (message == null) return null;
+  return ApiException(
+    message: message,
+    code: code,
+    statusCode: status,
+    details: details,
   );
 }
 
 /// Thin SedaSanj API client. It never logs headers or bodies.
-class ApiClient implements MeetingUploadApi {
+class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
   ApiClient({required String serverUrl, String? token, Dio? dio})
     : _dio =
           dio ??
@@ -356,23 +399,66 @@ class ApiClient implements MeetingUploadApi {
     String? asrIdentity,
   }) async {
     try {
+      final payload = buildTranscriptPayload(segments);
       await _dio.put<Object?>(
         '/v1/meetings/$meetingId/transcript',
         data: {
-          'segments': [
-            for (final s in segments)
-              {
-                't_start_ms': s.startMs,
-                't_end_ms': s.endMs < s.startMs ? s.startMs : s.endMs,
-                'text': s.text.length > 4000
-                    ? s.text.substring(0, 4000)
-                    : s.text,
-              },
-          ],
+          'segments': payload.segments,
           'asr_identity': ?asrIdentity,
+          if (payload.speakers.isNotEmpty) 'speakers': payload.speakers,
         },
         options: Options(sendTimeout: const Duration(minutes: 2)),
       );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  @override
+  Future<RemoteChanges> changes({required int cursor, int? limit}) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/meetings/speaker-profiles/changes',
+        queryParameters: {'cursor': cursor, 'limit': ?limit},
+      );
+      final body = res.data!;
+      return RemoteChanges(
+        items: [
+          for (final item in (body['items'] as List? ?? const []))
+            RemoteProfile.fromJson(item as Map<String, dynamic>),
+        ],
+        nextCursor: (body['next_cursor'] as num).toInt(),
+        hasMore: body['has_more'] == true,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  @override
+  Future<RemoteProfile> putProfile(
+    String clientId,
+    ProfilePutRequest request,
+  ) async {
+    try {
+      final res = await _dio.put<Map<String, dynamic>>(
+        '/v1/meetings/speaker-profiles/$clientId',
+        data: request.toJson(),
+        options: Options(sendTimeout: const Duration(minutes: 2)),
+      );
+      return RemoteProfile.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  @override
+  Future<RemoteProfile> deleteProfile(String clientId) async {
+    try {
+      final res = await _dio.delete<Map<String, dynamic>>(
+        '/v1/meetings/speaker-profiles/$clientId',
+      );
+      return RemoteProfile.fromJson(res.data!);
     } on DioException catch (e) {
       throw mapDioError(e);
     }

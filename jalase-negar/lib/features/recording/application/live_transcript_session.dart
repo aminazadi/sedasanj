@@ -143,6 +143,12 @@ class LiveTranscriptSession {
               confidence: turn.confidence,
               timestampSource:
                   turn.timestampSource ?? TimestampSource.sileroVad,
+              speaker: turn.speaker,
+              speakerPersonId: turn.speakerPersonId,
+              speaker2: turn.speaker2,
+              speaker2PersonId: turn.speaker2PersonId,
+              overlap: turn.overlap,
+              speakerConfidence: turn.speakerConfidence,
             ),
         ]);
       }
@@ -181,17 +187,33 @@ class LiveTranscriptSession {
             endMs: event.endMs,
             text: event.text,
             timestampSource: TimestampSource.sileroVad,
+            speaker: event.speaker?.name,
+            speakerPersonId: event.speaker?.personId,
+            speaker2: event.speaker2?.name,
+            speaker2PersonId: event.speaker2?.personId,
+            overlap: event.overlap,
+            speakerConfidence: event.speakerConfidence,
           ),
         );
-        _unsaved.add(
-          Segment(
-            channel: 0,
-            startMs: event.startMs,
-            endMs: event.endMs,
-            text: event.text,
-          ),
+        final segment = Segment(
+          channel: 0,
+          startMs: event.startMs,
+          endMs: event.endMs,
+          text: event.text,
+          speaker: event.speaker?.name,
+          speakerPersonId: event.speaker?.personId,
+          speaker2: event.speaker2?.name,
+          speaker2PersonId: event.speaker2?.personId,
+          overlap: event.overlap,
+          speakerConfidence: event.speakerConfidence,
         );
-        final lines = [...current.lines, event.text];
+        _unsaved.add(segment);
+        // The panel shows `نام: متن`; a line spoken over another voice is
+        // marked so it is read with care.
+        final shown = event.overlap
+            ? '${segment.labeledText} (هم‌زمان)'
+            : segment.labeledText;
+        final lines = [...current.lines, shown];
         if (lines.length > maxLines) {
           lines.removeRange(0, lines.length - maxLines);
         }

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/onboarding/tour_overlay.dart';
 import '../features/onboarding/tour_step.dart';
+import '../features/people/application/people_providers.dart';
 import '../features/upload/upload_controller.dart';
 import 'theme.dart';
 import 'widgets/brand_logo.dart';
@@ -26,6 +27,8 @@ class ShellScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Keeps the upload queue alive for the whole app session.
     ref.watch(uploadQueueProvider.select((s) => s.running));
+    // Keeps people sync alive for the whole session.
+    ref.watch(speakerSyncProvider.select((s) => s.running));
     final index = _currentIndex(context);
 
     return Scaffold(

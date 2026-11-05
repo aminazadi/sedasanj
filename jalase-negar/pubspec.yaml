@@ -36,11 +36,13 @@ dependencies:
   flutter_svg: ^2.3.0
   package_info_plus: ^9.0.1
   just_audio: ^0.10.6
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.4.0+3
 
 flutter:
   uses-material-design: true

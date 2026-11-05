@@ -43,6 +43,52 @@ abstract final class ModelCatalog {
     ],
   );
 
+  /// Version stamped on voiceprints made with [speakerEmbedding]. Bump it when
+  /// the file behind the id changes, so old voiceprints are not compared with
+  /// embeddings of a different model.
+  static const String speakerEmbeddingVersion = '1';
+
+  static const String speakerEmbeddingId = 'campplus-sv-zh-en-16k';
+
+  /// 3D-Speaker CAM++ (Chinese + English training data, Apache-2.0).
+  /// ⚠ needs lab confirmation: no Persian benchmark exists for it; accuracy
+  /// on Persian speech must be measured before trusting the default
+  /// thresholds.
+  static const ModelSpec speakerEmbedding = ModelSpec(
+    id: speakerEmbeddingId,
+    kind: ModelKind.speakerEmbedding,
+    nameFa: 'تشخیص گوینده (CAM++)',
+    descriptionFa:
+        'پیش‌نیاز «افراد و صدا»؛ ردصدا را از گفتار می‌سازد تا گویندگان شناخته شوند',
+    repoUrl: 'https://github.com/k2-fsa/sherpa-onnx',
+    files: [
+      ModelFileSpec(
+        url:
+            'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
+        filename: 'speaker_embedding.onnx',
+        sizeBytes: 28281164,
+      ),
+    ],
+  );
+
+  /// pyannote segmentation 3.0 (MIT), int8 export by sherpa-onnx.
+  static const ModelSpec speakerSegmentation = ModelSpec(
+    id: 'pyannote-segmentation-3-0',
+    kind: ModelKind.speakerSegmentation,
+    nameFa: 'تشخیص هم‌پوشانی گفتار (pyannote)',
+    descriptionFa:
+        'اختیاری؛ تغییر گوینده و صحبت هم‌زمان دو نفر را در جلسه تشخیص می‌دهد',
+    repoUrl: 'https://huggingface.co/pyannote/segmentation-3.0',
+    files: [
+      ModelFileSpec(
+        url:
+            'https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx',
+        filename: 'model.int8.onnx',
+        sizeBytes: 1540506,
+      ),
+    ],
+  );
+
   static ModelSpec _shenava({
     required String id,
     required String repo,
@@ -140,7 +186,17 @@ abstract final class ModelCatalog {
     ),
   ];
 
-  static final List<ModelSpec> all = [sileroVad, gtcrnDenoiser, ...asrModels];
+  static final List<ModelSpec> speakerModels = [
+    speakerEmbedding,
+    speakerSegmentation,
+  ];
+
+  static final List<ModelSpec> all = [
+    sileroVad,
+    gtcrnDenoiser,
+    ...speakerModels,
+    ...asrModels,
+  ];
 
   static ModelSpec byId(String id) => all.firstWhere((m) => m.id == id);
 }
