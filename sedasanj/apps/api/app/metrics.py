@@ -22,6 +22,11 @@ jalase_negar_update_checks_total = Counter(
 jalase_negar_download_total = Counter(
     "cbi_jalase_negar_download_total", "Jalase-Negar APK download requests by outcome", ["result"]
 )
+ml_model_events_total = Counter(
+    "cbi_ml_model_events_total",
+    "ML model registry events by action and outcome",
+    ["action", "result"],
+)
 queue_depth = Gauge("cbi_queue_depth", "Pending jobs per queue", ["queue"])
 job_wait_seconds = Histogram("cbi_job_wait_seconds", "Time from enqueue to claim", ["kind"])
 outbox_dispatch_seconds = Histogram(

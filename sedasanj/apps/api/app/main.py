@@ -39,6 +39,7 @@ from app.routers import (
     jalase_negar_releases,
     kpi,
     meetings,
+    ml_models,
     module_updates,
     organization_data,
     organization_memories,
@@ -120,6 +121,7 @@ PRIVATE_OPENAPI_TAGS = frozenset(
         "organization memory",
         "meetings",
         "jalase-negar updates",
+        "ml models",
     }
 )
 
@@ -285,6 +287,20 @@ def create_app() -> FastAPI:
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
         log_context(request_id=request_id, tenant_id=None, call_id=None)
+        if request.method == "POST" and request.url.path == "/v1/ml/models":
+            ml_limit = get_settings().max_ml_model_bytes + 1024 * 1024
+            declared_ml = request.headers.get("content-length", "")
+            if declared_ml.isdigit() and int(declared_ml) > ml_limit:
+                return JSONResponse(
+                    status_code=422,
+                    content=error_body(
+                        "ml_model_invalid",
+                        "the model is larger than the allowed size; export a smaller model",
+                        False,
+                        request_id,
+                    ),
+                    headers={"X-Request-ID": request_id},
+                )
         if request.method == "POST" and request.url.path == "/v1/admin/jalase-negar/releases":
             # Multipart bodies are spooled before the handler runs, so refuse oversized ones here.
             limit = get_settings().max_jalase_negar_apk_bytes + 1024 * 1024
@@ -343,6 +359,7 @@ def create_app() -> FastAPI:
         ai_instructions,
         module_updates,
         jalase_negar_releases,
+    ml_models,
         help,
         site_pages,
         admin,

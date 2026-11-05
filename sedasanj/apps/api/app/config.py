@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -240,6 +241,13 @@ class Settings(BaseSettings):
     jalase_negar_aapt2_path: str = "aapt2"
     jalase_negar_apksigner_path: str = "apksigner"
     jalase_negar_orphan_grace_minutes: int = Field(default=120, ge=10, le=10_080)
+    # ML model registry (`ml-models/` in the main bucket). Publishing is closed until the platform
+    # tenant that owns the publisher API key is named here.
+    ml_publisher_tenant_id: UUID | None = None
+    max_ml_model_bytes: int = Field(default=512 * 1024 * 1024, ge=1024)
+    ml_model_prev_retention_hours: int = Field(default=72, ge=0, le=8_760)
+    ml_publish_per_hour: int = Field(default=20, ge=1, le=1_000)
+    ml_model_orphan_grace_minutes: int = Field(default=120, ge=10, le=10_080)
     max_archive_compression_ratio: int = Field(default=100, ge=1, le=1000)
     min_billable_seconds: int = 30
     duration_mismatch_tolerance: float = Field(default=0.2, ge=0.0, le=1.0)

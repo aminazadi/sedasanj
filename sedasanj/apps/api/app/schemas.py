@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -1451,6 +1452,14 @@ class StaffSensitiveAction(BaseModel):
     totp_code: str | None = Field(default=None, pattern=r"^[0-9]{6}$")
 
 
+class MlModelRolloutRequest(StaffSensitiveAction):
+    rollout_percent: int = Field(ge=0, le=100)
+
+
+class MlModelPinRequest(StaffSensitiveAction):
+    pinned: bool
+
+
 class StaffPasswordReset(StaffSensitiveAction):
     password: str = Field(min_length=8, max_length=128)
 
@@ -2126,6 +2135,63 @@ class MeetingSpeakerPatch(BaseModel):
 class MeetingPatch(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     speakers: list[MeetingSpeakerPatch] | None = Field(default=None, max_length=64)
+
+
+MlModelChannel = Literal["latest", "champion"]
+MlModelStatus = Literal["uploading", "ready", "revoked", "deleted"]
+
+
+class MlModelMetadata(BaseModel):
+    """Metadata a publisher declares next to the ONNX file; the server re-checks the hash."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
+    version: str = Field(pattern=r"^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$")
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    dim: int | None = Field(default=None, ge=1, le=65_536)
+    sample_rate: int | None = Field(default=None, ge=1_000, le=192_000)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    dataset_manifest_hash: str | None = Field(default=None, max_length=128)
+    training_run_id: str | None = Field(default=None, max_length=128)
+    signature: str | None = Field(default=None, max_length=1024)
+
+    @model_validator(mode="after")
+    def _bounded_metrics(self) -> MlModelMetadata:
+        self.sha256 = self.sha256.lower()
+        if len(json.dumps(self.metrics, default=str)) > 20_000:
+            raise ValueError("metrics must be smaller than 20 kB")
+        return self
+
+
+class MlModelOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    kind: str
+    version: str
+    channel: MlModelChannel
+    status: MlModelStatus
+    sha256: str
+    size_bytes: int
+    dim: int | None
+    sample_rate: int | None
+    metrics: dict[str, Any]
+    dataset_manifest_hash: str | None
+    training_run_id: str | None
+    signature: str | None
+    rollout_percent: int
+    pinned: bool
+    created_at: datetime
+    ready_at: datetime | None
+    promoted_at: datetime | None
+    superseded_at: datetime | None
+    revoked_at: datetime | None
+    deleted_at: datetime | None
+
+
+class MlModelPublishOut(MlModelOut):
+    already_published: bool = False
 
 
 JalaseNegarReleaseStatus = Literal["draft", "published", "revoked"]

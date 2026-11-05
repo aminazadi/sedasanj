@@ -345,6 +345,38 @@ export interface JalaseNegarReleasePage extends Page<JalaseNegarRelease> {
   latest_published_code: number | null;
 }
 
+export type MlModelChannel = "latest" | "champion";
+export type MlModelStatus = "uploading" | "ready" | "revoked" | "deleted";
+
+export interface MlModelRelease {
+  id: string;
+  kind: string;
+  version: string;
+  channel: MlModelChannel;
+  status: MlModelStatus;
+  sha256: string;
+  size_bytes: number;
+  dim: number | null;
+  sample_rate: number | null;
+  metrics: Record<string, unknown>;
+  dataset_manifest_hash: string | null;
+  training_run_id: string | null;
+  signature: string | null;
+  rollout_percent: number;
+  pinned: boolean;
+  created_at: string;
+  ready_at: string | null;
+  promoted_at: string | null;
+  superseded_at: string | null;
+  revoked_at: string | null;
+  deleted_at: string | null;
+}
+
+export interface MlModelReleasePage extends Page<MlModelRelease> {
+  kinds: string[];
+  prev_retention_hours: number;
+}
+
 export interface ModuleZipInspection {
   rawname: string;
   version: string;

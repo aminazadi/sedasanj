@@ -58,7 +58,10 @@ const NAVIGATION: NavigationGroup[] = [
   },
   {
     label: "جلسه‌نگار اندروید",
-    items: [{ to: "/jalase-negar-releases", label: "نسخه‌های جلسه‌نگار", icon: icons.upload }],
+    items: [
+      { to: "/jalase-negar-releases", label: "نسخه‌های جلسه‌نگار", icon: icons.upload },
+      { to: "/model-releases", label: "مدل‌های یادگیری", icon: icons.upload },
+    ],
   },
   {
     label: "مرکز راهنما",

@@ -12,7 +12,7 @@ from app.db import dispose_engine
 from app.logging import configure_logging
 from app.metrics import start_metrics_server
 from app.routers.jalase_negar_releases import sweep_orphan_files
-from app.services import outbox, queue
+from app.services import ml_models, outbox, queue
 from app.services.maintenance import refresh_failure_gauge, refresh_queue_depth
 from app.services.scheduled_reports import schedule_due_reports
 
@@ -31,6 +31,10 @@ async def dispatch_tick(ctx: dict[str, Any]) -> str:
             await sweep_orphan_files()
         except Exception:  # noqa: BLE001 - storage may be down; the outbox must keep flowing
             logging.getLogger(__name__).warning("jalase_negar_apk_sweep_error")
+        try:
+            await ml_models.sweep()
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).warning("ml_model_sweep_error")
     delivered = await outbox.dispatch_pending()
     ctx["last_dispatch"] = now
     if now - float(ctx.get("last_metrics", 0.0)) >= 15.0:

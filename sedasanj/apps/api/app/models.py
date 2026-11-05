@@ -2694,6 +2694,52 @@ class JalaseNegarRelease(Base):
     )
 
 
+class MlModelRelease(Base):
+    """One published ML model artifact in `ml-models/`; global, never copied into a tenant database."""
+
+    __tablename__ = "ml_model_releases"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    artifact_key: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    dim: Mapped[int | None] = mapped_column(Integer)
+    sample_rate: Mapped[int | None] = mapped_column(Integer)
+    metrics: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    dataset_manifest_hash: Mapped[str | None] = mapped_column(String(128))
+    training_run_id: Mapped[str | None] = mapped_column(String(128))
+    signature: Mapped[str | None] = mapped_column(Text)
+    rollout_percent: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    published_by_key: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    ready_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    promoted_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    superseded_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    deleted_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        UniqueConstraint("kind", "version", name="ml_model_releases_kind_version_key"),
+        CheckConstraint("channel IN ('latest','champion')", name="ml_model_releases_channel_check"),
+        CheckConstraint(
+            "status IN ('uploading','ready','revoked','deleted')",
+            name="ml_model_releases_status_check",
+        ),
+        CheckConstraint(
+            "rollout_percent BETWEEN 0 AND 100", name="ml_model_releases_rollout_check"
+        ),
+    )
+
+
 class ModuleInstallation(Base):
     """One FreePBX host running the module, refreshed on every update check."""
 

@@ -1,5 +1,8 @@
 ## 2026-11-05 — AMINAZADI
 
+- Added an ML model registry in the main MinIO (`ml-models/`): GPU servers publish ONNX models with an `ml:publish` integration key (platform tenant, IP allowlist, rate limit, server-checked SHA-256, idempotent per kind and version), the `latest` channel keeps one copy, the `champion` channel keeps the previous version for `ML_MODEL_PREV_RETENTION_HOURS` unless pinned, and staff download models from the admin panel with Range support and audit.
+- Added super-admin promote, rollout, pin, revoke and delete actions for models, the `ml_model_*` and `ml_publish_forbidden` error codes with Persian help, an orphan sweeper, and `scripts/create_ml_publisher_key.py`.
+- Merged the two migration 0103 heads into one with migration 0104.
 - Moved organization backup and restore history to a dedicated page with URL-backed filters, downloads, and links to resume restores.
 - Matched organization data section headings to the panel's dotted title bands.
 - Moved Jalase Negar pairing and device management from the profile to Account Settings for all user roles.

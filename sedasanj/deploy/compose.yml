@@ -182,6 +182,10 @@ services:
       MODULE_RELEASE_SIGNING_KEY: ${MODULE_RELEASE_SIGNING_KEY:-}
       MODULE_RELEASE_SIGNING_KEY_FILE: /module-release-signing/private.seed
       JALASE_NEGAR_APK_CERT_SHA256: ${JALASE_NEGAR_APK_CERT_SHA256:-}
+      ML_PUBLISHER_TENANT_ID: ${ML_PUBLISHER_TENANT_ID:-}
+      MAX_ML_MODEL_BYTES: ${MAX_ML_MODEL_BYTES:-536870912}
+      ML_MODEL_PREV_RETENTION_HOURS: ${ML_MODEL_PREV_RETENTION_HOURS:-72}
+      ML_PUBLISH_PER_HOUR: ${ML_PUBLISH_PER_HOUR:-20}
     volumes:
       - module-release-signing:/module-release-signing
     dns: *external-dns
