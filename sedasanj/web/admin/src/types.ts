@@ -321,6 +321,8 @@ export interface ModuleRelease {
 
 export type JalaseNegarReleaseStatus = "draft" | "published" | "revoked";
 
+export type JalaseNegarReleaseChannel = "stable" | "beta";
+
 export interface JalaseNegarRelease {
   id: string;
   package_name: string;
@@ -335,6 +337,9 @@ export interface JalaseNegarRelease {
   artifact_size: number;
   signing_cert_sha256: string;
   status: JalaseNegarReleaseStatus;
+  rollout_percent: number;
+  min_supported_version_code: number;
+  channel: JalaseNegarReleaseChannel;
   published_at: string | null;
   revoked_at: string | null;
   created_at: string;

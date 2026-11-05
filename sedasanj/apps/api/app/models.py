@@ -2686,6 +2686,13 @@ class JalaseNegarRelease(Base):
     artifact_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     signing_cert_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
+    rollout_percent: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default=text("100")
+    )
+    min_supported_version_code: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    channel: Mapped[str] = mapped_column(String(8), nullable=False, server_default="stable")
     published_at: Mapped[datetime | None] = mapped_column(TSTZ)
     revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_by: Mapped[UUID | None] = mapped_column(
@@ -2699,6 +2706,13 @@ class JalaseNegarRelease(Base):
         UniqueConstraint("version_name", name="jalase_negar_releases_version_name_key"),
         CheckConstraint(
             "status IN ('draft','published','revoked')", name="jalase_negar_releases_status_check"
+        ),
+        CheckConstraint(
+            "rollout_percent BETWEEN 0 AND 100", name="jalase_negar_releases_rollout_check"
+        ),
+        CheckConstraint("channel IN ('stable','beta')", name="jalase_negar_releases_channel_check"),
+        CheckConstraint(
+            "min_supported_version_code >= 0", name="jalase_negar_releases_min_supported_check"
         ),
     )
 

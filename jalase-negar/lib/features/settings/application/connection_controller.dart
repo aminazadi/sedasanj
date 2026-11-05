@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/platform/api_client.dart';
 import '../../../core/platform/connection_store.dart';
@@ -9,7 +10,12 @@ import '../../../core/platform/platform_config.dart';
 import '../../../core/providers.dart';
 import '../../upload/upload_controller.dart';
 
-const kAppVersion = '2.0.0';
+/// The running app's version name, read from the installed package so it can
+/// never drift from pubspec.yaml.
+final appVersionProvider = FutureProvider<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return info.version;
+});
 
 final connectionStoreProvider = FutureProvider<ConnectionStore>((ref) async {
   final db = await ref.watch(appDatabaseProvider.future);
@@ -51,7 +57,7 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
       final paired = await client.pair(
         pairingCode: payload.pairingCode,
         deviceLabel: _deviceLabel(),
-        appVersion: kAppVersion,
+        appVersion: await ref.read(appVersionProvider.future),
         platform: Platform.operatingSystem,
       );
       final info = await ApiClient(

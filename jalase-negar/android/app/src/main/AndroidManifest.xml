@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Self-update: install a verified APK of this app. Android 12+ may then skip the confirmation
+         dialog for updates (USER_ACTION_NOT_REQUIRED); OEM behaviour varies. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"/>
     <application
         android:label="جلسه‌نگار"
         android:name="${applicationName}"
@@ -39,6 +43,9 @@
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="microphone"
+            android:exported="false" />
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
             android:exported="false" />
         <meta-data
             android:name="flutterEmbedding"

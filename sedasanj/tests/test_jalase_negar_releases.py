@@ -250,6 +250,9 @@ def _release(code: int, **overrides: object) -> SimpleNamespace:
         "abis": ["arm64-v8a"],
         "status": "published",
         "signing_cert_sha256": CERT,
+        "rollout_percent": 100,
+        "min_supported_version_code": 0,
+        "channel": "stable",
     }
     values.update(overrides)
     return SimpleNamespace(**values)

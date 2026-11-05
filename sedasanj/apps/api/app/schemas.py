@@ -2168,6 +2168,7 @@ class MeetingPatch(BaseModel):
 
 
 JalaseNegarReleaseStatus = Literal["draft", "published", "revoked"]
+JalaseNegarReleaseChannel = Literal["stable", "beta"]
 
 
 class JalaseNegarReleaseOut(BaseModel):
@@ -2186,6 +2187,9 @@ class JalaseNegarReleaseOut(BaseModel):
     artifact_size: int
     signing_cert_sha256: str
     status: JalaseNegarReleaseStatus
+    rollout_percent: int
+    min_supported_version_code: int
+    channel: JalaseNegarReleaseChannel
     published_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
@@ -2195,6 +2199,9 @@ class JalaseNegarReleaseOut(BaseModel):
 class JalaseNegarReleaseUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     changelog_html: str | None = Field(default=None, max_length=200_000)
+    rollout_percent: int | None = Field(default=None, ge=0, le=100)
+    min_supported_version_code: int | None = Field(default=None, ge=0, le=2_100_000_000)
+    channel: JalaseNegarReleaseChannel | None = None
 
 
 class JalaseNegarUpdateOffer(BaseModel):
@@ -2208,6 +2215,27 @@ class JalaseNegarUpdateOffer(BaseModel):
     min_sdk: int
     published_at: datetime | None
     download_path: str
+    mandatory: bool = False
+
+
+JalaseNegarInstallResult = Literal[
+    "downloaded", "installed", "pending_user_action", "failed", "skipped"
+]
+JalaseNegarInstallErrorCode = Literal[
+    "update_checksum_mismatch", "update_downgrade_rejected", "update_install_blocked"
+]
+
+
+class JalaseNegarInstallReportIn(BaseModel):
+    """Anonymous outcome of one automatic update attempt; carries no personal data."""
+
+    install_id: str = Field(min_length=16, max_length=64, pattern=r"^[0-9a-fA-F-]+$")
+    release_id: UUID
+    result: JalaseNegarInstallResult
+    error_code: JalaseNegarInstallErrorCode | None = None
+    sdk_int: int = Field(ge=1, le=100)
+    manufacturer: str = Field(default="", max_length=32, pattern=r"^[A-Za-z0-9 ._-]*$")
+    silent: bool = False
 
 
 class JalaseNegarUpdateCheckOut(BaseModel):

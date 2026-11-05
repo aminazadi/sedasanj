@@ -6,7 +6,7 @@ import logging
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -29,9 +29,14 @@ from app.config import get_settings
 from app.db import control_session_scope
 from app.deps import Principal, StaffDep, StaffSession, client_ip, require_staff_roles
 from app.errors import ApiError
-from app.metrics import jalase_negar_download_total, jalase_negar_update_checks_total
+from app.metrics import (
+    jalase_negar_download_total,
+    jalase_negar_update_checks_total,
+    jalase_negar_update_install_total,
+)
 from app.models import JalaseNegarRelease
 from app.schemas import (
+    JalaseNegarInstallReportIn,
     JalaseNegarReleaseOut,
     JalaseNegarReleaseStatus,
     JalaseNegarReleaseUpdate,
@@ -338,6 +343,18 @@ async def admin_update_release(
         )
         if release.status == "published" and not release.changelog_plain.strip():
             raise ApiError("invalid_request", "a published release needs release notes")
+    if changes.get("rollout_percent") is not None:
+        release.rollout_percent = changes["rollout_percent"]
+    if changes.get("min_supported_version_code") is not None:
+        floor = changes["min_supported_version_code"]
+        if floor > release.version_code:
+            raise ApiError(
+                "invalid_request",
+                "the minimum supported build cannot exceed this release's own build number",
+            )
+        release.min_supported_version_code = floor
+    if changes.get("channel") is not None:
+        release.channel = changes["channel"]
     release.updated_at = datetime.now(UTC)
     await audit.record(
         session,
@@ -499,6 +516,8 @@ async def check_for_update(
     sdk_int: Annotated[int, Query(ge=1, le=100)],
     abis: Annotated[str, Query(max_length=200)] = "",
     cert_sha256: Annotated[str, Query(max_length=95)] = "",
+    install_id: Annotated[str, Query(max_length=64)] = "",
+    channel: Annotated[Literal["stable", "beta"], Query()] = "stable",
 ) -> JalaseNegarUpdateCheckOut:
     response.headers.update(_NO_STORE)
     await ratelimit.enforce(f"jalase-negar-update:{client_ip(request)}", 60, 60)
@@ -515,7 +534,13 @@ async def check_for_update(
             .all()
         )
     chosen = apks.select_update(
-        list(rows), version_code=version_code, sdk_int=sdk_int, abis=device_abis, cert_sha256=cert
+        list(rows),
+        version_code=version_code,
+        sdk_int=sdk_int,
+        abis=device_abis,
+        cert_sha256=cert,
+        install_id=apks.normalize_install_id(install_id),
+        channel=channel,
     )
     if chosen is None:
         jalase_negar_update_checks_total.labels(result="none").inc()
@@ -533,7 +558,32 @@ async def check_for_update(
             min_sdk=chosen.min_sdk,
             published_at=chosen.published_at,
             download_path=f"/v1/jalase-negar/android/releases/{chosen.id}/download",
+            mandatory=apks.is_mandatory(chosen, version_code),
         )
+    )
+
+
+@router.post("/v1/jalase-negar/android/update/report", status_code=status.HTTP_204_NO_CONTENT)
+async def report_install_result(request: Request, payload: JalaseNegarInstallReportIn) -> None:
+    """Anonymous outcome of an automatic update attempt, to spot phones that block silent installs.
+
+    Nothing is stored: only counters move and one log line is written, with no IP or identity.
+    """
+    await ratelimit.enforce(f"jalase-negar-update-report:{client_ip(request)}", 30, 60)
+    if payload.result == "failed" and payload.error_code is None:
+        raise ApiError("invalid_request", "a failed report needs an error_code")
+    jalase_negar_update_install_total.labels(
+        result=payload.result,
+        error_code=payload.error_code or "none",
+        silent="true" if payload.silent else "false",
+    ).inc()
+    logger.info(
+        "jalase_negar_update_install result=%s code=%s sdk=%s maker=%s silent=%s",
+        payload.result,
+        payload.error_code or "-",
+        payload.sdk_int,
+        payload.manufacturer.lower()[:32] or "-",
+        payload.silent,
     )
 
 

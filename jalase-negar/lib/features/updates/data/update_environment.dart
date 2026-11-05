@@ -20,6 +20,7 @@ Future<UpdateEnvironment?> readUpdateEnvironment() async {
     final sdk = native?['sdkInt'];
     final abis = native?['abis'];
     final cert = native?['certSha256'];
+    final installId = native?['installId'];
     if (code == null ||
         sdk is! int ||
         abis is! List ||
@@ -33,6 +34,7 @@ Future<UpdateEnvironment?> readUpdateEnvironment() async {
       sdkInt: sdk,
       abis: abis.whereType<String>().toList(),
       certSha256: cert.toLowerCase(),
+      installId: installId is String ? installId : '',
     );
   } on PlatformException {
     return null;

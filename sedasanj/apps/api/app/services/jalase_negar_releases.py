@@ -55,6 +55,9 @@ class ReleaseLike(Protocol):
     abis: list[str]
     status: str
     signing_cert_sha256: str
+    rollout_percent: int
+    min_supported_version_code: int
+    channel: str
 
 
 # --- configuration ----
@@ -304,6 +307,34 @@ def is_compatible(
     return not release.abis or any(abi in release.abis for abi in abis)
 
 
+_INSTALL_ID_RE = re.compile(r"^[0-9a-fA-F-]{16,64}$")
+
+
+def normalize_install_id(value: str | None) -> str | None:
+    """The anonymous random install id, or None when absent or malformed."""
+    cleaned = (value or "").strip().lower()
+    return cleaned if _INSTALL_ID_RE.fullmatch(cleaned) else None
+
+
+def rollout_bucket(install_id: str, release_id: UUID) -> int:
+    """Deterministic 0-99 bucket of one install for one release (stable across checks)."""
+    digest = hashlib.sha256(f"{install_id}:{release_id}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") % 100
+
+
+def is_mandatory(release: ReleaseLike, version_code: int) -> bool:
+    """True when the installed build is below the release's minimum supported build."""
+    return version_code < release.min_supported_version_code
+
+
+def in_rollout(release: ReleaseLike, *, version_code: int, install_id: str | None) -> bool:
+    if is_mandatory(release, version_code) or release.rollout_percent >= 100:
+        return True
+    if release.rollout_percent <= 0 or install_id is None:
+        return False
+    return rollout_bucket(install_id, release.id) < release.rollout_percent
+
+
 def select_update[R: ReleaseLike](
     releases: Sequence[R],
     *,
@@ -311,13 +342,19 @@ def select_update[R: ReleaseLike](
     sdk_int: int,
     abis: Sequence[str],
     cert_sha256: str | None,
+    install_id: str | None = None,
+    channel: str = "stable",
 ) -> R | None:
+    # A beta install also receives stable builds; a stable install never receives beta ones.
+    channels = {"stable", "beta"} if channel == "beta" else {"stable"}
     candidates = [
         release
         for release in releases
         if release.status == "published"
+        and release.channel in channels
         and release.version_code > version_code
         and is_compatible(release, sdk_int=sdk_int, abis=abis, cert_sha256=cert_sha256)
+        and in_rollout(release, version_code=version_code, install_id=install_id)
     ]
     return max(candidates, key=lambda release: release.version_code, default=None)
 

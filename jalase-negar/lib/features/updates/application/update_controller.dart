@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/app_update.dart';
 import '../data/update_client.dart';
 import '../data/update_environment.dart';
+import 'update_background.dart';
 
 final updateClientProvider = Provider<UpdateClient>((ref) => UpdateClient());
 
@@ -63,6 +64,7 @@ class ManualCheckResult {
 
 class UpdateController extends Notifier<UpdateState> {
   bool _launchChecked = false;
+  bool _backgroundStarted = false;
 
   @override
   UpdateState build() => const UpdateState();
@@ -136,22 +138,11 @@ class UpdateController extends Notifier<UpdateState> {
   /// "Later": set the offer aside until the next cold start.
   void postpone() => state = state.copyWith(dismissed: true);
 
-  /// "Download version": hand the download to the browser. Returns a Persian error
-  /// message when the browser could not be opened.
-  Future<String?> download() async {
-    final offer = state.offer;
-    if (offer == null) {
-      return 'پیشنهاد به‌روزرسانی دیگر معتبر نیست؛ دوباره بررسی کنید.';
-    }
     try {
-      final opened = await ref.read(updateLauncherProvider)(offer.downloadUri);
-      if (opened) return null;
+      if (offer.canAutoInstall &&
+          await ref.read(updateNativeProvider).installDownloaded()) {
+        return null;
+      }
     } catch (_) {
-      // Falls through to the shared message below.
+      // Falls back to the browser below.
     }
-    return 'مرورگر باز نشد؛ یک مرورگر نصب یا فعال کنید و دوباره «دریافت نسخه» را بزنید.';
-  }
-}
-
-final updateControllerProvider =
-    NotifierProvider<UpdateController, UpdateState>(UpdateController.new);
