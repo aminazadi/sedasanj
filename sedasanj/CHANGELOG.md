@@ -1,6 +1,10 @@
 ## 2026-11-05 — AMINAZADI
 
 - Replaced assistant export cards with inline file links and type icons in full and quick chats; moved expiry feedback to click-triggered toasts and removed mandatory expiry notices.
+- Matched meeting and report document headers to call details, centered single-line meeting tabs, hid completed processing timelines, and replaced transcript chat bubbles with readable speaker sections.
+- Added Persian rich text editing for minutes and report runs, fixed bottom save actions, optimistic conflict protection, role checks, and audited saves.
+- Matched browser print and downloadable PDF document styles, including local fonts, tables, live edits, and original charts; added PDF file sharing with a download fallback.
+- Added document editing, sharing, and concurrent-edit recovery help content in migration 0105.
 - Added expiring email verification and password reset links for organization members.
 - Added an organization user editor for display names, mobile numbers, and extensions, with a URL-backed member selection.
 - Restricted platform-shaping staff actions (staff management, tenants, plans, gateways, refunds, settings) to `super_admin`, read the staff role from the database on every request, and added a test that fails when a mutating admin route lacks a role check.

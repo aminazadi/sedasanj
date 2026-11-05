@@ -1,155 +1,35 @@
-.document-print {
-  position: fixed;
-  inset-block-start: 0;
-  left: -120vw;
-  width: 174mm;
-  max-width: none;
-  visibility: hidden;
-  background: #fff;
-  color: #263226;
-  font-size: 10.5pt;
-  line-height: 1.8;
-}
-
-.document-print-brand {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1.5pt solid #4b6e48;
-  padding-bottom: 3mm;
-  color: #4b6e48;
-  font-weight: 700;
-}
-
-.document-print-mark {
-  display: grid;
-  grid-template-columns: repeat(2, 2mm);
-  gap: 1mm;
-}
-
-.document-print-mark i {
-  height: 2mm;
-  background: #4b6e48;
-}
-
-.document-print > h1 {
-  margin: 6mm 0 1mm;
-  overflow-wrap: anywhere;
-  color: #4b6e48;
-  font-size: 21pt;
-  font-weight: 650;
-  line-height: 1.5;
-}
-
-.document-print-kind {
-  margin-bottom: 3mm;
-  color: #4b6e48;
-}
-
-.document-print dl {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1mm 8mm;
-  margin-bottom: 5mm;
-  border-block: 1px solid #cbd5c7;
-  padding: 3mm 0;
-  font-size: 9pt;
-}
-
-.document-print dl > div {
-  display: flex;
-  gap: 2mm;
-}
-
-.document-print dt {
-  color: #566450;
-  font-weight: 650;
-}
-
-.document-print .statistics-charts {
-  grid-template-columns: 1fr;
-}
-
-.document-print .statistics-chart {
-  grid-column: auto;
-  background: #fff;
-}
-
+.document-export-host { position: absolute; top: 0; left: -200vw; }
+.document-print { width: 186mm; background: #fff; color: #263226; font: 350 14px/2 Vazirmatn, sans-serif; }
+.document-body { color: #263226; font-size: 14px; line-height: 2; overflow-wrap: anywhere; }
+.document-print-content { border: 1px solid #b2ac88; padding: 24px; }
+.document-body .markdown-message h1 { font-size: 24px; }
+.document-body .markdown-message h2 { font-size: 20px; }
+.document-body .markdown-message h3 { font-size: 16px; }
+.document-body .markdown-message :is(h1,h2,h3,h4) { font-weight: 500; line-height: 1.7; color: #4b6e48; }
+.document-body :is(table,td,th) { border-color: #b2ac88; }
+.document-body table { width: 100%; border-collapse: collapse; }
+.document-body :is(td,th) { border: 1px solid #b2ac88; padding: 8px; }
+.document-body .statistics-chart { break-inside: avoid; }
+.document-editor .tox { border-radius: 0 !important; border-color: #b2ac88 !important; }
+.document-editor .tox .tox-toolbar__primary { background: #f2f0ef; }
+.document-save-bar { position: fixed; z-index: 45; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 20px; max-width: calc(100vw - 32px); padding: 12px 20px; border: 1px solid #b2ac88; background: #f2f0ef; box-shadow: 0 8px 32px #26322626; }
 @media print {
-  @page sedasanj-document {
-    size: A4;
-    margin: 16mm 18mm;
-
-    @bottom-left {
-      content: counter(page);
-      color: #5b655a;
-      font: 9pt "Vazirmatn", sans-serif;
-    }
-
-    @bottom-right {
-      content: "صداسنج";
-      color: #4b6e48;
-      font: 9pt "Vazirmatn", sans-serif;
-    }
-  }
-
-  body.document-print-active > :not(.document-print) {
-    display: none !important;
-  }
-
-  body.document-print-active {
-    min-width: 0 !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    background: #fff !important;
-  }
-
-  .document-print {
-    page: sedasanj-document;
-    position: static;
-    width: 100%;
-    visibility: visible;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  .document-print h1,
-  .document-print h2,
-  .document-print h3 {
-    break-after: avoid;
-  }
-
-  .document-print p,
-  .document-print li {
-    orphans: 3;
-    widows: 3;
-    overflow-wrap: anywhere;
-  }
-
-  .document-print .markdown-message {
-    color: inherit;
-  }
-
-  .document-print .markdown-message table {
-    width: 100%;
-    table-layout: fixed;
-    overflow-wrap: anywhere;
-  }
-
-  .document-print .markdown-message table thead {
-    display: table-header-group;
-  }
-
-  .document-print .markdown-message .overflow-x-auto {
-    overflow: visible;
-  }
-
-  .document-print .statistics-chart,
-  .document-print .markdown-message tr {
-    break-inside: avoid;
-  }
-
-  .document-print .recharts-tooltip-wrapper {
-    display: none;
-  }
+  @page { size: A4; margin: 12mm; }
+  body.document-print-active > :not(.document-export-host) { display: none !important; }
+  body.document-print-active { min-width: 0 !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
+  .document-export-host { position: static; }
+  .document-print { width: 100%; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .document-print :is(h1,h2,h3) { break-after: avoid; }
+  .document-print :is(p,li) { orphans: 3; widows: 3; }
+  .document-print :is(tr,.statistics-chart) { break-inside: avoid; }
+  .document-print table { table-layout: fixed; }
+  .document-print thead { display: table-header-group; }
+  .document-print .overflow-x-auto { overflow: visible; }
+  .document-print .recharts-tooltip-wrapper { display: none; }
 }
+.document-print .document-header { margin-bottom: 16px; border: 1px solid #b2ac88; background: #f2f0ef; box-shadow: none; }
+.document-print .document-header h1 { font-weight: 500; color: #111; }
+.document-body .markdown-message :is(ul,ol) { list-style-position: inside; }
+.document-body .markdown-message th { background: #f2f0ef; }
+
+.document-print, .document-print * { border-radius: 0 !important; }

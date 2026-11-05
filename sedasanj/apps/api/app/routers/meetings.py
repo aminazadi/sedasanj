@@ -50,6 +50,7 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    DocumentEdit,
     MeetingChunkOut,
     MeetingConfigValidation,
     MeetingDetail,
@@ -1357,6 +1358,39 @@ async def list_minutes(
         .all()
     )
     return {"items": [_minutes_out(row) for row in rows]}
+
+
+@router.patch("/{meeting_id}/minutes/{version}", response_model=MeetingMinutesOut)
+async def edit_minutes(
+    meeting_id: UUID,
+    version: int,
+    payload: DocumentEdit,
+    request: Request,
+    session: TenantSession,
+    principal: OperatorDep,
+) -> MeetingMinutesOut:
+    meeting = await _visible_meeting(session, meeting_id, principal, lock=True)
+    chosen = await _selected_minutes(session, meeting.id)
+    if meeting.status != "complete" or chosen is None:
+        raise ApiError("document_not_ready", "منتظر پایان پردازش جلسه بمانید و دوباره تلاش کنید.")
+    if chosen.version != version or chosen.content_md != payload.expected_content:
+        raise ApiError(
+            "document_edit_conflict",
+            "صورت‌جلسه تغییر کرده است؛ متن خود را کپی کنید و صفحه را تازه کنید.",
+        )
+    chosen.content_md = payload.content
+    chosen.structured = {"summary": payload.content, "decisions": [], "action_items": []}
+    meeting.updated_at = datetime.now(UTC)
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="meeting.minutes.edit",
+        payload={"meeting_id": str(meeting.id), "version": version},
+        ip=client_ip(request),
+    )
+    return _minutes_out(chosen)
 
 
 @router.post("/{meeting_id}/minutes/{version}/select", response_model=MeetingMinutesOut)

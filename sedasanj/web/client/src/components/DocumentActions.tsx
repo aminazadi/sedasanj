@@ -1,91 +1,90 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { downloadFile } from "../api";
+import { renderDocumentPdf } from "../lib/documentPdf";
 import { safeDownloadName } from "../utils/download";
+import DocumentHeader from "./DocumentHeader";
 import { ErrorBox } from "./Widgets";
 import "./document-print.css";
 
 type DocumentActionsProps = {
-  path: string;
   title: string;
   kind: string;
   metadata: Array<[string, string]>;
   children: ReactNode;
+  disabled?: boolean;
+  contentKey: string;
 };
 
-export default function DocumentActions({ path, title, kind, metadata, children }: DocumentActionsProps) {
-  const [printing, setPrinting] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+export default function DocumentActions({ title, kind, metadata, children, disabled, contentKey }: DocumentActionsProps) {
+  const [mode, setMode] = useState<"print" | "download" | "share" | null>(null);
   const [error, setError] = useState("");
+  const [shareFile, setShareFile] = useState<File | null>(null);
+  const documentRef = useRef<HTMLElement>(null);
+  useEffect(() => { setShareFile(null); }, [contentKey, title]);
 
   useEffect(() => {
-    if (!printing) return;
-    const originalTitle = document.title;
-    document.title = title;
-    document.body.classList.add("document-print-active");
+    if (!mode) return;
     let canceled = false;
-    const finish = () => setPrinting(false);
-    window.addEventListener("afterprint", finish);
-    void document.fonts.ready.then(() => {
-      // Give the print layout and its SVG charts a frame to measure their containers.
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (canceled) return;
-        try {
+    const originalTitle = document.title;
+    const finish = () => setMode(null);
+    async function prepare() {
+      await document.fonts.ready;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      if (canceled || !documentRef.current) return;
+      try {
+        if (mode === "print") {
+          document.title = title;
+          document.body.classList.add("document-print-active");
           window.print();
-        } catch {
-          setError("پیش‌نمایش چاپ باز نشد. دوباره تلاش کنید یا PDF را دانلود کنید.");
-          finish();
+          return;
         }
-      }));
-    });
+        const blob = await renderDocumentPdf(documentRef.current);
+        if (canceled) return;
+        const file = new File([blob], `${safeDownloadName(title, "sedasanj")}.pdf`, { type: "application/pdf" });
+        if (mode === "share" && navigator.canShare?.({ files: [file] })) {
+          setShareFile(file);
+        } else {
+          const url = URL.createObjectURL(file);
+          const link = document.createElement("a");
+          link.href = url; link.download = file.name; link.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+          if (mode === "share") setError("اشتراک مستقیم فایل در این مرورگر در دسترس نیست؛ فایل PDF دانلود شد و می‌توانید آن را ارسال کنید.");
+        }
+        finish();
+      } catch {
+        setError("خروجی سند ساخته نشد؛ دوباره تلاش کنید یا از گزینه چاپ استفاده کنید. (document_pdf_unavailable)");
+        finish();
+      }
+    }
+    window.addEventListener("afterprint", finish);
+    void prepare();
     return () => {
       canceled = true;
       document.title = originalTitle;
       document.body.classList.remove("document-print-active");
       window.removeEventListener("afterprint", finish);
     };
-  }, [printing, title]);
+  }, [mode, title]);
 
-  async function download() {
+  async function share() {
     setError("");
-    setDownloading(true);
-    try {
-      await downloadFile(path, `${safeDownloadName(title, "sedasanj")}.pdf`);
-    } catch (err) {
-      setError(err instanceof Error && err.message && !(err instanceof TypeError)
-        ? err.message
-        : "دریافت PDF ممکن نشد. اتصال را بررسی کنید و دوباره تلاش کنید.");
-    } finally {
-      setDownloading(false);
-    }
+    if (!shareFile) { setMode("share"); return; }
+    try { await navigator.share({ title, files: [shareFile] }); }
+    catch (err) { if (!(err instanceof DOMException && err.name === "AbortError")) setError("اشتراک‌گذاری انجام نشد؛ دوباره تلاش کنید یا PDF را دانلود و ارسال کنید."); }
   }
 
-  return (
-    <div className="min-w-0">
-      <div className="flex flex-wrap gap-2">
-        <button className="btn h-9 px-3 py-0 text-xs" type="button" disabled={downloading} onClick={() => void download()}>
-          {downloading ? "در حال دریافت PDF…" : "دانلود PDF"}
-        </button>
-        <button className="btn-ghost h-9 px-3 py-0 text-xs" type="button" disabled={printing} onClick={() => { setError(""); setPrinting(true); }}>
-          چاپ
-        </button>
-      </div>
-      {error ? <div className="mt-2"><ErrorBox message={error} /></div> : null}
-      {printing ? createPortal(
-        <article className="document-print" dir="rtl" lang="fa">
-          <header className="document-print-brand">
-            <span>صداسنج</span>
-            <span className="document-print-mark" aria-hidden="true"><i /><i /><i /></span>
-          </header>
-          <h1>{title}</h1>
-          <p className="document-print-kind">{kind}</p>
-          <dl>
-            {metadata.map(([label, value]) => <div key={label}><dt>{label}</dt><dd dir="auto">{value}</dd></div>)}
-          </dl>
-          <div className="document-print-content">{children}</div>
-        </article>,
-        document.body,
-      ) : null}
+  return <div className="min-w-0">
+    <div className="flex flex-wrap gap-2">
+      <button className="btn h-9 whitespace-nowrap px-3 py-0 text-xs" type="button" disabled={!!mode || disabled} onClick={() => { setError(""); setMode("download"); }}>{mode === "download" ? "در حال ساخت PDF…" : "دانلود PDF"}</button>
+      <button className="btn-ghost h-9 whitespace-nowrap px-3 py-0 text-xs" type="button" disabled={!!mode || disabled} onClick={() => { setError(""); setMode("print"); }}>چاپ</button>
+      <button className="btn-ghost h-9 whitespace-nowrap px-3 py-0 text-xs" type="button" disabled={!!mode || disabled} onClick={() => void share()}>{mode === "share" ? "در حال آماده‌سازی…" : shareFile ? "ارسال فایل PDF" : "اشتراک‌گذاری"}</button>
     </div>
-  );
+    {error ? <div className="mt-2 max-w-md"><ErrorBox message={error} /></div> : null}
+    {mode ? createPortal(<div className="document-export-host">
+      <article ref={documentRef} className="document-print" dir="rtl" lang="fa" aria-label={kind}>
+        <DocumentHeader title={title} actions={null} metadata={metadata.map(([label, value]) => <span key={label}>{label}: <bdi>{value}</bdi></span>)} />
+        <div className="document-body document-print-content">{children}</div>
+      </article>
+    </div>, document.body) : null}
+  </div>;
 }

@@ -13,6 +13,7 @@ from sqlalchemy.orm import defer
 from app.deps import OrgAdminDep, TenantSession, client_ip
 from app.errors import ApiError
 from app.models import ScheduledReport, ScheduledReportRun, Tenant
+from app.schemas import DocumentEdit
 from app.services import audit, document_pdf
 from app.services.call_export import TEHRAN, to_jalali
 from app.services.scheduled_reports import create_run, next_run_at
@@ -322,6 +323,46 @@ async def get_run(
     if row is None:
         raise ApiError("not_found", "report run not found")
     return row
+
+
+@router.patch("/runs/{run_id}", response_model=RunOut)
+async def edit_run(
+    run_id: UUID,
+    payload: DocumentEdit,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> ScheduledReportRun:
+    run = (
+        await session.execute(
+            select(ScheduledReportRun)
+            .where(
+                ScheduledReportRun.id == run_id,
+                ScheduledReportRun.tenant_id == principal.tenant_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise ApiError("not_found", "گزارش پیدا نشد؛ آرشیو گزارش‌ها را تازه کنید.")
+    if run.status != "succeeded":
+        raise ApiError("document_not_ready", "منتظر پایان ساخت گزارش بمانید و دوباره تلاش کنید.")
+    if (run.content or "") != payload.expected_content:
+        raise ApiError(
+            "document_edit_conflict",
+            "گزارش تغییر کرده است؛ متن خود را کپی کنید و صفحه را تازه کنید.",
+        )
+    run.content = payload.content
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="scheduled_report.run.edit",
+        payload={"run_id": str(run.id)},
+        ip=client_ip(request),
+    )
+    return run
 
 
 @router.get("/runs/{run_id}/pdf", response_class=Response)

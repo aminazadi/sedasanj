@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { AssistantCharts } from "../components/AssistantCharts";
+import DocumentEditor from "../components/DocumentEditor";
+import DocumentTabs from "../components/DocumentTabs";
+import DocumentHeader from "../components/DocumentHeader";
 import DocumentActions from "../components/DocumentActions";
 import FormDialog from "../components/FormDialog";
 import reportArt from "../assets/scheduled-report.webp";
@@ -59,13 +62,21 @@ function reportPeriod(run: Run) {
   return { timezone, window: `${formatter.format(new Date(run.from_date))} تا ${formatter.format(new Date(run.to_date))}` };
 }
 
+function ReportCoverage({ coverage }: { coverage: Record<string, unknown> }) {
+  return <>
+    <div className="mb-4 grid gap-3 sm:grid-cols-3">{([["تماس‌ها", coverage.calls], ["تماس‌های ایندکس‌شده", coverage.indexed_calls], ["شواهد معنایی", coverage.semantic_results]] as Array<[string, unknown]>).map(([label, value]) => <div key={String(label)} className="border border-[#B2AC88] bg-[#F2F0EF] p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-bold text-[#4B6E48]">{fmt.int(Number(value || 0))}</div></div>)}</div>
+        {Array.isArray(coverage.warnings) && coverage.warnings.length ? <ul className="mb-4 list-inside list-disc text-sm text-slate-600">{coverage.warnings.map((warning, index) => <li key={index}>{String(warning)}</li>)}</ul> : null}
+  </>;
+}
+
 function ReportDocumentActions({ run, content, period }: { run: Run; content: string; period: ReturnType<typeof reportPeriod> }) {
   const metadata: Array<[string, string]> = [["بازه گزارش", period.window]];
   if (run.title && run.title !== run.name) metadata.push(["نام زمان‌بندی", run.name]);
   metadata.push(["منطقه زمانی", period.timezone]);
   return (
-    <DocumentActions path={`/v1/scheduled-reports/runs/${run.id}/pdf`} title={run.title || run.name} kind="گزارش زمان‌بندی‌شده" metadata={metadata}>
-      <MarkdownMessage content={content} print />
+    <DocumentActions contentKey={run.id + content + JSON.stringify([run.charts, run.coverage, metadata])} title={run.title || run.name} kind="گزارش زمان‌بندی‌شده" metadata={metadata}>
+      <ReportCoverage coverage={run.coverage} />
+      <MarkdownMessage content={content} />
       <AssistantCharts charts={run.charts ?? []} print />
     </DocumentActions>
   );
@@ -84,7 +95,9 @@ export default function ScheduledReports() {
   const [reports, setReports] = useState<Report[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [reportDraft, setReportDraft] = useState<string | null>(null);
   const [detail, setDetail] = useState<Run | null>(null);
+  useEffect(() => { setReportDraft(null); }, [selected]);
   const period = detail ? reportPeriod(detail) : null;
   const [form, setForm] = useState<ReportInput>({ ...empty });
   const [editing, setEditing] = useState<string | null>(null);
@@ -97,6 +110,10 @@ export default function ScheduledReports() {
   const listKeyRef = useRef("");
   const refresh = () => setRevision(value => value + 1);
   function change(values: Record<string, string | null>) {
+    if (reportDraft !== null && ("run" in values || "tab" in values)) {
+      if (!window.confirm("تغییرات گزارش ذخیره نشده‌اند؛ بدون ذخیره خارج می‌شوید؟")) return;
+      setReportDraft(null);
+    }
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(values)) { if (value) next.set(key, value); else next.delete(key); }
     setParams(next);
@@ -151,13 +168,8 @@ export default function ScheduledReports() {
       { id: "trigger", label: "روش اجرا", active: Boolean(trigger), onRemove: () => change({ trigger: null, offset: null }), control: <FilterSelect value={trigger} onChange={value => change({ trigger: value, offset: null })} options={[{ value: "scheduled", label: "زمان‌بندی‌شده" }, { value: "manual", label: "دستی" }]} allLabel="همه اجراها" /> },
     ],
   });
-  const tabClass = (active: boolean) => `h-9 whitespace-nowrap px-4 text-sm ${active ? "bg-[#4B6E48] text-white" : "text-slate-600 hover:bg-[#F2F0EF]"}`;
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex border border-[#B2AC88] bg-white p-0.5" role="group" aria-label="بخش گزارش‌ها">
-        <button type="button" aria-pressed={!settings} className={tabClass(!settings)} onClick={() => change({tab: "archive"})}>آرشیو گزارش‌ها</button>
-        <button type="button" aria-pressed={settings} className={tabClass(settings)} onClick={() => change({tab: "settings", run: null})}>مدیریت و زمان‌بندی</button>
-      </div>
       <button type="button" className="btn-ghost flex h-10 w-10 items-center justify-center !p-0" onClick={refresh} aria-label="به‌روزرسانی" title="به‌روزرسانی">
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4.5L4 9" /><path d="M4 4v5h5" /><path d="M4 13a8 8 0 0 0 14 4.5L20 15" /><path d="M20 20v-5h-5" /></svg>
       </button>
@@ -167,6 +179,7 @@ export default function ScheduledReports() {
   const scheduleText = (report: Report) => report.schedule_mode === "interval" ? `هر ${fmt.int(report.interval_hours || 0)} ساعت` : `ساعت‌های ${report.fixed_hours.map(hour => `${fmt.int(hour)}:۰۰`).join("، ")}`;
   return <div className="space-y-5" dir="rtl">
     <PageHeader title="گزارش‌های زمان‌بندی‌شده" description="گزارش‌های مدیریتی با معیارهای دلخواه، بر پایهٔ اطلاعات و حافظهٔ سازمان" actions={toolbar} />
+    <DocumentTabs value={settings ? "settings" : "archive"} options={[{ value: "archive", label: "آرشیو گزارش‌ها" }, { value: "settings", label: "مدیریت و زمان‌بندی" }]} onChange={value => change({ tab: value, ...(value === "settings" ? { run: null } : {}) })} label="بخش گزارش‌ها" />
     <ErrorBox message={error || null} />
     {settings ? <>
       <FormDialog
@@ -233,26 +246,27 @@ export default function ScheduledReports() {
       {!reports.length && !loading ? <div className="card"><Empty>گزارشی تعریف نشده است.</Empty></div> : null}
     </> : <>
       {filterBar.fields}
-      {detail && period && detail.id === selected ? <article className="card">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="break-words text-lg font-bold">{detail.title || detail.name}</h2>
-            <p className="mt-1 text-xs text-slate-500">{period.window} · <bdi>{period.timezone}</bdi></p>
-            {detail.title && detail.title !== detail.name ? <p className="mt-1 text-xs text-slate-500">نام زمان‌بندی {detail.name}</p> : null}
-          </div>
-          <div className="flex flex-wrap items-start gap-2">
-            {detail.status === "succeeded" && detail.content ? <ReportDocumentActions key={detail.id} run={detail} content={detail.content} period={period} /> : null}
+      {detail && period && detail.id === selected ? <article className="space-y-4">
+        <DocumentHeader title={detail.title || detail.name} status={<RunStatusBadge run={detail} />}
+          metadata={<><span>{period.window}</span><bdi>{period.timezone}</bdi>{detail.title && detail.title !== detail.name ? <span>نام زمان‌بندی {detail.name}</span> : null}</>}
+          actions={<>
+            {detail.status === "succeeded" && detail.content ? <ReportDocumentActions run={detail} content={reportDraft ?? detail.content} period={period} /> : null}
             <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => change({run: null})}>بستن گزارش</button>
-          </div>
-        </div>
-        <div className="mb-4 flex flex-wrap items-center gap-2"><RunStatusBadge run={detail} /><TriggerBadge trigger={detail.trigger} /><span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">تلاش {fmt.int(detail.attempt_count)} از {fmt.int(detail.max_retries + 1)}</span>{detail.next_attempt_at ? <span className="text-xs text-slate-500">تلاش بعدی: {fmt.dateTime(detail.next_attempt_at)}</span> : null}</div>
-        {detail.error_detail ? <p className="mb-4 border border-[#B2AC88] border-s-4 bg-[#F2F0EF] p-3 text-sm text-slate-700" style={{ borderInlineStartColor: chart.warning }}>{detail.error_detail}</p> : null}
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">{([["تماس‌ها", detail.coverage.calls], ["تماس‌های ایندکس‌شده", detail.coverage.indexed_calls], ["شواهد معنایی", detail.coverage.semantic_results]] as Array<[string, unknown]>).map(([label, value]) => <div key={String(label)} className="border border-[#B2AC88] bg-[#F2F0EF] p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-bold text-[#4B6E48]">{fmt.int(Number(value || 0))}</div></div>)}</div>
-        {Array.isArray(detail.coverage.warnings) && detail.coverage.warnings.length ? <ul className="mb-4 list-inside list-disc text-sm text-slate-600">{detail.coverage.warnings.map((warning, index) => <li key={index}>{String(warning)}</li>)}</ul> : null}
-        {detail.content ? <MarkdownMessage content={detail.content}/> : detail.status === "failed" ? null : <p role="status" className="text-sm text-slate-500">{detail.error_detail || "گزارش در حال آماده‌سازی است…"}</p>}
-        <AssistantCharts charts={detail.charts ?? []} />
+          </>}
+        />
+        <div className="card">
+        {detail.status !== "succeeded" ? <div className="mb-4 flex flex-wrap items-center gap-2"><RunStatusBadge run={detail} /><TriggerBadge trigger={detail.trigger} /><span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">تلاش {fmt.int(detail.attempt_count)} از {fmt.int(detail.max_retries + 1)}</span>{detail.next_attempt_at ? <span className="text-xs text-slate-500">تلاش بعدی: {fmt.dateTime(detail.next_attempt_at)}</span> : null}</div> : null}
+        {detail.status !== "succeeded" && detail.error_detail ? <p className="mb-4 border border-[#B2AC88] border-s-4 bg-[#F2F0EF] p-3 text-sm text-slate-700" style={{ borderInlineStartColor: chart.warning }}>{detail.error_detail}</p> : null}
+        <ReportCoverage coverage={detail.coverage} />
+        {detail.content ? <div className="document-body">{detail.status === "succeeded" ? <DocumentEditor
+          key={detail.id} content={detail.content} expectedContent={detail.content}
+          path={`/v1/scheduled-reports/runs/${detail.id}`} onDraftChange={setReportDraft}
+          onSaved={(content) => { setDetail(current => current?.id === detail.id ? { ...current, content } : current); refresh(); }}
+        /> : <MarkdownMessage content={detail.content} />}</div> : detail.status === "failed" ? null : <p role="status" className="text-sm text-slate-500">{detail.error_detail || "گزارش در حال آماده‌سازی است…"}</p>}
+        <AssistantCharts charts={detail.charts ?? []} print />
         <details className="mt-4 border-t border-[#B2AC88] pt-3"><summary className="cursor-pointer text-sm text-[#4B6E48]">معیارهای این اجرا</summary><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{detail.instructions}</p></details>
         {detail.sources.length ? <div className="mt-4 flex flex-wrap gap-2">{detail.sources.map(source => <Link className="btn-ghost h-9 px-3 py-0 text-xs inline-flex items-center" key={source.call_id} to={`/calls/${source.call_id}`}>مشاهده تماس {source.call_id.slice(0, 8)}</Link>)}</div> : null}
+        </div>
       </article> : null}
       <div className="card">
         {loading ? <SkeletonTable columns={RUN_COLUMNS} rows={runs.length ? Math.min(runs.length, PAGE_SIZE) : 6} /> : runs.length === 0 ? <Empty>گزارشی در این فیلتر وجود ندارد.</Empty> : <table className="table" dir="rtl">

@@ -70,6 +70,7 @@ ERROR_STATUS: dict[str, int] = {
     "coach_unavailable": status.HTTP_409_CONFLICT,
     "export_expired": 410,
     "export_too_large": 422,
+    "document_edit_conflict": status.HTTP_409_CONFLICT,
     "document_not_ready": status.HTTP_409_CONFLICT,
     "document_pdf_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "conflict": status.HTTP_409_CONFLICT,

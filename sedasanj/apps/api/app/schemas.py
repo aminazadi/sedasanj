@@ -2044,6 +2044,20 @@ class MeetingSpeakerPatch(BaseModel):
     user_id: UUID | None = None
 
 
+class DocumentEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=500000)
+    expected_content: str = Field(max_length=500000)
+
+    @field_validator("content")
+    @classmethod
+    def nonempty_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Document content cannot be empty")
+        return value
+
+
 class MeetingPatch(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     speakers: list[MeetingSpeakerPatch] | None = Field(default=None, max_length=64)
