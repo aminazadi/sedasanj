@@ -465,6 +465,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
     functions = [analyze_voice_sentiment]
     queue_name = queue.QUEUE_EMOTION
     on_startup = startup

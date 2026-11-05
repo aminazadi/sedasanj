@@ -106,6 +106,7 @@ class _SecretBody(BaseModel):
 def test_validation_errors_do_not_echo_submitted_values() -> None:
     import httpx
     from fastapi import FastAPI
+
     from app.errors import install_error_handlers
 
     app = FastAPI()
@@ -157,3 +158,19 @@ def test_client_errors_are_not_retryable_but_server_errors_are() -> None:
     assert wrong_method.status_code == 405
     assert wrong_method.json()["error"]["retryable"] is False
     assert wrong_method.json()["error"]["code"] == "invalid_request"
+
+
+def test_cgnat_and_metadata_ranges_are_not_public() -> None:
+    from app.services.urlguard import _is_public
+
+    for blocked in ("100.64.0.1", "100.100.100.200", "10.0.0.5", "169.254.169.254", "127.0.0.1"):
+        assert not _is_public(blocked), blocked
+    assert _is_public("93.184.216.34")
+
+
+def test_request_id_pattern_rejects_injection() -> None:
+    from app.main import REQUEST_ID_PATTERN
+
+    assert REQUEST_ID_PATTERN.fullmatch("req-123.abc_DEF")
+    for bad in ("", "a" * 65, "x\r\nSet-Cookie: a=b", "id with space", "<script>"):
+        assert not REQUEST_ID_PATTERN.fullmatch(bad), bad

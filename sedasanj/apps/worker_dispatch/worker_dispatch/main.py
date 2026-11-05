@@ -55,6 +55,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
     functions = [dispatch_tick]
     cron_jobs = [cron(dispatch_tick, second=set(range(60)))]
     queue_name = "q:dispatch"

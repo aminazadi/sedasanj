@@ -17,7 +17,7 @@ async def send_verification(mobile: str, code: str, settings: DemoSettings | Non
         async with control_session_scope() as session:
             settings = await load(session)
     if not settings.smsir_api_key or not settings.smsir_template_id:
-        if get_settings().environment == "development":
+        if get_settings().dev_otp_visible:
             logger.warning("Development phone OTP for %s: %s", mobile, code)
             return
         raise ApiError("invalid_request", "تنظیمات ارسال کد تأیید پیامکی تکمیل نشده است.")

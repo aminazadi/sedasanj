@@ -745,6 +745,8 @@ async def pending_calls() -> list[UUID]:
 
 
 class WorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
     functions = [transcribe_call]
     queue_name = queue.QUEUE_ASR
     on_startup = startup

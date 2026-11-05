@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,6 +87,7 @@ from app.security import (
 from app.services import (
     analysis_runs,
     audit,
+    auth_cookies,
     billing,
     entitlements,
     knowledge,
@@ -201,7 +202,9 @@ async def totp_disable(
 
 
 @router.post("/auth/login", response_model=TokenPair)
-async def staff_login(payload: LoginRequest, request: Request, session: PublicSession) -> TokenPair:
+async def staff_login(
+    payload: LoginRequest, request: Request, response: Response, session: PublicSession
+) -> TokenPair:
     await ratelimit.enforce(f"staff-login:{payload.email.lower()}", 10)
     staff = (
         await session.execute(select(StaffUser).where(StaffUser.email == payload.email))
@@ -233,16 +236,27 @@ async def staff_login(payload: LoginRequest, request: Request, session: PublicSe
         ip=client_ip(request),
     )
     access = create_access_token(subject=staff.id, tenant_id=None, role=staff.role, actor="staff")
-    return TokenPair(
-        access_token=access,
-        refresh_token=token,
-        expires_in=settings.access_token_ttl_minutes * 60,
+    return auth_cookies.deliver_pair(
+        request,
+        response,
+        TokenPair(
+            access_token=access,
+            refresh_token=token,
+            expires_in=settings.access_token_ttl_minutes * 60,
+        ),
+        name=auth_cookies.STAFF_COOKIE,
+        path=auth_cookies.STAFF_PATH,
     )
 
 
 @router.post("/auth/refresh", response_model=TokenPair)
-async def staff_refresh(payload: RefreshRequest, session: PublicSession) -> TokenPair:
-    token_hash = hash_refresh_token(payload.refresh_token)
+async def staff_refresh(
+    payload: RefreshRequest, request: Request, response: Response, session: PublicSession
+) -> TokenPair:
+    presented = auth_cookies.refresh_token_from(
+        request, payload.refresh_token, name=auth_cookies.STAFF_COOKIE
+    )
+    token_hash = hash_refresh_token(presented)
     stored = (
         await session.execute(
             select(StaffRefreshToken)
@@ -267,21 +281,38 @@ async def staff_refresh(payload: RefreshRequest, session: PublicSession) -> Toke
             expires_at=now + timedelta(days=settings.refresh_token_ttl_days),
         )
     )
-    return TokenPair(
-        access_token=create_access_token(
-            subject=staff.id, tenant_id=None, role=staff.role, actor="staff"
+    return auth_cookies.deliver_pair(
+        request,
+        response,
+        TokenPair(
+            access_token=create_access_token(
+                subject=staff.id, tenant_id=None, role=staff.role, actor="staff"
+            ),
+            refresh_token=token,
+            expires_in=settings.access_token_ttl_minutes * 60,
         ),
-        refresh_token=token,
-        expires_in=settings.access_token_ttl_minutes * 60,
+        name=auth_cookies.STAFF_COOKIE,
+        path=auth_cookies.STAFF_PATH,
     )
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def staff_logout(payload: RefreshRequest, session: PublicSession) -> None:
-    await session.execute(
-        update(StaffRefreshToken)
-        .where(StaffRefreshToken.token_hash == hash_refresh_token(payload.refresh_token))
-        .values(revoked_at=datetime.now(UTC))
+async def staff_logout(
+    payload: RefreshRequest, request: Request, response: Response, session: PublicSession
+) -> None:
+    presented = payload.refresh_token or (
+        request.cookies.get(auth_cookies.STAFF_COOKIE, "")
+        if auth_cookies.cookie_mode(request)
+        else ""
+    )
+    if presented:
+        await session.execute(
+            update(StaffRefreshToken)
+            .where(StaffRefreshToken.token_hash == hash_refresh_token(presented))
+            .values(revoked_at=datetime.now(UTC))
+        )
+    auth_cookies.clear_cookie(
+        response, name=auth_cookies.STAFF_COOKIE, path=auth_cookies.STAFF_PATH
     )
 
 
@@ -784,7 +815,7 @@ async def create_topup(
     tenant_id: UUID,
     payload: TopupCreate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     """Staff-applied credit (§10). PSP integration later reuses this ledger kind."""
@@ -2012,7 +2043,7 @@ async def list_staff(
 async def create_staff(
     payload: StaffCreate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     await _verify_sensitive_staff_action(
@@ -2042,7 +2073,7 @@ async def disable_staff(
     staff_id: UUID,
     payload: StaffSensitiveAction,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     await _verify_sensitive_staff_action(
@@ -2075,7 +2106,7 @@ async def activate_staff(
     staff_id: UUID,
     payload: StaffSensitiveAction,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     await _verify_sensitive_staff_action(
@@ -2101,7 +2132,7 @@ async def reset_staff_password(
     staff_id: UUID,
     payload: StaffPasswordReset,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, str]:
     await _verify_sensitive_staff_action(
@@ -2132,7 +2163,7 @@ async def reset_staff_totp(
     staff_id: UUID,
     payload: StaffSensitiveAction,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, str]:
     await _verify_sensitive_staff_action(

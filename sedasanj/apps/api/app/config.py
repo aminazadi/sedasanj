@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal, Self
 
+from cryptography.fernet import Fernet
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -51,6 +52,10 @@ class Settings(BaseSettings):
     assistant_event_retention_days: int = Field(default=7, ge=1, le=90)
 
     environment: Literal["development", "production"] = "development"
+    # Debug conveniences (OTP returned in the response / written to the log) need BOTH
+    # ENVIRONMENT=development and this explicit flag, so a deployment that merely forgot
+    # ENVIRONMENT=production still never leaks verification codes. scripts/dev.sh sets it.
+    allow_insecure_dev: bool = False
 
     minio_endpoint: str = "http://127.0.0.1:9000"
     minio_public_endpoint: str | None = None
@@ -278,6 +283,11 @@ class Settings(BaseSettings):
         """Browsers cannot resolve the compose-internal MinIO host (§11)."""
         return self.minio_public_endpoint or self.minio_endpoint
 
+    @property
+    def dev_otp_visible(self) -> bool:
+        """True only for an explicit local development run (never in production)."""
+        return self.environment == "development" and self.allow_insecure_dev
+
     @model_validator(mode="after")
     def _reject_insecure_production(self) -> Self:
         if self.environment != "production":
@@ -292,6 +302,15 @@ class Settings(BaseSettings):
         ]
         if weak:
             raise ValueError(f"{', '.join(weak)} must be set to a value of at least 32 characters")
+        if self.jwt_secret == self.api_key_pepper:
+            raise ValueError("JWT_SECRET and API_KEY_PEPPER must be different values")
+        platform_key = (self.platform_secrets_key or "").strip()
+        if not platform_key:
+            raise ValueError("PLATFORM_SECRETS_KEY is required in production")
+        try:
+            Fernet(platform_key.encode("ascii"))
+        except (TypeError, ValueError, UnicodeEncodeError) as exc:
+            raise ValueError("PLATFORM_SECRETS_KEY must be a valid Fernet key") from exc
         if self.minio_secret_key == "cbi-secret" or len(self.minio_secret_key) < 8:
             raise ValueError("MINIO_SECRET_KEY must be set to a strong value in production")
         if not self.metrics_token or len(self.metrics_token) < 32:

@@ -16,8 +16,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import routable_tenant_ids, session_scope
-from app.deps import OrgAdminDep, PublicSession, StaffDep, StaffSession, TenantSession, client_ip
+from app.db import control_session_scope, routable_tenant_ids, session_scope
+from app.deps import (
+    OrgAdminDep,
+    PublicSession,
+    StaffDep,
+    StaffSession,
+    SuperAdminDep,
+    TenantSession,
+    client_ip,
+)
 from app.errors import ApiError
 from app.models import (
     AuditEvent,
@@ -339,7 +347,7 @@ async def admin_site_contact_settings(staff: StaffDep, session: StaffSession) ->
 async def update_site_contact_settings(
     payload: SiteContactSettingsUpdate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     values = {SITE_CONTACT_PHONE_KEY: payload.phone, "site_trust_html": payload.trust_html}
@@ -430,7 +438,7 @@ async def request_signup_otp(
     session.add(row)
     await session.flush()
     sms_settings = await demo_settings.load(session)
-    development_code = get_settings().environment != "production" and not sms_settings.smsir_api_key
+    development_code = get_settings().dev_otp_visible and not sms_settings.smsir_api_key
     if not development_code:
         await smsir.send_verification(mobile, code, sms_settings)
     await audit.record(
@@ -446,33 +454,50 @@ async def request_signup_otp(
     return result
 
 
+SIGNUP_OTP_MAX_ATTEMPTS = 5
+
+
 @router.post("/signup/otp/verify")
-async def verify_signup_otp(
-    payload: OtpVerify, request: Request, session: PublicSession
-) -> dict[str, bool]:
+async def verify_signup_otp(payload: OtpVerify, request: Request) -> dict[str, bool]:
     from app.security import verify_password
 
-    row = await session.get(SignupOtp, payload.otp_id, with_for_update=True)
-    if row is None or row.expires_at <= datetime.now(UTC) or row.attempts >= 5:
-        raise ApiError("unauthorized", "verification code is not usable")
-    row.attempts += 1
-    if not verify_password(row.code_hash, payload.code):
-        await audit.record(
-            session,
-            actor_type="public",
-            action="signup.otp_failed",
-            payload={"otp_id": str(row.id), "attempt": row.attempts},
-            ip=client_ip(request),
-        )
-        raise ApiError("unauthorized", "verification code is invalid")
-    row.verified_at = datetime.now(UTC)
-    await audit.record(
-        session,
-        actor_type="public",
-        action="signup.otp_verified",
-        payload={"otp_id": str(row.id)},
-        ip=client_ip(request),
-    )
+    ip = client_ip(request)
+    await ratelimit.enforce(f"signup-verify-ip:{ip}", 30, 600)
+    await ratelimit.enforce(f"signup-verify-otp:{payload.otp_id}", 10, 600)
+    failure: ApiError | None = None
+    # Failed attempts must be committed before the error is raised: raising inside the
+    # session scope would roll the counter back and make the attempt cap meaningless.
+    async with control_session_scope() as session:
+        row = await session.get(SignupOtp, payload.otp_id, with_for_update=True)
+        if (
+            row is None
+            or row.expires_at <= datetime.now(UTC)
+            or row.verified_at is not None
+            or row.attempts >= SIGNUP_OTP_MAX_ATTEMPTS
+        ):
+            failure = ApiError("unauthorized", "verification code is not usable")
+        else:
+            row.attempts += 1
+            if not verify_password(row.code_hash, payload.code):
+                await audit.record(
+                    session,
+                    actor_type="public",
+                    action="signup.otp_failed",
+                    payload={"otp_id": str(row.id), "attempt": row.attempts},
+                    ip=ip,
+                )
+                failure = ApiError("unauthorized", "verification code is invalid")
+            else:
+                row.verified_at = datetime.now(UTC)
+                await audit.record(
+                    session,
+                    actor_type="public",
+                    action="signup.otp_verified",
+                    payload={"otp_id": str(row.id)},
+                    ip=ip,
+                )
+    if failure is not None:
+        raise failure
     return {"verified": True}
 
 
@@ -502,6 +527,8 @@ async def complete_signup(
         plan_code=payload.plan_code,
         ip=client_ip(request),
     )
+    # A verified signup code is single use.
+    await session.delete(otp)
     return {
         "tenant_id": str(tenant.id),
         "requires_payment": not plan.is_trial,
@@ -1829,7 +1856,7 @@ PROTECTED_PLAN_CODES = ("demo", "legacy_custom")
 
 @router.post("/admin/commerce/plans", status_code=status.HTTP_201_CREATED)
 async def create_plan(
-    payload: PlanCreate, request: Request, staff: StaffDep, session: StaffSession
+    payload: PlanCreate, request: Request, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, Any]:
     if (
         await session.execute(select(Plan.id).where(Plan.code == payload.code))
@@ -1853,7 +1880,11 @@ async def create_plan(
 
 @router.patch("/admin/commerce/plans/{plan_code}")
 async def update_plan(
-    plan_code: str, payload: PlanUpdate, request: Request, staff: StaffDep, session: StaffSession
+    plan_code: str,
+    payload: PlanUpdate,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
 ) -> dict[str, Any]:
     row = (
         await session.execute(select(Plan).where(Plan.code == plan_code).with_for_update())
@@ -1903,7 +1934,7 @@ async def create_plan_version(
     plan_code: str,
     payload: PlanVersionCreate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     plan = (
@@ -1945,7 +1976,11 @@ async def create_plan_version(
 
 @router.post("/admin/commerce/plan-versions/{version_id}/publish")
 async def publish_plan_version(
-    version_id: UUID, payload: PlanPublish, request: Request, staff: StaffDep, session: StaffSession
+    version_id: UUID,
+    payload: PlanPublish,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
 ) -> dict[str, Any]:
     version = await session.get(PlanVersion, version_id, with_for_update=True)
     if version is None:
@@ -2007,7 +2042,7 @@ async def retire_plan_version(
     version_id: UUID,
     payload: PlanRetire,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     version = await session.get(PlanVersion, version_id, with_for_update=True)
@@ -2338,9 +2373,7 @@ async def admin_subscription_action(
             row.status = "canceled"
             row.period_end = now
             row.next_plan_version_id = None
-            await subscription_state.close_open_changes(
-                tenant_session, row.id, status="canceled"
-            )
+            await subscription_state.close_open_changes(tenant_session, row.id, status="canceled")
         elif payload.action == "extend":
             if not payload.days:
                 raise ApiError("invalid_request", "days are required")
@@ -2615,7 +2648,7 @@ async def create_admin_refund(
     order_id: UUID,
     payload: RefundCreate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
     idempotency_key: str = Header(alias="Idempotency-Key"),
 ) -> dict[str, Any]:
@@ -2735,7 +2768,7 @@ async def admin_commerce_settings(staff: StaffDep, session: StaffSession) -> dic
 
 @router.patch("/admin/commerce/settings")
 async def patch_admin_commerce_settings(
-    payload: CommerceSettingsUpdate, request: Request, staff: StaffDep, session: StaffSession
+    payload: CommerceSettingsUpdate, request: Request, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, object]:
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
     saved = await update_commerce_settings(session, changes)
@@ -2796,7 +2829,7 @@ async def admin_gateways(staff: StaffDep, session: StaffSession) -> list[dict[st
 
 @router.patch("/admin/commerce/gateways/{code}")
 async def update_admin_gateway(
-    code: str, payload: GatewayUpdate, request: Request, staff: StaffDep, session: StaffSession
+    code: str, payload: GatewayUpdate, request: Request, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, Any]:
     state = await gateway_settings.save(
         session,
@@ -2824,7 +2857,9 @@ async def update_admin_gateway(
 
 
 @router.post("/admin/commerce/gateways/{code}/test")
-async def test_admin_gateway(code: str, staff: StaffDep, session: StaffSession) -> dict[str, Any]:
+async def test_admin_gateway(
+    code: str, staff: SuperAdminDep, session: StaffSession
+) -> dict[str, Any]:
     """Asks the bank for a payment token (no money moves) to prove credentials, IP and mode."""
     if code not in GATEWAYS:
         raise ApiError("not_found", "payment gateway not found")

@@ -20,6 +20,7 @@ RUN cd admin && npm run build
 
 FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS client
 WORKDIR /app
+ENV WEB_APP=client
 COPY deploy/web-server.mjs ./server.mjs
 COPY --from=client-build /build/client/dist ./dist
 EXPOSE 80
@@ -27,6 +28,7 @@ CMD ["node", "server.mjs"]
 
 FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS admin
 WORKDIR /app
+ENV WEB_APP=admin
 COPY deploy/web-server.mjs ./server.mjs
 COPY --from=admin-build /build/admin/dist ./dist
 EXPOSE 80

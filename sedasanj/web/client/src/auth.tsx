@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      if (tokens.refresh()) {
+      if (tokens.hasSession()) {
         const ok = await refreshSession();
         const nextAccess = tokens.access();
         const next = ok && nextAccess ? decode(nextAccess) : null;
@@ -78,11 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(decode(pair.access_token));
       },
       async logout() {
-        const refresh = tokens.refresh();
-        if (refresh) {
+        // The cookie carries the refresh token; the server revokes it and expires the cookie.
+        if (tokens.hasSession()) {
           await request<void>("/v1/auth/logout", {
             method: "POST",
-            body: { refresh_token: refresh },
+            body: { refresh_token: "" },
+            retry: false,
           }).catch(() => undefined);
         }
         tokens.clear();

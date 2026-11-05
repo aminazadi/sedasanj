@@ -15,6 +15,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 import httpx
 
+from app.config import get_settings
 from app.errors import ApiError
 from app.models import Webhook
 from app.security import sign_webhook
@@ -48,8 +49,10 @@ class DeliveryResult:
 
 
 def seal_secret(value: str) -> str:
-    """Encrypt when the platform key exists; fall back to the plain value in development."""
+    """Encrypt with the platform key; only an explicit local dev run may store plain text."""
     if platform_secrets.secret_storage_error():
+        if get_settings().environment == "production":
+            raise RuntimeError("PLATFORM_SECRETS_KEY is required to store webhook secrets")
         return value
     return platform_secrets.encrypt_secret(value)
 

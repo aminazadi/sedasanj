@@ -2,6 +2,18 @@
 
 - Added expiring email verification and password reset links for organization members.
 - Added an organization user editor for display names, mobile numbers, and extensions, with a URL-backed member selection.
+- Restricted platform-shaping staff actions (staff management, tenants, plans, gateways, refunds, settings) to `super_admin`, read the staff role from the database on every request, and added a test that fails when a mutating admin route lacks a role check.
+- Fixed signup verification codes so failed attempts are committed and capped, added rate limits, and made a verified code single use.
+- Required the current password and an SMS-verified new number to change the profile mobile number.
+- Made production refuse to start without a valid `PLATFORM_SECRETS_KEY` or when `JWT_SECRET` equals `API_KEY_PEPPER`, and limited debug verification codes to explicit local runs (`ALLOW_INSECURE_DEV`).
+- Switched arq job serialization from pickle to JSON for the API and every worker, and put a password on Redis in `deploy/compose.yml` (new required `REDIS_PASSWORD`; drain the queues before deploying).
+- Added CSP, HSTS, framing, nosniff, referrer and permissions headers to the web server, plus a header connection limit and sitemap escaping.
+- Stopped organization import uploads from holding a database connection while streaming, and added stall and total-time limits.
+- Verified SMTP certificates and refused to send SMTP credentials without TLS.
+- Blocked the carrier-grade NAT range in the webhook URL guard, and validated `X-Request-ID` and bounded the metrics path label.
+- Stopped echoing token parser details in authentication errors.
+- Moved the browser panels' refresh token into an HttpOnly, SameSite=Strict, path-scoped cookie (opt-in with `X-Auth-Transport: cookie`; the body token still works for the mobile app), kept the access token in memory only, and migrated existing localStorage sessions on first refresh.
+
 - Moved organization backup and restore history to a dedicated page with URL-backed filters, downloads, and links to resume restores.
 - Matched organization data section headings to the panel's dotted title bands.
 - Moved Jalase Negar pairing and device management from the profile to Account Settings for all user roles.

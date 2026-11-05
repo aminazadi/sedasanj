@@ -22,7 +22,7 @@ x-python-env: &python-env
   TENANT_BACKUP_ENABLED: ${TENANT_BACKUP_ENABLED:-true}
   TENANT_BACKUP_INTERVAL_HOURS: ${TENANT_BACKUP_INTERVAL_HOURS:-24}
   TENANT_BACKUP_RETENTION_DAYS: ${TENANT_BACKUP_RETENTION_DAYS:-30}
-  REDIS_URL: redis://redis:6379/0
+  REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD (URL-safe, e.g. openssl rand -hex 32)}@redis:6379/0
   ASSISTANT_EVENT_RETENTION_DAYS: ${ASSISTANT_EVENT_RETENTION_DAYS:-7}
   MINIO_ENDPOINT: http://minio:9000
   MINIO_PUBLIC_ENDPOINT: https://${AUDIO_DOMAIN:?Set AUDIO_DOMAIN}
@@ -31,7 +31,7 @@ x-python-env: &python-env
   MINIO_BUCKET_AUDIO: audio
   JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
   API_KEY_PEPPER: ${API_KEY_PEPPER:?Set API_KEY_PEPPER}
-  PLATFORM_SECRETS_KEY: ${PLATFORM_SECRETS_KEY:-}
+  PLATFORM_SECRETS_KEY: ${PLATFORM_SECRETS_KEY:?Set PLATFORM_SECRETS_KEY (Fernet key)}
   LLAMA_SERVER_URLS: http://llm1:8081,http://llm2:8081
   LLM_MODEL: ${LLM_MODEL:-dorna-llama3-8b-instruct-q4_k_m}
   ASR_ENGINE: ${ASR_ENGINE:-shenava}
@@ -134,6 +134,9 @@ services:
       target: client
       args:
         SITE_URL: ${SITE_URL:-https://${APP_DOMAIN:?Set APP_DOMAIN}}
+    environment:
+      # Object-storage origin that serves presigned call audio (CSP media-src/connect-src).
+      CSP_MEDIA_ORIGINS: https://${AUDIO_DOMAIN:?Set AUDIO_DOMAIN}
     restart: unless-stopped
     ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${APP_PORT:-3000}:80"]
     networks: [proxy]
@@ -155,6 +158,8 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.web
       target: admin
+    environment:
+      CSP_MEDIA_ORIGINS: https://${AUDIO_DOMAIN:?Set AUDIO_DOMAIN}
     restart: unless-stopped
     ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${ADMIN_PORT:-3001}:80"]
     networks: [proxy]
@@ -515,14 +520,21 @@ services:
   redis:
     image: redis:7.4.11-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "3gb"]
+    # Redis carries job payloads and rate-limit counters: require a password so a foothold
+    # on the container network cannot read or inject queue data.
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory 3gb --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
     volumes:
       - redisdata:/data
     depends_on:
       redis-aof-repair:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10

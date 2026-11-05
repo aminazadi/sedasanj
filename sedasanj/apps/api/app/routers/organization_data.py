@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -28,6 +29,10 @@ from app.services.storage import get_storage
 
 router = APIRouter(prefix="/v1/account/data", tags=["account"])
 COOKIE = "sedasanj_archive_download"
+# An import upload may be large on a slow link, but a stalled or trickling client must not
+# occupy a request worker forever.
+UPLOAD_STALL_SECONDS = 60
+UPLOAD_MAX_SECONDS = 2 * 3600
 AUDIENCE = "sedasanj-organization-archive"
 
 
@@ -452,26 +457,40 @@ async def upload_import(run_id: UUID, request: Request, principal: OrgAdminDep) 
         not header.isascii() or not header.isdecimal() or len(header) > 12 or int(header) > limit
     ):
         raise archive.archive_too_large()
+    # Do not hold a pooled DB connection (or the row lock) while the client streams the body:
+    # a few slow uploads would otherwise exhaust the pool and stall the whole platform.
     async with control_session_scope() as session:
-        row = await _run(session, run_id, principal, lock=True)
+        row = await _run(session, run_id, principal, lock=False)
         _assert_import(row, principal, "uploading")
-        with TemporaryDirectory(prefix="sedasanj-archive-upload-") as directory:
-            path = Path(directory) / "archive.sedasanj"
-            size = 0
-            try:
-                with path.open("wb") as output:
-                    async for block in request.stream():
-                        size += len(block)
-                        if size > limit:
-                            raise archive.archive_too_large()
-                        output.write(block)
-            except ClientDisconnect as exc:
-                raise archive.invalid_archive() from exc
-            except OSError as exc:
-                raise jobs.unavailable() from exc
-            with path.open("rb") as source:
-                if source.read(len(archive.MAGIC)) != archive.MAGIC:
-                    raise archive.invalid_archive()
+    with TemporaryDirectory(prefix="sedasanj-archive-upload-") as directory:
+        path = Path(directory) / "archive.sedasanj"
+        size = 0
+        deadline = time.monotonic() + UPLOAD_MAX_SECONDS
+        try:
+            with path.open("wb") as output:
+                blocks = request.stream().__aiter__()
+                while True:
+                    try:
+                        block = await asyncio.wait_for(blocks.__anext__(), UPLOAD_STALL_SECONDS)
+                    except StopAsyncIteration:
+                        break
+                    except TimeoutError as exc:
+                        raise archive.invalid_archive() from exc
+                    size += len(block)
+                    if size > limit or time.monotonic() > deadline:
+                        raise archive.archive_too_large()
+                    output.write(block)
+        except ClientDisconnect as exc:
+            raise archive.invalid_archive() from exc
+        except OSError as exc:
+            raise jobs.unavailable() from exc
+        with path.open("rb") as source:
+            if source.read(len(archive.MAGIC)) != archive.MAGIC:
+                raise archive.invalid_archive()
+        # Re-lock and re-check: the run may have been cancelled or finished while uploading.
+        async with control_session_scope() as session:
+            row = await _run(session, run_id, principal, lock=True)
+            _assert_import(row, principal, "uploading")
             storage = get_storage()
             try:
                 await storage.ensure_bucket()
@@ -480,9 +499,9 @@ async def upload_import(run_id: UUID, request: Request, principal: OrgAdminDep) 
                 )
             except Exception as exc:
                 raise jobs.unavailable() from exc
-        row.size_bytes, row.state, row.due_at = size, "queued", _now()
-        await _audit(session, request, principal, "file_uploaded", row.id)
-        return _view(row, principal)
+            row.size_bytes, row.state, row.due_at = size, "queued", _now()
+            await _audit(session, request, principal, "file_uploaded", row.id)
+            return _view(row, principal)
 
 
 @router.put("/import/{run_id}/mapping", status_code=202)

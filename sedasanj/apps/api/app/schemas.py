@@ -88,7 +88,8 @@ class TokenPair(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Empty in cookie mode: the token then comes from the HttpOnly cookie.
+    refresh_token: str = Field(default="", max_length=512)
 
 
 ArchiveFormat = Literal["wav", "gzip", "zip"]
@@ -1200,6 +1201,10 @@ class ProfileUpdate(BaseModel):
     mobile_number: str | None = Field(default=None, max_length=32)
     extension: str | None = Field(default=None, max_length=32)
     profile_context: str | None = Field(default=None, max_length=2000)
+    # Changing or clearing the mobile number needs the current password and, for a new number,
+    # a grant from /v1/auth/phone/verify proving the user controls it (WSTG-IDNT / ATHN).
+    current_password: str | None = Field(default=None, max_length=256)
+    mobile_verified_token: str | None = Field(default=None, min_length=40, max_length=256)
 
     @field_validator("display_name", "mobile_number", "extension", "profile_context", mode="before")
     @classmethod

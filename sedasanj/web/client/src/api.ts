@@ -16,8 +16,33 @@ function toLatinDigits(value: string): string {
     .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
 }
 
-const ACCESS_KEY = "cbi.access";
-const REFRESH_KEY = "cbi.refresh";
+// Session storage model (WSTG-SESS-04): the refresh token lives only in an HttpOnly cookie that
+// scripts cannot read, and the access token only in this module's memory. localStorage keeps a
+// non-secret hint ("a refresh cookie probably exists") so logged-out visitors skip the refresh
+// call, plus the pre-cookie token keys, which are read once to migrate existing sessions.
+const SESSION_HINT_KEY = "cbi.session";
+const LEGACY_ACCESS_KEY = "cbi.access";
+const LEGACY_REFRESH_KEY = "cbi.refresh";
+const TRANSPORT_HEADERS = { "X-Auth-Transport": "cookie" };
+
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable: the session then lasts until the tab reloads */
+  }
+}
+
+let accessToken: string | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -30,15 +55,20 @@ export class ApiError extends Error {
 }
 
 export const tokens = {
-  access: () => localStorage.getItem(ACCESS_KEY),
-  refresh: () => localStorage.getItem(REFRESH_KEY),
+  access: () => accessToken,
+  /** True when a refresh cookie (or a pre-cookie stored token) may exist. */
+  hasSession: () => readStorage(SESSION_HINT_KEY) === "1" || readStorage(LEGACY_REFRESH_KEY) !== null,
   save(pair: TokenPair) {
-    localStorage.setItem(ACCESS_KEY, pair.access_token);
-    localStorage.setItem(REFRESH_KEY, pair.refresh_token);
+    accessToken = pair.access_token;
+    writeStorage(SESSION_HINT_KEY, "1");
+    writeStorage(LEGACY_ACCESS_KEY, null);
+    writeStorage(LEGACY_REFRESH_KEY, null);
   },
   clear() {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    accessToken = null;
+    writeStorage(SESSION_HINT_KEY, null);
+    writeStorage(LEGACY_ACCESS_KEY, null);
+    writeStorage(LEGACY_REFRESH_KEY, null);
   },
 };
 
@@ -58,13 +88,21 @@ async function parseError(response: Response): Promise<ApiError> {
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function doRefresh(): Promise<boolean> {
-  const refresh = tokens.refresh();
-  if (!refresh) return false;
-  const response = await fetch("/v1/auth/refresh", {
+  if (!tokens.hasSession()) return false;
+  // One-time migration: a session stored before cookies existed still presents its old token
+  // in the body; the server answers by setting the cookie, and save() deletes the old keys.
+  const legacy = readStorage(LEGACY_REFRESH_KEY);
+  const send = () => fetch("/v1/auth/refresh", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refresh }),
+    headers: { "Content-Type": "application/json", ...TRANSPORT_HEADERS },
+    body: JSON.stringify({ refresh_token: legacy ?? "" }),
   });
+  let response = await send();
+  if (response.status === 401 && !legacy) {
+    // Another tab may have rotated the cookie a moment ago; retry once with the fresh one.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    response = await send();
+  }
   if (response.status === 401 || response.status === 403) {
     tokens.clear();
     return false;
@@ -93,7 +131,7 @@ interface RequestOptions {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, retry = true, raw = false } = options;
-  const headers: Record<string, string> = { ...options.headers };
+  const headers: Record<string, string> = { ...TRANSPORT_HEADERS, ...options.headers };
   const access = tokens.access();
   if (access) headers.Authorization = `Bearer ${access}`;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;

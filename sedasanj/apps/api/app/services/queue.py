@@ -9,6 +9,7 @@ from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
 from app.config import get_settings
+from app.services.queue_serialization import job_deserializer, job_serializer
 
 QUEUE_ASR = "q:asr"
 QUEUE_EMOTION = "q:emotion"
@@ -53,7 +54,10 @@ class RedisQueue(Queue):
         if queue not in self._pools:
             settings = get_settings()
             self._pools[queue] = await create_pool(
-                RedisSettings.from_dsn(settings.redis_url), default_queue_name=queue
+                RedisSettings.from_dsn(settings.redis_url),
+                default_queue_name=queue,
+                job_serializer=job_serializer,
+                job_deserializer=job_deserializer,
             )
         return self._pools[queue]
 

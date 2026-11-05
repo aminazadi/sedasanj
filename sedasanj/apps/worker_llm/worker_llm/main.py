@@ -796,6 +796,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
     functions = [
         generate_scheduled_report,
         run_assistant_chat,

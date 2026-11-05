@@ -12,6 +12,8 @@ ERROR_STATUS: dict[str, int] = {
     "password_change_mobile_required": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "password_change_verification_required": status.HTTP_400_BAD_REQUEST,
     "password_change_totp_required": status.HTTP_400_BAD_REQUEST,
+    "mobile_change_verification_required": status.HTTP_400_BAD_REQUEST,
+    "current_password_invalid": status.HTTP_400_BAD_REQUEST,
     "org_archive_invalid": 422,
     "org_archive_too_large": 413,
     "org_archive_mapping": 422,

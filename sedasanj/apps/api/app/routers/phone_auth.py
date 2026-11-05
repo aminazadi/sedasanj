@@ -4,7 +4,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from app.security import (
     verify_password,
     verify_totp,
 )
-from app.services import audit, demo_settings, ratelimit, smsir
+from app.services import audit, auth_cookies, demo_settings, ratelimit, smsir
 from app.services.phone_identity import mobile_accounts, mobile_lock, normalize_mobile
 from app.services.signup import create_account
 
@@ -223,7 +223,11 @@ async def _lock_verified_phone(
 
 @router.post("/password/change", response_model=TokenPair)
 async def change_password(
-    payload: PasswordChange, request: Request, session: ControlSession, principal: UserDep
+    payload: PasswordChange,
+    request: Request,
+    response: Response,
+    session: ControlSession,
+    principal: UserDep,
 ) -> TokenPair:
     await ratelimit.enforce(f"password-change:{principal.id}", 10, 600)
     row = await _lock_verified_phone(
@@ -256,11 +260,32 @@ async def change_password(
         action="auth.password_changed",
         ip=client_ip(request),
     )
-    return pair
+    return auth_cookies.deliver_pair(
+        request,
+        response,
+        pair,
+        name=auth_cookies.CUSTOMER_COOKIE,
+        path=auth_cookies.CUSTOMER_PATH,
+    )
+
+
+async def consume_verified_mobile(session: AsyncSession, verified_token: str, mobile: str) -> None:
+    """Spend a /phone/verify grant, proving the caller controls exactly `mobile`."""
+    row = await _lock_verified_phone(
+        session, verified_token, error_code="mobile_change_verification_required"
+    )
+    if row.mobile != mobile:
+        raise ApiError(
+            "mobile_change_verification_required",
+            "کد تأیید برای همین شماره موبایل نیست؛ برای شماره جدید کد بگیرید.",
+        )
+    row.consumed_at = datetime.now(UTC)
 
 
 @router.post("/complete", response_model=TokenPair)
-async def complete_phone_login(payload: PhoneComplete, request: Request) -> TokenPair:
+async def complete_phone_login(
+    payload: PhoneComplete, request: Request, response: Response
+) -> TokenPair:
     await ratelimit.enforce(f"phone-complete:{hash_refresh_token(payload.verified_token)}", 10, 600)
     async with control_session_scope() as session:
         row = await _lock_verified_phone(session, payload.verified_token, error_code="unauthorized")
@@ -306,4 +331,10 @@ async def complete_phone_login(payload: PhoneComplete, request: Request) -> Toke
             action="auth.phone_login",
             ip=client_ip(request),
         )
-        return pair
+        return auth_cookies.deliver_pair(
+            request,
+            response,
+            pair,
+            name=auth_cookies.CUSTOMER_COOKIE,
+            path=auth_cookies.CUSTOMER_PATH,
+        )

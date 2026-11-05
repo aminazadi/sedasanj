@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fmt, request } from "../api";
+import { normalizeOtp } from "@cbi/web-shared/lib/otp";
+import { ApiError, fmt, request } from "../api";
 import { ROLE_LABELS } from "../auth";
 import PasswordChange from "../components/PasswordChange";
 import TwoFactorSettings from "../components/TwoFactorSettings";
@@ -22,12 +23,28 @@ const EMPTY_PROFILE: ProfileForm = {
   profile_context: "",
 };
 
+/** UI-only comparison; the server decides whether the number really changed. */
+function sameMobile(a: string, b: string): boolean {
+  const digits = (value: string) => value
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/\D/g, "")
+    .replace(/^0098/, "0")
+    .replace(/^98/, "0")
+    .replace(/^9(?=\d{9}$)/, "09");
+  return digits(a) === digits(b);
+}
+
 export default function Profile() {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [form, setForm] = useState<ProfileForm>(EMPTY_PROFILE);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [mobileOtp, setMobileOtp] = useState<{ otp_id: string; otp_mobile: string } | null>(null);
+  const [mobileCode, setMobileCode] = useState("");
+  const [mobileGrant, setMobileGrant] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
 
   useEffect(() => {
     request<AccountInfo>("/v1/account")
@@ -43,24 +60,74 @@ export default function Profile() {
       .catch((reason) => setError((reason as Error).message));
   }, []);
 
+  const savedMobile = account?.user.mobile_number ?? "";
+  const mobileChanged = !sameMobile(form.mobile_number, savedMobile);
+  const newMobile = form.mobile_number.trim();
+
+  async function sendMobileCode() {
+    setSendingCode(true);
+    setError(null);
+    try {
+      const result = await request<{ otp_id: string }>("/v1/auth/phone/request", {
+        method: "POST",
+        body: { mobile: newMobile },
+      });
+      setMobileOtp({ otp_id: result.otp_id, otp_mobile: newMobile });
+      setMobileCode("");
+      setMobileGrant("");
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setSendingCode(false);
+    }
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
     setSaved(false);
     setError(null);
     try {
+      // Changing the number repoints login/password-reset codes, so it needs the current
+      // password and proof (an SMS code) that the new number is yours.
+      let verifiedToken = mobileGrant;
+      if (mobileChanged && newMobile) {
+        if (!mobileOtp || mobileOtp.otp_mobile !== newMobile) {
+          throw new Error("برای شمارهٔ جدید ابتدا «ارسال کد تأیید» را بزنید.");
+        }
+        if (!verifiedToken) {
+          const result = await request<{ verified_token: string }>("/v1/auth/phone/verify", {
+            method: "POST",
+            retry: false,
+            body: { otp_id: mobileOtp.otp_id, code: mobileCode },
+          });
+          verifiedToken = result.verified_token;
+          setMobileGrant(verifiedToken);
+        }
+      }
       const user = await request<User>("/v1/auth/me", {
         method: "PATCH",
         body: {
           display_name: form.display_name.trim(),
-          mobile_number: form.mobile_number.trim() || null,
+          mobile_number: newMobile || null,
           extension: form.extension.trim() || null,
           profile_context: form.profile_context.trim() || null,
+          current_password: mobileChanged ? currentPassword : null,
+          mobile_verified_token: mobileChanged && newMobile ? verifiedToken : null,
         },
       });
       setAccount((current) => current ? { ...current, user } : current);
+      setForm((current) => ({ ...current, mobile_number: user.mobile_number || "" }));
+      setCurrentPassword("");
+      setMobileOtp(null);
+      setMobileCode("");
+      setMobileGrant("");
       setSaved(true);
     } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "mobile_change_verification_required") {
+        setMobileOtp(null);
+        setMobileGrant("");
+      }
       setError((reason as Error).message);
     } finally {
       setSaving(false);
@@ -109,6 +176,28 @@ export default function Profile() {
               <input className="input" value={form.extension} readOnly={account.user.role === "operator"} onChange={(event) => setForm({ ...form, extension: event.target.value })} dir="ltr" inputMode="numeric" />
             </label>
           </div>
+          {mobileChanged ? (
+            <fieldset className="grid gap-4 border-t border-[color:var(--line)] pt-5 md:grid-cols-2" disabled={saving}>
+              <legend className="label">تأیید تغییر شمارهٔ موبایل</legend>
+              <label>
+                <span className="label">گذرواژهٔ فعلی</span>
+                <input className="input" type="password" dir="ltr" autoComplete="current-password" maxLength={256} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+              </label>
+              {newMobile ? (
+                <div className="space-y-2">
+                  <button type="button" className={mobileOtp ? "btn-ghost" : "btn"} disabled={sendingCode} onClick={() => void sendMobileCode()}>
+                    {mobileOtp ? "ارسال دوباره کد" : "ارسال کد تأیید به شمارهٔ جدید"}
+                  </button>
+                  {mobileOtp ? (
+                    <label className="block">
+                      <span className="label">کد شش‌رقمی پیامک</span>
+                      <input className="input" dir="ltr" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" value={mobileCode} onChange={(event) => setMobileCode(normalizeOtp(event.target.value))} required={!mobileGrant} />
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+            </fieldset>
+          ) : null}
           <label className="block border-t border-[color:var(--line)] pt-5">
             <span className="label">درباره من و شیوه ارتباط دلخواه</span>
             <textarea

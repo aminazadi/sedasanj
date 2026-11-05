@@ -6,3 +6,13 @@ deliverables/recuploader-*.tgz
 module-engine/bin/7zip/7zzs-*
 module-engine/bin/ffmpeg/ffmpeg-*
 module-engine/bin/gsm/gsm-encode-*
+
+# Secrets and backups must never be committed.
+*.pem
+*.key
+*.seed
+*.dump
+sedasanj/deploy/backup/
+.env.*
+!.env.example
+!**/.env.example

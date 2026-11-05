@@ -9,7 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Path, Request, status
 from pydantic import ValidationError
 
-from app.deps import PublicSession, StaffDep, StaffSession, client_ip
+from app.deps import PublicSession, StaffDep, StaffSession, SuperAdminDep, client_ip
 from app.errors import ApiError
 from app.models import HelpMedia, PlatformSetting
 from app.services import audit, ratelimit, site_pages
@@ -77,7 +77,7 @@ async def admin_update_site_page(
     slug: Slug,
     body: dict[str, Any],
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, Any]:
     try:
@@ -107,7 +107,7 @@ async def admin_update_site_page(
 
 @router.delete("/admin/site-pages/{slug}", status_code=status.HTTP_200_OK)
 async def admin_reset_site_page(
-    slug: Slug, request: Request, staff: StaffDep, session: StaffSession
+    slug: Slug, request: Request, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, Any]:
     row = await session.get(PlatformSetting, site_pages.setting_key(slug))
     if row is not None:

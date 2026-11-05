@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,7 @@ from app.security import (
 )
 from app.services import (
     audit,
+    auth_cookies,
     extensions,
     identity_projection,
     member_account_actions,
@@ -167,7 +168,7 @@ async def totp_disable(
 
 @router.post("/login", response_model=TokenPair)
 async def login(
-    payload: CustomerLoginRequest, request: Request, session: PublicSession
+    payload: CustomerLoginRequest, request: Request, response: Response, session: PublicSession
 ) -> TokenPair:
     user = await _password_user(payload, session, "login", client_ip(request))
     password_hash = user.password_hash
@@ -196,12 +197,23 @@ async def login(
         ip=client_ip(request),
     )
     access = create_access_token(subject=user.id, tenant_id=user.tenant_id, role=user.role)
-    return _token_pair(access, token)
+    return auth_cookies.deliver_pair(
+        request,
+        response,
+        _token_pair(access, token),
+        name=auth_cookies.CUSTOMER_COOKIE,
+        path=auth_cookies.CUSTOMER_PATH,
+    )
 
 
 @router.post("/refresh", response_model=TokenPair)
-async def refresh(payload: RefreshRequest, session: PublicSession) -> TokenPair:
-    token_hash = hash_refresh_token(payload.refresh_token)
+async def refresh(
+    payload: RefreshRequest, request: Request, response: Response, session: PublicSession
+) -> TokenPair:
+    presented = auth_cookies.refresh_token_from(
+        request, payload.refresh_token, name=auth_cookies.CUSTOMER_COOKIE
+    )
+    token_hash = hash_refresh_token(presented)
     user_id = await session.scalar(
         select(RefreshToken.user_id).where(RefreshToken.token_hash == token_hash)
     )
@@ -233,15 +245,32 @@ async def refresh(payload: RefreshRequest, session: PublicSession) -> TokenPair:
         )
     )
     access = create_access_token(subject=user.id, tenant_id=user.tenant_id, role=user.role)
-    return _token_pair(access, new_token)
+    return auth_cookies.deliver_pair(
+        request,
+        response,
+        _token_pair(access, new_token),
+        name=auth_cookies.CUSTOMER_COOKIE,
+        path=auth_cookies.CUSTOMER_PATH,
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(payload: RefreshRequest, session: PublicSession) -> None:
-    await session.execute(
-        update(RefreshToken)
-        .where(RefreshToken.token_hash == hash_refresh_token(payload.refresh_token))
-        .values(revoked_at=datetime.now(UTC))
+async def logout(
+    payload: RefreshRequest, request: Request, response: Response, session: PublicSession
+) -> None:
+    presented = payload.refresh_token or (
+        request.cookies.get(auth_cookies.CUSTOMER_COOKIE, "")
+        if auth_cookies.cookie_mode(request)
+        else ""
+    )
+    if presented:
+        await session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.token_hash == hash_refresh_token(presented))
+            .values(revoked_at=datetime.now(UTC))
+        )
+    auth_cookies.clear_cookie(
+        response, name=auth_cookies.CUSTOMER_COOKIE, path=auth_cookies.CUSTOMER_PATH
     )
 
 
@@ -504,6 +533,47 @@ async def me(session: ControlSession, principal: UserDep) -> UserOut:
     return UserOut.model_validate(user)
 
 
+def _mobile_or_none(value: str | None) -> str | None:
+    if not value or not value.strip():
+        return None
+    try:
+        return normalize_mobile(value)
+    except ApiError:
+        return value.strip()
+
+
+async def _require_mobile_change_proof(
+    session: AsyncSession, user: User, payload: ProfileUpdate
+) -> None:
+    """A stolen access token must not be able to repoint the account's mobile number.
+
+    The profile mobile receives the password-change and login OTPs, so changing it is an
+    account-recovery change: it needs the current password plus proof of the new number.
+    """
+    current = _mobile_or_none(user.mobile_number)
+    requested = _mobile_or_none(payload.mobile_number)
+    if requested == current:
+        return
+    await ratelimit.enforce(f"profile-mobile-change:{user.id}", 5, 3600)
+    if not payload.current_password or not verify_password(
+        user.password_hash, payload.current_password
+    ):
+        raise ApiError(
+            "current_password_invalid",
+            "برای تغییر شماره موبایل رمز عبور فعلی را درست وارد کنید.",
+        )
+    if requested is None:
+        return
+    if not payload.mobile_verified_token:
+        raise ApiError(
+            "mobile_change_verification_required",
+            "برای شماره جدید کد تأیید پیامکی بگیرید و آن را وارد کنید.",
+        )
+    from app.routers.phone_auth import consume_verified_mobile
+
+    await consume_verified_mobile(session, payload.mobile_verified_token, requested)
+
+
 @router.patch("/me", response_model=UserOut)
 async def update_me(
     payload: ProfileUpdate,
@@ -528,6 +598,7 @@ async def update_me(
         extension=payload.extension,
         exclude_user_id=user.id,
     )
+    await _require_mobile_change_proof(session, user, payload)
     user.display_name = payload.display_name
     user.mobile_number = payload.mobile_number
     user.extension = payload.extension

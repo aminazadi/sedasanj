@@ -156,6 +156,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
     # Handler names must match the JOB_* constants the API enqueues.
     functions = [
         func(reanalyze_meeting_minutes, name=queue.JOB_MEETING_MINUTES),

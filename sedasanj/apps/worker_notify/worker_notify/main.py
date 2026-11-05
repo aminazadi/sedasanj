@@ -474,6 +474,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
     functions = [deliver_event]
     cron_jobs = [
         cron(retention_cron, hour=2, minute=15),

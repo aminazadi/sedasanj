@@ -13,14 +13,9 @@ BLOCKED_HOSTNAMES = frozenset({"localhost", "metadata", "metadata.google.interna
 
 def _is_public(address: str) -> bool:
     ip = ipaddress.ip_address(address)
-    return not (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
-    )
+    # `is_global` is false for private, loopback, link-local, reserved, unspecified AND the
+    # carrier-grade NAT range 100.64.0.0/10 (which some clouds use for metadata services).
+    return ip.is_global and not ip.is_multicast
 
 
 def assert_safe_webhook_url(raw_url: str) -> None:

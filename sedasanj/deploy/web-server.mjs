@@ -20,6 +20,70 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+// ---- Security headers (WSTG-CONF-07/14, CLNT-09) ---------------------------------------------
+// One server image serves both panels; WEB_APP selects the profile. CSP_MEDIA_ORIGINS lists the
+// object-storage origin(s) that serve call audio (presigned URLs) so the player may fetch them.
+const WEB_APP = process.env.WEB_APP === "admin" ? "admin" : "client";
+const SAFE_ORIGIN = /^https:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
+const mediaOrigins = (process.env.CSP_MEDIA_ORIGINS || "").split(/\s+/).filter((origin) => SAFE_ORIGIN.test(origin));
+const EMBED_FRAMES = "https://www.youtube-nocookie.com https://www.aparat.com";
+const SAFE_HOST = /^[a-z0-9.-]+(:\d{1,5})?$/i;
+
+function contentSecurityPolicy(request) {
+  const override = process.env.CONTENT_SECURITY_POLICY;
+  if (override) return override;
+  const media = mediaOrigins.join(" ");
+  const forwardedHost = String(request.headers["x-forwarded-host"] || request.headers.host || "").split(",")[0].trim();
+  const socketOrigin = SAFE_HOST.test(forwardedHost) ? `wss://${forwardedHost}` : "";
+  const directives = WEB_APP === "admin"
+    ? {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "font-src": "'self' data:",
+        "media-src": `'self' blob: ${media}`,
+        "connect-src": `'self' ${socketOrigin} ${media}`,
+        "frame-src": EMBED_FRAMES,
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'self'",
+        "frame-ancestors": "'none'",
+      }
+    : {
+        "default-src": "'self'",
+        // Admin-authored trust seals (enamad etc.) run in a sandboxed srcdoc iframe that inherits
+        // this policy, so third-party https scripts stay allowed; inline scripts remain blocked.
+        "script-src": "'self' https:",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: https:",
+        "font-src": "'self' data:",
+        "media-src": `'self' blob: ${media}`,
+        "connect-src": `'self' ${socketOrigin} ${media}`,
+        "frame-src": EMBED_FRAMES,
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        // Bank gateways receive an auto-submitted POST form (see client/src/lib/payment.ts).
+        "form-action": "'self' https:",
+        "frame-ancestors": "'self'",
+      };
+  return Object.entries(directives).map(([name, value]) => `${name} ${value.replace(/\s+/g, " ").trim()}`).join("; ");
+}
+
+/** Headers for every response; the page-level ones (CSP, framing) only apply to HTML/static. */
+function applySecurityHeaders(request, response, { page }) {
+  response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (!page) return;
+  const microphone = WEB_APP === "client" ? "(self)" : "()";
+  response.setHeader("Permissions-Policy", `camera=(), geolocation=(), payment=(), usb=(), microphone=${microphone}`);
+  response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  response.setHeader("X-Frame-Options", WEB_APP === "admin" ? "DENY" : "SAMEORIGIN");
+  const header = process.env.CSP_REPORT_ONLY === "1" ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy";
+  response.setHeader(header, contentSecurityPolicy(request));
+}
+
 // APK uploads (Jalase-Negar releases) may be large; everything else keeps the API's own limits.
 const APK_UPLOAD_PATH = "/v1/admin/jalase-negar/releases";
 const APK_UPLOAD_LIMIT = (Number(process.env.MAX_JALASE_NEGAR_APK_BYTES) || 200 * 1024 * 1024) + 1024 * 1024;
@@ -140,7 +204,7 @@ async function sitemap(request, response) {
     entries.push({ path: `/help/${item.slug}`, lastmod: String(item.updated_at || item.published_at || "").slice(0, 10) || manifest.entries[0].lastmod, changefreq: "monthly", priority: 0.6 });
   }
   const base = manifest.siteUrl.replace(/\/+$/, "");
-  const rows = entries.map((entry) => `  <url>\n    <loc>${xmlEscape(entry.path === "/" ? `${base}/` : `${base}${entry.path}`)}</loc>\n    <lastmod>${entry.lastmod}</lastmod>\n    <changefreq>${entry.changefreq}</changefreq>\n    <priority>${Number(entry.priority).toFixed(1)}</priority>\n  </url>`);
+  const rows = entries.map((entry) => `  <url>\n    <loc>${xmlEscape(entry.path === "/" ? `${base}/` : `${base}${entry.path}`)}</loc>\n    <lastmod>${xmlEscape(entry.lastmod)}</lastmod>\n    <changefreq>${xmlEscape(entry.changefreq)}</changefreq>\n    <priority>${Number(entry.priority).toFixed(1)}</priority>\n  </url>`);
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows.join("\n")}\n</urlset>\n`;
   const data = Buffer.from(xml);
   response.writeHead(200, { "Content-Type": mimeTypes[".xml"], "Content-Length": data.length, "Cache-Control": "public, max-age=3600" });
@@ -247,10 +311,13 @@ const server = http.createServer({ requestTimeout: 7_200_000 }, async (request, 
   try {
     const pathname = new URL(request.url, "http://localhost").pathname;
     if (pathname.startsWith("/v1/") || pathname === "/socket.io" || pathname.startsWith("/socket.io/")) {
+      applySecurityHeaders(request, response, { page: false });
       proxyApi(request, response);
     } else if (request.method === "GET" || request.method === "HEAD") {
+      applySecurityHeaders(request, response, { page: true });
       await serveStatic(request, response, decodeURIComponent(pathname));
     } else {
+      applySecurityHeaders(request, response, { page: false });
       response.writeHead(405).end();
     }
   } catch {
@@ -288,5 +355,9 @@ server.on("upgrade", (request, clientSocket, head) => {
   clientSocket.on("error", () => upstream.destroy());
   upstream.end();
 });
+
+// Slowloris guard: headers must arrive quickly; long uploads are still bounded by requestTimeout.
+server.headersTimeout = 30_000;
+server.maxConnections = Number(process.env.MAX_CONNECTIONS) || 2000;
 
 server.listen(Number(process.env.PORT || 80), "0.0.0.0");

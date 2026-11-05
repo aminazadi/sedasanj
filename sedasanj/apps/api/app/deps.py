@@ -59,7 +59,7 @@ async def current_user(
     try:
         claims = decode_access_token(token)
     except jwt.PyJWTError as exc:
-        raise ApiError("unauthorized", f"invalid token: {exc}") from exc
+        raise ApiError("unauthorized", "invalid or expired token") from exc
     if claims.get("actor") != "user" or not claims.get("tenant_id"):
         raise ApiError("unauthorized", "tenant token required")
 
@@ -90,17 +90,19 @@ async def current_staff(
     try:
         claims = decode_access_token(token)
     except jwt.PyJWTError as exc:
-        raise ApiError("unauthorized", f"invalid token: {exc}") from exc
+        raise ApiError("unauthorized", "invalid or expired token") from exc
     if claims.get("actor") != "staff":
         raise ApiError("forbidden", "staff token required")
 
-    principal = Principal(
-        kind="staff", id=UUID(str(claims["sub"])), tenant_id=None, role=str(claims["role"])
-    )
+    staff_id = UUID(str(claims["sub"]))
     async with session_scope(None, staff=True) as session:
-        staff = await session.get(StaffUser, principal.id)
+        staff = await session.get(StaffUser, staff_id)
         if staff is None or staff.disabled_at is not None:
             raise ApiError("unauthorized", "staff user no longer exists")
+        # The role is read from the database, never trusted from the token, so a demotion
+        # takes effect immediately instead of when the access token expires.
+        staff_role = str(staff.role)
+    principal = Principal(kind="staff", id=staff_id, tenant_id=None, role=staff_role)
     request.state.principal = principal
     return principal
 
@@ -328,7 +330,7 @@ UserDep = Annotated[Principal, Depends(current_user)]
 OrgAdminDep = Annotated[Principal, Depends(require_roles("org_admin"))]
 OperatorDep = Annotated[Principal, Depends(require_roles("org_admin", "operator"))]
 StaffDep = Annotated[Principal, Depends(current_staff)]
-SuperAdminDep = StaffDep
+SuperAdminDep = Annotated[Principal, Depends(require_staff_roles("super_admin"))]
 ApiKeyDep = Annotated[Principal, Depends(current_api_key)]
 IngestKeyDep = Annotated[Principal, Depends(require_scope("ingest:write"))]
 CrmKeyDep = Annotated[Principal, Depends(require_scope("crm:write"))]

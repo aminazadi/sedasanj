@@ -117,6 +117,9 @@ set -a
 # shellcheck disable=SC1091
 source "${ROOT}/.env"
 set +a
+# Local runs only: lets the API return/log verification codes when no SMS key is set.
+# Production never sets this (see ALLOW_INSECURE_DEV in app/config.py).
+export ALLOW_INSECURE_DEV="${ALLOW_INSECURE_DEV:-1}"
 [[ -n "${DATABASE_URL:-}" ]] || die "DATABASE_URL is missing from .env"
 
 ensure_docker

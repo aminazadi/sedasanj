@@ -16,13 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import control_session_scope, session_scope
-from app.deps import StaffDep, StaffSession, UserDep, client_ip
+from app.deps import StaffDep, StaffSession, SuperAdminDep, UserDep, client_ip
 from app.errors import ApiError
 from app.models import Call, QuickDemoSession, RefreshToken, Tenant, User
 from app.routers.phone_auth import PhoneRequest
 from app.schemas import TokenPair
 from app.security import create_access_token, generate_refresh_token, hash_refresh_token
-from app.services import audit, commerce, demo_settings, entitlements, ratelimit
+from app.services import audit, auth_cookies, commerce, demo_settings, entitlements, ratelimit
 from app.services.demo_audio import normalize_upload
 from app.services.demo_settings import DemoSettings
 from app.services.ingest import accept_upload
@@ -130,7 +130,7 @@ async def admin_demo_settings(staff: StaffDep, session: StaffSession) -> dict[st
 async def update_demo_settings(
     payload: DemoSettingsUpdate,
     request: Request,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, object]:
     changes = payload.model_dump(exclude_none=True)
@@ -148,7 +148,7 @@ async def update_demo_settings(
 
 @router.post("/admin/quick-demo/prompt")
 async def upload_prompt(
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, object]:
@@ -166,7 +166,7 @@ async def upload_prompt(
 @router.post("/admin/quick-demo/sms-test")
 async def test_sms(
     payload: PhoneRequest,
-    staff: StaffDep,
+    staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, str]:
     await ratelimit.enforce(f"demo-sms-test:{staff.id}", 3, 600)
@@ -284,7 +284,9 @@ async def recording_status(payload: SessionToken, request: Request) -> dict[str,
 
 
 @router.post("/quick-demo/recording/login", response_model=TokenPair)
-async def recording_login(payload: SessionToken, request: Request) -> TokenPair:
+async def recording_login(
+    payload: SessionToken, request: Request, response: Response
+) -> TokenPair:
     await ratelimit.enforce(f"demo-login:{client_ip(request)}", 10, 600)
     async with control_session_scope() as session:
         row = await recording_session(session, payload.token, lock=True)
@@ -315,10 +317,18 @@ async def recording_login(payload: SessionToken, request: Request) -> TokenPair:
             action="auth.quick_demo_qr_login",
             ip=client_ip(request),
         )
-        return TokenPair(
-            access_token=create_access_token(subject=user.id, tenant_id=user.tenant_id, role=user.role),
-            refresh_token=refresh_token,
-            expires_in=settings.access_token_ttl_minutes * 60,
+        return auth_cookies.deliver_pair(
+            request,
+            response,
+            TokenPair(
+                access_token=create_access_token(
+                    subject=user.id, tenant_id=user.tenant_id, role=user.role
+                ),
+                refresh_token=refresh_token,
+                expires_in=settings.access_token_ttl_minutes * 60,
+            ),
+            name=auth_cookies.CUSTOMER_COOKIE,
+            path=auth_cookies.CUSTOMER_PATH,
         )
 
 

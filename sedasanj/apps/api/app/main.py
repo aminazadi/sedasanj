@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -110,6 +111,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 # Operations carrying one of these tags are never published: the assistant is reachable only
 # from the signed-in SedaSanj panel, never by third parties.
+REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
 PRIVATE_OPENAPI_TAGS = frozenset(
     {
         "admin",
@@ -271,6 +273,7 @@ def create_app() -> FastAPI:
             "content-type",
             "idempotency-key",
             "x-api-key",
+            "x-auth-transport",
             "x-cbi-archive-password",
             "x-request-id",
         ],
@@ -281,7 +284,9 @@ def create_app() -> FastAPI:
     async def observability(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        supplied_id = request.headers.get("x-request-id", "")
+        # Echoed in headers and logs, so accept only a short, plain token (log/header injection).
+        request_id = supplied_id if REQUEST_ID_PATTERN.fullmatch(supplied_id) else str(uuid.uuid4())
         request.state.request_id = request_id
         log_context(request_id=request_id, tenant_id=None, call_id=None)
         if request.method == "POST" and request.url.path == "/v1/admin/jalase-negar/releases":
@@ -303,7 +308,9 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         elapsed = time.perf_counter() - started
         route = request.scope.get("route")
-        path = getattr(route, "path", request.url.path)
+        # Unmatched URLs share one label: a scanner hitting random paths must not create an
+        # unbounded number of Prometheus series.
+        path = getattr(route, "path", "unmatched")
         http_requests_total.labels(
             method=request.method, path=path, status=str(response.status_code)
         ).inc()

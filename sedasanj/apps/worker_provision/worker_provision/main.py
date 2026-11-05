@@ -13,6 +13,7 @@ from app.metrics import start_metrics_server
 from app.services.identity_projection import dispatch_next as dispatch_identity_projection
 from app.services.knowledge import backfill_graph_next, backfill_next
 from app.services.org_knowledge import backfill_org_next
+from app.services.queue_serialization import job_deserializer, job_serializer
 from app.services.tenant_backups import backup_next_due, purge_expired
 from app.services.tenant_provisioning import (
     run_next_fleet_migration,
@@ -93,6 +94,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
+    job_serializer = job_serializer
+    job_deserializer = job_deserializer
     functions = [
         provision_tick,
         identity_projection_tick,

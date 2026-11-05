@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -16,6 +17,7 @@ def _prod_kwargs(**overrides: Any) -> dict[str, Any]:
         "cors_origins": "https://panel.example.com",
         "minio_secret_key": "a-strong-minio-secret",
         "metrics_token": "m" * 40,
+        "platform_secrets_key": Fernet.generate_key().decode("ascii"),
     }
     base.update(overrides)
     return base
@@ -86,3 +88,21 @@ def test_production_requires_cors_origins() -> None:
 def test_production_requires_strong_metrics_token(metrics_token: str | None) -> None:
     with pytest.raises(ValidationError):
         Settings(**_prod_kwargs(metrics_token=metrics_token))
+
+
+def test_production_requires_a_valid_platform_secrets_key() -> None:
+    with pytest.raises(ValidationError, match="PLATFORM_SECRETS_KEY"):
+        Settings(**_prod_kwargs(platform_secrets_key=None))
+    with pytest.raises(ValidationError, match="PLATFORM_SECRETS_KEY"):
+        Settings(**_prod_kwargs(platform_secrets_key="not-a-fernet-key"))
+
+
+def test_production_rejects_jwt_secret_equal_to_pepper() -> None:
+    with pytest.raises(ValidationError, match="different"):
+        Settings(**_prod_kwargs(jwt_secret="z" * 40, api_key_pepper="z" * 40))
+
+
+def test_dev_otp_needs_explicit_development_flag() -> None:
+    assert Settings(environment="development", allow_insecure_dev=True).dev_otp_visible
+    assert not Settings(environment="development", allow_insecure_dev=False).dev_otp_visible
+    assert not Settings(**_prod_kwargs(allow_insecure_dev=True)).dev_otp_visible
