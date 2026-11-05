@@ -1,5 +1,6 @@
 ## 2026-11-05 — AMINAZADI
 
+- Added expiring email verification and password reset links for organization members.
 - Added an organization user editor for display names, mobile numbers, and extensions, with a URL-backed member selection.
 - Moved organization backup and restore history to a dedicated page with URL-backed filters, downloads, and links to resume restores.
 - Matched organization data section headings to the panel's dotted title bands.

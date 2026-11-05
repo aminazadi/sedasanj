@@ -1150,6 +1150,18 @@ class UserCreate(BaseModel):
         return self
 
 
+class MemberEmailChange(BaseModel):
+    email: EmailStr
+
+
+class MemberAccountLink(BaseModel):
+    token: str = Field(min_length=1, max_length=4096)
+
+
+class MemberPasswordReset(MemberAccountLink):
+    password: str = Field(min_length=8, max_length=256)
+
+
 class UserUpdate(BaseModel):
     role: Literal["org_admin", "operator", "viewer"] | None = None
     mobile_number: str | None = None

@@ -21,6 +21,9 @@ from app.schemas import (
     ArchiveFormat,
     CustomerLoginRequest,
     LoginStep,
+    MemberAccountLink,
+    MemberEmailChange,
+    MemberPasswordReset,
     ProfileUpdate,
     RefreshRequest,
     TokenPair,
@@ -43,7 +46,13 @@ from app.security import (
     verify_password,
     verify_totp,
 )
-from app.services import audit, identity_projection, operator_scope, ratelimit
+from app.services import (
+    audit,
+    identity_projection,
+    member_account_actions,
+    operator_scope,
+    ratelimit,
+)
 from app.services.phone_identity import mobile_accounts, normalize_mobile
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -612,6 +621,89 @@ async def get_user(
     return UserOut.model_validate(user)
 
 
+@router.post("/users/{user_id}/email-change", status_code=status.HTTP_204_NO_CONTENT)
+async def request_member_email_change(
+    user_id: UUID,
+    payload: MemberEmailChange,
+    request: Request,
+    session: ControlSession,
+    principal: OrgAdminDep,
+) -> None:
+    user = await _member_for_account_action(session, principal.tenant_id, user_id, request)
+    if user.role == "org_admin":
+        raise ApiError("forbidden", "برای تغییر ایمیل حساب مدیر با پشتیبانی تماس بگیرید.")
+    if await session.scalar(select(User.id).where(User.email == payload.email).limit(1)):
+        raise ApiError(
+            "conflict_idempotency", "این ایمیل در حال استفاده است؛ ایمیل دیگری وارد کنید."
+        )
+    await member_account_actions.issue(session, user, principal.id, "email", payload.email)
+
+
+@router.post("/users/{user_id}/password-reset", status_code=status.HTTP_204_NO_CONTENT)
+async def request_member_password_reset(
+    user_id: UUID,
+    request: Request,
+    session: ControlSession,
+    principal: OrgAdminDep,
+) -> None:
+    user = await _member_for_account_action(session, principal.tenant_id, user_id, request)
+    await member_account_actions.issue(session, user, principal.id, "password", user.email)
+
+
+async def _member_for_account_action(
+    session: AsyncSession, tenant_id: UUID | None, user_id: UUID, request: Request
+) -> User:
+    await ratelimit.enforce(f"member-account-send-ip:{client_ip(request)}", 20, 3600)
+    user = await session.get(User, user_id, with_for_update=True)
+    if user is None or user.tenant_id != tenant_id:
+        raise ApiError("not_found", "user not found")
+    await ratelimit.enforce(f"member-account-send:{user_id}", 6, 3600)
+    return user
+
+
+@router.post("/member-email-change/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_member_email_change(
+    payload: MemberAccountLink, request: Request, session: PublicSession
+) -> None:
+    await ratelimit.enforce(f"member-account-confirm:{client_ip(request)}", 15)
+    user, actor_id, email = await member_account_actions.consume(session, "email", payload.token)
+    if await session.scalar(select(User.id).where(User.email == email).limit(1)):
+        raise ApiError("conflict_idempotency", "این ایمیل در حال استفاده است؛ پیوند تازه بگیرید.")
+    user.email = email
+    await _finish_member_account_change(session, user, actor_id, "user.email_change", request)
+
+
+@router.post("/member-password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_member_password_reset(
+    payload: MemberPasswordReset, request: Request, session: PublicSession
+) -> None:
+    await ratelimit.enforce(f"member-account-confirm:{client_ip(request)}", 15)
+    user, actor_id, _ = await member_account_actions.consume(session, "password", payload.token)
+    user.password_hash = await asyncio.to_thread(hash_password, payload.password)
+    await _finish_member_account_change(session, user, actor_id, "user.password_reset", request)
+
+
+async def _finish_member_account_change(
+    session: AsyncSession, user: User, actor_id: UUID, action: str, request: Request
+) -> None:
+    await session.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await session.flush()
+    await identity_projection.stage_user_projection(session, user)
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=actor_id,
+        tenant_id=user.tenant_id,
+        action=action,
+        payload={"user_id": str(user.id)},
+        ip=client_ip(request),
+    )
+
+
 @router.patch("/users/{user_id}", response_model=UserOut)
 async def update_user(
     user_id: UUID,
@@ -641,8 +733,13 @@ async def update_user(
         extension=next_extension,
         exclude_user_id=user.id,
     )
-    if "password" in changes and changes["password"]:
-        user.password_hash = hash_password(str(changes.pop("password")))
+    if "password" in changes:
+        raise ApiError(
+            "invalid_request", "برای تغییر گذرواژه از اقدام «بازنشانی گذرواژه» استفاده کنید."
+        )
+    reconcile_extension = "extension" in changes or next_role != user.role
+    if reconcile_extension and not get_settings().tenant_databases_enabled:
+        await extensions.lock_inventory(session, principal.tenant_id)
     for field, value in changes.items():
         setattr(user, field, value)
     await session.flush()

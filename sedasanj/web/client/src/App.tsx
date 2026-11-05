@@ -33,6 +33,7 @@ import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
 import Profile from "./pages/Profile";
 import QuickDemo from "./pages/QuickDemo";
+import MemberAccountAction from "./pages/MemberAccountAction";
 import DemoRecorder from "./pages/DemoRecorder";
 import { RouteLoadingOverlay } from "./components/BrandLoader";
 
@@ -45,6 +46,7 @@ export default function App() {
   if (loading || !initialLoaderComplete) {
     return <RouteLoadingOverlay persist={loading} onComplete={() => setInitialLoaderComplete(true)} />;
   }
+  if (location.pathname === "/account-action") return <MemberAccountAction />;
   if (location.pathname === "/quick-demo") return <QuickDemo />;
   if (!session) {
     return (

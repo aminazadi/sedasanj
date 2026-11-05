@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ERROR_STATUS: dict[str, int] = {
+    "member_account_email_unavailable": 503,
+    "member_account_link_invalid": 400,
     "login_mobile_ambiguous": status.HTTP_409_CONFLICT,
     "password_change_mobile_required": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "password_change_verification_required": status.HTTP_400_BAD_REQUEST,

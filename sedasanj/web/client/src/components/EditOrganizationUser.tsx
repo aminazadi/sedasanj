@@ -14,6 +14,8 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
   const [fields, setFields] = useState<UserFields | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [numberError, setNumberError] = useState<string | null>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [accountNote, setAccountNote] = useState("");
   const [busy, setBusy] = useState(false);
   const path = `/v1/auth/users/${encodeURIComponent(userId)}`;
 
@@ -69,6 +71,29 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
     }
   }
 
+  async function sendAccountLink(action: "email-change" | "password-reset") {
+    if (busy) return;
+    const email = newEmail.trim();
+    if (action === "email-change" && !email) return;
+    setBusy(true);
+    setError(null);
+    setAccountNote("");
+    try {
+      await request<void>(`${path}/${action}`, {
+        method: "POST",
+        ...(action === "email-change" ? { body: { email } } : {}),
+      });
+      setAccountNote(action === "email-change"
+        ? "پیوند تأیید به ایمیل جدید ارسال شد."
+        : "پیوند بازنشانی به ایمیل فعلی کاربر ارسال شد.");
+      setNewEmail("");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <FormDialog open title="ویرایش کاربر" submitLabel="ذخیره" busy={busy}
       error={error} submitDisabled={!fields} onClose={onClose} onSubmit={() => void save()}>
@@ -92,6 +117,18 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
             onChange={(event) => edit("extension", event.target.value)} />
         </label>
         {numberError ? <p id="edit-member-number-error" className="demo-error" role="alert">{numberError}</p> : null}
+        {user.role !== "org_admin" ? <>
+        <label>
+          <span>ایمیل جدید برای ارسال پیوند تأیید</span>
+          <input dir="ltr" inputMode="email" value={newEmail} disabled={busy}
+            onChange={(event) => setNewEmail(event.target.value)} />
+        </label>
+        <button type="button" className="btn-ghost" disabled={busy || !newEmail.trim()}
+          onClick={() => void sendAccountLink("email-change")}>ارسال پیوند تأیید ایمیل</button>
+        </> : null}
+        <button type="button" className="btn-ghost" disabled={busy}
+          onClick={() => void sendAccountLink("password-reset")}>ارسال پیوند بازنشانی گذرواژه</button>
+        {accountNote ? <p role="status">{accountNote}</p> : null}
       </> : error ? null : <p role="status">در حال بارگیری اطلاعات کاربر…</p>}
     </FormDialog>
   );
