@@ -46,6 +46,7 @@ from app.models import (
     MeetingPairingCode,
     MeetingSegment,
     MeetingSpeaker,
+    SpeakerProfile,
     Tenant,
     User,
 )
@@ -938,6 +939,20 @@ async def get_meeting(
         .scalars()
         .all()
     )
+    linked = {s.profile_id for s in speakers if s.profile_id}
+    profile_clients: dict[UUID, UUID] = {}
+    if linked:
+        profile_clients = dict(
+            (
+                await session.execute(
+                    select(SpeakerProfile.id, SpeakerProfile.client_id).where(
+                        SpeakerProfile.id.in_(linked)
+                    )
+                )
+            )
+            .tuples()
+            .all()
+        )
     selected = await _selected_minutes(session, meeting.id)
     events = (
         (
@@ -963,12 +978,18 @@ async def get_meeting(
                 t_end_ms=s.t_end_ms,
                 speaker_idx=s.speaker_idx,
                 text=s.text,
+                overlap=s.overlap,
+                speaker_confidence=s.speaker_confidence,
             )
             for s in segments
         ],
         speakers=[
             MeetingSpeakerOut(
-                speaker_idx=s.speaker_idx, label=s.label, user_id=s.user_id, total_ms=s.total_ms
+                speaker_idx=s.speaker_idx,
+                label=s.label,
+                user_id=s.user_id,
+                total_ms=s.total_ms,
+                profile_client_id=profile_clients.get(s.profile_id) if s.profile_id else None,
             )
             for s in speakers
         ],

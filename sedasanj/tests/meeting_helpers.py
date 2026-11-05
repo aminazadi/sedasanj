@@ -20,6 +20,8 @@ from app.services.queue import MemoryQueue
 requires_ffprobe = pytest.mark.skipif(shutil.which("ffprobe") is None, reason="ffprobe missing")
 
 OWNED_TABLES = (
+    "speaker_profiles",  # voiceprints go with them (ON DELETE CASCADE)
+    "speaker_sync_state",
     "ledger_entries",
     "audit_events",
     "meeting_pairing_codes",
