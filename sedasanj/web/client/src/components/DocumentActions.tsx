@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { renderDocumentPdf } from "../lib/documentPdf";
 import { safeDownloadName } from "../utils/download";
 import DocumentHeader from "./DocumentHeader";
+import DocumentActionIcon, { DOCUMENT_ACTION_CLASS } from "./DocumentActionIcon";
 import { ErrorBox } from "./Widgets";
 import "./document-print.css";
 
@@ -13,9 +14,10 @@ type DocumentActionsProps = {
   children: ReactNode;
   disabled?: boolean;
   contentKey: string;
+  iconOnly?: boolean;
 };
 
-export default function DocumentActions({ title, kind, metadata, children, disabled, contentKey }: DocumentActionsProps) {
+export default function DocumentActions({ title, kind, metadata, children, disabled, contentKey, iconOnly = false }: DocumentActionsProps) {
   const [mode, setMode] = useState<"print" | "download" | "share" | null>(null);
   const [error, setError] = useState("");
   const [shareFile, setShareFile] = useState<File | null>(null);
@@ -75,9 +77,9 @@ export default function DocumentActions({ title, kind, metadata, children, disab
 
   return <div className="min-w-0">
     <div className="flex flex-wrap gap-2">
-      <button className="btn h-9 whitespace-nowrap px-3 py-0 text-xs" type="button" disabled={!!mode || disabled} onClick={() => { setError(""); setMode("download"); }}>{mode === "download" ? "در حال ساخت PDF…" : "دانلود PDF"}</button>
-      <button className="btn-ghost h-9 whitespace-nowrap px-3 py-0 text-xs" type="button" disabled={!!mode || disabled} onClick={() => { setError(""); setMode("print"); }}>چاپ</button>
-      <button className="btn-ghost h-9 whitespace-nowrap px-3 py-0 text-xs" type="button" disabled={!!mode || disabled} onClick={() => void share()}>{mode === "share" ? "در حال آماده‌سازی…" : shareFile ? "ارسال فایل PDF" : "اشتراک‌گذاری"}</button>
+      <button className={iconOnly ? DOCUMENT_ACTION_CLASS : "btn h-9 whitespace-nowrap px-3 py-0 text-xs"} aria-label="دانلود PDF" title="دانلود PDF" aria-busy={mode === "download"} type="button" disabled={!!mode || disabled} onClick={() => { setError(""); setMode("download"); }}>{iconOnly ? <DocumentActionIcon name="download" busy={mode === "download"} /> : mode === "download" ? "در حال ساخت PDF…" : "دانلود PDF"}</button>
+      <button className={iconOnly ? DOCUMENT_ACTION_CLASS : "btn-ghost h-9 whitespace-nowrap px-3 py-0 text-xs"} aria-label="چاپ" title="چاپ" aria-busy={mode === "print"} type="button" disabled={!!mode || disabled} onClick={() => { setError(""); setMode("print"); }}>{iconOnly ? <DocumentActionIcon name="print" busy={mode === "print"} /> : "چاپ"}</button>
+      <button className={iconOnly ? DOCUMENT_ACTION_CLASS : "btn-ghost h-9 whitespace-nowrap px-3 py-0 text-xs"} aria-label={shareFile ? "ارسال فایل PDF" : "اشتراک‌گذاری"} title={shareFile ? "ارسال فایل PDF" : "اشتراک‌گذاری"} aria-busy={mode === "share"} type="button" disabled={!!mode || disabled} onClick={() => void share()}>{iconOnly ? <DocumentActionIcon name="share" busy={mode === "share"} /> : mode === "share" ? "در حال آماده‌سازی…" : shareFile ? "ارسال فایل PDF" : "اشتراک‌گذاری"}</button>
     </div>
     {error ? <div className="mt-2 max-w-md"><ErrorBox message={error} /></div> : null}
     {mode ? createPortal(<div className="document-export-host">

@@ -10,6 +10,7 @@ import DocumentEditor from "../components/DocumentEditor";
 import DocumentTabs from "../components/DocumentTabs";
 import DocumentHeader from "../components/DocumentHeader";
 import DocumentActions from "../components/DocumentActions";
+import DocumentActionIcon, { DOCUMENT_ACTION_CLASS } from "../components/DocumentActionIcon";
 import FormDialog from "../components/FormDialog";
 import MarkdownMessage from "../components/MarkdownMessage";
 import MeetingStatusBadge from "../components/MeetingStatusBadge";
@@ -250,29 +251,26 @@ export default function MeetingDetailPage() {
           {detail.speaker_count > 0 ? <span>{fmt.int(detail.speaker_count)} گوینده</span> : null}
         </>}
         actions={<>
-          <Link className="btn-ghost text-xs" to="/meetings">بازگشت به جلسات</Link>
-          {minutesMarkdown ? <DocumentActions key={detail.id} contentKey={detail.id + (minutesDraft ?? minutesMarkdown) + JSON.stringify(minutesMetadata)} title={title} kind="صورت‌جلسه" metadata={minutesMetadata}>
+          <Link className={DOCUMENT_ACTION_CLASS} to="/meetings" aria-label="بازگشت به جلسات" title="بازگشت به جلسات"><DocumentActionIcon name="back" /></Link>
+          {detail.audio_available ? <button type="button" className={DOCUMENT_ACTION_CLASS} onClick={() => seekTo(audioRef.current ? audioRef.current.currentTime * 1000 : 0)} disabled={audioLoading} aria-busy={audioLoading} aria-label={audioLoading ? "در حال دریافت صدا…" : "پخش فایل صوتی جلسه"} title={audioLoading ? "در حال دریافت صدا…" : "پخش فایل صوتی جلسه"}>
+            <DocumentActionIcon name="audio" busy={audioLoading} />
+          </button> : null}
+          {minutesMarkdown ? <DocumentActions iconOnly key={detail.id} contentKey={detail.id + (minutesDraft ?? minutesMarkdown) + JSON.stringify(minutesMetadata)} title={title} kind="صورت‌جلسه" metadata={minutesMetadata}>
             <MarkdownMessage content={minutesDraft ?? minutesMarkdown} />
           </DocumentActions> : null}
           <OverflowMenu label="عملیات بیشتر جلسه" actions={menuActions} />
         </>}
       >
-        {detail.audio_available ? (
+        {detail.audio_available && audioUrl ? (
           <div className="mt-5 border-t border-[color:var(--line)] pt-4">
-            {audioUrl ? (
-              <AudioWaveformPlayer
-                audioRef={audioRef}
-                downloadName={safeDownloadName(title, "meeting")}
-                src={audioUrl}
-                title="فایل صوتی جلسه"
-                onTimeChange={(seconds) => setPlaybackMs(seconds * 1000)}
-                onError={() => setActionError("مرورگر قادر به پخش این فایل صوتی نیست.")}
-              />
-            ) : (
-              <button type="button" className="btn inline-flex items-center gap-2" onClick={() => void loadAudio()} disabled={audioLoading} aria-busy={audioLoading}>
-                {audioLoading ? "در حال دریافت صدا…" : "پخش فایل صوتی جلسه"}
-              </button>
-            )}
+            <AudioWaveformPlayer
+              audioRef={audioRef}
+              downloadName={safeDownloadName(title, "meeting")}
+              src={audioUrl}
+              title="فایل صوتی جلسه"
+              onTimeChange={(seconds) => setPlaybackMs(seconds * 1000)}
+              onError={() => setActionError("مرورگر قادر به پخش این فایل صوتی نیست.")}
+            />
           </div>
         ) : null}
       </DocumentHeader>
@@ -292,7 +290,7 @@ export default function MeetingDetailPage() {
       {detail.status !== "complete" ? <ProcessingTimeline events={detail.processing_events ?? []} /> : null}
 
       <section className="card">
-        <DocumentTabs value={tab} options={MEETING_TABS.map(value => ({ value, label: TAB_LABELS[value] }))} onChange={selectTab} label="بخش‌های جلسه" />
+        <DocumentTabs align="start" value={tab} options={MEETING_TABS.map(value => ({ value, label: TAB_LABELS[value] }))} onChange={selectTab} label="بخش‌های جلسه" />
 
         <div hidden={tab !== "minutes"}>
           {detail.minutes ? (

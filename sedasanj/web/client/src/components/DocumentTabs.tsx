@@ -1,10 +1,11 @@
-export default function DocumentTabs<T extends string>({ value, options, onChange, label }: {
+export default function DocumentTabs<T extends string>({ value, options, onChange, label, align = "center" }: {
   value: T;
   options: Array<{ value: T; label: string }>;
   onChange: (value: T) => void;
   label: string;
+  align?: "start" | "center";
 }) {
-  return <div className="mx-auto mb-6 flex w-fit max-w-full overflow-x-auto border border-[#B2AC88] bg-white p-1" role="tablist" aria-label={label}>
+  return <div className={`${align === "start" ? "me-auto" : "mx-auto"} mb-6 flex w-fit max-w-full overflow-x-auto border border-[#B2AC88] bg-white p-1`} role="tablist" aria-label={label}>
     {options.map((option, index) => <button
       key={option.value} type="button" role="tab" aria-selected={value === option.value}
       tabIndex={value === option.value ? 0 : -1}

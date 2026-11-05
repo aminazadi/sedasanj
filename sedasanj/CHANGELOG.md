@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Moved meeting audio playback into the header alongside accessible icon buttons for navigation, PDF download, printing and sharing; aligned meeting tabs to the right while preserving URL selection.
+
 - Integrated speaker sync, automatic Android updates, and the ML registry with main; sequenced migrations 0106–0111 while preserving deployment security settings.
 - Added server-side speaker profiles for Jalase-Negar: people and encrypted voiceprints with owner/organisation visibility, consent records, optimistic versions, tombstones and a commit-ordered change feed for cross-device sync.
 - Added overlap and speaker-confidence fields to meeting segments and speaker-to-profile links on meeting speakers, keeping existing transcript hashes unchanged.
