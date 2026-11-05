@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Fixed the password verification countdown ring rendering as a square under the panel's zero-radius styles by drawing its track and progress with SVG circles.
+
 - Matched the password-change card header, content spacing, and responsive illustration layout to the two-factor authentication card.
 
 - Added an illustration and a live resend countdown ring to the profile password-change card; the resend button re-enables when the timer ends.

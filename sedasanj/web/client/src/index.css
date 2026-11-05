@@ -1585,10 +1585,9 @@ html {
 .password-otp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
 .password-timer { position: relative; display: grid; place-items: center; width: 3.5rem; height: 3.5rem; flex: none; }
 .password-timer-ring {
-  position: absolute; inset: 0; border-radius: 50%;
-  background: conic-gradient(#4b6e48 calc(var(--progress, 0) * 360deg), #cfc9b5 0);
-  -webkit-mask: radial-gradient(circle, transparent 0 1.3rem, #000 calc(1.3rem + 0.5px));
-  mask: radial-gradient(circle, transparent 0 1.3rem, #000 calc(1.3rem + 0.5px));
-  transition: background 0.4s linear;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  fill: none; stroke-width: 3;
 }
+.password-timer-track { stroke: #cfc9b5; }
+.password-timer-progress { stroke: #4b6e48; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 0.4s linear; }
 .password-timer-text { font-size: 0.8rem; font-weight: 700; color: #4b6e48; font-variant-numeric: tabular-nums; }

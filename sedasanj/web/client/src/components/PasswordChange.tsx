@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { normalizeOtp } from "@cbi/web-shared/lib/otp";
 import { ApiError, request } from "../api";
 import { useAuth } from "../auth";
@@ -120,8 +120,11 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
         <p className="text-sm leading-7 text-slate-500">{mobile ? <>کد تأیید به شمارهٔ <bdi dir="ltr">{mobile}</bdi> ارسال می‌شود.</> : "برای دریافت کد تأیید، ابتدا شماره موبایل را در پروفایل ذخیره کنید."}</p>
         {saved ? <p className="form-success" role="status">گذرواژه تغییر کرد.</p> : null}
         {mobile ? <div className="password-otp-bar">
-          {otp && remaining > 0 ? <div className="password-timer" role="timer" aria-live="off" style={{ "--progress": total ? remaining / total : 0 } as CSSProperties}>
-            <span className="password-timer-ring" aria-hidden="true" />
+          {otp && remaining > 0 ? <div className="password-timer" role="timer" aria-live="off">
+            <svg className="password-timer-ring" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+              <circle className="password-timer-track" cx="28" cy="28" r="25" />
+              <circle className="password-timer-progress" cx="28" cy="28" r="25" pathLength="100" strokeDasharray="100" strokeDashoffset={100 * (1 - Math.min(1, Math.max(0, total ? remaining / total : 0)))} />
+            </svg>
             <span className="password-timer-text"><bdi dir="ltr">{clock.format(Math.floor(remaining / 60))}:{clock.format(remaining % 60)}</bdi></span>
           </div> : null}
           <button type="button" className={otp ? "btn-ghost" : "btn"} disabled={busy || remaining > 0} onClick={() => void sendCode()}>
