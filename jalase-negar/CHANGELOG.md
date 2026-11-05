@@ -2,6 +2,8 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Fixed main-tab headers with consistent 16-pixel horizontal spacing and unified the add-person and model-download actions using the same square bordered button.
+
 - Added choosing the people present before recording: an optional attendees card on the ready-to-record screen with a multi-select sheet and "add new person" (full consent and voice sample, then back to the sheet with the person selected). Attendees are stored with the meeting (database v11 `meeting_attendees`), sent to SedaSanj with the session, given a small head start in speaker matching (live and precise pass), listed first in the speaker picker and shown on the meeting detail. A failed save only logs `JN-REC-0005`; recording continues.
 - Changed auto-send: a new recording is first analysed for its speakers (database v10 `speakers_state`), and only then sent to SedaSanj. The analysis resumes after an app restart and releases the meeting even when models are missing or it fails, so nothing is held back for good.
 - Showed the app's loading mark with one line of text in the list and the detail screen while speakers are extracted, and hid the send icon meanwhile.

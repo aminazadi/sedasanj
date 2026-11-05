@@ -81,6 +81,8 @@ class SsAppBar extends AppBar {
     super.bottom,
     super.centerTitle,
     super.automaticallyImplyLeading,
+    super.titleSpacing,
+    super.actionsPadding,
   }) : super(
          flexibleSpace: const DecoratedBox(
            decoration: BoxDecoration(
@@ -93,6 +95,45 @@ class SsAppBar extends AppBar {
            ),
          ),
        );
+}
+
+/// Compact square header action shared by the main navigation tabs.
+class SsAppBarAction extends StatelessWidget {
+  const SsAppBarAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: TextButton.icon(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: SsColors.ink,
+          backgroundColor: SsColors.ink.withValues(alpha: 0.06),
+          side: BorderSide(color: SsColors.ink.withValues(alpha: 0.25)),
+          shape: const RoundedRectangleBorder(),
+          minimumSize: const Size(0, 34),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          iconSize: 19,
+          textStyle: const TextStyle(
+            fontFamily: 'Vazirmatn',
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        icon: Icon(icon),
+        label: Text(label),
+      ),
+    );
+  }
 }
 
 class _AppBarArt extends StatelessWidget {

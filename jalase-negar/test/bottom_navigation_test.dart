@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/app/shell_screen.dart';
 import 'package:jalase_negar/app/theme.dart';
+import 'package:jalase_negar/app/widgets/brand_logo.dart';
+import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 import 'package:jalase_negar/features/meetings/application/meeting_providers.dart';
 import 'package:jalase_negar/features/people/application/people_providers.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
@@ -30,6 +32,11 @@ void main() {
                 ),
             ],
           ),
+          for (final path in ['/models', '/people/new'])
+            GoRoute(
+              path: path,
+              builder: (context, state) => Text('Action $path'),
+            ),
           GoRoute(
             path: '/record',
             builder: (context, state) => const Text('Recording page'),
@@ -54,6 +61,21 @@ void main() {
         ),
       );
       await tester.pump();
+      expect(find.byType(SsAppBarAction), findsOneWidget);
+      expect(tester.getRect(find.byType(SsBrandLogo)).right, width - 16);
+      expect(
+        tester
+            .getRect(find.byWidgetPredicate((widget) => widget is TextButton))
+            .left,
+        16,
+      );
+      await tester.tap(find.text('دانلود مدل‌ها'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Action /models'), findsOneWidget);
+      router.pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       for (final entry in {
         'افراد': '/people',
         'راهنما': '/guide',
@@ -63,14 +85,50 @@ void main() {
         expect(find.text(entry.key), findsOneWidget);
         await tester.tap(find.text(entry.key));
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 500));
         expect(router.routeInformationProvider.value.uri.path, entry.value);
         expect(find.text('Page ${entry.value}'), findsOneWidget);
         expect(tester.takeException(), isNull);
+        if (entry.value != '/') {
+          final title = switch (entry.value) {
+            '/people' => 'افراد و صدا',
+            '/settings' => 'تنظیمات',
+            _ => 'راهنما',
+          };
+          expect(
+            tester
+                .getRect(
+                  find.descendant(
+                    of: find.byType(SsAppBar),
+                    matching: find.text(title),
+                  ),
+                )
+                .right,
+            width - 16,
+          );
+        }
+        if (entry.value == '/people') {
+          expect(find.byType(SsAppBarAction), findsOneWidget);
+          expect(
+            tester
+                .getRect(
+                  find.byWidgetPredicate((widget) => widget is TextButton),
+                )
+                .left,
+            16,
+          );
+          await tester.tap(find.text('افزودن فرد'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(find.text('Action /people/new'), findsOneWidget);
+          router.pop();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+        }
       }
       await tester.tap(find.text('ضبط جلسه'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Recording page'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
