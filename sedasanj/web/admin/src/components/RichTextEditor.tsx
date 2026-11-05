@@ -5,7 +5,6 @@ import "tinymce/themes/silver";
 import "tinymce/icons/default";
 import "tinymce/skins/ui/oxide/skin.js";
 import "tinymce/skins/ui/oxide/content.js";
-import "tinymce/skins/content/default/content.js";
 import "tinymce/plugins/autolink";
 import "tinymce/plugins/autoresize";
 import "tinymce/plugins/code";
@@ -19,6 +18,11 @@ import "tinymce/plugins/table";
 import "tinymce/plugins/wordcount";
 import "tinymce-i18n/langs7/fa.js";
 import { Editor } from "@tinymce/tinymce-react";
+
+import editorReset from "@cbi/web-shared/styles/editor-content-reset.css?raw";
+import contentStyles from "@cbi/web-shared/styles/rich-content.css?raw";
+import fontUrl from "../fonts/Vazirmatn-Variable.woff2?url";
+import headingFontUrl from "@cbi/web-shared/assets/MarkaziText-Arabic.woff2?url";
 
 export const CHANGELOG_TEMPLATE = `<h2>✨ امکانات جدید</h2><ul><li></li></ul>
 <h2>🛠 بهبودها</h2><ul><li></li></ul>
@@ -67,7 +71,7 @@ export default function RichTextEditor({
   onPickMedia?: (insert: (html: string) => void) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-300">
+    <div className="rich-text-editor">
       <Editor
         licenseKey="gpl"
         value={value}
@@ -76,7 +80,11 @@ export default function RichTextEditor({
           language: "fa",
           directionality: "rtl",
           skin_url: "default",
-          content_css: "default",
+          content_css: false,
+          visual: false,
+          table_default_attributes: {},
+          table_default_styles: {},
+          body_class: onPickMedia ? "prose-help" : "release-notes",
           menubar: false,
           branding: false,
           promotion: false,
@@ -102,9 +110,10 @@ export default function RichTextEditor({
           // Mirror the server allowlist so authors see what readers will see.
           valid_elements: onPickMedia ? HELP_ELEMENTS : RELEASE_ELEMENTS,
           paste_data_images: false,
-          content_style:
-            "body{font-family:Vazirmatn,IRANSans,system-ui,sans-serif;font-size:14px;line-height:1.9}" +
-            "pre{direction:ltr;text-align:left}",
+          content_style: `@font-face{font-family:Vazirmatn;src:url('${fontUrl}') format('woff2');font-weight:100 900;font-display:swap}
+            @font-face{font-family:"Markazi Text";src:url('${headingFontUrl}') format('woff2');font-weight:400 700;font-display:swap}
+            ${editorReset}body{margin:16px;background:#f2f0ef}
+            ${contentStyles}`,
           setup: (editor) => {
             if (onPickMedia) {
               editor.ui.registry.addButton("sjMedia", {

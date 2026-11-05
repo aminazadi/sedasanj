@@ -1,3 +1,6 @@
+@import "./components/markdown-content.css";
+@import "@cbi/web-shared/styles/rich-content.css";
+@import "@cbi/web-shared/styles/editor-chrome.css";
 @font-face {
   font-family: Vazirmatn;
   src: url("./fonts/Vazirmatn-Variable.woff2") format("woff2-variations");
@@ -479,121 +482,6 @@ select {
   left: -0.4rem;
   border-bottom: 1px solid #b2ac88;
   border-left: 1px solid #b2ac88;
-}
-
-.markdown-message > :first-child {
-  margin-top: 0;
-}
-
-.markdown-message > :last-child {
-  margin-bottom: 0;
-}
-
-.markdown-message p,
-.markdown-message ul,
-.markdown-message ol,
-.markdown-message blockquote,
-.markdown-message pre,
-.markdown-message table {
-  margin-block: 0.5rem;
-}
-
-.markdown-message ul,
-.markdown-message ol {
-  padding-inline-start: 1.5rem;
-}
-
-.markdown-message ul {
-  list-style: disc;
-}
-
-.markdown-message ol {
-  list-style: decimal;
-}
-
-.markdown-message li + li {
-  margin-top: 0.25rem;
-}
-
-.markdown-message h1,
-.markdown-message h2,
-.markdown-message h3,
-.markdown-message h4 {
-  margin-block: 0.75rem 0.35rem;
-  font-weight: 700;
-  line-height: 1.8;
-}
-
-.markdown-message h1 {
-  font-size: 1.25rem;
-}
-
-.markdown-message h2 {
-  font-size: 1.125rem;
-}
-
-.markdown-message h3,
-.markdown-message h4 {
-  font-size: 1rem;
-}
-
-.markdown-message blockquote {
-  border-inline-start: 3px solid currentColor;
-  padding-inline-start: 0.75rem;
-  opacity: 0.82;
-}
-
-.markdown-message a {
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.markdown-message code {
-  direction: ltr;
-  display: inline-block;
-  border: 1px solid rgb(178 172 136 / 0.75);
-  background: rgb(242 240 239 / 0.75);
-  padding: 0 0.3rem;
-  color: #334155;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.85em;
-}
-
-.markdown-message pre {
-  direction: ltr;
-  overflow-x: auto;
-  border: 1px solid #B2AC88;
-  background: #1e293b;
-  padding: 0.75rem;
-  color: #F2F0EF;
-  text-align: left;
-}
-
-.markdown-message pre code {
-  display: inline;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
-
-.markdown-message table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.markdown-message th,
-.markdown-message td {
-  border: 1px solid #B2AC88;
-  padding: 0.35rem 0.55rem;
-  text-align: start;
-}
-
-.markdown-message th {
-  background: rgb(178 172 136 / 0.28);
-  font-weight: 700;
 }
 
 @keyframes assistant-thinking-shimmer {
@@ -1306,19 +1194,7 @@ html {
 .help-quick { background: #ecfeff; border: 1px solid #a5f3fc; border-radius: .6rem; padding: .7rem 1rem; }
 .help-empty, .help-error { color: #64748b; padding: 1rem 0; }
 .help-article h1 { font-size: 1.6rem; font-weight: 800; margin: .5rem 0 1rem; }
-.prose-help { line-height: 2; font-size: 15px; color: #1e293b; }
-.prose-help h2 { font-size: 1.25rem; font-weight: 800; margin: 1.5rem 0 .5rem; }
-.prose-help p { margin: .6rem 0; }
-.prose-help ul, .prose-help ol { margin: .6rem 1.5rem; }
-.prose-help ul { list-style: disc; }
-.prose-help ol { list-style: decimal; }
-.prose-help img, .prose-help video { max-width: 100%; height: auto; border-radius: .5rem; margin: .75rem 0; }
-.prose-help iframe { max-width: 100%; border: 0; border-radius: .5rem; aspect-ratio: 16 / 9; height: auto; width: 100%; }
-.prose-help pre, .prose-help code { direction: ltr; text-align: left; background: #f1f5f9; border-radius: .375rem; padding: .1rem .35rem; }
-.prose-help pre { padding: .75rem; overflow-x: auto; }
-.prose-help table { border-collapse: collapse; margin: .75rem 0; }
-.prose-help th, .prose-help td { border: 1px solid #e2e8f0; padding: .35rem .6rem; }
-.prose-help figcaption { font-size: .85rem; color: #64748b; text-align: center; }
+
 
 /* Illustrated page header, shared by every panel page */
 .panel-hero {

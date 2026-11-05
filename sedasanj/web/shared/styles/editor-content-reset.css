@@ -1,0 +1,13 @@
+/* Match Tailwind preflight inside the isolated editing document. */
+html { font-size: 16px; line-height: 1.5; }
+*, ::before, ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: #b2ac88; border-radius: 0 !important; }
+h1, h2, h3, h4, p, ul, ol, blockquote, pre, figure { margin: 0; }
+h1, h2, h3, h4 { font-size: inherit; font-weight: inherit; }
+ul, ol { padding: 0; }
+a { color: inherit; text-decoration: inherit; }
+strong, b { font-weight: bolder; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 1em; }
+hr { height: 0; color: inherit; border-top-width: 1px; margin: 0; }
+table { text-indent: 0; border-color: inherit; border-collapse: collapse; }
+th, td { padding: 0; }
+img, video { display: block; max-width: 100%; height: auto; }

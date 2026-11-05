@@ -1,0 +1,12 @@
+.document-body, :is(.document-body .markdown-message, .document-content) { color: #263226; font-size: 14px; line-height: 2; overflow-wrap: anywhere; }
+:is(.document-body .markdown-message, .document-content) h1 { font-size: 24px; }
+:is(.document-body .markdown-message, .document-content) h2 { font-size: 20px; }
+:is(.document-body .markdown-message, .document-content) h3 { font-size: 16px; }
+:is(.document-body .markdown-message, .document-content) :is(h1,h2,h3,h4) { font-weight: 500; line-height: 1.7; color: #4b6e48; }
+:is(.document-body .markdown-message, .document-content) :is(table,td,th) { border-color: #b2ac88; }
+:is(.document-body .markdown-message, .document-content) table { width: 100%; border-collapse: collapse; }
+:is(.document-body .markdown-message, .document-content) :is(td,th) { border: 1px solid #b2ac88; padding: 8px; }
+:is(.document-body .markdown-message, .document-content) :is(ul,ol) { list-style-position: inside; }
+:is(.document-body .markdown-message, .document-content) th { background: #f2f0ef; }
+:is(.document-body .markdown-message, .document-content) { font-family: Vazirmatn, sans-serif; font-weight: 350; }
+:is(.document-body .markdown-message, .document-content) :is(pre, code) { line-height: 2; }

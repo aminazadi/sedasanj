@@ -82,10 +82,6 @@
 .public-site .help-empty button { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 24px; border: 1px solid var(--site-primary); border-radius: 0; background: transparent; color: var(--site-primary); font: inherit; font-weight: 700; cursor: pointer; }
 .public-site .help-empty button:hover { background: var(--site-primary); color: #fff; }
 .public-site .help-article h1 { font-size: clamp(30px, 3.6vw, 42px); line-height: 1.6; }
-.public-site .prose-help { color: #2d3a2b; font-size: 16px; }
-.public-site .prose-help h2 { font-size: 26px; text-align: start; margin-top: 2rem; }
-.public-site .prose-help pre, .public-site .prose-help code, .public-site .help-code { border-radius: 0; background: #eae8e3; }
-.public-site .prose-help th, .public-site .prose-help td { border-color: var(--site-border); }
 .public-site .help-quick { border-radius: 0; border-color: #a9bfa4; background: #f1f5ee; }
 
 /* Sign in / sign up */

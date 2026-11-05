@@ -1,0 +1,16 @@
+/* TinyMCE dialogs and floating menus are portalled outside the editor wrapper. */
+.rich-text-editor .tox, .document-editor .tox, .tox-tinymce-aux { font-family: Vazirmatn, IRANSans, system-ui, sans-serif; }
+:is(.rich-text-editor, .document-editor) .tox-tinymce { border: 1px solid #b2ac88; border-radius: 0; }
+:is(.rich-text-editor, .document-editor) .tox :is(.tox-toolbar, .tox-toolbar__primary, .tox-toolbar__overflow, .tox-editor-header, .tox-statusbar),
+.tox.tox-tinymce-aux :is(.tox-dialog__header, .tox-dialog__footer, .tox-dialog__body, .tox-menu) { background: #f2f0ef; }
+:is(.rich-text-editor, .document-editor) .tox .tox-toolbar__group { border-color: #b2ac88; }
+:is(.rich-text-editor, .document-editor) .tox .tox-tbtn,
+.tox.tox-tinymce-aux :is(.tox-button, .tox-label, .tox-textfield, .tox-listbox, .tox-collection__item, .tox-dialog__title) { font-family: Vazirmatn, IRANSans, system-ui, sans-serif; font-weight: 400; }
+:is(.rich-text-editor, .document-editor) .tox .tox-tbtn { color: #4b6e48; }
+:is(.rich-text-editor, .document-editor) .tox .tox-tbtn svg { fill: #4b6e48; }
+:is(.rich-text-editor, .document-editor) .tox :is(.tox-tbtn:hover, .tox-tbtn--enabled, .tox-tbtn--enabled:hover),
+.tox.tox-tinymce-aux .tox-collection__item--active { background: #e7ecdd; }
+.tox.tox-tinymce-aux .tox-button { border-color: #4b6e48; background: #4b6e48; color: #f2f0ef; }
+.tox.tox-tinymce-aux .tox-button--secondary { background: #f2f0ef; color: #4b6e48; }
+.tox.tox-tinymce-aux :is(.tox-dialog, .tox-textfield, .tox-listbox) { border-color: #b2ac88; }
+:is(.rich-text-editor, .document-editor) .tox *, .tox-tinymce-aux * { border-radius: 0 !important; box-shadow: none !important; }

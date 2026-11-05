@@ -1,0 +1,54 @@
+/* Shared typography for published HTML and the editing iframe. */
+:is(.prose-help, .public-site .prose-help), .release-notes { font-family: Vazirmatn, IRANSans, system-ui, sans-serif; direction: rtl; overflow-wrap: anywhere; font-weight: 400; }
+:is(.prose-help, .public-site .prose-help) *, .release-notes * { box-sizing: border-box; border-radius: 0 !important; box-shadow: none; }
+:is(.prose-help, .public-site .prose-help) { line-height: 2; font-size: 16px; color: #2d3a2b; }
+:is(.prose-help, .public-site .prose-help) h2 { font-family: "Markazi Text", Vazirmatn, sans-serif; font-synthesis: none; font-size: 26px; font-weight: 800; line-height: 1.4; text-align: start; margin: 2rem 0 .5rem; }
+:is(.prose-help, .public-site .prose-help) h3 { font-family: "Markazi Text", Vazirmatn, sans-serif; font-synthesis: none; font-size: 22px; font-weight: 700; line-height: 1.5; margin: 0; }
+:is(.prose-help, .public-site .prose-help) h4 { font-size: inherit; font-weight: inherit; margin: 0; }
+:is(.prose-help, .public-site .prose-help) p { margin: .6rem 0; }
+:is(.prose-help, .public-site .prose-help) ul, :is(.prose-help, .public-site .prose-help) ol { margin: .6rem 1.5rem; padding: 0; }
+:is(.prose-help, .public-site .prose-help) ul { list-style: disc; }
+:is(.prose-help, .public-site .prose-help) ol { list-style: decimal; }
+:is(.prose-help, .public-site .prose-help) a { color: inherit; text-decoration: none; }
+:is(.prose-help, .public-site .prose-help) a:hover { color: #4b6e48; }
+:is(.prose-help, .public-site .prose-help) img, :is(.prose-help, .public-site .prose-help) video { display: block; max-width: 100%; height: auto; margin: .75rem 0; }
+:is(.prose-help, .public-site .prose-help) iframe { max-width: 100%; width: 100%; border: 0; aspect-ratio: 16 / 9; height: auto; }
+:is(.prose-help, .public-site .prose-help) pre, :is(.prose-help, .public-site .prose-help) code { direction: ltr; text-align: left; background: #eae8e3; padding: .1rem .35rem; }
+:is(.prose-help, .public-site .prose-help) pre { padding: .75rem; overflow-x: auto; margin: 0; }
+:is(.prose-help, .public-site .prose-help) table { border-collapse: collapse; margin: .75rem 0; }
+:is(.prose-help, .public-site .prose-help) th, :is(.prose-help, .public-site .prose-help) td { border: 1px solid #d8d3c4; padding: .35rem .6rem; }
+:is(.prose-help, .public-site .prose-help) figure { margin: 1rem 0; }
+:is(.prose-help, .public-site .prose-help) figcaption { font-size: .85rem; color: #64748b; text-align: center; }
+.release-notes { font-size: 14px; line-height: 28px; color: #4b6e48; }
+.release-notes a { color: #4b6e48; text-decoration: underline; }
+.release-notes blockquote { border: 0; border-inline-start: 4px solid #b2ac88; margin: 0; padding-inline-start: 12px; color: #898989; }
+.release-notes code { background: #f2f0ef; padding-inline: 4px; font: .85em ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.release-notes h2 { margin: 16px 0 4px; font-size: 16px; font-weight: 700; }
+.release-notes h3 { margin: 12px 0 4px; font-size: inherit; font-weight: 700; }
+.release-notes h4 { margin: 0; font-size: inherit; font-weight: 600; }
+.release-notes hr { margin: 12px 0; border: 0; border-top: 1px solid #b2ac88; }
+.release-notes li { margin-block: 2px; }
+.release-notes ul, .release-notes ol { margin: 0; padding: 0; padding-inline-start: 24px; }
+.release-notes ul { list-style: disc; }
+.release-notes ol { list-style: decimal; }
+.release-notes p { margin-block: 6px; }
+.release-notes pre { margin-block: 8px; overflow-x: auto; background: #4b6e48; padding: 12px; text-align: left; direction: ltr; color: #f2f0ef; }
+.release-notes pre code { background: transparent; padding: 0; color: inherit; }
+.release-notes table { margin-block: 8px; width: 100%; border-collapse: collapse; }
+.release-notes td, .release-notes th { border: 1px solid #b2ac88; padding: 4px 8px; text-align: start; }
+.release-notes th { background: #f2f0ef; font-weight: 700; }
+:is(.prose-help, .public-site .prose-help) strong, .release-notes strong { font-weight: 700; }
+:is(.prose-help, .public-site .prose-help) em, .release-notes em { font-style: italic; }
+/* Code samples are highlighted internally by TinyMCE; match the published plain code. */
+.release-notes pre { font-size: .85em; }
+.release-notes pre code { font-size: inherit; }
+:is(.prose-help, .public-site .prose-help) pre code { padding: 0; font: inherit; background: transparent; }
+:is(.prose-help, .release-notes) pre[class*="language-"] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: inherit;
+  text-shadow: none;
+}
+:is(.prose-help, .public-site .prose-help) pre[class*="language-"] { color: #2d3a2b; }
+:is(.prose-help, .release-notes) pre[class*="language-"] .token {
+  color: inherit; background: transparent; font-weight: inherit; font-style: inherit; text-decoration: none;
+}

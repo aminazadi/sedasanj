@@ -4,6 +4,8 @@
 
 - Moved report runs into standalone document pages with meeting-style icon actions, URL-backed detail tabs, isolated polling, legacy-link redirects, and preserved archive filters.
 
+- Unified rich text editor typography with published help, release notes, and document rendering; matched editor toolbars and dialogs to the panel and loaded local fonts inside editing frames.
+
 - Aligned scheduled report archive and scheduling tabs to the right while preserving URL selection.
 
 - Fixed API startup with an empty or whitespace-only `ML_PUBLISHER_TENANT_ID`; publishing remains disabled with `ml_publish_forbidden` until a valid tenant is configured.

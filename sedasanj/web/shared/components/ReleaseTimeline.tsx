@@ -1,3 +1,4 @@
+import "../styles/rich-content.css";
 import { useMemo, useState } from "react";
 
 export type ReleaseSeverity = "normal" | "recommended" | "critical" | "security";
@@ -19,17 +20,7 @@ export const SEVERITY_META: Record<ReleaseSeverity, { label: string; badge: stri
   security: { label: "امنیتی", badge: "bg-amber-100 text-amber-900 ring-1 ring-amber-500", dot: "bg-amber-700" },
 };
 
-/** Typography for the TinyMCE output; Tailwind preflight strips list and heading styles. */
-export const RELEASE_NOTES_CLASS =
-  "text-sm leading-7 text-slate-700 [&_a]:text-emerald-700 [&_a]:underline [&_blockquote]:border-r-4 " +
-  "[&_blockquote]:border-slate-300 [&_blockquote]:pr-3 [&_blockquote]:text-slate-500 [&_code]:rounded " +
-  "[&_code]:bg-slate-100 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[0.85em] [&_h2]:mb-1 [&_h2]:mt-4 " +
-  "[&_h2]:text-base [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:mt-3 [&_h3]:font-bold [&_h4]:font-semibold " +
-  "[&_hr]:my-3 [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pr-6 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto " +
-  "[&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-left [&_pre]:text-slate-100 " +
-  "[&_pre]:[direction:ltr] [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:my-2 [&_table]:w-full " +
-  "[&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-slate-200 " +
-  "[&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_ul]:list-disc [&_ul]:pr-6";
+export const RELEASE_NOTES_CLASS = "release-notes";
 
 const digits = (value: string) => value.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 

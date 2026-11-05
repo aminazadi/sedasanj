@@ -1,17 +1,8 @@
+@import "./document-content.css";
 .document-export-host { position: absolute; top: 0; left: -200vw; }
 .document-print { width: 186mm; background: #fff; color: #263226; font: 350 14px/2 Vazirmatn, sans-serif; }
-.document-body { color: #263226; font-size: 14px; line-height: 2; overflow-wrap: anywhere; }
 .document-print-content { border: 1px solid #b2ac88; padding: 24px; }
-.document-body .markdown-message h1 { font-size: 24px; }
-.document-body .markdown-message h2 { font-size: 20px; }
-.document-body .markdown-message h3 { font-size: 16px; }
-.document-body .markdown-message :is(h1,h2,h3,h4) { font-weight: 500; line-height: 1.7; color: #4b6e48; }
-.document-body :is(table,td,th) { border-color: #b2ac88; }
-.document-body table { width: 100%; border-collapse: collapse; }
-.document-body :is(td,th) { border: 1px solid #b2ac88; padding: 8px; }
 .document-body .statistics-chart { break-inside: avoid; }
-.document-editor .tox { border-radius: 0 !important; border-color: #b2ac88 !important; }
-.document-editor .tox .tox-toolbar__primary { background: #f2f0ef; }
 .document-save-bar { position: fixed; z-index: 45; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 20px; max-width: calc(100vw - 32px); padding: 12px 20px; border: 1px solid #b2ac88; background: #f2f0ef; box-shadow: 0 8px 32px #26322626; }
 @media print {
   @page { size: A4; margin: 12mm; }
@@ -29,7 +20,5 @@
 }
 .document-print .document-header { margin-bottom: 16px; border: 1px solid #b2ac88; background: #f2f0ef; box-shadow: none; }
 .document-print .document-header h1 { font-weight: 500; color: #111; }
-.document-body .markdown-message :is(ul,ol) { list-style-position: inside; }
-.document-body .markdown-message th { background: #f2f0ef; }
 
 .document-print, .document-print * { border-radius: 0 !important; }

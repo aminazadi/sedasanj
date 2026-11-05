@@ -38,3 +38,21 @@ it creates missing codes and refreshes titles without touching existing article 
 `scripts/smoke_help_center.py` exercises the whole API against a disposable PostgreSQL.
 Minimal schema: `CREATE ROLE cbi_app; CREATE TABLE staff_users (id uuid PRIMARY KEY DEFAULT gen_random_uuid());`
 plus an `audit_events` table (see the model), then run the migration statements.
+
+## ظاهر متن هنگام ویرایش
+
+متن مقاله در ویرایشگر و پیش‌نمایش با همان استایل مشترک صفحهٔ راهنما نمایش داده
+می‌شود؛ فونت‌های محلی، تیترها، فهرست‌ها، جدول‌ها و رسانه‌ها از یک منبع استفاده
+می‌کنند. یادداشت‌های نسخه و اسناد جلسه و گزارش نیز استایل نمایش خود را در
+ویرایشگر به کار می‌برند. برای بررسی نهایی، پیش‌نمایش را باز کنید و عرض صفحه را
+با صفحهٔ مقصد یکسان بگیرید؛ شکست خطوط به فضای موجود بستگی دارد.
+
+برای مقایسهٔ خودکار استایل واقعی ویرایشگر و خروجی در دسکتاپ و موبایل:
+
+```bash
+cd sedasanj/web/admin
+node tests/editorAppearance.browser.mjs
+```
+
+این بررسی به Chrome محلی نیاز دارد؛ مسیر مرورگر با متغیر `CHROME_BIN` قابل
+تعیین است. بیلد هر دو پنل و تست‌های تبدیل متن سند را نیز اجرا کنید.
