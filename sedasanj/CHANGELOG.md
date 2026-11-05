@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Removed the PBX connection and historical call review section from the extensions page, including its unused client component and requests.
+
 - Moved report runs into standalone document pages with meeting-style icon actions, URL-backed detail tabs, isolated polling, legacy-link redirects, and preserved archive filters.
 
 - Aligned scheduled report archive and scheduling tabs to the right while preserving URL selection.
