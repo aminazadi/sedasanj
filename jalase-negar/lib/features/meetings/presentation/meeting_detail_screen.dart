@@ -11,6 +11,7 @@ import '../data/meeting.dart';
 import '../data/transcript_edit.dart';
 import 'audio_waveform_player.dart';
 import 'share_meeting_audio.dart';
+import 'speaker_lines_card.dart';
 import 'transcript_editor.dart';
 
 /// Plays the recording and shows the transcript stored for the meeting.
@@ -67,6 +68,14 @@ class MeetingDetailScreen extends ConsumerWidget {
                   failed: data.meeting.status == MeetingStatus.failed,
                   onSend: () =>
                       ref.read(meetingActionsProvider(meetingId)).sendText(),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (data.segments.any((s) => s.speaker != null)) ...[
+                SpeakerLinesCard(
+                  meetingId: meetingId,
+                  segments: data.segments,
+                  editable: data.meeting.status != MeetingStatus.uploading,
                 ),
                 const SizedBox(height: 12),
               ],

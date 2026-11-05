@@ -97,7 +97,7 @@ class LivePipeline {
     this.maxBacklogMs = 60000,
     this.lightModeRtf = 0.8,
     this.lightModeMinSpanMs = 600,
-    SpeakerLabeler? labeler,
+    UtteranceLabeler? labeler,
     int maxSpeechSeconds = 30,
     int Function()? nowMicros,
   }) : _nowMicros = nowMicros ?? _wallMicros,
@@ -112,7 +112,7 @@ class LivePipeline {
   final LiveVadFactory _vadFactory;
   final LiveDecoder _decoder;
   final SampleHistory _history;
-  final SpeakerLabeler? _labeler;
+  final UtteranceLabeler? _labeler;
   LiveVad _vad;
 
   /// Speech detected while the engine is further behind than this is skipped

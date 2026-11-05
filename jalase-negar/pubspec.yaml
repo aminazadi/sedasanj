@@ -49,6 +49,7 @@ flutter:
 
   assets:
     - assets/images/brand/
+    - assets/speaker_prompts_fa.json
     - assets/audio/countdown-beep.wav
     - assets/audio/countdown-final.wav
 

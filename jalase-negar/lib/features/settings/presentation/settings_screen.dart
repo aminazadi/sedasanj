@@ -64,6 +64,17 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 12),
         const _SendTranscriptCard(),
         const SizedBox(height: 12),
+        SsCard(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('افراد و صدا'),
+            subtitle: const Text('نام گوینده کنار متن جلسه'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => context.push('/people'),
+          ),
+        ),
+        const SizedBox(height: 12),
         const UpdateCheckCard(),
         if (state?.error != null) ...[
           const SizedBox(height: 12),

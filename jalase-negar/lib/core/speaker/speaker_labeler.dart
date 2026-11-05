@@ -37,6 +37,13 @@ class LabeledPart {
   final int? confidence;
 }
 
+/// What the live pipeline needs to name the speakers of one utterance.
+abstract interface class UtteranceLabeler {
+  /// Parts of the utterance whose samples are [speech] and which starts at
+  /// [startMs] on the recording timeline. Never returns an empty list.
+  List<LabeledPart> label(Float32List speech, {required int startMs});
+}
+
 /// Tunables of live identification.
 ///
 /// ⚠ needs lab confirmation: the durations are starting values from the
@@ -75,7 +82,7 @@ class LabelerSettings {
 /// wrong name shown with confidence is worse than "ناشناس" or a low-confidence
 /// label, so short or contaminated audio is never matched with high
 /// confidence.
-class SpeakerLabeler {
+class SpeakerLabeler implements UtteranceLabeler {
   SpeakerLabeler({
     required this.diarizer,
     required this.embedder,
@@ -90,8 +97,7 @@ class SpeakerLabeler {
 
   SpeakerIdentity? _previous;
 
-  /// Parts of the utterance whose samples are [speech] and which starts at
-  /// [startMs] on the recording timeline. Never returns an empty list.
+  @override
   List<LabeledPart> label(Float32List speech, {required int startMs}) {
     final durationMs = speech.length * 1000 ~/ kAsrSampleRate;
     final endMs = startMs + durationMs;

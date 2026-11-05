@@ -10,6 +10,10 @@ import '../features/onboarding/intro/intro_screen.dart';
 import '../features/onboarding/tour_overlay.dart';
 import '../features/onboarding/tour_progress.dart';
 import '../features/onboarding/tour_step.dart';
+import '../features/people/presentation/enroll_screen.dart';
+import '../features/people/presentation/new_person_screen.dart';
+import '../features/people/presentation/people_screen.dart';
+import '../features/people/presentation/person_screen.dart';
 import '../features/recording/presentation/recording_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import 'shell_screen.dart';
@@ -52,6 +56,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/meeting/:id',
         builder: (context, state) =>
             MeetingDetailScreen(meetingId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/people',
+        builder: (context, state) => const PeopleScreen(),
+      ),
+      GoRoute(
+        path: '/people/new',
+        builder: (context, state) => const NewPersonScreen(),
+      ),
+      GoRoute(
+        path: '/people/:id',
+        builder: (context, state) =>
+            PersonScreen(personId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/people/:id/enroll',
+        builder: (context, state) =>
+            EnrollScreen(personId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/models',
