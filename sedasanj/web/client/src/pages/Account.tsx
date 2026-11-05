@@ -14,6 +14,7 @@ import CreditTopUp from "../components/CreditTopUp";
 import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
 import EditOrganizationUser from "../components/EditOrganizationUser";
+import OperatorExtensionInput from "../components/OperatorExtensionInput";
 import FormDialog from "../components/FormDialog";
 import addUserArt from "../assets/add-user.webp";
 import type {
@@ -506,7 +507,8 @@ export default function Account({ section = "billing" }: { section?: AccountSect
         <label><span>نقش</span><select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}><option value="org_admin">مدیر سازمان</option><option value="operator">اپراتور</option><option value="viewer">بیننده</option></select></label>
         {userForm.role === "operator" ? <>
           <label><span>شماره موبایل اپراتور</span><input dir="ltr" inputMode="tel" value={userForm.mobile_number} onChange={(event) => setUserForm({ ...userForm, mobile_number: event.target.value })} /></label>
-          <label><span>شماره داخلی</span><input dir="ltr" inputMode="numeric" value={userForm.extension} onChange={(event) => setUserForm({ ...userForm, extension: event.target.value })} /></label>
+          <OperatorExtensionInput value={userForm.extension} disabled={userDialogBusy}
+            onChange={extension => setUserForm({ ...userForm, extension })} />
           <p>برای اپراتور حداقل یکی از شماره موبایل یا شماره داخلی لازم است. اپراتور فقط تماس‌هایی را می‌بیند که خودش یک سمت آن باشد.</p>
         </> : null}
       </FormDialog>

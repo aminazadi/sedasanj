@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Query, Request, Response, status
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings, normalize_api_key
@@ -61,6 +61,7 @@ from app.schemas import (
     SettingsUpdate,
     StaffCreate,
     StaffPasswordReset,
+    StaffRoleUpdate,
     StaffSensitiveAction,
     TenantCreate,
     TenantDetail,
@@ -2066,6 +2067,47 @@ async def create_staff(
         ip=client_ip(request),
     )
     return {"id": str(row.id), "email": row.email, "role": row.role, "disabled_at": None}
+
+
+@router.patch("/staff/{staff_id}/role")
+async def update_staff_role(
+    staff_id: UUID,
+    payload: StaffRoleUpdate,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, str]:
+    # Serialize role changes, then recheck the actor to prevent concurrent mutual demotions.
+    await session.execute(text("SELECT pg_advisory_xact_lock(517204391)"))
+    actor = await _verify_sensitive_staff_action(
+        session, staff, payload.current_password, payload.totp_code
+    )
+    if actor.role != "super_admin" or actor.disabled_at is not None:
+        raise ApiError("forbidden", "از مدیر کل فعال بخواهید نقش کاربر را تغییر دهد.")
+    if staff_id == staff.id:
+        raise ApiError(
+            "invalid_request", "برای تغییر نقش حساب خودتان از مدیر کل دیگری بخواهید اقدام کند."
+        )
+    row = await session.get(StaffUser, staff_id, with_for_update=True)
+    if row is None:
+        raise ApiError("not_found", "کاربر ادمین پیدا نشد؛ فهرست کاربران را تازه کنید.")
+    previous_role = row.role
+    row.role = payload.role
+    await session.flush()
+    await session.execute(
+        update(StaffRefreshToken)
+        .where(StaffRefreshToken.staff_user_id == row.id, StaffRefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        action="staff.role_update",
+        payload={"staff_id": str(row.id), "previous_role": previous_role, "role": row.role},
+        ip=client_ip(request),
+    )
+    return {"id": str(row.id), "role": row.role}
 
 
 @router.post("/staff/{staff_id}/disable")

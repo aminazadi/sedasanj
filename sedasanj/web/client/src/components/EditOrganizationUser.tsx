@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { ApiError, request } from "../api";
 import type { User } from "../types";
 import FormDialog from "./FormDialog";
+import OperatorExtensionInput from "./OperatorExtensionInput";
 
-type UserFields = Pick<User, "display_name" | "mobile_number" | "extension">;
+type UserFields = Pick<User, "display_name" | "mobile_number" | "extension" | "role">;
 
 export default function EditOrganizationUser({ userId, onClose, onSaved }: {
   userId: string;
@@ -25,6 +26,7 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
       if (!active) return;
       setUser(member);
       setFields({
+        role: member.role,
         display_name: member.display_name,
         mobile_number: member.mobile_number,
         extension: member.extension,
@@ -43,11 +45,12 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
   async function save() {
     if (!fields || !user || busy) return;
     const body = {
+      role: fields.role,
       display_name: fields.display_name?.trim() || null,
       mobile_number: fields.mobile_number?.trim() || null,
       extension: fields.extension?.trim() || null,
     };
-    if (user.role === "operator" && !body.mobile_number && !body.extension) {
+    if (body.role === "operator" && !body.mobile_number && !body.extension) {
       setNumberError("برای اپراتور شماره موبایل یا شماره داخلی وارد کنید.");
       return;
     }
@@ -63,6 +66,10 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
         setNumberError("این موبایل یا داخلی به کاربر دیگری اختصاص دارد. شماره دیگری وارد کنید.");
       } else if (err instanceof ApiError && err.code === "invalid_request") {
         setNumberError("شماره موبایل یا داخلی معتبر وارد کنید.");
+      } else if (err instanceof ApiError && err.code === "quota_exceeded") {
+        setError("ظرفیت اپراتورهای پلن تکمیل است؛ از بخش اشتراک ظرفیت را افزایش دهید.");
+      } else if (err instanceof ApiError && err.code === "forbidden") {
+        setError("اجازهٔ ویرایش کاربران را ندارید؛ از مدیر سازمان بخواهید اقدام کند.");
       } else {
         setError("ذخیرهٔ اطلاعات ممکن نشد. دوباره تلاش کنید.");
       }
@@ -100,6 +107,16 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
       {user && fields ? <>
         <p dir="ltr">{user.email}</p>
         <label>
+          <span>نقش و سطح دسترسی</span>
+          <select value={fields.role} disabled={busy}
+            onChange={(event) => edit("role", event.target.value)}>
+            <option value="org_admin">مدیر سازمان</option>
+            <option value="operator">اپراتور</option>
+            <option value="viewer">بیننده</option>
+          </select>
+        </label>
+        {fields.role === "operator" ? <p>اپراتور به تماس‌های مرتبط با موبایل یا داخلی خودش دسترسی دارد؛ حداقل یکی از این شماره‌ها را وارد کنید.</p> : null}
+        <label>
           <span>نام نمایشی</span>
           <input value={fields.display_name ?? ""} maxLength={120} disabled={busy}
             onChange={(event) => edit("display_name", event.target.value)} />
@@ -110,12 +127,9 @@ export default function EditOrganizationUser({ userId, onClose, onSaved }: {
             aria-invalid={Boolean(numberError)} aria-describedby={numberError ? "edit-member-number-error" : undefined}
             onChange={(event) => edit("mobile_number", event.target.value)} />
         </label>
-        <label>
-          <span>شماره داخلی</span>
-          <input value={fields.extension ?? ""} dir="ltr" inputMode="numeric" disabled={busy}
-            aria-invalid={Boolean(numberError)} aria-describedby={numberError ? "edit-member-number-error" : undefined}
-            onChange={(event) => edit("extension", event.target.value)} />
-        </label>
+        <OperatorExtensionInput value={fields.extension ?? ""} disabled={busy}
+          invalid={Boolean(numberError)} errorId={numberError ? "edit-member-number-error" : undefined}
+          onChange={value => edit("extension", value)} />
         {numberError ? <p id="edit-member-number-error" className="demo-error" role="alert">{numberError}</p> : null}
         {user.role !== "org_admin" ? <>
         <label>

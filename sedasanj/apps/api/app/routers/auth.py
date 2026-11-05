@@ -794,6 +794,12 @@ async def update_user(
         raise ApiError("not_found", "user not found")
     changes = payload.model_dump(exclude_unset=True)
     next_role = str(changes.get("role", user.role))
+    if "role" in changes and changes["role"] is None:
+        raise ApiError("invalid_request", "نقش معتبر انتخاب کنید و دوباره ذخیره کنید.")
+    if user.id == principal.id and next_role != user.role:
+        raise ApiError(
+            "invalid_request", "برای تغییر نقش حساب خودتان از مدیر سازمان دیگری بخواهید اقدام کند."
+        )
     next_mobile = changes.get("mobile_number", user.mobile_number)
     next_extension = changes.get("extension", user.extension)
     becoming_operator = user.role != "operator" and next_role == "operator"

@@ -4,6 +4,7 @@ import { ApiError, fmt, request } from "../api";
 import { useAuth } from "../auth";
 import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import type { Page } from "../types";
+import StaffRoleEditor, { type StaffRoleTarget } from "../components/StaffRoleEditor";
 
 interface StaffRow { id: string; email: string; role: string; two_factor_enabled: boolean; disabled_at: string | null; created_at: string }
 interface ResetTarget { id: string; email: string }
@@ -20,6 +21,7 @@ export default function Staff() {
   const [limit] = useTablePageSize();
   const [offset, setOffset] = useTableOffset("offset");
   const { session } = useAuth();
+  const [roleTarget, setRoleTarget] = useState<StaffRoleTarget | null>(null);
   const [page, setPage] = useState<Page<StaffRow> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export default function Staff() {
     <div className="space-y-5">
       <header>
         <h1 className="text-2xl font-bold">کاربران ادمین</h1>
-        <p className="mt-1 text-sm text-slate-500">همه نقش‌های staff دسترسی کامل دارند؛ عملیات حساس نیازمند احراز مجدد است.</p>
+        <p className="mt-1 text-sm text-slate-500">مدیر کل تنظیمات سامانه را مدیریت می‌کند؛ پشتیبانی به عملیات روزمرهٔ سازمان‌ها دسترسی دارد.</p>
       </header>
       <ErrorBox message={error} />
       {notice ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div> : null}
@@ -141,8 +143,9 @@ export default function Staff() {
             <thead><tr><th>ایمیل</th><th>نقش</th><th>ورود دومرحله‌ای</th><th>وضعیت</th><th>ایجاد</th><th>عملیات</th></tr></thead>
             <tbody>{rows.map(item => (
               <tr key={item.id}>
-                <td dir="ltr">{item.email}</td><td>{item.role}</td><td>{item.two_factor_enabled ? "فعال" : "غیرفعال"}</td><td>{item.disabled_at ? "غیرفعال" : "فعال"}</td><td>{fmt.date(item.created_at)}</td>
+                <td dir="ltr">{item.email}</td><td>{item.role === "super_admin" ? "مدیر کل" : "پشتیبانی"}</td><td>{item.two_factor_enabled ? "فعال" : "غیرفعال"}</td><td>{item.disabled_at ? "غیرفعال" : "فعال"}</td><td>{fmt.date(item.created_at)}</td>
                 <td><div className="flex flex-wrap items-center gap-2">
+                  {session?.role === "super_admin" && item.id !== session.staffId ? <button className="btn-ghost text-xs" onClick={() => setRoleTarget(item)}>ویرایش سطح دسترسی</button> : null}
                   {item.id !== session?.staffId ? <button className="btn-ghost text-xs" onClick={() => void toggle(item)}>{item.disabled_at ? "فعال‌سازی" : "غیرفعال‌سازی"}</button> : <span className="text-xs text-slate-400">حساب شما</span>}
                   <button className="btn-ghost text-xs" onClick={() => { setNotice(null); setResetError(null); setResetTarget({ id: item.id, email: item.email }); }}>بازنشانی رمز</button>
                   {item.two_factor_enabled ? <button className="btn-ghost text-xs text-rose-700" onClick={() => void resetTotp(item)}>حذف ورود دومرحله‌ای</button> : null}
@@ -153,6 +156,9 @@ export default function Staff() {
         )}
         {page ? <Pagination offset={offset} limit={limit} total={page.total} onChange={setOffset} /> : null}
       </div>
+
+      {roleTarget ? <StaffRoleEditor key={roleTarget.id} target={roleTarget}
+        onClose={() => setRoleTarget(null)} onSaved={async () => { await load(); setNotice("سطح دسترسی کاربر به‌روزرسانی شد."); }} /> : null}
 
       {resetTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) closeReset(); }}>
