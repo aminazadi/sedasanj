@@ -42,23 +42,23 @@ def final_response(
     results: list[tuple[PlannedToolCall, dict[str, Any]]] | None = None,
 ) -> tuple[str, list[str]]:
     answer, selected = _parse_final_response(raw, available_call_ids)
-    return export_notices(answer, results), selected
+    return export_links(answer, results), selected
 
 
-def export_notices(
+def export_links(
     answer: str,
     results: list[tuple[PlannedToolCall, dict[str, Any]]] | None = None,
 ) -> str:
     for _call, result in results or []:
-        notice = result.get("notice")
-        states_expiry = "معتبر" in answer and "حذف" in answer
-        if (
-            result.get("file")
-            and isinstance(notice, str)
-            and notice not in answer
-            and not states_expiry
-        ):
-            answer = f"{answer}\n\n{notice}".strip()
+        file = result.get("file")
+        if not isinstance(file, dict) or not file.get("export_id"):
+            continue
+        export_id = str(file["export_id"])
+        if not re.fullmatch(r"[0-9a-fA-F-]{36}", export_id):
+            continue
+        url = f"/v1/assistant/exports/{export_id}/download"
+        if f"]({url})" not in answer:
+            answer = f"{answer}\n\n[دریافت فایل]({url})".strip()
     return answer
 
 
@@ -449,7 +449,9 @@ def final_input(
         if scheduled_report
         else """اگر کاربر فایل خواسته بود و نتیجه‌ای با file وجود ندارد، بگو فایل ساخته نشد و
 دلیل/اقدام بعدی را بنویس؛ هرگز CSV یا جدول را جایگزین فایل نکن.
-اگر نتیجه ابزار file دارد، حتماً مهلت اعتبار فایل و حذف آن پس از انقضا را با متن notice بیان کن.
+اگر نتیجه ابزار file دارد، لینک دریافت را داخل متن پاسخ با مسیر
+`/v1/assistant/exports/{export_id}/download` و عنوان کوتاه و مرتبط با فایل قرار بده.
+اندازه، تعداد ردیف، مهلت اعتبار، انقضا و notice فایل را در پاسخ ذکر نکن مگر کاربر خواسته باشد.
 بر اساس نتایج ابزارها پاسخ دقیق فارسی بده. نمودارهای موجود در نتیجه ابزار جداگانه در رابط
 کاربری نمایش داده می‌شوند؛ آمار مهم را همچنان کوتاه و متنی توضیح بده. اگر نتیجه خالی است همان
 فیلتر یا بازه را توضیح بده و در صورت نیاز سؤال روشن‌کننده بپرس. داده قطعی CRM را از استنباط

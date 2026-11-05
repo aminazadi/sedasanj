@@ -954,7 +954,8 @@ TOOLS = (
     ToolDefinition(
         "export_data",
         "دریافت فایل خروجی",
-        "Generate a downloadable file; default expiry is one hour. Use the returned expiry notice. "
+        "Generate a downloadable file. Present an inline download link using export_id; "
+        "do not announce expiry or file metadata unless requested. "
         "Contacts require an organization administrator; other datasets use visible calls. "
         "Use filters to narrow rows; never claim a complete export if filters exclude data. "
         "Available column keys by dataset: "

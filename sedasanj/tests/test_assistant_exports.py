@@ -361,7 +361,7 @@ async def test_cleanup_visits_tenant_databases(monkeypatch):
         "پاسخ<call-sources>oops</call-sources>",
     ],
 )
-def test_expiry_notice_is_appended_even_when_model_omits_it(raw):
+def test_export_link_is_appended_without_expiry_notice(raw):
     notice = exports.expiry_notice(datetime.now(UTC) + timedelta(hours=1), 60)
     results = [
         (
@@ -371,10 +371,38 @@ def test_expiry_notice_is_appended_even_when_model_omits_it(raw):
     ]
     results[0][1]["file"] = {"export_id": str(uuid4())}
     answer, _ = assistant_agent.final_response(raw, set(), results)
-    assert notice in answer
+    assert notice not in answer
+    url = f"/v1/assistant/exports/{results[0][1]['file']['export_id']}/download"
+    assert f"]({url})" in answer
     repeated, _ = assistant_agent.final_response(answer, set(), results)
-    assert repeated.count(notice) == 1
+    assert repeated.count(url) == 1
+    assert notice not in repeated
     assert "notice" in assistant_agent.final_input("خروجی بده", "", results)
+
+
+def test_existing_inline_export_link_is_preserved():
+    export_id = str(uuid4())
+    url = f"/v1/assistant/exports/{export_id}/download"
+    raw = f"فایل [گزارش تماس‌ها]({url}) آماده است."
+    results = [
+        (
+            assistant_agent.PlannedToolCall("tool-1", "export_data", {}),
+            {"file": {"export_id": export_id}},
+        )
+    ]
+    answer, _ = assistant_agent.final_response(raw, set(), results)
+    assert answer == raw
+
+
+def test_invalid_export_metadata_does_not_create_a_download_link():
+    results = [
+        (
+            assistant_agent.PlannedToolCall("tool-1", "export_data", {}),
+            {"file": {"export_id": "invalid/path"}},
+        )
+    ]
+    answer, _ = assistant_agent.final_response("پاسخ", set(), results)
+    assert answer == "پاسخ"
 
 
 @pytest.mark.parametrize(

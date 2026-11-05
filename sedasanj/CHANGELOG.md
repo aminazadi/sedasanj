@@ -1,5 +1,6 @@
 ## 2026-11-05 — AMINAZADI
 
+- Replaced assistant export cards with inline file links and type icons in full and quick chats; moved expiry feedback to click-triggered toasts and removed mandatory expiry notices.
 - Added expiring email verification and password reset links for organization members.
 - Added an organization user editor for display names, mobile numbers, and extensions, with a URL-backed member selection.
 - Restricted platform-shaping staff actions (staff management, tenants, plans, gateways, refunds, settings) to `super_admin`, read the staff role from the database on every request, and added a test that fails when a mutating admin route lacks a role check.

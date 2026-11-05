@@ -1,7 +1,7 @@
 import { DataTable } from "../components/DataTable";
 import AssistantContextPicker, { AssistantAttachmentChips } from "../components/AssistantContextPicker";
 import ProcessingIndicator from "../components/ProcessingIndicator";
-import AssistantExportFiles from "../components/AssistantExportFiles";
+import { exportFiles } from "../components/assistantExportLinks.mjs";
 import { CallStateArt } from "../components/CallStateArt";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -1448,8 +1448,8 @@ export default function Assistant() {
               </div> : <>
               {user && attachedLabels.length ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="موارد متصل به پیام">{attachedLabels.map((label) => <span key={label} className="inline-flex min-h-6 items-center border border-[#D8D3B9] bg-[#F2F0EF] px-2 py-0.5 text-[11px] font-bold leading-5 text-[#365033]">{label}</span>)}</div> : null}
               {!user ? <ToolTimeline runs={message.tool_runs || []} active={message.status === "running"} /> : null}
-              {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} />}
-              {!user ? <AssistantCharts charts={charts} /> : null}{!user ? <AssistantExportFiles runs={message.tool_runs || []} /> : null}
+              {message.status === "running" && !message.content ? <TypingIndicator label={phases[message.id]} /> : <MarkdownMessage content={message.content} files={user ? [] : exportFiles(message.tool_runs || [])} />}
+              {!user ? <AssistantCharts charts={charts} /> : null}
               {message.sources?.length ? <CallSources sources={message.sources} expandedCallId={expandedCallId} onToggle={toggleCallSource} /> : null}
               </>}
           </ConversationBubble>;

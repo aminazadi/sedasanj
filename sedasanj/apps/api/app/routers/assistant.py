@@ -1375,7 +1375,7 @@ async def send_message(
             await client.close()
         status_value = "succeeded"
     except Exception as exc:
-        answer = assistant_agent.export_notices(_assistant_error(exc), results)
+        answer = assistant_agent.export_links(_assistant_error(exc), results)
         status_value = "failed"
     memory_drafts: list[OrganizationMemory] = []
     if status_value == "succeeded" and conversation.mode == "training":
@@ -1650,7 +1650,7 @@ async def stream_ephemeral_message(
             if not answer.strip():
                 raise RuntimeError("empty assistant response")
         except Exception as exc:
-            answer = assistant_agent.export_notices(_assistant_error(exc), results)
+            answer = assistant_agent.export_links(_assistant_error(exc), results)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         usage.status = "failed" if status_value == "failed" else "succeeded"
@@ -1854,7 +1854,7 @@ async def stream_message(
             if not answer.strip():
                 raise RuntimeError("empty assistant response")
         except Exception as exc:
-            answer = assistant_agent.export_notices(_assistant_error(exc), results)
+            answer = assistant_agent.export_links(_assistant_error(exc), results)
             status_value = "failed"
             yield _sse("replace", {"content": answer})
         assistant_run_id = getattr(request.state, "assistant_run_id", None)
