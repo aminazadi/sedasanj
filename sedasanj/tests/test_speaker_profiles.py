@@ -245,10 +245,10 @@ def test_only_storage_unavailable_is_retryable() -> None:
 
 
 def test_every_speaker_code_has_a_help_row_with_an_action() -> None:
-    module = _load("m0103", "0103_speaker_help_content.py")
+    module = _load("m0103", "0107_speaker_help_content.py")
     seeded = {code for code, *_ in module.ERRORS}
     assert seeded == set(SPEAKER_CODES)
-    assert module.down_revision == "0102_speaker_profiles"
+    assert module.down_revision == "0106_speaker_profiles"
     slugs = [slug for slug, *_ in module.ARTICLES] + [module._slug(code) for code in seeded]
     assert len(slugs) == len(set(slugs))
     assert all(re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", slug) for slug in slugs)
@@ -262,7 +262,7 @@ def test_every_speaker_code_has_a_help_row_with_an_action() -> None:
 
 
 def test_help_upgrade_binds_every_value(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _load("m0103_up", "0103_speaker_help_content.py")
+    module = _load("m0103_up", "0107_speaker_help_content.py")
     statements: list[tuple[str, dict]] = []
 
     class Bind:
@@ -286,7 +286,7 @@ def test_help_upgrade_binds_every_value(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def _run(direction: str, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    module = _load("m0102", "0102_speaker_profiles.py")
+    module = _load("m0102", "0106_speaker_profiles.py")
     statements: list[str] = []
     monkeypatch.setattr(module.op, "execute", statements.append)
     getattr(module, direction)()
@@ -294,15 +294,15 @@ def _run(direction: str, monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def test_migration_chain_and_single_head() -> None:
-    module = _load("m0102_chain", "0102_speaker_profiles.py")
-    assert module.revision == "0102_speaker_profiles"
-    assert module.down_revision == "0101_report_documents"
+    module = _load("m0102_chain", "0106_speaker_profiles.py")
+    assert module.revision == "0106_speaker_profiles"
+    assert module.down_revision == "0105_document_editing_help"
     downs = [
         match.group(1)
         for path in VERSIONS.glob("0*.py")
         if (match := re.search(r'^down_revision = "(.+)"', path.read_text(), re.M))
     ]
-    assert downs.count("0102_speaker_profiles") == 1
+    assert downs.count("0106_speaker_profiles") == 1
 
 
 def test_every_new_table_is_granted_and_row_level_secured(

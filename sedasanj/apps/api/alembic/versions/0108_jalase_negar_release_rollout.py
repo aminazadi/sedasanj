@@ -5,8 +5,8 @@ Also merges the two 0103 heads (account access help and speaker help content) in
 
 from alembic import op
 
-revision = "0104_jalase_negar_release_rollout"
-down_revision = ("0103_account_access_help", "0103_speaker_help_content")
+revision = "0108_jalase_negar_release_rollout"
+down_revision = "0107_speaker_help_content"
 branch_labels = None
 depends_on = None
 

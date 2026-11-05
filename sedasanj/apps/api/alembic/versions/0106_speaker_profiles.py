@@ -13,8 +13,8 @@ on-device match was, and meeting speakers can point at the profile they were mat
 
 from alembic import op
 
-revision = "0102_speaker_profiles"
-down_revision = "0101_report_documents"
+revision = "0106_speaker_profiles"
+down_revision = "0105_document_editing_help"
 branch_labels = None
 depends_on = None
 

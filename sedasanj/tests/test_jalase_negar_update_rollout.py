@@ -156,11 +156,11 @@ async def test_install_report_endpoint(client: httpx.AsyncClient) -> None:
 # --- migrations and error codes ----------------------------------------------------------------
 
 
-def test_rollout_migration_merges_both_0103_heads_and_is_reversible(
+def test_rollout_migration_follows_speaker_help_and_is_reversible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _load("0104_jalase_negar_release_rollout")
-    assert module.down_revision == ("0103_account_access_help", "0103_speaker_help_content")
+    module = _load("0108_jalase_negar_release_rollout")
+    assert module.down_revision == "0107_speaker_help_content"
     for direction in ("upgrade", "downgrade"):
         statements: list[str] = []
         monkeypatch.setattr(module.op, "execute", statements.append)
@@ -175,7 +175,7 @@ def test_rollout_migration_merges_both_0103_heads_and_is_reversible(
 
 
 def test_existing_rows_stay_fully_rolled_out_on_the_stable_channel() -> None:
-    module = _load("0104_jalase_negar_release_rollout")
+    module = _load("0108_jalase_negar_release_rollout")
     import inspect
 
     source = inspect.getsource(module.upgrade)
@@ -183,8 +183,8 @@ def test_existing_rows_stay_fully_rolled_out_on_the_stable_channel() -> None:
 
 
 def test_update_error_codes_have_status_and_help_rows() -> None:
-    module = _load("0105_jalase_negar_update_install_help")
-    assert module.down_revision == "0104_jalase_negar_release_rollout"
+    module = _load("0109_jalase_negar_update_install_help")
+    assert module.down_revision == "0108_jalase_negar_release_rollout"
     codes = {code for code, *_ in module.ERRORS}
     assert codes == {
         "update_checksum_mismatch",

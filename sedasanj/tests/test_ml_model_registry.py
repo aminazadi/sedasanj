@@ -78,7 +78,7 @@ def test_error_codes_are_registered() -> None:
 
 def test_every_code_has_a_persian_help_article() -> None:
     spec = importlib.util.spec_from_file_location(
-        "ml_help_migration", VERSIONS / "0105_ml_model_help_content.py"
+        "ml_help_migration", VERSIONS / "0111_ml_model_help_content.py"
     )
     assert spec and spec.loader
     module: ModuleType = importlib.util.module_from_spec(spec)
@@ -101,11 +101,11 @@ def test_migrations_have_one_head_after_the_merge() -> None:
             () if down is None else (down,) if isinstance(down, str) else tuple(down)
         )
     referenced = {parent for parents in revisions.values() for parent in parents}
-    assert [rev for rev in revisions if rev not in referenced] == ["0105_ml_model_help_content"]
+    assert [rev for rev in revisions if rev not in referenced] == ["0111_ml_model_help_content"]
 
 
 def test_migration_follows_the_conventions() -> None:
-    text = (VERSIONS / "0104_ml_model_releases.py").read_text()
+    text = (VERSIONS / "0110_ml_model_releases.py").read_text()
     assert "GRANT SELECT, INSERT, UPDATE, DELETE ON ml_model_releases TO cbi_app" in text
     assert "def downgrade" in text and "drop_table" in text
     assert text.count("op.execute(") == 3

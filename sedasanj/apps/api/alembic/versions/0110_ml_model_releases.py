@@ -1,12 +1,12 @@
 """ML model registry: published model artifacts stored under `ml-models/` in the main bucket.
 
-Also merges the two 0103 heads (account access help and speaker help content) into one.
+Follows the integrated speaker profile and Android rollout migrations.
 """
 
 from alembic import op
 
-revision = "0104_ml_model_releases"
-down_revision = ("0103_account_access_help", "0103_speaker_help_content")
+revision = "0110_ml_model_releases"
+down_revision = "0109_jalase_negar_update_install_help"
 branch_labels = None
 depends_on = None
 

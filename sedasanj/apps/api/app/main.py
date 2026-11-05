@@ -366,7 +366,7 @@ def create_app() -> FastAPI:
         ai_instructions,
         module_updates,
         jalase_negar_releases,
-    ml_models,
+        ml_models,
         help,
         site_pages,
         admin,

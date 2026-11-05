@@ -1,10 +1,11 @@
 ## 2026-11-05 — AMINAZADI
 
+- Integrated speaker sync, automatic Android updates, and the ML registry with main; sequenced migrations 0106–0111 while preserving deployment security settings.
 - Added server-side speaker profiles for Jalase-Negar: people and encrypted voiceprints with owner/organisation visibility, consent records, optimistic versions, tombstones and a commit-ordered change feed for cross-device sync.
 - Added overlap and speaker-confidence fields to meeting segments and speaker-to-profile links on meeting speakers, keeping existing transcript hashes unchanged.
 - Added the speaker error codes and Persian help articles, and the `VOICEPRINT_ENCRYPTION_KEY` setting.
 - Added staged rollout (`rollout_percent`), a forced minimum build (`min_supported_version_code`) and a stable/beta channel to Jalase-Negar releases, with a deterministic bucket from the app's anonymous install id and the matching admin fields.
-- Added an anonymous, rate-limited install-result report endpoint, the `cbi_jalase_negar_update_install_total` counter, the `update_checksum_mismatch`, `update_downgrade_rejected` and `update_install_blocked` codes and their Persian help articles; migration 0104 also merges the two 0103 heads.
+- Added an anonymous, rate-limited install-result report endpoint, the `cbi_jalase_negar_update_install_total` counter, the `update_checksum_mismatch`, `update_downgrade_rejected` and `update_install_blocked` codes and their Persian help articles; integrated migrations follow the existing main schema.
 - Added an ML model registry in the main MinIO (`ml-models/`): GPU servers publish ONNX models with an `ml:publish` integration key (platform tenant, IP allowlist, rate limit, server-checked SHA-256, idempotent per kind and version), the `latest` channel keeps one copy, the `champion` channel keeps the previous version for `ML_MODEL_PREV_RETENTION_HOURS` unless pinned, and staff download models from the admin panel with Range support and audit.
 - Added super-admin promote, rollout, pin, revoke and delete actions for models, the `ml_model_*` and `ml_publish_forbidden` error codes with Persian help, an orphan sweeper, and `scripts/create_ml_publisher_key.py`.
 - Replaced assistant export cards with inline file links and type icons in full and quick chats; moved expiry feedback to click-triggered toasts and removed mandatory expiry notices.

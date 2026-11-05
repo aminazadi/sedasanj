@@ -3,13 +3,14 @@
 # ruff: noqa: E501 - the article text is long Persian prose that does not wrap usefully
 
 import html
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0105_ml_model_help_content"
-down_revision = "0104_ml_model_releases"
+revision = "0111_ml_model_help_content"
+down_revision = "0110_ml_model_releases"
 branch_labels = None
 depends_on = None
 
@@ -96,11 +97,11 @@ def _slug(code: str) -> str:
     return "error-" + code.replace("_", "-")
 
 
-def _body(blocks: list) -> tuple[str, str]:
+def _body(blocks: Sequence[Sequence[str]]) -> tuple[str, str]:
     parts: list[str] = []
     plain: list[str] = []
     for block in blocks:
-        if isinstance(block, list):
+        if not isinstance(block, str):
             items = "".join(f"<li>{html.escape(step)}</li>" for step in block)
             parts.append(f"<ol>{items}</ol>")
             plain.extend(block)
@@ -110,7 +111,7 @@ def _body(blocks: list) -> tuple[str, str]:
     return "".join(parts), " ".join(plain)
 
 
-def error_blocks(cause: str, steps: list[str], code: str) -> list:
+def error_blocks(cause: str, steps: list[str], code: str) -> list[str | list[str]]:
     return [
         "علائم: درخواست مربوط به مخزن مدل‌ها با خطا برگشت داده شد.",
         f"علت: {cause}",

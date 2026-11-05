@@ -56,6 +56,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep development builds separate from the production-signed app.
+            applicationIdSuffix = ".dev"
+        }
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = true
