@@ -600,6 +600,18 @@ async def create_user(
     return UserOut.model_validate(user)
 
 
+@router.get("/users/{user_id}", response_model=UserOut)
+async def get_user(
+    user_id: UUID,
+    session: ControlSession,
+    principal: OrgAdminDep,
+) -> UserOut:
+    user = await session.get(User, user_id)
+    if user is None or user.tenant_id != principal.tenant_id:
+        raise ApiError("not_found", "user not found")
+    return UserOut.model_validate(user)
+
+
 @router.patch("/users/{user_id}", response_model=UserOut)
 async def update_user(
     user_id: UUID,

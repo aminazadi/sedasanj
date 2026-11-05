@@ -13,6 +13,7 @@ import WebhookDeliveries from "../components/WebhookDeliveries";
 import CreditTopUp from "../components/CreditTopUp";
 import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
+import EditOrganizationUser from "../components/EditOrganizationUser";
 import FormDialog from "../components/FormDialog";
 import addUserArt from "../assets/add-user.webp";
 import type {
@@ -111,6 +112,14 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [orders, setOrders] = useState<Array<{ id: string; number: string; kind: string; status: string; amount_toman: number; created_at: string }>>([]);
   const [params, setParams] = useSearchParams();
+  const editingUserId = params.get("edit_user");
+  function selectEditedUser(id: string | null) {
+    const next = new URLSearchParams(params);
+    if (id) next.set("edit_user", id);
+    else next.delete("edit_user");
+    setParams(next);
+  }
+
   const ledgerOffset = offsetParam(params, "ledger");
   const orderOffset = offsetParam(params, "orders");
   const setLedgerOffset = (value: number) => setParams(withOffset(params, "ledger", value), { replace: true });
@@ -371,6 +380,10 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                     <td>{fmt.date(user.created_at)}</td>
                     <td>
                       {user.id === session?.userId ? null : (
+                        <>
+                        <button className="btn-ghost" type="button" onClick={() => selectEditedUser(user.id)}>
+                          ویرایش
+                        </button>
                         <button
                           className="btn-danger"
                           onClick={async () => {
@@ -380,6 +393,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                         >
                           حذف
                         </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -477,6 +491,14 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           </> : null}
 
         </>
+      ) : null}
+      {section === "users" && isAdmin && editingUserId && editingUserId !== session?.userId ? (
+        <EditOrganizationUser
+          key={editingUserId}
+          userId={editingUserId}
+          onClose={() => selectEditedUser(null)}
+          onSaved={reload}
+        />
       ) : null}
       <FormDialog open={userDialogOpen} title="افزودن کاربر" description="کاربر جدید با ایمیل و گذرواژهٔ موقت وارد پنل می‌شود." art={addUserArt} submitLabel="افزودن کاربر" busy={userDialogBusy} error={userDialogError} onClose={() => setUserDialogOpen(false)} onSubmit={() => void createUser()}>
         <label><span>ایمیل</span><input type="email" dir="ltr" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required /></label>
