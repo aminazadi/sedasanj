@@ -179,7 +179,7 @@ export default function ScheduledReports() {
   const scheduleText = (report: Report) => report.schedule_mode === "interval" ? `هر ${fmt.int(report.interval_hours || 0)} ساعت` : `ساعت‌های ${report.fixed_hours.map(hour => `${fmt.int(hour)}:۰۰`).join("، ")}`;
   return <div className="space-y-5" dir="rtl">
     <PageHeader title="گزارش‌های زمان‌بندی‌شده" description="گزارش‌های مدیریتی با معیارهای دلخواه، بر پایهٔ اطلاعات و حافظهٔ سازمان" actions={toolbar} />
-    <DocumentTabs value={settings ? "settings" : "archive"} options={[{ value: "archive", label: "آرشیو گزارش‌ها" }, { value: "settings", label: "مدیریت و زمان‌بندی" }]} onChange={value => change({ tab: value, ...(value === "settings" ? { run: null } : {}) })} label="بخش گزارش‌ها" />
+    <DocumentTabs align="start" value={settings ? "settings" : "archive"} options={[{ value: "archive", label: "آرشیو گزارش‌ها" }, { value: "settings", label: "مدیریت و زمان‌بندی" }]} onChange={value => change({ tab: value, ...(value === "settings" ? { run: null } : {}) })} label="بخش گزارش‌ها" />
     <ErrorBox message={error || null} />
     {settings ? <>
       <FormDialog

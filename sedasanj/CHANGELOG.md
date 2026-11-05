@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Aligned scheduled report archive and scheduling tabs to the right while preserving URL selection.
+
 - Fixed API startup with an empty or whitespace-only `ML_PUBLISHER_TENANT_ID`; publishing remains disabled with `ml_publish_forbidden` until a valid tenant is configured.
 
 - Moved meeting audio playback into the header alongside accessible icon buttons for navigation, PDF download, printing and sharing; aligned meeting tabs to the right while preserving URL selection.
