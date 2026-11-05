@@ -111,6 +111,7 @@ class EnrolledVoice {
     required this.name,
     required this.centroid,
     required this.samples,
+    this.preferred = false,
   });
 
   final String personId;
@@ -118,12 +119,25 @@ class EnrolledVoice {
   final Float32List centroid;
   final int samples;
 
+  /// True for a person chosen as present in this meeting; the matcher gives
+  /// such voices a small head start over everyone else enrolled.
+  final bool preferred;
+
+  EnrolledVoice asPreferred(bool value) => EnrolledVoice(
+    personId: personId,
+    name: name,
+    centroid: centroid,
+    samples: samples,
+    preferred: value,
+  );
+
   /// Plain data for the live isolate.
   Map<String, Object?> toMap() => {
     'id': personId,
     'name': name,
     'centroid': centroid,
     'samples': samples,
+    'preferred': preferred,
   };
 
   factory EnrolledVoice.fromMap(Map<Object?, Object?> map) => EnrolledVoice(
@@ -131,5 +145,6 @@ class EnrolledVoice {
     name: map['name']! as String,
     centroid: map['centroid']! as Float32List,
     samples: map['samples']! as int,
+    preferred: map['preferred'] == true,
   );
 }

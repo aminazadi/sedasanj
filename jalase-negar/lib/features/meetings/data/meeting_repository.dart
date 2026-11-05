@@ -6,6 +6,7 @@ import '../../../core/audio/chunk_writer.dart';
 import '../../../core/audio/wav.dart';
 import '../../../core/db/app_database.dart';
 import '../../upload/upload_queue.dart';
+import 'attendee.dart';
 import 'meeting.dart';
 import 'transcript_store.dart';
 
@@ -37,6 +38,40 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     where: 'id = ?',
     whereArgs: [meeting.id],
   );
+
+  /// Replaces the attendees of [meetingId] with [attendees].
+  Future<void> setAttendees(String meetingId, List<Attendee> attendees) =>
+      _db.db.transaction((txn) async {
+        await txn.delete(
+          'meeting_attendees',
+          where: 'meeting_id = ?',
+          whereArgs: [meetingId],
+        );
+        for (final a in attendees) {
+          await txn.insert('meeting_attendees', {
+            'meeting_id': meetingId,
+            'person_id': a.personId,
+            'name_snapshot': a.name,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      });
+
+  @override
+  Future<List<Attendee>> attendees(String meetingId) async {
+    final rows = await _db.db.query(
+      'meeting_attendees',
+      where: 'meeting_id = ?',
+      whereArgs: [meetingId],
+      orderBy: 'name_snapshot COLLATE NOCASE',
+    );
+    return [
+      for (final r in rows)
+        Attendee(
+          personId: r['person_id'] as String,
+          name: r['name_snapshot'] as String,
+        ),
+    ];
+  }
 
   Future<void> delete(
     Meeting meeting, {
@@ -210,12 +245,33 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     final rows = await _db.db.query(
       'meetings',
       where:
-          "send_text = 1 AND status IN "
+          "send_text = 1 AND (speakers_state = 'done' OR status = 'recording') "
+          "AND status IN "
           "('recording', 'recorded', 'transcribed', 'uploading', 'processing')",
       orderBy: 'created_at ASC',
     );
     return rows.map(Meeting.fromRow).toList();
   }
+
+  /// Recordings whose people still have to be identified (also those a
+  /// closed app left mid-analysis).
+  Future<List<Meeting>> speakerAnalysisPending() async {
+    final rows = await _db.db.query(
+      'meetings',
+      where:
+          "speakers_state != 'done' AND recording_state = 'finished' "
+          "AND status != 'recording'",
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(Meeting.fromRow).toList();
+  }
+
+  Future<void> setSpeakersState(String id, String state) => _db.db.update(
+    'meetings',
+    {'speakers_state': state},
+    where: 'id = ?',
+    whereArgs: [id],
+  );
 
   /// What still has to leave the phone: unsent audio chunks of meetings the
   /// queue will send, and transcript edits not yet pushed. The self-updater

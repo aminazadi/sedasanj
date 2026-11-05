@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 
 import '../../core/platform/api_client.dart';
+import '../meetings/data/attendee.dart';
 import '../meetings/data/meeting.dart';
 
 /// A closed WAV chunk waiting for (or already past) upload.
@@ -50,6 +51,9 @@ abstract class UploadStore {
   });
   Future<List<Segment>> segments(String meetingId);
   Future<Meeting?> meeting(String id);
+
+  /// People chosen as present when the meeting was recorded.
+  Future<List<Attendee>> attendees(String meetingId);
 
   /// Targeted writes: the recorder updates the same row while a meeting is
   /// still being captured, so the queue must never rewrite whole rows.
@@ -235,6 +239,7 @@ class UploadQueue {
         title: current.title,
         startedAt: current.createdAt,
         appVersion: appVersion,
+        attendees: await store.attendees(current.id),
       );
       if (session.inputKind != 'text') {
         await store.setStatus(
@@ -264,11 +269,21 @@ class UploadQueue {
     // Idempotent on the server (same content hash replays), so a retry after
     // a dropped connection is safe.
     if (!live) {
-      await api.putTranscript(
-        meetingId: remoteId,
-        segments: segments,
-        asrIdentity: current.asrIdentity,
-      );
+      try {
+        await api.putTranscript(
+          meetingId: remoteId,
+          segments: segments,
+          asrIdentity: current.asrIdentity,
+        );
+      } on ApiException catch (e) {
+        // An earlier pass finished the session and died before saving the
+        // status; the server already has everything, so follow it instead of
+        // marking the meeting failed.
+        if (e.code != 'meeting_closed') rethrow;
+        await store.setStatus(current.id, MeetingStatus.processing);
+        wakeIn(const Duration(seconds: 1));
+        return null;
+      }
     }
 
     final nowMs = _now().millisecondsSinceEpoch;

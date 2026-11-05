@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
+import 'package:jalase_negar/features/meetings/data/attendee.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/upload/upload_queue.dart';
 
@@ -59,6 +60,12 @@ class FakeStore implements UploadStore {
   @override
   Future<List<Segment>> segments(String id) async => segmentMap[id] ?? [];
 
+  final Map<String, List<Attendee>> attendeeMap = {};
+
+  @override
+  Future<List<Attendee>> attendees(String meetingId) async =>
+      attendeeMap[meetingId] ?? const [];
+
   @override
   Future<Meeting?> meeting(String id) async =>
       meetings.firstWhere((m) => m.id == id);
@@ -100,6 +107,7 @@ class FakeStore implements UploadStore {
 
 class FakeApi implements MeetingUploadApi {
   int createCalls = 0;
+  List<Attendee> lastAttendees = const [];
   int transcriptCalls = 0;
   int finishCalls = 0;
   final List<int> chunkSeqs = [];
@@ -118,8 +126,10 @@ class FakeApi implements MeetingUploadApi {
     required String title,
     required DateTime startedAt,
     required String appVersion,
+    List<Attendee> attendees = const [],
   }) async {
     createCalls += 1;
+    lastAttendees = attendees;
     return RemoteSession(
       meetingId: 'remote-1',
       status: 'receiving',
@@ -295,6 +305,13 @@ void main() {
     expect(store.meetings.single.status, MeetingStatus.processing);
   });
 
+  test('the chosen attendees go with the new session', () async {
+    setUpStore(meeting());
+    store.attendeeMap['m1'] = const [Attendee(personId: 'p1', name: 'علی')];
+    await queue().processOnce();
+    expect(api.lastAttendees, const [Attendee(personId: 'p1', name: 'علی')]);
+  });
+
   test('a meeting with the switch off is never touched', () async {
     setUpStore(meeting(sendText: false));
     await queue().processOnce();
@@ -366,6 +383,20 @@ void main() {
     await queue().processOnce();
     expect(store.meetings.single.status, MeetingStatus.processing);
   });
+
+  test(
+    'a transcript the server already closed is followed, not failed',
+    () async {
+      setUpStore(meeting());
+      api.transcriptError = const ApiException(
+        message: 'بسته',
+        code: 'meeting_closed',
+        statusCode: 409,
+      );
+      await queue().processOnce();
+      expect(store.meetings.single.status, MeetingStatus.processing);
+    },
+  );
 
   test('revoked token stops the pass and asks to reconnect', () async {
     setUpStore(meeting());

@@ -40,6 +40,7 @@ from app.models import (
     AudioObject,
     JalaseNegarRelease,
     Meeting,
+    MeetingAttendee,
     MeetingChunk,
     MeetingEvent,
     MeetingMinutes,
@@ -52,6 +53,7 @@ from app.models import (
 )
 from app.schemas import (
     DocumentEdit,
+    MeetingAttendeeOut,
     MeetingChunkOut,
     MeetingConfigValidation,
     MeetingDetail,
@@ -87,6 +89,7 @@ from app.services import (
     meeting_ingest,
     meeting_progress,
     ratelimit,
+    speaker_profiles,
 )
 from app.services.api_scopes import MOBILE_KEY_SCOPES
 from app.services.call_export import to_jalali
@@ -374,6 +377,32 @@ async def _owned_meeting(
     return meeting
 
 
+async def _save_attendees(
+    session: AsyncSession, meeting: Meeting, payload: MeetingSessionIn
+) -> None:
+    """Store the people marked as present; ones the server has not synced yet keep their name."""
+    unique = {a.profile_client_id: a for a in payload.attendees}
+    if not unique:
+        return
+    resolved = await speaker_profiles.resolve_profile_ids(
+        session,
+        tenant_id=meeting.tenant_id,
+        user_id=meeting.owner_user_id,
+        client_ids=set(unique),
+    )
+    for client_id, attendee in unique.items():
+        session.add(
+            MeetingAttendee(
+                tenant_id=meeting.tenant_id,
+                meeting_id=meeting.id,
+                profile_client_id=client_id,
+                profile_id=resolved.get(client_id),
+                name=attendee.name,
+            )
+        )
+    await session.flush()
+
+
 @router.post("/sessions", response_model=MeetingSessionOut)
 async def create_session(
     payload: MeetingSessionIn,
@@ -458,6 +487,8 @@ async def create_session(
             input_kind=winner.input_kind,
             transcript_received=winner.transcript_sha256 is not None,
         )
+
+    await _save_attendees(session, meeting, payload)
 
     block = min(settings.meeting_reserve_block_seconds, balance.seconds)
     reservation = await billing.reserve(
@@ -954,6 +985,17 @@ async def get_meeting(
             .tuples()
             .all()
         )
+    attendees = (
+        (
+            await session.execute(
+                select(MeetingAttendee)
+                .where(MeetingAttendee.meeting_id == meeting.id)
+                .order_by(MeetingAttendee.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
     selected = await _selected_minutes(session, meeting.id)
     events = (
         (
@@ -993,6 +1035,10 @@ async def get_meeting(
                 profile_client_id=profile_clients.get(s.profile_id) if s.profile_id else None,
             )
             for s in speakers
+        ],
+        attendees=[
+            MeetingAttendeeOut(profile_client_id=a.profile_client_id, name=a.name)
+            for a in attendees
         ],
         minutes=_minutes_out(selected) if selected is not None else None,
         processing_events=[

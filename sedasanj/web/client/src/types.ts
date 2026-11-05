@@ -682,6 +682,9 @@ export interface User {
   id: string;
   email: string;
   role: string;
+  is_primary_admin?: boolean;
+  panel_permissions?: string[] | null;
+  effective_panel_permissions?: string[];
   mobile_number: string | null;
   extension: string | null;
   display_name: string | null;
@@ -842,6 +845,11 @@ export interface MeetingSpeaker {
   user_id: string | null;
 }
 
+export interface MeetingAttendee {
+  profile_client_id: string;
+  name: string;
+}
+
 export interface MeetingActionItem {
   text: string;
   assignee: string | null;
@@ -866,6 +874,7 @@ export interface MeetingDetail extends MeetingListItem {
   audio_available: boolean;
   segments: MeetingSegment[];
   speakers: MeetingSpeaker[];
+  attendees?: MeetingAttendee[];
   minutes: MeetingMinutes | null;
   processing_events: ProcessingEvent[];
 }

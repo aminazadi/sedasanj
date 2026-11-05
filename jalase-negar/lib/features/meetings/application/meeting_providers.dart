@@ -5,11 +5,13 @@ import '../../../core/models/model_catalog.dart';
 import '../../../core/providers.dart';
 import '../../../core/platform/api_client.dart';
 import '../../people/application/people_providers.dart';
+import '../../recording/application/recorder_controller.dart';
 import '../data/precise_labels.dart';
 import '../data/precise_processor.dart';
 import '../../settings/application/connection_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../data/meeting_repository.dart';
+import '../data/attendee.dart';
 import '../data/meeting.dart';
 import '../data/speaker_discovery.dart' as discovery;
 import '../data/speaker_edit.dart';
@@ -23,6 +25,16 @@ bool isTextSentToServer(Meeting meeting) =>
     (meeting.status == MeetingStatus.processing ||
         meeting.status == MeetingStatus.uploaded ||
         meeting.status == MeetingStatus.complete);
+
+/// Whether the "send to SedaSanj" action applies: the text was never sent
+/// (switch off, nothing left to retry) or the last send failed.
+bool canSendMeetingText(Meeting meeting, {required bool hasText}) =>
+    hasText &&
+    !meeting.analyzingSpeakers &&
+    (meeting.status == MeetingStatus.failed ||
+        ((meeting.status == MeetingStatus.recorded ||
+                meeting.status == MeetingStatus.transcribed) &&
+            !meeting.sendText));
 
 enum TranscriptSaveResult {
   /// Stored on the phone; SedaSanj has no copy to update.
@@ -195,6 +207,11 @@ class MeetingActions {
 
   /// Layer B: analyses the whole recording, then re-labels the speakers of
   /// every line the user did not label by hand. Text and times are untouched.
+  ///
+  /// While it runs the meeting is marked "analyzing" (the list and the detail
+  /// screen show the loading mark and nothing is sent); afterwards it is
+  /// released to the upload queue whatever the outcome, so a missing model or
+  /// a failed analysis never holds a meeting back for good.
   Future<PreciseOutcome> runPreciseProcessing() async {
     final repo = await ref.read(meetingRepositoryProvider.future);
     final meeting = await repo.byId(meetingId);
@@ -203,6 +220,23 @@ class MeetingActions {
         meeting.status == MeetingStatus.uploading) {
       return const PreciseOutcome(PreciseStatus.busy);
     }
+    await repo.setSpeakersState(meetingId, 'analyzing');
+    ref.invalidate(meetingsProvider);
+    ref.invalidate(meetingDetailProvider(meetingId));
+    try {
+      return await _runPrecise(repo, meeting);
+    } finally {
+      await repo.setSpeakersState(meetingId, 'done');
+      ref.invalidate(meetingsProvider);
+      ref.invalidate(meetingDetailProvider(meetingId));
+      ref.read(uploadQueueProvider.notifier).kick();
+    }
+  }
+
+  Future<PreciseOutcome> _runPrecise(
+    MeetingRepository repo,
+    Meeting meeting,
+  ) async {
     final store = await ref.read(modelStoreProvider.future);
     const embedding = ModelCatalog.speakerEmbedding;
     const segmentation = ModelCatalog.speakerSegmentation;
@@ -218,6 +252,9 @@ class MeetingActions {
       modelId: embedding.id,
       modelVersion: ModelCatalog.speakerEmbeddingVersion,
     );
+    final present = {
+      for (final a in await repo.attendees(meeting.id)) a.personId,
+    };
     final PreciseAnalysis analysis;
     try {
       analysis = await ref.read(preciseRunnerProvider)(
@@ -228,7 +265,10 @@ class MeetingActions {
             segmentation.files[0],
           ),
           embeddingModelPath: store.filePath(embedding, embedding.files[0]),
-          enrolled: [for (final v in voices) v.toMap()],
+          enrolled: [
+            for (final v in voices)
+              v.asPreferred(present.contains(v.personId)).toMap(),
+          ],
         ),
       );
     } on FormatException catch (e) {
@@ -398,6 +438,15 @@ final meetingActionsProvider = Provider.family<MeetingActions, String>(
   MeetingActions.new,
 );
 
+/// People chosen as present when the meeting was recorded.
+final meetingAttendeesProvider = FutureProvider.family<List<Attendee>, String>((
+  ref,
+  meetingId,
+) async {
+  final repo = await ref.watch(meetingRepositoryProvider.future);
+  return repo.attendees(meetingId);
+});
+
 final meetingsProvider = FutureProvider<List<Meeting>>((ref) async {
   final repo = await ref.watch(meetingRepositoryProvider.future);
   return repo.all();
@@ -451,3 +500,51 @@ final meetingDetailProvider = FutureProvider.family<MeetingDetail?, String>((
     segments: await repo.segments(meetingId),
   );
 });
+
+class SpeakerAnalysisState {
+  const SpeakerAnalysisState({this.running = false});
+  final bool running;
+}
+
+/// Identifies the people of every finished recording before it is sent: new
+/// meetings start "pending", and a meeting left mid-analysis by a closed app
+/// is picked up again. Runs one meeting at a time and never while a recording
+/// is being captured.
+class SpeakerAnalysisController extends Notifier<SpeakerAnalysisState> {
+  bool _running = false;
+
+  @override
+  SpeakerAnalysisState build() {
+    Future.microtask(kick);
+    return const SpeakerAnalysisState();
+  }
+
+  Future<void> kick() async {
+    if (_running) return;
+    _running = true;
+    state = const SpeakerAnalysisState(running: true);
+    try {
+      final repo = await ref.read(meetingRepositoryProvider.future);
+      for (final meeting in await repo.speakerAnalysisPending()) {
+        if (ref.read(recorderControllerProvider.notifier).isCapturing) break;
+        final outcome = await ref
+            .read(meetingActionsProvider(meeting.id))
+            .runPreciseProcessing();
+        if (outcome.status == PreciseStatus.busy) {
+          await repo.setSpeakersState(meeting.id, 'done');
+        }
+      }
+    } catch (_) {
+      // Retried on the next kick (next recording or app start).
+    } finally {
+      _running = false;
+      if (ref.mounted) state = const SpeakerAnalysisState();
+    }
+    ref.read(uploadQueueProvider.notifier).kick();
+  }
+}
+
+final speakerAnalysisProvider =
+    NotifierProvider<SpeakerAnalysisController, SpeakerAnalysisState>(
+      SpeakerAnalysisController.new,
+    );

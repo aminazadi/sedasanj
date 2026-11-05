@@ -393,6 +393,33 @@ async def test_session_is_idempotent_reserves_credit_and_hides_other_owners(worl
 
 
 @requires_postgres
+async def test_session_stores_attendees_and_the_detail_returns_them(world) -> None:
+    client, workspace, _queue, _storage = world
+    admin_app = await pair_token(client, workspace.admin)
+    known, unsynced = uuid4(), uuid4()
+    body = _session_body(
+        attendees=[
+            {"profile_client_id": str(known), "name": "علی"},
+            {"profile_client_id": str(known), "name": "علی"},
+            {"profile_client_id": str(unsynced), "name": "سارا"},
+        ]
+    )
+
+    created = await client.post("/v1/meetings/sessions", json=body, headers=admin_app)
+    assert created.status_code == 201
+    meeting_id = created.json()["meeting_id"]
+
+    # Re-sending the same session never duplicates or replaces the attendees.
+    again = await client.post("/v1/meetings/sessions", json=body, headers=admin_app)
+    assert again.status_code == 200
+
+    detail = await client.get(f"/v1/meetings/{meeting_id}", headers=workspace.admin)
+    assert detail.status_code == 200
+    people = {a["profile_client_id"]: a["name"] for a in detail.json()["attendees"]}
+    assert people == {str(known): "علی", str(unsynced): "سارا"}
+
+
+@requires_postgres
 async def test_session_needs_minimum_credit(world, monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import get_settings
 

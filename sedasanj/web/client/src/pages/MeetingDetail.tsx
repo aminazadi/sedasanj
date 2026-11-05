@@ -309,6 +309,13 @@ export default function MeetingDetailPage() {
           )}
         </div>
 
+        {detail.attendees && detail.attendees.length > 0 ? (
+          <p className="mb-4 text-sm text-slate-600" data-testid="meeting-attendees">
+            <span className="font-semibold">حاضران: </span>
+            {detail.attendees.map((attendee) => attendee.name).join("، ")}
+          </p>
+        ) : null}
+
         {tab === "transcript" ? (
           turns.length === 0 ? (
             <Empty>{active ? "متن جلسه پس از پیاده‌سازی صدا اینجا نمایش داده می‌شود." : "برای این جلسه متنی ثبت نشده است."}</Empty>

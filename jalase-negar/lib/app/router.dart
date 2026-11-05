@@ -68,7 +68,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/people/new',
-        builder: (context, state) => const NewPersonScreen(),
+        builder: (context, state) => NewPersonScreen(
+          returnPerson: state.uri.queryParameters['return'] == '1',
+        ),
       ),
       GoRoute(
         path: '/people/:id',

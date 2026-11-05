@@ -1,22 +1,31 @@
 ## 2026-11-05 — AMINAZADI
 
+- Added meeting attendees: `POST /v1/meetings/sessions` accepts an optional `attendees` list (`profile_client_id`, `name`), stored in the new tenant table `meeting_attendees` (migration 0116) and returned by `GET /v1/meetings/{id}`. The minutes prompt lists them as the confirmed attendees, the web panel shows them on the meeting page, and the Persian help article `jalase-negar-meeting-attendees` (migration 0117) explains the flow and `JN-REC-0005`.
+- Added a Jalase-Negar download section to the landing page that mirrors the app's recording screen, fed by the new public `GET /v1/jalase-negar/android/latest` endpoint (newest published, fully rolled-out stable APK), plus the Persian install help article `jalase-negar-android-install` (migration 0115).
+- Added per-user panel section switches with server-side request enforcement, URL-aware page and settings-tab guards, live permission refresh, delegated-access limits, and role-preserving defaults.
+- Protected the original organization administrator against deletion and role or access changes in the UI, API, and PostgreSQL, with persistent ownership and migrations 0113–0114.
+- Blocked every edit of the primary organization administrator by other members (profile fields, password reset), not only role, access and deletion.
+- Fixed horizontal overflow in member dialogs, including long account emails and permission controls, and reused the project switches in responsive member creation and editing.
+
 - Added the missing nullable user panel-permissions migration to prevent OTP verification and identity projection failures after upgrading the user model, while preserving existing role defaults.
+
+- Fixed the oversized OTP step title in the phone sign-in dialog on the landing page (the marketing heading rule overrode the dialog heading size).
 
 - Changed password updates to verify the shared six-digit OTP input before displaying new-password fields, with automatic verification, retry handling, and preserved two-factor checks.
 
-- Added audited role editing for admin staff with password/TOTP verification and self-change protection, organization-member role selection with quota checks, and synced PBX extension dropdowns with custom values in member creation and editing.
-
 - Fixed the password verification countdown ring rendering as a square under the panel's zero-radius styles by drawing its track and progress with SVG circles.
 
-- Matched the password-change card header, content spacing, and responsive illustration layout to the two-factor authentication card.
+- Added audited role editing for admin staff with password/TOTP verification and self-change protection, organization-member role selection with quota checks, and synced PBX extension dropdowns with custom values in member creation and editing.
 
-- Added an illustration and a live resend countdown ring to the profile password-change card; the resend button re-enables when the timer ends.
+- Matched the password-change card header, content spacing, and responsive illustration layout to the two-factor authentication card.
 
 - Fixed minimal sidebar navigation to dismiss tooltips on activation and route changes, ignore touch hover, and preserve keyboard-only focus hints.
 
 - Matched credit top-up tabs to the shared right-aligned, square green panel tabs while preserving URL selection and keyboard navigation.
 
 - Removed the PBX connection and historical call review section from the extensions page, including its unused client component and requests.
+
+- Added an illustration and a live resend countdown ring to the profile password-change card; the resend button re-enables when the timer ends.
 
 - Moved report runs into standalone document pages with meeting-style icon actions, URL-backed detail tabs, isolated polling, legacy-link redirects, and preserved archive filters.
 

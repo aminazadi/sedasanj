@@ -9,6 +9,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../people/application/people_providers.dart';
 import '../application/meeting_providers.dart';
+import '../data/attendee.dart';
 import '../data/meeting.dart';
 import '../data/speaker_edit.dart';
 
@@ -91,8 +92,20 @@ class SpeakerLinesCard extends ConsumerWidget {
 
   Future<void> _edit(BuildContext context, WidgetRef ref, int index) async {
     final people = ref.read(peopleProvider).value ?? const [];
+    final present = {
+      for (final a
+          in ref.read(meetingAttendeesProvider(meetingId)).value ??
+              const <Attendee>[])
+        a.personId,
+    };
+    // Attendees first: they are the likeliest answer.
+    final ordered = [
+      ...people.where((p) => present.contains(p.clientId)),
+      ...people.where((p) => !present.contains(p.clientId)),
+    ];
     final choices = <SpeakerChoice>[
-      for (final p in people) SpeakerChoice(name: p.name, personId: p.clientId),
+      for (final p in ordered)
+        SpeakerChoice(name: p.name, personId: p.clientId),
       for (final c in speakersIn(segments))
         if (!c.isPerson) c,
     ];

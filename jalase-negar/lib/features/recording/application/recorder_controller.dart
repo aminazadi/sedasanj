@@ -14,6 +14,7 @@ import '../../../core/audio/wav.dart';
 import '../../../core/platform/recording_service.dart';
 import '../../../core/providers.dart';
 import '../../meetings/application/meeting_providers.dart';
+import '../../meetings/data/attendee.dart';
 import '../../meetings/data/meeting.dart';
 import '../../meetings/data/meeting_repository.dart';
 import '../../upload/upload_controller.dart';
@@ -32,6 +33,7 @@ const int kMinFreeDiskMb = 500;
 
 const _saveErrorCode = 'JN-REC-0003';
 const _finalizationWarningCode = 'JN-REC-0004';
+const _attendeesWarningCode = 'JN-REC-0005';
 const _saveError =
     'ذخیرهٔ ضبط کامل نشد. برنامه را دوباره باز کنید و فهرست جلسات را بررسی کنید. ($_saveErrorCode)';
 const _finalizationWarning =
@@ -205,7 +207,9 @@ class RecorderController extends Notifier<RecorderState> {
     }
   }
 
-  Future<void> start() async {
+  /// Starts recording. [attendees] are the people chosen as present; they are
+  /// saved with the meeting before audio starts so a crash keeps them.
+  Future<void> start({List<Attendee> attendees = const []}) async {
     if (state.status != RecorderStatus.idle) return;
     final recorder = AudioRecorder();
     try {
@@ -285,12 +289,29 @@ class RecorderController extends Notifier<RecorderState> {
           status: MeetingStatus.recording,
           recordingState: 'recording',
           sendText: sendText,
+          speakersState: 'pending',
         ),
       );
       ref.invalidate(meetingsProvider);
       _repo = repo;
+      if (attendees.isNotEmpty) {
+        try {
+          await repo.setAttendees(meetingId, attendees);
+        } catch (error) {
+          // The recording matters more than the list; it can be edited later.
+          _reportFailure(
+            _attendeesWarningCode,
+            'Save meeting attendees',
+            error,
+          );
+        }
+      }
 
-      await _startLive(repo, meetingId);
+      await _startLive(
+        repo,
+        meetingId,
+        attendeeIds: {for (final a in attendees) a.personId},
+      );
       final warning = await RecordingService.start();
       final stream = await recorder.startStream(
         RecordConfig(
@@ -529,6 +550,8 @@ class RecorderController extends Notifier<RecorderState> {
 
   Future<void> _resumeUpload() async {
     try {
+      // Identify the people first; the analysis wakes the upload when done.
+      unawaited(ref.read(speakerAnalysisProvider.notifier).kick());
       await ref.read(uploadQueueProvider.notifier).kick();
     } catch (error) {
       _reportFailure(_finalizationWarningCode, 'Resume upload queue', error);
@@ -556,10 +579,16 @@ class RecorderController extends Notifier<RecorderState> {
   /// Starts live transcription for the meeting being recorded. A missing
   /// model or any failure only leaves the live panel empty with a hint; the
   /// recording starts either way.
-  Future<void> _startLive(MeetingRepository repo, String meetingId) async {
+  Future<void> _startLive(
+    MeetingRepository repo,
+    String meetingId, {
+    Set<String> attendeeIds = const {},
+  }) async {
     _setLive(const LiveTranscriptState());
     try {
-      final setup = await ref.read(liveEngineBuilderProvider)();
+      final setup = await ref.read(liveEngineBuilderProvider)(
+        attendeeIds: attendeeIds,
+      );
       final engine = setup.engine;
       if (engine == null) {
         _setLive(LiveTranscriptState(note: setup.unavailableReason));

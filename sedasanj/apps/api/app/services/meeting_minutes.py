@@ -23,6 +23,7 @@ from app.errors import ApiError
 from app.models import (
     Meeting,
     MeetingAnalysisStep,
+    MeetingAttendee,
     MeetingMinutes,
     MeetingSegment,
     MeetingSpeaker,
@@ -102,6 +103,8 @@ class _Context:
     runtime: Any
     provider: str
     version: int
+    # People the app user marked as present before recording (names, sorted).
+    attendees: tuple[str, ...] = ()
 
 
 def format_clock(ms: int) -> str:
@@ -197,6 +200,14 @@ def _user_message(ctx: _Context, body: str, *, summaries: bool) -> str:
         f"عنوان ثبت‌شده‌ی جلسه: {ctx.title or '—'}",
         f"تاریخ شروع: {ctx.started_at.date().isoformat()}",
         f"مدت جلسه: {format_clock(ctx.duration_ms)}",
+        *(
+            [
+                "حاضران ثبت‌شده توسط کاربر (فهرست قطعی؛ همین‌ها را در شرکت‌کنندگان بیاور): "
+                + "، ".join(ctx.attendees)
+            ]
+            if ctx.attendees
+            else []
+        ),
         "",
         REDUCE_NOTE if summaries else "متن جلسه:",
         body,
@@ -305,6 +316,17 @@ async def _load_context(tenant_id: UUID, meeting_id: UUID, version: int) -> _Con
             .all()
         }
         transcript = format_transcript(segments, labels)
+        attendee_names = tuple(
+            (
+                await session.execute(
+                    select(MeetingAttendee.name)
+                    .where(MeetingAttendee.meeting_id == meeting_id)
+                    .order_by(MeetingAttendee.name)
+                )
+            )
+            .scalars()
+            .all()
+        )
         if not transcript:
             raise ApiError(
                 "meeting_transcript_missing",
@@ -333,6 +355,7 @@ async def _load_context(tenant_id: UUID, meeting_id: UUID, version: int) -> _Con
             runtime=runtime,
             provider=models["meeting_provider"],
             version=chosen,
+            attendees=attendee_names,
         )
 
 

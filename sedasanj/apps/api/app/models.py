@@ -123,11 +123,25 @@ class User(Base):
     extension: Mapped[str | None] = mapped_column(Text)
     display_name: Mapped[str | None] = mapped_column(Text)
     profile_context: Mapped[str | None] = mapped_column(Text)
+    panel_permissions: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))
+    is_primary_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="users_tenant_email_key"),
         CheckConstraint("role IN ('org_admin','operator','viewer')", name="users_role_check"),
+        CheckConstraint(
+            "NOT is_primary_admin OR (role = 'org_admin' AND panel_permissions IS NULL)",
+            name="users_primary_admin_access",
+        ),
+        Index(
+            "users_primary_admin_key",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("is_primary_admin"),
+        ),
         Index(
             "users_tenant_extension_key",
             "tenant_id",
@@ -1610,6 +1624,26 @@ class MeetingSpeaker(Base):
         PgUUID(as_uuid=True), ForeignKey("speaker_profiles.id", ondelete="SET NULL")
     )
     total_ms: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+
+
+class MeetingAttendee(Base):
+    """A person the app user marked as present before recording (see migration 0116)."""
+
+    __tablename__ = "meeting_attendees"
+
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True
+    )
+    # The app's own id for the person; kept even when the server has no such profile yet.
+    profile_client_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    profile_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("speaker_profiles.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class SpeakerSyncState(Base):

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../../features/meetings/data/attendee.dart';
 import '../../features/meetings/data/meeting.dart';
 import '../../features/people/data/speaker_payload.dart';
 import 'speaker_api.dart';
@@ -98,6 +99,7 @@ abstract class MeetingUploadApi {
     required String title,
     required DateTime startedAt,
     required String appVersion,
+    List<Attendee> attendees = const [],
   });
 
   Future<void> putChunk({
@@ -340,6 +342,7 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     required String title,
     required DateTime startedAt,
     required String appVersion,
+    List<Attendee> attendees = const [],
   }) async {
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -352,6 +355,11 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
           'channels': 1,
           'app_version': appVersion,
           'input_kind': 'text',
+          if (attendees.isNotEmpty)
+            'attendees': [
+              for (final a in attendees)
+                {'profile_client_id': a.personId, 'name': a.name},
+            ],
         },
       );
       final body = res.data!;

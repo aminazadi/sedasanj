@@ -10,9 +10,13 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../meetings/data/attendee.dart';
 import '../../onboarding/tour_overlay.dart';
+import '../../people/application/people_providers.dart';
+import '../../people/presentation/attendee_picker_sheet.dart';
 import '../../onboarding/tour_step.dart';
 import '../application/live_engine_provider.dart';
+import '../application/pending_attendees.dart';
 import '../application/recorder_controller.dart';
 import 'live_transcript_panel.dart';
 import 'live_waveform.dart';
@@ -104,7 +108,17 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
       _openingMicrophone = true;
     });
     try {
-      await ref.read(recorderControllerProvider.notifier).start();
+      final chosen = ref.read(pendingAttendeesProvider);
+      final people = ref.read(peopleProvider).value ?? const [];
+      final attendees = [
+        for (final p in people)
+          if (chosen.contains(p.clientId))
+            Attendee(personId: p.clientId, name: p.name),
+      ];
+      await ref
+          .read(recorderControllerProvider.notifier)
+          .start(attendees: attendees);
+      ref.read(pendingAttendeesProvider.notifier).clear();
     } finally {
       if (mounted) setState(() => _openingMicrophone = false);
     }
@@ -193,7 +207,14 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                                   widget.liveTranscript ??
                                   LiveTranscriptPanel(state: controller.live),
                             )
-                          : const SizedBox.expand(),
+                          : _preparing
+                          ? const SizedBox.expand()
+                          : const Align(
+                              alignment: Alignment.topCenter,
+                              child: SingleChildScrollView(
+                                child: _AttendeesCard(),
+                              ),
+                            ),
                     ),
                     if (isActive) ...[
                       if (state.interrupted || isPaused || isSaving)
@@ -785,6 +806,58 @@ class _LiveToggle extends ConsumerWidget {
           queue: SsToastQueue.dismissCurrent,
         );
       },
+    );
+  }
+}
+
+/// Optional "who is here" card on the ready-to-record screen.
+class _AttendeesCard extends ConsumerWidget {
+  const _AttendeesCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chosen = ref.watch(pendingAttendeesProvider);
+    final people = ref.watch(peopleProvider).value ?? const [];
+    final names = {for (final p in people) p.clientId: p.name};
+    Future<void> pick() async {
+      final result = await showAttendeePicker(context, selected: chosen);
+      if (result != null) {
+        ref.read(pendingAttendeesProvider.notifier).set(result);
+      }
+    }
+
+    return SsCard(
+      title: 'حاضران جلسه (اختیاری)',
+      ripple: true,
+      onTap: pick,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (chosen.isEmpty)
+            const Text(
+              'افراد حاضر را انتخاب کنید تا نام‌ها دقیق‌تر تشخیص داده شوند.',
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final id in chosen)
+                  InputChip(
+                    label: Text(names[id] ?? 'فرد حذف‌شده'),
+                    onDeleted: () =>
+                        ref.read(pendingAttendeesProvider.notifier).remove(id),
+                  ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: pick,
+            icon: const Icon(Icons.group_add_outlined),
+            label: Text(chosen.isEmpty ? 'انتخاب حاضران' : 'ویرایش حاضران'),
+          ),
+        ],
+      ),
     );
   }
 }

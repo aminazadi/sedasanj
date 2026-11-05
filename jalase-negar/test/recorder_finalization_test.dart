@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/core/audio/chunk_writer.dart';
 import 'package:jalase_negar/core/audio/wav.dart';
 import 'package:jalase_negar/core/providers.dart';
+import 'package:jalase_negar/features/meetings/data/attendee.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/meetings/data/meeting_repository.dart';
 import 'package:jalase_negar/features/recording/application/live_engine_provider.dart';
@@ -101,7 +102,10 @@ void main() {
     expect(saved.error, contains('JN-REC-0004'));
     expect(saved.error, isNot(contains('private database error')));
     expect(repo.finished, const Duration(milliseconds: 40));
-    expect((await readWavInfo(repo.inserted.audioPath)).duration, repo.finished);
+    expect(
+      (await readWavInfo(repo.inserted.audioPath)).duration,
+      repo.finished,
+    );
 
     repo.failChunk = false;
     await recorder.start();
@@ -111,33 +115,39 @@ void main() {
     expect(repo.registeredChunks, 1);
   });
 
-  test('is capturing from the first row until the recording is closed', () async {
-    final repo = _Meetings();
-    final container = _container(repo);
-    addTearDown(container.dispose);
-    final recorder = container.read(recorderControllerProvider.notifier);
+  test(
+    'is capturing from the first row until the recording is closed',
+    () async {
+      final repo = _Meetings();
+      final container = _container(repo);
+      addTearDown(container.dispose);
+      final recorder = container.read(recorderControllerProvider.notifier);
 
-    expect(recorder.isCapturing, isFalse);
-    await recorder.start();
-    expect(recorder.isCapturing, isTrue);
-    await sendAudio();
-    await recorder.stop();
-    expect(recorder.isCapturing, isFalse);
-  });
+      expect(recorder.isCapturing, isFalse);
+      await recorder.start();
+      expect(recorder.isCapturing, isTrue);
+      await sendAudio();
+      await recorder.stop();
+      expect(recorder.isCapturing, isFalse);
+    },
+  );
 
-  test('a failed final save leaves nothing capturing and wakes the queue', () async {
-    final repo = _Meetings()..failSave = true;
-    final container = _container(repo);
-    addTearDown(container.dispose);
-    final recorder = container.read(recorderControllerProvider.notifier);
+  test(
+    'a failed final save leaves nothing capturing and wakes the queue',
+    () async {
+      final repo = _Meetings()..failSave = true;
+      final container = _container(repo);
+      addTearDown(container.dispose);
+      final recorder = container.read(recorderControllerProvider.notifier);
 
-    await recorder.start();
-    await sendAudio();
-    await recorder.stop();
+      await recorder.start();
+      await sendAudio();
+      await recorder.stop();
 
-    expect(recorder.isCapturing, isFalse);
-    expect(_UploadQueue.kicks, greaterThan(0));
-  });
+      expect(recorder.isCapturing, isFalse);
+      expect(_UploadQueue.kicks, greaterThan(0));
+    },
+  );
 
   test(
     'keeps the WAV and reports a short error if the local row fails',
@@ -162,6 +172,42 @@ void main() {
       );
     },
   );
+
+  test('saves the chosen attendees before capture starts', () async {
+    final repo = _Meetings();
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    final recorder = container.read(recorderControllerProvider.notifier);
+
+    await recorder.start(
+      attendees: const [Attendee(personId: 'p1', name: 'علی')],
+    );
+    await sendAudio();
+    await recorder.stop();
+
+    expect(repo.savedAttendees, const [Attendee(personId: 'p1', name: 'علی')]);
+    expect(
+      container.read(recorderControllerProvider).savedMeetingId,
+      isNotNull,
+    );
+  });
+
+  test('a failing attendee save never stops the recording', () async {
+    final repo = _Meetings()..failAttendees = true;
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    final recorder = container.read(recorderControllerProvider.notifier);
+
+    await recorder.start(
+      attendees: const [Attendee(personId: 'p1', name: 'علی')],
+    );
+    await sendAudio();
+    await recorder.stop();
+
+    final state = container.read(recorderControllerProvider);
+    expect(state.savedMeetingId, isNotNull);
+    expect(state.error, isNull);
+  });
 }
 
 ProviderContainer _container(_Meetings repo) => ProviderContainer(
@@ -169,7 +215,8 @@ ProviderContainer _container(_Meetings repo) => ProviderContainer(
     meetingRepositoryProvider.overrideWith((_) async => repo),
     sendTranscriptEnabledProvider.overrideWith(_SendPreference.new),
     liveEngineBuilderProvider.overrideWithValue(
-      () async => const LiveEngineSetup.unavailable(),
+      ({Set<String> attendeeIds = const {}}) async =>
+          const LiveEngineSetup.unavailable(),
     ),
     uploadQueueProvider.overrideWith(_UploadQueue.new),
   ],
@@ -181,6 +228,14 @@ class _Meetings implements MeetingRepository {
   bool failSave = false;
   int registeredChunks = 0;
   Duration? finished;
+  bool failAttendees = false;
+  List<Attendee>? savedAttendees;
+
+  @override
+  Future<void> setAttendees(String meetingId, List<Attendee> attendees) async {
+    if (failAttendees) throw StateError('private database error');
+    savedAttendees = attendees;
+  }
 
   @override
   Future<void> insert(Meeting meeting) async => inserted = meeting;

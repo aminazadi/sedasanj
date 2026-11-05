@@ -1,66 +1,275 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../application/people_providers.dart';
+import '../data/enrollment_quality.dart';
+import '../data/enrollment_session.dart';
 import '../data/person.dart';
 
-/// First step of adding a person: name and sharing. The explicit consent
-/// screen follows, and the person is only created once it was accepted.
+/// Adds a person on one page: read a motivational text aloud, type the name,
+/// confirm consent and save. The person is only created when "save" is tapped.
 class NewPersonScreen extends ConsumerStatefulWidget {
-  const NewPersonScreen({super.key});
+  const NewPersonScreen({super.key, this.returnPerson = false});
+
+  /// When true (opened from the attendee picker) a successful save pops back
+  /// with the new person's client id instead of going to the people list.
+  final bool returnPerson;
 
   @override
   ConsumerState<NewPersonScreen> createState() => _NewPersonScreenState();
 }
 
+enum _Phase { idle, recording, processing, ready }
+
 class _NewPersonScreenState extends ConsumerState<NewPersonScreen> {
   final _name = TextEditingController();
+  late final EnrollmentRecorder _recorder = ref.read(
+    enrollmentRecorderFactoryProvider,
+  )();
+  StreamSubscription<double>? _levels;
+  _Phase _phase = _Phase.idle;
+  double _level = 0;
+  String? _message;
   bool _shared = false;
-  bool _busy = false;
+  bool _agreed = false;
+  bool _saving = false;
+  Float32List? _embedding;
+  EnrollmentAssessment? _assessment;
 
   @override
   void dispose() {
+    _levels?.cancel();
+    _recorder.dispose();
     _name.dispose();
     super.dispose();
   }
 
-  Future<void> _continue() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-    final accepted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ConsentScreen(name: name, shared: _shared),
-      ),
-    );
-    if (accepted != true || !mounted) return;
-    setState(() => _busy = true);
-    final person = await ref
-        .read(peopleActionsProvider)
-        .create(
-          name: name,
-          visibility: _shared ? PersonVisibility.org : PersonVisibility.private,
-        );
+  bool get _canSave =>
+      _phase == _Phase.ready &&
+      _name.text.trim().isNotEmpty &&
+      _agreed &&
+      !_saving;
+
+  Future<void> _toggle(VoiceEmbeddingService service) async {
+    if (_phase == _Phase.recording) {
+      await _stop(service);
+    } else if (_phase == _Phase.idle || _phase == _Phase.ready) {
+      await _start();
+    }
+  }
+
+  Future<void> _start() async {
+    final granted = await _recorder.start();
     if (!mounted) return;
-    context.pushReplacement('/people/${person.clientId}/enroll');
+    if (!granted) {
+      setState(
+        () => _message =
+            'دسترسی به میکروفون داده نشد؛ در تنظیمات گوشی اجازه‌ی میکروفون را فعال کنید.',
+      );
+      return;
+    }
+    _levels = _recorder.levels.listen((v) => setState(() => _level = v));
+    setState(() {
+      _phase = _Phase.recording;
+      _message = null;
+      _embedding = null;
+      _assessment = null;
+    });
+  }
+
+  Future<void> _stop(VoiceEmbeddingService service) async {
+    await _levels?.cancel();
+    _levels = null;
+    setState(() {
+      _phase = _Phase.processing;
+      _level = 0;
+    });
+    final samples = await _recorder.stop();
+    final assessment = assessEnrollmentSample(samples);
+    if (!assessment.ok) {
+      if (!mounted) return;
+      setState(() {
+        _phase = _Phase.idle;
+        _message = assessment.messageFa;
+      });
+      return;
+    }
+    final embedding = await service.embed(samples);
+    if (!mounted) return;
+    if (embedding == null || embedding.isEmpty) {
+      setState(() {
+        _phase = _Phase.idle;
+        _message =
+            'ردصدا ساخته نشد؛ دوباره بخوانید و اگر تکرار شد مدل «تشخیص گوینده» را در بخش «مدل‌ها» دوباره نصب کنید.';
+      });
+      return;
+    }
+    setState(() {
+      _phase = _Phase.ready;
+      _embedding = embedding;
+      _assessment = assessment;
+      _message = null;
+    });
+  }
+
+  Future<void> _save(VoiceEmbeddingService service) async {
+    final embedding = _embedding;
+    final assessment = _assessment;
+    if (embedding == null || assessment == null || !_canSave) return;
+    setState(() => _saving = true);
+    try {
+      final repo = await ref.read(peopleRepositoryProvider.future);
+      final person = await ref
+          .read(peopleActionsProvider)
+          .create(
+            name: _name.text.trim(),
+            visibility: _shared
+                ? PersonVisibility.org
+                : PersonVisibility.private,
+          );
+      await repo.addVoiceprints(person.clientId, [
+        Voiceprint(
+          clientId: const Uuid().v4(),
+          personId: person.clientId,
+          modelId: service.modelId,
+          modelVersion: service.modelVersion,
+          embedding: embedding,
+          createdAt: DateTime.now(),
+          quality: assessment.quality,
+          durationMs: assessment.speechMs,
+        ),
+      ]);
+      ref.read(peopleActionsProvider).samplesAdded();
+      if (!mounted) return;
+      if (widget.returnPerson) {
+        context.pop(person.clientId);
+      } else {
+        context.go('/people');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _message = 'ذخیره‌ی فرد انجام نشد؛ دوباره «ذخیره» را بزنید.';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final theme = Theme.of(context);
+    final prompts = ref.watch(speakerPromptsProvider);
+    final embedder = ref.watch(voiceEmbeddingServiceProvider);
+    Widget scaffold(Widget body) => Scaffold(
       appBar: SsAppBar(title: const Text('افزودن فرد')),
-      body: ListView(
+      body: body,
+    );
+
+    if (prompts.isLoading || embedder.isLoading) {
+      return scaffold(const Center(child: CircularProgressIndicator()));
+    }
+    final service = embedder.value;
+    if (service == null) {
+      return scaffold(
+        ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            SsCard(
+              title: 'مدل تشخیص گوینده نصب نیست',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'برای ثبت صدا، مدل «تشخیص گوینده» را یک‌بار از بخش «مدل‌ها» دانلود کنید و برگردید.',
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: () => context.push('/models'),
+                    child: const Text('رفتن به مدل‌ها'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final text = prompts.value?.prompts.firstOrNull?.text ?? '';
+    final recording = _phase == _Phase.recording;
+    final busy = _phase == _Phase.processing;
+    return scaffold(
+      ListView(
         padding: const EdgeInsets.all(16),
         children: [
           SsCard(
-            title: 'مشخصات',
+            title: '۱. این متن را بلند بخوانید',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'گوشی را مثل زمان تماس نزدیک نگه دارید و با صدای طبیعی بخوانید.',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const Divider(),
+                Text(
+                  text,
+                  style: theme.textTheme.titleMedium?.copyWith(height: 2),
+                ),
+                const SizedBox(height: 12),
+                _LevelMeter(level: _level, active: recording),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: busy || _saving ? null : () => _toggle(service),
+                  icon: busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(recording ? Icons.stop : Icons.mic),
+                  label: Text(
+                    busy
+                        ? 'در حال بررسی…'
+                        : recording
+                        ? 'پایان خواندن'
+                        : _phase == _Phase.ready
+                        ? 'ضبط دوباره'
+                        : 'شروع خواندن',
+                  ),
+                ),
+                if (_phase == _Phase.ready) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        size: 18,
+                        color: SsColors.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text('صدا ضبط شد', style: theme.textTheme.bodyMedium),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SsCard(
+            title: '۲. نام فرد',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 TextField(
                   controller: _name,
-                  autofocus: true,
                   maxLength: 80,
                   textInputAction: TextInputAction.done,
                   onChanged: (_) => setState(() {}),
@@ -74,16 +283,34 @@ class _NewPersonScreenState extends ConsumerState<NewPersonScreen> {
                   onChanged: (v) => setState(() => _shared = v),
                   title: const Text('اشتراک با سازمان'),
                   subtitle: const Text(
-                    'اگر روشن باشد، همکاران متصل به همین سازمان هم می‌توانند از این صدا برای تشخیص گوینده استفاده کنند؛ ویرایش یا حذف فقط با شماست. به‌طور پیش‌فرض فقط برای خودتان است.',
+                    'اگر روشن باشد، همکاران متصل به همین سازمان هم می‌توانند از این صدا برای تشخیص گوینده استفاده کنند. به‌طور پیش‌فرض فقط برای خودتان است.',
+                  ),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _agreed,
+                  onChanged: (v) => setState(() => _agreed = v ?? false),
+                  title: const Text(
+                    'خودِ این فرد موافقت کرد که ردصدایش (نه فایل صوتی) فقط برای نوشتن نامش در جلسه‌ها، رمزشده روی گوشی (و سرور سازمان در صورت اتصال) نگه‌داری شود. هر زمان از صفحه‌ی فرد قابل حذف است.',
                   ),
                 ),
               ],
             ),
           ),
+          if (_message != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _message!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: SsColors.danger,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           FilledButton(
-            onPressed: _name.text.trim().isEmpty || _busy ? null : _continue,
-            child: const Text('ادامه: رضایت‌نامه'),
+            onPressed: _canSave ? () => _save(service) : null,
+            child: Text(_saving ? 'در حال ذخیره…' : 'ذخیره'),
           ),
         ],
       ),
@@ -91,94 +318,27 @@ class _NewPersonScreenState extends ConsumerState<NewPersonScreen> {
   }
 }
 
-/// Explicit, separate consent for storing a voiceprint. Pops `true` only when
-/// the person themselves agreed.
-class ConsentScreen extends StatefulWidget {
-  const ConsentScreen({super.key, required this.name, required this.shared});
+class _LevelMeter extends StatelessWidget {
+  const _LevelMeter({required this.level, required this.active});
 
-  final String name;
-  final bool shared;
-
-  @override
-  State<ConsentScreen> createState() => _ConsentScreenState();
-}
-
-class _ConsentScreenState extends State<ConsentScreen> {
-  bool _agreed = false;
+  final double level;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget point(String title, String body) => Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.titleSmall),
-          const SizedBox(height: 2),
-          Text(body, style: theme.textTheme.bodyMedium),
-        ],
-      ),
-    );
-    return Scaffold(
-      appBar: SsAppBar(title: const Text('رضایت‌نامه‌ی ثبت صدا')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          SsCard(
-            title: 'ثبت ردصدای «${widget.name}»',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                point(
-                  'چه چیزی ذخیره می‌شود؟',
-                  'از صدای خوانده‌شده یک «ردصدا» ساخته می‌شود؛ فهرستی از عددها که '
-                      'برای شناسایی گوینده کافی است. فایل صوتی ثبت‌نام ذخیره نمی‌شود.',
-                ),
-                point(
-                  'برای چه؟',
-                  'فقط برای اینکه در جلسه‌ها نام این فرد کنار گفته‌هایش نوشته شود.',
-                ),
-                point(
-                  'کجا نگهداری می‌شود؟',
-                  'روی همین گوشی، رمزشده. اگر اپ به صداسنج وصل باشد، نسخه‌ی رمزشده‌ی '
-                      'آن در سرور سازمان شما هم نگه‌داری می‌شود تا روی گوشی دیگر شما '
-                      'برگردد. ${widget.shared ? 'چون «اشتراک با سازمان» روشن است، همکاران متصل به سازمان هم می‌توانند از آن برای تشخیص گوینده استفاده کنند.' : 'فقط شما به آن دسترسی دارید.'}',
-                ),
-                point(
-                  'چطور حذف می‌شود؟',
-                  'هر زمان از صفحه‌ی همین فرد در «افراد و صدا»؛ نام و ردصدا از گوشی، '
-                      'سرور و گوشی‌های دیگر شما پاک می‌شود. متن جلسه‌های قبلی با همان نامی که '
-                      'نوشته شده می‌ماند و می‌توانید ویرایشش کنید.',
-                ),
-                const Divider(),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: _agreed,
-                  onChanged: (v) => setState(() => _agreed = v ?? false),
-                  title: Text(
-                    'خودِ «${widget.name}» موافقت صریح خود را با ثبت و نگه‌داری ردصدایش اعلام کرد '
-                    '(یا خودم هستم).',
-                  ),
-                ),
-                Text(
-                  'ثبت صدای شخص دیگر بدون اطلاع و موافقت او مجاز نیست.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _agreed ? () => Navigator.pop(context, true) : null,
-            child: const Text('موافقم؛ شروع ثبت صدا'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('انصراف'),
-          ),
-        ],
+    final bar = active && level > 0
+        ? ((10 * math.log(level) / math.ln10 + 50) / 50).clamp(0.0, 1.0)
+        : 0.0;
+    return Semantics(
+      label: 'تراز صدای ورودی',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(
+          minHeight: 10,
+          value: bar,
+          color: bar > 0.92 ? SsColors.danger : SsColors.primary,
+          backgroundColor: SsColors.selected,
+        ),
       ),
     );
   }

@@ -33,6 +33,8 @@ class AppDatabase {
         await _migrateToV7(db);
         await _migrateToV8(db);
         await _migrateToV9(db);
+        await _migrateToV10(db);
+        await _migrateToV11(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
@@ -41,6 +43,8 @@ class AppDatabase {
         if (oldVersion < 7) await _migrateToV7(db);
         if (oldVersion < 8) await _migrateToV8(db);
         if (oldVersion < 9) await _migrateToV9(db);
+        if (oldVersion < 10) await _migrateToV10(db);
+        if (oldVersion < 11) await _migrateToV11(db);
       },
       onOpen: _ensureUploadChunksTable,
     );
@@ -57,7 +61,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const int schemaVersion = 9;
+  static const int schemaVersion = 11;
 
   /// Creates the schema as the last app version before people existed (v8).
   /// Only for migration tests.
@@ -255,6 +259,28 @@ class AppDatabase {
     await db.execute(
       'ALTER TABLE segments ADD COLUMN speaker_manual INTEGER NOT NULL DEFAULT 0',
     );
+  }
+
+  /// v10 adds speakers_state: 'pending' or 'analyzing' while the app still
+  /// identifies the people of a new recording (the meeting is not sent until
+  /// it is 'done'). Existing meetings count as done.
+  static Future<void> _migrateToV10(Database db) async {
+    await db.execute(
+      "ALTER TABLE meetings ADD COLUMN speakers_state TEXT NOT NULL DEFAULT 'done'",
+    );
+  }
+
+  /// v11 adds meeting_attendees: the people chosen as present before a
+  /// recording starts. name_snapshot keeps the name if the person is deleted.
+  static Future<void> _migrateToV11(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS meeting_attendees (
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        person_id TEXT NOT NULL,
+        name_snapshot TEXT NOT NULL,
+        PRIMARY KEY (meeting_id, person_id)
+      )
+    ''');
   }
 
   Future<String?> getSetting(String key) async {

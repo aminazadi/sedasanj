@@ -2,6 +2,13 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Added choosing the people present before recording: an optional attendees card on the ready-to-record screen with a multi-select sheet and "add new person" (full consent and voice sample, then back to the sheet with the person selected). Attendees are stored with the meeting (database v11 `meeting_attendees`), sent to SedaSanj with the session, given a small head start in speaker matching (live and precise pass), listed first in the speaker picker and shown on the meeting detail. A failed save only logs `JN-REC-0005`; recording continues.
+- Changed auto-send: a new recording is first analysed for its speakers (database v10 `speakers_state`), and only then sent to SedaSanj. The analysis resumes after an app restart and releases the meeting even when models are missing or it fails, so nothing is held back for good.
+- Showed the app's loading mark with one line of text in the list and the detail screen while speakers are extracted, and hid the send icon meanwhile.
+- Added an empty state (image, text and "extract speakers" button) to the speakers tab when none were extracted.
+- Reworked the meeting detail screen into tabs (transcript editor first, speakers second) and added a "send to SedaSanj" icon to the detail header and list tiles for meetings that were not sent or failed.
+- Simplified the list loading state while sending to the app's processing mark and one line of text, with no progress bar or tinted background.
+- Fixed auto-send marking a meeting failed when an earlier pass had already finished it on the server (`meeting_closed` on the transcript upload); it is now followed as processing.
 - Integrated background updates with the released People and Guide features and kept debug installs separate with the `.dev` application ID suffix.
 - Added automatic background updates: a WorkManager check about every 8 hours on an unmetered network, a resumable download with SHA-256, higher-versionCode and same-signing-certificate checks, and a PackageInstaller install (no confirmation on Android 12+ where the phone allows it) only at a calm moment: not recording, nothing left to upload or sync, app in the background, free space of at least twice the APK and 30% battery or charging.
 - Added a one-time Persian explainer for the "install unknown apps" permission, a one-tap notification when Android still asks for confirmation, the existing browser download as the last fallback, and a quiet "updated" toast after an update.

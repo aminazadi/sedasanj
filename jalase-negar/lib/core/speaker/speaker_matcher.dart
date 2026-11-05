@@ -40,6 +40,7 @@ class MatchThresholds {
     this.margin = 0.06,
     this.unknownJoin = 0.55,
     this.lowConfidenceCap = 55,
+    this.attendeeBonus = 0.04,
   });
 
   /// Cosine score a person needs to be named.
@@ -55,6 +56,11 @@ class MatchThresholds {
   /// Highest confidence for a match made from contaminated or too little
   /// audio.
   final int lowConfidenceCap;
+
+  /// Cosine head start for people chosen as present in the meeting. It only
+  /// ranks and admits candidates; non-attendees stay possible matches.
+  /// ⚠ needs lab confirmation: a starting value, not measured on real audio.
+  final double attendeeBonus;
 }
 
 /// Matches voice embeddings to the people enrolled on this phone and keeps
@@ -81,12 +87,15 @@ class SpeakerMatcher {
     if (embedding.isEmpty) return const SpeakerIdentity(name: 'ناشناس');
     EnrolledVoice? best;
     var bestScore = -2.0;
+    var bestRaw = -2.0;
     var secondScore = -2.0;
     for (final voice in _enrolled) {
-      final score = cosine(embedding, voice.centroid);
+      final raw = cosine(embedding, voice.centroid);
+      final score = voice.preferred ? raw + thresholds.attendeeBonus : raw;
       if (score > bestScore) {
         secondScore = bestScore;
         bestScore = score;
+        bestRaw = raw;
         best = voice;
       } else if (score > secondScore) {
         secondScore = score;
@@ -95,7 +104,7 @@ class SpeakerMatcher {
     final leads =
         _enrolled.length < 2 || bestScore - secondScore >= thresholds.margin;
     if (best != null && bestScore >= thresholds.accept && leads) {
-      var confidence = _confidence(bestScore, secondScore);
+      var confidence = _confidence(bestRaw, secondScore);
       if (!reliable && confidence > thresholds.lowConfidenceCap) {
         confidence = thresholds.lowConfidenceCap;
       }

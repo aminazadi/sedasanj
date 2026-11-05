@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jalase_negar/features/meetings/data/attendee.dart';
 import 'package:jalase_negar/app/router.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/core/db/app_database.dart';
@@ -167,7 +168,8 @@ class _IdleModels extends ModelsController {
 
 class _IdleRecorder extends RecorderController {
   @override
-  Future<void> start() async => throw StateError('The tour must not record');
+  Future<void> start({List<Attendee> attendees = const []}) async =>
+      throw StateError('The tour must not record');
 }
 
 class _IdleUpload extends UploadController {

@@ -7,11 +7,13 @@ import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../application/meeting_providers.dart';
+import '../data/attendee.dart';
 import '../data/meeting.dart';
 import '../data/transcript_edit.dart';
 import 'audio_waveform_player.dart';
 import 'share_meeting_audio.dart';
 import 'detected_speakers_card.dart';
+import 'send_meeting_action.dart';
 import 'speaker_lines_card.dart';
 import 'transcript_editor.dart';
 
@@ -38,75 +40,137 @@ class MeetingDetailScreen extends ConsumerWidget {
 
         final transcript = transcriptEditorText(data.segments);
 
-        return Scaffold(
-          appBar: SsAppBar(
-            actions: [_MeetingMenu(meeting: data.meeting)],
-            title: Hero(
-              tag: 'meeting-title-${data.meeting.id}',
-              child: Material(
-                type: MaterialType.transparency,
-                child: Text(
-                  data.meeting.title,
-                  style: Theme.of(context).appBarTheme.titleTextStyle,
+        final hasSpeakers = data.segments.any((s) => s.speaker != null);
+        final showSpeakers = transcript.isNotEmpty;
+        final canSend = canSendMeetingText(
+          data.meeting,
+          hasText: transcript.isNotEmpty,
+        );
+
+        return DefaultTabController(
+          length: showSpeakers ? 2 : 1,
+          child: Scaffold(
+            appBar: SsAppBar(
+              actions: [
+                if (canSend)
+                  IconButton(
+                    tooltip: 'ارسال به صداسنج',
+                    icon: const Icon(Icons.cloud_upload_outlined),
+                    onPressed: () =>
+                        sendMeetingToSedasanj(context, ref, meetingId),
+                  ),
+                _MeetingMenu(meeting: data.meeting),
+              ],
+              title: Hero(
+                tag: 'meeting-title-${data.meeting.id}',
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Text(
+                    data.meeting.title,
+                    style: Theme.of(context).appBarTheme.titleTextStyle,
+                  ),
                 ),
               ),
+              bottom: showSpeakers
+                  ? const TabBar(
+                      tabs: [
+                        Tab(text: 'متن جلسه'),
+                        Tab(text: 'گوینده‌ها'),
+                      ],
+                    )
+                  : null,
             ),
-          ),
-          // Hidden (not disposed) while the keyboard is up so editing keeps
-          // the whole screen and the playback position survives.
-          bottomNavigationBar: Visibility(
-            visible: MediaQuery.viewInsetsOf(context).bottom == 0,
-            maintainState: true,
-            child: AudioWaveformPlayer(path: data.meeting.audioPath),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (transcript.isNotEmpty &&
-                  (!data.meeting.sendText ||
-                      data.meeting.status == MeetingStatus.failed)) ...[
-                _SendTextCard(
-                  failed: data.meeting.status == MeetingStatus.failed,
-                  onSend: () =>
-                      ref.read(meetingActionsProvider(meetingId)).sendText(),
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (transcript.isNotEmpty &&
-                  data.meeting.status != MeetingStatus.uploading) ...[
-                DetectedSpeakersCard(
-                  meetingId: meetingId,
-                  segments: data.segments,
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (data.segments.any((s) => s.speaker != null)) ...[
-                SpeakerLinesCard(
-                  meetingId: meetingId,
-                  segments: data.segments,
-                  editable: data.meeting.status != MeetingStatus.uploading,
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (transcript.isEmpty)
-                const _EmptyTranscriptCard()
-              else
-                TranscriptEditor(
-                  savedText: transcript,
-                  readOnly: data.meeting.status == MeetingStatus.uploading,
-                  notice: _editNotice(data.meeting),
-                  noticeActionLabel: data.meeting.textSyncPending
-                      ? 'ارسال دوباره به صداسنج'
-                      : null,
-                  onNoticeAction: () => _retrySync(context, ref),
-                  onSave: (text, {required settle}) => ref
-                      .read(meetingActionsProvider(meetingId))
-                      .saveTranscript(text, settle: settle),
-                ),
-            ],
+            // Hidden (not disposed) while the keyboard is up so editing keeps
+            // the whole screen and the playback position survives.
+            bottomNavigationBar: Visibility(
+              visible: MediaQuery.viewInsetsOf(context).bottom == 0,
+              maintainState: true,
+              child: AudioWaveformPlayer(path: data.meeting.audioPath),
+            ),
+            body: showSpeakers
+                ? TabBarView(
+                    children: [
+                      _transcriptTab(context, ref, data, transcript),
+                      _speakersTab(context, ref, data, transcript, hasSpeakers),
+                    ],
+                  )
+                : _transcriptTab(context, ref, data, transcript),
           ),
         );
       },
+    );
+  }
+
+  Widget _speakersTab(
+    BuildContext context,
+    WidgetRef ref,
+    MeetingDetail data,
+    String transcript,
+    bool hasSpeakers,
+  ) {
+    final locked = data.meeting.status == MeetingStatus.uploading;
+    if (data.meeting.analyzingSpeakers) {
+      return const Center(child: _AnalyzingBanner(large: true));
+    }
+    if (!hasSpeakers) {
+      return SsEmptyState(
+        title: 'گوینده‌ها هنوز استخراج نشده‌اند',
+        hint: 'با تحلیل صدای جلسه، گوینده‌ی هر خط مشخص می‌شود.',
+        action: FilledButton.icon(
+          icon: const Icon(Icons.record_voice_over_outlined, size: 18),
+          label: const Text('استخراج گوینده‌ها'),
+          onPressed: locked
+              ? null
+              : () => runPreciseWithToast(context, ref, meetingId),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (transcript.isNotEmpty && !locked) ...[
+          DetectedSpeakersCard(meetingId: meetingId, segments: data.segments),
+          const SizedBox(height: 12),
+        ],
+        SpeakerLinesCard(
+          meetingId: meetingId,
+          segments: data.segments,
+          editable: !locked,
+        ),
+      ],
+    );
+  }
+
+  Widget _transcriptTab(
+    BuildContext context,
+    WidgetRef ref,
+    MeetingDetail data,
+    String transcript,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (data.meeting.analyzingSpeakers) ...[
+          const _AnalyzingBanner(),
+          const SizedBox(height: 12),
+        ],
+        _AttendeesSection(meetingId: meetingId),
+        if (transcript.isEmpty)
+          const _EmptyTranscriptCard()
+        else
+          TranscriptEditor(
+            savedText: transcript,
+            readOnly: data.meeting.status == MeetingStatus.uploading,
+            notice: _editNotice(data.meeting),
+            noticeActionLabel: data.meeting.textSyncPending
+                ? 'ارسال دوباره به صداسنج'
+                : null,
+            onNoticeAction: () => _retrySync(context, ref),
+            onSave: (text, {required settle}) => ref
+                .read(meetingActionsProvider(meetingId))
+                .saveTranscript(text, settle: settle),
+          ),
+      ],
     );
   }
 
@@ -272,33 +336,38 @@ class _RenameDialogState extends State<_RenameDialog> {
   }
 }
 
-/// Offers to send a meeting's text that was not sent (switch off, or a send
-/// that failed). The audio is stored for playback and never transcribed.
-class _SendTextCard extends StatelessWidget {
-  const _SendTextCard({required this.failed, required this.onSend});
+/// The app's loading mark with one line: speakers are being identified.
+class _AnalyzingBanner extends StatelessWidget {
+  const _AnalyzingBanner({this.large = false});
 
-  final bool failed;
-  final VoidCallback onSend;
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
-    return SsCard(
-      title: failed ? 'ارسال متن ناموفق بود' : 'متن این جلسه ارسال نشده است',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'متن و صدای جلسه به صداسنج فرستاده می‌شود؛ صورت‌جلسه فقط از روی متن ساخته می‌شود.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            icon: const Icon(Icons.cloud_upload_outlined),
-            label: const Text('ارسال متن این جلسه'),
-            onPressed: onSend,
-          ),
-        ],
-      ),
+    final text = Text(
+      'در حال استخراج گوینده‌ها؛ پس از پایان، جلسه برای صداسنج ارسال می‌شود.',
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodySmall,
+    );
+    if (large) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SsProcessingMark(size: 36),
+            const SizedBox(height: 12),
+            text,
+          ],
+        ),
+      );
+    }
+    return Row(
+      children: [
+        const SsProcessingMark(size: 16),
+        const SizedBox(width: 10),
+        Expanded(child: text),
+      ],
     );
   }
 }
@@ -330,6 +399,32 @@ class _EmptyTranscriptCard extends StatelessWidget {
       child: Text(
         'برای این جلسه متنی ذخیره نشده است. می‌توانید فایل صوتی را پخش کنید.',
         style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
+  }
+}
+
+/// Who was present, as chosen before recording. Hidden when nobody was.
+class _AttendeesSection extends ConsumerWidget {
+  const _AttendeesSection({required this.meetingId});
+
+  final String meetingId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final attendees =
+        ref.watch(meetingAttendeesProvider(meetingId)).value ??
+        const <Attendee>[];
+    if (attendees.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SsCard(
+        title: 'حاضران جلسه',
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [for (final a in attendees) Chip(label: Text(a.name))],
+        ),
       ),
     );
   }

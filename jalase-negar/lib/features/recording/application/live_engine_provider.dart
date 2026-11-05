@@ -38,11 +38,14 @@ class LiveEngineSetup {
   final String? unavailableReason;
 }
 
-typedef LiveEngineBuilder = Future<LiveEngineSetup> Function();
+/// [attendeeIds] are the people chosen as present; their voices get a small
+/// head start in speaker matching (others stay possible matches).
+typedef LiveEngineBuilder =
+    Future<LiveEngineSetup> Function({Set<String> attendeeIds});
 
 /// Builds the engine for a new recording. Overridden in tests with a fake.
 final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
-  return () async {
+  return ({Set<String> attendeeIds = const {}}) async {
     final db = await ref.read(appDatabaseProvider.future);
     if (await db.getSetting(kLiveTranscriptSettingKey) == '0') {
       return const LiveEngineSetup.unavailable();
@@ -63,7 +66,7 @@ final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
       );
     }
     final transducer = asrSpec.asrArchitecture == AsrArchitecture.transducer;
-    final speakers = await _speakerSetup(ref, db, store);
+    final speakers = await _speakerSetup(ref, db, store, attendeeIds);
     final engine = VadSegmentEngine(
       VadSegmentConfig(
         vadModelPath: store.filePath(vadSpec, vadSpec.files[0]),
@@ -109,6 +112,7 @@ Future<_SpeakerSetup> _speakerSetup(
   Ref ref,
   AppDatabase db,
   ModelStore store,
+  Set<String> attendeeIds,
 ) async {
   try {
     if (await db.getSetting(kSpeakerIdSettingKey) == '0') {
@@ -128,7 +132,10 @@ Future<_SpeakerSetup> _speakerSetup(
       segmentationPath: await store.isInstalled(segmentation)
           ? store.filePath(segmentation, segmentation.files[0])
           : '',
-      enrolled: [for (final v in voices) v.toMap()],
+      enrolled: [
+        for (final v in voices)
+          v.asPreferred(attendeeIds.contains(v.personId)).toMap(),
+      ],
     );
   } catch (_) {
     return const _SpeakerSetup();

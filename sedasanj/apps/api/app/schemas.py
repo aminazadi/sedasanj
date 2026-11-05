@@ -12,6 +12,7 @@ from pydantic import (
     EmailStr,
     Field,
     HttpUrl,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -19,6 +20,7 @@ from pydantic.networks import validate_email
 
 from app.sentiment import delta_and_trajectory, normalize_sentiment, valence
 from app.services.api_scopes import DEFAULT_NEW_KEY_SCOPES, MAX_ALLOWED_CIDRS, normalize_cidrs
+from app.services.panel_access import PanelSection, effective_sections
 
 Sentiment = Literal["angry", "sad", "neutral", "satisfied", "happy"]
 SentimentTrajectory = Literal["improved", "worsened", "stable"]
@@ -1142,6 +1144,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     role: Literal["org_admin", "operator", "viewer"]
+    panel_permissions: list[PanelSection] | None = Field(default=None, max_length=20)
     mobile_number: str | None = None
     extension: str | None = None
     display_name: str | None = Field(default=None, max_length=120)
@@ -1172,6 +1175,7 @@ class MemberPasswordReset(MemberAccountLink):
 
 class UserUpdate(BaseModel):
     role: Literal["org_admin", "operator", "viewer"] | None = None
+    panel_permissions: list[PanelSection] | None = Field(default=None, max_length=20)
     mobile_number: str | None = None
     extension: str | None = None
     password: str | None = Field(default=None, min_length=8)
@@ -1190,11 +1194,24 @@ class UserOut(BaseModel):
     id: UUID
     email: str
     role: str
+    panel_permissions: list[PanelSection] | None = None
+    is_primary_admin: bool = False
+
+    @field_validator("is_primary_admin", mode="before")
+    @classmethod
+    def _primary_admin_flag(cls, value: object) -> bool:
+        return bool(value)
+
     mobile_number: str | None = None
     extension: str | None = None
     display_name: str | None = None
     profile_context: str | None = None
     created_at: datetime
+
+    @computed_field
+    @property
+    def effective_panel_permissions(self) -> list[PanelSection]:
+        return effective_sections(self.role, self.panel_permissions)
 
 
 class ProfileUpdate(BaseModel):
@@ -1918,6 +1935,26 @@ class MeetingConfigValidation(BaseModel):
     server_time: datetime
 
 
+class MeetingAttendeeIn(BaseModel):
+    """A person the app user marked as present before recording."""
+
+    profile_client_id: UUID
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or any(ord(ch) < 32 for ch in cleaned):
+            raise ValueError("name must be printable text")
+        return cleaned
+
+
+class MeetingAttendeeOut(BaseModel):
+    profile_client_id: UUID
+    name: str
+
+
 class MeetingSessionIn(BaseModel):
     client_meeting_id: UUID
     title: str | None = Field(default=None, max_length=200)
@@ -1927,6 +1964,7 @@ class MeetingSessionIn(BaseModel):
     app_version: str = Field(min_length=1, max_length=40)
     # "text": the app sends the on-device transcript and never uploads audio.
     input_kind: Literal["audio", "text"] = "audio"
+    attendees: list[MeetingAttendeeIn] = Field(default_factory=list, max_length=64)
 
 
 class MeetingTranscriptSegmentIn(BaseModel):
@@ -2151,6 +2189,7 @@ class MeetingEventOut(BaseModel):
 class MeetingDetail(MeetingListItem):
     segments: list[MeetingSegmentOut]
     speakers: list[MeetingSpeakerOut]
+    attendees: list[MeetingAttendeeOut] = Field(default_factory=list)
     minutes: MeetingMinutesOut | None
     processing_events: list[MeetingEventOut]
 
@@ -2310,3 +2349,19 @@ class JalaseNegarInstallReportIn(BaseModel):
 
 class JalaseNegarUpdateCheckOut(BaseModel):
     update: JalaseNegarUpdateOffer | None
+
+
+class JalaseNegarLatestRelease(BaseModel):
+    """The release the public landing page offers to a first-time installer."""
+
+    id: UUID
+    version: str
+    size: int
+    sha256: str
+    min_sdk: int
+    published_at: datetime | None
+    download_path: str
+
+
+class JalaseNegarLatestOut(BaseModel):
+    release: JalaseNegarLatestRelease | None

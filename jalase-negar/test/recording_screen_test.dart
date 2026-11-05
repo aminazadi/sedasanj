@@ -7,11 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:jalase_negar/features/meetings/data/attendee.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 import 'package:jalase_negar/core/audio/wav.dart';
 import 'package:jalase_negar/core/utils/format.dart';
+import 'package:jalase_negar/features/people/application/people_providers.dart';
+import 'package:jalase_negar/features/people/data/person.dart';
 import 'package:jalase_negar/features/recording/application/live_audio_waveform.dart';
 import 'package:jalase_negar/features/recording/application/recorder_controller.dart';
 import 'package:jalase_negar/features/recording/presentation/live_waveform.dart';
@@ -79,7 +82,10 @@ void main() {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [recorderControllerProvider.overrideWith(() => recorder)],
+        overrides: [
+          recorderControllerProvider.overrideWith(() => recorder),
+          peopleProvider.overrideWith((_) async => _people),
+        ],
         child: MaterialApp.router(
           theme: buildAppTheme(),
           routerConfig: router,
@@ -94,6 +100,34 @@ void main() {
 
     expect(find.text('جزئیات test-meeting'), findsOneWidget);
     expect(find.textContaining('JN-REC-0004'), findsOneWidget);
+  });
+
+  testWidgets('attendees chosen before recording are passed to the recorder', (
+    tester,
+  ) async {
+    final (recorder, _) = await _openScreen(tester);
+    expect(find.text('حاضران جلسه (اختیاری)'), findsOneWidget);
+
+    await tester.tap(find.text('انتخاب حاضران'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('علی رضایی'), findsOneWidget);
+    expect(find.text('افزودن فرد جدید'), findsOneWidget);
+    await tester.tap(find.text('علی رضایی'));
+    await tester.pump();
+    await tester.tap(find.text('تأیید (۱ نفر)'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.widgetWithText(InputChip, 'علی رضایی'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.mic));
+    for (var i = 0; i < 40 && recorder.startCount == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+
+    expect(recorder.startCount, 1);
+    expect(recorder.lastAttendees, [
+      const Attendee(personId: 'p1', name: 'علی رضایی'),
+    ]);
   });
 
   testWidgets('wind and all cues finish before the recording layout opens', (
@@ -311,6 +345,19 @@ void main() {
   );
 }
 
+final _people = [
+  for (final (id, name) in [('p1', 'علی رضایی'), ('p2', 'سارا احمدی')])
+    Person(
+      clientId: id,
+      name: name,
+      visibility: PersonVisibility.private,
+      version: 1,
+      changeSeq: 1,
+      mine: true,
+      updatedAt: DateTime(2026, 1, 1),
+    ),
+];
+
 Future<(_Recorder, _StartSound)> _openScreen(
   WidgetTester tester, {
   bool reducedMotion = false,
@@ -327,6 +374,7 @@ Future<(_Recorder, _StartSound)> _openScreen(
       overrides: [
         recorderControllerProvider.overrideWith(() => recorder),
         recordingStartSoundProvider.overrideWithValue(() => sound),
+        peopleProvider.overrideWith((_) async => _people),
       ],
       child: MaterialApp(
         theme: buildAppTheme(),
@@ -351,6 +399,7 @@ Future<(_Recorder, _StartSound)> _openScreen(
 
 class _Recorder extends RecorderController {
   int startCount = 0;
+  List<Attendee> lastAttendees = const [];
 
   void update({bool interrupted = false}) {
     state = RecorderState(
@@ -361,8 +410,9 @@ class _Recorder extends RecorderController {
   }
 
   @override
-  Future<void> start() async {
+  Future<void> start({List<Attendee> attendees = const []}) async {
     startCount++;
+    lastAttendees = attendees;
     update();
   }
 
