@@ -5,8 +5,8 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../application/update_controller.dart';
 
-/// Shows the update offer. "بعداً" and the system back gesture both set the
-/// offer aside until the next cold start; "دریافت نسخه" opens the browser and
+/// Shows the update offer. "Later" and the system back gesture both set the
+/// offer aside until the next cold start; "Download version" opens the browser and
 /// keeps the dialog so the user can retry after coming back.
 Future<void> showUpdateDialog(BuildContext context) async {
   // The prompt host and the settings button can both ask: only one dialog may

@@ -13,9 +13,18 @@ class AppDatabase {
   static Future<AppDatabase> instance() async {
     if (_instance != null) return _instance!;
     final path = '${await getDatabasesPath()}/jalase_negar.db';
-    final db = await openDatabase(
-      path,
-      version: 8,
+    _instance = await open(path);
+    return _instance!;
+  }
+
+  /// Opens (and migrates) the database at [path]. [factory] lets tests use an
+  /// in-process sqlite instead of the platform plugin.
+  static Future<AppDatabase> open(
+    String path, {
+    DatabaseFactory? factory,
+  }) async {
+    final options = OpenDatabaseOptions(
+      version: schemaVersion,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await _createV4(db);
@@ -23,6 +32,7 @@ class AppDatabase {
         await _migrateToV6(db);
         await _migrateToV7(db);
         await _migrateToV8(db);
+        await _migrateToV9(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
@@ -30,11 +40,33 @@ class AppDatabase {
         if (oldVersion < 6) await _migrateToV6(db);
         if (oldVersion < 7) await _migrateToV7(db);
         if (oldVersion < 8) await _migrateToV8(db);
+        if (oldVersion < 9) await _migrateToV9(db);
       },
       onOpen: _ensureUploadChunksTable,
     );
-    _instance = AppDatabase._(db);
-    return _instance!;
+    final db = factory == null
+        ? await openDatabase(
+            path,
+            version: options.version,
+            onConfigure: options.onConfigure,
+            onCreate: options.onCreate,
+            onUpgrade: options.onUpgrade,
+            onOpen: options.onOpen,
+          )
+        : await factory.openDatabase(path, options: options);
+    return AppDatabase._(db);
+  }
+
+  static const int schemaVersion = 9;
+
+  /// Creates the schema as the last app version before people existed (v8).
+  /// Only for migration tests.
+  static Future<void> createV8ForTest(Database db) async {
+    await _createV4(db);
+    await _migrateToV5(db);
+    await _migrateToV6(db);
+    await _migrateToV7(db);
+    await _migrateToV8(db);
   }
 
   static Future<void> _createV4(Database db) async {
@@ -160,6 +192,68 @@ class AppDatabase {
   static Future<void> _migrateToV8(Database db) async {
     await db.execute(
       'ALTER TABLE meetings ADD COLUMN text_sync_pending INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  /// v9 adds people and voiceprints (enrolled speakers), the sync outbox that
+  /// carries their changes to SedaSanj, and the speaker columns of segments:
+  /// who spoke (a person id or a label for an unknown voice), an optional
+  /// second speaker for overlapping speech, a 0..100 confidence, and whether
+  /// the user set the speaker by hand (a manual choice is never overwritten).
+  static Future<void> _migrateToV9(Database db) async {
+    await db.execute('''
+      CREATE TABLE people (
+        client_id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        visibility TEXT NOT NULL DEFAULT 'private',
+        version INTEGER NOT NULL DEFAULT 0,
+        change_seq INTEGER NOT NULL DEFAULT 0,
+        mine INTEGER NOT NULL DEFAULT 1,
+        consent_at INTEGER,
+        consent_version TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE voiceprints (
+        client_id TEXT PRIMARY KEY,
+        person_id TEXT NOT NULL REFERENCES people(client_id) ON DELETE CASCADE,
+        model_id TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        dim INTEGER NOT NULL,
+        embedding BLOB NOT NULL,
+        quality INTEGER,
+        duration_ms INTEGER,
+        created_at INTEGER NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_voiceprints_person ON voiceprints(person_id)',
+    );
+    await db.execute('''
+      CREATE TABLE sync_outbox (
+        entity_id TEXT PRIMARY KEY,
+        op TEXT NOT NULL,
+        rev INTEGER NOT NULL DEFAULT 1,
+        removed_voiceprints TEXT NOT NULL DEFAULT '[]',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at INTEGER,
+        last_error_code TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('ALTER TABLE segments ADD COLUMN speaker_person_id TEXT');
+    await db.execute('ALTER TABLE segments ADD COLUMN speaker2 TEXT');
+    await db.execute('ALTER TABLE segments ADD COLUMN speaker2_person_id TEXT');
+    await db.execute(
+      'ALTER TABLE segments ADD COLUMN overlap INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE segments ADD COLUMN speaker_confidence INTEGER',
+    );
+    await db.execute(
+      'ALTER TABLE segments ADD COLUMN speaker_manual INTEGER NOT NULL DEFAULT 0',
     );
   }
 

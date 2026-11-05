@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../speaker/speaker_labeler.dart';
 import 'asr_common.dart';
 import 'live_asr_engine.dart';
 
@@ -96,11 +97,13 @@ class LivePipeline {
     this.maxBacklogMs = 60000,
     this.lightModeRtf = 0.8,
     this.lightModeMinSpanMs = 600,
+    UtteranceLabeler? labeler,
     int maxSpeechSeconds = 30,
     int Function()? nowMicros,
   }) : _nowMicros = nowMicros ?? _wallMicros,
        _vadFactory = vadFactory,
        _decoder = decoder,
+       _labeler = labeler,
        _vad = vadFactory(),
        // A span can be a full max-speech long and still needs look-back
        // context, so the ring covers both plus the look-around on each side.
@@ -109,6 +112,7 @@ class LivePipeline {
   final LiveVadFactory _vadFactory;
   final LiveDecoder _decoder;
   final SampleHistory _history;
+  final UtteranceLabeler? _labeler;
   LiveVad _vad;
 
   /// Speech detected while the engine is further behind than this is skipped
@@ -194,22 +198,87 @@ class LivePipeline {
         continue;
       }
       if (lightMode && endMs - startMs < lightModeMinSpanMs) continue;
-      final text = _decodeSpan(span.samples, startSample, endSample);
-      if (text.isEmpty) continue;
-      final key = text.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-      if (isDuplicateTranscript(
-        candidate: key,
-        startMs: startMs,
-        endMs: endMs,
-        emitted: _recent,
-      )) {
+      final parts = _labelSpan(span, startMs);
+      if (parts == null || parts.length <= 1) {
+        _emit(
+          events,
+          text: _decodeSpan(span.samples, startSample, endSample),
+          startMs: startMs,
+          endMs: endMs,
+          part: parts?.first,
+        );
         continue;
       }
-      _recent.add((startMs, endMs, key));
-      if (_recent.length > kAsrRecentKeep) _recent.removeAt(0);
-      events.add(LiveUtterance(startMs: startMs, endMs: endMs, text: text));
+      // Several speakers: decode each stretch on its own so every line has one
+      // speaker (or is marked as overlapping).
+      for (final part in parts) {
+        final from =
+            math.max(0, part.startMs - startMs) * kAsrSampleRate ~/ 1000;
+        final to = math.min(
+          span.samples.length,
+          (part.endMs - startMs) * kAsrSampleRate ~/ 1000,
+        );
+        if (to <= from) continue;
+        _emit(
+          events,
+          text: _decodeSpan(
+            Float32List.sublistView(span.samples, from, to),
+            startSample + from,
+            startSample + to,
+          ),
+          startMs: part.startMs,
+          endMs: part.endMs,
+          part: part,
+        );
+      }
     }
     return events;
+  }
+
+  /// Speaker parts of a span, or null when identification is off, shed to
+  /// keep up, or failed (the text is then shown without a name).
+  List<LabeledPart>? _labelSpan(VadSpan span, int startMs) {
+    final labeler = _labeler;
+    if (labeler == null || lightMode) return null;
+    try {
+      return labeler.label(span.samples, startMs: startMs);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _emit(
+    List<LiveEvent> events, {
+    required String text,
+    required int startMs,
+    required int endMs,
+    LabeledPart? part,
+  }) {
+    if (text.isEmpty) return;
+    final key = text.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+    if (isDuplicateTranscript(
+      candidate: key,
+      startMs: startMs,
+      endMs: endMs,
+      emitted: _recent,
+    )) {
+      return;
+    }
+    _recent.add((startMs, endMs, key));
+    if (_recent.length > kAsrRecentKeep) _recent.removeAt(0);
+    events.add(
+      LiveUtterance(
+        startMs: startMs,
+        endMs: endMs,
+        text: text,
+        speaker: part?.speakers.first,
+        speaker2: part != null && part.speakers.length > 1
+            ? part.speakers[1]
+            : null,
+        overlap: part?.overlap ?? false,
+        speakerConfidence: part?.confidence,
+      ),
+    );
   }
 
   String _decodeSpan(Float32List speech, int startSample, int endSample) {

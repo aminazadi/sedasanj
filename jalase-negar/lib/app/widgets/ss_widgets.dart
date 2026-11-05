@@ -438,3 +438,76 @@ class _ProcessingMarkPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ProcessingMarkPainter old) => false;
 }
+
+/// Square (no corner radius) on/off switch in the brand style.
+class SsSwitch extends StatelessWidget {
+  const SsSwitch({super.key, required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onChanged != null;
+    final on = SsColors.primary.withValues(alpha: enabled ? 1 : 0.4);
+    final off = SsColors.neutral.withValues(alpha: enabled ? 1 : 0.5);
+    return Semantics(
+      toggled: value,
+      enabled: enabled,
+      child: InkWell(
+        onTap: enabled ? () => onChanged!(!value) : null,
+        child: SizedBox(
+          width: 48,
+          height: 36,
+          child: Center(
+            child: Ink(
+              width: 40,
+              height: 22,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: value ? on : SsColors.canvas,
+                border: Border.all(color: value ? on : off),
+              ),
+              child: Align(
+                alignment: value
+                    ? AlignmentDirectional.centerEnd
+                    : AlignmentDirectional.centerStart,
+                child: ColoredBox(
+                  color: value ? SsColors.canvas : off,
+                  child: const SizedBox.square(dimension: 14),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A list row with a title, an optional subtitle and a [SsSwitch].
+class SsSwitchTile extends StatelessWidget {
+  const SsSwitchTile({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.title,
+    this.subtitle,
+  });
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final Widget title;
+  final Widget? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: title,
+      subtitle: subtitle,
+      trailing: SsSwitch(value: value, onChanged: onChanged),
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+    );
+  }
+}

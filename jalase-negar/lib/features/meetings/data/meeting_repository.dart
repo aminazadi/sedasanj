@@ -96,17 +96,7 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     final batch = _db.db.batch();
     batch.delete('segments', where: 'meeting_id = ?', whereArgs: [meetingId]);
     for (final s in segments) {
-      batch.insert('segments', {
-        'meeting_id': meetingId,
-        'channel': s.channel,
-        't_start_ms': s.startMs,
-        't_end_ms': s.endMs,
-        'text': s.text,
-        'confidence': s.confidence,
-        'speaker': s.speaker,
-        'timestamp_source': s.timestampSource,
-        'source': s.source,
-      });
+      batch.insert('segments', {'meeting_id': meetingId, ...s.toRow()});
     }
     await batch.commit(noResult: true);
   }
@@ -128,17 +118,7 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     if (segments.isEmpty) return;
     final batch = _db.db.batch();
     for (final s in segments) {
-      batch.insert('segments', {
-        'meeting_id': meetingId,
-        'channel': s.channel,
-        't_start_ms': s.startMs,
-        't_end_ms': s.endMs,
-        'text': s.text,
-        'confidence': s.confidence,
-        'speaker': s.speaker,
-        'timestamp_source': s.timestampSource,
-        'source': s.source,
-      });
+      batch.insert('segments', {'meeting_id': meetingId, ...s.toRow()});
     }
     await batch.commit(noResult: true);
   }
@@ -289,7 +269,20 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     [id],
   );
 
+  @override
+  Future<List<Meeting>> textSyncPendingMeetings() async {
+    final rows = await _db.db.query(
+      'meetings',
+      where:
+          "text_sync_pending = 1 AND remote_meeting_id IS NOT NULL AND "
+          "status IN ('processing', 'uploaded', 'complete')",
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(Meeting.fromRow).toList();
+  }
+
   /// Marks whether an edit of an already sent text still has to reach SedaSanj.
+  @override
   Future<void> setTextSyncPending(String id, bool pending) => _db.db.update(
     'meetings',
     {'text_sync_pending': pending ? 1 : 0},

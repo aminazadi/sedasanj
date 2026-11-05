@@ -4,7 +4,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
@@ -156,19 +155,6 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => context.go('/intro?replay=1'),
-          icon: const Icon(Icons.slideshow_outlined),
-          label: const Text('معرفی جلسه‌نگار'),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () =>
-              context.go(TourStep.welcome.location(fromSettings: true)),
-          icon: const Icon(Icons.help_outline),
-          label: const Text('راهنمای تعاملی'),
-        ),
       ],
     );
   }

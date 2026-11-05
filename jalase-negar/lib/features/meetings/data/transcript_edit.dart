@@ -263,6 +263,12 @@ Segment _edited(
   speaker: replacing ? base.speaker : null,
   timestampSource: base.timestampSource,
   source: base.source,
+  speakerPersonId: replacing ? base.speakerPersonId : null,
+  speaker2: replacing ? base.speaker2 : null,
+  speaker2PersonId: replacing ? base.speaker2PersonId : null,
+  overlap: replacing && base.overlap,
+  speakerConfidence: replacing ? base.speakerConfidence : null,
+  speakerManual: replacing && base.speakerManual,
 );
 
 /// Start times never go backwards and every end is at or after its start.
@@ -275,16 +281,7 @@ List<Segment> _monotonic(List<Segment> segments) {
     out.add(
       start == s.startMs && end == s.endMs
           ? s
-          : Segment(
-              channel: s.channel,
-              startMs: start,
-              endMs: end,
-              text: s.text,
-              confidence: s.confidence,
-              speaker: s.speaker,
-              timestampSource: s.timestampSource,
-              source: s.source,
-            ),
+          : s.copyWith(startMs: start, endMs: end),
     );
     previousStart = start;
   }

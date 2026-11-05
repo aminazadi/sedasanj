@@ -56,6 +56,10 @@ abstract class UploadStore {
   Future<void> setRemoteMeetingId(String id, String remoteId);
   Future<void> setStatus(String id, MeetingStatus status, {String? error});
   Future<void> setSendText(String id, bool send);
+
+  /// Meetings already on SedaSanj whose edited text the server has not taken.
+  Future<List<Meeting>> textSyncPendingMeetings();
+  Future<void> setTextSyncPending(String id, bool pending);
 }
 
 /// What a pass of the queue learned; the controller turns it into UI state
@@ -142,12 +146,57 @@ class UploadQueue {
         }
       }
     }
+    if (!needsReconnect) {
+      final retry = await _retryPendingTexts(wakeIn);
+      if (retry.needsReconnect) needsReconnect = true;
+      lastError = retry.lastError ?? lastError;
+    }
     return UploadOutcome(
       needsReconnect: needsReconnect,
       creditExhausted: creditExhausted,
       nextWake: wake,
       lastError: lastError,
     );
+  }
+
+  /// Sends edits that could not reach SedaSanj when they were made (offline,
+  /// server error). Runs on every pass, so a reconnect delivers them without
+  /// the user pressing anything. A refusal for good keeps the edit pending for
+  /// the manual retry button instead of looping.
+  Future<({bool needsReconnect, String? lastError})> _retryPendingTexts(
+    void Function(Duration) wakeIn,
+  ) async {
+    String? lastError;
+    for (final meeting in await store.textSyncPendingMeetings()) {
+      final remoteId = meeting.remoteMeetingId;
+      if (remoteId == null) continue;
+      try {
+        final segments = [
+          for (final s in await store.segments(meeting.id))
+            if (s.text.trim().isNotEmpty) s,
+        ];
+        if (segments.isEmpty) {
+          await store.setTextSyncPending(meeting.id, false);
+          continue;
+        }
+        await api.putTranscript(
+          meetingId: remoteId,
+          segments: segments,
+          asrIdentity: meeting.asrIdentity,
+        );
+        await store.setTextSyncPending(meeting.id, false);
+        // The server rebuilds the minutes; the next passes follow that.
+        await store.setStatus(meeting.id, MeetingStatus.processing);
+        wakeIn(const Duration(seconds: 5));
+      } on ApiException catch (e) {
+        if (e.requiresReconnect) {
+          return (needsReconnect: true, lastError: e.message);
+        }
+        lastError = e.message;
+        if (e.retryable) wakeIn(uploadBackoff(1, _random));
+      }
+    }
+    return (needsReconnect: false, lastError: lastError);
   }
 
   /// Returns a user-facing problem text, or null when the pass went fine.

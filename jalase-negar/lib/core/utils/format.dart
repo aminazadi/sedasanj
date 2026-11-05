@@ -68,7 +68,7 @@ String formatClock(DateTime dateTime) => toPersianDigits(
 );
 
 /// Meetings recorded by older builds were titled with a Gregorian date
-/// ("جلسه 2026/11/1"); show those as Jalali with Persian digits.
+/// ("Meeting 2026/11/1"); show those as Jalali with Persian digits.
 String displayMeetingTitle(String title) {
   final m = RegExp(r'^جلسه (\d{4})/(\d{1,2})/(\d{1,2})$').firstMatch(title);
   if (m != null) {

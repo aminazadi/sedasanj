@@ -49,7 +49,10 @@ class ModelsController extends Notifier<ModelsState> {
       final installed = await store.isInstalled(spec);
       final selected = switch (spec.kind) {
         ModelKind.asr => spec.id == selectedAsr,
-        ModelKind.vad || ModelKind.denoiser => installed,
+        ModelKind.vad ||
+        ModelKind.denoiser ||
+        ModelKind.speakerEmbedding ||
+        ModelKind.speakerSegmentation => installed,
       };
       items.add(
         ModelItemState(
@@ -147,7 +150,10 @@ class ModelsController extends Notifier<ModelsState> {
     final db = await ref.read(appDatabaseProvider.future);
     final key = switch (spec.kind) {
       ModelKind.asr => kAsrModelSettingKey,
-      ModelKind.vad || ModelKind.denoiser => null,
+      ModelKind.vad ||
+      ModelKind.denoiser ||
+      ModelKind.speakerEmbedding ||
+      ModelKind.speakerSegmentation => null,
     };
     if (key != null) {
       await db.setSetting(key, modelId);

@@ -197,6 +197,12 @@ class Segment {
     this.speaker,
     this.timestampSource = TimestampSource.sileroVad,
     this.source = 'device',
+    this.speakerPersonId,
+    this.speaker2,
+    this.speaker2PersonId,
+    this.overlap = false,
+    this.speakerConfidence,
+    this.speakerManual = false,
   });
 
   final int channel;
@@ -207,11 +213,82 @@ class Segment {
   /// 0..1 when the recognizer provides one; null for RNNT/CTC (like the
   /// server, which only has a score for Whisper models).
   final double? confidence;
+
+  /// Who spoke, as shown: a person's name or "Unknown N" for a voice that
+  /// matches nobody enrolled. Null when speakers were not identified.
   final String? speaker;
   final String timestampSource;
 
   /// 'device' for on-device transcripts, 'server' for platform ones.
   final String source;
+
+  /// The enrolled person [speaker] was matched to (`people.client_id`).
+  final String? speakerPersonId;
+
+  /// Second voice when [overlap] is set (two people talking at once).
+  final String? speaker2;
+  final String? speaker2PersonId;
+
+  /// Spoken over another voice: the text comes from the mixed audio and the
+  /// speaker attribution is uncertain.
+  final bool overlap;
+
+  /// 0..100; how sure the speaker match was. Null when not scored.
+  final int? speakerConfidence;
+
+  /// The user chose the speaker; automatic passes never change it.
+  final bool speakerManual;
+
+  /// Names of everyone on this line, e.g. `Ali / Sara`; null without speakers.
+  String? get speakerLabel {
+    final first = speaker;
+    if (first == null || first.isEmpty) return null;
+    final second = speaker2;
+    return second == null || second.isEmpty ? first : '$first / $second';
+  }
+
+  /// `Name: text`, or just the text when the speaker is unknown.
+  String get labeledText {
+    final label = speakerLabel;
+    return label == null ? text : '$label: $text';
+  }
+
+  Segment copyWith({
+    int? startMs,
+    int? endMs,
+    String? text,
+    String? speaker,
+    String? speakerPersonId,
+    String? speaker2,
+    String? speaker2PersonId,
+    bool? overlap,
+    int? speakerConfidence,
+    bool? speakerManual,
+    bool clearSpeaker = false,
+    bool clearSpeaker2 = false,
+    bool clearSpeakerConfidence = false,
+  }) => Segment(
+    channel: channel,
+    startMs: startMs ?? this.startMs,
+    endMs: endMs ?? this.endMs,
+    text: text ?? this.text,
+    confidence: confidence,
+    speaker: clearSpeaker ? null : (speaker ?? this.speaker),
+    timestampSource: timestampSource,
+    source: source,
+    speakerPersonId: clearSpeaker
+        ? null
+        : (speakerPersonId ?? this.speakerPersonId),
+    speaker2: clearSpeaker2 ? null : (speaker2 ?? this.speaker2),
+    speaker2PersonId: clearSpeaker2
+        ? null
+        : (speaker2PersonId ?? this.speaker2PersonId),
+    overlap: overlap ?? this.overlap,
+    speakerConfidence: clearSpeakerConfidence
+        ? null
+        : (speakerConfidence ?? this.speakerConfidence),
+    speakerManual: speakerManual ?? this.speakerManual,
+  );
 
   factory Segment.fromRow(Map<String, Object?> row) => Segment(
     channel: row['channel'] as int,
@@ -223,5 +300,29 @@ class Segment {
     timestampSource:
         (row['timestamp_source'] as String?) ?? TimestampSource.sileroVad,
     source: (row['source'] as String?) ?? 'device',
+    speakerPersonId: row['speaker_person_id'] as String?,
+    speaker2: row['speaker2'] as String?,
+    speaker2PersonId: row['speaker2_person_id'] as String?,
+    overlap: ((row['overlap'] as int?) ?? 0) != 0,
+    speakerConfidence: row['speaker_confidence'] as int?,
+    speakerManual: ((row['speaker_manual'] as int?) ?? 0) != 0,
   );
+
+  /// Column values for the `segments` table (without id and meeting id).
+  Map<String, Object?> toRow() => {
+    'channel': channel,
+    't_start_ms': startMs,
+    't_end_ms': endMs,
+    'text': text,
+    'confidence': confidence,
+    'speaker': speaker,
+    'timestamp_source': timestampSource,
+    'source': source,
+    'speaker_person_id': speakerPersonId,
+    'speaker2': speaker2,
+    'speaker2_person_id': speaker2PersonId,
+    'overlap': overlap ? 1 : 0,
+    'speaker_confidence': speakerConfidence,
+    'speaker_manual': speakerManual ? 1 : 0,
+  };
 }

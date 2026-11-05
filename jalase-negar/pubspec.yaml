@@ -2,7 +2,7 @@ name: jalase_negar
 description: "ضبط جلسه و رونویسی لوکال فارسی؛ تحلیل و صورت‌جلسه توسط صداسنج"
 publish_to: 'none'
 
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.9.2
@@ -36,17 +36,20 @@ dependencies:
   flutter_svg: ^2.3.0
   package_info_plus: ^9.0.1
   just_audio: ^0.10.6
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.4.0+3
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/brand/
+    - assets/speaker_prompts_fa.json
     - assets/audio/countdown-beep.wav
     - assets/audio/countdown-final.wav
 

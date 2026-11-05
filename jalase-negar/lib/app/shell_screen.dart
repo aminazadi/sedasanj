@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/onboarding/tour_overlay.dart';
 import '../features/onboarding/tour_step.dart';
+import '../features/people/application/people_providers.dart';
 import '../features/upload/upload_controller.dart';
 import 'theme.dart';
 import 'widgets/brand_logo.dart';
@@ -18,7 +19,9 @@ class ShellScreen extends ConsumerWidget {
 
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
-    if (location.startsWith('/settings')) return 1;
+    if (location == '/people') return 1;
+    if (location == '/guide') return 3;
+    if (location.startsWith('/settings')) return 2;
     return 0;
   }
 
@@ -26,6 +29,8 @@ class ShellScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Keeps the upload queue alive for the whole app session.
     ref.watch(uploadQueueProvider.select((s) => s.running));
+    // Keeps people sync alive for the whole session.
+    ref.watch(speakerSyncProvider.select((s) => s.running));
     final index = _currentIndex(context);
 
     return Scaffold(
@@ -39,9 +44,14 @@ class ShellScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Same animated wordmark as the web panel's sidebar.
-            const Padding(
-              padding: EdgeInsetsDirectional.only(start: 16),
-              child: SsBrandLogo(width: 104),
+            const Flexible(
+              child: Padding(
+                padding: EdgeInsetsDirectional.only(start: 16),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SsBrandLogo(width: 104),
+                ),
+              ),
             ),
           ],
         ),
@@ -90,14 +100,19 @@ class ShellScreen extends ConsumerWidget {
       body: child,
       bottomNavigationBar: _SsBottomBar(
         selectedIndex: index,
-        onSelected: (i) => context.go(i == 0 ? '/' : '/settings'),
+        onSelected: (i) => context.go(switch (i) {
+          0 => '/',
+          1 => '/people',
+          2 => '/settings',
+          _ => '/guide',
+        }),
         onRecord: () => context.push('/record'),
       ),
     );
   }
 }
 
-enum _Glyph { sessions, settings, mic }
+enum _Glyph { sessions, people, guide, settings, mic }
 
 /// Hand-drawn 24-grid line icons so the bar does not depend on stock Material
 /// glyphs (the old mic tab duplicated the record button).
@@ -136,6 +151,40 @@ class _GlyphPainter extends CustomPainter {
             bar,
           );
         }
+      case _Glyph.people:
+        // Two heads-and-shoulders: a front person and a smaller one behind.
+        canvas.drawCircle(const Offset(10, 8), 3.4, line);
+        canvas.drawPath(
+          Path()
+            ..moveTo(3.5, 20)
+            ..quadraticBezierTo(3.5, 13.5, 10, 13.5)
+            ..quadraticBezierTo(16.5, 13.5, 16.5, 20),
+          line,
+        );
+        canvas.drawArc(
+          Rect.fromCircle(center: const Offset(16.5, 8.6), radius: 2.7),
+          -1.9,
+          3.9,
+          false,
+          line,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(18.2, 13.9)
+            ..quadraticBezierTo(20.5, 14.6, 20.5, 19),
+          line,
+        );
+      case _Glyph.guide:
+        // A circle with a question mark.
+        canvas.drawCircle(const Offset(12, 12), 8.5, line);
+        canvas.drawPath(
+          Path()
+            ..moveTo(9.4, 9.6)
+            ..cubicTo(9.4, 6.6, 14.6, 6.6, 14.6, 9.6)
+            ..cubicTo(14.6, 11.6, 12, 11.7, 12, 13.6),
+          line,
+        );
+        canvas.drawCircle(const Offset(12, 16.6), 0.9, fill);
       case _Glyph.settings:
         const rows = [(6.5, 15.0), (12.0, 8.5), (17.5, 16.0)];
         for (final (y, kx) in rows) {
@@ -271,29 +320,48 @@ class _SsBottomBar extends StatelessWidget {
             right: 0,
             bottom: bottom,
             height: _bar,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TourTarget(
-                    step: TourStep.meetings,
-                    child: _NavTab(
-                      glyph: _Glyph.sessions,
-                      label: 'جلسات',
-                      selected: selectedIndex == 0,
-                      onTap: () => onSelected(0),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TourTarget(
+                      step: TourStep.meetings,
+                      child: _NavTab(
+                        glyph: _Glyph.sessions,
+                        label: 'جلسات',
+                        selected: selectedIndex == 0,
+                        onTap: () => onSelected(0),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: _slotWidth),
-                Expanded(
-                  child: _NavTab(
-                    glyph: _Glyph.settings,
-                    label: 'تنظیمات',
-                    selected: selectedIndex == 1,
-                    onTap: () => onSelected(1),
+                  Expanded(
+                    child: _NavTab(
+                      glyph: _Glyph.people,
+                      label: 'افراد',
+                      selected: selectedIndex == 1,
+                      onTap: () => onSelected(1),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: _slotWidth),
+                  Expanded(
+                    child: _NavTab(
+                      glyph: _Glyph.settings,
+                      label: 'تنظیمات',
+                      selected: selectedIndex == 2,
+                      onTap: () => onSelected(2),
+                    ),
+                  ),
+                  Expanded(
+                    child: _NavTab(
+                      glyph: _Glyph.guide,
+                      label: 'راهنما',
+                      selected: selectedIndex == 3,
+                      onTap: () => onSelected(3),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           Positioned(
@@ -348,13 +416,26 @@ class _NavTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TweenAnimationBuilder<Color?>(
+            AnimatedContainer(
               duration: _anim,
               curve: Curves.easeOutCubic,
-              tween: ColorTween(end: color),
-              builder: (context, c, _) => _GlyphIcon(glyph, c ?? color),
+              width: 44,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? SsColors.primary.withValues(alpha: 0.12)
+                    : Colors.transparent,
+              ),
+              child: TweenAnimationBuilder<Color?>(
+                duration: _anim,
+                curve: Curves.easeOutCubic,
+                tween: ColorTween(end: color),
+                builder: (context, c, _) =>
+                    _GlyphIcon(glyph, c ?? color, size: 24),
+              ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
               duration: _anim,
               style: TextStyle(
@@ -364,7 +445,7 @@ class _NavTab extends StatelessWidget {
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 color: color,
               ),
-              child: Text(label),
+              child: Text(label, maxLines: 1, overflow: TextOverflow.clip),
             ),
           ],
         ),

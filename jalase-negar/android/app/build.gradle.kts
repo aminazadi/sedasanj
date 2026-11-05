@@ -44,6 +44,9 @@ android {
     signingConfigs {
         if (keyProperties.getProperty("storeFile") != null) {
             create("release") {
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
                 storeFile = file(keyProperties.getProperty("storeFile"))
                 storePassword = keyProperties.getProperty("storePassword")
                 keyAlias = keyProperties.getProperty("keyAlias")

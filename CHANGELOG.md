@@ -2,6 +2,9 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Changed the Jalase-Negar Android release to 1.0.3 (build 4) and explicitly enabled v1, v2, and v3 production signing for the clean rebuild.
+- Integrated the previously isolated Jalase-Negar People and Guide bottom tabs, speaker enrollment and discovery, speaker editing, and square switches into the release source.
+- Fixed the Jalase-Negar header overflowing on narrow phones and added RTL navigation regression coverage for all bottom tabs and recording.
 - Changed the Jalase-Negar Android release version to 1.0.2 (build 3).
 - Fixed the Jalase-Negar update controller lint and translated its code comments into English.
 - Fixed PBX party attribution and added an administrator review workflow for historical call ownership.

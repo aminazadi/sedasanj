@@ -25,35 +25,7 @@ class MeetingUploadCard extends StatelessWidget {
         child: Semantics(
           label: title,
           toggled: enabled,
-          child: InkWell(
-            onTap: () => onChanged(!enabled),
-            child: SizedBox(
-              width: 48,
-              height: 36,
-              child: Center(
-                child: Ink(
-                  width: 40,
-                  height: 22,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: enabled ? SsColors.primary : SsColors.canvas,
-                    border: Border.all(
-                      color: enabled ? SsColors.primary : SsColors.neutral,
-                    ),
-                  ),
-                  child: Align(
-                    alignment: enabled
-                        ? AlignmentDirectional.centerEnd
-                        : AlignmentDirectional.centerStart,
-                    child: ColoredBox(
-                      color: enabled ? SsColors.canvas : SsColors.neutral,
-                      child: const SizedBox.square(dimension: 14),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          child: SsSwitch(value: enabled, onChanged: onChanged),
         ),
       ),
       child: Text(

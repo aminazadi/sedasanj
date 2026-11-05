@@ -84,6 +84,18 @@ class FakeStore implements UploadStore {
     final i = meetings.indexWhere((m) => m.id == id);
     meetings[i] = meetings[i].copyWith(sendText: send);
   }
+
+  @override
+  Future<List<Meeting>> textSyncPendingMeetings() async => [
+    for (final m in meetings)
+      if (m.textSyncPending && m.remoteMeetingId != null) m,
+  ];
+
+  @override
+  Future<void> setTextSyncPending(String id, bool pending) async {
+    final i = meetings.indexWhere((m) => m.id == id);
+    meetings[i] = meetings[i].copyWith(textSyncPending: pending);
+  }
 }
 
 class FakeApi implements MeetingUploadApi {
@@ -393,6 +405,58 @@ void main() {
     api.remoteStatus = 'failed_terminal';
     await queue().processOnce();
     expect(store.meetings.single.status, MeetingStatus.failed);
+  });
+
+  group('edited text that has not reached SedaSanj', () {
+    Meeting pending() => meeting(
+      status: MeetingStatus.complete,
+      remoteId: 'remote-1',
+    ).copyWith(textSyncPending: true);
+
+    test('is sent again by the next pass without any user action', () async {
+      setUpStore(pending());
+      final outcome = await queue().processOnce();
+      expect(api.transcriptCalls, 1);
+      expect(api.sentSegments, hasLength(2));
+      expect(store.meetings.single.textSyncPending, isFalse);
+      // The server rebuilds the minutes; the queue follows them again.
+      expect(store.meetings.single.status, MeetingStatus.processing);
+      expect(outcome.nextWake, isNotNull);
+    });
+
+    test('stays pending and retries later when the network fails', () async {
+      setUpStore(pending());
+      api.transcriptError = const ApiException(message: 'قطع');
+      final outcome = await queue().processOnce();
+      expect(store.meetings.single.textSyncPending, isTrue);
+      expect(store.meetings.single.status, MeetingStatus.complete);
+      expect(outcome.nextWake, isNotNull);
+      api.transcriptError = null;
+      await queue().processOnce();
+      expect(store.meetings.single.textSyncPending, isFalse);
+    });
+
+    test('a refusal for good keeps the manual retry available', () async {
+      setUpStore(pending());
+      api.transcriptError = const ApiException(
+        message: 'نامعتبر',
+        statusCode: 422,
+      );
+      final outcome = await queue().processOnce();
+      expect(store.meetings.single.textSyncPending, isTrue);
+      expect(outcome.nextWake, isNull);
+      expect(outcome.lastError, 'نامعتبر');
+    });
+
+    test('a revoked token asks to reconnect', () async {
+      setUpStore(pending());
+      api.transcriptError = const ApiException(
+        message: 'توکن',
+        statusCode: 401,
+        requiresReconnect: true,
+      );
+      expect((await queue().processOnce()).needsReconnect, isTrue);
+    });
   });
 
   test('backoff grows and is capped', () {
