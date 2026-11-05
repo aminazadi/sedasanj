@@ -2,30 +2,93 @@ import contextlib
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from asr_service.services import gpu_runtime, inference, sherpa_gpu
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure import storage
+from asr_service.services import gpu_runtime, inference, sherpa_gpu
+from asr_service.services.sherpa_gpu_diagnostics import worker_failure
 
 
 class SherpaGpuTests(unittest.TestCase):
+    def test_native_failures_include_stage_signal_and_only_allowlisted_evidence(self):
+        cases = (
+            ("CUDA_ERROR_OUT_OF_MEMORY", "cuda_out_of_memory"),
+            ("libcudnn.so.9: cannot open shared object file", "library_load_failed"),
+            ("CUDNN_STATUS_EXECUTION_FAILED", "cudnn_failure"),
+            ("invalid device ordinal", "device_unavailable"),
+            ("Fallback to cpu!", "cpu_fallback"),
+            ("unrecognized native failure", "worker_failed"),
+        )
+        for native, reason in cases:
+            with self.subTest(reason=reason):
+                error = worker_failure(
+                    "SHERPA_GPU_STAGE=load_model\nSHERPA_GPU_STAGE=decode_audio\n"
+                    + native
+                    + "\nAPI_KEY=private-value /private/audio.wav\n"
+                    + "SHERPA_GPU_STAGE=untrusted-value\n",
+                    -6,
+                )
+                self.assertIn(f"reason={reason}", error)
+                self.assertIn("stage=decode_audio", error)
+                self.assertIn("exit_code=-6", error)
+                self.assertIn("signal=SIGABRT", error)
+                self.assertNotIn("private", error)
+                self.assertNotIn("untrusted-value", error)
+                self.assertIn("submit a new task", error)
+
+    def test_sigkill_is_not_assumed_to_be_gpu_oom(self):
+        error = worker_failure("SHERPA_GPU_STAGE=read_audio\n", -9)
+        self.assertIn("signal=SIGKILL", error)
+        self.assertNotIn("out of memory", error)
+
+    def test_timeout_preserves_stage_without_leaking_exception_payload(self):
+        model = sherpa_gpu.SherpaGpuModel("/models/shenava", "GPU-a", 2)
+        failure = subprocess.TimeoutExpired(
+            "private-command", 1, stderr=b"SHERPA_GPU_STAGE=decode_audio\nprivate-value"
+        )
+        with (
+            patch.object(sherpa_gpu.subprocess, "run", side_effect=failure),
+            self.assertRaises(sherpa_gpu.SherpaGpuError) as caught,
+        ):
+            model.transcribe("private-audio.wav")
+        self.assertIn("reason=timeout", str(caught.exception))
+        self.assertIn("stage=decode_audio", str(caught.exception))
+        self.assertNotIn("private", str(caught.exception))
+        self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_oom_diagnostic_updates_existing_gpu_memory_counter(self):
+        error = worker_failure("CUDA out of memory", -6)
+        with (
+            patch.dict(gpu_runtime._oom_counts, {}, clear=True),
+            patch.dict(gpu_runtime._last_errors, {}, clear=True),
+            patch.dict(gpu_runtime._effective_limits, {}, clear=True),
+            patch.dict(gpu_runtime._success_streaks, {}, clear=True),
+        ):
+            gpu_runtime.record_error("GPU-a", error)
+            self.assertEqual(gpu_runtime._oom_counts["GPU-a"], 1)
+
     def test_rnnt_requires_all_fp32_files_before_gpu_scheduling(self):
         model_id = "shenava-koochik-v1-5-rnnt"
         required = {"encoder.onnx", "decoder.onnx", "joiner.onnx"}
-        self.assertTrue(required.issubset({file.filename for file in CATALOG[model_id].files}))
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            storage, "MODEL_DIR", Path(directory)
-        ), patch.object(
-            gpu_runtime, "enabled_devices", return_value=[{"uuid": "GPU-a"}]
-        ), patch.object(
-            gpu_runtime, "runtime_capabilities", return_value={"sherpa_onnx": True}
+        self.assertTrue(
+            required.issubset({file.filename for file in CATALOG[model_id].files})
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(storage, "MODEL_DIR", Path(directory)),
+            patch.object(
+                gpu_runtime, "enabled_devices", return_value=[{"uuid": "GPU-a"}]
+            ),
+            patch.object(
+                gpu_runtime, "runtime_capabilities", return_value={"sherpa_onnx": True}
+            ),
         ):
             root = Path(directory) / model_id
             root.mkdir()
@@ -40,9 +103,10 @@ class SherpaGpuTests(unittest.TestCase):
             self.assertFalse(gpu_runtime.gpu_eligible("asr", model_id))
 
     def test_rnnt_missing_gpu_artifacts_raise_actionable_error_before_spawning(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            sherpa_gpu.subprocess, "run"
-        ) as run:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(sherpa_gpu.subprocess, "run") as run,
+        ):
             model = sherpa_gpu.SherpaGpuModel(directory, "GPU-a", 2, "transducer")
             with self.assertRaisesRegex(sherpa_gpu.SherpaGpuError, "SS-DEP-0002"):
                 model.transcribe("audio.wav")
@@ -51,8 +115,9 @@ class SherpaGpuTests(unittest.TestCase):
     def test_rnnt_cpu_load_retains_int8_and_cuda_load_uses_isolated_worker(self):
         sherpa = Mock()
         model_id = "shenava-koochik-v1-5-rnnt"
-        with patch.dict(sys.modules, {"sherpa_onnx": sherpa}), patch.object(
-            gpu_runtime, "current_device", return_value={"uuid": "GPU-b"}
+        with (
+            patch.dict(sys.modules, {"sherpa_onnx": sherpa}),
+            patch.object(gpu_runtime, "current_device", return_value={"uuid": "GPU-b"}),
         ):
             inference._load(model_id, None)
             options = sherpa.OfflineRecognizer.from_transducer.call_args.kwargs
@@ -69,9 +134,7 @@ class SherpaGpuTests(unittest.TestCase):
         samples.__len__ = Mock(return_value=16000)
         audio.mean.return_value = samples
         sherpa = Mock(__version__="1.12.39+cuda12.cudnn9")
-        sherpa.OfflineRecognizer.from_transducer.return_value.create_stream.return_value.result.text = (
-            "speech"
-        )
+        sherpa.OfflineRecognizer.from_transducer.return_value.create_stream.return_value.result.text = "speech"
         payload = io.StringIO(
             json.dumps(
                 {
@@ -82,13 +145,17 @@ class SherpaGpuTests(unittest.TestCase):
                 }
             )
         )
-        with patch.dict(
-            sys.modules,
-            {"sherpa_onnx": sherpa, "soundfile": Mock(read=Mock(return_value=(audio, 16000)))},
-        ), patch.object(sys, "platform", "darwin"), patch.object(
-            sys, "stdin", payload
-        ), contextlib.redirect_stdout(
-            io.StringIO()
+        with (
+            patch.dict(
+                sys.modules,
+                {
+                    "sherpa_onnx": sherpa,
+                    "soundfile": Mock(read=Mock(return_value=(audio, 16000))),
+                },
+            ),
+            patch.object(sys, "platform", "darwin"),
+            patch.object(sys, "stdin", payload),
+            contextlib.redirect_stdout(io.StringIO()),
         ):
             self.assertEqual(sherpa_gpu.main(), 0)
         options = sherpa.OfflineRecognizer.from_transducer.call_args.kwargs
@@ -104,62 +171,84 @@ class SherpaGpuTests(unittest.TestCase):
             ("1.12.39+cuda12.cudnn9", False, False),
             ("1.12.39+cuda12.cudnn9", True, True),
         ):
-            with self.subTest(wheel=wheel, cuda=cuda), patch.dict(
-                sys.modules,
-                {
-                    "torch": Mock(cuda=Mock(is_available=Mock(return_value=cuda))),
-                    "ctranslate2": Mock(get_cuda_device_count=Mock(return_value=0)),
-                    "llama_cpp": Mock(llama_supports_gpu_offload=Mock(return_value=False)),
-                },
-            ), patch.object(gpu_runtime, "version", return_value=wheel), patch.dict(
-                gpu_runtime._capability_cache, {"at": 0.0, "value": {}}
+            with (
+                self.subTest(wheel=wheel, cuda=cuda),
+                patch.dict(
+                    sys.modules,
+                    {
+                        "torch": Mock(cuda=Mock(is_available=Mock(return_value=cuda))),
+                        "ctranslate2": Mock(get_cuda_device_count=Mock(return_value=0)),
+                        "llama_cpp": Mock(
+                            llama_supports_gpu_offload=Mock(return_value=False)
+                        ),
+                    },
+                ),
+                patch.object(gpu_runtime, "version", return_value=wheel),
+                patch.dict(gpu_runtime._capability_cache, {"at": 0.0, "value": {}}),
             ):
-                self.assertEqual(gpu_runtime.runtime_capabilities()["sherpa_onnx"], expected)
+                self.assertEqual(
+                    gpu_runtime.runtime_capabilities()["sherpa_onnx"], expected
+                )
 
     def tearDown(self):
         inference._load.cache_clear()
 
     def test_shenava_eligibility_depends_on_sherpa_not_whisper(self):
-        with patch.object(
-            gpu_runtime, "enabled_devices", return_value=[{"uuid": "GPU-b"}]
-        ), patch.object(
-            gpu_runtime,
-            "runtime_capabilities",
-            return_value={"sherpa_onnx": True, "ctranslate2": False},
+        with (
+            patch.object(
+                gpu_runtime, "enabled_devices", return_value=[{"uuid": "GPU-b"}]
+            ),
+            patch.object(
+                gpu_runtime,
+                "runtime_capabilities",
+                return_value={"sherpa_onnx": True, "ctranslate2": False},
+            ),
         ):
             for model in ("shenava-koochik", "shenava-rizeh", "shenava-rizeh-pizeh"):
                 self.assertTrue(gpu_runtime.gpu_eligible("asr", model))
             self.assertFalse(gpu_runtime.gpu_eligible("asr", "whisper-persian-v4"))
-            self.assertFalse(gpu_runtime.gpu_eligible("asr", "shenava-koochik-v1-5-rnnt"))
+            self.assertFalse(
+                gpu_runtime.gpu_eligible("asr", "shenava-koochik-v1-5-rnnt")
+            )
         with patch.object(gpu_runtime, "enabled_devices", return_value=[]):
             self.assertFalse(gpu_runtime.gpu_eligible("asr", "shenava-koochik"))
 
     def test_cpu_loader_still_uses_sherpa_and_gpu_loader_is_isolated(self):
         sherpa = Mock()
-        with patch.dict(sys.modules, {"sherpa_onnx": sherpa}), patch.object(
-            gpu_runtime, "current_device", return_value={"uuid": "GPU-b"}
+        with (
+            patch.dict(sys.modules, {"sherpa_onnx": sherpa}),
+            patch.object(gpu_runtime, "current_device", return_value={"uuid": "GPU-b"}),
         ):
             inference._load("shenava-koochik", None)
-            self.assertNotIn("provider", sherpa.OfflineRecognizer.from_nemo_ctc.call_args.kwargs)
+            self.assertNotIn(
+                "provider", sherpa.OfflineRecognizer.from_nemo_ctc.call_args.kwargs
+            )
             model = inference._load("shenava-koochik", 1)
             self.assertIsInstance(model, sherpa_gpu.SherpaGpuModel)
             self.assertEqual(model.device, "GPU-b")
             sherpa.OfflineRecognizer.from_nemo_ctc.assert_called_once()
 
-    def test_each_worker_receives_its_leased_gpu_without_changing_parent_environment(self):
+    def test_each_worker_receives_its_leased_gpu_without_changing_parent_environment(
+        self,
+    ):
         completed = SimpleNamespace(
             returncode=0, stdout='{"text":"speech","duration":2.5}', stderr=""
         )
-        with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "parent"}), patch.object(
-            sherpa_gpu.subprocess, "run", return_value=completed
-        ) as run:
+        with (
+            patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "parent"}),
+            patch.object(sherpa_gpu.subprocess, "run", return_value=completed) as run,
+        ):
             for gpu in ("GPU-a", "GPU-b"):
-                result = sherpa_gpu.SherpaGpuModel(Path("/models/shenava"), gpu, 2).transcribe(
-                    "audio.wav"
-                )
+                result = sherpa_gpu.SherpaGpuModel(
+                    Path("/models/shenava"), gpu, 2
+                ).transcribe("audio.wav")
                 self.assertEqual(result, ("speech", 2.5))
-                self.assertEqual(run.call_args.kwargs["env"]["CUDA_VISIBLE_DEVICES"], gpu)
-                self.assertEqual(json.loads(run.call_args.kwargs["input"])["threads"], 2)
+                self.assertEqual(
+                    run.call_args.kwargs["env"]["CUDA_VISIBLE_DEVICES"], gpu
+                )
+                self.assertEqual(
+                    json.loads(run.call_args.kwargs["input"])["threads"], 2
+                )
                 self.assertEqual(os.environ["CUDA_VISIBLE_DEVICES"], "parent")
 
     def test_crash_timeout_invalid_result_and_cpu_fallback_are_coded_failures(self):
@@ -167,22 +256,29 @@ class SherpaGpuTests(unittest.TestCase):
         cases = [
             SimpleNamespace(returncode=-6, stdout="", stderr="native crash"),
             SimpleNamespace(
-                returncode=0, stdout='{"text":"ok","duration":1}', stderr="Fallback to cpu!"
+                returncode=0,
+                stdout='{"text":"ok","duration":1}',
+                stderr="Fallback to cpu!",
             ),
             SimpleNamespace(returncode=0, stdout="{}", stderr=""),
             SimpleNamespace(returncode=0, stdout="not json", stderr=""),
         ]
         for result in cases:
-            with self.subTest(result=result), patch.object(
-                sherpa_gpu.subprocess, "run", return_value=result
+            with (
+                self.subTest(result=result),
+                patch.object(sherpa_gpu.subprocess, "run", return_value=result),
+                self.assertRaisesRegex(sherpa_gpu.SherpaGpuError, "SS-SVC-0001"),
             ):
-                with self.assertRaisesRegex(sherpa_gpu.SherpaGpuError, "SS-SVC-0001"):
-                    model.transcribe("audio.wav")
-        with patch.object(
-            sherpa_gpu.subprocess, "run", side_effect=subprocess.TimeoutExpired("worker", 1)
-        ):
-            with self.assertRaisesRegex(sherpa_gpu.SherpaGpuError, "SS-SVC-0001"):
                 model.transcribe("audio.wav")
+        with (
+            patch.object(
+                sherpa_gpu.subprocess,
+                "run",
+                side_effect=subprocess.TimeoutExpired("worker", 1),
+            ),
+            self.assertRaisesRegex(sherpa_gpu.SherpaGpuError, "SS-SVC-0001"),
+        ):
+            model.transcribe("audio.wav")
 
     def test_child_explicitly_selects_cuda_and_preserves_audio_duration(self):
         audio = Mock()
@@ -198,21 +294,28 @@ class SherpaGpuTests(unittest.TestCase):
         payload = io.StringIO(
             json.dumps({"root": "/models/shenava", "path": "/audio.wav", "threads": 2})
         )
-        with patch.dict(sys.modules, {"sherpa_onnx": sherpa, "soundfile": soundfile}), patch.object(
-            sys, "platform", "darwin"
-        ), patch.object(sys, "stdin", payload), contextlib.redirect_stdout(output):
+        with (
+            patch.dict(sys.modules, {"sherpa_onnx": sherpa, "soundfile": soundfile}),
+            patch.object(sys, "platform", "darwin"),
+            patch.object(sys, "stdin", payload),
+            contextlib.redirect_stdout(output),
+        ):
             self.assertEqual(sherpa_gpu.main(), 0)
         self.assertEqual(
             sherpa.OfflineRecognizer.from_nemo_ctc.call_args.kwargs["provider"], "cuda"
         )
-        self.assertEqual(json.loads(output.getvalue()), {"text": "speech", "duration": 2.0})
+        self.assertEqual(
+            json.loads(output.getvalue()), {"text": "speech", "duration": 2.0}
+        )
 
     def test_gpu_transcription_uses_child_result_and_normalizes_text(self):
         model = Mock()
         model.transcribe.return_value = ("ي ك", 2.5)
-        with patch.object(inference, "load", return_value=model), patch.object(
-            gpu_runtime, "current_device_index", return_value=1
-        ), patch.object(inference.os.path, "isfile", return_value=True):
+        with (
+            patch.object(inference, "load", return_value=model),
+            patch.object(gpu_runtime, "current_device_index", return_value=1),
+            patch.object(inference.os.path, "isfile", return_value=True),
+        ):
             text, segments, duration, _ = inference.transcribe(
                 "audio.wav", "shenava-koochik", 2, True, None
             )

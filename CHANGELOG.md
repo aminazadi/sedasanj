@@ -2,6 +2,7 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Added safe Sherpa CUDA failure diagnostics with worker stage, exit status, signal and recognized failure categories, including GPU OOM counter integration and troubleshooting guidance.
 - Changed the Jalase-Negar Android release to 1.1.2 (build 6) with the latest integrated app changes.
 - Changed the Jalase-Negar Android release to 1.0.4 (build 5), including the integrated automatic updater, People, and Guide features.
 - Reworked the Jalase-Negar bottom bar into four tabs (sessions, people, settings, guide) with side insets and an active pill, added a guide screen that now holds the interactive tour and intro replay, and replaced all rounded switches with a shared square `SsSwitch`.
