@@ -2,6 +2,8 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Reworked the Jalase-Negar bottom bar into four tabs (sessions, people, settings, guide) with side insets and an active pill, added a guide screen that now holds the interactive tour and intro replay, and replaced all rounded switches with a shared square `SsSwitch`.
+- Moved Jalase-Negar «افراد» into the bottom navigation, fixed the RTL direction of its list arrow, and added automatic speaker discovery: unnamed voices found in a meeting can be named once, which creates a person with voiceprints taken from that meeting's clean speech (with consent) and names all of its lines.
 - Changed the Jalase-Negar Android release to 1.0.3 (build 4) and explicitly enabled v1, v2, and v3 production signing for the clean rebuild.
 - Integrated the previously isolated Jalase-Negar People and Guide bottom tabs, speaker enrollment and discovery, speaker editing, and square switches into the release source.
 - Fixed the Jalase-Negar header overflowing on narrow phones and added RTL navigation regression coverage for all bottom tabs and recording.
