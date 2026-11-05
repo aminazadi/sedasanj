@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import httpx
@@ -74,6 +75,32 @@ def test_error_codes_are_registered() -> None:
     assert ERROR_STATUS["ml_model_not_found"] == 404
     assert ERROR_STATUS["ml_model_version_conflict"] == 409
     assert ERROR_STATUS["ml_publish_forbidden"] == 403
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+async def test_blank_publisher_tenant_denies_publish_without_database(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    from fastapi import Request
+
+    from app.config import Settings
+    from app.deps import Principal
+    from app.errors import ApiError
+    from app.routers import ml_models as router
+
+    monkeypatch.setenv("ML_PUBLISHER_TENANT_ID", value)
+    settings = Settings(environment="development", _env_file=None)
+    monkeypatch.setattr(router, "get_settings", lambda: settings)
+    deny = AsyncMock(return_value=ApiError("ml_publish_forbidden", "configure publisher tenant"))
+    monkeypatch.setattr(router, "_deny_publish", deny)
+    request = Request({"type": "http"})
+    principal = Principal(
+        kind="api_key", id=uuid4(), tenant_id=uuid4(), role="", key_kind="integration"
+    )
+    with pytest.raises(ApiError) as exc:
+        await router._assert_publisher(request, principal)
+    assert exc.value.code == "ml_publish_forbidden"
+    deny.assert_awaited_once_with(request, principal, "publishing_not_configured")
 
 
 def test_every_code_has_a_persian_help_article() -> None:
@@ -491,12 +518,16 @@ async def test_publisher_key_rules(env: Env) -> None:
 
 
 @needs_database
+@pytest.mark.parametrize("tenant_env", [None, "", "   "])
 async def test_publishing_is_closed_when_no_tenant_is_configured(
-    env: Env, monkeypatch: pytest.MonkeyPatch
+    env: Env, monkeypatch: pytest.MonkeyPatch, tenant_env: str | None
 ) -> None:
     from app.config import get_settings
 
-    monkeypatch.delenv("ML_PUBLISHER_TENANT_ID")
+    if tenant_env is None:
+        monkeypatch.delenv("ML_PUBLISHER_TENANT_ID")
+    else:
+        monkeypatch.setenv("ML_PUBLISHER_TENANT_ID", tenant_env)
     get_settings.cache_clear()
     response = await env.publish(_onnx())
     assert response.status_code == 403

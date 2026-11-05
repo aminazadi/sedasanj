@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 from cryptography.fernet import Fernet
@@ -58,6 +60,45 @@ def test_blank_smsir_verify_template_id_is_unset(value: str) -> None:
 def test_smsir_verify_template_id_accepts_numeric_strings() -> None:
     settings = Settings(environment="development", smsir_verify_template_id="123456")
     assert settings.smsir_verify_template_id == 123456
+
+
+@pytest.mark.parametrize("value", ["", "   ", "\t\n"])
+@pytest.mark.parametrize("production", [False, True])
+def test_blank_ml_publisher_tenant_env_is_unset(
+    monkeypatch: pytest.MonkeyPatch, value: str, production: bool
+) -> None:
+    monkeypatch.setenv("ML_PUBLISHER_TENANT_ID", value)
+    kwargs = _prod_kwargs() if production else {"environment": "development"}
+    assert Settings(_env_file=None, **kwargs).ml_publisher_tenant_id is None
+
+
+def test_blank_ml_publisher_tenant_dotenv_is_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ML_PUBLISHER_TENANT_ID", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("ML_PUBLISHER_TENANT_ID=\n", encoding="utf-8")
+    assert Settings(environment="development", _env_file=env_file).ml_publisher_tenant_id is None
+
+
+@pytest.mark.parametrize("as_string", [False, True])
+def test_ml_publisher_tenant_accepts_uuid(as_string: bool) -> None:
+    tenant_id = UUID("3c7837a1-1743-4ae4-a9df-22688d41f930")
+    settings = Settings(
+        environment="development",
+        _env_file=None,
+        ml_publisher_tenant_id=str(tenant_id) if as_string else tenant_id,
+    )
+    assert settings.ml_publisher_tenant_id == tenant_id
+
+
+@pytest.mark.parametrize("value", ["not-a-uuid", "0", "null"])
+def test_invalid_ml_publisher_tenant_env_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("ML_PUBLISHER_TENANT_ID", value)
+    with pytest.raises(ValidationError, match="ml_publisher_tenant_id"):
+        Settings(environment="development", _env_file=None)
 
 
 def test_production_accepts_strong_secrets() -> None:

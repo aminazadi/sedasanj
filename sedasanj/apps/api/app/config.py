@@ -94,9 +94,9 @@ class Settings(BaseSettings):
     # remote provider receives the resulting PCM WAV through its documented
     # transcription contract; no undocumented denoiser fields are sent.
     audio_preprocessing_enabled: bool = False
-    audio_denoiser_model: Literal[
-        "none", "speech-afftdn-balanced", "speech-afftdn-strong"
-    ] = "speech-afftdn-balanced"
+    audio_denoiser_model: Literal["none", "speech-afftdn-balanced", "speech-afftdn-strong"] = (
+        "speech-afftdn-balanced"
+    )
     audio_enhancement_model: Literal[
         "none", "speech-clarity-balanced", "speech-clarity-strong", "speech-telephony-adaptive"
     ] = "speech-clarity-balanced"
@@ -201,7 +201,7 @@ class Settings(BaseSettings):
     support_email: str | None = None
 
     public_base_url: str = "http://localhost:8000"
-    # Internal base URL of the API that serves signed assistant-tool webhooks; unset runs tools in-process.
+    # Internal base URL for signed assistant-tool webhooks; unset runs tools in-process.
     tool_gateway_url: str | None = None
     tool_gateway_timeout_seconds: float = Field(default=130.0, ge=1, le=900)
     cors_origins: str = ""
@@ -280,6 +280,13 @@ class Settings(BaseSettings):
     @field_validator("smsir_verify_template_id", mode="before")
     @classmethod
     def _normalize_optional_integer(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("ml_publisher_tenant_id", mode="before")
+    @classmethod
+    def _normalize_optional_uuid(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
         return value
