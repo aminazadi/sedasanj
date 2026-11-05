@@ -106,7 +106,16 @@ void main() {
     tester,
   ) async {
     final (recorder, _) = await _openScreen(tester);
-    expect(find.text('حاضران جلسه (اختیاری)'), findsOneWidget);
+    expect(find.text('حاضران جلسه (اختیاری)'), findsNothing);
+    expect(find.byType(SsCard), findsNothing);
+    final button = find.widgetWithText(OutlinedButton, 'انتخاب حاضران');
+    expect(button, findsOneWidget);
+    expect(
+      tester.getRect(button).top,
+      greaterThan(
+        tester.getRect(find.text('برای شروع ضبط، دکمهٔ زیر را بزنید')).bottom,
+      ),
+    );
 
     await tester.tap(find.text('انتخاب حاضران'));
     await tester.pump();
@@ -117,7 +126,15 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('تأیید (۱ نفر)'));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.widgetWithText(InputChip, 'علی رضایی'), findsOneWidget);
+    final chip = find.widgetWithText(InputChip, 'علی رضایی');
+    expect(chip, findsOneWidget);
+    final editButton = find.widgetWithText(OutlinedButton, 'ویرایش حاضران');
+    expect(tester.getCenter(chip).dy, tester.getCenter(editButton).dy);
+    expect(
+      tester.getRect(chip).right,
+      lessThan(tester.getRect(editButton).left),
+    );
+    expect(tester.takeException(), isNull);
 
     await tester.tap(find.byIcon(Icons.mic));
     for (var i = 0; i < 40 && recorder.startCount == 0; i++) {

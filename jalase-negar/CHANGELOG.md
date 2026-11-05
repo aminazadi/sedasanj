@@ -2,6 +2,8 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Replaced the recording attendee section with an outlined button below the timer instructions and removable selected-person chips alongside it in a horizontally scrollable row.
+
 - Fixed main-tab headers with consistent 16-pixel horizontal spacing and unified the add-person and model-download actions using the same square bordered button.
 
 - Added choosing the people present before recording: an optional attendees card on the ready-to-record screen with a multi-select sheet and "add new person" (full consent and voice sample, then back to the sheet with the person selected). Attendees are stored with the meeting (database v11 `meeting_attendees`), sent to SedaSanj with the session, given a small head start in speaker matching (live and precise pass), listed first in the speaker picker and shown on the meeting detail. A failed save only logs `JN-REC-0005`; recording continues.

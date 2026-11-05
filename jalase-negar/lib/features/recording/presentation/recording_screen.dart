@@ -207,14 +207,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                                   widget.liveTranscript ??
                                   LiveTranscriptPanel(state: controller.live),
                             )
-                          : _preparing
-                          ? const SizedBox.expand()
-                          : const Align(
-                              alignment: Alignment.topCenter,
-                              child: SingleChildScrollView(
-                                child: _AttendeesCard(),
-                              ),
-                            ),
+                          : const SizedBox.expand(),
                     ),
                     if (isActive) ...[
                       if (state.interrupted || isPaused || isSaving)
@@ -325,26 +318,24 @@ class _RecordingPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildIllustration(context),
-          if (secondsRemaining == 0)
-            Center(
-              child: Semantics(
-                liveRegion: true,
-                child: Text(
-                  'آمادهٔ ضبط…',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildIllustration(context),
+        if (secondsRemaining == 0)
+          Center(
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                'آمادهٔ ضبط…',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            )
-          else if (secondsRemaining case final seconds?)
-            Center(child: _CountdownNumber(seconds: seconds)),
-        ],
-      ),
+            ),
+          )
+        else if (secondsRemaining case final seconds?)
+          Center(child: _CountdownNumber(seconds: seconds)),
+      ],
     );
   }
 
@@ -355,9 +346,11 @@ class _RecordingPreview extends StatelessWidget {
         Flexible(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 20),
-            child: MeetingIllustration(
-              dispersed: dispersed,
-              onDispersed: onDispersed,
+            child: IgnorePointer(
+              child: MeetingIllustration(
+                dispersed: dispersed,
+                onDispersed: onDispersed,
+              ),
             ),
           ),
         ),
@@ -380,6 +373,8 @@ class _RecordingPreview extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+              const SizedBox(height: 12),
+              const _AttendeesSelector(),
             ],
           ),
         ),
@@ -810,9 +805,9 @@ class _LiveToggle extends ConsumerWidget {
   }
 }
 
-/// Optional "who is here" card on the ready-to-record screen.
-class _AttendeesCard extends ConsumerWidget {
-  const _AttendeesCard();
+/// Inline attendee selection below the ready-to-record instructions.
+class _AttendeesSelector extends ConsumerWidget {
+  const _AttendeesSelector();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -826,36 +821,23 @@ class _AttendeesCard extends ConsumerWidget {
       }
     }
 
-    return SsCard(
-      title: 'حاضران جلسه (اختیاری)',
-      ripple: true,
-      onTap: pick,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
         children: [
-          if (chosen.isEmpty)
-            const Text(
-              'افراد حاضر را انتخاب کنید تا نام‌ها دقیق‌تر تشخیص داده شوند.',
-            )
-          else
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final id in chosen)
-                  InputChip(
-                    label: Text(names[id] ?? 'فرد حذف‌شده'),
-                    onDeleted: () =>
-                        ref.read(pendingAttendeesProvider.notifier).remove(id),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 8),
-          TextButton.icon(
+          OutlinedButton.icon(
             onPressed: pick,
             icon: const Icon(Icons.group_add_outlined),
             label: Text(chosen.isEmpty ? 'انتخاب حاضران' : 'ویرایش حاضران'),
           ),
+          for (final id in chosen) ...[
+            const SizedBox(width: 8),
+            InputChip(
+              label: Text(names[id] ?? 'فرد حذف‌شده'),
+              onDeleted: () =>
+                  ref.read(pendingAttendeesProvider.notifier).remove(id),
+            ),
+          ],
         ],
       ),
     );
