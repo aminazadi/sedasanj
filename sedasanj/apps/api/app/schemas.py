@@ -1808,6 +1808,7 @@ class ExtensionOut(BaseModel):
     contact_name: str | None = None
     user_id: UUID | None = None
     user_name: str | None = None
+    owner_conflict: bool = False
     synced_at: datetime
 
 

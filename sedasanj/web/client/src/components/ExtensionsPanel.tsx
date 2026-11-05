@@ -108,6 +108,9 @@ export default function ExtensionsPanel({ canEdit }: { canEdit: boolean }) {
                       onChange={(value) => void assign(row, "user_id", value)}
                     />
                   ) : (row.user_name ?? "—")}
+                  {row.owner_conflict ? (
+                    <p className="field-hint">انتساب متعارض است. داخلی ثبت‌شده در تنظیمات اپراتورها را بررسی کنید.</p>
+                  ) : null}
                 </td>
               </tr>
             ))}

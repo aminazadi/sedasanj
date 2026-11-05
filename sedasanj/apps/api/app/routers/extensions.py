@@ -19,7 +19,11 @@ router = APIRouter(prefix="/v1/extensions", tags=["extensions"])
 
 
 async def _out(
-    session: AsyncSession, tenant_id: UUID, rows: list[PbxExtension]
+    session: AsyncSession,
+    tenant_id: UUID,
+    rows: list[PbxExtension],
+    *,
+    show_conflicts: bool = False,
 ) -> list[ExtensionOut]:
     contact_ids = {row.contact_id for row in rows if row.contact_id}
     user_ids = {row.user_id for row in rows if row.user_id}
@@ -46,6 +50,40 @@ async def _out(
                 )
             ).all()
         }
+    claimed: dict[str, set[UUID]] = {}
+    linked_elsewhere: set[UUID] = set()
+    if show_conflicts and rows:
+        operators = (
+            await session.execute(
+                select(User.id, User.extension).where(
+                    User.tenant_id == tenant_id,
+                    User.role == "operator",
+                    User.extension.is_not(None),
+                )
+            )
+        ).all()
+        for operator_id, extension in operators:
+            key = extensions.extension_key(extension)
+            if key is not None:
+                claimed.setdefault(key, set()).add(operator_id)
+        linked_elsewhere = {
+            user_id
+            for user_id in (
+                await session.scalars(
+                    select(PbxExtension.user_id).where(
+                        PbxExtension.tenant_id == tenant_id, PbxExtension.user_id.is_not(None)
+                    )
+                )
+            ).all()
+            if user_id is not None
+        }
+
+    def has_conflict(row: PbxExtension) -> bool:
+        requested = claimed.get(row.extension, set())
+        if row.user_id is not None:
+            return bool(requested - {row.user_id})
+        return not row.owner_managed and (len(requested) > 1 or bool(requested & linked_elsewhere))
+
     return [
         ExtensionOut(
             id=row.id,
@@ -56,6 +94,7 @@ async def _out(
             contact_name=contact_names.get(row.contact_id) if row.contact_id else None,
             user_id=row.user_id,
             user_name=user_names.get(row.user_id) if row.user_id else None,
+            owner_conflict=has_conflict(row),
             synced_at=row.synced_at,
         )
         for row in rows
@@ -74,7 +113,9 @@ async def list_extensions(
         stmt = stmt.where(PbxExtension.active.is_(True))
     rows = list((await session.execute(stmt.order_by(PbxExtension.extension))).scalars().all())
     rows.sort(key=lambda row: (len(row.extension), row.extension))
-    return await _out(session, principal.tenant_id, rows)
+    return await _out(
+        session, principal.tenant_id, rows, show_conflicts=principal.role == "org_admin"
+    )
 
 
 @router.get("/source")
@@ -208,4 +249,4 @@ async def update_extension(
         set_contact="contact_id" in sent,
         set_user="user_id" in sent,
     )
-    return (await _out(session, principal.tenant_id, [row]))[0]
+    return (await _out(session, principal.tenant_id, [row], show_conflicts=True))[0]

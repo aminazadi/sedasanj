@@ -797,6 +797,7 @@ export interface PbxExtension {
   contact_name: string | null;
   user_id: string | null;
   user_name: string | null;
+  owner_conflict?: boolean;
   synced_at: string;
 }
 

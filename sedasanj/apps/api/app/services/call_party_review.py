@@ -77,7 +77,7 @@ async def preview(
     # A partial match or a changed extension owner needs independent historical evidence.
     previous_owners = {row.agent_extension: row.operator_id for row in current}
     candidates = parties.operator_candidates(call.call_type)
-    contemporaneous = {}
+    contemporaneous: dict[str, UUID | None] = {}
     if any(extension not in previous_owners for extension, _ in proposed.values()):
         contemporaneous = dict(
             (
@@ -89,7 +89,9 @@ async def preview(
                         PbxExtension.owner_linked_at <= call.started_at,
                     )
                 )
-            ).all()
+            )
+            .tuples()
+            .all()
         )
     changed_owner = any(
         previous_owners.get(extension, contemporaneous.get(extension)) != operator_id

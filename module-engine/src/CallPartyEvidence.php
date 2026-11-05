@@ -48,7 +48,7 @@ class CallPartyEvidence
         });
     }
 
-    public static function lookup(string $uniqueId, string $filename, string $direction): array
+    public static function lookup(string $uniqueId, string $filename, string $direction, ?int $started): array
     {
         if ($uniqueId === '' || !in_array($direction, ['inbound', 'outbound', 'internal'], true)) {
             return [];
@@ -60,19 +60,29 @@ class CallPartyEvidence
             }
             $filename = preg_replace('/^stereo_/', '', basename($filename));
             $stem = pathinfo($filename, PATHINFO_FILENAME);
-            $recording = $stem === '' ? '' : $stem . '.wav';
+            $root = $db->prepare('SELECT DISTINCT linkedid FROM `' . $table . '` WHERE uniqueid = :id LIMIT 2');
             $statement = $db->prepare(
-                'SELECT disposition, channel, dstchannel, uniqueid, recordingfile FROM `' . $table
+                'SELECT disposition, channel, dstchannel, uniqueid, recordingfile, '
+                . 'UNIX_TIMESTAMP(calldate) AS call_epoch FROM `' . $table
                 . '` WHERE uniqueid = :uniqueid OR linkedid = :linkedid LIMIT 101'
             );
             for ($attempt = 0; $attempt < 3; $attempt++) {
-                $statement->execute(['uniqueid' => $uniqueId, 'linkedid' => $uniqueId]);
+                $root->execute(['id' => $uniqueId]);
+                $linkedIds = array_values(array_filter($root->fetchAll(\PDO::FETCH_COLUMN)));
+                if (count($linkedIds) > 1) {
+                    return ['pbx_evidence' => 'ambiguous'];
+                }
+                $statement->execute(['uniqueid' => $uniqueId, 'linkedid' => $linkedIds[0] ?? $uniqueId]);
                 $rows = $statement->fetchAll(\PDO::FETCH_ASSOC);
                 if (count($rows) > 100) {
                     return ['pbx_evidence' => 'ambiguous'];
                 }
-                $matching = array_filter($rows, static function (array $row) use ($recording): bool {
-                    return $recording !== '' && basename((string) $row['recordingfile']) === $recording;
+                $matching = array_filter($rows, static function (array $row) use ($stem, $started, $uniqueId): bool {
+                    $recordingStem = pathinfo(basename((string) $row['recordingfile']), PATHINFO_FILENAME);
+                    $withinWindow = $started !== null && isset($row['call_epoch'])
+                        && abs((int) $row['call_epoch'] - $started) <= 120;
+                    return $stem !== '' && $recordingStem === $stem
+                        && ($row['uniqueid'] === $uniqueId || $withinWindow);
                 });
                 if (!$matching) {
                     $matching = array_filter($rows, static function (array $row) use ($uniqueId): bool {

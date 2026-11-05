@@ -3,6 +3,7 @@
 ## 2026-11-05 — AMINAZADI
 
 - Fixed PBX party attribution and added an administrator review workflow for historical call ownership.
+- Added extension-aware call search, export fields, and operator mapping conflict indicators.
 
 ## 2026-11-04 — AMINAZADI
 

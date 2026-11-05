@@ -165,6 +165,9 @@ def _apply_filters(
             or_(
                 Call.caller_number.ilike(pattern, escape="\\"),
                 Call.dialed_number.ilike(pattern, escape="\\"),
+                Call.caller_extension.ilike(pattern, escape="\\"),
+                Call.dialed_extension.ilike(pattern, escape="\\"),
+                Call.agent_extension.ilike(pattern, escape="\\"),
             )
         )
     q = _fold_search_text(q) if q else q
@@ -175,6 +178,9 @@ def _apply_filters(
             cast(Transcript.search, TSVECTOR).op("@@")(tsquery),
             Call.caller_number.ilike(pattern, escape="\\"),
             Call.dialed_number.ilike(pattern, escape="\\"),
+            Call.caller_extension.ilike(pattern, escape="\\"),
+            Call.dialed_extension.ilike(pattern, escape="\\"),
+            Call.agent_extension.ilike(pattern, escape="\\"),
             CallInsight.summary.ilike(pattern, escape="\\"),
         ]
         if tenant_id is not None:

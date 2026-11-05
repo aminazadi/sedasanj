@@ -1,5 +1,6 @@
 """Run against an isolated PostgreSQL database using PBX_TEST_DATABASE_URL."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from os import environ
 from uuid import uuid4
@@ -8,6 +9,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.deps import Principal
 from app.errors import ApiError
 from app.models import (
     AudioObject,
@@ -19,7 +21,9 @@ from app.models import (
     Tenant,
     User,
 )
-from app.services import call_parties, call_party_review, extensions
+from app.routers.ingest import ingest_missed_call
+from app.schemas import MissedCallIngest
+from app.services import call_parties, call_party_review, extensions, operator_scope
 
 DATABASE_URL = environ.get("PBX_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="requires an isolated PostgreSQL database")
@@ -81,6 +85,27 @@ async def test_pbx_owner_snapshot_and_review() -> None:
                 with pytest.raises(ApiError) as exc:
                     await extensions.sync(session, tenant_id, [("999", None)], rejected_host)
                 assert exc.value.code == "pbx_source_conflict"
+        started = datetime.now(UTC)
+        missed = MissedCallIngest(
+            asterisk_uniqueid="pbx-test-missed",
+            caller_number="09121234567",
+            dialed_number="102",
+            dialed_extension="102",
+            pbx_evidence="direct",
+            direction="inbound",
+            started_at=started,
+            ended_at=started + timedelta(seconds=3),
+        )
+        async with sessions.begin() as session:
+            first = await ingest_missed_call(
+                Principal("api_key", uuid4(), tenant_id, "ingest"), session, missed, host
+            )
+        async with sessions.begin() as session:
+            replay = await ingest_missed_call(
+                Principal("api_key", uuid4(), tenant_id, "ingest"), session, missed, host
+            )
+            assert replay["replayed"] is True
+            assert replay["call_id"] == first["call_id"]
         async with sessions.begin() as session:
             parties = await call_parties.resolve(
                 session,
@@ -127,9 +152,20 @@ async def test_pbx_owner_snapshot_and_review() -> None:
             assert await call_party_review.apply(session, call, token) is None
             call_id = call.id
 
+        sync_started = asyncio.Event()
+
+        async def resync() -> None:
+            async with sessions.begin() as session:
+                sync_started.set()
+                await extensions.sync(session, tenant_id, snapshot, host)
+
         async with sessions.begin() as session:
             await extensions.lock_inventory(session, tenant_id)
+            resync_task = asyncio.create_task(resync())
+            await sync_started.wait()
             await extensions.reconcile_operator(session, tenant_id, callee_id, None)
+            assert not resync_task.done()
+        await resync_task
         async with sessions.begin() as session:
             assignments = (
                 await session.scalars(
@@ -139,6 +175,12 @@ async def test_pbx_owner_snapshot_and_review() -> None:
                     )
                 )
             ).all()
+            for operator_id in (caller_id, callee_id):
+                principal = Principal("user", operator_id, tenant_id, "operator")
+                scoped = operator_scope.apply_operator_scope(
+                    select(Call).where(Call.id == call_id), principal
+                )
+                assert (await session.scalar(scoped)) is not None
             assert {assignment.operator_id for assignment in assignments} == {caller_id, callee_id}
             assert await call_parties.assignments_for(session, tenant_id, parties, "answered") == {
                 caller_id: ("0101", "caller")

@@ -253,10 +253,12 @@ class Uploader
 
         $formMetadata = IngestMapper::toIngestForm($metadata);
         if (empty($metadata['_voicemail'])) {
+            $started = strtotime((string) ($formMetadata['started_at'] ?? ''));
             $evidence = CallPartyEvidence::lookup(
                 (string) ($formMetadata['asterisk_uniqueid'] ?? ''),
                 (string) ($metadata['source_filename'] ?? ''),
-                (string) ($formMetadata['direction'] ?? '')
+                (string) ($formMetadata['direction'] ?? ''),
+                $started === false ? null : $started
             );
             if ($evidence) {
                 unset($formMetadata['agent_extension']);
