@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Fixed minimal sidebar navigation to dismiss tooltips on activation and route changes, ignore touch hover, and preserve keyboard-only focus hints.
+
 - Matched credit top-up tabs to the shared right-aligned, square green panel tabs while preserving URL selection and keyboard navigation.
 
 - Removed the PBX connection and historical call review section from the extensions page, including its unused client component and requests.

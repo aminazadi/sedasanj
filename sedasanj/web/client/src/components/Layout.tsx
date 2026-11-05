@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconifyIcon } from "@iconify/react";
 import bookUserIcon from "@iconify-icons/lucide/book-user";
@@ -140,18 +140,35 @@ type SidebarTooltip = { label: string; target: HTMLElement };
 function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu?: () => void; collapsed?: boolean; onToggleCollapse?: () => void }) {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const operator = isOperator(session?.role);
   const orgAdmin = isOrgAdmin(session?.role);
   const [tooltip, setTooltip] = useState<SidebarTooltip | null>(null);
-  const showTooltip = (label: string | undefined) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
+  const showTooltip = (label: string | undefined, target: HTMLElement) => {
     if (!collapsed || !label) return;
-    setTooltip({ label, target: event.currentTarget });
+    setTooltip((current) => current?.target === target && current.label === label ? current : { label, target });
+  };
+  const showPointerTooltip = (label: string | undefined) => (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === "touch") return;
+    showTooltip(label, event.currentTarget);
+  };
+  const showFocusTooltip = (label: string | undefined) => (event: FocusEvent<HTMLElement>) => {
+    if (!event.currentTarget.matches(":focus-visible")) return;
+    showTooltip(label, event.currentTarget);
   };
   const tooltipRef = useRef<HTMLDivElement>(null);
   const hideTooltip = () => setTooltip(null);
   useEffect(() => {
-    if (!collapsed) setTooltip(null);
-  }, [collapsed]);
+    setTooltip(null);
+  }, [collapsed, location.key]);
+  useEffect(() => {
+    if (!tooltip) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTooltip(null);
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [tooltip]);
   // Keep the tooltip glued to its item even when the layout shifts underneath it.
   useLayoutEffect(() => {
     if (!tooltip) return;
@@ -193,12 +210,12 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
           <button
             type="button"
             className={`sb-round p-2 text-[#F2F0EF] transition hover:bg-white/15 ${collapsed ? "order-first" : "absolute left-4"}`}
-            onClick={onToggleCollapse}
+            onClick={() => { hideTooltip(); onToggleCollapse(); }}
             aria-label={collapsed ? "باز کردن منو" : "کوچک کردن منو"}
             aria-expanded={!collapsed}
-            onMouseEnter={showTooltip(collapsed ? "باز کردن منو" : undefined)}
-            onFocus={showTooltip(collapsed ? "باز کردن منو" : undefined)}
-            onMouseLeave={hideTooltip}
+            onPointerEnter={showPointerTooltip(collapsed ? "باز کردن منو" : undefined)}
+            onFocus={showFocusTooltip(collapsed ? "باز کردن منو" : undefined)}
+            onPointerLeave={hideTooltip}
             onBlur={hideTooltip}
           >
             <Icon icon={collapsed ? panelOpenIcon : panelCloseIcon} className="h-5 w-5" aria-hidden="true" />
@@ -224,10 +241,11 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
-                    onMouseEnter={showTooltip(item.label)}
-                    onFocus={showTooltip(item.label)}
-                    onMouseLeave={hideTooltip}
+                    onPointerEnter={showPointerTooltip(item.label)}
+                    onFocus={showFocusTooltip(item.label)}
+                    onPointerLeave={hideTooltip}
                     onBlur={hideTooltip}
+                    onClick={() => { hideTooltip(); closeMenu?.(); }}
                     aria-label={collapsed ? item.label : undefined}
                     className={({ isActive }) => `sidebar-nav-item sb-round group relative flex items-center ${collapsed ? "justify-center px-0" : "gap-3 px-3"} py-2.5 text-sm transition-colors duration-200 ${isActive ? "is-active bg-white/15 font-bold text-white" : "text-[#F2F0EF]/85"}`}
                   >
@@ -247,7 +265,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
       </nav>
 
       <div className="shrink-0 border-t border-white/10 p-3">
-        <div className={`sb-round flex items-center bg-black/10 text-[#F2F0EF] ${collapsed ? "flex-col gap-2 p-1.5" : "gap-3 p-2.5"}`} onMouseEnter={showTooltip(roleLabel)} onMouseLeave={hideTooltip}>
+        <div className={`sb-round flex items-center bg-black/10 text-[#F2F0EF] ${collapsed ? "flex-col gap-2 p-1.5" : "gap-3 p-2.5"}`} onPointerEnter={showPointerTooltip(roleLabel)} onPointerLeave={hideTooltip}>
           <div className="sb-round flex h-10 w-10 shrink-0 items-center justify-center bg-gradient-to-br from-[#F2F0EF] to-[#D5D0AE] text-sm font-bold text-[#4B6E48]">{roleLabel?.slice(0, 2) || "کا"}</div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
@@ -259,11 +277,12 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
             type="button"
             className="sb-round p-2 text-[#F2F0EF]/80 transition hover:bg-white/15 hover:text-white"
             aria-label="خروج از حساب کاربری"
-            onMouseEnter={showTooltip(collapsed ? "خروج" : undefined)}
-            onFocus={showTooltip(collapsed ? "خروج" : undefined)}
-            onMouseLeave={hideTooltip}
+            onPointerEnter={showPointerTooltip(collapsed ? "خروج" : undefined)}
+            onFocus={showFocusTooltip(collapsed ? "خروج" : undefined)}
+            onPointerLeave={hideTooltip}
             onBlur={hideTooltip}
             onClick={async () => {
+              hideTooltip();
               await logout();
               navigate("/login");
             }}
