@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — AMINAZADI
+
+- Added installation identity to extension sync and separated answered CDR endpoints from dialed numbers.
+
 ## 1.5.5 — AMINAZADI
 
 - Packaged internal-call direction mapping for exten-* recordings. PBX lab validation remains pending.

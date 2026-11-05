@@ -48,6 +48,7 @@ from app.security import (
 )
 from app.services import (
     audit,
+    extensions,
     identity_projection,
     member_account_actions,
     operator_scope,
@@ -513,6 +514,8 @@ async def update_me(
     user = await session.get(User, principal.id)
     if user is None or user.tenant_id != principal.tenant_id:
         raise ApiError("unauthorized", "user no longer exists")
+    if user.role == "operator" and payload.extension != user.extension:
+        raise ApiError("forbidden", "برای تغییر داخلی با مدیر سازمان تماس بگیرید")
     operator_scope.require_operator_numbers(
         role=user.role,
         mobile_number=payload.mobile_number,
@@ -585,6 +588,8 @@ async def create_user(
         mobile_number=payload.mobile_number,
         extension=payload.extension,
     )
+    if not get_settings().tenant_databases_enabled:
+        await extensions.lock_inventory(session, principal.tenant_id)
     user = User(
         tenant_id=principal.tenant_id,
         email=payload.email,
@@ -596,7 +601,7 @@ async def create_user(
     )
     session.add(user)
     await session.flush()
-    await identity_projection.stage_user_projection(session, user)
+    await identity_projection.stage_user_projection(session, user, reconcile_extension=True)
     await audit.record(
         session,
         actor_type="user",
@@ -743,7 +748,9 @@ async def update_user(
     for field, value in changes.items():
         setattr(user, field, value)
     await session.flush()
-    await identity_projection.stage_user_projection(session, user)
+    await identity_projection.stage_user_projection(
+        session, user, reconcile_extension=reconcile_extension
+    )
     await audit.record(
         session,
         actor_type="user",

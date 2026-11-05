@@ -1,7 +1,7 @@
 """PBX extensions synced from the FreePBX module.
 
-An extension can be linked to a phonebook contact and to an operator. The operator link is kept
-in sync with `users.extension`, which call ownership (`operator_scope`) already relies on.
+An extension can be linked to a phonebook contact and to an operator. The inventory is
+the authority for new PBX operator assignments.
 """
 
 from __future__ import annotations
@@ -10,16 +10,15 @@ import re
 import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
-from app.models import Call, Contact, PbxExtension, User
-from app.services.phone_numbers import normalize_call_number
+from app.models import Contact, PbxExtension, Tenant, User
 
 MAX_SYNC_EXTENSIONS = 5000
 _EXTENSION_RE = re.compile(r"^[0-9]{1,8}$")
@@ -38,7 +37,7 @@ def extension_key(value: str | None) -> str | None:
     text = (value or "").strip()
     if not text or not all(unicodedata.category(ch) == "Nd" for ch in text):
         return None
-    key = normalize_call_number(text)
+    key = "".join(str(unicodedata.decimal(character)) for character in text)
     return key if _EXTENSION_RE.fullmatch(key) else None
 
 
@@ -47,18 +46,47 @@ def clean_name(value: str | None) -> str | None:
     return text or None
 
 
+async def lock_inventory(session: AsyncSession, tenant_id: UUID, *, shared: bool = False) -> None:
+    await session.execute(
+        text(
+            "SELECT pg_advisory_xact_lock_shared(hashtextextended(:key, 0))"
+            if shared
+            else "SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"
+        ),
+        {"key": f"pbx-inventory:{tenant_id}"},
+    )
+
+
 async def sync(
-    session: AsyncSession, tenant_id: UUID, items: Iterable[tuple[str, str | None]]
+    session: AsyncSession,
+    tenant_id: UUID,
+    items: Iterable[tuple[str, str | None]],
+    host_uuid: UUID | None = None,
 ) -> SyncOutcome:
     """Upsert the PBX extension list; extensions missing from it are deactivated, not deleted."""
     wanted: dict[str, str | None] = {}
     for raw, name in items:
         key = extension_key(raw)
         if key is None:
-            raise ApiError("invalid_request", "شمارهٔ داخلی نامعتبر است؛ فقط رقم، * و # مجاز است")
+            raise ApiError("invalid_request", "شمارهٔ داخلی نامعتبر است؛ یک تا هشت رقم وارد کنید")
+        if key in wanted:
+            raise ApiError("invalid_request", "فهرست داخلی تکراری است؛ فهرست FreePBX را بررسی کنید")
         wanted[key] = clean_name(name)
     if len(wanted) > MAX_SYNC_EXTENSIONS:
         raise ApiError("invalid_request", "تعداد داخلی‌ها بیش از حد مجاز است؛ لیست را کوتاه کنید")
+    if not wanted:
+        raise ApiError("invalid_request", "فهرست داخلی خالی است؛ تنظیمات FreePBX را بررسی کنید")
+    await lock_inventory(session, tenant_id)
+    tenant = await session.get(Tenant, tenant_id, populate_existing=True)
+    if tenant is None:
+        raise ApiError("not_found", "سازمان یافت نشد؛ اتصال FreePBX را بررسی کنید")
+    if tenant.pbx_host_uuid is not None and tenant.pbx_host_uuid != host_uuid:
+        raise ApiError(
+            "pbx_source_conflict",
+            "منبع همگام‌سازی متفاوت است؛ اتصال FreePBX را در تنظیمات بررسی کنید",
+        )
+    if host_uuid is not None:
+        tenant.pbx_host_uuid = host_uuid
     existing = {
         row.extension: row
         for row in (
@@ -95,8 +123,61 @@ async def sync(
         existing[key].active = False
         existing[key].updated_at = now
     await session.flush()
-    await reclassify_internal(session, tenant_id)
+    await link_unique_operator_extensions(session, tenant_id)
     return SyncOutcome(created=created, updated=updated, deactivated=len(stale))
+
+
+async def link_unique_operator_extensions(session: AsyncSession, tenant_id: UUID) -> None:
+    rows = (
+        await session.scalars(select(PbxExtension).where(PbxExtension.tenant_id == tenant_id))
+    ).all()
+    linked = {row.user_id for row in rows if row.user_id is not None}
+    by_extension: dict[str, list[User]] = {}
+    for user in (await session.scalars(select(User).where(User.tenant_id == tenant_id))).all():
+        key = extension_key(user.extension)
+        if key is not None:
+            by_extension.setdefault(key, []).append(user)
+    for row in rows:
+        matches = by_extension.get(row.extension, [])
+        if row.active and not row.owner_managed and row.user_id is None and len(matches) == 1:
+            user = matches[0]
+            if user.role == "operator" and user.id not in linked:
+                row.user_id = user.id
+                row.owner_linked_at = datetime.now(UTC)
+                linked.add(user.id)
+    await session.flush()
+
+
+async def reconcile_operator(
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, extension: str | None
+) -> None:
+    """Apply an explicit organization user edit to the PBX inventory."""
+    key = extension_key(extension)
+    rows = (
+        await session.scalars(
+            select(PbxExtension).where(
+                PbxExtension.tenant_id == tenant_id,
+                or_(PbxExtension.user_id == user_id, PbxExtension.extension == key),
+            )
+        )
+    ).all()
+    target = next((row for row in rows if row.extension == key and row.active), None)
+    if target is not None and target.user_id not in (None, user_id):
+        raise ApiError("conflict", "داخلی به اپراتور دیگری متصل است؛ ابتدا اتصال آن را آزاد کنید")
+    now = datetime.now(UTC)
+    for row in rows:
+        if row is not target and row.user_id == user_id:
+            row.user_id = None
+            row.owner_linked_at = None
+            row.owner_managed = True
+            row.updated_at = now
+    await session.flush()
+    if target is not None and target.user_id != user_id:
+        target.user_id = user_id
+        target.owner_linked_at = now
+        target.owner_managed = True
+        target.updated_at = now
+    await session.flush()
 
 
 async def known_extensions(session: AsyncSession, tenant_id: UUID) -> set[str]:
@@ -106,61 +187,6 @@ async def known_extensions(session: AsyncSession, tenant_id: UUID) -> set[str]:
         )
     )
     return set(rows.scalars().all())
-
-
-async def internal_direction_fixup(
-    session: AsyncSession,
-    tenant_id: UUID,
-    caller: str | None,
-    dialed: str | None,
-    direction: str | None,
-    agent_extension: str | None,
-) -> tuple[str | None, str | None]:
-    """Return (direction, agent_extension): a call between two known extensions is internal."""
-    caller_key = extension_key(caller)
-    dialed_key = extension_key(dialed)
-    if caller_key is None or dialed_key is None:
-        return direction, agent_extension
-    known = await known_extensions(session, tenant_id)
-    if caller_key in known and dialed_key in known:
-        return "internal", agent_extension or dialed_key
-    return direction, agent_extension
-
-
-def is_internal(direction: str | None) -> bool:
-    return direction == "internal"
-
-
-async def reclassify_internal(session: AsyncSession, tenant_id: UUID, *, days: int = 30) -> int:
-    """Mark recent calls between two active extensions as internal; returns rows changed.
-
-    Run after every extension sync so calls ingested before the list was complete are fixed.
-    """
-    known = await known_extensions(session, tenant_id)
-    if len(known) < 2:
-        return 0
-    since = datetime.now(UTC) - timedelta(days=days)
-    rows = (
-        await session.execute(
-            select(Call.id, Call.caller_number, Call.dialed_number, Call.agent_extension).where(
-                Call.tenant_id == tenant_id,
-                Call.started_at >= since,
-                or_(Call.direction.is_(None), Call.direction != "internal"),
-            )
-        )
-    ).all()
-    changed = 0
-    for call_id, caller, dialed, agent in rows:
-        caller_key = extension_key(caller)
-        dialed_key = extension_key(dialed)
-        if caller_key in known and dialed_key in known:
-            await session.execute(
-                update(Call)
-                .where(Call.id == call_id)
-                .values(direction="internal", agent_extension=agent or dialed_key)
-            )
-            changed += 1
-    return changed
 
 
 async def peer_labels(
@@ -226,11 +252,13 @@ async def assign(
         row.contact_id = contact_id
     if set_user:
         if row.user_id is not None and row.user_id != user_id:
-            await session.execute(
-                update(User)
-                .where(User.id == row.user_id, User.extension == row.extension)
-                .values(extension=None)
-            )
+            previous = await session.get(User, row.user_id)
+            if (
+                previous is not None
+                and previous.tenant_id == tenant_id
+                and extension_key(previous.extension) == row.extension
+            ):
+                previous.extension = None
         if user_id is not None:
             operator = (
                 await session.execute(
@@ -257,21 +285,24 @@ async def assign(
                     "conflict",
                     f"این اپراتور قبلاً به داخلی {taken[0]} اختصاص دارد؛ ابتدا آن را آزاد کنید",
                 )
-            clash = (
-                await session.execute(
-                    select(User.id).where(
+            other_extensions = (
+                await session.scalars(
+                    select(User.extension).where(
                         User.tenant_id == tenant_id,
-                        User.extension == row.extension,
+                        User.extension.is_not(None),
                         User.id != user_id,
                     )
                 )
-            ).first()
-            if clash is not None:
+            ).all()
+            if any(extension_key(value) == row.extension for value in other_extensions):
                 raise ApiError(
                     "conflict", "این داخلی در تنظیمات اپراتور دیگری ثبت شده؛ آن را آزاد کنید"
                 )
             operator.extension = row.extension
+        if row.user_id != user_id:
+            row.owner_linked_at = now if user_id is not None else None
         row.user_id = user_id
+        row.owner_managed = True
     row.updated_at = now
     await session.flush()
     return row

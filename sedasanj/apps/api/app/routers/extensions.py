@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import OrgAdminDep, TenantSession, UserDep
 from app.errors import ApiError
-from app.models import Contact, PbxExtension, User
+from app.models import Call, Contact, PbxExtension, Tenant, User
 from app.schemas import ExtensionOut, ExtensionUpdate
-from app.services import extensions
+from app.services import audit, call_party_review, extensions
 
 router = APIRouter(prefix="/v1/extensions", tags=["extensions"])
 
@@ -75,11 +77,118 @@ async def list_extensions(
     return await _out(session, principal.tenant_id, rows)
 
 
+@router.get("/source")
+async def extension_source(
+    principal: OrgAdminDep, session: TenantSession
+) -> dict[str, UUID | None]:
+    assert principal.tenant_id is not None
+    tenant = await session.get(Tenant, principal.tenant_id)
+    return {"host_uuid": tenant.pbx_host_uuid if tenant else None}
+
+
+@router.delete("/source/{host_uuid}", status_code=204)
+async def reset_extension_source(
+    host_uuid: UUID, principal: OrgAdminDep, session: TenantSession
+) -> None:
+    assert principal.tenant_id is not None
+    await extensions.lock_inventory(session, principal.tenant_id)
+    tenant = await session.get(Tenant, principal.tenant_id, populate_existing=True)
+    if tenant is None or tenant.pbx_host_uuid != host_uuid:
+        raise ApiError("conflict", "منبع همگام‌سازی تغییر کرده است؛ صفحه را تازه کنید")
+    tenant.pbx_host_uuid = None
+
+
+class RepairSelection(BaseModel):
+    call_id: UUID
+    token: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RepairBatch(BaseModel):
+    items: list[RepairSelection] = Field(min_length=1, max_length=50)
+
+
+@router.get("/review")
+async def preview_repairs(
+    principal: OrgAdminDep,
+    session: TenantSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    started_from: datetime | None = None,
+    started_before: datetime | None = None,
+) -> dict[str, object]:
+    stmt = select(Call).where(Call.tenant_id == principal.tenant_id)
+    if started_from is not None:
+        stmt = stmt.where(Call.started_at >= started_from)
+    if started_before is not None:
+        stmt = stmt.where(Call.started_at < started_before)
+    rows = (
+        await session.scalars(
+            stmt.order_by(Call.started_at.desc(), Call.id).offset(offset).limit(limit + 1)
+        )
+    ).all()
+    items = [(await call_party_review.preview(session, row))[0] for row in rows[:limit]]
+    operator_ids = {
+        operator_id
+        for item in items
+        for operator_id in (*item["operators"], *item["proposed_operators"])
+    }
+    operator_names = {}
+    if operator_ids:
+        operator_names = {
+            str(user_id): name or email
+            for user_id, name, email in (
+                await session.execute(
+                    select(User.id, User.display_name, User.email).where(
+                        User.tenant_id == principal.tenant_id, User.id.in_(operator_ids)
+                    )
+                )
+            ).all()
+        }
+    return {"items": items, "has_more": len(rows) > limit, "operator_names": operator_names}
+
+
+@router.post("/review")
+async def apply_repairs(
+    payload: RepairBatch, principal: OrgAdminDep, session: TenantSession
+) -> dict[str, list[UUID]]:
+    assert principal.tenant_id is not None
+    await extensions.lock_inventory(session, principal.tenant_id)
+    applied: list[UUID] = []
+    skipped: list[UUID] = []
+    for item in sorted(payload.items, key=lambda item: item.call_id):
+        call = await session.scalar(
+            select(Call)
+            .where(Call.id == item.call_id, Call.tenant_id == principal.tenant_id)
+            .with_for_update()
+        )
+        result = await call_party_review.apply(session, call, item.token) if call else None
+        if result is None:
+            skipped.append(item.call_id)
+            continue
+        applied.append(item.call_id)
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=principal.id,
+            tenant_id=principal.tenant_id,
+            action="pbx.call_repair",
+            payload={
+                "call_id": str(item.call_id),
+                "direction": result["direction"],
+                "proposed_direction": result["proposed_direction"],
+                "operators": [str(operator) for operator in result["operators"]],
+                "proposed_operators": [str(operator) for operator in result["proposed_operators"]],
+            },
+        )
+    return {"applied": applied, "skipped": skipped}
+
+
 @router.patch("/{extension_id}", response_model=ExtensionOut)
 async def update_extension(
     extension_id: UUID, payload: ExtensionUpdate, principal: OrgAdminDep, session: TenantSession
 ) -> ExtensionOut:
     assert principal.tenant_id is not None
+    await extensions.lock_inventory(session, principal.tenant_id)
     row = (
         await session.execute(
             select(PbxExtension).where(

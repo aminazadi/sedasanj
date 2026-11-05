@@ -106,7 +106,7 @@ export default function Profile() {
             </label>
             <label>
               <span className="label">شماره داخلی</span>
-              <input className="input" value={form.extension} onChange={(event) => setForm({ ...form, extension: event.target.value })} dir="ltr" inputMode="numeric" />
+              <input className="input" value={form.extension} readOnly={account.user.role === "operator"} onChange={(event) => setForm({ ...form, extension: event.target.value })} dir="ltr" inputMode="numeric" />
             </label>
           </div>
           <label className="block border-t border-[color:var(--line)] pt-5">

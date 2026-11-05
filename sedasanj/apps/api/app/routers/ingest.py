@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.db import control_session_scope
 from app.deps import ApiKeySession, IngestKeyDep
 from app.errors import ApiError
-from app.models import ApiKey, Call, CallOperatorAssignment, Tenant, User
+from app.models import ApiKey, Call, Tenant
 from app.schemas import (
     ExtensionSyncIn,
     ExtensionSyncOut,
@@ -24,9 +24,9 @@ from app.schemas import (
     MissedCallIngest,
 )
 from app.security import verify_password
-from app.services import billing, extensions, ratelimit
+from app.services import billing, call_parties, extensions, ratelimit
 from app.services.archives import prepare_agent_audio
-from app.services.ingest import DIRECTIONS, accept_upload
+from app.services.ingest import accept_upload
 
 router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
 
@@ -39,7 +39,8 @@ async def sync_extensions(
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"extensions-sync:{principal.id}", 30)
     outcome = await extensions.sync(
-        session, principal.tenant_id, ((item.extension, item.name) for item in payload.extensions)
+        session, principal.tenant_id, ((item.extension, item.name) for item in payload.extensions),
+        payload.host_uuid,
     )
     return ExtensionSyncOut(
         created=outcome.created,
@@ -51,7 +52,8 @@ async def sync_extensions(
 
 @router.post("/missed-calls", status_code=status.HTTP_201_CREATED)
 async def ingest_missed_call(
-    principal: IngestKeyDep, session: ApiKeySession, payload: MissedCallIngest
+    principal: IngestKeyDep, session: ApiKeySession, payload: MissedCallIngest,
+    pbx_host_uuid: Annotated[UUID | None, Header(alias="X-CBI-PBX-Host")] = None,
 ) -> dict[str, object]:
     """Accept an idempotent metadata-only no-answer, busy, congestion, failed, or canceled call event."""
     tenant_id = principal.tenant_id
@@ -60,13 +62,18 @@ async def ingest_missed_call(
     if not unique_id:
         raise ApiError("invalid_request", "asterisk_uniqueid is required")
     duration_ms = max(0, int((payload.ended_at - payload.started_at).total_seconds() * 1000))
-    direction, agent_extension = await extensions.internal_direction_fixup(
+    parties = await call_parties.resolve(
         session,
         tenant_id,
-        payload.caller_number,
-        payload.dialed_number,
-        payload.direction,
-        (payload.agent_extension or "").strip() or None,
+        host_uuid=pbx_host_uuid,
+        caller=payload.caller_number,
+        dialed=payload.dialed_number,
+        direction=payload.direction,
+        agent=payload.agent_extension,
+        caller_extension=payload.caller_extension,
+        dialed_extension=payload.dialed_extension,
+        evidence=payload.pbx_evidence,
+        call_type=payload.call_type,
     )
     values = {
         "tenant_id": tenant_id,
@@ -74,8 +81,13 @@ async def ingest_missed_call(
         "asterisk_uniqueid": unique_id,
         "caller_number": payload.caller_number.strip(),
         "dialed_number": payload.dialed_number.strip(),
-        "direction": direction if direction in DIRECTIONS else None,
-        "agent_extension": agent_extension,
+        "direction": parties.direction,
+        "agent_extension": parties.agent_extension,
+        "caller_extension": parties.caller_extension,
+        "dialed_extension": parties.dialed_extension,
+        "pbx_evidence": parties.evidence,
+        "raw_caller_number": payload.caller_number,
+        "raw_dialed_number": payload.dialed_number,
         "campaign_id": (payload.campaign_id or "").strip() or None,
         "source": (payload.source or "").strip() or None,
         "external_reference": (payload.external_reference or "").strip() or None,
@@ -97,27 +109,7 @@ async def ingest_missed_call(
             )
         ).scalar_one()
         return {"call_id": existing.id, "call_type": existing.call_type, "replayed": True}
-    if call.agent_extension:
-        operator = (
-            await session.execute(
-                select(User).where(
-                    User.tenant_id == tenant_id,
-                    User.role == "operator",
-                    User.extension == call.agent_extension,
-                )
-            )
-        ).scalar_one_or_none()
-        if operator is not None:
-            session.add(
-                CallOperatorAssignment(
-                    tenant_id=tenant_id,
-                    call_id=call.id,
-                    operator_id=operator.id,
-                    agent_extension=call.agent_extension,
-                    assignment_source="missed_call_ingest_exact_extension",
-                    confidence=1,
-                )
-            )
+    await call_parties.assign(session, call, parties)
     await session.flush()
     return {"call_id": call.id, "call_type": call.call_type, "replayed": False}
 
@@ -170,6 +162,7 @@ async def validate_ingest_config(
     principal: IngestKeyDep,
     session: ApiKeySession,
     archive_password: Annotated[str | None, Header(alias="X-CBI-Archive-Password")] = None,
+    pbx_host_uuid: Annotated[UUID | None, Header(alias="X-CBI-PBX-Host")] = None,
 ) -> IngestConfigValidation:
     """Validate an agent's API key, archive mode, and optional ZIP password."""
     assert principal.tenant_id is not None
@@ -202,11 +195,15 @@ async def ingest_call(
     ended_at: Annotated[datetime, Form()],
     direction: Annotated[str | None, Form()] = None,
     agent_extension: Annotated[str | None, Form()] = None,
+    caller_extension: Annotated[str | None, Form(max_length=20)] = None,
+    dialed_extension: Annotated[str | None, Form(max_length=20)] = None,
+    pbx_evidence: Annotated[str | None, Form(pattern="^(cdr|ambiguous|direct)$")] = None,
     campaign_id: Annotated[str | None, Form()] = None,
     source: Annotated[str | None, Form()] = None,
     external_reference: Annotated[str | None, Form()] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     archive_password: Annotated[str | None, Header(alias="X-CBI-Archive-Password")] = None,
+    pbx_host_uuid: Annotated[UUID | None, Header(alias="X-CBI-PBX-Host")] = None,
 ) -> IngestAccepted:
     """Upload one call archive, validate its WAV, reserve credit, store it, and queue ASR.
 
@@ -233,14 +230,6 @@ async def ingest_call(
             Path(tmp),
             get_settings(),
         )
-        direction, agent_extension = await extensions.internal_direction_fixup(
-            session,
-            tenant_id,
-            caller_number,
-            dialed_number,
-            direction,
-            (agent_extension or "").strip() or None,
-        )
         result = await accept_upload(
             tenant_id=tenant_id,
             payload=audio_path,
@@ -251,6 +240,10 @@ async def ingest_call(
             ended_at=ended_at,
             direction=direction,
             agent_extension=agent_extension,
+            caller_extension=caller_extension,
+            dialed_extension=dialed_extension,
+            pbx_evidence=pbx_evidence,
+            pbx_host_uuid=pbx_host_uuid,
             campaign_id=campaign_id,
             source=source,
             external_reference=external_reference,
@@ -275,6 +268,7 @@ async def ingest_voicemail(
     message_id: Annotated[str | None, Form()] = None,
     caller_number: Annotated[str | None, Form()] = None,
     archive_password: Annotated[str | None, Header(alias="X-CBI-Archive-Password")] = None,
+    pbx_host_uuid: Annotated[UUID | None, Header(alias="X-CBI-PBX-Host")] = None,
 ) -> IngestAccepted:
     tenant_id = principal.tenant_id
     assert tenant_id is not None
@@ -309,6 +303,7 @@ async def ingest_voicemail(
             ended_at=None,
             direction="inbound",
             source="freepbx_voicemail",
+            pbx_host_uuid=pbx_host_uuid,
             external_reference=unique_id,
             idempotency_key=unique_id,
             call_type="voicemail",

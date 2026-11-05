@@ -89,6 +89,7 @@ class Tenant(Base):
     call_asr_profile: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'inherit'")
     )
+    pbx_host_uuid: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
     operator_ranking_visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -277,6 +278,11 @@ class Call(Base):
     dialed_number: Mapped[str | None] = mapped_column(Text)
     direction: Mapped[str | None] = mapped_column(Text)
     agent_extension: Mapped[str | None] = mapped_column(Text)
+    caller_extension: Mapped[str | None] = mapped_column(Text)
+    dialed_extension: Mapped[str | None] = mapped_column(Text)
+    pbx_evidence: Mapped[str | None] = mapped_column(Text)
+    raw_caller_number: Mapped[str | None] = mapped_column(Text)
+    raw_dialed_number: Mapped[str | None] = mapped_column(Text)
     campaign_id: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(Text)
     external_reference: Mapped[str | None] = mapped_column(Text)
@@ -380,6 +386,8 @@ class PbxExtension(Base):
     user_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    owner_linked_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    owner_managed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
     synced_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -414,6 +422,7 @@ class CallOperatorAssignment(Base):
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     agent_extension: Mapped[str] = mapped_column(Text, nullable=False)
+    party_role: Mapped[str | None] = mapped_column(Text)
     assignment_source: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float] = mapped_column(REAL, nullable=False, server_default=text("1"))
     assigned_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)

@@ -866,15 +866,14 @@ async def dashboard(
             )
             .exists()
         )
-    hide_internal = not direction and not settings["include_internal_calls"]
-    if hide_internal:
-        conditions.append(not_internal_clause())
+    conditions.append(not_internal_clause())
     if team_id:
         conditions.append(
             select(CallOperatorAssignment.id)
             .join(TeamMembership, TeamMembership.operator_id == CallOperatorAssignment.operator_id)
             .where(
                 CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.superseded_at.is_(None),
                 TeamMembership.team_id == team_id,
                 TeamMembership.valid_from <= Call.started_at,
                 or_(TeamMembership.valid_to.is_(None), TeamMembership.valid_to > Call.started_at),
@@ -898,8 +897,7 @@ async def dashboard(
         )
         if value
     ]
-    if hide_internal:
-        missed_filters.append(not_internal_clause())
+    missed_filters.append(not_internal_clause())
     missed_stmt = select(Call).where(
         Call.tenant_id == tenant_id,
         Call.call_type.in_(UNANSWERED_CALL_TYPES),
@@ -923,6 +921,7 @@ async def dashboard(
             .join(TeamMembership, TeamMembership.operator_id == CallOperatorAssignment.operator_id)
             .where(
                 CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.superseded_at.is_(None),
                 TeamMembership.team_id == team_id,
                 TeamMembership.valid_from <= Call.started_at,
                 or_(TeamMembership.valid_to.is_(None), TeamMembership.valid_to > Call.started_at),
@@ -985,6 +984,7 @@ async def dashboard(
             .join(TeamMembership, TeamMembership.operator_id == CallOperatorAssignment.operator_id)
             .where(
                 CallOperatorAssignment.call_id == Call.id,
+                CallOperatorAssignment.superseded_at.is_(None),
                 TeamMembership.team_id == team_id,
                 TeamMembership.valid_from <= Call.started_at,
                 or_(TeamMembership.valid_to.is_(None), TeamMembership.valid_to > Call.started_at),
@@ -1167,15 +1167,14 @@ async def dashboard(
         "avg_duration_seconds": (
             round(int(internal_seconds) / 1000 / internal_total) if internal_total else 0
         ),
-        "included_in_kpi": bool(settings["include_internal_calls"]),
+        "included_in_kpi": False,
     }
     internal_call_ids = select(Call.id).where(
         Call.tenant_id == tenant_id, Call.direction == "internal"
     )
-    if hide_internal:
-        crm_conditions.append(
-            or_(CrmOutcome.call_id.is_(None), CrmOutcome.call_id.not_in(internal_call_ids))
-        )
+    crm_conditions.append(
+        or_(CrmOutcome.call_id.is_(None), CrmOutcome.call_id.not_in(internal_call_ids))
+    )
     if call_scoped_crm:
         crm_conditions.append(CrmOutcome.call_id.in_(call_ids))
     crm_rows = (
@@ -1190,10 +1189,9 @@ async def dashboard(
         CrmOutcome.occurred_at >= previous_from,
         CrmOutcome.occurred_at < previous_to,
     ]
-    if hide_internal:
-        previous_crm_conditions.append(
-            or_(CrmOutcome.call_id.is_(None), CrmOutcome.call_id.not_in(internal_call_ids))
-        )
+    previous_crm_conditions.append(
+        or_(CrmOutcome.call_id.is_(None), CrmOutcome.call_id.not_in(internal_call_ids))
+    )
     if call_scoped_crm:
         previous_crm_conditions.append(CrmOutcome.call_id.in_(previous_call_ids))
     previous_crm_rows = (

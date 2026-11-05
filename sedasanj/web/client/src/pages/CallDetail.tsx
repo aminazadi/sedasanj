@@ -856,7 +856,12 @@ export default function CallDetailPage() {
                 <span>تاریخ تماس: {fmt.dateTime(call.started_at)}</span>
                 <span>مدت: {fmt.duration(call.duration_ms)}</span>
                 {call.direction ? <span>جهت: {DIRECTION_LABELS[call.direction] ?? call.direction}</span> : null}
-                {call.agent_extension ? <span>داخلی: {fmt.digits(call.agent_extension)}</span> : null}
+                {call.caller_extension ? <span>داخلی مبدأ: {fmt.digits(call.caller_extension)}</span> : null}
+                {call.dialed_extension ? <span>داخلی مقصد: {fmt.digits(call.dialed_extension)}</span> : null}
+                {call.agent_extension && call.direction === "inbound" && call.call_type === "answered" ? (
+                  <span>داخلی پاسخ‌دهنده: {fmt.digits(call.agent_extension)}</span>
+                ) : null}
+                {call.pbx_evidence === "ambiguous" ? <span>انتساب نیازمند بررسی است</span> : null}
                 {call.call_type === "voicemail" && call.voicemail_folder ? <span>پوشهٔ صندوق: {call.voicemail_folder}</span> : null}
                 {call.call_type === "voicemail" && call.voicemail_context ? <span>بافت صندوق: {call.voicemail_context}</span> : null}
               </div>

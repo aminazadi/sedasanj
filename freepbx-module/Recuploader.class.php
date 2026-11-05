@@ -943,7 +943,14 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 		if ($rows === null) {
 			return array('status' => false, 'code' => 'SS-EXT-1001', 'message' => 'The FreePBX extension list could not be read. Run the sync on the FreePBX host.');
 		}
+		if (count($rows) > \Engine\ExtensionSync::MAX_EXTENSIONS) {
+			return array('status' => false, 'code' => 'SS-EXT-1003', 'message' => 'The extension list exceeds the sync limit. Review the FreePBX extension list.');
+		}
 		$payload = \Engine\ExtensionSync::buildPayload($rows);
+		$payload['host_uuid'] = $this->hostUuid();
+		if (count($payload['extensions']) !== count($rows) && count($payload['extensions']) > 0) {
+			return array('status' => false, 'code' => 'SS-EXT-1003', 'message' => 'The extension list contains invalid or duplicate numbers. Review the FreePBX extension list.');
+		}
 		if (count($payload['extensions']) === 0) {
 			return array('status' => false, 'code' => 'SS-EXT-1002', 'message' => 'FreePBX has no extensions to sync. Create extensions first.');
 		}

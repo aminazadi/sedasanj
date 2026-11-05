@@ -23,6 +23,7 @@ from app.deps import OperatorDep, OrgAdminDep, Principal, TenantSession, UserDep
 from app.errors import ApiError
 from app.models import (
     CALL_TYPES,
+    UNANSWERED_CALL_TYPES,
     AnalysisRun,
     AsrTranscriptRevision,
     AsrTranscriptRevisionSegment,
@@ -69,7 +70,6 @@ from app.services import (
     call_scope,
     contacts,
     entitlements,
-    extensions,
     follow_up_tasks,
     operator_scope,
     outbox,
@@ -427,9 +427,6 @@ async def upload_call(
             raise ApiError("forbidden", "operator extension is required for call ownership")
         resolved_extension = principal.extension
 
-    direction, resolved_extension = await extensions.internal_direction_fixup(
-        session, principal.tenant_id, caller, dialed, direction, resolved_extension
-    )
     result = await accept_upload(
         tenant_id=principal.tenant_id,
         payload=await file.read(),
@@ -440,6 +437,7 @@ async def upload_call(
         ended_at=ended_at,
         direction=direction,
         agent_extension=resolved_extension,
+        manual_operator_id=principal.id if operator_scope.is_operator(principal) else None,
     )
     if result.replayed:
         response.status_code = status.HTTP_200_OK
@@ -478,6 +476,9 @@ def _summary(
         dialed_name=contacts.name_for(names, call.dialed_number) if names else None,
         direction=call.direction,
         agent_extension=call.agent_extension,
+        caller_extension=call.caller_extension,
+        dialed_extension=call.dialed_extension,
+        pbx_evidence=call.pbx_evidence,
         started_at=call.started_at,
         ended_at=call.ended_at,
         updated_at=updated_at,

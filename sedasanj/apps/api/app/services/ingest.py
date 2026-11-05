@@ -18,6 +18,7 @@ from app.metrics import credit_rejects_total, ingest_total
 from app.models import (
     AudioObject,
     Call,
+    CallOperatorAssignment,
     CreditReservation,
     Job,
     Plan,
@@ -26,7 +27,15 @@ from app.models import (
     Tenant,
 )
 from app.schemas import IngestAccepted
-from app.services import billing, entitlements, outbox, plan_credit, processing_events, progress
+from app.services import (
+    billing,
+    call_parties,
+    entitlements,
+    outbox,
+    plan_credit,
+    processing_events,
+    progress,
+)
 from app.services.audio import probe_wav_bytes, probe_wav_file
 from app.services.phone_numbers import normalize_call_number
 from app.services.platform import capability_model, effective_models
@@ -126,6 +135,11 @@ async def accept_upload(
     ended_at: datetime | None,
     direction: str | None = None,
     agent_extension: str | None = None,
+    caller_extension: str | None = None,
+    dialed_extension: str | None = None,
+    pbx_evidence: str | None = None,
+    pbx_host_uuid: UUID | None = None,
+    manual_operator_id: UUID | None = None,
     campaign_id: str | None = None,
     source: str | None = None,
     external_reference: str | None = None,
@@ -139,8 +153,11 @@ async def accept_upload(
     """§4.3 upload contract: validate, reserve credit, store, queue ASR."""
     settings = get_settings()
     unique_id = resolve_uniqueid(asterisk_uniqueid)
+    raw_caller, raw_dialed = caller_number, dialed_number
     caller_number = normalize_call_number(caller_number or "") or None
     dialed_number = normalize_call_number(dialed_number)
+    if not dialed_number and pbx_evidence:
+        dialed_number = raw_dialed.strip()
     if (not caller_number and call_type != "voicemail") or not dialed_number:
         raise ApiError("invalid_request", "caller_number and dialed_number are required")
     if direction is not None and direction not in DIRECTIONS:
@@ -211,13 +228,31 @@ async def accept_upload(
                     ),
                 )
 
+            parties = await call_parties.resolve(
+                session,
+                tenant_id,
+                host_uuid=pbx_host_uuid,
+                caller=raw_caller,
+                dialed=raw_dialed,
+                direction=direction,
+                agent=agent_extension,
+                caller_extension=caller_extension,
+                dialed_extension=dialed_extension,
+                evidence=pbx_evidence,
+                call_type=call_type,
+            )
             call = Call(
                 tenant_id=tenant_id,
                 asterisk_uniqueid=unique_id,
                 caller_number=caller_number,
                 dialed_number=dialed_number,
-                direction=direction,
-                agent_extension=agent_extension,
+                direction=parties.direction,
+                agent_extension=parties.agent_extension,
+                caller_extension=parties.caller_extension,
+                dialed_extension=parties.dialed_extension,
+                pbx_evidence=parties.evidence,
+                raw_caller_number=raw_caller,
+                raw_dialed_number=raw_dialed,
                 campaign_id=(campaign_id or "").strip() or None,
                 source=(source or "").strip() or None,
                 external_reference=(external_reference or "").strip() or None,
@@ -233,29 +268,19 @@ async def accept_upload(
             )
             session.add(call)
             await session.flush()
-            if agent_extension:
-                from app.models import CallOperatorAssignment, User
-
-                operator = (
-                    await session.execute(
-                        select(User).where(
-                            User.tenant_id == tenant_id,
-                            User.role == "operator",
-                            User.extension == agent_extension,
-                        )
+            if manual_operator_id is not None and agent_extension is not None:
+                session.add(
+                    CallOperatorAssignment(
+                        tenant_id=tenant_id,
+                        call_id=call.id,
+                        operator_id=manual_operator_id,
+                        agent_extension=agent_extension,
+                        party_role="uploader",
+                        assignment_source="manual_operator_upload",
                     )
-                ).scalar_one_or_none()
-                if operator is not None:
-                    session.add(
-                        CallOperatorAssignment(
-                            tenant_id=tenant_id,
-                            call_id=call.id,
-                            operator_id=operator.id,
-                            agent_extension=agent_extension,
-                            assignment_source="ingest_exact_extension",
-                            confidence=1.0,
-                        )
-                    )
+                )
+            else:
+                await call_parties.assign(session, call, parties)
             log_context(call_id=str(call.id))
             received = progress.values_for_status("received")
             await processing_events.record(

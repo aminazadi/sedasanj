@@ -133,21 +133,13 @@ class MissedCallPoller
         }
         $context = strtolower((string) ($row['dcontext'] ?? ''));
         $direction = null;
-        if (strpos($context, 'ext-local') !== false) {
+        $origin = CallPartyEvidence::endpoint((string) ($row['channel'] ?? ''));
+        $direct = $context === 'ext-local' && preg_match('/^[0-9]{1,8}$/', $dst);
+        if ($direct && $origin !== null) {
             $direction = 'internal';
-        } elseif (strpos($context, 'from-trunk') !== false || strpos($context, 'ext-did') !== false) {
+        } elseif ($direct || strpos($context, 'from-trunk') === 0 || strpos($context, 'ext-did') === 0) {
             $direction = 'inbound';
         }
-        $extensionCandidates = [];
-        foreach ($rows as $candidate) {
-            if (strpos(strtolower((string) ($candidate['dcontext'] ?? '')), 'ext-local') !== false) {
-                $candidateExtension = trim((string) $candidate['dst']);
-                if (preg_match('/^[0-9*#]{1,20}$/', $candidateExtension)) {
-                    $extensionCandidates[$candidateExtension] = true;
-                }
-            }
-        }
-        $extension = count($extensionCandidates) === 1 ? (string) array_key_first($extensionCandidates) : null;
         return [
             'asterisk_uniqueid' => $linkedid,
             'call_type' => $type,
@@ -156,7 +148,10 @@ class MissedCallPoller
             'started_at' => gmdate('c', $started),
             'ended_at' => gmdate('c', $started + $duration),
             'direction' => $direction,
-            'agent_extension' => $extension,
+            'agent_extension' => $direct ? $dst : null,
+            'caller_extension' => $direction === 'internal' ? $origin : null,
+            'dialed_extension' => $direct ? $dst : null,
+            'pbx_evidence' => 'direct',
             'source' => 'freepbx-cdr',
             'external_reference' => $linkedid,
         ];

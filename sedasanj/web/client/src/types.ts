@@ -17,6 +17,9 @@ export interface CallSummary {
   dialed_name?: string | null;
   direction: string | null;
   agent_extension: string | null;
+  caller_extension?: string | null;
+  dialed_extension?: string | null;
+  pbx_evidence?: string | null;
   started_at: string;
   ended_at: string;
   updated_at: string;

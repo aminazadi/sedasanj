@@ -7,6 +7,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import session_scope
 from app.models import (
     IdentityProjectionOutbox,
@@ -14,6 +15,7 @@ from app.models import (
     TenantDatabaseRegistry,
     User,
 )
+from app.services import extensions
 
 
 def _user_payload(user: User) -> dict[str, str | None]:
@@ -32,7 +34,11 @@ def _user_payload(user: User) -> dict[str, str | None]:
 
 
 async def stage_user_projection(
-    session: AsyncSession, user: User, *, operation: str = "upsert"
+    session: AsyncSession,
+    user: User,
+    *,
+    operation: str = "upsert",
+    reconcile_extension: bool = False,
 ) -> IdentityProjectionOutbox:
     now = datetime.now(UTC)
     await session.execute(
@@ -50,12 +56,23 @@ async def stage_user_projection(
         ).scalar_one()
     )
     version = max(int(now.timestamp() * 1_000_000), previous_version + 1)
+    payload = _user_payload(user)
+    if reconcile_extension:
+        if get_settings().tenant_databases_enabled:
+            payload["_reconcile_pbx_extension"] = "1"
+        else:
+            await extensions.reconcile_operator(
+                session,
+                user.tenant_id,
+                user.id,
+                user.extension if user.role == "operator" else None,
+            )
     row = IdentityProjectionOutbox(
         tenant_id=user.tenant_id,
         user_id=user.id,
         operation=operation,
         version=version,
-        payload=_user_payload(user),
+        payload=payload,
     )
     session.add(row)
     await session.flush()
@@ -71,6 +88,9 @@ async def _apply(row: IdentityProjectionOutbox) -> None:
         )
         if state is not None and state.version >= row.version:
             return
+        reconcile_extension = bool(row.payload.get("_reconcile_pbx_extension"))
+        if reconcile_extension or row.operation == "delete":
+            await extensions.lock_inventory(target, row.tenant_id)
         if row.operation == "delete":
             await target.execute(
                 update(User)
@@ -85,6 +105,7 @@ async def _apply(row: IdentityProjectionOutbox) -> None:
             )
         else:
             payload = dict(row.payload)
+            payload.pop("_reconcile_pbx_extension", None)
             payload["id"] = UUID(str(payload["id"]))
             payload["tenant_id"] = UUID(str(payload["tenant_id"]))
             created_at = payload.get("created_at")
@@ -104,6 +125,13 @@ async def _apply(row: IdentityProjectionOutbox) -> None:
                         "profile_context": statement.excluded.profile_context,
                     },
                 )
+            )
+        if reconcile_extension or row.operation == "delete":
+            extension = (
+                row.payload.get("extension") if row.payload.get("role") == "operator" else None
+            )
+            await extensions.reconcile_operator(
+                target, row.tenant_id, row.user_id, extension if row.operation != "delete" else None
             )
         if state is None:
             target.add(

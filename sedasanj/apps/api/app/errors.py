@@ -71,6 +71,7 @@ ERROR_STATUS: dict[str, int] = {
     "document_not_ready": status.HTTP_409_CONFLICT,
     "document_pdf_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "conflict": status.HTTP_409_CONFLICT,
+    "pbx_source_conflict": status.HTTP_409_CONFLICT,
     "subscription_exists": status.HTTP_409_CONFLICT,
     "change_conflict": status.HTTP_409_CONFLICT,
     "plan_not_sellable": 422,

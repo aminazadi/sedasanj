@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-05 — AMINAZADI
+
+- Fixed PBX party attribution and added an administrator review workflow for historical call ownership.
+
 ## 2026-11-04 — AMINAZADI
 
 - Fixed Jalase-Negar meeting lists blocked by a missing upload queue table and made the retry button restart local meeting recovery.

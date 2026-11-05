@@ -143,7 +143,7 @@ class CdrSource
     public function group(string $linkedid): array
     {
         $this->assertColumns(['calldate', 'src', 'dst', 'disposition', 'duration', 'uniqueid', 'linkedid', 'dcontext']);
-        $sql = 'SELECT calldate, UNIX_TIMESTAMP(calldate) AS call_epoch, src, dst, disposition, duration, uniqueid, linkedid, dcontext '
+        $sql = 'SELECT *, UNIX_TIMESTAMP(calldate) AS call_epoch '
             . 'FROM `' . $this->table . '` WHERE linkedid = :linkedid '
             . 'ORDER BY calldate ASC, uniqueid ASC';
         $stmt = $this->db->prepare($sql);

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -18,7 +17,6 @@ from app.models import (
     User,
 )
 from app.services.aiservice_decision import AiServiceDecisionClient
-from app.services.operator_scope import number_matches
 from app.services.platform import capability_model, effective_models, resolve_provider_settings
 
 
@@ -108,29 +106,7 @@ async def score_call(tenant_id: UUID, call_id: UUID, analysis_run_id: UUID) -> s
                 .order_by(CallOperatorAssignment.assigned_at.desc())
             )
         ).all()
-        users: Sequence[User] = []
-        if not assignments:
-            users = (
-                (
-                    await session.execute(
-                        select(User).where(User.tenant_id == tenant_id, User.role == "operator")
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        matched = (
-            [assignments[0][1]]
-            if len(assignments) == 1
-            else [
-                user
-                for user in users
-                if number_matches(
-                    call.agent_extension,
-                    [value for value in (user.extension, user.mobile_number) if value],
-                )
-            ]
-        )
+        matched = [user for _, user in assignments]
         label = (
             f"اپراتور داخلی {call.agent_extension}" if call.agent_extension else "اپراتور نامشخص"
         )
@@ -149,17 +125,6 @@ async def score_call(tenant_id: UUID, call_id: UUID, analysis_run_id: UUID) -> s
                 )
             return "ineligible"
         operator = matched[0]
-        if not assignments and call.agent_extension:
-            session.add(
-                CallOperatorAssignment(
-                    tenant_id=tenant_id,
-                    call_id=call_id,
-                    operator_id=operator.id,
-                    agent_extension=call.agent_extension,
-                    assignment_source="scoring_identity_match",
-                    confidence=1.0,
-                )
-            )
         label = operator.display_name or (
             f"اپراتور داخلی {operator.extension}" if operator.extension else operator.email
         )

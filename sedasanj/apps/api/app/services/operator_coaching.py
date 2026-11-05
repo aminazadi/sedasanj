@@ -38,7 +38,6 @@ from app.schemas import COACH_DIMENSION_KEYS, CoachDimension, CoachResult
 from app.services import extensions, knowledge, queue, tenant_ai_instructions
 from app.services.call_speakers import INTERNAL_CALLEE_LABEL, INTERNAL_CALLER_LABEL
 from app.services.call_speakers import speaker_labels as speaker_labels
-from app.services.operator_scope import number_matches
 from app.services.operator_scoring import default_score_criteria
 from app.services.organization_memory import append_untrusted_context
 from app.services.platform import (
@@ -291,7 +290,7 @@ def format_history(rows: list[dict[str, Any]], patterns: list[tuple[str, int]], 
 async def resolve_operator(
     session: AsyncSession, call: Call, tenant_id: UUID
 ) -> tuple[UUID | None, str]:
-    """Assigned operator when known, else the single operator matching the call extension."""
+    """Use the assignment captured for this call."""
     assigned = (
         await session.execute(
             select(User)
@@ -301,30 +300,15 @@ async def resolve_operator(
                 CallOperatorAssignment.call_id == call.id,
                 CallOperatorAssignment.superseded_at.is_(None),
             )
-            .order_by(CallOperatorAssignment.assigned_at.desc())
+            .order_by(
+                (CallOperatorAssignment.party_role.in_(("callee", "both"))).desc().nulls_last(),
+                CallOperatorAssignment.assigned_at.desc(),
+                CallOperatorAssignment.id,
+            )
             .limit(1)
         )
     ).scalar_one_or_none()
     candidate = assigned
-    if candidate is None and call.agent_extension:
-        operators = (
-            (
-                await session.execute(
-                    select(User).where(User.tenant_id == tenant_id, User.role == "operator")
-                )
-            )
-            .scalars()
-            .all()
-        )
-        matched = [
-            user
-            for user in operators
-            if number_matches(
-                call.agent_extension,
-                [value for value in (user.extension, user.mobile_number) if value],
-            )
-        ]
-        candidate = matched[0] if len(matched) == 1 else None
     if candidate is not None:
         label = candidate.display_name or (
             f"اپراتور داخلی {candidate.extension}" if candidate.extension else candidate.email

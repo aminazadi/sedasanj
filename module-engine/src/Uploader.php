@@ -78,6 +78,11 @@ class Uploader
             [$k, $v] = explode(':', $line, 2);
             $headers[trim($k)] = trim($v);
         }
+        $uuidFile = dirname($cfg['state']['state_file'] ?? '/var/lib/asterisk-recording-uploader/state.json') . '/host_uuid';
+        $hostUuid = is_readable($uuidFile) ? trim((string) file_get_contents($uuidFile)) : '';
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $hostUuid)) {
+            $headers['X-CBI-PBX-Host'] = $hostUuid;
+        }
         return $headers;
     }
 
@@ -247,6 +252,19 @@ class Uploader
         $headers = self::authHeaders($cfg);
 
         $formMetadata = IngestMapper::toIngestForm($metadata);
+        if (empty($metadata['_voicemail'])) {
+            $evidence = CallPartyEvidence::lookup(
+                (string) ($formMetadata['asterisk_uniqueid'] ?? ''),
+                (string) ($metadata['source_filename'] ?? ''),
+                (string) ($formMetadata['direction'] ?? '')
+            );
+            if ($evidence) {
+                unset($formMetadata['agent_extension']);
+                $formMetadata = array_replace($formMetadata, $evidence);
+                $formMetadata['dialed_number'] = $metadata['dialed_number'] ?? $metadata['dst']
+                    ?? $formMetadata['dialed_number'];
+            }
+        }
 
         $missing = [];
         $requiredFields = !empty($metadata['_voicemail'])

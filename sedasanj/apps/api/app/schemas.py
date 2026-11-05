@@ -209,6 +209,9 @@ class MissedCallIngest(BaseModel):
     ended_at: datetime
     direction: Literal["inbound", "outbound", "internal"] | None = None
     agent_extension: str | None = Field(default=None, max_length=80)
+    caller_extension: str | None = Field(default=None, max_length=20)
+    dialed_extension: str | None = Field(default=None, max_length=20)
+    pbx_evidence: Literal["cdr", "ambiguous", "direct"] | None = None
     campaign_id: str | None = Field(default=None, max_length=120)
     source: str | None = Field(default=None, max_length=120)
     external_reference: str | None = Field(default=None, max_length=255)
@@ -818,6 +821,9 @@ class CallSummary(BaseModel):
     dialed_number: str | None
     direction: str | None
     agent_extension: str | None
+    caller_extension: str | None = None
+    dialed_extension: str | None = None
+    pbx_evidence: str | None = None
     started_at: datetime
     ended_at: datetime
     updated_at: datetime
@@ -1782,7 +1788,8 @@ class ExtensionSyncItem(BaseModel):
 class ExtensionSyncIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    extensions: list[ExtensionSyncItem] = Field(max_length=5000)
+    extensions: list[ExtensionSyncItem] = Field(min_length=1, max_length=5000)
+    host_uuid: UUID | None = None
 
 
 class ExtensionSyncOut(BaseModel):
