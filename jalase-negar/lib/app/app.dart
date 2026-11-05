@@ -59,11 +59,27 @@ class _JalaseNegarAppState extends ConsumerState<JalaseNegarApp> {
   }
 }
 
-class _RouterApp extends ConsumerWidget {
+class _RouterApp extends ConsumerStatefulWidget {
   const _RouterApp();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_RouterApp> createState() => _RouterAppState();
+}
+
+class _RouterAppState extends ConsumerState<_RouterApp> {
+  @override
+  void initState() {
+    super.initState();
+    // The database is open here, so the self-updater can read the upload
+    // backlog. Fire and forget: it never delays the first frame.
+    Future<void>.microtask(
+      () =>
+          ref.read(updateControllerProvider.notifier).startBackgroundUpdates(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'جلسه‌نگار',
       debugShowCheckedModeBanner: false,

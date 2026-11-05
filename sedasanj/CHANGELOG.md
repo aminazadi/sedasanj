@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Added staged rollout (`rollout_percent`), a forced minimum build (`min_supported_version_code`) and a stable/beta channel to Jalase-Negar releases, with a deterministic bucket from the app's anonymous install id and the matching admin fields.
+- Added an anonymous, rate-limited install-result report endpoint, the `cbi_jalase_negar_update_install_total` counter, the `update_checksum_mismatch`, `update_downgrade_rejected` and `update_install_blocked` codes and their Persian help articles; migration 0104 also merges the two 0103 heads.
 - Moved organization backup and restore history to a dedicated page with URL-backed filters, downloads, and links to resume restores.
 - Matched organization data section headings to the panel's dotted title bands.
 - Moved Jalase Negar pairing and device management from the profile to Account Settings for all user roles.

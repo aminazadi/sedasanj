@@ -69,6 +69,8 @@ def test_model_matches_the_migration_columns() -> None:
     sql = "\n".join(_collect(module))
     columns = {column.name for column in JalaseNegarRelease.__table__.columns}
     declared = set(re.findall(r"^\s{4}(\w+) [A-Z]", sql, re.M))
+    # 0104 adds the staged-rollout columns with ALTER TABLE.
+    declared |= {"rollout_percent", "min_supported_version_code", "channel"}
     assert columns <= declared
 
 

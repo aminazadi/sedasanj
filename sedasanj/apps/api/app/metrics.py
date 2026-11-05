@@ -19,6 +19,11 @@ meeting_failures_total = Counter(
 jalase_negar_update_checks_total = Counter(
     "cbi_jalase_negar_update_checks_total", "Jalase-Negar in-app update checks", ["result"]
 )
+jalase_negar_update_install_total = Counter(
+    "cbi_jalase_negar_update_install_total",
+    "Jalase-Negar automatic update outcomes reported by the app",
+    ["result", "error_code", "silent"],
+)
 jalase_negar_download_total = Counter(
     "cbi_jalase_negar_download_total", "Jalase-Negar APK download requests by outcome", ["result"]
 )

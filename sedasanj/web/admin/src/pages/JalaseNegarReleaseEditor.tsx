@@ -6,7 +6,7 @@ import { useSensitiveAction } from "../components/SensitiveActionDialog";
 import { ErrorBox, Loading } from "../components/Widgets";
 import { releaseErrorMessage } from "../lib/jalaseNegarErrors";
 import { formatBytes, sanitizeHtml } from "../sanitize";
-import type { JalaseNegarRelease } from "../types";
+import type { JalaseNegarRelease, JalaseNegarReleaseChannel } from "../types";
 import { downloadApk, STATUS_META } from "./JalaseNegarReleases";
 
 const RichTextEditor = lazy(() => import("../components/RichTextEditor"));
@@ -95,6 +95,9 @@ export default function JalaseNegarReleaseEditor() {
   const [release, setRelease] = useState<JalaseNegarRelease | null>(null);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
+  const [rollout, setRollout] = useState(100);
+  const [minSupported, setMinSupported] = useState(0);
+  const [channel, setChannel] = useState<JalaseNegarReleaseChannel>("stable");
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "preview" ? "preview" : "edit";
   const setTab = (value: "edit" | "preview") => setParams((old) => { const next = new URLSearchParams(old); next.set("tab", value); return next; });
@@ -108,6 +111,9 @@ export default function JalaseNegarReleaseEditor() {
     setRelease(loaded);
     setTitle(loaded.title);
     setNotes(loaded.changelog_html);
+    setRollout(loaded.rollout_percent);
+    setMinSupported(loaded.min_supported_version_code);
+    setChannel(loaded.channel);
   }
 
   useEffect(() => {
@@ -127,7 +133,12 @@ export default function JalaseNegarReleaseEditor() {
   }
   if (!release) return error ? <ErrorBox message={error} /> : <Loading />;
 
-  const dirty = title !== release.title || notes !== release.changelog_html;
+  const dirty =
+    title !== release.title ||
+    notes !== release.changelog_html ||
+    rollout !== release.rollout_percent ||
+    minSupported !== release.min_supported_version_code ||
+    channel !== release.channel;
 
   async function save(): Promise<JalaseNegarRelease | null> {
     if (!release) return null;
@@ -136,7 +147,7 @@ export default function JalaseNegarReleaseEditor() {
     try {
       const saved = await request<JalaseNegarRelease>(`/v1/admin/jalase-negar/releases/${release.id}`, {
         method: "PATCH",
-        body: { title, changelog_html: notes },
+        body: { title, changelog_html: notes, rollout_percent: rollout, min_supported_version_code: minSupported, channel },
       });
       adopt(saved);
       setNotice("تغییرات ذخیره شد.");
@@ -242,6 +253,32 @@ export default function JalaseNegarReleaseEditor() {
             {release.status === "published" ? (
               <button className="btn-ghost text-rose-700" disabled={saving} onClick={() => void transition("revoke")}>لغو انتشار</button>
             ) : null}
+          </div>
+          <div className="card space-y-3 text-sm">
+            <div className="font-bold text-slate-800">انتشار مرحله‌ای به‌روزرسانی خودکار</div>
+            <div>
+              <label className="label">درصد انتشار (۰ تا ۱۰۰)</label>
+              <input
+                className="input" type="number" min={0} max={100} dir="ltr" value={rollout}
+                onChange={(e) => { setNotice(null); setRollout(Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0)))); }}
+              />
+              <div className="mt-1 text-xs text-slate-500">هر نصب با شناسهٔ تصادفی خودش در یک گروه ثابت قرار دارد؛ با افزایش درصد، گروه‌های بیشتری پیشنهاد را می‌گیرند. ۰ یعنی فعلاً به هیچ نصبی پیشنهاد نمی‌شود.</div>
+            </div>
+            <div>
+              <label className="label">حداقل شماره ساخت پشتیبانی‌شده</label>
+              <input
+                className="input" type="number" min={0} max={release.version_code} dir="ltr" value={minSupported}
+                onChange={(e) => { setNotice(null); setMinSupported(Math.max(0, Math.round(Number(e.target.value) || 0))); }}
+              />
+              <div className="mt-1 text-xs text-slate-500">نصب‌هایی با شماره ساخت کمتر از این عدد، بدون توجه به درصد انتشار، به‌روزرسانی را اجباری می‌بینند. فقط برای ناسازگاری پروتکل استفاده کنید؛ ۰ یعنی غیرفعال.</div>
+            </div>
+            <div>
+              <label className="label">کانال</label>
+              <select className="input" value={channel} onChange={(e) => { setNotice(null); setChannel(e.target.value as JalaseNegarReleaseChannel); }}>
+                <option value="stable">پایدار (همه)</option>
+                <option value="beta">آزمایشی (فقط نصب‌های آزمایشی)</option>
+              </select>
+            </div>
           </div>
           <div className="card space-y-2 text-sm">
             <div className="font-bold text-slate-800">مشخصات فایل (خوانده‌شده از APK)</div>

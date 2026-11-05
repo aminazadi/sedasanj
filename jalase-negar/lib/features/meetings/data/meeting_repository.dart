@@ -237,6 +237,24 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     return rows.map(Meeting.fromRow).toList();
   }
 
+  /// What still has to leave the phone: unsent audio chunks of meetings the
+  /// queue will send, and transcript edits not yet pushed. The self-updater
+  /// installs only when both are zero.
+  Future<({int pendingChunks, int textSyncPending})> updateBacklog() async {
+    final chunks = await _db.db.rawQuery(
+      "SELECT COUNT(*) AS n FROM upload_chunks c JOIN meetings m ON m.id = c.meeting_id "
+      "WHERE c.status != 'sent' AND m.send_text = 1 AND m.status IN "
+      "('recording', 'recorded', 'transcribed', 'uploading', 'processing')",
+    );
+    final text = await _db.db.rawQuery(
+      'SELECT COUNT(*) AS n FROM meetings WHERE text_sync_pending = 1',
+    );
+    return (
+      pendingChunks: (chunks.first['n'] as int?) ?? 0,
+      textSyncPending: (text.first['n'] as int?) ?? 0,
+    );
+  }
+
   @override
   Future<List<UploadChunk>> chunks(String meetingId) async {
     final rows = await chunkRows(meetingId);

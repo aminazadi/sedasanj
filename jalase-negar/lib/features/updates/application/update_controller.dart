@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/app_update.dart';
 import '../data/update_client.dart';
 import '../data/update_environment.dart';
+import 'update_background.dart';
 
 final updateClientProvider = Provider<UpdateClient>((ref) => UpdateClient());
 
@@ -63,6 +64,7 @@ class ManualCheckResult {
 
 class UpdateController extends Notifier<UpdateState> {
   bool _launchChecked = false;
+  bool _backgroundStarted = false;
 
   @override
   UpdateState build() => const UpdateState();
@@ -136,12 +138,40 @@ class UpdateController extends Notifier<UpdateState> {
   /// "بعداً": set the offer aside until the next cold start.
   void postpone() => state = state.copyWith(dismissed: true);
 
-  /// "دریافت نسخه": hand the download to the browser. Returns a Persian error
-  /// message when the browser could not be opened.
+  /// Registers the periodic background update check and starts publishing the
+  /// calm-moment inputs. Safe to call more than once.
+  Future<void> startBackgroundUpdates() async {
+    _backgroundStarted = true;
+    final native = ref.read(updateNativeProvider);
+    ref.read(updateCalmPublisherProvider);
+    await native.scheduleBackgroundUpdates();
+  }
+
+  /// The user left the app: the calm-moment inputs are published and the
+  /// worker gets one chance to apply a downloaded update. No-op until
+  /// [startBackgroundUpdates] ran (for example in widget tests).
+  Future<void> onAppPaused() async {
+    if (!_backgroundStarted) return;
+    await ref.read(updateCalmPublisherProvider.notifier).publish();
+    await ref.read(updateNativeProvider).runUpdatePassSoon();
+  }
+
+  /// "دریافت نسخه": first try the one-tap install of an update the background
+  /// worker already downloaded and verified; otherwise hand the download to
+  /// the browser. Returns a Persian error message when neither worked.
   Future<String?> download() async {
     final offer = state.offer;
-    if (offer == null)
+    if (offer == null) {
       return 'پیشنهاد به‌روزرسانی دیگر معتبر نیست؛ دوباره بررسی کنید.';
+    }
+    try {
+      if (offer.canAutoInstall &&
+          await ref.read(updateNativeProvider).installDownloaded()) {
+        return null;
+      }
+    } catch (_) {
+      // Falls back to the browser below.
+    }
     try {
       final opened = await ref.read(updateLauncherProvider)(offer.downloadUri);
       if (opened) return null;

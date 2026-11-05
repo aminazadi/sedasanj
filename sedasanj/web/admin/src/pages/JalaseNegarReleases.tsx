@@ -143,6 +143,7 @@ export default function JalaseNegarReleases() {
                   <th>شماره ساخت</th>
                   <th>عنوان</th>
                   <th>وضعیت</th>
+                  <th>انتشار</th>
                   <th>تاریخ انتشار</th>
                   <th>حجم</th>
                   <th />
@@ -155,6 +156,10 @@ export default function JalaseNegarReleases() {
                     <td className="font-mono" dir="ltr">{release.version_code}</td>
                     <td className="max-w-xs truncate">{release.title}</td>
                     <td><span className={`badge ${STATUS_META[release.status].className}`}>{STATUS_META[release.status].label}</span></td>
+                    <td className="whitespace-nowrap text-xs" dir="ltr">
+                      {release.rollout_percent}% · {release.channel}
+                      {release.min_supported_version_code > 0 ? ` · min ${release.min_supported_version_code}` : ""}
+                    </td>
                     <td>{release.published_at ? fmt.dateTime(release.published_at) : "—"}</td>
                     <td>{formatBytes(release.artifact_size)}</td>
                     <td className="whitespace-nowrap">
