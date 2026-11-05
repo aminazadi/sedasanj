@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { normalizeOtp } from "@cbi/web-shared/lib/otp";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { isCompleteOtp, normalizeOtp } from "@cbi/web-shared/lib/otp";
 import { ApiError, request } from "../api";
 import { useAuth } from "../auth";
 import type { TokenPair } from "../types";
 import { ErrorBox } from "./Widgets";
 import passwordArt from "../assets/password-change.svg";
+import OtpDigits from "./OtpDigits";
 
 const clock = new Intl.NumberFormat("fa-IR", { minimumIntegerDigits: 2, useGrouping: false });
 
@@ -29,6 +30,19 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
 
   const [remaining, setRemaining] = useState(0);
   const [total, setTotal] = useState(0);
+  const autoSubmittedOtp = useRef("");
+  const verifying = useRef(false);
+
+  useEffect(() => {
+    if (!isCompleteOtp(code)) {
+      autoSubmittedOtp.current = "";
+      return;
+    }
+    const key = `${otp?.otp_id}:${code}`;
+    if (!otp || grant || busy || autoSubmittedOtp.current === key) return;
+    autoSubmittedOtp.current = key;
+    void verifyCode();
+  }, [code, otp, grant, busy]);
 
   useEffect(() => {
     if (!resendAt) {
@@ -46,6 +60,7 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
   }, [resendAt]);
 
   async function sendCode() {
+    if (busy || resendAt > Date.now()) return;
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -55,6 +70,9 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
       setCode("");
       setGrant("");
       setTotp("");
+      setPassword("");
+      setConfirmation("");
+      autoSubmittedOtp.current = "";
       setTotal(result.resend_after);
       setResendAt(Date.now() + result.resend_after * 1000);
     } catch (reason) {
@@ -64,9 +82,30 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
     }
   }
 
+  async function verifyCode() {
+    if (!otp || grant || busy || verifying.current || !isCompleteOtp(code)) return;
+    verifying.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await request<{ verified_token: string }>("/v1/auth/phone/verify", {
+        method: "POST",
+        retry: false,
+        body: { otp_id: otp.otp_id, code },
+      });
+      setGrant(result.verified_token);
+      setCode("");
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      verifying.current = false;
+      setBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!otp || busy) return;
+    if (!otp || !grant || busy) return;
     if (password !== confirmation) {
       setError("گذرواژهٔ جدید و تکرار آن باید یکسان باشند.");
       return;
@@ -74,20 +113,10 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
     setBusy(true);
     setError(null);
     try {
-      let verifiedToken = grant;
-      if (!verifiedToken) {
-        const result = await request<{ verified_token: string }>("/v1/auth/phone/verify", {
-          method: "POST",
-          retry: false,
-          body: { otp_id: otp.otp_id, code },
-        });
-        verifiedToken = result.verified_token;
-        setGrant(verifiedToken);
-        setCode("");
-      }
       const pair = await request<TokenPair>("/v1/auth/phone/password/change", {
         method: "POST",
-        body: { verified_token: verifiedToken, new_password: password, totp_code: totp || null },
+        retry: false,
+        body: { verified_token: grant, new_password: password, totp_code: totp || null },
       });
       acceptSession(pair);
       setSaved(true);
@@ -103,6 +132,10 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
       if (reason instanceof ApiError && reason.code === "password_change_verification_required") {
         setOtp(null);
         setGrant("");
+        setCode("");
+        setPassword("");
+        setConfirmation("");
+        setTotp("");
       }
       setError((reason as Error).message);
     } finally {
@@ -119,7 +152,7 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
       <div className="min-w-0 space-y-5">
         <p className="text-sm leading-7 text-slate-500">{mobile ? <>کد تأیید به شمارهٔ <bdi dir="ltr">{mobile}</bdi> ارسال می‌شود.</> : "برای دریافت کد تأیید، ابتدا شماره موبایل را در پروفایل ذخیره کنید."}</p>
         {saved ? <p className="form-success" role="status">گذرواژه تغییر کرد.</p> : null}
-        {mobile ? <div className="password-otp-bar">
+        {mobile && !grant ? <div className="password-otp-bar">
           {otp && remaining > 0 ? <div className="password-timer" role="timer" aria-live="off">
             <svg className="password-timer-ring" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
               <circle className="password-timer-track" cx="28" cy="28" r="25" />
@@ -131,19 +164,22 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
             {otp ? (remaining > 0 ? "ارسال دوباره پس از پایان زمان" : "ارسال دوباره کد") : "ارسال کد تأیید"}
           </button>
         </div> : null}
-        {otp ? <form className="space-y-4" onSubmit={(event) => void submit(event)}>
+        {otp && !grant ? <form className="max-w-sm space-y-4" onSubmit={(event) => { event.preventDefault(); void verifyCode(); }}>
+          <fieldset disabled={busy} className="space-y-3">
+            <p className="label">کد شش‌رقمی پیامک را وارد کنید.</p>
+            <OtpDigits value={code} onChange={setCode} autoFocus label="کد شش‌رقمی پیامک" />
+            <button className="btn" disabled={busy || !isCompleteOtp(code)}>{busy ? "در حال تأیید…" : "تأیید کد"}</button>
+          </fieldset>
+        </form> : null}
+        {otp && grant ? <form className="space-y-4" onSubmit={(event) => void submit(event)}>
           <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
-            {!grant ? <label>
-              <span className="label">کد شش‌رقمی پیامک</span>
-              <input className="input" dir="ltr" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" value={code} onChange={(event) => setCode(normalizeOtp(event.target.value))} required />
-            </label> : null}
             {otp.requires_totp ? <label>
               <span className="label">کد ورود دومرحله‌ای</span>
               <input className="input" dir="ltr" inputMode="numeric" pattern="[0-9]{6}" value={totp} onChange={(event) => setTotp(normalizeOtp(event.target.value))} required />
             </label> : null}
             <label>
               <span className="label">گذرواژهٔ جدید (حداقل ۸ نویسه)</span>
-              <input className="input" type="password" dir="ltr" autoComplete="new-password" minLength={8} maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} required />
+              <input className="input" type="password" dir="ltr" autoComplete="new-password" autoFocus minLength={8} maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} required />
             </label>
             <label>
               <span className="label">تکرار گذرواژهٔ جدید</span>

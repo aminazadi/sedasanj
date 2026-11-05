@@ -1,0 +1,2 @@
+.demo-otp-inputs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;direction:ltr}
+.demo-otp-inputs input{width:100%;min-width:0;padding:12px 4px;text-align:center;font-size:1.25rem;font-variant-numeric:tabular-nums}

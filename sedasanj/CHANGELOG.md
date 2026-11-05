@@ -1,5 +1,7 @@
 ## 2026-11-05 — AMINAZADI
 
+- Changed password updates to verify the shared six-digit OTP input before displaying new-password fields, with automatic verification, retry handling, and preserved two-factor checks.
+
 - Added audited role editing for admin staff with password/TOTP verification and self-change protection, organization-member role selection with quota checks, and synced PBX extension dropdowns with custom values in member creation and editing.
 
 - Fixed the password verification countdown ring rendering as a square under the panel's zero-radius styles by drawing its track and progress with SVG circles.
