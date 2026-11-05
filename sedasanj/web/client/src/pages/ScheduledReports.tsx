@@ -1,30 +1,21 @@
 import { useTablePageSize } from "../lib/useTablePagination";
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
-import { AssistantCharts } from "../components/AssistantCharts";
-import DocumentEditor from "../components/DocumentEditor";
 import DocumentTabs from "../components/DocumentTabs";
-import DocumentHeader from "../components/DocumentHeader";
-import DocumentActions from "../components/DocumentActions";
 import FormDialog from "../components/FormDialog";
 import reportArt from "../assets/scheduled-report.webp";
-import MarkdownMessage from "../components/MarkdownMessage";
 import { PageHeader } from "../components/PageHeader";
 import { Empty, ErrorBox, Pagination } from "../components/Widgets";
 import { FilterSelect, useFilterBar } from "@cbi/web-shared/components/FilterBar";
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
-import { chart } from "@cbi/web-shared/theme";
-import type { AssistantChart } from "../types";
 
-type ReportInput = { name: string; instructions: string; enabled: boolean; schedule_mode: "interval" | "fixed"; interval_hours: number | null; fixed_hours: number[]; max_retries: number; retry_base_minutes: number };
-type Report = ReportInput & { id: string; next_run_at: string | null; archived_at: string | null };
-type Run = { id: string; report_id: string; name: string; title?: string | null; instructions: string; trigger: string; status: string; from_date: string; to_date: string; timezone: string; content: string | null; charts?: AssistantChart[]; error_detail: string | null; created_at: string; sources: {call_id: string}[]; model: string | null; attempt_count: number; max_retries: number; next_attempt_at: string | null; coverage: Record<string, unknown> };
-type RunSummary = Pick<Run, "id" | "report_id" | "name" | "title" | "trigger" | "status" | "from_date" | "to_date" | "created_at" | "error_detail" | "attempt_count" | "max_retries" | "next_attempt_at" | "coverage">;
+import type { ReportInput, Report, Run, RunSummary } from "../lib/scheduledReports";
+import { RunStatusBadge, TriggerBadge, statuses } from "../components/ScheduledReportDocument";
+import { reportDetailUrl } from "../lib/scheduledReportNavigation.mjs";
+
 const empty: ReportInput = { name: "", instructions: "", enabled: true, schedule_mode: "interval", interval_hours: 24, fixed_hours: [], max_retries: 3, retry_base_minutes: 5 };
-const statuses: Record<string, string> = { queued: "در صف", running: "در حال ساخت", succeeded: "آماده", failed: "ناموفق" };
-const STATUS_COLORS: Record<string, string> = { queued: chart.warning, running: chart.cyan, succeeded: chart.primary, failed: chart.danger };
 const RUN_COLUMNS: SkeletonColumn[] = [
   { label: "گزارش", width: "10rem" },
   { label: "زمان", width: "8.5rem" },
@@ -33,56 +24,8 @@ const RUN_COLUMNS: SkeletonColumn[] = [
   { label: "وضعیت", kind: "badge" },
 ];
 
-function runStatusLabel(run: { status: string; next_attempt_at: string | null }) {
-  return run.status === "queued" && run.next_attempt_at ? "در انتظار تلاش مجدد" : statuses[run.status] ?? run.status;
-}
-
-/** Square tag with a status dot, in the chart palette. */
-function RunStatusBadge({ run }: { run: { status: string; next_attempt_at: string | null } }) {
-  const color = STATUS_COLORS[run.status] ?? chart.neutral;
-  return <span className="badge border bg-[#F2F0EF] font-semibold" style={{ borderColor: color, color }}><i className="inline-block h-1.5 w-1.5" style={{ background: color }} aria-hidden="true" />{runStatusLabel(run)}</span>;
-}
-
-function TriggerBadge({ trigger }: { trigger: string }) {
-  return <span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">{trigger === "manual" ? "اجرای دستی" : "زمان‌بندی‌شده"}</span>;
-}
-
-function reportPeriod(run: Run) {
-  const format = (timeZone: string) => new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
-    dateStyle: "short", timeStyle: "short", timeZone,
-  });
-  let timezone = run.timezone;
-  let formatter: Intl.DateTimeFormat;
-  try {
-    formatter = format(timezone);
-  } catch {
-    timezone = "Asia/Tehran";
-    formatter = format(timezone);
-  }
-  return { timezone, window: `${formatter.format(new Date(run.from_date))} تا ${formatter.format(new Date(run.to_date))}` };
-}
-
-function ReportCoverage({ coverage }: { coverage: Record<string, unknown> }) {
-  return <>
-    <div className="mb-4 grid gap-3 sm:grid-cols-3">{([["تماس‌ها", coverage.calls], ["تماس‌های ایندکس‌شده", coverage.indexed_calls], ["شواهد معنایی", coverage.semantic_results]] as Array<[string, unknown]>).map(([label, value]) => <div key={String(label)} className="border border-[#B2AC88] bg-[#F2F0EF] p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-bold text-[#4B6E48]">{fmt.int(Number(value || 0))}</div></div>)}</div>
-        {Array.isArray(coverage.warnings) && coverage.warnings.length ? <ul className="mb-4 list-inside list-disc text-sm text-slate-600">{coverage.warnings.map((warning, index) => <li key={index}>{String(warning)}</li>)}</ul> : null}
-  </>;
-}
-
-function ReportDocumentActions({ run, content, period }: { run: Run; content: string; period: ReturnType<typeof reportPeriod> }) {
-  const metadata: Array<[string, string]> = [["بازه گزارش", period.window]];
-  if (run.title && run.title !== run.name) metadata.push(["نام زمان‌بندی", run.name]);
-  metadata.push(["منطقه زمانی", period.timezone]);
-  return (
-    <DocumentActions contentKey={run.id + content + JSON.stringify([run.charts, run.coverage, metadata])} title={run.title || run.name} kind="گزارش زمان‌بندی‌شده" metadata={metadata}>
-      <ReportCoverage coverage={run.coverage} />
-      <MarkdownMessage content={content} />
-      <AssistantCharts charts={run.charts ?? []} print />
-    </DocumentActions>
-  );
-}
-
 export default function ScheduledReports() {
+  const navigate = useNavigate();
   const [PAGE_SIZE] = useTablePageSize();
   const [params, setParams] = useSearchParams();
   const settings = params.get("tab") === "settings";
@@ -95,10 +38,6 @@ export default function ScheduledReports() {
   const [reports, setReports] = useState<Report[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [total, setTotal] = useState(0);
-  const [reportDraft, setReportDraft] = useState<string | null>(null);
-  const [detail, setDetail] = useState<Run | null>(null);
-  useEffect(() => { setReportDraft(null); }, [selected]);
-  const period = detail ? reportPeriod(detail) : null;
   const [form, setForm] = useState<ReportInput>({ ...empty });
   const [editing, setEditing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -110,10 +49,6 @@ export default function ScheduledReports() {
   const listKeyRef = useRef("");
   const refresh = () => setRevision(value => value + 1);
   function change(values: Record<string, string | null>) {
-    if (reportDraft !== null && ("run" in values || "tab" in values)) {
-      if (!window.confirm("تغییرات گزارش ذخیره نشده‌اند؛ بدون ذخیره خارج می‌شوید؟")) return;
-      setReportDraft(null);
-    }
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(values)) { if (value) next.set(key, value); else next.delete(key); }
     setParams(next);
@@ -121,7 +56,6 @@ export default function ScheduledReports() {
   useEffect(() => {
     let active = true;
     let timer: number | undefined;
-    // Skeleton only when the list changes; opening a run just loads its detail.
     const listKey = [PAGE_SIZE, settings, archived, offset, reportId, status, trigger, revision].join("|");
     if (listKeyRef.current !== listKey) { listKeyRef.current = listKey; setLoading(true); }
     const query = new URLSearchParams({ offset: String(offset), limit: String(PAGE_SIZE) });
@@ -131,18 +65,17 @@ export default function ScheduledReports() {
     async function load() {
       const sequence = ++requestSequence.current;
       try {
-        const [definitions, archive, run] = await Promise.all([
+        const [definitions, archive] = await Promise.all([
           settings ? request<Report[]>(`/v1/scheduled-reports?archived=${archived}`) : Promise.all([
             request<Report[]>("/v1/scheduled-reports"), request<Report[]>("/v1/scheduled-reports?archived=true"),
           ]).then(([active, previous]) => [...active, ...previous]),
           request<{items: RunSummary[]; total: number}>(`/v1/scheduled-reports/runs?${query}`),
-          selected ? request<Run>(`/v1/scheduled-reports/runs/${selected}`) : Promise.resolve(null),
         ]);
-        if (active && sequence === requestSequence.current) { setReports(definitions); setRuns(archive.items); setTotal(archive.total); setDetail(run); setError(""); setLoading(false); }
+        if (active && sequence === requestSequence.current) { setReports(definitions); setRuns(archive.items); setTotal(archive.total); setError(""); setLoading(false); }
       } catch (err) { if (active && sequence === requestSequence.current) { setError((err as Error).message); setLoading(false); } }
       finally { if (active) timer = window.setTimeout(() => void load(), 10000); }
     }
-    void load();
+    if (!selected) void load();
     return () => { active = false; requestSequence.current += 1; window.clearTimeout(timer); };
   }, [PAGE_SIZE, settings, archived, offset, reportId, status, trigger, selected, revision]);
   async function mutate(action: () => Promise<unknown>) {
@@ -177,6 +110,7 @@ export default function ScheduledReports() {
     </div>
   );
   const scheduleText = (report: Report) => report.schedule_mode === "interval" ? `هر ${fmt.int(report.interval_hours || 0)} ساعت` : `ساعت‌های ${report.fixed_hours.map(hour => `${fmt.int(hour)}:۰۰`).join("، ")}`;
+  if (selected) return <Navigate to={reportDetailUrl(selected, params)} replace />;
   return <div className="space-y-5" dir="rtl">
     <PageHeader title="گزارش‌های زمان‌بندی‌شده" description="گزارش‌های مدیریتی با معیارهای دلخواه، بر پایهٔ اطلاعات و حافظهٔ سازمان" actions={toolbar} />
     <DocumentTabs align="start" value={settings ? "settings" : "archive"} options={[{ value: "archive", label: "آرشیو گزارش‌ها" }, { value: "settings", label: "مدیریت و زمان‌بندی" }]} onChange={value => change({ tab: value, ...(value === "settings" ? { run: null } : {}) })} label="بخش گزارش‌ها" />
@@ -234,7 +168,7 @@ export default function ScheduledReports() {
           <div className="flex justify-between gap-2"><dt className="text-slate-500">فاصلهٔ پایه</dt><dd>{fmt.int(report.retry_base_minutes)} دقیقه</dd></div>
         </dl>
         <div className="mt-4 flex flex-wrap gap-2 border-t border-[#B2AC88] pt-3">
-          {!report.archived_at ? <button className="btn h-9 px-3 py-0 text-xs" disabled={busy} onClick={() => void mutate(async () => { const run = await request<Run>(`/v1/scheduled-reports/${report.id}/run`, {method: "POST", body: {idempotency_key: crypto.randomUUID()}}); change({tab: "archive", run: run.id, status: null, offset: null}); })}>اجرای همین حالا</button> : null}
+          {!report.archived_at ? <button className="btn h-9 px-3 py-0 text-xs" disabled={busy} onClick={() => void mutate(async () => { const run = await request<Run>(`/v1/scheduled-reports/${report.id}/run`, {method: "POST", body: {idempotency_key: crypto.randomUUID()}}); navigate(reportDetailUrl(run.id, params)); })}>اجرای همین حالا</button> : null}
           <button className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => change({tab: "archive", report: report.id, offset: null, run: null})}>مشاهده آرشیو</button>
           {!report.archived_at ? <>
             <button className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => edit(report)}>ویرایش</button>
@@ -246,32 +180,10 @@ export default function ScheduledReports() {
       {!reports.length && !loading ? <div className="card"><Empty>گزارشی تعریف نشده است.</Empty></div> : null}
     </> : <>
       {filterBar.fields}
-      {detail && period && detail.id === selected ? <article className="space-y-4">
-        <DocumentHeader title={detail.title || detail.name} status={<RunStatusBadge run={detail} />}
-          metadata={<><span>{period.window}</span><bdi>{period.timezone}</bdi>{detail.title && detail.title !== detail.name ? <span>نام زمان‌بندی {detail.name}</span> : null}</>}
-          actions={<>
-            {detail.status === "succeeded" && detail.content ? <ReportDocumentActions run={detail} content={reportDraft ?? detail.content} period={period} /> : null}
-            <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => change({run: null})}>بستن گزارش</button>
-          </>}
-        />
-        <div className="card">
-        {detail.status !== "succeeded" ? <div className="mb-4 flex flex-wrap items-center gap-2"><RunStatusBadge run={detail} /><TriggerBadge trigger={detail.trigger} /><span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">تلاش {fmt.int(detail.attempt_count)} از {fmt.int(detail.max_retries + 1)}</span>{detail.next_attempt_at ? <span className="text-xs text-slate-500">تلاش بعدی: {fmt.dateTime(detail.next_attempt_at)}</span> : null}</div> : null}
-        {detail.status !== "succeeded" && detail.error_detail ? <p className="mb-4 border border-[#B2AC88] border-s-4 bg-[#F2F0EF] p-3 text-sm text-slate-700" style={{ borderInlineStartColor: chart.warning }}>{detail.error_detail}</p> : null}
-        <ReportCoverage coverage={detail.coverage} />
-        {detail.content ? <div className="document-body">{detail.status === "succeeded" ? <DocumentEditor
-          key={detail.id} content={detail.content} expectedContent={detail.content}
-          path={`/v1/scheduled-reports/runs/${detail.id}`} onDraftChange={setReportDraft}
-          onSaved={(content) => { setDetail(current => current?.id === detail.id ? { ...current, content } : current); refresh(); }}
-        /> : <MarkdownMessage content={detail.content} />}</div> : detail.status === "failed" ? null : <p role="status" className="text-sm text-slate-500">{detail.error_detail || "گزارش در حال آماده‌سازی است…"}</p>}
-        <AssistantCharts charts={detail.charts ?? []} print />
-        <details className="mt-4 border-t border-[#B2AC88] pt-3"><summary className="cursor-pointer text-sm text-[#4B6E48]">معیارهای این اجرا</summary><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{detail.instructions}</p></details>
-        {detail.sources.length ? <div className="mt-4 flex flex-wrap gap-2">{detail.sources.map(source => <Link className="btn-ghost h-9 px-3 py-0 text-xs inline-flex items-center" key={source.call_id} to={`/calls/${source.call_id}`}>مشاهده تماس {source.call_id.slice(0, 8)}</Link>)}</div> : null}
-        </div>
-      </article> : null}
       <div className="card">
         {loading ? <SkeletonTable columns={RUN_COLUMNS} rows={runs.length ? Math.min(runs.length, PAGE_SIZE) : 6} /> : runs.length === 0 ? <Empty>گزارشی در این فیلتر وجود ندارد.</Empty> : <table className="table" dir="rtl">
           <thead><tr>{RUN_COLUMNS.map((column, index) => <th key={index}>{column.label}</th>)}</tr></thead>
-          <tbody>{runs.map(run => <tr key={run.id} className={`table-row-link ${run.id === selected ? "font-bold" : ""}`} role="link" tabIndex={0} aria-current={run.id === selected} onClick={() => change({run: run.id})} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); change({run: run.id}); } }}>
+          <tbody>{runs.map(run => <tr key={run.id} className="table-row-link" role="link" tabIndex={0} onClick={() => navigate(reportDetailUrl(run.id, params))} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(reportDetailUrl(run.id, params)); } }}>
             <td>{run.title || run.name}</td>
             <td>{fmt.dateTime(run.created_at)}</td>
             <td><TriggerBadge trigger={run.trigger} /></td>

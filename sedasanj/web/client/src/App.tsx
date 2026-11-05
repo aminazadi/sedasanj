@@ -28,6 +28,7 @@ import Overview from "./pages/Overview";
 import Tasks from "./pages/Tasks";
 import Assistant from "./pages/Assistant";
 import ScheduledReports from "./pages/ScheduledReports";
+import ScheduledReportDetail from "./pages/ScheduledReportDetail";
 import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
 import Signup from "./pages/Signup";
@@ -85,6 +86,7 @@ export default function App() {
         <Route path="/extensions" element={<Extensions />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/assistant" element={<Assistant />} />
+        {orgAdmin ? <Route path="/scheduled-reports/runs/:runId" element={<ScheduledReportDetail />} /> : null}
         {orgAdmin ? <Route path="/scheduled-reports" element={<ScheduledReports />} /> : null}
         <Route path="/operator-scores" element={<OperatorScores />} />
         <Route path="/profile" element={<Profile />} />
