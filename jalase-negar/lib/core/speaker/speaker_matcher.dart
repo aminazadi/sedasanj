@@ -117,7 +117,10 @@ class SpeakerMatcher {
     return (100 * (0.7 * fromScore + 0.3 * fromLead)).round().clamp(0, 100);
   }
 
-  SpeakerIdentity _unknownVoice(Float32List embedding, {required bool reliable}) {
+  SpeakerIdentity _unknownVoice(
+    Float32List embedding, {
+    required bool reliable,
+  }) {
     var bestIndex = -1;
     var bestScore = -2.0;
     for (var i = 0; i < _unknown.length; i++) {

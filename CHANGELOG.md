@@ -2,6 +2,7 @@
 
 ## 2026-11-05 — AMINAZADI
 
+- Reworked the Jalase-Negar bottom bar into four tabs (sessions, people, settings, guide) with side insets and an active pill, added a guide screen that now holds the interactive tour and intro replay, and replaced all rounded switches with a shared square `SsSwitch`.
 - Moved Jalase-Negar «افراد» into the bottom navigation, fixed the RTL direction of its list arrow, and added automatic speaker discovery: unnamed voices found in a meeting can be named once, which creates a person with voiceprints taken from that meeting's clean speech (with consent) and names all of its lines.
 
 ## 2026-11-04 — AMINAZADI

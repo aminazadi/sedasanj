@@ -34,8 +34,10 @@ class PersonScreen extends ConsumerWidget {
     }
     final theme = Theme.of(context);
     final actions = ref.read(peopleActionsProvider);
-    final voiceprints = ref.watch(_voiceprintsProvider(personId)).value ?? const [];
-    final needsReEnroll = voiceprints.isNotEmpty &&
+    final voiceprints =
+        ref.watch(_voiceprintsProvider(personId)).value ?? const [];
+    final needsReEnroll =
+        voiceprints.isNotEmpty &&
         !voiceprints.any(
           (v) =>
               v.modelId == ModelCatalog.speakerEmbedding.id &&
@@ -65,12 +67,13 @@ class PersonScreen extends ConsumerWidget {
             ),
           if (person.mine) ...[
             SsCard(
-              child: SwitchListTile(
-                contentPadding: EdgeInsets.zero,
+              child: SsSwitchTile(
                 value: person.shared,
                 onChanged: (v) => actions.update(
                   person.clientId,
-                  visibility: v ? PersonVisibility.org : PersonVisibility.private,
+                  visibility: v
+                      ? PersonVisibility.org
+                      : PersonVisibility.private,
                 ),
                 title: const Text('اشتراک با سازمان'),
                 subtitle: Text(
@@ -122,7 +125,9 @@ class PersonScreen extends ConsumerWidget {
                       'نمونه‌ی ${formatJalaliDay(v.createdAt)}'
                       '${v.quality == null ? '' : ' — کیفیت ${toPersianDigits('${v.quality}')}٪'}',
                     ),
-                    subtitle: v.synced ? null : const Text('هنوز به صداسنج نرسیده'),
+                    subtitle: v.synced
+                        ? null
+                        : const Text('هنوز به صداسنج نرسیده'),
                     trailing: person.mine
                         ? IconButton(
                             tooltip: 'حذف این نمونه',
@@ -160,7 +165,11 @@ class PersonScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _rename(BuildContext context, WidgetRef ref, Person person) async {
+  Future<void> _rename(
+    BuildContext context,
+    WidgetRef ref,
+    Person person,
+  ) async {
     final controller = TextEditingController(text: person.name);
     final name = await showDialog<String>(
       context: context,

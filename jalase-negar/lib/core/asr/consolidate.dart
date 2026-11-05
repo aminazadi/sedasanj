@@ -37,7 +37,8 @@ class AsrTurn {
   final int? speakerConfidence;
 
   /// Identifies the voice for merging: two turns only join when it is equal.
-  String? get voiceKey => speaker == null ? null : (speakerPersonId ?? 'u:$speaker');
+  String? get voiceKey =>
+      speaker == null ? null : (speakerPersonId ?? 'u:$speaker');
 }
 
 /// Server default `turn_merge_gap_ms` (worker_asr `TURN_MERGE_GAP_MS`).

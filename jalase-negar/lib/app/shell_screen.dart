@@ -20,6 +20,7 @@ class ShellScreen extends ConsumerWidget {
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
     if (location == '/people') return 1;
+    if (location == '/guide') return 3;
     if (location.startsWith('/settings')) return 2;
     return 0;
   }
@@ -97,7 +98,8 @@ class ShellScreen extends ConsumerWidget {
         onSelected: (i) => context.go(switch (i) {
           0 => '/',
           1 => '/people',
-          _ => '/settings',
+          2 => '/settings',
+          _ => '/guide',
         }),
         onRecord: () => context.push('/record'),
       ),
@@ -105,7 +107,7 @@ class ShellScreen extends ConsumerWidget {
   }
 }
 
-enum _Glyph { sessions, people, settings, mic }
+enum _Glyph { sessions, people, guide, settings, mic }
 
 /// Hand-drawn 24-grid line icons so the bar does not depend on stock Material
 /// glyphs (the old mic tab duplicated the record button).
@@ -167,6 +169,17 @@ class _GlyphPainter extends CustomPainter {
             ..quadraticBezierTo(20.5, 14.6, 20.5, 19),
           line,
         );
+      case _Glyph.guide:
+        // A circle with a question mark.
+        canvas.drawCircle(const Offset(12, 12), 8.5, line);
+        canvas.drawPath(
+          Path()
+            ..moveTo(9.4, 9.6)
+            ..cubicTo(9.4, 6.6, 14.6, 6.6, 14.6, 9.6)
+            ..cubicTo(14.6, 11.6, 12, 11.7, 12, 13.6),
+          line,
+        );
+        canvas.drawCircle(const Offset(12, 16.6), 0.9, fill);
       case _Glyph.settings:
         const rows = [(6.5, 15.0), (12.0, 8.5), (17.5, 16.0)];
         for (final (y, kx) in rows) {
@@ -302,45 +315,48 @@ class _SsBottomBar extends StatelessWidget {
             right: 0,
             bottom: bottom,
             height: _bar,
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TourTarget(
-                          step: TourStep.meetings,
-                          child: _NavTab(
-                            glyph: _Glyph.sessions,
-                            label: 'جلسات',
-                            selected: selectedIndex == 0,
-                            onTap: () => onSelected(0),
-                          ),
-                        ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TourTarget(
+                      step: TourStep.meetings,
+                      child: _NavTab(
+                        glyph: _Glyph.sessions,
+                        label: 'جلسات',
+                        selected: selectedIndex == 0,
+                        onTap: () => onSelected(0),
                       ),
-                      Expanded(
-                        child: _NavTab(
-                          glyph: _Glyph.people,
-                          label: 'افراد',
-                          selected: selectedIndex == 1,
-                          onTap: () => onSelected(1),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: _slotWidth),
-                Expanded(
-                  flex: 2,
-                  child: _NavTab(
-                    glyph: _Glyph.settings,
-                    label: 'تنظیمات',
-                    selected: selectedIndex == 2,
-                    onTap: () => onSelected(2),
+                  Expanded(
+                    child: _NavTab(
+                      glyph: _Glyph.people,
+                      label: 'افراد',
+                      selected: selectedIndex == 1,
+                      onTap: () => onSelected(1),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: _slotWidth),
+                  Expanded(
+                    child: _NavTab(
+                      glyph: _Glyph.settings,
+                      label: 'تنظیمات',
+                      selected: selectedIndex == 2,
+                      onTap: () => onSelected(2),
+                    ),
+                  ),
+                  Expanded(
+                    child: _NavTab(
+                      glyph: _Glyph.guide,
+                      label: 'راهنما',
+                      selected: selectedIndex == 3,
+                      onTap: () => onSelected(3),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           Positioned(
@@ -395,13 +411,27 @@ class _NavTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TweenAnimationBuilder<Color?>(
+            AnimatedContainer(
               duration: _anim,
               curve: Curves.easeOutCubic,
-              tween: ColorTween(end: color),
-              builder: (context, c, _) => _GlyphIcon(glyph, c ?? color),
+              width: 44,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? SsColors.primary.withValues(alpha: 0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: TweenAnimationBuilder<Color?>(
+                duration: _anim,
+                curve: Curves.easeOutCubic,
+                tween: ColorTween(end: color),
+                builder: (context, c, _) =>
+                    _GlyphIcon(glyph, c ?? color, size: 24),
+              ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
               duration: _anim,
               style: TextStyle(
@@ -411,7 +441,7 @@ class _NavTab extends StatelessWidget {
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 color: color,
               ),
-              child: Text(label),
+              child: Text(label, maxLines: 1, overflow: TextOverflow.clip),
             ),
           ],
         ),

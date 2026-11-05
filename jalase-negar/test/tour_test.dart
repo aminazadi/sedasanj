@@ -59,14 +59,13 @@ void main() {
     expect(find.byType(TourOverlay), findsNothing);
     expect(db.settings.values, ['1']);
 
-    await _tap(tester, 'تنظیمات');
+    await _tap(tester, 'راهنما');
     final replay = find.text('راهنمای تعاملی');
-    await tester.scrollUntilVisible(replay, 90);
+    expect(replay, findsOneWidget);
     await _tap(tester, 'راهنمای تعاملی');
     _expectStep(TourStep.welcome);
     await _tap(tester, 'رد کردن راهنما');
-    expect(find.text('وضعیت اتصال'), findsOneWidget);
-    await tester.scrollUntilVisible(replay, 90);
+    expect(find.text('معرفی جلسه‌نگار'), findsOneWidget);
     expect(replay, findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());

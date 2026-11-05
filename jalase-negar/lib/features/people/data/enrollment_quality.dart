@@ -33,7 +33,10 @@ class EnrollmentAssessment {
   int get quality {
     final bySpeech = (speechMs / 20000).clamp(0.0, 1.0);
     final bySnr = ((snrDb - 8) / 22).clamp(0.0, 1.0);
-    return (100 * (0.5 * bySpeech + 0.5 * bySnr) * (1 - clippedShare * 20).clamp(0.0, 1.0)).round();
+    return (100 *
+            (0.5 * bySpeech + 0.5 * bySnr) *
+            (1 - clippedShare * 20).clamp(0.0, 1.0))
+        .round();
   }
 
   /// What went wrong and what to do, in Persian.

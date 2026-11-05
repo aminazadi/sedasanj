@@ -212,7 +212,8 @@ class LivePipeline {
       // Several speakers: decode each stretch on its own so every line has one
       // speaker (or is marked as overlapping).
       for (final part in parts) {
-        final from = math.max(0, part.startMs - startMs) * kAsrSampleRate ~/ 1000;
+        final from =
+            math.max(0, part.startMs - startMs) * kAsrSampleRate ~/ 1000;
         final to = math.min(
           span.samples.length,
           (part.endMs - startMs) * kAsrSampleRate ~/ 1000,

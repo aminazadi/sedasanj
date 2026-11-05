@@ -142,11 +142,11 @@ class SpeakerLabeler implements UtteranceLabeler {
         }
       }
       final overlap = identities.length > 1;
-      var confidence = identities
-          .map((i) => i.confidence)
-          .reduce(math.min);
-      if (overlap) confidence = math.min(confidence, settings.overlapConfidenceCap);
-      if (p.shaky) confidence = math.min(confidence, settings.carryOverConfidence + 15);
+      var confidence = identities.map((i) => i.confidence).reduce(math.min);
+      if (overlap)
+        confidence = math.min(confidence, settings.overlapConfidenceCap);
+      if (p.shaky)
+        confidence = math.min(confidence, settings.carryOverConfidence + 15);
       final from = startMs + p.startMs;
       final to = startMs + p.endMs;
       final last = parts.isEmpty ? null : parts.last;
@@ -220,7 +220,8 @@ class SpeakerLabeler implements UtteranceLabeler {
     final allMs = all.length * 1000 ~/ kAsrSampleRate;
     if (allMs >= settings.minAnyMs) {
       final embedding = embedder.embed(_cap(all));
-      if (embedding != null) return matcher.identify(embedding, reliable: false);
+      if (embedding != null)
+        return matcher.identify(embedding, reliable: false);
     }
     return _carryOver();
   }
@@ -237,7 +238,9 @@ class SpeakerLabeler implements UtteranceLabeler {
 
   Float32List _cap(Float32List samples) {
     final max = settings.maxEmbedMs * kAsrSampleRate ~/ 1000;
-    return samples.length <= max ? samples : Float32List.sublistView(samples, 0, max);
+    return samples.length <= max
+        ? samples
+        : Float32List.sublistView(samples, 0, max);
   }
 
   Float32List _gather(Float32List speech, List<(int, int)> spans) {

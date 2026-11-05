@@ -28,7 +28,10 @@ class AesGcmEmbeddingCipher implements EmbeddingCipher {
 
   @override
   Future<Uint8List> encrypt(Uint8List plain) async {
-    final box = await _algorithm.encrypt(plain, secretKey: SecretKey(_keyBytes));
+    final box = await _algorithm.encrypt(
+      plain,
+      secretKey: SecretKey(_keyBytes),
+    );
     return Uint8List.fromList(box.concatenation());
   }
 

@@ -249,7 +249,9 @@ class AppDatabase {
     await db.execute(
       'ALTER TABLE segments ADD COLUMN overlap INTEGER NOT NULL DEFAULT 0',
     );
-    await db.execute('ALTER TABLE segments ADD COLUMN speaker_confidence INTEGER');
+    await db.execute(
+      'ALTER TABLE segments ADD COLUMN speaker_confidence INTEGER',
+    );
     await db.execute(
       'ALTER TABLE segments ADD COLUMN speaker_manual INTEGER NOT NULL DEFAULT 0',
     );

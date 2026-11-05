@@ -100,8 +100,7 @@ class _SpeakerIdSwitch extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final enabled = ref.watch(speakerIdEnabledProvider).value ?? true;
     return SsCard(
-      child: SwitchListTile(
-        contentPadding: EdgeInsets.zero,
+      child: SsSwitchTile(
         value: enabled,
         onChanged: (v) => ref.read(speakerIdEnabledProvider.notifier).set(v),
         title: const Text('نوشتن نام گوینده در متن'),

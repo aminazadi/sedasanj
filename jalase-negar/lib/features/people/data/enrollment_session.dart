@@ -249,10 +249,9 @@ class EnrollmentSession {
   SpeakerPrompt get current => prompts.prompts[state.value.index];
 
   /// The required prompts are done: the voice can be recognised.
-  bool get canFinish =>
-      prompts.prompts
-          .where((p) => p.required)
-          .every((p) => state.value.accepted.contains(p.id));
+  bool get canFinish => prompts.prompts
+      .where((p) => p.required)
+      .every((p) => state.value.accepted.contains(p.id));
 
   Future<void> start() async {
     if (state.value.phase != EnrollmentPhase.idle) return;

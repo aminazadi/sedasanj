@@ -55,7 +55,10 @@ class PeopleRepository {
   // --- reading ---------------------------------------------------------
 
   Future<List<Person>> people() async {
-    final rows = await _db.db.query('people', orderBy: 'display_name COLLATE NOCASE');
+    final rows = await _db.db.query(
+      'people',
+      orderBy: 'display_name COLLATE NOCASE',
+    );
     final counts = {
       for (final r in await _db.db.rawQuery(
         'SELECT person_id, COUNT(*) AS n FROM voiceprints GROUP BY person_id',
@@ -278,11 +281,7 @@ class PeopleRepository {
       );
       if (rows.isEmpty) return;
       final knownToServer = (rows.first['version'] as int) > 0;
-      await txn.delete(
-        'people',
-        where: 'client_id = ?',
-        whereArgs: [clientId],
-      );
+      await txn.delete('people', where: 'client_id = ?', whereArgs: [clientId]);
       if (knownToServer && (rows.first['mine'] as int) != 0) {
         await _queue(txn, clientId, 'delete', stamp);
       } else {
@@ -357,7 +356,8 @@ class PeopleRepository {
     ];
   }
 
-  Future<int> pendingCount() async => Sqflite.firstIntValue(
+  Future<int> pendingCount() async =>
+      Sqflite.firstIntValue(
         await _db.db.rawQuery('SELECT COUNT(*) FROM sync_outbox'),
       ) ??
       0;
@@ -458,11 +458,7 @@ class PeopleRepository {
   /// already knows, or never will).
   Future<void> dropPerson(String clientId) async {
     await _db.db.transaction((txn) async {
-      await txn.delete(
-        'people',
-        where: 'client_id = ?',
-        whereArgs: [clientId],
-      );
+      await txn.delete('people', where: 'client_id = ?', whereArgs: [clientId]);
       await txn.delete(
         'sync_outbox',
         where: 'entity_id = ?',

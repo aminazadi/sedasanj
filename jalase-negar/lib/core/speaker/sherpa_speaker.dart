@@ -22,7 +22,10 @@ class SherpaVoiceEmbedder implements VoiceEmbedder {
   int get dim => _extractor.dim;
 
   /// Null when [modelPath] is not a loadable model.
-  static SherpaVoiceEmbedder? tryCreate(String modelPath, {int numThreads = 1}) {
+  static SherpaVoiceEmbedder? tryCreate(
+    String modelPath, {
+    int numThreads = 1,
+  }) {
     if (modelPath.isEmpty || !File(modelPath).existsSync()) return null;
     try {
       return SherpaVoiceEmbedder._(
@@ -106,9 +109,8 @@ class SherpaDiarizer implements UtteranceDiarizer {
   }
 
   @override
-  List<SpeakerTurn> diarize(Float32List samples) => turnsOf(
-    _diarization.process(samples: samples),
-  );
+  List<SpeakerTurn> diarize(Float32List samples) =>
+      turnsOf(_diarization.process(samples: samples));
 
   /// Same as [diarize] with progress, for a whole recording.
   List<SpeakerTurn> diarizeWithProgress(

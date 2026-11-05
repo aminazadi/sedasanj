@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/guide/presentation/guide_screen.dart';
 import '../features/meetings/presentation/meeting_detail_screen.dart';
 import '../features/meetings/presentation/meetings_screen.dart';
 import '../features/models/presentation/models_screen.dart';
@@ -40,6 +41,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: '/guide',
+            builder: (context, state) => const GuideScreen(),
           ),
           GoRoute(
             path: '/people',

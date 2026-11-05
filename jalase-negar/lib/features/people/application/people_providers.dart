@@ -161,7 +161,8 @@ class SpeakerSyncController extends Notifier<SpeakerSyncState> {
     } catch (_) {
       outcome = const SyncOutcome(
         nextWake: Duration(seconds: 30),
-        lastError: 'همگام‌سازی افراد با خطا روبه‌رو شد؛ بعداً دوباره تلاش می‌شود.',
+        lastError:
+            'همگام‌سازی افراد با خطا روبه‌رو شد؛ بعداً دوباره تلاش می‌شود.',
       );
     }
     state = SpeakerSyncState(

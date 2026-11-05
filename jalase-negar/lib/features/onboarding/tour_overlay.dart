@@ -67,7 +67,7 @@ class _TourOverlayState extends ConsumerState<TourOverlay> {
       }
       return;
     }
-    if (mounted) context.go(widget.fromSettings ? '/settings' : '/');
+    if (mounted) context.go(widget.fromSettings ? '/guide' : '/');
   }
 
   @override

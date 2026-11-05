@@ -31,11 +31,19 @@ class EnrollScreen extends ConsumerWidget {
       body: body,
     );
 
-    if (people.isLoading || prompts.isLoading || embedder.isLoading || repo.isLoading) {
+    if (people.isLoading ||
+        prompts.isLoading ||
+        embedder.isLoading ||
+        repo.isLoading) {
       return scaffold(const Center(child: CircularProgressIndicator()));
     }
-    final person = people.value?.where((p) => p.clientId == personId).firstOrNull;
-    if (person == null || !person.mine || prompts.value == null || repo.value == null) {
+    final person = people.value
+        ?.where((p) => p.clientId == personId)
+        .firstOrNull;
+    if (person == null ||
+        !person.mine ||
+        prompts.value == null ||
+        repo.value == null) {
       return scaffold(const Center(child: Text('این فرد پیدا نشد.')));
     }
     final service = embedder.value;
@@ -213,7 +221,9 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
                   if (!prompt.required || state.accepted.contains(prompt.id))
                     TextButton(
                       onPressed:
-                          state.index < prompts.length - 1 && !recording && !busy
+                          state.index < prompts.length - 1 &&
+                              !recording &&
+                              !busy
                           ? () => _session.goTo(state.index + 1)
                           : null,
                       child: const Text('متن بعدی'),
@@ -285,7 +295,8 @@ class _Done extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: () => context.pushReplacement('/people/${person.clientId}'),
+                onPressed: () =>
+                    context.pushReplacement('/people/${person.clientId}'),
                 child: const Text('تمام'),
               ),
             ],

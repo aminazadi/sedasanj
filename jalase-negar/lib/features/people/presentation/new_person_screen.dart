@@ -30,7 +30,9 @@ class _NewPersonScreenState extends ConsumerState<NewPersonScreen> {
     final name = _name.text.trim();
     if (name.isEmpty) return;
     final accepted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => ConsentScreen(name: name, shared: _shared)),
+      MaterialPageRoute(
+        builder: (_) => ConsentScreen(name: name, shared: _shared),
+      ),
     );
     if (accepted != true || !mounted) return;
     setState(() => _busy = true);
@@ -67,8 +69,7 @@ class _NewPersonScreenState extends ConsumerState<NewPersonScreen> {
                     hintText: 'مثلاً علی رضایی',
                   ),
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
+                SsSwitchTile(
                   value: _shared,
                   onChanged: (v) => setState(() => _shared = v),
                   title: const Text('اشتراک با سازمان'),
