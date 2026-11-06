@@ -17,7 +17,7 @@ abstract final class ModelCatalog {
     files: [
       ModelFileSpec(
         url:
-            'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx',
+            'https://sedasanj.ir/jalase-negar-models/v1/silero-vad/silero_vad.onnx',
         filename: 'silero_vad.onnx',
         sizeBytes: 643854,
       ),
@@ -33,7 +33,7 @@ abstract final class ModelCatalog {
     files: [
       ModelFileSpec(
         url:
-            'https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx',
+            'https://sedasanj.ir/jalase-negar-models/v1/gtcrn-denoiser/gtcrn_simple.onnx',
         filename: 'gtcrn_simple.onnx',
         sizeBytes: 1700000,
         sizeIsEstimate: true,
@@ -62,7 +62,7 @@ abstract final class ModelCatalog {
     files: [
       ModelFileSpec(
         url:
-            'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
+            'https://sedasanj.ir/jalase-negar-models/v1/campplus-sv-zh-en-16k/speaker_embedding.onnx',
         filename: 'speaker_embedding.onnx',
         sizeBytes: 28281164,
       ),
@@ -80,7 +80,7 @@ abstract final class ModelCatalog {
     files: [
       ModelFileSpec(
         url:
-            'https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx',
+            'https://sedasanj.ir/jalase-negar-models/v1/pyannote-segmentation-3-0/model.int8.onnx',
         filename: 'model.int8.onnx',
         sizeBytes: 1540506,
       ),
@@ -100,28 +100,28 @@ abstract final class ModelCatalog {
     files: [
       ModelFileSpec(
         url:
-            'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/encoder.int8.onnx?download=true',
+            'https://sedasanj.ir/jalase-negar-models/v1/shenava-koochik-v1-5-rnnt/encoder.int8.onnx',
         filename: 'encoder.int8.onnx',
         sizeBytes: 131000000,
         sizeIsEstimate: true,
       ),
       ModelFileSpec(
         url:
-            'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/decoder.int8.onnx?download=true',
+            'https://sedasanj.ir/jalase-negar-models/v1/shenava-koochik-v1-5-rnnt/decoder.int8.onnx',
         filename: 'decoder.int8.onnx',
         sizeBytes: 3960000,
         sizeIsEstimate: true,
       ),
       ModelFileSpec(
         url:
-            'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/joiner.int8.onnx?download=true',
+            'https://sedasanj.ir/jalase-negar-models/v1/shenava-koochik-v1-5-rnnt/joiner.int8.onnx',
         filename: 'joiner.int8.onnx',
         sizeBytes: 1410000,
         sizeIsEstimate: true,
       ),
       ModelFileSpec(
         url:
-            'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/tokens.txt?download=true',
+            'https://sedasanj.ir/jalase-negar-models/v1/shenava-koochik-v1-5-rnnt/tokens.txt',
         filename: 'tokens.txt',
         sizeBytes: 12236,
       ),

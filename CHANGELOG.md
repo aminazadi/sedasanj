@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-06 — AMINAZADI
+
+- Added persistent, resumable public hosting of Jalase-Negar model files and one-time upstream downloads during deployment.
+
 ## 2026-11-05 — AMINAZADI
 
 - Fixed SS-SVC-0001 `worker_failed` at `stage=decode_audio` for multi-minute calls: the Sherpa CUDA worker now decodes audio in chunks of at most 30 s (`ASR_SHERPA_GPU_CHUNK_SECONDS`) cut at quiet points instead of one whole-file decode, and failure messages include the worker exception type (`exception=`) and recognize ONNX Runtime allocation failures as `cuda_out_of_memory`.

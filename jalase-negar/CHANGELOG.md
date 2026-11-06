@@ -2,6 +2,8 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Changed model downloads to use the SedaSanj server.
+
 - Fixed live transcription discarding speech when the phone fell behind: skipped and shed spans (up to 10 minutes of audio) are now kept and decoded later when the engine is idle, or for up to 30 seconds after stopping, and `JN-ASR-0001` is cleared once they are recovered. The stop timeout of the live engine is now 45 seconds.
 - Fixed the live duplicate filter dropping the same short word (for example "بله") said by two different speakers within 1.2 seconds; it now compares only lines of the same or an unknown speaker.
 - Added an offline benchmark of the live pipeline (`test/bench/bench_live_test.dart`, `docs/asr-benchmark.md`): it runs the app's real VAD, recognizer and speaker models on a Mac and reports the real-time factor, the cost of each stage and how long words wait before they appear. It changes nothing for users; the numbers are Mac-only and relative, not phone speed.

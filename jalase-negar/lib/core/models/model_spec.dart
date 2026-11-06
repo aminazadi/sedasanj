@@ -33,8 +33,7 @@ class ModelFileSpec {
 
 /// A downloadable model bundle, referenced by a stable [id].
 ///
-/// URLs always point at the original upstream repositories (Hugging Face /
-/// GitHub releases) — the app never rehosts weights.
+/// Model files are served by SedaSanj; repository links retain attribution.
 class ModelSpec {
   const ModelSpec({
     required this.id,

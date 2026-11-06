@@ -16,3 +16,6 @@ sedasanj/deploy/backup/
 .env.*
 !.env.example
 !**/.env.example
+
+# Downloaded Jalase-Negar model weights.
+/jalase-negar-models/

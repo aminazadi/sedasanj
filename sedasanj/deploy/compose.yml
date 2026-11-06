@@ -131,6 +131,16 @@ services:
       - ${MODELS_DIR:-../models}:/models
       - emotion-model-cache:/legacy-emotion-cache:ro
 
+  jalase-negar-models-init:
+    image: curlimages/curl:8.12.1
+    user: "0:0"
+    restart: on-failure
+    entrypoint: ["/bin/sh", "/scripts/download-jalase-negar-models.sh"]
+    volumes:
+      - ${JALASE_NEGAR_MODELS_DIR:-../../jalase-negar-models}:/models
+      - ./download-jalase-negar-models.sh:/scripts/download-jalase-negar-models.sh:ro
+    networks: [proxy]
+
   client:
     <<: *web-hardening
     build:
@@ -143,10 +153,13 @@ services:
       # Object-storage origin that serves presigned call audio (CSP media-src/connect-src).
       CSP_MEDIA_ORIGINS: https://${AUDIO_DOMAIN:?Set AUDIO_DOMAIN}
     restart: unless-stopped
+    volumes:
+      - ${JALASE_NEGAR_MODELS_DIR:-../../jalase-negar-models}:/app/jalase-negar-models:ro
     ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${APP_PORT:-3000}:80"]
     networks: [proxy]
     depends_on:
       api: { condition: service_healthy }
+      jalase-negar-models-init: { condition: service_started }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 15s

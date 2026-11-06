@@ -10,11 +10,14 @@ void main() {
       expect(ids.length, ModelCatalog.all.length);
     });
 
-    test('every model points at its upstream repository', () {
+    test('every model downloads from SedaSanj', () {
       for (final spec in ModelCatalog.all) {
         expect(spec.files, isNotEmpty);
         for (final file in spec.files) {
-          expect(file.url, startsWith('https://'));
+          expect(
+            file.url,
+            'https://sedasanj.ir/jalase-negar-models/v1/${spec.id}/${file.filename}',
+          );
           expect(file.sizeBytes, greaterThan(0));
         }
       }

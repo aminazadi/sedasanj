@@ -49,8 +49,7 @@ class ModelDownloader {
     : _dio = Dio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 30),
-          // Large ONNX files are served through Hugging Face Xet/GitHub
-          // redirects and can have long quiet periods on mobile networks.
+          // Large model files can have long quiet periods on mobile networks.
           receiveTimeout: const Duration(minutes: 30),
           followRedirects: true,
           maxRedirects: 8,
@@ -147,13 +146,9 @@ class ModelDownloader {
 
   String _dioErrorMessage(DioException e) {
     final status = e.response?.statusCode;
-    final gated = e.response?.headers.value('x-error-code') == 'GatedRepo';
-    if (status == 401 || gated) {
-      return 'دانلود این مدل بدون ورود به Hugging Face ممکن نیست '
-          '(مخزن قفل‌شده). لینک کاتالوگ را بررسی کنید.';
-    }
     if (status == 404) {
-      return 'فایل مدل در مخزن پیدا نشد (۴۰۴).';
+      return 'فایل مدل روی سرور صداسنج موجود نیست (JN-MDL-0001). '
+          'دوباره تلاش کنید و در صورت تکرار با پشتیبانی تماس بگیرید.';
     }
     return e.message ?? e.toString();
   }
@@ -183,7 +178,7 @@ class ModelDownloader {
         cancelToken: cancelToken,
       );
     } on DioException catch (e) {
-      // Hugging Face Xet/CDN can reject an old partial offset with HTTP 416.
+      // The server can reject an old partial offset with HTTP 416.
       // Discard that stale range and retry once from byte zero.
       if (e.response?.statusCode != 416 || resumeFrom == 0) rethrow;
       if (await part.exists()) await part.delete();

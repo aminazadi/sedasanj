@@ -92,3 +92,31 @@ def test_not_found_responses_also_carry_headers(admin_port: int) -> None:
     with pytest.raises(urllib.error.HTTPError) as caught:
         _headers(admin_port, "/assets/missing.js")
     assert caught.value.headers["x-content-type-options"] == "nosniff"
+
+
+def test_model_download_range_and_missing_file(tmp_path: Path) -> None:
+    model_root = tmp_path / "models"
+    model_file = model_root / "v1" / "example" / "model.onnx"
+    model_file.parent.mkdir(parents=True)
+    model_file.write_bytes(b"0123456789")
+    server = _start(tmp_path, "client", JALASE_NEGAR_MODELS_ROOT=str(model_root))
+    port = next(server)
+    try:
+        url = f"http://127.0.0.1:{port}/jalase-negar-models/v1/example/model.onnx"
+        with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310
+            assert response.read() == b"0123456789"
+            assert response.headers["Accept-Ranges"] == "bytes"
+        request = urllib.request.Request(url, headers={"Range": "bytes=4-"})  # noqa: S310
+        with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
+            assert response.status == 206
+            assert response.headers["Content-Range"] == "bytes 4-9/10"
+            assert response.read() == b"456789"
+        for suffix, status in [("missing.onnx", 404), ("model.onnx", 416)]:
+            request = urllib.request.Request(  # noqa: S310
+                url.rsplit("/", 1)[0] + "/" + suffix, headers={"Range": "bytes=99-"}
+            )
+            with pytest.raises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=5)  # noqa: S310
+            assert caught.value.code == status
+    finally:
+        server.close()

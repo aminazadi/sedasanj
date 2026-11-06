@@ -238,14 +238,15 @@ async function helpArticle(request, response, slug) {
   sendHtml(request, response, 200, html);
 }
 
-async function serveStatic(request, response, pathname) {
-  const filePath = path.resolve(root, `.${pathname}`);
-  if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+async function serveStatic(request, response, pathname, model = false) {
+  const staticRoot = model ? path.resolve(process.env.JALASE_NEGAR_MODELS_ROOT || "/app/jalase-negar-models") : root;
+  const filePath = path.resolve(staticRoot, `.${pathname}`);
+  if (filePath !== staticRoot && !filePath.startsWith(`${staticRoot}${path.sep}`)) {
     response.writeHead(400).end();
     return;
   }
 
-  if (pathname === "/sitemap.xml") return sitemap(request, response);
+  if (!model && pathname === "/sitemap.xml") return sitemap(request, response);
   if (pathname.length > 1 && pathname.endsWith("/")) {
     const query = new URL(request.url, "http://localhost").search;
     response.writeHead(301, { Location: pathname.replace(/\/+$/, "") + query }).end();
@@ -261,13 +262,13 @@ async function serveStatic(request, response, pathname) {
   let extraHeaders = {};
   try {
     fileInfo = await stat(selectedPath);
-    if (fileInfo.isDirectory()) {
+    if (!model && fileInfo.isDirectory()) {
       selectedPath = path.join(selectedPath, "index.html");
       fileInfo = await stat(selectedPath);
     }
     if (!fileInfo.isFile()) throw new Error("Not a file");
   } catch {
-    if (pathname.startsWith("/assets/") || path.extname(pathname)) {
+    if (model || pathname.startsWith("/assets/") || path.extname(pathname)) {
       response.writeHead(404).end();
       return;
     }
@@ -285,7 +286,7 @@ async function serveStatic(request, response, pathname) {
     ...extraHeaders,
   };
   let range;
-  if (pathname === "/quick-demo-instructions.mp3") {
+  if (model || pathname === "/quick-demo-instructions.mp3") {
     headers["Accept-Ranges"] = "bytes";
     const match = request.method === "GET" && !request.headers["if-range"]
       && /^bytes=(\d*)-(\d*)$/i.exec(request.headers.range || "");
@@ -315,7 +316,17 @@ const server = http.createServer({ requestTimeout: 7_200_000 }, async (request, 
       proxyApi(request, response);
     } else if (request.method === "GET" || request.method === "HEAD") {
       applySecurityHeaders(request, response, { page: true });
-      await serveStatic(request, response, decodeURIComponent(pathname));
+      const decoded = decodeURIComponent(pathname);
+      if (WEB_APP === "client" && decoded.startsWith("/jalase-negar-models/")) {
+        const modelPath = decoded.slice("/jalase-negar-models".length);
+        if (!/^\/v1\/[a-z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(modelPath) || modelPath.includes("..")) {
+          response.writeHead(404).end();
+        } else {
+          await serveStatic(request, response, modelPath, true);
+        }
+      } else {
+        await serveStatic(request, response, decoded);
+      }
     } else {
       applySecurityHeaders(request, response, { page: false });
       response.writeHead(405).end();
