@@ -15,6 +15,7 @@ import 'asr_common.dart';
 import 'live_asr_engine.dart';
 import 'live_pipeline.dart';
 import 'recognizer_factory.dart';
+import 'sherpa_live_adapters.dart';
 
 const double kSileroThreshold = 0.35;
 const double kSileroMinSilenceSeconds = 0.9;
@@ -33,6 +34,7 @@ class VadSegmentConfig {
     this.decoderPath,
     this.joinerPath,
     this.numThreads = 2,
+    this.speakerThreads = 1,
     this.minSilenceSeconds = kSileroMinSilenceSeconds,
     this.maxBacklogMs = 60000,
     this.speakerEmbeddingPath = '',
@@ -50,6 +52,14 @@ class VadSegmentConfig {
 
   /// Two threads leave the rest of the CPU to audio capture and the UI.
   final int numThreads;
+
+  /// Threads for the speaker models (segmentation and embedding). They run
+  /// one after the other with the recognizer, never beside it. The default is
+  /// the single thread the app always used. On the benchmark Mac two threads
+  /// cut identification time by about 39% with identical text and labels, but
+  /// only on two single-speaker clips and not on a phone, so the default stays
+  /// until that is checked (see docs/asr-benchmark.md).
+  final int speakerThreads;
 
   /// Same default as the post-recording transcriber so both cut speech alike.
   final double minSilenceSeconds;
@@ -272,13 +282,17 @@ void _liveEntry(_Init init) {
     if (config.identifiesSpeakers) {
       // Speaker identification is optional: if its models do not load the
       // transcript simply has no names.
-      embedder = SherpaVoiceEmbedder.tryCreate(config.speakerEmbeddingPath);
+      embedder = SherpaVoiceEmbedder.tryCreate(
+        config.speakerEmbeddingPath,
+        numThreads: math.max(1, config.speakerThreads),
+      );
       if (embedder != null) {
         diarizer = config.speakerSegmentationPath.isEmpty
             ? null
             : SherpaDiarizer.tryCreate(
                 segmentationModelPath: config.speakerSegmentationPath,
                 embeddingModelPath: config.speakerEmbeddingPath,
+                numThreads: math.max(1, config.speakerThreads),
               );
         labeler = SpeakerLabeler(
           diarizer: diarizer,
@@ -290,8 +304,15 @@ void _liveEntry(_Init init) {
       }
     }
     pipeline = LivePipeline(
-      vadFactory: () => _SherpaVad(config),
-      decoder: _SherpaDecoder(created),
+      vadFactory: () => SherpaLiveVad(
+        modelPath: config.vadModelPath,
+        threshold: kSileroThreshold,
+        minSilenceSeconds: config.minSilenceSeconds,
+        minSpeechSeconds: kSileroMinSpeechSeconds,
+        windowSize: kSileroWindowSize,
+        maxSpeechSeconds: kAsrWindowSeconds,
+      ),
+      decoder: SherpaLiveDecoder(created),
       maxBacklogMs: config.maxBacklogMs,
       labeler: labeler,
     );
@@ -399,66 +420,4 @@ void _liveEntry(_Init init) {
       if (fatal) shutdown();
     }
   });
-}
-
-/// Silero VAD with the post-recording transcriber's thresholds.
-class _SherpaVad implements LiveVad {
-  _SherpaVad(VadSegmentConfig config)
-    : _vad = sherpa.VoiceActivityDetector(
-        config: sherpa.VadModelConfig(
-          sileroVad: sherpa.SileroVadModelConfig(
-            model: config.vadModelPath,
-            threshold: kSileroThreshold,
-            minSilenceDuration: config.minSilenceSeconds,
-            minSpeechDuration: kSileroMinSpeechSeconds,
-            windowSize: kSileroWindowSize,
-            maxSpeechDuration: kAsrWindowSeconds,
-          ),
-          sampleRate: kAsrSampleRate,
-          numThreads: 1,
-          provider: 'cpu',
-          debug: false,
-        ),
-        bufferSizeInSeconds: kAsrWindowSeconds * 2,
-      );
-
-  final sherpa.VoiceActivityDetector _vad;
-
-  @override
-  void accept(Float32List samples) => _vad.acceptWaveform(samples);
-
-  @override
-  bool get speechDetected => _vad.isDetected();
-
-  @override
-  VadSpan? pop() {
-    if (_vad.isEmpty()) return null;
-    final segment = _vad.front();
-    _vad.pop();
-    return VadSpan(startSample: segment.start, samples: segment.samples);
-  }
-
-  @override
-  void flush() => _vad.flush();
-
-  @override
-  void dispose() => _vad.free();
-}
-
-class _SherpaDecoder implements LiveDecoder {
-  _SherpaDecoder(this._recognizer);
-
-  final sherpa.OfflineRecognizer _recognizer;
-
-  @override
-  String decode(Float32List samples) {
-    final stream = _recognizer.createStream();
-    try {
-      stream.acceptWaveform(samples: samples, sampleRate: kAsrSampleRate);
-      _recognizer.decode(stream);
-      return _recognizer.getResult(stream).text;
-    } finally {
-      stream.free();
-    }
-  }
 }
