@@ -2,6 +2,8 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Simplified the meeting transcript layout and moved text actions into the header menu.
+
 - Added speaker analysis progress percentages to meeting cards and the speaker tab.
 
 - Changed model downloads to use the SedaSanj server.

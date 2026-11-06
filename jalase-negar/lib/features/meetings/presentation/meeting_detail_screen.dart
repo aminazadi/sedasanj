@@ -18,13 +18,23 @@ import 'speaker_lines_card.dart';
 import 'transcript_editor.dart';
 
 /// Plays the recording and shows the transcript stored for the meeting.
-class MeetingDetailScreen extends ConsumerWidget {
+class MeetingDetailScreen extends ConsumerStatefulWidget {
   const MeetingDetailScreen({super.key, required this.meetingId});
 
   final String meetingId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MeetingDetailScreen> createState() =>
+      _MeetingDetailScreenState();
+}
+
+class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
+  final _editorKey = GlobalKey<TranscriptEditorState>();
+
+  String get meetingId => widget.meetingId;
+
+  @override
+  Widget build(BuildContext context) {
     final detail = ref.watch(meetingDetailProvider(meetingId));
 
     // An autosave reloads the meeting; keep the editor on screen meanwhile.
@@ -59,6 +69,8 @@ class MeetingDetailScreen extends ConsumerWidget {
                     onPressed: () =>
                         sendMeetingToSedasanj(context, ref, meetingId),
                   ),
+                if (transcript.isNotEmpty)
+                  TranscriptActionsButton(editorKey: _editorKey),
                 _MeetingMenu(meeting: data.meeting),
               ],
               title: Hero(
@@ -148,7 +160,7 @@ class MeetingDetailScreen extends ConsumerWidget {
     String transcript,
   ) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
         if (data.meeting.analyzingSpeakers) ...[
           _AnalyzingBanner(meetingId: meetingId),
@@ -159,6 +171,7 @@ class MeetingDetailScreen extends ConsumerWidget {
           const _EmptyTranscriptCard()
         else
           TranscriptEditor(
+            key: _editorKey,
             savedText: transcript,
             readOnly: data.meeting.status == MeetingStatus.uploading,
             notice: _editNotice(data.meeting),
@@ -380,29 +393,9 @@ class _EmptyTranscriptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SsCard(
-      title: 'متن جلسه',
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          IconButton(
-            tooltip: 'کپی',
-            visualDensity: VisualDensity.compact,
-            onPressed: null,
-            icon: Icon(Icons.copy, size: 20),
-          ),
-          IconButton(
-            tooltip: 'اشتراک‌گذاری',
-            visualDensity: VisualDensity.compact,
-            onPressed: null,
-            icon: Icon(Icons.ios_share, size: 20),
-          ),
-        ],
-      ),
-      child: Text(
-        'برای این جلسه متنی ذخیره نشده است. می‌توانید فایل صوتی را پخش کنید.',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+    return Text(
+      'برای این جلسه متنی ذخیره نشده است. می‌توانید فایل صوتی را پخش کنید.',
+      style: Theme.of(context).textTheme.bodySmall,
     );
   }
 }

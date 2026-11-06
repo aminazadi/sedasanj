@@ -32,8 +32,11 @@ void main() {
       );
 
       expect(find.text('سلام\nپایان'), findsOneWidget);
-      expect(find.byTooltip('کپی'), findsOneWidget);
-      expect(find.byTooltip('اشتراک‌گذاری'), findsOneWidget);
+      expect(find.byTooltip('ابزار متن جلسه'), findsOneWidget);
+      await tester.tap(find.byTooltip('ابزار متن جلسه'));
+      await tester.pumpAndSettle();
+      expect(find.text('کپی'), findsOneWidget);
+      expect(find.text('اشتراک‌گذاری متن'), findsOneWidget);
     });
   }
 
@@ -44,18 +47,7 @@ void main() {
     );
 
     expect(find.textContaining('متنی ذخیره نشده است'), findsOneWidget);
-    for (final tooltip in ['کپی', 'اشتراک‌گذاری']) {
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byWidgetPredicate(
-                (widget) => widget is IconButton && widget.tooltip == tooltip,
-              ),
-            )
-            .onPressed,
-        isNull,
-      );
-    }
+    expect(find.byTooltip('ابزار متن جلسه'), findsNothing);
   });
 
   testWidgets('places the timer beside compact controls below the waveform', (
@@ -286,7 +278,6 @@ Future<void> _openDetail(
   }
 
   expect(find.byType(AudioWaveformPlayer), findsOneWidget);
-  expect(find.text('متن جلسه'), findsWidgets);
   expect(find.text('تبدیل صوت به متن'), findsNothing);
   expect(find.byIcon(Icons.transcribe), findsNothing);
 }

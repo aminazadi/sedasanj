@@ -9,6 +9,9 @@ import 'package:jalase_negar/features/meetings/presentation/transcript_editor.da
 const _ok = TranscriptSave(TranscriptSaveResult.saved);
 const _failed = TranscriptSave(TranscriptSaveResult.failed);
 
+GlobalKey<TranscriptEditorState> _editorKey =
+    GlobalKey<TranscriptEditorState>();
+
 Widget _host({
   required String text,
   required Future<TranscriptSave> Function(String, {required bool settle})
@@ -19,6 +22,7 @@ Widget _host({
   VoidCallback? onNoticeAction,
   VoidCallback? onOpenEditor,
 }) {
+  _editorKey = GlobalKey<TranscriptEditorState>();
   return MaterialApp(
     builder: (context, child) => Directionality(
       textDirection: TextDirection.rtl,
@@ -26,10 +30,14 @@ Widget _host({
     ),
     home: Builder(
       builder: (context) => Scaffold(
+        appBar: AppBar(
+          actions: [TranscriptActionsButton(editorKey: _editorKey)],
+        ),
         body: onOpenEditor == null
             ? ListView(
                 children: [
                   TranscriptEditor(
+                    key: _editorKey,
                     savedText: text,
                     onSave: onSave,
                     readOnly: readOnly,
@@ -73,23 +81,27 @@ Future<void> _type(WidgetTester tester, String text) async {
 }
 
 Future<void> _tap(WidgetTester tester, String tooltip) async {
-  await tester.tap(find.byTooltip(tooltip));
-  await tester.pump();
+  final direct = find.byTooltip(tooltip);
+  if (direct.evaluate().isNotEmpty) {
+    await tester.tap(direct);
+    await tester.pump();
+    return;
+  }
+  await tester.tap(find.byTooltip('ابزار متن جلسه'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(tooltip));
+  await tester.pumpAndSettle();
 }
 
-bool _enabled(String tooltip) {
-  final button = find
-      .ancestor(of: find.byTooltip(tooltip), matching: find.byType(IconButton))
-      .evaluate()
-      .map((e) => e.widget as IconButton)
-      .followedBy(
-        find
-            .byWidgetPredicate((w) => w is IconButton && w.tooltip == tooltip)
-            .evaluate()
-            .map((e) => e.widget as IconButton),
-      )
-      .first;
-  return button.onPressed != null;
+bool _enabled(String label) {
+  final items = _editorKey.currentState!
+      .actionItems()
+      .whereType<PopupMenuItem<VoidCallback>>();
+  return items.firstWhere((item) {
+    final row = item.child as Row;
+    final text = (row.children.last as Flexible).child as Text;
+    return text.data == label;
+  }).enabled;
 }
 
 void main() {

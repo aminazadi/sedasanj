@@ -8,7 +8,6 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
-import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/asr/asr_common.dart';
 import '../../../core/utils/format.dart';
 import '../application/meeting_providers.dart';
@@ -52,10 +51,10 @@ class TranscriptEditor extends StatefulWidget {
   final VoidCallback? onNoticeAction;
 
   @override
-  State<TranscriptEditor> createState() => _TranscriptEditorState();
+  State<TranscriptEditor> createState() => TranscriptEditorState();
 }
 
-class _TranscriptEditorState extends State<TranscriptEditor>
+class TranscriptEditorState extends State<TranscriptEditor>
     with WidgetsBindingObserver {
   late final _TranscriptController _text;
   final _focus = FocusNode();
@@ -102,9 +101,9 @@ class _TranscriptEditorState extends State<TranscriptEditor>
   }
 
   @override
-  void didUpdateWidget(TranscriptEditor old) {
-    super.didUpdateWidget(old);
-    if (widget.savedText == old.savedText) return;
+  void didUpdateWidget(TranscriptEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.savedText == oldWidget.savedText) return;
     // A new stored text replaces the editor's only when nothing is in progress;
     // otherwise the user's edits stay and are compared with the new baseline.
     if (canonicalTranscriptText(_text.text) == widget.savedText) {
@@ -444,69 +443,51 @@ class _TranscriptEditorState extends State<TranscriptEditor>
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _flushAndLeave();
       },
-      child: SsCard(
-        title: 'متن جلسه',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: 'کپی',
-              visualDensity: VisualDensity.compact,
-              onPressed: text.trim().isEmpty ? null : _copy,
-              icon: const Icon(Icons.copy, size: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.notice != null) ...[
+            _Notice(
+              message: widget.notice!,
+              actionLabel: widget.noticeActionLabel,
+              onAction: widget.onNoticeAction,
             ),
-            IconButton(
-              tooltip: 'اشتراک‌گذاری',
-              visualDensity: VisualDensity.compact,
-              onPressed: text.trim().isEmpty ? null : _share,
-              icon: const Icon(Icons.ios_share, size: 20),
-            ),
+            const SizedBox(height: 10),
           ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.notice != null) ...[
-              _Notice(
-                message: widget.notice!,
-                actionLabel: widget.noticeActionLabel,
-                onAction: widget.onNoticeAction,
-              ),
-              const SizedBox(height: 10),
-            ],
-            _toolbar(),
-            if (_findOpen) ...[const SizedBox(height: 8), _findBar(theme)],
-            const SizedBox(height: 8),
-            TextField(
-              key: _fieldKey,
-              controller: _text,
-              focusNode: _focus,
-              readOnly: _locked,
-              minLines: 8,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.9),
-              decoration: const InputDecoration(
-                hintText: 'متن را اینجا بنویسید',
-                contentPadding: EdgeInsets.all(14),
-              ),
+          if (_findOpen) ...[_findBar(theme), const SizedBox(height: 8)],
+          TextField(
+            key: _fieldKey,
+            controller: _text,
+            focusNode: _focus,
+            readOnly: _locked,
+            minLines: 8,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.9),
+            decoration: const InputDecoration(
+              hintText: 'متن را اینجا بنویسید',
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              contentPadding: EdgeInsets.zero,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${toPersianDigits('$wordCount')} کلمه · '
-                    '${toPersianDigits('$lineCount')} بخش',
-                    style: theme.textTheme.bodySmall,
-                  ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${toPersianDigits('$wordCount')} کلمه · '
+                  '${toPersianDigits('$lineCount')} بخش',
+                  style: theme.textTheme.bodySmall,
                 ),
-                _saveStatus(theme),
-              ],
-            ),
-          ],
-        ),
+              ),
+              _saveStatus(theme),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -540,48 +521,50 @@ class _TranscriptEditorState extends State<TranscriptEditor>
 
   void _share() => SharePlus.instance.share(ShareParams(text: _text.text));
 
-  Widget _toolbar() {
-    final editable = !_locked;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+  List<PopupMenuEntry<VoidCallback>> actionItems() {
+    PopupMenuItem<VoidCallback> item(
+      String label,
+      IconData icon,
+      VoidCallback? action,
+    ) => PopupMenuItem<VoidCallback>(
+      value: action,
+      enabled: action != null,
       child: Row(
         children: [
-          _tool(
-            'واگرد',
-            Icons.undo,
-            editable && _at > 0 ? () => _travel(-1) : null,
-          ),
-          _tool(
-            'بازگرد',
-            Icons.redo,
-            editable && _at < _history.length - 1 ? () => _travel(1) : null,
-          ),
-          _divider(),
-          _tool(
-            'جستجو و جایگزینی',
-            Icons.find_replace,
-            _toggleFind,
-            active: _findOpen,
-          ),
-          _divider(),
-          _tool(
-            'حذف خط',
-            Icons.playlist_remove,
-            editable && _text.text.isNotEmpty ? _deleteLine : null,
-          ),
-          _tool(
-            'ادغام با خط بعد',
-            Icons.vertical_align_center,
-            editable ? _joinWithNext : null,
-          ),
-          _tool(
-            'یکدست‌سازی نویسه‌ها و فاصله‌ها',
-            Icons.auto_fix_high,
-            editable ? _tidy : null,
-          ),
+          Icon(icon, size: 18),
+          const SizedBox(width: 10),
+          Flexible(child: Text(label)),
         ],
       ),
     );
+    final editable = !_locked;
+    final hasText = _text.text.trim().isNotEmpty;
+    return [
+      item('کپی', Icons.copy, hasText ? _copy : null),
+      item('اشتراک‌گذاری متن', Icons.ios_share, hasText ? _share : null),
+      item('واگرد', Icons.undo, editable && _at > 0 ? () => _travel(-1) : null),
+      item(
+        'بازگرد',
+        Icons.redo,
+        editable && _at < _history.length - 1 ? () => _travel(1) : null,
+      ),
+      item('جستجو و جایگزینی', Icons.find_replace, _toggleFind),
+      item(
+        'حذف خط',
+        Icons.playlist_remove,
+        editable && hasText ? _deleteLine : null,
+      ),
+      item(
+        'ادغام با خط بعد',
+        Icons.vertical_align_center,
+        editable ? _joinWithNext : null,
+      ),
+      item(
+        'یکدست‌سازی نویسه‌ها و فاصله‌ها',
+        Icons.auto_fix_high,
+        editable ? _tidy : null,
+      ),
+    ];
   }
 
   Widget _tool(
@@ -599,13 +582,6 @@ class _TranscriptEditorState extends State<TranscriptEditor>
     icon: Icon(icon, size: 20),
   );
 
-  Widget _divider() => Container(
-    width: 1,
-    height: 20,
-    margin: const EdgeInsets.symmetric(horizontal: 6),
-    color: SsColors.line,
-  );
-
   Widget _findBar(ThemeData theme) {
     final count = _text.matches.length;
     final hasQuery = _find.text.isNotEmpty;
@@ -618,7 +594,6 @@ class _TranscriptEditorState extends State<TranscriptEditor>
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: SsColors.selected.withValues(alpha: 0.5),
-        border: Border.all(color: SsColors.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -698,10 +673,7 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: SsColors.selected,
-        border: Border.all(color: SsColors.line),
-      ),
+      decoration: BoxDecoration(color: SsColors.selected),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -767,4 +739,19 @@ class _TranscriptController extends TextEditingController {
     if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor)));
     return TextSpan(style: style, children: spans);
   }
+}
+
+class TranscriptActionsButton extends StatelessWidget {
+  const TranscriptActionsButton({super.key, required this.editorKey});
+
+  final GlobalKey<TranscriptEditorState> editorKey;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<VoidCallback>(
+    tooltip: 'ابزار متن جلسه',
+    icon: const Icon(Icons.edit_note),
+    position: PopupMenuPosition.under,
+    onSelected: (action) => action(),
+    itemBuilder: (_) => editorKey.currentState?.actionItems() ?? [],
+  );
 }
