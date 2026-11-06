@@ -28,6 +28,21 @@ docker compose up -d --build --remove-orphans
 docker compose logs -f migrate
 ```
 
+### بررسی APK جلسه‌نگار
+
+اگر هنگام ثبت نسخه خطای `apk_inspection_unavailable` دیده می‌شود، در فایل
+`.env` استقرار مقدار `JALASE_NEGAR_APK_CERT_SHA256` را روی اثر انگشت عمومی
+گواهی امضای APK رسمی تنظیم کنید. ایمیج API ابزارهای بررسی را هنگام ساخت نصب می‌کند.
+از پوشهٔ `sedasanj/deploy` سرویس را بازسازی کنید و اجرای ابزارها را بررسی کنید.
+
+```bash
+docker compose up -d --build api
+docker compose exec -T api aapt2 version
+docker compose exec -T api apksigner version
+```
+
+پس از نمایش نسخهٔ هر دو ابزار، APK رسمی را دوباره در پنل بارگذاری کنید.
+
 ### توقف مایگریشن میز پیگیری
 
 اگر لاگ سرویس `migrate` در مرحلهٔ `0091_task_workspace` شامل

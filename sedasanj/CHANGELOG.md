@@ -1,3 +1,7 @@
+## 2026-11-06 — AMINAZADI
+
+- Fixed Jalase-Negar APK inspection in Docker deployments by installing `aapt2` and `apksigner` in the API image.
+
 ## 2026-11-05 — AMINAZADI
 
 - Added meeting attendees: `POST /v1/meetings/sessions` accepts an optional `attendees` list (`profile_client_id`, `name`), stored in the new tenant table `meeting_attendees` (migration 0116) and returned by `GET /v1/meetings/{id}`. The minutes prompt lists them as the confirmed attendees, the web panel shows them on the meeting page, and the Persian help article `jalase-negar-meeting-attendees` (migration 0117) explains the flow and `JN-REC-0005`.

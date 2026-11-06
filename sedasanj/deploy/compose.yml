@@ -107,8 +107,6 @@ x-api-build: &api-build
   args:
     PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
     PIP_FALLBACK_INDEX_URLS: ${PIP_FALLBACK_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple/ https://mirrors.ustc.edu.cn/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/}
-    ANDROID_BUILD_TOOLS_REVISION: ${ANDROID_BUILD_TOOLS_REVISION:-35}
-    ANDROID_BUILD_TOOLS_SHA256: ${ANDROID_BUILD_TOOLS_SHA256:-}
 
 services:
   model-storage-init:
@@ -178,7 +176,9 @@ services:
 
   api:
     <<: *hardening
-    build: *api-build
+    build:
+      <<: *api-build
+      target: api
     restart: unless-stopped
     ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${API_PORT:-8000}:8000"]
     environment:
