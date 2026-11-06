@@ -6,6 +6,7 @@ import '../../../core/models/model_catalog.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/models/model_spec.dart';
 import '../../../core/models/model_store.dart';
+import '../../../core/platform/cpu_budget.dart';
 import '../../../core/providers.dart';
 import '../../models/application/models_controller.dart';
 import '../../people/application/people_providers.dart';
@@ -67,8 +68,11 @@ final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
     }
     final transducer = asrSpec.asrArchitecture == AsrArchitecture.transducer;
     final speakers = await _speakerSetup(ref, db, store, attendeeIds);
+    final budget = await ref.read(cpuBudgetProvider.future);
     final engine = VadSegmentEngine(
       VadSegmentConfig(
+        numThreads: budget.recognitionThreads,
+        speakerThreads: budget.liveSpeakerThreads,
         vadModelPath: store.filePath(vadSpec, vadSpec.files[0]),
         tokensPath: store.filePath(asrSpec, asrSpec.files[transducer ? 3 : 1]),
         architecture: asrSpec.asrArchitecture,

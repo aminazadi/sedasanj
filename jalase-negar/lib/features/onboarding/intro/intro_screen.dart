@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
+import '../../../core/platform/app_permissions.dart';
 import '../../../core/utils/format.dart';
 import 'intro_art.dart';
 import 'intro_progress.dart';
@@ -125,7 +126,15 @@ class _IntroScreenState extends ConsumerState<IntroScreen>
         debugPrint('JN-INTRO-0001: intro flag not saved ($e).');
       }
     }
-    if (mounted) context.go(widget.replay ? '/settings' : '/');
+    if (!mounted) return;
+    if (widget.replay) {
+      context.go('/settings');
+    } else {
+      // First run: ask for microphone, notification and background running
+      // here, once, instead of in the middle of the first recording.
+      final asks = const SystemPermissionGateway().supported.isNotEmpty;
+      context.go(asks ? '/permissions' : '/');
+    }
   }
 
   @override

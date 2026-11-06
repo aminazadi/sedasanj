@@ -8,6 +8,7 @@ import '../features/meetings/presentation/meetings_screen.dart';
 import '../features/models/presentation/models_screen.dart';
 import '../features/onboarding/intro/intro_progress.dart';
 import '../features/onboarding/intro/intro_screen.dart';
+import '../features/onboarding/permissions_screen.dart';
 import '../features/onboarding/tour_overlay.dart';
 import '../features/onboarding/tour_progress.dart';
 import '../features/onboarding/tour_step.dart';
@@ -56,6 +57,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/intro',
         builder: (context, state) =>
             IntroScreen(replay: state.uri.queryParameters['replay'] == '1'),
+      ),
+      GoRoute(
+        path: '/permissions',
+        builder: (context, state) => const PermissionsScreen(),
       ),
       GoRoute(
         path: '/record',

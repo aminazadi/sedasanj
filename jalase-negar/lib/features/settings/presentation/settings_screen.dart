@@ -14,6 +14,7 @@ import '../../recording/application/live_engine_provider.dart';
 import '../../updates/presentation/update_check_card.dart';
 import '../../upload/upload_controller.dart';
 import '../application/connection_controller.dart';
+import 'cpu_limit_card.dart';
 import 'meeting_upload_card.dart';
 import '../../../core/platform/distribution.dart';
 import 'qr_scan_screen.dart';
@@ -66,6 +67,8 @@ class SettingsScreen extends ConsumerWidget {
         const _SendTranscriptCard(),
         const SizedBox(height: 12),
         const _SpeakerNameCard(),
+        const SizedBox(height: 12),
+        const CpuLimitCard(),
         const SizedBox(height: 12),
         const UpdateCheckCard(),
         if (state?.error != null) ...[

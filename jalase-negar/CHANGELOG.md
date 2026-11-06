@@ -2,6 +2,10 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Added a "processor share" setting (Settings → سهم پردازنده): the owner picks 1 to half of the phone's cores (8 cores → up to 4) and live recognition, live speaker models and offline speaker analysis follow it. The default is 2 cores, which equals the previous fixed counts (recognition 2, live speaker models 1). Enrolment voiceprints, the sound tagger and the file transcriber still use their own fixed counts. Not yet tried on a phone; heat and battery effects of higher values are unmeasured.
+
+- Added a first-run permissions screen after the intro slides that asks, once and together, for the microphone, notifications and "keep running in the background" (battery-optimisation exemption, Android), each skippable and still asked again when a recording starts; the recording service now keeps running when the app is swiped away (`stopWithTask: false`; not yet tried on a phone, and some makers still stop background apps). Diagnostics `JN-PERM-0001` and `JN-PERM-0002` are log-only.
+
 - Moved transcript save status above the audio player and simplified its controls.
 
 - Simplified the meeting transcript layout and moved text actions into the header menu.

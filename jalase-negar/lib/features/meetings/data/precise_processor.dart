@@ -25,6 +25,7 @@ class PreciseRequest {
     required this.embeddingModelPath,
     required this.enrolled,
     this.progressPort,
+    this.threads = 2,
   });
 
   final String wavPath;
@@ -32,6 +33,9 @@ class PreciseRequest {
   final String embeddingModelPath;
   final List<Map<String, Object?>> enrolled;
   final SendPort? progressPort;
+
+  /// Cores this analysis may use (the owner's CPU limit in Settings).
+  final int threads;
 }
 
 typedef PreciseRunner =
@@ -55,11 +59,11 @@ Future<PreciseAnalysis> analyzePrecise(PreciseRequest request) async {
   final diarizer = SherpaDiarizer.tryCreate(
     segmentationModelPath: request.segmentationModelPath,
     embeddingModelPath: request.embeddingModelPath,
-    numThreads: 2,
+    numThreads: request.threads,
   );
   final embedder = SherpaVoiceEmbedder.tryCreate(
     request.embeddingModelPath,
-    numThreads: 2,
+    numThreads: request.threads,
   );
   if (diarizer == null || embedder == null) {
     diarizer?.free();

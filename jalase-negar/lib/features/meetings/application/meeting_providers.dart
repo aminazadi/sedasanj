@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/models/model_catalog.dart';
+import '../../../core/platform/cpu_budget.dart';
 import '../../../core/providers.dart';
 import '../../../core/platform/api_client.dart';
 import '../../people/application/people_providers.dart';
@@ -288,6 +289,7 @@ class MeetingActions {
           ),
           embeddingModelPath: store.filePath(embedding, embedding.files[0]),
           progressPort: progress.sendPort,
+          threads: (await ref.read(cpuBudgetProvider.future)).analysisThreads,
           enrolled: [
             for (final v in voices)
               v.asPreferred(present.contains(v.personId)).toMap(),

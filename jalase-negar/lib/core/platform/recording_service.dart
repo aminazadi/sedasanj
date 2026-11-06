@@ -44,6 +44,8 @@ class RecordingService {
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
         allowWakeLock: true,
+        // Keep the service (and its notification) when the app is swiped away.
+        stopWithTask: false,
       ),
     );
     _initialized = true;
