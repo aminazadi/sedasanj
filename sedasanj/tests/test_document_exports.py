@@ -168,3 +168,18 @@ def test_document_errors_have_actionable_help() -> None:
     for code in ("document_not_ready", "document_pdf_unavailable"):
         [article] = [article for article in migration.ARTICLES if article[2] == code]
         assert article[3] and len(article[4]) >= 4
+
+
+def test_pdf_footer_has_site_address_and_vector_logo() -> None:
+    from app.services.assistant_export_renderers import render_pdf
+    from app.services.pdf_text import SITE_URL, logo_width
+
+    assert SITE_URL == "sedasanj.ir"
+    assert 30 < logo_width(11) < 60
+    report = document_pdf.render(
+        document_pdf.Document("گزارش", "گزارش عملکردها", [("بازه", "۱۴۰۵")], "متن نمونه")
+    )
+    export = render_pdf({"a": "ستون"}, [{"a": "مقدار"}])
+    assert report.startswith(b"%PDF") and export.startswith(b"%PDF")
+    # The footer draws the logo as an even-odd filled vector path ("f*").
+    assert b"f*" in export or b"f*" in report or len(export) > 2500

@@ -22,7 +22,14 @@ from starlette.concurrency import run_in_threadpool
 
 from app.errors import ApiError
 from app.services.call_export import CALL_TYPE_LABELS, to_jalali
-from app.services.pdf_text import FONT, PDF_RENDER_LOCK, register_font, visual_text, wrap_rtl
+from app.services.pdf_text import (
+    FONT,
+    PDF_RENDER_LOCK,
+    draw_site_footer,
+    register_font,
+    visual_text,
+    wrap_rtl,
+)
 
 logger = logging.getLogger(__name__)
 GREEN = HexColor("#4B6E48")
@@ -106,6 +113,7 @@ class _Layout:
         canvas.setFillColor(MUTED)
         canvas.drawRightString(self.right, 25, visual_text(self.kind))
         canvas.drawString(self.margin, 25, visual_text("صفحه " + number(canvas.getPageNumber())))
+        draw_site_footer(canvas, self.width / 2, 25)
         self.y = self.height - 75
 
     def ensure(self, height: float) -> None:

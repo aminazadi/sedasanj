@@ -116,7 +116,13 @@ def render_pdf(columns: dict[str, str], rows: list[dict[str, Any]]) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen.canvas import Canvas
 
-    from app.services.pdf_text import FONT, PDF_RENDER_LOCK, register_font, wrap_rtl
+    from app.services.pdf_text import (
+        FONT,
+        PDF_RENDER_LOCK,
+        draw_site_footer,
+        register_font,
+        wrap_rtl,
+    )
 
     with PDF_RENDER_LOCK:
         register_font()
@@ -126,12 +132,14 @@ def render_pdf(columns: dict[str, str], rows: list[dict[str, Any]]) -> bytes:
         margin, size, leading = 40, 10, 18
         y = height - margin
         canvas.setTitle("خروجی دستیار صداسنج")
+        draw_site_footer(canvas, width / 2, 20)
 
         def paragraph(text: str) -> None:
             nonlocal y
             for line in wrap_rtl(text, size, width - 2 * margin):
                 if y < margin + leading:
                     canvas.showPage()
+                    draw_site_footer(canvas, width / 2, 20)
                     y = height - margin
                 canvas.setFont(FONT, size)
                 canvas.drawRightString(width - margin, y, line)

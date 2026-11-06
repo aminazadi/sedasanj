@@ -1,7 +1,8 @@
 @import "./document-content.css";
 .document-export-host { position: absolute; top: 0; left: -200vw; }
 .document-print { width: 186mm; background: #fff; color: #263226; font: 350 14px/2 Vazirmatn, sans-serif; }
-.document-print-content { border: 1px solid #b2ac88; padding: 24px; }
+.document-print-content { padding: 8px 0; }
+.document-print-footer, .document-print-spacer { display: none; }
 .document-body .statistics-chart { break-inside: avoid; }
 .document-save-bar { position: fixed; z-index: 45; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 20px; max-width: calc(100vw - 32px); padding: 12px 20px; border: 1px solid #b2ac88; background: #f2f0ef; box-shadow: 0 8px 32px #26322626; }
 @media print {
@@ -9,6 +10,11 @@
   body.document-print-active > :not(.document-export-host) { display: none !important; }
   body.document-print-active { min-width: 0 !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
   .document-export-host { position: static; }
+  .document-print-footer { position: fixed; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; gap: 6px; direction: ltr; color: #5b655a; font: 400 11px/1 Helvetica, Arial, sans-serif; }
+  .document-print-footer .brand-logo { display: inline-flex; color: #4b6e48 !important; }
+  .document-print .document-print-footer .brand-logo > svg { display: block; width: auto; height: 18px; }
+  .document-print { display: table; }
+  .document-print-spacer { display: table-footer-group; height: 11mm; }
   .document-print { width: 100%; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .document-print :is(h1,h2,h3) { break-after: avoid; }
   .document-print :is(p,li) { orphans: 3; widows: 3; }

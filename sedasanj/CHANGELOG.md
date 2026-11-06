@@ -1,17 +1,19 @@
 ## 2026-11-06 — AMINAZADI
 
-- Added signed gzip disaster-recovery generations with deduplicated encrypted objects and isolated full restore.
-- Added authenticated gzip organization archives with legacy import, attendee data, integrity checks, and verified FTPS transfers.
-- Added independently scheduled tenant database backups with verified downloads and isolated restore.
-- Improved assistant responsiveness with a dedicated interactive queue, indexed lookups, shared query embeddings, batched indexing, deferred chat titles, and bounded event retention.
-- Added tenant storage reports with registered usage, pending audio cleanup, and staff-only database and object-store measurements.
-- Fixed concurrent meeting audio assembly and deferred physical audio deletion until the database transaction commits and active backup reads finish.
 - Removed the title above the public footer logo and its editor field.
 - Expanded the public footer copyright and added a linked ROBOLINK credit on the left.
+- Added authenticated gzip organization archives with legacy import, attendee data, integrity checks, and verified FTPS transfers.
+- Added independently scheduled tenant database backups with verified downloads and isolated restore.
+- Added signed gzip disaster-recovery generations with deduplicated encrypted objects and isolated full restore.
+- Improved assistant responsiveness with a dedicated interactive queue, indexed lookups, shared query embeddings, batched indexing, deferred chat titles, and bounded event retention.
+- Added the Seda Sanj logo and `sedasanj.ir` to the footer of every printed or downloaded PDF document (browser print, client PDF download, server report/meeting PDFs and assistant PDF exports) and removed the border around the document body in print and PDF.
 - Added speaker names to the live transcript in the Jalase-Negar landing page preview.
+- Fixed the six SMS/two-factor code boxes (password change, phone sign-in) rendering without a border; each digit box now has a visible border and focus ring.
 - Added ASR benchmark tooling for Jalase-Negar: `asr_eval.py` now reports substitutions/deletions/insertions, hallucination on non-speech clips, cpWER for speaker-labelled references, RTF/latency from an optional sidecar, and separate `compare` gates for `clean` (no regression) and `noisy`/`overlap`; the new `asr_augment.py` builds seeded noisy (SNR 20/10/5/0), reverberant and overlapped (0/10/20/40%) clips with a matching manifest.
 - Added paired-bootstrap confidence intervals to `asr_eval.py compare` (`--bootstrap`, `--require-better`, `--clean-max-ci-upper`) so a change is accepted only when its 95% interval is wholly better, and an `identical` command that passes only when the normalized text matches on every clip, for speed-only changes.
 - Added quiet copies (`--quiet`, default 20 and 30 dB down), a noise-only clip that counts hallucinated words (`--noise-only`) and `--keep-originals` to `asr_augment.py`, plus the `quiet-N` and `noise-only` tags in `asr_eval.py`.
+- Added tenant storage reports with registered usage, pending audio cleanup, and staff-only database and object-store measurements.
+- Fixed concurrent meeting audio assembly and deferred physical audio deletion until the database transaction commits and active backup reads finish.
 - Fixed Jalase-Negar APK inspection in Docker deployments by installing `aapt2` and `apksigner` in the API image.
 
 ## 2026-11-05 — AMINAZADI

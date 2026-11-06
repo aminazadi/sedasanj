@@ -4,6 +4,7 @@ import { renderDocumentPdf } from "../lib/documentPdf";
 import { safeDownloadName } from "../utils/download";
 import DocumentHeader from "./DocumentHeader";
 import DocumentActionIcon, { DOCUMENT_ACTION_CLASS } from "./DocumentActionIcon";
+import { BrandLogo } from "./BrandLogo";
 import { ErrorBox } from "./Widgets";
 import "./document-print.css";
 
@@ -86,6 +87,8 @@ export default function DocumentActions({ title, kind, metadata, children, disab
       <article ref={documentRef} className="document-print" dir="rtl" lang="fa" aria-label={kind}>
         <DocumentHeader title={title} actions={null} metadata={metadata.map(([label, value]) => <span key={label}>{label}: <bdi>{value}</bdi></span>)} />
         <div className="document-body document-print-content">{children}</div>
+        <div className="document-print-spacer" aria-hidden="true"><div /></div>
+        <footer className="document-print-footer"><BrandLogo /><span>sedasanj.ir</span></footer>
       </article>
     </div>, document.body) : null}
   </div>;
