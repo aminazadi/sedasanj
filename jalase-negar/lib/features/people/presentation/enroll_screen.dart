@@ -31,10 +31,10 @@ class EnrollScreen extends ConsumerWidget {
       body: body,
     );
 
-    if (people.isLoading ||
-        prompts.isLoading ||
-        embedder.isLoading ||
-        repo.isLoading) {
+    if ((people.isLoading && !people.hasValue) ||
+        (prompts.isLoading && !prompts.hasValue) ||
+        (embedder.isLoading && !embedder.hasValue) ||
+        (repo.isLoading && !repo.hasValue)) {
       return scaffold(const Center(child: CircularProgressIndicator()));
     }
     final person = people.value

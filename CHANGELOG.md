@@ -2,6 +2,8 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Fixed Jalase-Negar voice sample recording being interrupted when the people list refreshes during synchronization.
+
 - Added persistent, resumable public hosting of Jalase-Negar model files and one-time upstream downloads during deployment.
 
 ## 2026-11-05 — AMINAZADI
