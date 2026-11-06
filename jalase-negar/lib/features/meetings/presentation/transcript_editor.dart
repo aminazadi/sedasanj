@@ -28,6 +28,7 @@ class TranscriptEditor extends StatefulWidget {
     this.notice,
     this.noticeActionLabel,
     this.onNoticeAction,
+    this.statusDestination,
   });
 
   /// The text as stored; the editor is dirty when it differs from it.
@@ -49,6 +50,7 @@ class TranscriptEditor extends StatefulWidget {
   /// A button under the notice (e.g. to send an edit again).
   final String? noticeActionLabel;
   final VoidCallback? onNoticeAction;
+  final ValueNotifier<Widget?>? statusDestination;
 
   @override
   State<TranscriptEditor> createState() => TranscriptEditorState();
@@ -438,6 +440,18 @@ class TranscriptEditorState extends State<TranscriptEditor>
         .where((w) => w.isNotEmpty)
         .length;
 
+    if (widget.statusDestination != null) {
+      final destination = widget.statusDestination!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.statusDestination == destination) {
+          destination.value = Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: _statusRow(Theme.of(context), wordCount, lineCount),
+          );
+        }
+      });
+    }
+
     return PopScope(
       canPop: !(_dirty || _unsettled || _saving),
       onPopInvokedWithResult: (didPop, _) {
@@ -474,23 +488,27 @@ class TranscriptEditorState extends State<TranscriptEditor>
               contentPadding: EdgeInsets.zero,
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${toPersianDigits('$wordCount')} کلمه · '
-                  '${toPersianDigits('$lineCount')} بخش',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-              _saveStatus(theme),
-            ],
-          ),
+          if (widget.statusDestination == null) ...[
+            const SizedBox(height: 8),
+            _statusRow(theme, wordCount, lineCount),
+          ],
         ],
       ),
     );
   }
+
+  Widget _statusRow(ThemeData theme, int wordCount, int lineCount) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          '${toPersianDigits('$wordCount')} کلمه · '
+          '${toPersianDigits('$lineCount')} بخش',
+          style: theme.textTheme.bodySmall,
+        ),
+      ),
+      _saveStatus(theme),
+    ],
+  );
 
   Widget _saveStatus(ThemeData theme) {
     if (_saveFailed) {

@@ -32,6 +32,15 @@ void main() {
       );
 
       expect(find.text('سلام\nپایان'), findsOneWidget);
+      final saveStatus = find.text('ذخیره شد');
+      final player = find.byType(AudioWaveformPlayer);
+      expect(saveStatus, findsOneWidget);
+      expect(
+        tester.getBottomLeft(saveStatus).dy,
+        lessThanOrEqualTo(tester.getTopLeft(player).dy),
+      );
+      expect(find.text('آماده پخش'), findsNothing);
+      expect(find.text('در حال پخش'), findsNothing);
       expect(find.byTooltip('ابزار متن جلسه'), findsOneWidget);
       await tester.tap(find.byTooltip('ابزار متن جلسه'));
       await tester.pumpAndSettle();

@@ -2,6 +2,8 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Moved transcript save status above the audio player and simplified its controls.
+
 - Simplified the meeting transcript layout and moved text actions into the header menu.
 
 - Added speaker analysis progress percentages to meeting cards and the speaker tab.

@@ -30,6 +30,13 @@ class MeetingDetailScreen extends ConsumerStatefulWidget {
 
 class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   final _editorKey = GlobalKey<TranscriptEditorState>();
+  final _transcriptStatus = ValueNotifier<Widget?>(null);
+
+  @override
+  void dispose() {
+    _transcriptStatus.dispose();
+    super.dispose();
+  }
 
   String get meetingId => widget.meetingId;
 
@@ -97,7 +104,24 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             bottomNavigationBar: Visibility(
               visible: MediaQuery.viewInsetsOf(context).bottom == 0,
               maintainState: true,
-              child: AudioWaveformPlayer(path: data.meeting.audioPath),
+              child: Builder(
+                builder: (context) => AnimatedBuilder(
+                  animation: DefaultTabController.of(context),
+                  builder: (context, _) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showSpeakers &&
+                          DefaultTabController.of(context).index == 0)
+                        ValueListenableBuilder<Widget?>(
+                          valueListenable: _transcriptStatus,
+                          builder: (context, status, _) =>
+                              status ?? const SizedBox.shrink(),
+                        ),
+                      AudioWaveformPlayer(path: data.meeting.audioPath),
+                    ],
+                  ),
+                ),
+              ),
             ),
             body: showSpeakers
                 ? TabBarView(
@@ -172,6 +196,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         else
           TranscriptEditor(
             key: _editorKey,
+            statusDestination: _transcriptStatus,
             savedText: transcript,
             readOnly: data.meeting.status == MeetingStatus.uploading,
             notice: _editNotice(data.meeting),

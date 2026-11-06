@@ -126,17 +126,11 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
     final theme = Theme.of(context);
     return Material(
       color: Colors.white,
-      elevation: 8,
-      child: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: SsColors.line)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: _failed ? _buildError(theme) : _buildPlayer(theme),
-          ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: _failed ? _buildError(theme) : _buildPlayer(theme),
         ),
       ),
     );
@@ -206,17 +200,6 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
                 ),
                 onPressed: _toggle,
                 icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 24),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                playing ? 'در حال پخش' : 'آماده پخش',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: SsColors.neutral,
-                ),
               ),
             ),
             const SizedBox(width: 8),
