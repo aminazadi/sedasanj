@@ -158,18 +158,18 @@ const appFeatures: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "refresh", title: "اتصال به صداسنج", body: "با اسکن یک QR به سازمان خود وصل شوید و جلسه‌ها را به پنل بفرستید." },
 ];
 const LIVE_LINES = [
-  "سلام و وقت بخیر، جلسه‌ی امروز را با مرور گزارش فروش هفته‌ی گذشته شروع می‌کنیم.",
-  "فروش نسبت به هفته‌ی قبل حدود ده درصد بالاتر رفته و بیشترین رشد مربوط به شعبه‌ی غرب بوده است.",
-  "ولی تعداد شکایت‌های مربوط به تأخیر در ارسال هم کمی زیاد شده و باید بررسی‌اش کنیم.",
-  "بله، بیشتر این تأخیرها از انبار مرکزی بوده. با مسئول انبار صحبت کرده‌ام و برنامه‌ی تازه‌ای می‌دهند.",
-  "عالیه. پس تا پنجشنبه گزارش کامل را برای همه ارسال کنید تا در جلسه‌ی بعد درباره‌اش تصمیم بگیریم.",
-  "موضوع بعدی بودجه‌ی تبلیغات فصل آینده است؛ پیشنهاد من این است که سهم کانال‌های آنلاین بیشتر شود.",
-  "موافقم، چون هزینه‌ی جذب مشتری در آن کانال‌ها نسبت به سه ماه پیش حدود بیست درصد کمتر شده است.",
-  "باشه، پیگیری‌ها را همین امروز در سامانه ثبت می‌کنم و برای تیم می‌فرستم.",
-  "خیلی خوب، اگر نکتهٔ دیگری نیست جلسه را همین‌جا تمام می‌کنیم. ممنون از همه.",
+  { speaker: "علی سهرابی", text: "سلام و وقت بخیر، جلسه‌ی امروز را با مرور گزارش فروش هفته‌ی گذشته شروع می‌کنیم." },
+  { speaker: "مریم احمدی", text: "فروش نسبت به هفته‌ی قبل حدود ده درصد بالاتر رفته و بیشترین رشد مربوط به شعبه‌ی غرب بوده است." },
+  { speaker: "رضا کریمی", text: "ولی تعداد شکایت‌های مربوط به تأخیر در ارسال هم کمی زیاد شده و باید بررسی‌اش کنیم." },
+  { speaker: "مریم احمدی", text: "بله، بیشتر این تأخیرها از انبار مرکزی بوده. با مسئول انبار صحبت کرده‌ام و برنامه‌ی تازه‌ای می‌دهند." },
+  { speaker: "علی سهرابی", text: "عالیه. پس تا پنجشنبه گزارش کامل را برای همه ارسال کنید تا در جلسه‌ی بعد درباره‌اش تصمیم بگیریم." },
+  { speaker: "رضا کریمی", text: "موضوع بعدی بودجه‌ی تبلیغات فصل آینده است؛ پیشنهاد من این است که سهم کانال‌های آنلاین بیشتر شود." },
+  { speaker: "مریم احمدی", text: "موافقم، چون هزینه‌ی جذب مشتری در آن کانال‌ها نسبت به سه ماه پیش حدود بیست درصد کمتر شده است." },
+  { speaker: "رضا کریمی", text: "باشه، پیگیری‌ها را همین امروز در سامانه ثبت می‌کنم و برای تیم می‌فرستم." },
+  { speaker: "علی سهرابی", text: "خیلی خوب، اگر نکتهٔ دیگری نیست جلسه را همین‌جا تمام می‌کنیم. ممنون از همه." },
 ];
 function LiveTyping() {
-  const words = LIVE_LINES.map((line) => line.split(" "));
+  const words = LIVE_LINES.map(({ text }) => text.split(" "));
   const [shown, setShown] = useState<number[]>(() => (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? words.map((w) => w.length) : [0]));
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -189,7 +189,7 @@ function LiveTyping() {
     if (shown.length === 1 && shown[0] === 0) { el.scrollTop = 0; stick.current = true; return; }
     if (stick.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [shown]);
-  return <div className="rec-lines" ref={box} onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollTop >= el.scrollHeight - el.clientHeight - 48; }}>{shown.map((count, i) => <p key={i}>{words[i].slice(0, count).join(" ")}{i === shown.length - 1 && count < words[i].length && <span className="rec-caret"/>}</p>)}</div>;
+  return <div className="rec-lines" ref={box} onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollTop >= el.scrollHeight - el.clientHeight - 48; }}>{shown.map((count, i) => <p key={i}><strong>{LIVE_LINES[i].speaker}:</strong>{" "}{words[i].slice(0, count).join(" ")}{i === shown.length - 1 && count < words[i].length && <span className="rec-caret"/>}</p>)}</div>;
 }
 
 const ucShortLabels: Record<string, string> = {
@@ -242,7 +242,7 @@ function AppDownload() {
       </div>
       {release && <dl className="site-app-facts">{facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd dir={fact.ltr ? "ltr" : undefined}>{fact.value}</dd></div>)}</dl>}
     </div>
-    <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده، موج صدا و دکمه‌های توقف موقت و پایان">
+    <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده با نام گوینده‌ها، موج صدا و دکمه‌های توقف موقت و پایان">
       <div className="site-app-phone" aria-hidden="true">
         <svg className="phone-app-icon" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="44" fill="#4b6e48"/><rect x="85" y="22" width="22" height="148" fill="#fff"/><rect x="54" y="54" width="22" height="84" fill="#b9b48f"/><rect x="116" y="54" width="22" height="84" fill="#b9b48f"/><rect x="24" y="76" width="22" height="40" fill="#b9b48f"/><rect x="146" y="76" width="22" height="40" fill="#b9b48f"/></svg>
         <span className="phone-btn phone-btn-power"/><span className="phone-btn phone-btn-vol"/>
