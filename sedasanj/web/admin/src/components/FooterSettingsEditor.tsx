@@ -29,6 +29,7 @@ export default function FooterSettingsEditor({ value, onChange }: { value: Foote
     ["contact_title", "عنوان بخش تماس", 200],
     ["contact_description", "توضیحات بخش تماس", 2000],
     ["description", "توضیحات معرفی", 4000],
+    ["address", "نشانی (برای پنهان کردن، خالی بگذارید)", 500],
     ["links_title", "عنوان لینک‌های پرکاربرد", 200],
     ["trust_title", "عنوان نمادها", 200],
     ["copyright", "متن پایین فوتر", 500],

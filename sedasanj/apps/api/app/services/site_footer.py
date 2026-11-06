@@ -43,6 +43,7 @@ class FooterSettings(BaseModel):
     links_title: str = Field(default="لینک‌های پرکاربرد", max_length=200)
     trust_title: str = Field(default="نمادهای اعتماد", max_length=200)
     copyright: str = Field(default=DEFAULT_COPYRIGHT, max_length=500)
+    address: str = Field(default="", max_length=500)
     social_links: dict[SocialNetwork, Annotated[str, Field(max_length=2048)]] = Field(
         default_factory=dict
     )

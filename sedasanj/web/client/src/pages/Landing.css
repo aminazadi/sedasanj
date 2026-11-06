@@ -166,6 +166,7 @@
 .site-footer-phone:hover { color: #fff !important; text-decoration: underline; text-underline-offset: 6px; }
 .site-footer-main { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 36px; padding-block: 38px; }
 .site-footer-brand p { margin-top: 12px; color: var(--site-muted); font-size: 12px; }
+.site-footer-address { margin-top: 12px; color: var(--site-muted); font-size: 12px; font-style: normal; white-space: pre-line; overflow-wrap: anywhere; }
 .site-footer-social { display: flex; flex-wrap: wrap; gap: 4px; margin-block-start: 8px; }
 .site-footer-social a { display: grid; place-items: center; width: 44px; height: 44px; }
 .site-footer-social a:hover { background: rgb(255 255 255 / 60%); }

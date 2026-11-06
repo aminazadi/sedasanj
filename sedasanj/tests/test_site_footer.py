@@ -77,6 +77,13 @@ def test_footer_refreshes_only_the_legacy_default_copyright():
     assert FooterSettings(copyright="© متن سفارشی").copyright == "© متن سفارشی"
 
 
+def test_footer_address_defaults_empty_and_is_limited():
+    assert FooterSettings().address == ""
+    assert FooterSettings(address="  تهران، خیابان نمونه  ").address == "تهران، خیابان نمونه"
+    with pytest.raises(ValidationError):
+        FooterSettings(address="x" * 501)
+
+
 def test_footer_social_links_allow_each_network_and_omit_empty_links():
     links = {
         "eitaa": "https://eitaa.com/sedasanj",
@@ -161,6 +168,7 @@ def test_invalid_footer_returns_existing_error_code_without_echoing_url(footer):
     [
         ("0088_site_footer_help_content.py", "site-footer-settings-guide"),
         ("0122_footer_social_links_help.py", "footer-social-links"),
+        ("0123_footer_address_help.py", "footer-address"),
     ],
 )
 def test_footer_help_migration_is_reversible(monkeypatch, filename, slug):

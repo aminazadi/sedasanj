@@ -17,6 +17,7 @@ export interface FooterSettings {
   links_title: string;
   trust_title: string;
   copyright: string;
+  address?: string;
   links: FooterLink[];
   legal_links: FooterLink[];
   social_links?: Partial<Record<FooterSocialNetwork, string>>;
@@ -31,6 +32,7 @@ export const defaultFooter: FooterSettings = {
   links_title: "لینک‌های پرکاربرد",
   trust_title: "نمادهای اعتماد",
   copyright: "© ۱۴۰۵ صداسنج. تمامی حقوق این وب‌سایت برای صداسنج محفوظ است.",
+  address: "",
   links: [
     { label: "امکانات", url: "/#features" },
     { label: "پلن‌ها", url: "/#pricing" },

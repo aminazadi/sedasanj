@@ -1,3 +1,7 @@
+## 2026-11-07 — AMINAZADI
+
+- Added an admin-managed address to the public footer (Settings → Site settings → footer content); empty hides it. Added the Persian help article `footer-address` (migration 0123).
+
 ## 2026-11-06 — AMINAZADI
 
 - Added admin-managed Eitaa, Bale, Telegram, Instagram, Aparat, and YouTube links with local brand icons beneath the public footer description.
