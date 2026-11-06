@@ -2,6 +2,8 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Added speaker analysis progress percentages to meeting cards and the speaker tab.
+
 - Changed model downloads to use the SedaSanj server.
 
 - Fixed live transcription discarding speech when the phone fell behind: skipped and shed spans (up to 10 minutes of audio) are now kept and decoded later when the engine is idle, or for up to 30 seconds after stopping, and `JN-ASR-0001` is cleared once they are recovered. The stop timeout of the live engine is now 45 seconds.

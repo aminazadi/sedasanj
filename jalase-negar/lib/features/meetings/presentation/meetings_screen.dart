@@ -812,7 +812,10 @@ class _StatusArea extends ConsumerWidget {
     if (meeting.analyzingSpeakers &&
         (status == MeetingStatus.recorded ||
             status == MeetingStatus.transcribed)) {
-      return const _BusyLine('در حال استخراج گوینده‌ها');
+      final progress = ref.watch(speakerProgressProvider)[meeting.id] ?? 0;
+      return _BusyLine(
+        'در حال استخراج گوینده‌ها (${toPersianDigits("$progress")}٪)',
+      );
     }
     if (status == MeetingStatus.uploading) {
       return const _BusyLine('در حال ارسال به صداسنج');

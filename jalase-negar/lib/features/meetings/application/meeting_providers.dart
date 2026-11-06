@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -75,6 +77,18 @@ final textSyncApiProvider = FutureProvider<MeetingUploadApi?>((ref) async {
 final preciseRunnerProvider = Provider<PreciseRunner>(
   (ref) => runPreciseInIsolate,
 );
+
+final speakerProgressProvider =
+    NotifierProvider<SpeakerProgress, Map<String, int>>(SpeakerProgress.new);
+
+class SpeakerProgress extends Notifier<Map<String, int>> {
+  @override
+  Map<String, int> build() => {};
+
+  void set(String id, int progress) => state = {...state, id: progress};
+
+  void clear(String id) => state = {...state}..remove(id);
+}
 
 /// Builds voiceprints from a meeting's audio. Overridden in tests.
 final voiceprintExtractorProvider = Provider<VoiceprintExtractor>(
@@ -220,6 +234,7 @@ class MeetingActions {
         meeting.status == MeetingStatus.uploading) {
       return const PreciseOutcome(PreciseStatus.busy);
     }
+    ref.read(speakerProgressProvider.notifier).set(meetingId, 0);
     await repo.setSpeakersState(meetingId, 'analyzing');
     ref.invalidate(meetingsProvider);
     ref.invalidate(meetingDetailProvider(meetingId));
@@ -227,6 +242,7 @@ class MeetingActions {
       return await _runPrecise(repo, meeting);
     } finally {
       await repo.setSpeakersState(meetingId, 'done');
+      ref.read(speakerProgressProvider.notifier).clear(meetingId);
       ref.invalidate(meetingsProvider);
       ref.invalidate(meetingDetailProvider(meetingId));
       ref.read(uploadQueueProvider.notifier).kick();
@@ -256,6 +272,12 @@ class MeetingActions {
       for (final a in await repo.attendees(meeting.id)) a.personId,
     };
     final PreciseAnalysis analysis;
+    final progress = ReceivePort();
+    final subscription = progress.listen((value) {
+      if (value is int) {
+        ref.read(speakerProgressProvider.notifier).set(meetingId, value);
+      }
+    });
     try {
       analysis = await ref.read(preciseRunnerProvider)(
         PreciseRequest(
@@ -265,6 +287,7 @@ class MeetingActions {
             segmentation.files[0],
           ),
           embeddingModelPath: store.filePath(embedding, embedding.files[0]),
+          progressPort: progress.sendPort,
           enrolled: [
             for (final v in voices)
               v.asPreferred(present.contains(v.personId)).toMap(),
@@ -279,6 +302,9 @@ class MeetingActions {
       );
     } catch (_) {
       return const PreciseOutcome(PreciseStatus.failed);
+    } finally {
+      await subscription.cancel();
+      progress.close();
     }
     // Read the lines only now: the user may have edited while it ran.
     final current = await repo.segments(meetingId);

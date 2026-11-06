@@ -45,7 +45,7 @@ class GuideScreen extends StatelessWidget {
           icon: Icons.record_voice_over_outlined,
           title: 'تشخیص گویندگان',
           subtitle:
-              'در صفحهٔ هر جلسه «تشخیص خودکار گویندگان» را بزنید و نام هر صدا را بنویسید',
+              'در صفحهٔ هر جلسه گوینده‌ها را استخراج کنید؛ درصد پیشرفت در تب گوینده‌ها و کارت جلسه نمایش داده می‌شود',
           onTap: () => context.go('/people'),
         ),
       ],

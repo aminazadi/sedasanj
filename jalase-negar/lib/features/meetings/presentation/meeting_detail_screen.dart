@@ -110,7 +110,7 @@ class MeetingDetailScreen extends ConsumerWidget {
   ) {
     final locked = data.meeting.status == MeetingStatus.uploading;
     if (data.meeting.analyzingSpeakers) {
-      return const Center(child: _AnalyzingBanner(large: true));
+      return Center(child: _AnalyzingBanner(meetingId: meetingId, large: true));
     }
     if (!hasSpeakers) {
       return SsEmptyState(
@@ -151,7 +151,7 @@ class MeetingDetailScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       children: [
         if (data.meeting.analyzingSpeakers) ...[
-          const _AnalyzingBanner(),
+          _AnalyzingBanner(meetingId: meetingId),
           const SizedBox(height: 12),
         ],
         _AttendeesSection(meetingId: meetingId),
@@ -337,15 +337,18 @@ class _RenameDialogState extends State<_RenameDialog> {
 }
 
 /// The app's loading mark with one line: speakers are being identified.
-class _AnalyzingBanner extends StatelessWidget {
-  const _AnalyzingBanner({this.large = false});
+class _AnalyzingBanner extends ConsumerWidget {
+  const _AnalyzingBanner({required this.meetingId, this.large = false});
+
+  final String meetingId;
 
   final bool large;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final progress = ref.watch(speakerProgressProvider)[meetingId] ?? 0;
     final text = Text(
-      'در حال استخراج گوینده‌ها؛ پس از پایان، جلسه برای صداسنج ارسال می‌شود.',
+      'در حال استخراج گوینده‌ها (${toPersianDigits("$progress")}٪)؛ پس از پایان، جلسه برای صداسنج ارسال می‌شود.',
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodySmall,
     );

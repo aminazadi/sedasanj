@@ -7,6 +7,7 @@ import 'package:jalase_negar/features/meetings/presentation/audio_waveform_playe
 import 'package:jalase_negar/features/meetings/presentation/meeting_detail_screen.dart';
 import 'package:jalase_negar/features/meetings/presentation/meetings_screen.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
+import 'package:jalase_negar/features/recording/application/recorder_controller.dart';
 
 void main() {
   for (final (status, identity) in [
@@ -184,6 +185,55 @@ void main() {
     expect(find.textContaining('در حال استخراج گوینده‌ها'), findsWidgets);
   });
 
+  testWidgets('shows live speaker progress on the meeting card and tab', (
+    tester,
+  ) async {
+    final meeting = _meeting(
+      MeetingStatus.recorded,
+    ).copyWith(speakersState: 'analyzing');
+    final container = ProviderContainer(
+      overrides: [
+        meetingsProvider.overrideWith((ref) async => [meeting]),
+        recorderControllerProvider.overrideWith(_IdleRecorder.new),
+        meetingPreviewProvider(meeting.id).overrideWith((ref) async => ''),
+        meetingDetailProvider(meeting.id).overrideWith(
+          (ref) async => MeetingDetail(
+            meeting: meeting,
+            segments: const [
+              Segment(channel: 0, startMs: 0, endMs: 400, text: 'سلام'),
+            ],
+          ),
+        ),
+        uploadQueueProvider.overrideWith(_IdleUploadController.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(speakerProgressProvider.notifier).set(meeting.id, 42);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: MeetingsScreen())),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('(۴۲٪)'), findsOneWidget);
+    container.read(speakerProgressProvider.notifier).set(meeting.id, 73);
+    await tester.pump();
+    expect(find.textContaining('(۷۳٪)'), findsOneWidget);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: MeetingDetailScreen(meetingId: meeting.id)),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('گوینده‌ها'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('(۷۳٪)'), findsOneWidget);
+  });
+
   testWidgets('failed meetings offer no audio transcription retry', (
     tester,
   ) async {
@@ -252,3 +302,8 @@ Meeting _meeting(MeetingStatus status, {String? identity}) => Meeting(
   status: status,
   asrIdentity: identity,
 );
+
+class _IdleRecorder extends RecorderController {
+  @override
+  RecorderState build() => const RecorderState();
+}

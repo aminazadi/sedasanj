@@ -24,12 +24,14 @@ class PreciseRequest {
     required this.segmentationModelPath,
     required this.embeddingModelPath,
     required this.enrolled,
+    this.progressPort,
   });
 
   final String wavPath;
   final String segmentationModelPath;
   final String embeddingModelPath;
   final List<Map<String, Object?>> enrolled;
+  final SendPort? progressPort;
 }
 
 typedef PreciseRunner =
@@ -65,7 +67,11 @@ Future<PreciseAnalysis> analyzePrecise(PreciseRequest request) async {
     throw const FormatException('models_unavailable');
   }
   try {
-    final turns = diarizer.diarize(audio);
+    final turns = diarizer.diarizeWithProgress(audio, (done, total) {
+      if (total > 0) {
+        request.progressPort?.send((done * 99 ~/ total).clamp(0, 99));
+      }
+    });
     final matcher = SpeakerMatcher([
       for (final e in request.enrolled) EnrolledVoice.fromMap(e),
     ]);
