@@ -43,3 +43,21 @@ python scripts/asr_eval.py compare test_data/asr_golden/manifest.json \
 ```
 
 اگر برای کلیپی خروجی نباشد اسکریپت خطا می‌دهد (WER را با کلیپ جاافتاده مقایسه نمی‌کند). آستانهٔ نهایی ۲٪ پس از ثبت Baseline تأیید می‌شود.
+
+## برچسب‌های جدید و ابزار فاز ۰
+
+- برچسب‌های تازه: `codeswitch` (واژهٔ انگلیسی میان فارسی)، `lavalier`، `table`، `rev` (پژواک)، `snr-N` (مثلاً `snr-10`)، `ovl-N` (مثلاً `ovl-20`)، و `non-speech`/`silence` برای کلیپ بدون گفتار با `reference` خالی (هر واژهٔ خروجی روی آن «هالوسینیشن» شمرده می‌شود و در WER نمی‌آید).
+- مرجع چندنفره برای cpWER: به‌جای رشته، فهرست `[{"speaker": "A", "text": "..."}, ...]` یا شیء `{"A": "..."}` بنویسید؛ فرضیه هم می‌تواند همین قالب را داشته باشد (رشتهٔ ساده = یک گوینده). حداکثر ۸ گوینده در هر کلیپ.
+- زمان‌بندی اختیاری: کنار `hypotheses/<system>.json` فایل `<system>.latency.json` با `{"<id>": {"audio_seconds": 61.2, "processing_seconds": 24.0, "final_latency_seconds": 1.1}}` بگذارید؛ باید همهٔ کلیپ‌ها را بپوشاند.
+- `compare` حالا آستانهٔ جدا دارد: `--max-clean-delta` (پیش‌فرض ۰: پسرفت روی `clean` ممنوع) و `--noisy-min-gain` (بهبود نسبی لازم روی `noisy` با WER و `overlap` با cpWER؛ پیش‌فرض ۰ یعنی بدتر نشود).
+
+### داده سنتزی
+
+```bash
+pip install numpy soundfile
+python scripts/asr_augment.py test_data/asr_golden/manifest.json ~/asr_golden_aug \
+  --audio-root test_data/asr_golden --noise noise.wav --seed 1234
+python scripts/asr_eval.py score ~/asr_golden_aug/manifest.json hypotheses/app-current-aug.json
+```
+
+خروجی را خارج از مخزن (یا مسیر gitignore) بگذارید؛ صوت و manifest تولیدی commit نمی‌شود. بدون `--noise` نویز صورتی مصنوعی استفاده می‌شود که آسان‌تر از نویز واقعی است؛ مجوز مجموعهٔ نویز را پیش از استفاده تأیید کنید. هم‌پوشانی با کلیپ بعدیِ manifest (گوینده‌ای متفاوت فرض می‌شود) ساخته می‌شود و مرجعش گوینده‌دار است.

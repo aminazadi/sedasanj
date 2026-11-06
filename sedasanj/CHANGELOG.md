@@ -1,5 +1,6 @@
 ## 2026-11-06 — AMINAZADI
 
+- Added ASR benchmark tooling for Jalase-Negar: `asr_eval.py` now reports substitutions/deletions/insertions, hallucination on non-speech clips, cpWER for speaker-labelled references, RTF/latency from an optional sidecar, and separate `compare` gates for `clean` (no regression) and `noisy`/`overlap`; the new `asr_augment.py` builds seeded noisy (SNR 20/10/5/0), reverberant and overlapped (0/10/20/40%) clips with a matching manifest.
 - Fixed Jalase-Negar APK inspection in Docker deployments by installing `aapt2` and `apksigner` in the API image.
 
 ## 2026-11-05 — AMINAZADI
