@@ -461,6 +461,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.4.16"
+  just_audio_windows:
+    dependency: "direct main"
+    description:
+      name: just_audio_windows
+      sha256: "7d80dfa02a2189f1c26673a56f4d8584a306d3f22735302be6111e9578a40318"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.2.3"
   leak_tracker:
     dependency: transitive
     description:
@@ -1043,7 +1051,7 @@ packages:
     source: hosted
     version: "2.5.8"
   sqflite_common_ffi:
-    dependency: "direct dev"
+    dependency: "direct main"
     description:
       name: sqflite_common_ffi
       sha256: cd0c7f7de39a08f2d54ef144d9058c46eca8461879aaa648025643455c1e5a20

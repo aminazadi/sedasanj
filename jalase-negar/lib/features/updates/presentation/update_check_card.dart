@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/widgets/ss_toast.dart';
+import '../../../core/platform/distribution.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../application/update_controller.dart';
 import 'update_dialog.dart';
@@ -12,6 +13,8 @@ class UpdateCheckCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Store and desktop/iOS builds are updated by their store, not by the app.
+    if (!updateCardVisible) return const SizedBox.shrink();
     final state = ref.watch(updateControllerProvider);
     final installed = state.installed;
     return SsCard(

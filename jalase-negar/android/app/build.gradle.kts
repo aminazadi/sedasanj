@@ -41,6 +41,15 @@ android {
         versionName = flutter.versionName
     }
 
+    // One APK per channel. `direct` keeps the in-app updater; the store flavors (Bazaar, Myket)
+    // drop it (see src/<flavor>/AndroidManifest.xml) because the store delivers updates.
+    flavorDimensions += "store"
+    productFlavors {
+        create("direct") { dimension = "store" }
+        create("bazaar") { dimension = "store" }
+        create("myket") { dimension = "store" }
+    }
+
     signingConfigs {
         if (keyProperties.getProperty("storeFile") != null) {
             create("release") {

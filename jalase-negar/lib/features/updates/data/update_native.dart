@@ -1,6 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
+
+import '../../../core/platform/distribution.dart';
 
 const _channel = MethodChannel('app.jalasenegar.jalase_negar/update');
 
@@ -54,7 +54,7 @@ class UpdateNative {
       (await _call<bool>('installDownloaded', null)) ?? false;
 
   Future<T?> _call<T>(String method, Object? arguments) async {
-    if (!Platform.isAndroid) return null;
+    if (!selfUpdateEnabled) return null;
     try {
       return await _channel.invokeMethod<T>(method, arguments);
     } on PlatformException {

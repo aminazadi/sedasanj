@@ -44,6 +44,12 @@ class ModelStore {
     if (await dir.exists()) await dir.delete(recursive: true);
   }
 
+  /// Removes the folder of a model that is no longer in the catalog.
+  Future<void> deleteById(String id) async {
+    final dir = _paths.modelDir(id);
+    if (await dir.exists()) await dir.delete(recursive: true);
+  }
+
   /// Bytes already on disk (completed files + partial downloads).
   Future<int> bytesOnDisk(ModelSpec spec) async {
     var total = 0;

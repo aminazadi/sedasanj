@@ -2,9 +2,7 @@ import 'model_spec.dart';
 
 /// Static catalog of supported models.
 ///
-/// ASR: the Shenava family (FastConformer), official sherpa-onnx exports from
-/// the original release repositories. The recommended model is the same Shenava
-/// Koochik v1.5 RNNT (INT8) that the SedaSanj platform's aiservice runs on CPU,
+/// ASR: only the Shenava Koochik v1.5 RNNT (INT8) is offered; it is the one that the SedaSanj platform's aiservice runs on CPU,
 /// so a local transcript and a server transcript come from the same weights.
 /// VAD: Silero VAD used to segment long meeting audio before decoding.
 abstract final class ModelCatalog {
@@ -89,37 +87,6 @@ abstract final class ModelCatalog {
     ],
   );
 
-  static ModelSpec _shenava({
-    required String id,
-    required String repo,
-    required String nameFa,
-    required String descriptionFa,
-    required int modelSize,
-    bool recommended = false,
-  }) {
-    final base = 'https://huggingface.co/Reza2kn/$repo/resolve/main';
-    return ModelSpec(
-      id: id,
-      kind: ModelKind.asr,
-      nameFa: nameFa,
-      descriptionFa: descriptionFa,
-      repoUrl: 'https://huggingface.co/Reza2kn/$repo',
-      recommended: recommended,
-      files: [
-        ModelFileSpec(
-          url: '$base/model.onnx',
-          filename: 'model.onnx',
-          sizeBytes: modelSize,
-        ),
-        ModelFileSpec(
-          url: '$base/tokens.txt',
-          filename: 'tokens.txt',
-          sizeBytes: 12236,
-        ),
-      ],
-    );
-  }
-
   static const ModelSpec shenavaKoochikRnnt = ModelSpec(
     id: 'shenava-koochik-v1-5-rnnt',
     kind: ModelKind.asr,
@@ -161,29 +128,14 @@ abstract final class ModelCatalog {
     ],
   );
 
-  static final List<ModelSpec> asrModels = [
-    shenavaKoochikRnnt,
-    _shenava(
-      id: 'shenava-koochik',
-      repo: 'Shenava-Koochik-v1.0-sherpa-onnx',
-      nameFa: 'شنوا کوچیک (۱۱۴M)',
-      descriptionFa: 'مدل CTC بزرگ‌تر (حدود ۴۳۸ مگابایت)؛ جایگزین مدل پیشنهادی',
-      modelSize: 458819249,
-    ),
-    _shenava(
-      id: 'shenava-rizeh',
-      repo: 'Shenava-Rizeh-v1.0-sherpa-onnx',
-      nameFa: 'شنوا ریزه (۳۲M)',
-      descriptionFa: 'تعادل دقت و سرعت؛ برای بیشتر گوشی‌ها',
-      modelSize: 116700660,
-    ),
-    _shenava(
-      id: 'shenava-rizeh-pizeh',
-      repo: 'Shenava-Rizeh-Pizeh-v1.0-sherpa-onnx',
-      nameFa: 'شنوا ریزه‌پیزه (۶.۹M)',
-      descriptionFa: 'سبک‌ترین گزینه؛ سریع حتی روی گوشی‌های ضعیف',
-      modelSize: 33201018,
-    ),
+  /// The only speech-to-text model offered; the others were retired.
+  static final List<ModelSpec> asrModels = [shenavaKoochikRnnt];
+
+  /// Ids of retired ASR models. Their files are deleted from the phone.
+  static const List<String> retiredIds = [
+    'shenava-koochik',
+    'shenava-rizeh',
+    'shenava-rizeh-pizeh',
   ];
 
   static final List<ModelSpec> speakerModels = [

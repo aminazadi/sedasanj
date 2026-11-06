@@ -1,5 +1,7 @@
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import 'distribution.dart';
+
 /// No-op task handler: audio capture runs in the main isolate through the
 /// `record` plugin. The foreground service exists only to keep the process
 /// (and the microphone) alive while the screen is off.
@@ -50,6 +52,7 @@ class RecordingService {
   /// Returns a Persian warning when the notification permission is denied
   /// (recording still works, but Android may stop it in the background).
   static Future<String?> start() async {
+    if (!hasForegroundService) return null;
     _init();
     String? warning;
     final permission =
@@ -77,6 +80,7 @@ class RecordingService {
   }
 
   static Future<void> stop() async {
+    if (!hasForegroundService) return;
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.stopService();
     }

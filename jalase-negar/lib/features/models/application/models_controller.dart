@@ -22,10 +22,43 @@ class ModelItemState {
 }
 
 class ModelsState {
-  const ModelsState({this.items = const [], this.loading = true});
+  const ModelsState({
+    this.items = const [],
+    this.loading = true,
+    this.installingAll = false,
+  });
 
   final List<ModelItemState> items;
   final bool loading;
+
+  /// True while the one-tap "download, install and activate" run is going.
+  final bool installingAll;
+
+  bool get allInstalled => items.isNotEmpty && items.every((i) => i.installed);
+
+  /// Everything installed and the speech model switched on.
+  bool get ready =>
+      allInstalled &&
+      items.any((i) => i.spec.kind == ModelKind.asr && i.selected);
+
+  bool get hasFailure => items.any(
+    (i) =>
+        i.download?.status == DownloadStatus.failed ||
+        i.download?.status == DownloadStatus.paused,
+  );
+
+  /// Share of the whole bundle already on the phone, from 0 to 1.
+  double get progress {
+    var total = 0;
+    var done = 0;
+    for (final i in items) {
+      total += i.spec.totalSizeBytes;
+      done += i.installed
+          ? i.spec.totalSizeBytes
+          : (i.download?.receivedBytes ?? 0);
+    }
+    return total == 0 ? 0 : (done / total).clamp(0.0, 1.0);
+  }
 
   List<ModelItemState> byKind(ModelKind kind) =>
       items.where((i) => i.spec.kind == kind).toList();
@@ -43,7 +76,20 @@ class ModelsController extends Notifier<ModelsState> {
   Future<void> _load() async {
     final store = await ref.read(modelStoreProvider.future);
     final db = await ref.read(appDatabaseProvider.future);
-    final selectedAsr = await db.getSetting(kAsrModelSettingKey);
+    for (final id in ModelCatalog.retiredIds) {
+      await store.deleteById(id);
+    }
+    var selectedAsr = await db.getSetting(kAsrModelSettingKey);
+    if (selectedAsr != null &&
+        selectedAsr.isNotEmpty &&
+        selectedAsr != ModelCatalog.shenavaKoochikRnnt.id) {
+      // The chosen model was retired; the single remaining model replaces it.
+      final installed = await store.isInstalled(
+        ModelCatalog.shenavaKoochikRnnt,
+      );
+      selectedAsr = installed ? ModelCatalog.shenavaKoochikRnnt.id : '';
+      await db.setSetting(kAsrModelSettingKey, selectedAsr);
+    }
     final items = <ModelItemState>[];
     for (final spec in ModelCatalog.all) {
       final installed = await store.isInstalled(spec);
@@ -63,7 +109,11 @@ class ModelsController extends Notifier<ModelsState> {
         ),
       );
     }
-    state = ModelsState(items: items, loading: false);
+    state = ModelsState(
+      items: items,
+      loading: false,
+      installingAll: state.installingAll,
+    );
   }
 
   Future<void> download(String modelId) async {
@@ -104,6 +154,7 @@ class ModelsController extends Notifier<ModelsState> {
   void _patchDownload(String modelId, DownloadState download) {
     state = ModelsState(
       loading: state.loading,
+      installingAll: state.installingAll,
       items: [
         for (final item in state.items)
           item.spec.id == modelId
@@ -127,6 +178,47 @@ class ModelsController extends Notifier<ModelsState> {
       await db.setSetting(kAsrModelSettingKey, spec.id);
     }
     await _load();
+  }
+
+  /// Downloads whatever is missing, one model after another, then switches
+  /// the speech model on. Stops at the first failure or pause; calling it
+  /// again resumes.
+  Future<void> installAll() async {
+    if (state.installingAll || state.loading) return;
+    state = ModelsState(
+      items: state.items,
+      loading: false,
+      installingAll: true,
+    );
+    try {
+      for (final spec in ModelCatalog.all) {
+        final item = state.items.firstWhere((i) => i.spec.id == spec.id);
+        if (item.installed) continue;
+        await download(spec.id);
+        // A completed download clears its entry; anything left is a failure
+        // or a pause and ends the run.
+        if (_downloads.containsKey(spec.id)) return;
+      }
+      final db = await ref.read(appDatabaseProvider.future);
+      await db.setSetting(
+        kAsrModelSettingKey,
+        ModelCatalog.shenavaKoochikRnnt.id,
+      );
+    } finally {
+      state = ModelsState(
+        items: state.items,
+        loading: false,
+        installingAll: false,
+      );
+      await _load();
+    }
+  }
+
+  Future<void> cancelAll() async {
+    final downloader = await ref.read(modelDownloaderProvider.future);
+    for (final item in state.items) {
+      downloader.cancel(item.spec.id);
+    }
   }
 
   Future<void> cancelDownload(String modelId) async {

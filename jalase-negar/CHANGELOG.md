@@ -1,6 +1,16 @@
 # Changelog — Jalase Negar
 
+## 2026-11-06 — AMINAZADI
+
+- Added Android store flavors `direct`, `bazaar` and `myket` (same application ID and signing certificate). The Bazaar and Myket builds drop the self-updater: `REQUEST_INSTALL_PACKAGES`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION` and the install receiver are removed, and the Settings update card is hidden (`--dart-define=STORE=<channel>`).
+- Added macOS and Windows projects: macOS sandbox entitlements for microphone, camera, network and file picking; Windows uses `sqflite_common_ffi` and `just_audio_windows`; the foreground service is skipped on desktop and the QR scanner is hidden on Windows.
+- Added `scripts/build-jalase-negar-release.sh` (APKs, unsigned iOS archive/IPA for SibApp and Anardooni, macOS zip), a GitHub Actions workflow for the Windows build and `docs/release-builds.md`. Windows and signed iOS builds are not verified yet.
+
 ## 2026-11-05 — AMINAZADI
+
+- Changed the models screen to a single "download, install and activate" action with overall progress; model names and sizes are no longer shown. Only the recommended Shenava Koochik 1.5 RNNT speech model is offered: the other speech models were removed from the catalog and their files are deleted from the phone on the next models load (a retired selection is replaced by the remaining model). The intro and tour texts were updated to match.
+
+- Added an intro slide (animated meeting-room illustration) recommending high-quality clip-on (lavalier) microphones such as RØDE, BOYA and Holyland, with a drawn lavalier-on-collar illustration for the best meeting output, a tour step that highlights the microphone-selection button on the recording screen, and turned the "connect to SedaSanj" tour step into a numbered connection guide.
 
 - Replaced the recording attendee section with an outlined button below the timer instructions and removable selected-person chips alongside it in a horizontally scrollable row.
 

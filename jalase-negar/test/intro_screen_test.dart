@@ -47,6 +47,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pump(const Duration(milliseconds: 600));
     }
+    expect(
+      kIntroSlides.where((s) => s.scene == IntroScene.mic).single.body,
+      contains('Holyland'),
+    );
     expect(find.text(kIntroSlides.last.title), findsOneWidget);
     expect(find.text('شروع کنیم'), findsOneWidget);
   });

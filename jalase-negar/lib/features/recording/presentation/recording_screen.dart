@@ -186,7 +186,10 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                   children: [
                     const TourTarget(step: TourStep.live, child: _LiveToggle()),
                     const SizedBox(width: 4),
-                    _MicMenu(state: state, controller: controller),
+                    TourTarget(
+                      step: TourStep.microphone,
+                      child: _MicMenu(state: state, controller: controller),
+                    ),
                   ],
                 ),
               ),

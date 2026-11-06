@@ -59,3 +59,7 @@ flutter pub get
 flutter analyze
 flutter test
 ```
+
+## ساخت نسخهٔ انتشار
+
+نسخه‌های اندروید (مستقیم، بازار، مایکت)، iOS (سیب‌اپ، اناردونی)، مک و ویندوز با `scripts/build-jalase-negar-release.sh` و workflow ویندوز ساخته می‌شوند. جزئیات، محدودیت‌ها و موارد نیازمند تأیید در [docs/release-builds.md](docs/release-builds.md) است.

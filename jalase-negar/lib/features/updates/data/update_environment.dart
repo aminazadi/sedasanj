@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/platform/distribution.dart';
 import 'app_update.dart';
 
 const _channel = MethodChannel('app.jalasenegar.jalase_negar/update');
@@ -10,7 +9,7 @@ const _channel = MethodChannel('app.jalasenegar.jalase_negar/update');
 /// Reads what the server needs to pick a compatible build. Returns null when
 /// the device cannot say (not Android, channel missing): no check is made then.
 Future<UpdateEnvironment?> readUpdateEnvironment() async {
-  if (!Platform.isAndroid) return null;
+  if (!selfUpdateEnabled) return null;
   try {
     final info = await PackageInfo.fromPlatform();
     final code = int.tryParse(info.buildNumber);

@@ -50,8 +50,20 @@ void main() {
       );
     });
 
+    test('only the recommended ASR model is offered; others are retired', () {
+      expect(ModelCatalog.asrModels.map((m) => m.id), [
+        'shenava-koochik-v1-5-rnnt',
+      ]);
+      for (final id in ModelCatalog.retiredIds) {
+        expect(() => ModelCatalog.byId(id), throwsStateError);
+      }
+    });
+
     test('byId resolves and throws for unknown ids', () {
-      expect(ModelCatalog.byId('shenava-koochik').kind, ModelKind.asr);
+      expect(
+        ModelCatalog.byId('shenava-koochik-v1-5-rnnt').kind,
+        ModelKind.asr,
+      );
       expect(() => ModelCatalog.byId('nope'), throwsStateError);
     });
   });

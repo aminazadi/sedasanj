@@ -15,6 +15,7 @@ import '../../updates/presentation/update_check_card.dart';
 import '../../upload/upload_controller.dart';
 import '../application/connection_controller.dart';
 import 'meeting_upload_card.dart';
+import '../../../core/platform/distribution.dart';
 import 'qr_scan_screen.dart';
 
 /// SedaSanj connection screen: pair with a QR code, a config file or pasted
@@ -85,23 +86,25 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FilledButton.icon(
-                  icon: const Icon(Icons.qr_code_scanner),
-                  label: const Text('اسکن QR'),
-                  onPressed: () async {
-                    final text =
-                        await Navigator.of(
-                          context,
-                          rootNavigator: true,
-                        ).push<String>(
-                          MaterialPageRoute(
-                            builder: (_) => const QrScanScreen(),
-                          ),
-                        );
-                    if (text != null) controller.connectFromText(text);
-                  },
-                ),
-                const SizedBox(height: 8),
+                if (qrScanSupported) ...[
+                  FilledButton.icon(
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('اسکن QR'),
+                    onPressed: () async {
+                      final text =
+                          await Navigator.of(
+                            context,
+                            rootNavigator: true,
+                          ).push<String>(
+                            MaterialPageRoute(
+                              builder: (_) => const QrScanScreen(),
+                            ),
+                          );
+                      if (text != null) controller.connectFromText(text);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 OutlinedButton.icon(
                   icon: const Icon(Icons.file_open_outlined),
                   label: const Text('انتخاب فایل کانفیگ'),

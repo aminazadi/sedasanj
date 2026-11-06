@@ -24,7 +24,7 @@ const _soft = Color(0xFFE2EADD);
 const _bar = Color(0xFFD3DCCD);
 const _side = Color(0xFFDDE5D8);
 
-enum IntroScene { welcome, models, record, liveText, send, ready }
+enum IntroScene { welcome, models, record, liveText, mic, send, ready }
 
 class IntroArt extends StatelessWidget {
   const IntroArt({
@@ -80,6 +80,8 @@ class _ScenePainter extends CustomPainter {
         _record(canvas, t);
       case IntroScene.liveText:
         _liveText(canvas, t);
+      case IntroScene.mic:
+        _micQuality(canvas, t);
       case IntroScene.send:
         _send(canvas, t);
       case IntroScene.ready:
@@ -535,6 +537,139 @@ void _record(Canvas c, double t) {
     final p = t / 0.2;
     c.drawCircle(btn, 15 + p * 16, _stroke(_rose, 2, a: (1 - p) * 0.6));
   }
+}
+
+/// A single, large clip-on (lavalier) microphone on a soft disc, with its
+/// cable ending in a 3.5 mm jack, sound arcs reaching the windscreen and the
+/// three recommended brands as chips underneath.
+void _micQuality(Canvas c, double t) {
+  const centre = Offset(240, 138);
+  // Soft backdrop disc.
+  c.drawCircle(
+    centre,
+    112,
+    Paint()
+      ..shader = RadialGradient(
+        colors: [_soft, _soft.withValues(alpha: 0.0)],
+      ).createShader(Rect.fromCircle(center: centre, radius: 112)),
+  );
+  c.drawCircle(centre, 100, _stroke(_tan, 1.6, a: 0.8));
+  c.drawCircle(centre, 78, _stroke(_green, 1.2, a: 0.25));
+
+  // Sound arcs arriving from the upper right.
+  for (var i = 0; i < 3; i++) {
+    final k = (t * 1.5 + i / 3) % 1;
+    c.drawArc(
+      Rect.fromCircle(center: const Offset(262, 108), radius: 50 + k * 56),
+      -math.pi * 0.42,
+      math.pi * 0.34,
+      false,
+      _stroke(_green, 2.6, a: math.sin(k * math.pi) * 0.6),
+    );
+  }
+
+  // Cable: a calm S curve from the capsule to the jack.
+  final cable = Path()
+    ..moveTo(205, 150)
+    ..cubicTo(170, 190, 215, 222, 262, 214)
+    ..cubicTo(300, 207, 322, 226, 350, 244);
+  c.drawPath(cable, _stroke(_green, 3.2));
+  final m = cable.computeMetrics().first;
+  final u = (t * 1.6) % 1;
+  final tan = m.getTangentForOffset(m.length * u);
+  if (tan != null) {
+    c.drawCircle(tan.position, 3.6, _fill(_green, a: math.sin(u * math.pi)));
+  }
+  // 3.5 mm jack.
+  c.save();
+  c.translate(350, 244);
+  c.rotate(0.62);
+  final jack = RRect.fromRectAndRadius(
+    const Rect.fromLTWH(0, -6, 26, 12),
+    const Radius.circular(3),
+  );
+  c.drawRRect(jack, _fill(_soft));
+  c.drawRRect(jack, _stroke(_green, 2));
+  c.drawLine(const Offset(26, 0), const Offset(38, 0), _stroke(_green, 4));
+  c.drawLine(const Offset(10, -6), const Offset(10, 6), _stroke(_green, 1.6));
+  c.drawLine(const Offset(16, -6), const Offset(16, 6), _stroke(_green, 1.6));
+  c.restore();
+
+  // The microphone, drawn big: clip, metal capsule, foam windscreen.
+  c.save();
+  c.translate(240, 128);
+  c.rotate(-0.5);
+  c.scale(3.4);
+  // Clip underneath.
+  final clip = RRect.fromRectAndRadius(
+    const Rect.fromLTWH(-16, 5, 26, 7),
+    const Radius.circular(3),
+  );
+  c.drawRRect(clip.shift(const Offset(0.8, 0.8)), _fill(_side));
+  c.drawRRect(clip, _fill(_tan));
+  c.drawRRect(clip, _stroke(_green, 0.9));
+  // Capsule with a metallic gradient.
+  const capRect = Rect.fromLTWH(-24, -6, 34, 12);
+  final cap = RRect.fromRectAndRadius(capRect, const Radius.circular(6));
+  c.drawRRect(
+    cap,
+    Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFFFFFFF), Color(0xFFD6DFD0), Color(0xFFAEBBA7)],
+      ).createShader(capRect),
+  );
+  c.drawRRect(cap, _stroke(_green, 1));
+  c.drawLine(
+    const Offset(-14, -4),
+    const Offset(-14, 4),
+    _stroke(_green, 0.7, a: 0.5),
+  );
+  c.drawLine(
+    const Offset(-10, -4),
+    const Offset(-10, 4),
+    _stroke(_green, 0.7, a: 0.5),
+  );
+  // Foam windscreen.
+  const foamRect = Rect.fromLTWH(6, -9, 24, 18);
+  final foam = RRect.fromRectAndRadius(foamRect, const Radius.circular(9));
+  c.drawRRect(
+    foam,
+    Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF6A6C63), Color(0xFF3F4139)],
+      ).createShader(foamRect),
+  );
+  c.drawRRect(foam, _stroke(_green, 0.9));
+  for (var i = 0; i < 9; i++) {
+    final x = 11.0 + (i % 3) * 7;
+    final y = -4.0 + (i ~/ 3) * 4.5;
+    c.drawCircle(Offset(x, y), 0.7, _fill(const Color(0xFF9A9C92)));
+  }
+  c.restore();
+
+  // Brand chips.
+  const labels = ['RØDE', 'BOYA', 'Holyland'];
+  const widths = [78.0, 78.0, 104.0];
+  var x = 240 - (78 + 78 + 104 + 24) / 2;
+  for (var i = 0; i < 3; i++) {
+    final r = Rect.fromLTWH(x, 280, widths[i], 28);
+    final rr = RRect.fromRectAndRadius(r, const Radius.circular(14));
+    c.drawRRect(rr, _fill(_cream));
+    c.drawRRect(rr, _stroke(_green, 2));
+    _text(c, labels[i], r.center, 13, _green);
+    x += widths[i] + 12;
+  }
+
+  // Small check on the disc.
+  final badge = _ease(_seg(t, 0.15, 0.45));
+  const bc = Offset(166, 96);
+  c.drawCircle(bc, 17, _fill(_soft));
+  c.drawCircle(bc, 17, _stroke(_green, 2.4));
+  _check(c, bc, 17, badge, _stroke(_green, 3));
 }
 
 void _liveText(Canvas c, double t) {

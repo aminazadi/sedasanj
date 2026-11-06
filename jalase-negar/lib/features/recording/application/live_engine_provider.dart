@@ -52,12 +52,12 @@ final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
     }
     final store = await ref.read(modelStoreProvider.future);
     final asrId = await db.getSetting(kAsrModelSettingKey);
-    if (asrId == null || asrId.isEmpty) {
+    if (asrId != ModelCatalog.shenavaKoochikRnnt.id) {
       return const LiveEngineSetup.unavailable(
-        'برای متن زنده، ابتدا یک مدل شنوا را از بخش «مدل‌ها» دانلود و انتخاب کنید.',
+        'برای متن زنده، ابتدا از بخش «مدل‌ها» گزینهٔ دانلود، نصب و فعال‌سازی را بزنید.',
       );
     }
-    final asrSpec = ModelCatalog.byId(asrId);
+    const asrSpec = ModelCatalog.shenavaKoochikRnnt;
     final vadSpec = ModelCatalog.sileroVad;
     if (!await store.isInstalled(asrSpec) ||
         !await store.isInstalled(vadSpec)) {

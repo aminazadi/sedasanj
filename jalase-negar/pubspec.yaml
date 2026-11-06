@@ -2,7 +2,7 @@ name: jalase_negar
 description: "ضبط جلسه و رونویسی لوکال فارسی؛ تحلیل و صورت‌جلسه توسط صداسنج"
 publish_to: 'none'
 
-version: 1.1.2+7
+version: 1.1.2+8
 
 environment:
   sdk: ^3.9.2
@@ -38,12 +38,13 @@ dependencies:
   just_audio: ^0.10.6
   cryptography: ^2.9.0
   sqflite_common_ffi_web: ^1.1.1
+  sqflite_common_ffi: ^2.4.0+3
+  just_audio_windows: ^0.2.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  sqflite_common_ffi: ^2.4.0+3
 
 flutter:
   uses-material-design: true
