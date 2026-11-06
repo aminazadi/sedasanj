@@ -127,7 +127,7 @@ class VadSegmentEngine implements LiveAsrEngine {
   }
 
   @override
-  Future<void> stop({Duration timeout = const Duration(seconds: 15)}) async {
+  Future<void> stop({Duration timeout = const Duration(seconds: 45)}) async {
     if (_closed) return;
     if (!_stopping) {
       _sendBatch();
@@ -226,6 +226,10 @@ class _Command {
 const int _lagOnMs = 5000;
 const int _lagOffMs = 2000;
 const int _maxConsecutiveErrors = 5;
+
+/// Wall time `stop` may spend decoding speech that was skipped while the
+/// phone was behind. It must stay below the engine's stop timeout.
+const int _recoverBudgetMs = 30000;
 
 void _liveEntry(_Init init) {
   final out = init.events;
@@ -356,6 +360,14 @@ void _liveEntry(_Init init) {
           lagging = false;
           out.send(const LiveLagState(lagging: false));
         }
+        // Idle and caught up: decode one piece of earlier skipped speech.
+        if (live.hasDeferred &&
+            !lagging &&
+            backlog < _lagOffMs &&
+            !live.speechDetected &&
+            !live.lightMode) {
+          report(live.recover());
+        }
         final nowSpeaking = live.speechDetected;
         if (nowSpeaking != speaking) {
           speaking = nowSpeaking;
@@ -373,7 +385,9 @@ void _liveEntry(_Init init) {
             out.send(const LiveSpeechState(speaking: false));
           }
         } else {
-          report(live.finish(backlogMs: backlog));
+          report(
+            live.finish(backlogMs: backlog, recoverBudgetMs: _recoverBudgetMs),
+          );
           shutdown();
         }
       }

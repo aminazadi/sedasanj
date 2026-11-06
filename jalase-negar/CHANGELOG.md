@@ -2,6 +2,8 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Fixed live transcription discarding speech when the phone fell behind: skipped and shed spans (up to 10 minutes of audio) are now kept and decoded later when the engine is idle, or for up to 30 seconds after stopping, and `JN-ASR-0001` is cleared once they are recovered. The stop timeout of the live engine is now 45 seconds.
+- Fixed the live duplicate filter dropping the same short word (for example "بله") said by two different speakers within 1.2 seconds; it now compares only lines of the same or an unknown speaker.
 - Added Android store flavors `direct`, `bazaar` and `myket` (same application ID and signing certificate). The Bazaar and Myket builds drop the self-updater: `REQUEST_INSTALL_PACKAGES`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION` and the install receiver are removed, and the Settings update card is hidden (`--dart-define=STORE=<channel>`).
 - Added macOS and Windows projects: macOS sandbox entitlements for microphone, camera, network and file picking; Windows uses `sqflite_common_ffi` and `just_audio_windows`; the foreground service is skipped on desktop and the QR scanner is hidden on Windows.
 - Added `scripts/build-jalase-negar-release.sh` (APKs, unsigned iOS archive/IPA for SibApp and Anardooni, macOS zip), a GitHub Actions workflow for the Windows build and `docs/release-builds.md`. Windows and signed iOS builds are not verified yet.

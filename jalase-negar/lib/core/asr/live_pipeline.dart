@@ -97,6 +97,7 @@ class LivePipeline {
     this.maxBacklogMs = 60000,
     this.lightModeRtf = 0.8,
     this.lightModeMinSpanMs = 600,
+    this.maxDeferredSeconds = 600,
     UtteranceLabeler? labeler,
     int maxSpeechSeconds = 30,
     int Function()? nowMicros,
@@ -125,6 +126,11 @@ class LivePipeline {
   final double lightModeRtf;
   final int lightModeMinSpanMs;
 
+  /// Audio kept for spans that were not decoded in time, so they can be
+  /// decoded later instead of being lost. Beyond this, a skipped span stays
+  /// skipped (the recording itself still has it).
+  final int maxDeferredSeconds;
+
   final int Function() _nowMicros;
   static int _wallMicros() => DateTime.now().microsecondsSinceEpoch;
 
@@ -138,6 +144,9 @@ class LivePipeline {
   int _vadBase = 0;
   int? _carry;
   final List<(int, int, String)> _recent = [];
+  final List<String?> _recentSpeakers = [];
+  final List<_Deferred> _deferred = [];
+  int _deferredSamples = 0;
 
   int _decodedSamples = 0;
   int _decodeMicros = 0;
@@ -177,11 +186,62 @@ class LivePipeline {
   }
 
   /// Final flush; the pipeline is unusable afterwards.
-  List<LiveEvent> finish({int backlogMs = 0}) {
+  ///
+  /// Deferred spans are decoded for at most [recoverBudgetMs] of wall time;
+  /// whatever does not fit stays reported as skipped.
+  List<LiveEvent> finish({int backlogMs = 0, int recoverBudgetMs = 0}) {
     _vad.flush();
     final events = _drain(backlogMs);
     _vad.dispose();
+    if (recoverBudgetMs > 0) {
+      events.addAll(recover(budgetMs: recoverBudgetMs, maxSpans: 1 << 30));
+    }
     return events;
+  }
+
+  /// True while skipped speech is waiting to be decoded.
+  bool get hasDeferred => _deferred.isNotEmpty;
+
+  /// Decodes spans that were skipped or shed earlier, oldest first, stopping
+  /// after [maxSpans] or once [budgetMs] of wall time is used (0 = no limit
+  /// besides [maxSpans]). Call it only while the engine is idle.
+  List<LiveEvent> recover({int budgetMs = 0, int maxSpans = 1}) {
+    final events = <LiveEvent>[];
+    final began = _nowMicros();
+    var done = 0;
+    while (_deferred.isNotEmpty && done < maxSpans) {
+      if (budgetMs > 0 && (_nowMicros() - began) ~/ 1000 >= budgetMs) break;
+      final item = _deferred.removeAt(0);
+      _deferredSamples -= item.pcm.length;
+      done++;
+      final samples = Float32List(item.pcm.length);
+      for (var i = 0; i < samples.length; i++) {
+        samples[i] = item.pcm[i] / 32768.0;
+      }
+      _process(samples, item.startSample, events);
+      if (item.reported) {
+        events.add(
+          LiveRecovered(
+            startMs: item.startSample * 1000 ~/ kAsrSampleRate,
+            endMs: (item.startSample + samples.length) * 1000 ~/ kAsrSampleRate,
+          ),
+        );
+      }
+    }
+    return events;
+  }
+
+  void _defer(Float32List samples, int startSample, {required bool reported}) {
+    if ((_deferredSamples + samples.length) >
+        maxDeferredSeconds * kAsrSampleRate) {
+      return;
+    }
+    final pcm = Int16List(samples.length);
+    for (var i = 0; i < samples.length; i++) {
+      pcm[i] = (samples[i] * 32767).round().clamp(-32768, 32767);
+    }
+    _deferred.add(_Deferred(startSample, pcm, reported));
+    _deferredSamples += pcm.length;
   }
 
   void dispose() => _vad.dispose();
@@ -194,54 +254,64 @@ class LivePipeline {
       final startMs = startSample * 1000 ~/ kAsrSampleRate;
       final endMs = endSample * 1000 ~/ kAsrSampleRate;
       if (backlogMs > maxBacklogMs) {
+        _defer(span.samples, startSample, reported: true);
         events.add(LiveSkipped(startMs: startMs, endMs: endMs));
         continue;
       }
-      if (lightMode && endMs - startMs < lightModeMinSpanMs) continue;
-      final parts = _labelSpan(span, startMs);
-      if (parts == null || parts.length <= 1) {
-        _emit(
-          events,
-          text: _decodeSpan(span.samples, startSample, endSample),
-          startMs: startMs,
-          endMs: endMs,
-          part: parts?.first,
-        );
+      if (lightMode && endMs - startMs < lightModeMinSpanMs) {
+        _defer(span.samples, startSample, reported: false);
         continue;
       }
-      // Several speakers: decode each stretch on its own so every line has one
-      // speaker (or is marked as overlapping).
-      for (final part in parts) {
-        final from =
-            math.max(0, part.startMs - startMs) * kAsrSampleRate ~/ 1000;
-        final to = math.min(
-          span.samples.length,
-          (part.endMs - startMs) * kAsrSampleRate ~/ 1000,
-        );
-        if (to <= from) continue;
-        _emit(
-          events,
-          text: _decodeSpan(
-            Float32List.sublistView(span.samples, from, to),
-            startSample + from,
-            startSample + to,
-          ),
-          startMs: part.startMs,
-          endMs: part.endMs,
-          part: part,
-        );
-      }
+      _process(span.samples, startSample, events);
     }
     return events;
   }
 
+  /// Labels (when possible), decodes and reports one span of speech.
+  void _process(Float32List samples, int startSample, List<LiveEvent> events) {
+    final endSample = startSample + samples.length;
+    final startMs = startSample * 1000 ~/ kAsrSampleRate;
+    final parts = _labelSpan(samples, startMs);
+    if (parts == null || parts.length <= 1) {
+      _emit(
+        events,
+        text: _decodeSpan(samples, startSample, endSample),
+        startMs: startMs,
+        endMs: endSample * 1000 ~/ kAsrSampleRate,
+        part: parts?.first,
+      );
+      return;
+    }
+    // Several speakers: decode each stretch on its own so every line has one
+    // speaker (or is marked as overlapping).
+    for (final part in parts) {
+      final from = math.max(0, part.startMs - startMs) * kAsrSampleRate ~/ 1000;
+      final to = math.min(
+        samples.length,
+        (part.endMs - startMs) * kAsrSampleRate ~/ 1000,
+      );
+      if (to <= from) continue;
+      _emit(
+        events,
+        text: _decodeSpan(
+          Float32List.sublistView(samples, from, to),
+          startSample + from,
+          startSample + to,
+        ),
+        startMs: part.startMs,
+        endMs: part.endMs,
+        part: part,
+      );
+    }
+  }
+
   /// Speaker parts of a span, or null when identification is off, shed to
   /// keep up, or failed (the text is then shown without a name).
-  List<LabeledPart>? _labelSpan(VadSpan span, int startMs) {
+  List<LabeledPart>? _labelSpan(Float32List samples, int startMs) {
     final labeler = _labeler;
     if (labeler == null || lightMode) return null;
     try {
-      return labeler.label(span.samples, startMs: startMs);
+      return labeler.label(samples, startMs: startMs);
     } catch (_) {
       return null;
     }
@@ -256,16 +326,30 @@ class LivePipeline {
   }) {
     if (text.isEmpty) return;
     final key = text.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+    // Two different people saying the same short word ("بله") back to back is
+    // not a duplicate: only compare with lines of the same (or unknown) voice.
+    final who = _speakerKey(part);
+    final comparable = <(int, int, String)>[
+      for (var i = 0; i < _recent.length; i++)
+        if (who == null ||
+            _recentSpeakers[i] == null ||
+            _recentSpeakers[i] == who)
+          _recent[i],
+    ];
     if (isDuplicateTranscript(
       candidate: key,
       startMs: startMs,
       endMs: endMs,
-      emitted: _recent,
+      emitted: comparable,
     )) {
       return;
     }
     _recent.add((startMs, endMs, key));
-    if (_recent.length > kAsrRecentKeep) _recent.removeAt(0);
+    _recentSpeakers.add(who);
+    if (_recent.length > kAsrRecentKeep) {
+      _recent.removeAt(0);
+      _recentSpeakers.removeAt(0);
+    }
     events.add(
       LiveUtterance(
         startMs: startMs,
@@ -279,6 +363,12 @@ class LivePipeline {
         speakerConfidence: part?.confidence,
       ),
     );
+  }
+
+  static String? _speakerKey(LabeledPart? part) {
+    if (part == null) return null;
+    final first = part.speakers.first;
+    return first.personId ?? first.name;
   }
 
   String _decodeSpan(Float32List speech, int startSample, int endSample) {
@@ -325,4 +415,14 @@ class LivePipeline {
     }
     return output;
   }
+}
+
+class _Deferred {
+  _Deferred(this.startSample, this.pcm, this.reported);
+
+  final int startSample;
+  final Int16List pcm;
+
+  /// Whether a [LiveSkipped] was sent for it (so [LiveRecovered] must follow).
+  final bool reported;
 }

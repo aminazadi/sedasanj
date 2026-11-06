@@ -51,6 +51,15 @@ class LiveSkipped extends LiveEvent {
   final int endMs;
 }
 
+/// Speech reported by [LiveSkipped] was decoded after all; its text (if any)
+/// arrived as [LiveUtterance] events just before this one.
+class LiveRecovered extends LiveEvent {
+  const LiveRecovered({required this.startMs, required this.endMs});
+
+  final int startMs;
+  final int endMs;
+}
+
 /// Voice activity changed (drives the "listening" indicator).
 class LiveSpeechState extends LiveEvent {
   const LiveSpeechState({required this.speaking});
@@ -98,7 +107,7 @@ abstract interface class LiveAsrEngine {
 
   /// Finishes everything already fed, waiting at most [timeout], then frees
   /// the model.
-  Future<void> stop({Duration timeout = const Duration(seconds: 15)});
+  Future<void> stop({Duration timeout = const Duration(seconds: 45)});
 
   /// Frees resources immediately without waiting for pending audio.
   Future<void> dispose();

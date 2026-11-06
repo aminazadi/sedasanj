@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/core/asr/asr_common.dart';
 import 'package:jalase_negar/core/asr/live_asr_engine.dart';
 import 'package:jalase_negar/core/asr/live_pipeline.dart';
+import 'package:jalase_negar/core/speaker/speaker_labeler.dart';
+import 'package:jalase_negar/core/speaker/speaker_matcher.dart';
 
 /// Span the fake VAD hands out once [at] samples have been fed. A span that
 /// has not been reached yet is the "speech in progress" that `flush` closes.
@@ -60,6 +62,22 @@ class FakeVad implements LiveVad {
 
   @override
   void dispose() => disposed = true;
+}
+
+/// Labels every utterance with the next speaker name in [names].
+class FakeLabeler implements UtteranceLabeler {
+  FakeLabeler(this.names);
+
+  final List<String> names;
+
+  @override
+  List<LabeledPart> label(Float32List speech, {required int startMs}) => [
+    LabeledPart(
+      startMs: startMs,
+      endMs: startMs + speech.length * 1000 ~/ kAsrSampleRate,
+      speakers: [SpeakerIdentity(name: names.removeAt(0))],
+    ),
+  ];
 }
 
 class FakeDecoder implements LiveDecoder {
@@ -235,6 +253,64 @@ void main() {
       expect((events.single as LiveUtterance).text, 'late');
     });
 
+    test('decodes a skipped span later when recover is called', () {
+      final decoder = FakeDecoder(['جا مانده']);
+      final pipeline = pipelineWith(
+        [
+          FakeVad([ScriptedSpan(at: 16000, start: 0, length: 16000)]),
+        ],
+        decoder,
+        maxBacklogMs: 5000,
+      );
+      expect(
+        pipeline.feed(pcmSeconds(1), backlogMs: 9000).single,
+        isA<LiveSkipped>(),
+      );
+      expect(pipeline.hasDeferred, isTrue);
+      final events = pipeline.recover();
+      expect((events.first as LiveUtterance).text, 'جا مانده');
+      expect(events.last, isA<LiveRecovered>());
+      expect(pipeline.hasDeferred, isFalse);
+      expect(pipeline.recover(), isEmpty);
+    });
+
+    test('finish recovers deferred speech within the budget', () {
+      final decoder = FakeDecoder(['یک', 'دو']);
+      final pipeline = pipelineWith(
+        [
+          FakeVad([
+            ScriptedSpan(at: 16000, start: 0, length: 8000),
+            ScriptedSpan(at: 48000, start: 32000, length: 8000),
+          ]),
+        ],
+        decoder,
+        maxBacklogMs: 5000,
+      );
+      pipeline.feed(pcmSeconds(1), backlogMs: 9000);
+      pipeline.feed(pcmSeconds(2), backlogMs: 9000);
+      final events = pipeline.finish(recoverBudgetMs: 1000);
+      expect(events.whereType<LiveUtterance>().map((e) => e.text), [
+        'یک',
+        'دو',
+      ]);
+      expect(events.whereType<LiveRecovered>(), hasLength(2));
+    });
+
+    test('does not keep deferred audio beyond its cap', () {
+      final pipeline = LivePipeline(
+        vadFactory: () =>
+            FakeVad([ScriptedSpan(at: 32000, start: 0, length: 32000)]),
+        decoder: FakeDecoder(['x']),
+        maxBacklogMs: 5000,
+        maxDeferredSeconds: 1,
+      );
+      expect(
+        pipeline.feed(pcmSeconds(2), backlogMs: 9000).single,
+        isA<LiveSkipped>(),
+      );
+      expect(pipeline.hasDeferred, isFalse);
+    });
+
     test('normalizes Persian text and drops empty results', () {
       final decoder = FakeDecoder(['كتاب  يك', '   ']);
       final pipeline = pipelineWith([
@@ -259,6 +335,44 @@ void main() {
           ScriptedSpan(at: 32000, start: 16000, length: 8000),
         ]),
       ], decoder);
+      final events = [
+        ...pipeline.feed(pcmSeconds(1)),
+        ...pipeline.feed(pcmSeconds(1)),
+      ];
+      expect(events.whereType<LiveUtterance>(), hasLength(1));
+    });
+
+    test('keeps the same word said by two different speakers', () {
+      final decoder = FakeDecoder(['بله بله', 'بله بله']);
+      var index = 0;
+      final vad = FakeVad([
+        ScriptedSpan(at: 16000, start: 0, length: 8000),
+        ScriptedSpan(at: 32000, start: 16000, length: 8000),
+      ]);
+      final pipeline = LivePipeline(
+        vadFactory: () => [vad][index++],
+        decoder: decoder,
+        labeler: FakeLabeler(['علی', 'سارا']),
+      );
+      final events = [
+        ...pipeline.feed(pcmSeconds(1)),
+        ...pipeline.feed(pcmSeconds(1)),
+      ];
+      expect(events.whereType<LiveUtterance>(), hasLength(2));
+    });
+
+    test('still drops a repeat by the same speaker', () {
+      final decoder = FakeDecoder(['بله بله', 'بله بله']);
+      var index = 0;
+      final vad = FakeVad([
+        ScriptedSpan(at: 16000, start: 0, length: 8000),
+        ScriptedSpan(at: 32000, start: 16000, length: 8000),
+      ]);
+      final pipeline = LivePipeline(
+        vadFactory: () => [vad][index++],
+        decoder: decoder,
+        labeler: FakeLabeler(['علی', 'علی']),
+      );
       final events = [
         ...pipeline.feed(pcmSeconds(1)),
         ...pipeline.feed(pcmSeconds(1)),

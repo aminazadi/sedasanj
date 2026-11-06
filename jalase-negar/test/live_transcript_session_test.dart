@@ -205,6 +205,18 @@ void main() {
     expect(session.state.value.phase, LivePhase.listening);
   });
 
+  test('recovered speech clears the incomplete-transcript warning', () async {
+    await session.start();
+    engine.emit(const LiveReady());
+    engine.emit(const LiveSkipped(startMs: 0, endMs: 2000));
+    await settle();
+    expect(session.state.value.skipped, 1);
+    engine.emit(const LiveRecovered(startMs: 0, endMs: 2000));
+    await settle();
+    expect(session.state.value.skipped, 0);
+    expect(session.state.value.note, isNull);
+  });
+
   test('tracks whether speech is being heard', () async {
     await session.start();
     engine.emit(const LiveReady());

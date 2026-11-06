@@ -224,6 +224,14 @@ class LiveTranscriptSession {
           note:
               'گوشی از گفتار عقب افتاد و بخشی از متن زنده جا ماند. برای شنیدن آن، فایل جلسه را پخش کنید. ($kIncompleteLiveTranscriptCode)',
         );
+      case LiveRecovered():
+        final remaining = current.skipped > 0 ? current.skipped - 1 : 0;
+        state.value = current.copyWith(
+          skipped: remaining,
+          clearNote:
+              remaining == 0 &&
+              (current.note?.contains(kIncompleteLiveTranscriptCode) ?? false),
+        );
       case LiveSpeechState():
         state.value = current.copyWith(speaking: event.speaking);
       case LiveLagState():
