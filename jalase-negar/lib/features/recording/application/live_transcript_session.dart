@@ -218,6 +218,36 @@ class LiveTranscriptSession {
           lines.removeRange(0, lines.length - maxLines);
         }
         state.value = current.copyWith(lines: lines);
+      case LiveSoundEvent():
+        // A sound has no speaker and no voice: it is its own turn, written as
+        // a bracketed laughter marker, and the saved transcript merges it by time like any text.
+        _all.add(
+          AsrTurn(
+            channel: 0,
+            startMs: event.startMs,
+            endMs: event.endMs,
+            text: event.text,
+            timestampSource: TimestampSource.sileroVad,
+          ),
+        );
+        _unsaved.add(
+          Segment(
+            channel: 0,
+            startMs: event.startMs,
+            endMs: event.endMs,
+            text: event.text,
+          ),
+        );
+        final lines = [...current.lines, event.text];
+        if (lines.length > maxLines) {
+          lines.removeRange(0, lines.length - maxLines);
+        }
+        state.value = current.copyWith(lines: lines);
+      case LiveSoundEventsUnavailable():
+        state.value = current.copyWith(
+          note:
+              'متن گفتار ادامه دارد، ولی خنده، گریه و صداهای مشابه در متن نوشته نمی‌شوند. مدل «تشخیص صداهای انسانی» را در بخش «مدل‌ها» دوباره دانلود کنید. ($kSoundEventsUnavailableCode)',
+        );
       case LiveSkipped():
         state.value = current.copyWith(
           skipped: current.skipped + 1,

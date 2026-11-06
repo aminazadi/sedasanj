@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../speaker/speaker_labeler.dart';
 import 'asr_common.dart';
 import 'live_asr_engine.dart';
+import 'sound_events.dart';
 
 /// A finished speech span cut by the VAD. [startSample] counts from when that
 /// VAD instance was created.
@@ -99,12 +100,14 @@ class LivePipeline {
     this.lightModeMinSpanMs = 600,
     this.maxDeferredSeconds = 600,
     UtteranceLabeler? labeler,
+    SoundEventDetector? soundEvents,
     int maxSpeechSeconds = 30,
     int Function()? nowMicros,
   }) : _nowMicros = nowMicros ?? _wallMicros,
        _vadFactory = vadFactory,
        _decoder = decoder,
        _labeler = labeler,
+       _soundEvents = soundEvents,
        _vad = vadFactory(),
        // A span can be a full max-speech long and still needs look-back
        // context, so the ring covers both plus the look-around on each side.
@@ -114,7 +117,15 @@ class LivePipeline {
   final LiveDecoder _decoder;
   final SampleHistory _history;
   final UtteranceLabeler? _labeler;
+
+  /// Names laughter, crying and other non-speech sounds. Dropped for good if
+  /// it ever throws: the speech text must not depend on it.
+  SoundEventDetector? _soundEvents;
   LiveVad _vad;
+
+  /// Sound analysis is skipped while the phone is this far behind the
+  /// microphone, so the text keeps priority over the extras.
+  static const int soundEventsMaxBacklogMs = 2000;
 
   /// Speech detected while the engine is further behind than this is skipped
   /// instead of decoded, so the live text catches up with the microphone.
@@ -171,14 +182,55 @@ class LivePipeline {
     _history.append(samples);
     _fed += samples.length;
     _vad.accept(samples);
-    return _drain(backlogMs);
+    final events = _drain(backlogMs);
+    events.addAll(_detectSounds(samples, backlogMs));
+    return events;
   }
+
+  /// Sound events inside this chunk. When the engine is behind (or shedding
+  /// load) the chunk is not analysed, only counted, so later events keep the
+  /// right times.
+  List<LiveEvent> _detectSounds(Float32List samples, int backlogMs) {
+    final detector = _soundEvents;
+    if (detector == null) return const [];
+    try {
+      final found = backlogMs > soundEventsMaxBacklogMs || lightMode
+          ? detector.skip(samples.length)
+          : detector.accept(samples);
+      return _soundEventEvents(found);
+    } catch (_) {
+      _soundEvents = null;
+      return const [];
+    }
+  }
+
+  List<LiveEvent> _flushSounds() {
+    final detector = _soundEvents;
+    if (detector == null) return const [];
+    try {
+      return _soundEventEvents(detector.flush());
+    } catch (_) {
+      _soundEvents = null;
+      return const [];
+    }
+  }
+
+  static List<LiveEvent> _soundEventEvents(List<DetectedSoundEvent> found) => [
+    for (final e in found)
+      LiveSoundEvent(
+        startMs: e.startMs,
+        endMs: e.endMs,
+        kindId: e.kind.id,
+        text: e.text,
+      ),
+  ];
 
   /// Ends the utterance in progress and restarts the VAD (pause, interruption).
   /// The timeline keeps counting, so later spans stay aligned with the WAV.
   List<LiveEvent> flush({int backlogMs = 0}) {
     _vad.flush();
     final events = _drain(backlogMs);
+    events.addAll(_flushSounds());
     _vad.dispose();
     _vad = _vadFactory();
     _vadBase = _fed;
@@ -192,6 +244,7 @@ class LivePipeline {
   List<LiveEvent> finish({int backlogMs = 0, int recoverBudgetMs = 0}) {
     _vad.flush();
     final events = _drain(backlogMs);
+    events.addAll(_flushSounds());
     _vad.dispose();
     if (recoverBudgetMs > 0) {
       events.addAll(recover(budgetMs: recoverBudgetMs, maxSpans: 1 << 30));
@@ -326,7 +379,7 @@ class LivePipeline {
   }) {
     if (text.isEmpty) return;
     final key = text.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-    // Two different people saying the same short word ("بله") back to back is
+    // Two different people saying the same short word ("yes") back to back is
     // not a duplicate: only compare with lines of the same (or unknown) voice.
     final who = _speakerKey(part);
     final comparable = <(int, int, String)>[

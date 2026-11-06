@@ -98,7 +98,8 @@ class ModelsController extends Notifier<ModelsState> {
         ModelKind.vad ||
         ModelKind.denoiser ||
         ModelKind.speakerEmbedding ||
-        ModelKind.speakerSegmentation => installed,
+        ModelKind.speakerSegmentation ||
+        ModelKind.soundEvents => installed,
       };
       items.add(
         ModelItemState(
@@ -245,7 +246,8 @@ class ModelsController extends Notifier<ModelsState> {
       ModelKind.vad ||
       ModelKind.denoiser ||
       ModelKind.speakerEmbedding ||
-      ModelKind.speakerSegmentation => null,
+      ModelKind.speakerSegmentation ||
+      ModelKind.soundEvents => null,
     };
     if (key != null) {
       await db.setSetting(key, modelId);

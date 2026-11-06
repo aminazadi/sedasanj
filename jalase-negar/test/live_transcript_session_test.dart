@@ -95,6 +95,36 @@ void main() {
     expect(session.state.value.phase, LivePhase.listening);
   });
 
+  test('writes sounds into the text between brackets, in time order', () async {
+    await session.start();
+    engine.emit(const LiveReady());
+    engine.emit(const LiveUtterance(startMs: 0, endMs: 1500, text: 'سلام'));
+    engine.emit(
+      const LiveSoundEvent(
+        startMs: 2000,
+        endMs: 4000,
+        kindId: 'laughter',
+        text: '[خنده]',
+      ),
+    );
+    engine.emit(const LiveUtterance(startMs: 4500, endMs: 6000, text: 'خوبی؟'));
+    await settle();
+    expect(session.state.value.lines, ['سلام', '[خنده]', 'خوبی؟']);
+    await session.stop();
+    expect(store.replaced!.single.text, 'سلام [خنده] خوبی؟');
+  });
+
+  test('a missing sound model only adds a note with its code', () async {
+    await session.start();
+    engine.emit(const LiveReady());
+    engine.emit(const LiveSoundEventsUnavailable());
+    await settle();
+    final note = session.state.value.note!;
+    expect(note, contains('JN-ASR-0002'));
+    expect(note, contains('مدل‌ها'));
+    expect(session.state.value.phase, LivePhase.listening);
+  });
+
   test('shows utterances in order and saves them while recording', () async {
     await session.start();
     engine.emit(const LiveReady());

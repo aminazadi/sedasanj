@@ -2,6 +2,7 @@
 
 ## 2026-11-06 — AMINAZADI
 
+- Added the CED audio-tagging model to the Jalase-Negar model downloads for on-device sound detection.
 - Fixed Jalase-Negar voice sample recording being interrupted when the people list refreshes during synchronization.
 
 - Added persistent, resumable public hosting of Jalase-Negar model files and one-time upstream downloads during deployment.

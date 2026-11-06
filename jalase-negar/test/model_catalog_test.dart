@@ -5,6 +5,17 @@ import 'package:jalase_negar/core/utils/transcript_text.dart';
 
 void main() {
   group('ModelCatalog', () {
+    test('the sound-event model ships its model and class labels', () {
+      const spec = ModelCatalog.soundEvents;
+      expect(spec.kind, ModelKind.soundEvents);
+      expect(ModelCatalog.all, contains(spec));
+      // The engine reads files[0] as the model and files[1] as the labels.
+      expect(spec.files.map((f) => f.filename), [
+        'model.int8.onnx',
+        'class_labels_indices.csv',
+      ]);
+    });
+
     test('ids are unique', () {
       final ids = ModelCatalog.all.map((m) => m.id).toSet();
       expect(ids.length, ModelCatalog.all.length);

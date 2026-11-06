@@ -9,6 +9,10 @@ enum ModelKind {
 
   /// Finds speaker changes and overlapping speech.
   speakerSegmentation,
+
+  /// Names non-speech human sounds (laughter, crying, cough, ...) so the
+  /// transcript can write them between square brackets.
+  soundEvents,
 }
 
 enum AsrArchitecture { nemoCtc, transducer }

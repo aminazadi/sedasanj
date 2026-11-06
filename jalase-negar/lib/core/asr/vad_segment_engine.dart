@@ -16,6 +16,8 @@ import 'live_asr_engine.dart';
 import 'live_pipeline.dart';
 import 'recognizer_factory.dart';
 import 'sherpa_live_adapters.dart';
+import 'sherpa_sound_tagger.dart';
+import 'sound_events.dart';
 
 const double kSileroThreshold = 0.35;
 const double kSileroMinSilenceSeconds = 0.9;
@@ -40,6 +42,8 @@ class VadSegmentConfig {
     this.speakerEmbeddingPath = '',
     this.speakerSegmentationPath = '',
     this.enrolled = const [],
+    this.soundEventModelPath = '',
+    this.soundEventLabelsPath = '',
   });
 
   final String vadModelPath;
@@ -70,6 +74,14 @@ class VadSegmentConfig {
   final String speakerEmbeddingPath;
   final String speakerSegmentationPath;
   final List<Map<String, Object?>> enrolled;
+
+  /// Non-speech sounds (laughter, crying, cough, ...) written into the text
+  /// as a bracketed laughter marker. Empty paths mean off.
+  final String soundEventModelPath;
+  final String soundEventLabelsPath;
+
+  bool get detectsSoundEvents =>
+      soundEventModelPath.isNotEmpty && soundEventLabelsPath.isNotEmpty;
 
   bool get identifiesSpeakers =>
       speakerEmbeddingPath.isNotEmpty && enrolled.isNotEmpty;
@@ -250,6 +262,7 @@ void _liveEntry(_Init init) {
   LivePipeline? pipeline;
   SherpaVoiceEmbedder? embedder;
   SherpaDiarizer? diarizer;
+  SherpaSoundTagger? soundTagger;
   try {
     sherpa.initBindings();
     final config = init.config;
@@ -303,6 +316,22 @@ void _liveEntry(_Init init) {
         );
       }
     }
+    SoundEventDetector? soundEvents;
+    var soundEventsFailed = false;
+    if (config.detectsSoundEvents) {
+      // Optional like speaker names: if the model does not load the text just
+      // has no bracketed sounds.
+      final tagger = SherpaSoundTagger.tryCreate(
+        modelPath: config.soundEventModelPath,
+        labelsPath: config.soundEventLabelsPath,
+      );
+      soundTagger = tagger;
+      if (tagger != null) {
+        soundEvents = SoundEventDetector(tagger: tagger);
+      } else {
+        soundEventsFailed = true;
+      }
+    }
     pipeline = LivePipeline(
       vadFactory: () => SherpaLiveVad(
         modelPath: config.vadModelPath,
@@ -315,8 +344,10 @@ void _liveEntry(_Init init) {
       decoder: SherpaLiveDecoder(created),
       maxBacklogMs: config.maxBacklogMs,
       labeler: labeler,
+      soundEvents: soundEvents,
     );
     out.send(const LiveReady());
+    if (soundEventsFailed) out.send(const LiveSoundEventsUnavailable());
   } catch (_) {
     out.send(
       const LiveFailure(
@@ -330,6 +361,8 @@ void _liveEntry(_Init init) {
     embedder = null;
     diarizer?.free();
     diarizer = null;
+    soundTagger?.free();
+    soundTagger = null;
     pipeline = null;
   }
 
@@ -350,6 +383,8 @@ void _liveEntry(_Init init) {
     embedder = null;
     diarizer?.free();
     diarizer = null;
+    soundTagger?.free();
+    soundTagger = null;
     pipeline = null;
     out.send(const LiveDone());
     inbox.close();

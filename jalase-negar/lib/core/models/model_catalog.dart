@@ -87,6 +87,39 @@ abstract final class ModelCatalog {
     ],
   );
 
+  static const String soundEventsId = 'ced-tiny-audio-tagging-2024-04-19';
+
+  /// CED-tiny audio tagger (AudioSet, 527 classes) converted by sherpa-onnx.
+  /// It lets the transcript name laughter, crying, coughs and similar sounds
+  /// between square brackets. Optional: without it the transcript is plain
+  /// speech.
+  /// ⚠ needs lab confirmation: the licence of the Tiny weights is not stated
+  /// on the sherpa-onnx repository page (CED-Base is Apache-2.0); read the
+  /// upstream licence before a public release.
+  static const ModelSpec soundEvents = ModelSpec(
+    id: soundEventsId,
+    kind: ModelKind.soundEvents,
+    nameFa: 'تشخیص صداهای انسانی (CED)',
+    descriptionFa:
+        'اختیاری؛ خنده، گریه، سرفه و حالت‌های مشابه را در متن بین [ ] می‌نویسد',
+    repoUrl:
+        'https://huggingface.co/k2-fsa/sherpa-onnx-ced-tiny-audio-tagging-2024-04-19',
+    files: [
+      ModelFileSpec(
+        url:
+            'https://sedasanj.ir/jalase-negar-models/v1/ced-tiny-audio-tagging-2024-04-19/model.int8.onnx',
+        filename: 'model.int8.onnx',
+        sizeBytes: 6133417,
+      ),
+      ModelFileSpec(
+        url:
+            'https://sedasanj.ir/jalase-negar-models/v1/ced-tiny-audio-tagging-2024-04-19/class_labels_indices.csv',
+        filename: 'class_labels_indices.csv',
+        sizeBytes: 14675,
+      ),
+    ],
+  );
+
   static const ModelSpec shenavaKoochikRnnt = ModelSpec(
     id: 'shenava-koochik-v1-5-rnnt',
     kind: ModelKind.asr,
@@ -147,6 +180,7 @@ abstract final class ModelCatalog {
     sileroVad,
     gtcrnDenoiser,
     ...speakerModels,
+    soundEvents,
     ...asrModels,
   ];
 

@@ -71,6 +71,8 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 12),
         const CpuLimitCard(),
         const SizedBox(height: 12),
+        const _SoundEventsCard(),
+        const SizedBox(height: 12),
         const UpdateCheckCard(),
         const PushSettingsCard(),
         if (state?.error != null) ...[
@@ -264,6 +266,36 @@ class _SpeakerNameCard extends ConsumerWidget {
       child: Text(
         'هنگام ضبط، نام هر گوینده کنار متن می‌آید. روی گوشی‌های ضعیف '
         'می‌توانید خاموشش کنید.',
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: SsColors.ink),
+      ),
+    );
+  }
+}
+
+class _SoundEventsCard extends ConsumerWidget {
+  const _SoundEventsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(soundEventsEnabledProvider).value ?? true;
+    const title = 'نوشتن خنده، گریه و صداهای دیگر در متن';
+    return SsCard(
+      title: title,
+      trailing: Semantics(
+        label: title,
+        toggled: enabled,
+        child: SsSwitch(
+          value: enabled,
+          onChanged: (v) =>
+              ref.read(soundEventsEnabledProvider.notifier).set(v),
+        ),
+      ),
+      child: Text(
+        'هنگام ضبط، صداهایی مثل خنده، قهقهه، گریه، آه، سرفه و عطسه بین [ ] '
+        'در متن می‌آیند، مثلاً [خنده]. این بخش به مدل «تشخیص صداهای انسانی» '
+        'در بخش «مدل‌ها» نیاز دارد و روی گوشی‌های ضعیف می‌توانید خاموشش کنید.',
         style: Theme.of(
           context,
         ).textTheme.bodySmall?.copyWith(color: SsColors.ink),

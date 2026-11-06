@@ -1,0 +1,79 @@
+"""Help-center article for bracketed sounds (laughter, crying, cough) in Jalase-Negar transcripts."""
+
+# ruff: noqa: E501 - the article text is long Persian prose that does not wrap usefully
+
+import html
+
+import sqlalchemy as sa
+
+from alembic import op
+
+revision = "0121_jalase_sound_events_help"
+down_revision = "0120_jalase_push"
+branch_labels = None
+depends_on = None
+
+CATEGORY_SLUG = "meetings"
+SLUG = "jalase-negar-sound-events"
+TITLE = "خنده، گریه و صداهای دیگر در متن جلسه‌نگار"
+SUMMARY = (
+    "نوشته‌شدن صداهایی مثل [خنده]، [گریه] و [سرفه] در متن زنده، فهرست صداها، "
+    "محدودیت‌ها و پیام JN-ASR-0002."
+)
+BLOCKS = [
+    "نشانه‌ها: در متن زنده یا ذخیره‌شده، بین دو کروشه عبارت‌هایی مثل [خنده]، [قهقهه]، [گریه]، [آه کشیدن] یا [سرفه] می‌بینید؛ یا برعکس، صدایی که شنیده‌اید در متن نیست؛ یا هنگام ضبط پیام JN-ASR-0002 نمایش داده می‌شود.",
+    "علت: جلسه‌نگار علاوه بر گفتار، با مدل کوچک «تشخیص صداهای انسانی» (CED، فقط روی گوشی) صدای ضبط را می‌شنود و صداهای غیرکلامی را بین [ ] می‌نویسد. این مدل هم‌زمان با رونویسی کار می‌کند، به اینترنت نیاز ندارد و هیچ صدایی را به جایی نمی‌فرستد. پیام JN-ASR-0002 یعنی مدل نصب و روشن است ولی بارگذاری نشد؛ متن گفتار بی‌مشکل ادامه دارد و فقط صداها نوشته نمی‌شوند.",
+    "صداهایی که نوشته می‌شوند: خنده‌ها (خنده، قهقهه، ریزخنده، پوزخند، خنده‌ی آرام، خنده‌ی کودک)؛ گریه و ناله (گریه، گریه‌ی نوزاد، ناله، ناله‌ی آهسته، آه کشیدن، هین)؛ شیوه‌ی گفتن (فریاد، جیغ، پچ‌پچ، آواز، زمزمه، سوت)؛ صداهای بدن (سرفه، صاف کردن گلو، عطسه، سکسکه، خروپف)؛ و واکنش جمع (تشویق، هلهله).",
+    [
+        "در جلسه‌نگار «مدل‌ها» را باز کنید و دانلود و نصب را بزنید تا «تشخیص صداهای انسانی» (حدود ۶ مگابایت) نصب شود.",
+        "در «تنظیمات»، سوییچ «نوشتن خنده، گریه و صداهای دیگر در متن» را روشن کنید.",
+        "یک ضبط کوتاه شروع کنید و چند ثانیه بخندید یا سرفه کنید؛ پس از حدود دو تا چهار ثانیه باید [خنده] یا [سرفه] در متن زنده بیاید.",
+        "اگر پیام JN-ASR-0002 دیدید، در «مدل‌ها» مدل را دوباره دانلود کنید و ضبط تازه‌ای شروع کنید. اگر باز هم دیده شد، برنامه را به‌روز کنید یا سوییچ را خاموش کنید تا متن گفتار بدون تغییر بماند.",
+        "اگر صدایی اشتباه نوشته شد، آن خط را در ویرایشگر متن جلسه حذف یا اصلاح کنید.",
+    ],
+    "محدودیت‌ها: تشخیص تقریبی است و ممکن است صدایی را نادیده بگیرد یا کم‌وبیش اشتباه بنویسد؛ صداهای کوتاه و کم‌صدا مثل آه یا هین کمتر شناخته می‌شوند و پچ‌پچ و آواز فقط وقتی نوشته می‌شوند که چند ثانیه ادامه داشته باشند. نام صدا بدون گوینده و زمان‌بندی آن حدود یک ثانیه تقریبی است. حالت‌های احساسی مثل خشم یا غم از روی لحن تشخیص داده نمی‌شوند؛ فقط صداهای بالا نوشته می‌شوند. روی گوشی‌های ضعیف، وقتی متن از صدا عقب بماند، تشخیص صداها موقتاً کنار می‌رود تا متن گفتار اولویت داشته باشد.",
+    "پیشگیری: پیش از جلسه مدل‌ها را نصب کنید و با یک ضبط آزمایشی در همان اتاق دقت را بسنجید. اگر جلسه‌ی شما خنده یا سرفه‌ی زیاد دارد و نمی‌خواهید در متن بیاید، سوییچ تنظیمات را خاموش کنید.",
+]
+
+
+def _body() -> tuple[str, str]:
+    parts: list[str] = []
+    plain: list[str] = []
+    for block in BLOCKS:
+        if isinstance(block, list):
+            parts.append(
+                "<ol>" + "".join(f"<li>{html.escape(step)}</li>" for step in block) + "</ol>"
+            )
+            plain.extend(block)
+        else:
+            parts.append(f"<p>{html.escape(block)}</p>")
+            plain.append(block)
+    return "".join(parts), " ".join(plain)
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    category_id = bind.execute(
+        sa.text("SELECT id FROM help_categories WHERE slug = :slug"), {"slug": CATEGORY_SLUG}
+    ).scalar_one()
+    body_html, body_plain = _body()
+    bind.execute(
+        sa.text(
+            "INSERT INTO help_articles (slug, category_id, title, summary, body_html, body_plain, "
+            "kind, status, position, published_at) "
+            "VALUES (:slug, :category, :title, :summary, :html, :plain, 'article', 'published', 24, now()) "
+            "ON CONFLICT (slug) DO NOTHING"
+        ),
+        {
+            "slug": SLUG,
+            "category": category_id,
+            "title": TITLE,
+            "summary": SUMMARY,
+            "html": body_html,
+            "plain": body_plain,
+        },
+    )
+
+
+def downgrade() -> None:
+    op.get_bind().execute(sa.text("DELETE FROM help_articles WHERE slug = :slug"), {"slug": SLUG})

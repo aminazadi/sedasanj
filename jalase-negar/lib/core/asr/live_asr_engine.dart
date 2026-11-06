@@ -4,6 +4,10 @@ import '../speaker/speaker_matcher.dart';
 
 const kIncompleteLiveTranscriptCode = 'JN-ASR-0001';
 
+/// The sound-event model is installed and switched on but could not be loaded,
+/// so the text has no bracketed sounds such as laughter.
+const kSoundEventsUnavailableCode = 'JN-ASR-0002';
+
 /// Events a live engine reports while a recording is in progress.
 sealed class LiveEvent {
   const LiveEvent();
@@ -40,6 +44,31 @@ class LiveUtterance extends LiveEvent {
 
   /// 0..100, null when speakers were not identified.
   final int? speakerConfidence;
+}
+
+/// A non-speech human sound (laughter, crying, a cough, ...) found in the
+/// audio. [text] is what goes into the transcript, already in brackets, for
+/// example laughter. Times are on the same timeline as [LiveUtterance].
+class LiveSoundEvent extends LiveEvent {
+  const LiveSoundEvent({
+    required this.startMs,
+    required this.endMs,
+    required this.kindId,
+    required this.text,
+  });
+
+  final int startMs;
+  final int endMs;
+
+  /// Stable English id of the kind (`laughter`, `cough`, ...).
+  final String kindId;
+  final String text;
+}
+
+/// The sound-event model could not be loaded; speech text continues without
+/// bracketed sounds.
+class LiveSoundEventsUnavailable extends LiveEvent {
+  const LiveSoundEventsUnavailable();
 }
 
 /// Speech that was detected but not decoded because the engine had fallen too

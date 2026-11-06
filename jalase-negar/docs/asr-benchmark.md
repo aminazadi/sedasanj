@@ -176,3 +176,9 @@ e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534  535638     gtc
 ۲. ساخت واریانت‌های نویزی، کم‌صدا، پژواک و فقط-نویز با `asr_augment.py --keep-originals`.
 ۳. اجرای تنظیم فعلی و نامزدها روی همهٔ واریانت‌ها و تصمیم با قاعدهٔ بالا.
 ۴. ضبط ۳۰ تا ۶۰ ثانیه نویز واقعی اتاق (اختیاری ولی ارزشمند): نویز صورتی مصنوعی ساده‌تر از نویز واقعی است.
+
+## Sound events (`[خنده]`, `[سرفه]`, ...)
+
+`test/bench/bench_sound_events_test.dart` runs the real CED-tiny tagger and the detector over WAV clips (`BENCH_CED`, `BENCH_SOUND_AUDIO`; skipped without them). Model: `model.int8.onnx` 6,133,417 bytes, SHA-256 `73aa22e783115f6a4ae169b36089907e07d0fd44795595eddea9c1bfc74cc945`, plus `class_labels_indices.csv` (527 classes; every name used in `kSoundEventKinds` was checked against it).
+
+Measured on the Mac on 2026-11-06 (relative numbers, not phone speed): windows of 1, 2, 3, 5 and 10 s all run; the detector costs about 0.021 x real time on one thread; the two golden clips (about 4 minutes of speech) give no events after the singing/humming thresholds were raised (a drawn-out hesitation scored 0.66 as singing before). ⚠ Not measured: real laughter, crying or coughing (no such clips are available), so recall and the other thresholds are unverified.

@@ -12,6 +12,7 @@
 
 - Simplified the meeting transcript layout and moved text actions into the header menu.
 
+- Added sound events in the live transcript: laughter (`[خنده]`, `[قهقهه]`, `[ریزخنده]`, `[پوزخند]`, `[خنده‌ی آرام]`, `[خنده‌ی کودک]`), crying and moaning (`[گریه]`, `[گریه‌ی نوزاد]`, `[ناله]`, `[آه کشیدن]`, `[هین]`), manner of speaking (`[فریاد]`, `[جیغ]`, `[پچ‌پچ]`, `[آواز]`) and body sounds (`[سرفه]`, `[عطسه]`, `[صاف کردن گلو]`) are written between square brackets by an on-device CED audio tagger (new optional model, about 6 MB, `lib/core/asr/sound_events.dart`). A settings switch turns it off, analysis is skipped while the phone is behind, and `JN-ASR-0002` explains a model that failed to load. The model was run on two Persian speech clips (no false events after raising the singing threshold, about 0.02 x real time on a Mac); thresholds for real laughter and crying are starting values not yet measured; emotions such as anger or sadness are not detected.
 - Added speaker analysis progress percentages to meeting cards and the speaker tab.
 
 - Changed model downloads to use the SedaSanj server.

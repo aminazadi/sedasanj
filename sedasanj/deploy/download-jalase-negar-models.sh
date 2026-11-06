@@ -20,6 +20,8 @@ download 'silero-vad' 'silero_vad.onnx' 'https://github.com/k2-fsa/sherpa-onnx/r
 download 'gtcrn-denoiser' 'gtcrn_simple.onnx' 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx'
 download 'campplus-sv-zh-en-16k' 'speaker_embedding.onnx' 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx'
 download 'pyannote-segmentation-3-0' 'model.int8.onnx' 'https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx'
+download 'ced-tiny-audio-tagging-2024-04-19' 'model.int8.onnx' 'https://huggingface.co/k2-fsa/sherpa-onnx-ced-tiny-audio-tagging-2024-04-19/resolve/main/model.int8.onnx?download=true'
+download 'ced-tiny-audio-tagging-2024-04-19' 'class_labels_indices.csv' 'https://huggingface.co/k2-fsa/sherpa-onnx-ced-tiny-audio-tagging-2024-04-19/resolve/main/class_labels_indices.csv?download=true'
 download 'shenava-koochik-v1-5-rnnt' 'encoder.int8.onnx' 'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/encoder.int8.onnx?download=true'
 download 'shenava-koochik-v1-5-rnnt' 'decoder.int8.onnx' 'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/decoder.int8.onnx?download=true'
 download 'shenava-koochik-v1-5-rnnt' 'joiner.int8.onnx' 'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/joiner.int8.onnx?download=true'

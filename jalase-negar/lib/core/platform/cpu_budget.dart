@@ -15,8 +15,7 @@ int maxCpuCores([int? processors]) =>
 
 /// Out of the box the app keeps using what it always used: 2 cores, or fewer
 /// on a phone that cannot spare them.
-int defaultCpuCores([int? processors]) =>
-    math.min(2, maxCpuCores(processors));
+int defaultCpuCores([int? processors]) => math.min(2, maxCpuCores(processors));
 
 /// Brings a stored or chosen value into 1..[maxCpuCores]; null or junk gives
 /// the default.

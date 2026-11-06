@@ -22,6 +22,11 @@ const String kSendTranscriptSettingKey = 'send_transcript_enabled';
 /// whenever people are enrolled and the speaker model is installed).
 const String kSpeakerIdSettingKey = 'speaker_id_enabled';
 
+/// Settings key: write laughter, crying, coughs and similar sounds into the
+/// transcript between square brackets (absent means on whenever the sound
+/// model is installed).
+const String kSoundEventsSettingKey = 'sound_events_enabled';
+
 /// What a recording needs to start live transcription, or why it cannot.
 class LiveEngineSetup {
   const LiveEngineSetup.ready({required this.engine, required this.modelId})
@@ -68,6 +73,7 @@ final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
     }
     final transducer = asrSpec.asrArchitecture == AsrArchitecture.transducer;
     final speakers = await _speakerSetup(ref, db, store, attendeeIds);
+    final sounds = await _soundEventSetup(db, store);
     final budget = await ref.read(cpuBudgetProvider.future);
     final engine = VadSegmentEngine(
       VadSegmentConfig(
@@ -91,11 +97,41 @@ final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
         speakerEmbeddingPath: speakers.embeddingPath,
         speakerSegmentationPath: speakers.segmentationPath,
         enrolled: speakers.enrolled,
+        soundEventModelPath: sounds.modelPath,
+        soundEventLabelsPath: sounds.labelsPath,
       ),
     );
     return LiveEngineSetup.ready(engine: engine, modelId: asrSpec.id);
   };
 });
+
+class _SoundEventSetup {
+  const _SoundEventSetup({this.modelPath = '', this.labelsPath = ''});
+
+  final String modelPath;
+  final String labelsPath;
+}
+
+/// Files of the sound-event model, or nothing when the switch is off or the
+/// model is not installed. Never throws.
+Future<_SoundEventSetup> _soundEventSetup(
+  AppDatabase db,
+  ModelStore store,
+) async {
+  try {
+    if (await db.getSetting(kSoundEventsSettingKey) == '0') {
+      return const _SoundEventSetup();
+    }
+    const spec = ModelCatalog.soundEvents;
+    if (!await store.isInstalled(spec)) return const _SoundEventSetup();
+    return _SoundEventSetup(
+      modelPath: store.filePath(spec, spec.files[0]),
+      labelsPath: store.filePath(spec, spec.files[1]),
+    );
+  } catch (_) {
+    return const _SoundEventSetup();
+  }
+}
 
 class _SpeakerSetup {
   const _SpeakerSetup({
@@ -164,6 +200,24 @@ class SpeakerIdEnabled extends AsyncNotifier<bool> {
 final speakerIdEnabledProvider = AsyncNotifierProvider<SpeakerIdEnabled, bool>(
   SpeakerIdEnabled.new,
 );
+
+/// The user's choice to write sounds like laughter and crying into the text.
+class SoundEventsEnabled extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    final db = await ref.watch(appDatabaseProvider.future);
+    return await db.getSetting(kSoundEventsSettingKey) != '0';
+  }
+
+  Future<void> set(bool enabled) async {
+    final db = await ref.read(appDatabaseProvider.future);
+    await db.setSetting(kSoundEventsSettingKey, enabled ? '1' : '0');
+    state = AsyncData(enabled);
+  }
+}
+
+final soundEventsEnabledProvider =
+    AsyncNotifierProvider<SoundEventsEnabled, bool>(SoundEventsEnabled.new);
 
 /// The user's on/off choice for live transcription.
 class LiveTranscriptEnabled extends AsyncNotifier<bool> {

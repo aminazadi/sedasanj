@@ -1,5 +1,7 @@
 ## 2026-11-06 — AMINAZADI
 
+- Added the Persian help article `jalase-negar-sound-events` (migration 0121) for bracketed sounds in Jalase-Negar transcripts.
+
 - Added super-admin Jalase-Negar push campaigns with audience targeting, scheduling, Firebase settings, and delivery history.
 
 - Removed the title above the public footer logo and its editor field.
