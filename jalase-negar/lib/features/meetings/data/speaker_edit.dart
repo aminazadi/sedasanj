@@ -153,14 +153,16 @@ String labeledTranscriptText(List<Segment> segments) {
   for (final s in ordered) {
     final text = s.text.replaceAll(RegExp(r'\s*[\r\n]+\s*'), ' ').trim();
     if (text.isEmpty) continue;
-    lines.add(Segment(
-      channel: s.channel,
-      startMs: s.startMs,
-      endMs: s.endMs,
-      text: text,
-      speaker: s.speaker,
-      speaker2: s.speaker2,
-    ).labeledText);
+    lines.add(
+      Segment(
+        channel: s.channel,
+        startMs: s.startMs,
+        endMs: s.endMs,
+        text: text,
+        speaker: s.speaker,
+        speaker2: s.speaker2,
+      ).labeledText,
+    );
   }
   return lines.join('\n');
 }

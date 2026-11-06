@@ -44,7 +44,8 @@ Segment _relabel(Segment s, PreciseAnalysis analysis) {
   for (final t in analysis.turns) {
     final from = t.startMs > s.startMs ? t.startMs : s.startMs;
     final to = t.endMs < s.endMs ? t.endMs : s.endMs;
-    if (to > from) byCluster[t.speaker] = (byCluster[t.speaker] ?? 0) + (to - from);
+    if (to > from)
+      byCluster[t.speaker] = (byCluster[t.speaker] ?? 0) + (to - from);
   }
   if (byCluster.isEmpty) return s;
   final ranked = byCluster.entries.toList()
