@@ -147,11 +147,7 @@ function UseCases() {
   </section>;
 }
 
-type AppRelease = { id: string; version: string; size: number; sha256: string; min_sdk: number; published_at: string | null; download_path: string };
-const ANDROID_BY_SDK: Array<[number, number]> = [[35, 15], [34, 14], [33, 13], [31, 12], [30, 11], [29, 10], [28, 9], [26, 8], [24, 7], [23, 6], [21, 5]];
-function androidVersion(sdk: number): number | null {
-  return ANDROID_BY_SDK.find(([level]) => sdk >= level)?.[1] ?? null;
-}
+type AppRelease = { download_path: string };
 const appFeatures: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "headset", title: "ضبط جلسه با یک لمس", body: "جلسه را روی گوشی ضبط کنید؛ متن فارسی هم‌زمان با ضبط ساخته می‌شود." },
   { icon: "users", title: "تفکیک گوینده‌ها", body: "برای افراد حاضر نمونهٔ صدا ثبت کنید تا هر جمله به گوینده‌اش نسبت داده شود." },
@@ -222,25 +218,18 @@ function AppDownload() {
       .catch(() => setState("error"));
   }
   useEffect(load, []);
-  const android = release ? androidVersion(release.min_sdk) : null;
-  const facts = release ? [
-    { label: "نسخه", value: fmt.digits(release.version), ltr: true },
-    { label: "حجم", value: `${fmt.decimal(release.size / 1048576)} مگابایت` },
-    ...(android ? [{ label: "اندروید", value: `${fmt.digits(String(android))} به بالا` }] : []),
-  ] : [];
   return <section className="site-hero site-app" id="app"><div className="site-container site-split site-app-grid">
     <div className="site-app-copy">
-      <h2 className="site-hero-title site-hero-title-flow"><span className="site-hero-title-lead">اپلیکیشن اندروید جلسه‌نگار</span>راحت‌تر و هر زمان<br/><span className="site-hero-title-accent">صورت‌جلسه‌ای حرفه‌ای</span> داشته باشید</h2>
-      <p className="site-app-pitch">جلسه‌های حضوری هم <strong>شنیده شوند و مکتوب بمانند.</strong> فقط ضبط را بزنید؛ <em>رونویسی فارسی</em> و <em>ارسال به پنل سازمان</em> را خود جلسه‌نگار انجام می‌دهد.</p>
+      <h2 className="site-hero-title site-hero-title-flow">راحت‌تر و هر زمان<br/><span className="site-hero-title-accent">صورت‌جلسه‌ای حرفه‌ای</span> داشته باشید</h2>
+      <p className="site-app-pitch">با جلسه‌نگار <strong>جلسه‌های حضوری را ضبط کنید</strong>، <em>متن فارسی</em> گفت‌وگو را دریافت کنید و آن را به <em>پنل سازمان</em> بفرستید.</p>
       <ul className="site-app-features">{appFeatures.map((item) => <li key={item.title}><Icon name={item.icon} size={18}/><span>{item.title}</span></li>)}</ul>
       <div className="site-actions">
         {state === "ready" && release && <a className="site-button" href={release.download_path} download><Icon name="download" size={18}/>دانلود جلسه‌نگار</a>}
-        {state === "loading" && <button className="site-button" type="button" disabled aria-busy="true"><Icon name="download" size={18}/>در حال بررسی نسخه…</button>}
+        {state === "loading" && <button className="site-button" type="button" disabled aria-busy="true"><Icon name="download" size={18}/>در حال آماده‌سازی لینک دانلود…</button>}
         {state === "error" && <button className="site-button site-button-outline" type="button" onClick={load}><Icon name="refresh" size={18}/>تلاش دوباره</button>}
-        {state === "ready" && !release && <button className="site-button" type="button" disabled><Icon name="download" size={18}/>نسخه به‌زودی منتشر می‌شود</button>}
+        {state === "ready" && !release && <button className="site-button" type="button" disabled><Icon name="download" size={18}/>دانلود به‌زودی در دسترس خواهد بود</button>}
         <Link className="site-button site-button-outline" to="/help/jalase-negar-android-install"><Icon name="layers" size={18}/>راهنمای نصب</Link>
       </div>
-      {release && <dl className="site-app-facts">{facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd dir={fact.ltr ? "ltr" : undefined}>{fact.value}</dd></div>)}</dl>}
     </div>
     <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده با نام گوینده‌ها، موج صدا و دکمه‌های توقف موقت و پایان">
       <div className="site-app-phone" aria-hidden="true">

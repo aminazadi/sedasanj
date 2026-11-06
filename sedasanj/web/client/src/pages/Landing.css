@@ -76,7 +76,6 @@
 @media (prefers-reduced-motion: reduce) { .site-scroll-icon::after { animation: none; } }
 .site-hero-title { font-size: clamp(28px, 3.1vw, 44px); line-height: 1.4; letter-spacing: 0; }
 .site-hero-title span { display: block; white-space: nowrap; }
-.site-hero-title .site-hero-title-lead { white-space: normal; text-wrap: balance; font-size: .66em; line-height: 1.5; margin-bottom: .35em; color: var(--site-muted); font-weight: 600; }
 .site-hero-title .site-hero-title-accent { position: relative; display: inline-block; margin-top: 0; padding-bottom: .1em; color: #c62828; }
 .site-hero-title .site-hero-title-accent { background: linear-gradient(105deg, #c62828 0%, #c62828 40%, #ff8a80 50%, #c62828 60%, #c62828 100%) 0 0 / 250% 100% no-repeat; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: site-accent-shimmer 4.5s ease-in-out infinite; }
 .site-hero-title.site-hero-title-flow { text-wrap: balance; }
@@ -390,11 +389,6 @@
 .site-app-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 32px; }
 .site-app-actions .site-status { margin: 0; font-size: 13px; color: var(--site-muted); }
 .site-app-actions .site-status a { text-decoration: underline; text-underline-offset: 4px; }
-.site-app-facts { display: flex; flex-wrap: wrap; gap: 0; margin: 22px 0 0; padding: 0; border: 1px solid var(--site-border); background: var(--site-canvas); width: fit-content; max-width: 100%; }
-.site-app-facts div { padding: 8px 20px; text-align: center; }
-.site-app-facts div + div { border-inline-start: 1px solid var(--site-border); }
-.site-app-facts dt { color: var(--site-muted); font-size: 11px; line-height: 1.6; }
-.site-app-facts dd { margin: 0; font-size: 14px; font-weight: 700; line-height: 1.6; }
 .site-app-note { margin-top: 16px; color: var(--site-muted); font-size: 12px; }
 .site-app-visual { display: grid; place-items: center; }
 .marketing-site .site-app-phone { position: relative; width: min(100%, 236px); aspect-ratio: 9 / 18; padding: 9px; border-radius: 44px !important; background: linear-gradient(145deg, #2b302c, #121513 60%); border: 1px solid #4a514b; box-shadow: 0 34px 60px -26px rgb(32 37 31 / .55), 0 0 0 3px #d9d6cf, 0 0 0 4px #b9b5aa !important; }
@@ -433,7 +427,6 @@
   .site-app-copy h2 { text-align: center; }
   .site-app-eyebrow, .site-app-lead { display: block; text-align: center; }
   .site-app-actions { justify-content: center; }
-  .site-app-facts { margin-inline: auto; }
   .site-app-note { text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) { .marketing-site .rec-wave i { animation: none; } }
@@ -454,12 +447,11 @@
 .site-app-features li { display: inline-flex; align-items: center; gap: 8px; color: var(--site-primary); font-size: 14px; font-weight: 600; }
 .site-app-copy .site-actions { align-items: center; }
 .site-app-copy .site-status { margin: 0; }
-.site-app .site-app-facts { margin-top: 24px; }
 @media (max-width: 860px) { .site-app { padding: 48px 0; } .site-app-grid { grid-template-columns: 1fr; } .site-app-copy .site-hero-title { text-align: center; } .site-app-features { justify-content: center; } .site-app-copy .site-actions { justify-content: center; } .site-app-copy > p { margin-inline: auto; text-align: center; } }
 .site-app-copy .site-actions .site-button { flex: 0 1 auto; }
 .marketing-site .site-app-copy .site-button:disabled { opacity: .6; cursor: not-allowed; transform: none; }
 .marketing-site .site-app-copy .site-button:disabled::after { display: none; }
-.phone-app-icon { position: absolute; z-index: 3; top: -40px; inset-inline-end: -52px; width: 76px; height: 76px; transform: rotate(45deg); filter: drop-shadow(0 12px 16px rgb(32 37 31 / .32)); }
+.phone-app-icon { position: absolute; z-index: 3; top: 12px; left: 12px; width: 76px; height: 76px; transform: translate(-50%, -50%) rotate(45deg); filter: drop-shadow(0 12px 16px rgb(32 37 31 / .32)); }
 
 /* App section: copy gets the spare width; the phone stays compact. */
 @media (min-width: 861px) {

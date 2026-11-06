@@ -1,5 +1,6 @@
 ## 2026-11-06 — AMINAZADI
 
+- Simplified the Jalase-Negar landing section by removing the Android subtitle and release details, revising the description, and aligning the app icon with the phone preview corner.
 - Fixed the Jalase-Negar APK upload showing the wrong-password message when the admin session had expired; it now asks the admin to sign in again.
 - Added super-admin settings (Content → «معرفی صداسنج در جلسه‌نگار») for the Jalase-Negar "meet SedaSanj" drawer: text, optional https video, button label and link (default https://sedasanj.ir), delay in days; public read at `/v1/jalase-negar/android/sedasanj-intro`.
 - Added the Persian help article `jalase-negar-sound-events` (migration 0121) for bracketed sounds in Jalase-Negar transcripts.
