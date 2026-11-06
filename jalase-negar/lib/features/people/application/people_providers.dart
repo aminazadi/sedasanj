@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/model_catalog.dart';
 import '../../../core/platform/api_client.dart';
+import '../../../core/platform/cpu_budget.dart';
 import '../../../core/platform/speaker_api.dart';
 import '../../../core/providers.dart';
 import '../../models/application/models_controller.dart';
@@ -206,7 +207,9 @@ final voiceEmbeddingServiceProvider = FutureProvider<VoiceEmbeddingService?>((
   final store = await ref.watch(modelStoreProvider.future);
   const spec = ModelCatalog.speakerEmbedding;
   if (!await store.isInstalled(spec)) return null;
+  final budget = await ref.watch(cpuBudgetProvider.future);
   return SherpaEmbeddingService(
+    threads: budget.voiceprintThreads,
     modelPath: store.filePath(spec, spec.files[0]),
     modelId: spec.id,
     modelVersion: ModelCatalog.speakerEmbeddingVersion,

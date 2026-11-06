@@ -28,8 +28,8 @@ class CpuLimitCard extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'تعیین کنید جلسه‌نگار برای همهٔ کارهایش (متن زنده، تشخیص گوینده و '
-            'تحلیل دقیق) از چند هستهٔ گوشی استفاده کند. عدد بیشتر سریع‌تر '
+            'تعیین کنید جلسه‌نگار برای کارهای سنگینش (متن زنده، تشخیص گوینده، '
+            'تشخیص صداهایی مثل خنده و تحلیل دقیق) از چند هستهٔ گوشی استفاده کند. عدد بیشتر سریع‌تر '
             'است ولی گوشی را گرم‌تر و باتری را زودتر خالی می‌کند. حداکثر '
             'نصف هسته‌های گوشی (${toPersianDigits('$max')} از '
             '${toPersianDigits('${processors ?? Platform.numberOfProcessors}')}) مجاز است.',

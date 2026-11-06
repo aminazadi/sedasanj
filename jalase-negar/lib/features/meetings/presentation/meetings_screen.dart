@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import '../../recording/application/recorder_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
+import '../data/meeting_repository.dart' show foldPersianLetters;
 import 'send_meeting_action.dart';
 import 'share_meeting_audio.dart';
 
@@ -33,11 +36,12 @@ enum _Filter {
   };
 }
 
-bool _matchesQuery(Meeting m, String query) {
-  if (query.isEmpty) return true;
-  final q = toPersianDigits(query.trim());
+bool _matchesQuery(Meeting m, String query, Set<String> textMatches) {
+  if (query.trim().isEmpty) return true;
+  final q = toPersianDigits(foldPersianLetters(query.trim()));
   return displayMeetingTitle(m.title).contains(q) ||
-      formatJalaliDay(m.createdAt).contains(q);
+      formatJalaliDay(m.createdAt).contains(q) ||
+      textMatches.contains(m.id);
 }
 
 class MeetingsScreen extends ConsumerStatefulWidget {
@@ -50,10 +54,26 @@ class MeetingsScreen extends ConsumerStatefulWidget {
 class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   final _search = TextEditingController();
   var _query = '';
+  // The transcript lookup follows the typing after a short pause.
+  var _textQuery = '';
+  Timer? _debounce;
   var _filter = _Filter.all;
+
+  void _onQuery(String v) {
+    setState(() => _query = v);
+    _debounce?.cancel();
+    if (v.trim().isEmpty) {
+      setState(() => _textQuery = '');
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) setState(() => _textQuery = v);
+    });
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -64,6 +84,9 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
     // Narrow watches: reloading the list (status polling, upload ticks) must
     // not rebuild or flash the screen. It only rebuilds when the set/order of
     // visible meetings changes; each tile then updates itself.
+    final textMatches =
+        ref.watch(transcriptMatchesProvider(_textQuery)).value ??
+        const <String>{};
     final idsKey = ref.watch(
       meetingsProvider.select(
         (a) => a.value
@@ -71,7 +94,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
               (m) =>
                   !hidden.contains(m.id) &&
                   _filter.accepts(m) &&
-                  _matchesQuery(m, _query),
+                  _matchesQuery(m, _query, textMatches),
             )
             .map((m) => m.id)
             .join(','),
@@ -139,7 +162,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
             child: _SearchAndFilters(
               controller: _search,
               filter: _filter,
-              onQuery: (v) => setState(() => _query = v),
+              onQuery: _onQuery,
               onFilter: (f) => setState(() => _filter = f),
             ),
           ),
@@ -150,6 +173,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                 onClear: () => setState(() {
                   _search.clear();
                   _query = '';
+                  _textQuery = '';
                   _filter = _Filter.all;
                 }),
               ),
@@ -256,97 +280,107 @@ class _SearchAndFilters extends StatelessWidget {
       borderRadius: BorderRadius.zero,
       borderSide: BorderSide(color: c),
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-          child: ValueListenableBuilder<TextEditingValue>(
-            valueListenable: controller,
-            builder: (context, value, _) => TextField(
-              controller: controller,
-              onChanged: onQuery,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'جست‌وجو در عنوان یا تاریخ جلسه',
-                filled: true,
-                fillColor: Colors.white,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                prefixIcon: const Icon(Icons.search, color: SsColors.neutral),
-                suffixIcon: value.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'پاک کردن',
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () {
-                          controller.clear();
-                          onQuery('');
-                        },
-                      ),
-                border: border(SsColors.line),
-                enabledBorder: border(SsColors.line),
-                focusedBorder: border(SsColors.primary),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (context, value, _) => TextField(
+                  controller: controller,
+                  onChanged: onQuery,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'جست‌وجو در عنوان، تاریخ و متن جلسه',
+                    filled: true,
+                    fillColor: Colors.white,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: SsColors.neutral,
+                    ),
+                    suffixIcon: value.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'پاک کردن',
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () {
+                              controller.clear();
+                              onQuery('');
+                            },
+                          ),
+                    border: border(SsColors.line),
+                    enabledBorder: border(SsColors.line),
+                    focusedBorder: border(SsColors.primary),
+                  ),
+                ),
               ),
             ),
-          ),
+            const SizedBox(width: 8),
+            _FilterMenu(filter: filter, onFilter: onFilter),
+          ],
         ),
-        SizedBox(
-          height: 36,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: _Filter.values.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
-              final f = _Filter.values[i];
-              return _FilterPill(
-                label: f.label,
-                selected: f == filter,
-                onTap: () => onFilter(f),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 4),
-      ],
+      ),
     );
   }
 }
 
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+/// Icon button beside the search field; opens the status filters as a dropdown.
+class _FilterMenu extends StatelessWidget {
+  const _FilterMenu({required this.filter, required this.onFilter});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final _Filter filter;
+  final ValueChanged<_Filter> onFilter;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: Material(
-        color: selected ? SsColors.primary : Colors.white,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: selected ? SsColors.primary : SsColors.line),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Center(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: selected ? SsColors.canvas : SsColors.ink,
+    final active = filter != _Filter.all;
+    return PopupMenuButton<_Filter>(
+      tooltip: 'فیلتر جلسه‌ها',
+      position: PopupMenuPosition.under,
+      color: Colors.white,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: SsColors.line),
+      ),
+      initialValue: filter,
+      onSelected: onFilter,
+      itemBuilder: (context) => [
+        for (final f in _Filter.values)
+          PopupMenuItem(
+            value: f,
+            height: 40,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  f == filter ? Icons.check : null,
+                  size: 18,
+                  color: SsColors.primary,
                 ),
-              ),
+                const SizedBox(width: 10),
+                Text(f.label, style: Theme.of(context).textTheme.labelMedium),
+              ],
             ),
+          ),
+      ],
+      child: Semantics(
+        button: true,
+        label: active ? 'فیلتر: ${filter.label}' : 'فیلتر جلسه‌ها',
+        child: Container(
+          width: 46,
+          decoration: BoxDecoration(
+            color: active ? SsColors.primary : Colors.white,
+            border: Border.all(
+              color: active ? SsColors.primary : SsColors.line,
+            ),
+          ),
+          child: Icon(
+            Icons.filter_list,
+            color: active ? SsColors.canvas : SsColors.neutral,
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../speaker/speaker_matcher.dart';
+import 'inline_sound_events.dart';
 
 const kIncompleteLiveTranscriptCode = 'JN-ASR-0001';
 
@@ -25,6 +26,7 @@ class LiveUtterance extends LiveEvent {
     required this.startMs,
     required this.endMs,
     required this.text,
+    this.words,
     this.speaker,
     this.speaker2,
     this.overlap = false,
@@ -34,6 +36,10 @@ class LiveUtterance extends LiveEvent {
   final int startMs;
   final int endMs;
   final String text;
+
+  /// Start time of each word, when the recognizer gave them and they spell
+  /// exactly [text]; used to write sounds at the right word.
+  final List<TimedWord>? words;
 
   /// Who spoke, when speaker identification is on.
   final SpeakerIdentity? speaker;

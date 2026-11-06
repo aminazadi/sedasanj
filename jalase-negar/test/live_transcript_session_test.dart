@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jalase_negar/core/asr/inline_sound_events.dart';
 import 'package:jalase_negar/core/asr/live_asr_engine.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/meetings/data/transcript_store.dart';
@@ -84,6 +85,7 @@ void main() {
       meetingId: 'm1',
       modelId: 'shenava-test',
       persistInterval: const Duration(milliseconds: 10),
+      persistDelay: Duration.zero,
     );
   });
 
@@ -95,7 +97,7 @@ void main() {
     expect(session.state.value.phase, LivePhase.listening);
   });
 
-  test('writes sounds into the text between brackets, in time order', () async {
+  test('a sound goes into the line of the speech next to it', () async {
     await session.start();
     engine.emit(const LiveReady());
     engine.emit(const LiveUtterance(startMs: 0, endMs: 1500, text: 'سلام'));
@@ -109,9 +111,60 @@ void main() {
     );
     engine.emit(const LiveUtterance(startMs: 4500, endMs: 6000, text: 'خوبی؟'));
     await settle();
-    expect(session.state.value.lines, ['سلام', '[خنده]', 'خوبی؟']);
+    // Not a line of its own: it joins the line it follows.
+    expect(session.state.value.lines, ['سلام [خنده]', 'خوبی؟']);
     await session.stop();
-    expect(store.replaced!.single.text, 'سلام [خنده] خوبی؟');
+    expect(store.replaced!.map((x) => x.text), ['سلام [خنده]', 'خوبی؟']);
+  });
+
+  test('a sound that arrives late is written at its word', () async {
+    await session.start();
+    engine.emit(const LiveReady());
+    engine.emit(
+      const LiveUtterance(
+        startMs: 0,
+        endMs: 6000,
+        text: 'من فکر می کنم این خیلی جالب است',
+        words: [
+          TimedWord('من', 0),
+          TimedWord('فکر', 600),
+          TimedWord('می', 1200),
+          TimedWord('کنم', 1500),
+          TimedWord('این', 3000),
+          TimedWord('خیلی', 3500),
+          TimedWord('جالب', 4200),
+          TimedWord('است', 5000),
+        ],
+      ),
+    );
+    engine.emit(
+      const LiveSoundEvent(
+        startMs: 2500,
+        endMs: 3000,
+        kindId: 'cough',
+        text: '[سرفه]',
+      ),
+    );
+    await settle();
+    expect(session.state.value.lines, [
+      'من فکر می کنم [سرفه] این خیلی جالب است',
+    ]);
+  });
+
+  test('a sound far from any speech has its own line', () async {
+    await session.start();
+    engine.emit(const LiveReady());
+    engine.emit(const LiveUtterance(startMs: 0, endMs: 1500, text: 'سلام'));
+    engine.emit(
+      const LiveSoundEvent(
+        startMs: 20000,
+        endMs: 22000,
+        kindId: 'laughter',
+        text: '[خنده]',
+      ),
+    );
+    await settle();
+    expect(session.state.value.lines, ['سلام', '[خنده]']);
   });
 
   test('a missing sound model only adds a note with its code', () async {

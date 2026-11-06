@@ -49,6 +49,15 @@ void main() {
     expect(b.liveSpeakerThreads, 2);
     expect(b.analysisThreads, 4);
     expect(const CpuBudget(1).liveSpeakerThreads, 1);
+    expect(b.soundEventThreads, 2);
+    expect(b.voiceprintThreads, 4);
+    expect(const CpuBudget(1).soundEventThreads, 1);
+  });
+
+  test('the default keeps the earlier sound tagger and voiceprint counts', () {
+    final b = CpuBudget.of(null, 8);
+    expect(b.soundEventThreads, 1);
+    expect(b.voiceprintThreads, 2);
   });
 
   testWidgets('the slider stops at half of the cores', (tester) async {

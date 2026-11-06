@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../speaker/speaker_labeler.dart';
 import 'asr_common.dart';
+import 'inline_sound_events.dart';
 import 'live_asr_engine.dart';
 import 'sound_events.dart';
 
@@ -34,6 +35,68 @@ typedef LiveVadFactory = LiveVad Function();
 /// Speech-to-text for one prepared utterance.
 abstract interface class LiveDecoder {
   String decode(Float32List samples);
+}
+
+/// A decoded utterance with the start time of each token, so a sound found by
+/// the detector can be written at the right word.
+class TimedDecode {
+  const TimedDecode(this.text, this.tokens, this.tokenSeconds);
+
+  final String text;
+
+  /// Tokens as the recognizer wrote them; a token that begins with a space (or
+  /// `▁`) starts a new word.
+  final List<String> tokens;
+
+  /// Start of each token in seconds from the first sample that was decoded.
+  final List<double> tokenSeconds;
+}
+
+/// A [LiveDecoder] that can also report token times.
+abstract interface class TimedLiveDecoder implements LiveDecoder {
+  TimedDecode decodeTimed(Float32List samples);
+}
+
+/// Groups recognizer tokens into words with absolute start times.
+///
+/// [originSample] is the recording-timeline sample the decoded audio started
+/// at (it may be negative near the start of a recording). Returns null when
+/// token and time counts disagree or a word does not survive normalisation.
+List<TimedWord>? wordsFromTokens(
+  TimedDecode decoded,
+  int originSample,
+  String Function(String) normalize,
+) {
+  final tokens = decoded.tokens;
+  final times = decoded.tokenSeconds;
+  if (tokens.isEmpty || tokens.length != times.length) return null;
+  final words = <TimedWord>[];
+  final buffer = StringBuffer();
+  double? wordStart;
+  void close() {
+    if (wordStart == null) return;
+    final text = normalize(buffer.toString());
+    if (text.isNotEmpty) {
+      words.add(
+        TimedWord(
+          text,
+          (originSample * 1000 ~/ kAsrSampleRate) + (wordStart! * 1000).round(),
+        ),
+      );
+    }
+    buffer.clear();
+    wordStart = null;
+  }
+
+  for (var i = 0; i < tokens.length; i++) {
+    final token = tokens[i];
+    final startsWord = token.startsWith(' ') || token.startsWith('▁');
+    if (startsWord) close();
+    wordStart ??= times[i];
+    buffer.write(token.replaceAll('▁', ' '));
+  }
+  close();
+  return words.isEmpty ? null : words;
 }
 
 /// Fixed-size ring of the most recent samples, addressed by absolute sample
@@ -326,9 +389,11 @@ class LivePipeline {
     final startMs = startSample * 1000 ~/ kAsrSampleRate;
     final parts = _labelSpan(samples, startMs);
     if (parts == null || parts.length <= 1) {
+      final decoded = _decodeSpan(samples, startSample, endSample);
       _emit(
         events,
-        text: _decodeSpan(samples, startSample, endSample),
+        text: decoded.text,
+        words: decoded.words,
         startMs: startMs,
         endMs: endSample * 1000 ~/ kAsrSampleRate,
         part: parts?.first,
@@ -344,13 +409,15 @@ class LivePipeline {
         (part.endMs - startMs) * kAsrSampleRate ~/ 1000,
       );
       if (to <= from) continue;
+      final decoded = _decodeSpan(
+        Float32List.sublistView(samples, from, to),
+        startSample + from,
+        startSample + to,
+      );
       _emit(
         events,
-        text: _decodeSpan(
-          Float32List.sublistView(samples, from, to),
-          startSample + from,
-          startSample + to,
-        ),
+        text: decoded.text,
+        words: decoded.words,
         startMs: part.startMs,
         endMs: part.endMs,
         part: part,
@@ -375,6 +442,7 @@ class LivePipeline {
     required String text,
     required int startMs,
     required int endMs,
+    List<TimedWord>? words,
     LabeledPart? part,
   }) {
     if (text.isEmpty) return;
@@ -408,6 +476,7 @@ class LivePipeline {
         startMs: startMs,
         endMs: endMs,
         text: text,
+        words: words,
         speaker: part?.speakers.first,
         speaker2: part != null && part.speakers.length > 1
             ? part.speakers[1]
@@ -424,7 +493,11 @@ class LivePipeline {
     return first.personId ?? first.name;
   }
 
-  String _decodeSpan(Float32List speech, int startSample, int endSample) {
+  ({String text, List<TimedWord>? words}) _decodeSpan(
+    Float32List speech,
+    int startSample,
+    int endSample,
+  ) {
     final context = _history.slice(
       startSample - kAsrPreRollSamples,
       endSample + kAsrPostRollSamples,
@@ -438,14 +511,34 @@ class LivePipeline {
     );
     final prepared = normalizeQuietAudio(withContext.samples);
     final began = _nowMicros();
-    final raw = _decoder.decode(prepared);
+    final decoder = _decoder;
+    final String raw;
+    TimedDecode? timed;
+    if (decoder is TimedLiveDecoder) {
+      timed = decoder.decodeTimed(prepared);
+      raw = timed.text;
+    } else {
+      raw = decoder.decode(prepared);
+    }
     final elapsed = math.max(0, _nowMicros() - began);
     _decodedSamples += prepared.length;
     _decodeMicros += elapsed;
     final audioMicros = prepared.length * 1e6 / kAsrSampleRate;
     final rtf = elapsed / audioMicros;
     _recentRtf = _recentRtf == 0 ? rtf : _recentRtf * 0.7 + rtf * 0.3;
-    return normalizePersianAsrText(raw);
+    final text = normalizePersianAsrText(raw);
+    if (timed == null || text.isEmpty) return (text: text, words: null);
+    // The prepared audio starts one pre-roll before the speech, even when the
+    // recording is too young for that much context (it is padded with
+    // silence), so token times are relative to this origin.
+    final words = wordsFromTokens(
+      timed,
+      startSample - kAsrPreRollSamples,
+      normalizePersianAsrText,
+    );
+    // Words are only trusted when they spell exactly the text that is shown.
+    final trusted = words != null && words.map((w) => w.text).join(' ') == text;
+    return (text: text, words: trusted ? words : null);
   }
 
   /// PCM16 little-endian to floats in [-1, 1). An odd trailing byte waits for

@@ -30,9 +30,6 @@ Widget _host({
     ),
     home: Builder(
       builder: (context) => Scaffold(
-        appBar: AppBar(
-          actions: [TranscriptActionsButton(editorKey: _editorKey)],
-        ),
         body: onOpenEditor == null
             ? ListView(
                 children: [
@@ -81,28 +78,22 @@ Future<void> _type(WidgetTester tester, String text) async {
 }
 
 Future<void> _tap(WidgetTester tester, String tooltip) async {
-  final direct = find.byTooltip(tooltip);
-  if (direct.evaluate().isNotEmpty) {
-    await tester.tap(direct);
-    await tester.pump();
-    return;
-  }
-  await tester.tap(find.byTooltip('ابزار متن جلسه'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text(tooltip));
-  await tester.pumpAndSettle();
+  await tester.tap(find.byTooltip(tooltip));
+  await tester.pump();
 }
 
-bool _enabled(String label) {
-  final items = _editorKey.currentState!
-      .actionItems()
-      .whereType<PopupMenuItem<VoidCallback>>();
-  return items.firstWhere((item) {
-    final row = item.child as Row;
-    final text = (row.children.last as Flexible).child as Text;
-    return text.data == label;
-  }).enabled;
-}
+bool _enabled(WidgetTester tester, String label) =>
+    tester
+        .widget<IconButton>(
+          find
+              .ancestor(
+                of: find.byTooltip(label),
+                matching: find.byType(IconButton),
+              )
+              .first,
+        )
+        .onPressed !=
+    null;
 
 void main() {
   testWidgets('shows the saved text and starts clean', (tester) async {
@@ -310,14 +301,14 @@ void main() {
     await tester.pumpWidget(
       _host(text: 'یک', onSave: (_, {required settle}) async => _ok),
     );
-    expect(_enabled('واگرد'), isFalse);
+    expect(_enabled(tester, 'واگرد'), isFalse);
     await _type(tester, 'یکی');
     await tester.pump(const Duration(seconds: 1));
-    expect(_enabled('واگرد'), isTrue);
+    expect(_enabled(tester, 'واگرد'), isTrue);
 
     await _tap(tester, 'واگرد');
     expect(_value, 'یک');
-    expect(_enabled('بازگرد'), isTrue);
+    expect(_enabled(tester, 'بازگرد'), isTrue);
     await _tap(tester, 'بازگرد');
     expect(_value, 'یکی');
   });
@@ -436,9 +427,9 @@ void main() {
       'ادغام با خط بعد',
       'یکدست‌سازی نویسه‌ها و فاصله‌ها',
     ]) {
-      expect(_enabled(tooltip), isFalse);
+      expect(_enabled(tester, tooltip), isFalse);
     }
-    expect(_enabled('کپی'), isTrue);
+    expect(_enabled(tester, 'کپی'), isTrue);
   });
 
   Future<NavigatorState> openEditor(

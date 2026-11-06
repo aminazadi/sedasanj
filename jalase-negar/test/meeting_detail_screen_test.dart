@@ -41,11 +41,8 @@ void main() {
       );
       expect(find.text('آماده پخش'), findsNothing);
       expect(find.text('در حال پخش'), findsNothing);
-      expect(find.byTooltip('ابزار متن جلسه'), findsOneWidget);
-      await tester.tap(find.byTooltip('ابزار متن جلسه'));
-      await tester.pumpAndSettle();
-      expect(find.text('کپی'), findsOneWidget);
-      expect(find.text('اشتراک‌گذاری متن'), findsOneWidget);
+      expect(find.byTooltip('کپی'), findsOneWidget);
+      expect(find.byTooltip('اشتراک‌گذاری متن'), findsOneWidget);
     });
   }
 
@@ -56,7 +53,8 @@ void main() {
     );
 
     expect(find.textContaining('متنی ذخیره نشده است'), findsOneWidget);
-    expect(find.byTooltip('ابزار متن جلسه'), findsNothing);
+    expect(find.byTooltip('کپی'), findsNothing);
+    expect(find.byTooltip('اشتراک‌گذاری متن'), findsNothing);
   });
 
   testWidgets('places the timer beside compact controls below the waveform', (

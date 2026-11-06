@@ -172,6 +172,7 @@ class VoiceprintRequest {
     required this.wavPath,
     required this.embeddingModelPath,
     required this.groups,
+    this.threads = 2,
   });
 
   final String wavPath;
@@ -180,6 +181,9 @@ class VoiceprintRequest {
   /// Each group is a list of `[startMs, endMs]` pairs of one speaker; one
   /// embedding is made per group.
   final List<List<List<int>>> groups;
+
+  /// Cores this extraction may use (the owner's CPU limit in Settings).
+  final int threads;
 }
 
 /// An embedding made from one group of spans, and how long that speech was.
@@ -213,7 +217,7 @@ Future<List<ExtractedVoiceprint>> extractVoiceprints(
   final audio = await _loadAudio(request.wavPath, info);
   final embedder = SherpaVoiceEmbedder.tryCreate(
     request.embeddingModelPath,
-    numThreads: 2,
+    numThreads: request.threads,
   );
   if (embedder == null) throw const FormatException('models_unavailable');
   try {

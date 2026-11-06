@@ -120,7 +120,37 @@ LivePipeline pipelineWith(
   );
 }
 
+/// A decoder that reports token times, like the real recognizer.
+class TimedFakeDecoder implements TimedLiveDecoder {
+  @override
+  String decode(Float32List samples) => decodeTimed(samples).text;
+
+  @override
+  TimedDecode decodeTimed(Float32List samples) => const TimedDecode(
+    ' سلام دنیا',
+    [' سلا', 'م', ' دنیا'],
+    // Seconds from the start of the decoded audio, which begins one pre-roll
+    // (0.75 s) before the speech.
+    [0.75, 0.9, 1.25],
+  );
+}
+
 void main() {
+  test('words carry recording-timeline times (pre-roll removed)', () {
+    final vad = FakeVad([ScriptedSpan(at: 80000, start: 32000, length: 16000)]);
+    final pipeline = LivePipeline(
+      vadFactory: () => vad,
+      decoder: TimedFakeDecoder(),
+    );
+    final events = pipeline.feed(pcmSeconds(5));
+    final utterance = events.whereType<LiveUtterance>().single;
+    expect(utterance.text, 'سلام دنیا');
+    // The span starts at sample 32000 = 2000 ms; the first token is at 0.75 s
+    // of the decoded audio, i.e. exactly at the start of the speech.
+    expect(utterance.words!.map((w) => w.text), ['سلام', 'دنیا']);
+    expect(utterance.words!.map((w) => w.startMs), [2000, 2500]);
+  });
+
   group('SampleHistory', () {
     test('returns the samples in range after the ring wrapped', () {
       final history = SampleHistory(10);

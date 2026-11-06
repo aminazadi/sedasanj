@@ -45,6 +45,18 @@ class CpuBudget {
   /// Offline speaker analysis of a finished recording; nothing else runs
   /// with it, so it may use the whole budget.
   int get analysisThreads => cores;
+
+  /// The live sound-event tagger; it shares the budget with recognition, so
+  /// like the speaker models it gets half (1 at the default of 2 cores).
+  int get soundEventThreads => math.max(1, cores ~/ 2);
+
+  /// Making or enrolling a voiceprint; nothing else runs beside it. At the
+  /// default of 2 cores this equals the earlier fixed 2.
+  int get voiceprintThreads => cores;
+
+  // The voice-activity detector stays at one thread on purpose: the Silero
+  // model is tiny and runs on every audio window, so more threads cost more
+  // in hand-offs than they save.
 }
 
 final cpuBudgetProvider = AsyncNotifierProvider<CpuBudgetNotifier, CpuBudget>(

@@ -121,7 +121,7 @@ void main() {
     test('scores below the threshold are ignored', () {
       final d = SoundEventDetector(
         tagger: ScriptedTagger([
-          [s('Laughter', 0.29), s('Cough', 0.39), s('Whispering', 0.5)],
+          [s('Laughter', 0.05), s('Cough', 0.19), s('Whispering', 0.29)],
         ]),
       );
       expect([...run(d, 10), ...d.flush()], isEmpty);
@@ -141,6 +141,51 @@ void main() {
       // Per window only the stronger kind votes: Giggle once (0.7), Laughter
       // twice (1.2), so the event is named after Laughter.
       expect(events.single.kind.id, 'laughter');
+    });
+
+    test('a weak specific kind is written as the general one', () {
+      final d = SoundEventDetector(
+        tagger: ScriptedTagger([
+          [s('Giggle', 0.12), s('Laughter', 0.09)],
+          [s('Giggle', 0.11), s('Laughter', 0.08)],
+          [s('Speech', 0.9)],
+        ]),
+      );
+      final events = [...run(d, 10), ...d.flush()];
+      // Giggle leads but never reached 0.30, so the word is «خنده».
+      expect(events.map((e) => e.text), ['[خنده]']);
+    });
+
+    test('a cough read as throat clearing stays a cough unless sure', () {
+      List<String> go(double p) {
+        final d = SoundEventDetector(
+          tagger: ScriptedTagger([
+            [s('Throat clearing', p)],
+            [s('Speech', 0.9)],
+          ]),
+        );
+        return [...run(d, 8), ...d.flush()].map((e) => e.text).toList();
+      }
+
+      expect(go(0.30), ['[سرفه]']);
+      expect(go(0.60), ['[صاف کردن گلو]']);
+    });
+
+    test('low laughter probability under speech is still written', () {
+      // Measured: laughter mixed into speech at equal level scores about
+      // 0.06-0.2, far below the 0.30 used before the benchmark.
+      final d = SoundEventDetector(
+        tagger: ScriptedTagger([
+          [s('Speech', 0.95), s('Laughter', 0.07)],
+          [s('Speech', 0.95), s('Laughter', 0.09)],
+          [s('Speech', 0.95)],
+        ]),
+      );
+      expect([...run(d, 9), ...d.flush()].map((e) => e.text), ['[خنده]']);
+    });
+
+    test('gasp is not written (breathing was read as a gasp)', () {
+      expect(soundEventKindForName('Gasp'), isNull);
     });
 
     test('the specific kind names the event when it leads', () {

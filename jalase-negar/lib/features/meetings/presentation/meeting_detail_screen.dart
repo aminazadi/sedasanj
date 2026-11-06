@@ -6,6 +6,7 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../onboarding/intro/intro_art.dart';
 import '../application/meeting_providers.dart';
 import '../data/attendee.dart';
 import '../data/meeting.dart';
@@ -76,8 +77,6 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                     onPressed: () =>
                         sendMeetingToSedasanj(context, ref, meetingId),
                   ),
-                if (transcript.isNotEmpty)
-                  TranscriptActionsButton(editorKey: _editorKey),
                 _MeetingMenu(meeting: data.meeting),
               ],
               title: Hero(
@@ -374,7 +373,8 @@ class _RenameDialogState extends State<_RenameDialog> {
   }
 }
 
-/// The app's loading mark with one line: speakers are being identified.
+/// Speakers are being identified: the compact form keeps the small mark, the
+/// large form shows the same live illustration as the intro slides.
 class _AnalyzingBanner extends ConsumerWidget {
   const _AnalyzingBanner({required this.meetingId, this.large = false});
 
@@ -387,7 +387,7 @@ class _AnalyzingBanner extends ConsumerWidget {
     final progress = ref.watch(speakerProgressProvider)[meetingId] ?? 0;
     final text = Text(
       'در حال استخراج گوینده‌ها (${toPersianDigits("$progress")}٪)؛ پس از پایان، جلسه برای صداسنج ارسال می‌شود.',
-      textAlign: TextAlign.center,
+      textAlign: large ? TextAlign.center : TextAlign.start,
       style: Theme.of(context).textTheme.bodySmall,
     );
     if (large) {
@@ -396,7 +396,10 @@ class _AnalyzingBanner extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SsProcessingMark(size: 36),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 300),
+              child: const _LiveAnalyzingArt(),
+            ),
             const SizedBox(height: 12),
             text,
           ],
@@ -409,6 +412,46 @@ class _AnalyzingBanner extends ConsumerWidget {
         const SizedBox(width: 10),
         Expanded(child: text),
       ],
+    );
+  }
+}
+
+class _LiveAnalyzingArt extends StatefulWidget {
+  const _LiveAnalyzingArt();
+
+  @override
+  State<_LiveAnalyzingArt> createState() => _LiveAnalyzingArtState();
+}
+
+class _LiveAnalyzingArtState extends State<_LiveAnalyzingArt>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _loop = AnimationController(
+    vsync: this,
+    duration: kIntroArtLoop,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _loop.stop();
+    } else if (!_loop.isAnimating) {
+      _loop.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IntroArt(
+      scene: IntroScene.liveText,
+      animation: _loop,
+      still: MediaQuery.disableAnimationsOf(context),
     );
   }
 }

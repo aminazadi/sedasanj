@@ -78,7 +78,9 @@ final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
     final engine = VadSegmentEngine(
       VadSegmentConfig(
         numThreads: budget.recognitionThreads,
+        minSilenceSeconds: kLiveMinSilenceSeconds,
         speakerThreads: budget.liveSpeakerThreads,
+        soundEventThreads: budget.soundEventThreads,
         vadModelPath: store.filePath(vadSpec, vadSpec.files[0]),
         tokensPath: store.filePath(asrSpec, asrSpec.files[transducer ? 3 : 1]),
         architecture: asrSpec.asrArchitecture,

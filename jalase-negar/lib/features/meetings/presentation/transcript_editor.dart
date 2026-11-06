@@ -468,24 +468,44 @@ class TranscriptEditorState extends State<TranscriptEditor>
             ),
             const SizedBox(height: 10),
           ],
-          if (_findOpen) ...[_findBar(theme), const SizedBox(height: 8)],
-          TextField(
-            key: _fieldKey,
-            controller: _text,
-            focusNode: _focus,
-            readOnly: _locked,
-            minLines: 8,
-            maxLines: null,
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            style: theme.textTheme.bodyMedium?.copyWith(height: 1.9),
-            decoration: const InputDecoration(
-              hintText: 'متن را اینجا بنویسید',
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              filled: false,
-              contentPadding: EdgeInsets.zero,
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(
+                color: _focus.hasFocus ? SsColors.primary : SsColors.neutral,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _toolbar(),
+                const Divider(height: 1),
+                if (_findOpen) _findBar(theme),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: TextField(
+                    key: _fieldKey,
+                    controller: _text,
+                    focusNode: _focus,
+                    readOnly: _locked,
+                    minLines: 8,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.9),
+                    decoration: const InputDecoration(
+                      hintText: 'متن را اینجا بنویسید',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           if (widget.statusDestination == null) ...[
@@ -539,50 +559,54 @@ class TranscriptEditorState extends State<TranscriptEditor>
 
   void _share() => SharePlus.instance.share(ShareParams(text: _text.text));
 
-  List<PopupMenuEntry<VoidCallback>> actionItems() {
-    PopupMenuItem<VoidCallback> item(
-      String label,
-      IconData icon,
-      VoidCallback? action,
-    ) => PopupMenuItem<VoidCallback>(
-      value: action,
-      enabled: action != null,
-      child: Row(
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 10),
-          Flexible(child: Text(label)),
-        ],
-      ),
-    );
+  /// Editing tools shown above the text so the area reads as editable.
+  Widget _toolbar() {
     final editable = !_locked;
     final hasText = _text.text.trim().isNotEmpty;
-    return [
-      item('کپی', Icons.copy, hasText ? _copy : null),
-      item('اشتراک‌گذاری متن', Icons.ios_share, hasText ? _share : null),
-      item('واگرد', Icons.undo, editable && _at > 0 ? () => _travel(-1) : null),
-      item(
-        'بازگرد',
-        Icons.redo,
-        editable && _at < _history.length - 1 ? () => _travel(1) : null,
+    return Container(
+      color: SsColors.selected.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _tool('کپی', Icons.copy, hasText ? _copy : null),
+            _tool('اشتراک‌گذاری متن', Icons.ios_share, hasText ? _share : null),
+            _tool(
+              'واگرد',
+              Icons.undo,
+              editable && _at > 0 ? () => _travel(-1) : null,
+            ),
+            _tool(
+              'بازگرد',
+              Icons.redo,
+              editable && _at < _history.length - 1 ? () => _travel(1) : null,
+            ),
+            _tool(
+              'جستجو و جایگزینی',
+              Icons.find_replace,
+              _toggleFind,
+              active: _findOpen,
+            ),
+            _tool(
+              'حذف خط',
+              Icons.playlist_remove,
+              editable && hasText ? _deleteLine : null,
+            ),
+            _tool(
+              'ادغام با خط بعد',
+              Icons.vertical_align_center,
+              editable ? _joinWithNext : null,
+            ),
+            _tool(
+              'یکدست‌سازی نویسه‌ها و فاصله‌ها',
+              Icons.auto_fix_high,
+              editable ? _tidy : null,
+            ),
+          ],
+        ),
       ),
-      item('جستجو و جایگزینی', Icons.find_replace, _toggleFind),
-      item(
-        'حذف خط',
-        Icons.playlist_remove,
-        editable && hasText ? _deleteLine : null,
-      ),
-      item(
-        'ادغام با خط بعد',
-        Icons.vertical_align_center,
-        editable ? _joinWithNext : null,
-      ),
-      item(
-        'یکدست‌سازی نویسه‌ها و فاصله‌ها',
-        Icons.auto_fix_high,
-        editable ? _tidy : null,
-      ),
-    ];
+    );
   }
 
   Widget _tool(
@@ -757,19 +781,4 @@ class _TranscriptController extends TextEditingController {
     if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor)));
     return TextSpan(style: style, children: spans);
   }
-}
-
-class TranscriptActionsButton extends StatelessWidget {
-  const TranscriptActionsButton({super.key, required this.editorKey});
-
-  final GlobalKey<TranscriptEditorState> editorKey;
-
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<VoidCallback>(
-    tooltip: 'ابزار متن جلسه',
-    icon: const Icon(Icons.edit_note),
-    position: PopupMenuPosition.under,
-    onSelected: (action) => action(),
-    itemBuilder: (_) => editorKey.currentState?.actionItems() ?? [],
-  );
 }

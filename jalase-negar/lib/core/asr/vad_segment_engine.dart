@@ -21,6 +21,13 @@ import 'sound_events.dart';
 
 const double kSileroThreshold = 0.35;
 const double kSileroMinSilenceSeconds = 0.9;
+
+/// Live text closes an utterance after this short pause so it appears as soon
+/// as the person takes a breath and the decoder always has small pieces
+/// instead of one long one. The post-recording transcript keeps
+/// [kSileroMinSilenceSeconds] (the server contract); the saved live text is
+/// merged into turns when recording stops.
+const double kLiveMinSilenceSeconds = 0.5;
 const double kSileroMinSpeechSeconds = 0.2;
 const int kSileroWindowSize = 512;
 
@@ -37,6 +44,7 @@ class VadSegmentConfig {
     this.joinerPath,
     this.numThreads = 2,
     this.speakerThreads = 1,
+    this.soundEventThreads = 1,
     this.minSilenceSeconds = kSileroMinSilenceSeconds,
     this.maxBacklogMs = 60000,
     this.speakerEmbeddingPath = '',
@@ -64,6 +72,9 @@ class VadSegmentConfig {
   /// only on two single-speaker clips and not on a phone, so the default stays
   /// until that is checked (see docs/asr-benchmark.md).
   final int speakerThreads;
+
+  /// Threads for the sound-event tagger.
+  final int soundEventThreads;
 
   /// Same default as the post-recording transcriber so both cut speech alike.
   final double minSilenceSeconds;
@@ -324,6 +335,7 @@ void _liveEntry(_Init init) {
       final tagger = SherpaSoundTagger.tryCreate(
         modelPath: config.soundEventModelPath,
         labelsPath: config.soundEventLabelsPath,
+        numThreads: math.max(1, config.soundEventThreads),
       );
       soundTagger = tagger;
       if (tagger != null) {

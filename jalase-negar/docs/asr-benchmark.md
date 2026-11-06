@@ -179,6 +179,22 @@ e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534  535638     gtc
 
 ## Sound events (`[خنده]`, `[سرفه]`, ...)
 
-`test/bench/bench_sound_events_test.dart` runs the real CED-tiny tagger and the detector over WAV clips (`BENCH_CED`, `BENCH_SOUND_AUDIO`; skipped without them). Model: `model.int8.onnx` 6,133,417 bytes, SHA-256 `73aa22e783115f6a4ae169b36089907e07d0fd44795595eddea9c1bfc74cc945`, plus `class_labels_indices.csv` (527 classes; every name used in `kSoundEventKinds` was checked against it).
+Two env-guarded benches use the real CED-tiny tagger (`model.int8.onnx` 6,133,417 bytes, SHA-256 `73aa22e783115f6a4ae169b36089907e07d0fd44795595eddea9c1bfc74cc945`, plus `class_labels_indices.csv`; every name in `kSoundEventKinds` was checked against its 527 classes):
 
-Measured on the Mac on 2026-11-06 (relative numbers, not phone speed): windows of 1, 2, 3, 5 and 10 s all run; the detector costs about 0.021 x real time on one thread; the two golden clips (about 4 minutes of speech) give no events after the singing/humming thresholds were raised (a drawn-out hesitation scored 0.66 as singing before). ⚠ Not measured: real laughter, crying or coughing (no such clips are available), so recall and the other thresholds are unverified.
+- `test/bench/bench_sound_events_test.dart` (`BENCH_CED`, `BENCH_SOUND_AUDIO`): windows of 1, 2, 3, 5 and 10 s all run; cost about 0.021 x real time on one Mac thread.
+- `test/bench/bench_sound_accuracy_test.dart` (`BENCH_CED`, `BENCH_SOUND_AUDIO`, `BENCH_ESC`, `BENCH_CACHE`, optional `BENCH_NEG`, `BENCH_SWEEP=1`, `BENCH_NEGSWEEP=1`, `BENCH_W`/`BENCH_H`): places labelled clips alone and mixed into real Persian meeting speech at 0 and -6 dB, scores every window once (cached), and replays detector variants on the cache. Labelled clips: 198 clips of ESC-50 (laughing, crying_baby, coughing, sneezing, clapping, snoring x25; breathing, keyboard_typing, footsteps, mouse_click x12; CC BY-NC 3.0, used for evaluation only and never committed). Speech-only negatives: the two golden clips, the 25 augmented variants (noise, reverb, overlap) and two real voice recordings, about 70 minutes in all.
+
+Measured on the Mac, 2026-11-06 (relative numbers). The first thresholds (0.30-0.40, laughter 0.30) were guesses; calibrating on folds 1-3 and checking on folds 4-5 gave (recall of the right kind within 1.5 s of the sound, 25 clips per sound, all folds):
+
+| sound | alone before / after | in speech at 0 dB before / after | in speech at -6 dB before / after |
+|---|---|---|---|
+| laughter | 84% / 96% | 16% / 88% | 4% / 68% |
+| baby crying | 92% / 100% | 52% / 96% | 28% / 92% |
+| cough | 56% / 72% | 64% / 84% | 44% / 52% |
+| sneeze | 68% / 84% | 40% / 60% | 32% / 32% |
+| applause | 96% / 100% | 44% / 96% | 16% / 84% |
+| snoring | 44% / 92% | 4% / 44% | 4% / 40% |
+
+False events: none on about 70 minutes of speech before or after; breathing clips wrote an event 11 of 12 times before (gasp) and 2 of 12 after; keyboard, footsteps and mouse clicks wrote none. A window of 2 s with a 0.5 s hop was also measured and is worse in speech (laughter at -6 dB 56%, baby crying 72%) with more stray events, so the app keeps 3 s / 1 s. Reading the top 12, 30 or 80 classes gave identical results.
+
+Changes the numbers led to: low presence thresholds with a separate, higher bar for a specific name (belly laugh, giggle, ...; otherwise «خنده»); `Gasp` dropped (breathing); `Singing` and `Humming` stay strict (singing wrote events on speech at every threshold below 0.60). ⚠ Not measured: sound types with no labelled clips (adult crying, giggle vs chuckle vs snicker, sigh, scream, shout, whisper, hiccup, throat clearing as distinct from cough); their thresholds only guarantee no false events on the negatives above. Clips are environmental recordings mixed artificially, not real meetings, so real-meeting accuracy is still unmeasured.

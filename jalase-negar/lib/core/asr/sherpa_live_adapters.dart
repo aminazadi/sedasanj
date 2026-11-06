@@ -61,18 +61,22 @@ class SherpaLiveVad implements LiveVad {
 
 /// The offline recognizer behind the pipeline's [LiveDecoder] interface: one
 /// stream per prepared utterance.
-class SherpaLiveDecoder implements LiveDecoder {
+class SherpaLiveDecoder implements TimedLiveDecoder {
   SherpaLiveDecoder(this._recognizer);
 
   final sherpa.OfflineRecognizer _recognizer;
 
   @override
-  String decode(Float32List samples) {
+  String decode(Float32List samples) => decodeTimed(samples).text;
+
+  @override
+  TimedDecode decodeTimed(Float32List samples) {
     final stream = _recognizer.createStream();
     try {
       stream.acceptWaveform(samples: samples, sampleRate: kAsrSampleRate);
       _recognizer.decode(stream);
-      return _recognizer.getResult(stream).text;
+      final result = _recognizer.getResult(stream);
+      return TimedDecode(result.text, result.tokens, result.timestamps);
     } finally {
       stream.free();
     }

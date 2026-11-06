@@ -151,9 +151,13 @@ class SherpaEmbeddingService implements VoiceEmbeddingService {
     required this.modelPath,
     required this.modelId,
     required this.modelVersion,
+    this.threads = 2,
   });
 
   final String modelPath;
+
+  /// Cores one embedding may use (the owner's CPU limit in Settings).
+  final int threads;
 
   @override
   final String modelId;
@@ -164,9 +168,10 @@ class SherpaEmbeddingService implements VoiceEmbeddingService {
   @override
   Future<Float32List?> embed(Float32List samples) {
     final path = modelPath;
+    final threads = this.threads;
     return Isolate.run(() {
       sherpa.initBindings();
-      final embedder = SherpaVoiceEmbedder.tryCreate(path, numThreads: 2);
+      final embedder = SherpaVoiceEmbedder.tryCreate(path, numThreads: threads);
       if (embedder == null) return null;
       try {
         return embedder.embed(samples);

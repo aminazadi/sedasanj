@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
 import '../features/push/push_host.dart';
+import '../features/sedasanj_intro/sedasanj_intro_host.dart';
 import '../features/updates/application/update_controller.dart';
 import '../features/updates/presentation/update_prompt_host.dart';
 import 'router.dart';
@@ -93,7 +94,9 @@ class _RouterAppState extends ConsumerState<_RouterApp> {
       ],
       theme: buildAppTheme(),
       builder: (context, child) => SsToastHost(
-        child: PushHost(child: UpdatePromptHost(child: child!)),
+        child: PushHost(
+          child: UpdatePromptHost(child: SedasanjIntroHost(child: child!)),
+        ),
       ),
       routerConfig: ref.watch(routerProvider),
     );

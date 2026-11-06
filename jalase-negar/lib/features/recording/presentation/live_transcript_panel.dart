@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -6,7 +9,9 @@ import '../application/live_transcript_session.dart';
 
 /// Live transcript of what is being said during recording.
 ///
-/// New lines scroll into view unless the person has scrolled up to re-read.
+/// New lines are typed out character by character and scroll into view unless
+/// the person has scrolled up to re-read. Typing speeds up when several lines
+/// wait, so the screen never falls behind the recognizer.
 class LiveTranscriptPanel extends StatefulWidget {
   const LiveTranscriptPanel({super.key, required this.state});
 
@@ -18,8 +23,14 @@ class LiveTranscriptPanel extends StatefulWidget {
 
 class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
   final ScrollController _scroll = ScrollController();
-  int _shownLines = 0;
   bool _stickToEnd = true;
+
+  /// Lines at the end of the list that are not fully typed yet; the first of
+  /// them is shown up to [_typedChars] characters.
+  int _pending = 0;
+  int _typedChars = 0;
+  List<String> _lastLines = const [];
+  Timer? _typer;
 
   @override
   void initState() {
@@ -29,6 +40,7 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
 
   @override
   void dispose() {
+    _typer?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -39,17 +51,74 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
     _stickToEnd = position.pixels >= position.maxScrollExtent - 48;
   }
 
-  void _followEnd(int lineCount) {
-    if (lineCount == _shownLines) return;
-    _shownLines = lineCount;
+  /// Works out how many lines are new since the last build. The lines list is
+  /// rebuilt (and trimmed at its cap) on every update, so the new ones are
+  /// found after the last line seen before, compared by identity.
+  void _noteLines(List<String> lines) {
+    final old = _lastLines;
+    _lastLines = lines;
+    if (identical(old, lines)) return;
+    var added = 0;
+    if (old.isEmpty) {
+      // First build with existing text (screen reopened): show it as it is.
+      added = 0;
+    } else {
+      final at = lines.lastIndexWhere((l) => identical(l, old.last));
+      added = at < 0 ? 0 : lines.length - 1 - at;
+    }
+    if (_lastSeenOnce && old.isEmpty) added = lines.length;
+    _lastSeenOnce = true;
+    if (added > 0) {
+      _pending = math.min(lines.length, _pending + added);
+      _startTyping();
+    } else {
+      _pending = math.min(_pending, lines.length);
+    }
+  }
+
+  bool _lastSeenOnce = false;
+
+  void _startTyping() {
+    _typer ??= Timer.periodic(const Duration(milliseconds: 30), (_) => _tick());
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    if (_pending == 0) {
+      _typer?.cancel();
+      _typer = null;
+      return;
+    }
+    final lines = _lastLines;
+    var waiting = 0;
+    for (var i = lines.length - _pending; i < lines.length; i++) {
+      waiting += lines[i].length;
+    }
+    waiting -= _typedChars;
+    // About 65 characters a second, more when text is queued.
+    var step = 2 + waiting ~/ 60;
+    setState(() {
+      while (step > 0 && _pending > 0) {
+        final line = lines[lines.length - _pending];
+        final room = line.length - _typedChars;
+        if (step < room) {
+          _typedChars += step;
+          step = 0;
+        } else {
+          step -= room;
+          _typedChars = 0;
+          _pending--;
+        }
+      }
+    });
+    _followEnd();
+  }
+
+  void _followEnd() {
     if (!_stickToEnd) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
-      _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
     });
   }
 
@@ -59,7 +128,10 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
     return ValueListenableBuilder<LiveTranscriptState>(
       valueListenable: widget.state,
       builder: (context, live, _) {
-        _followEnd(live.lines.length);
+        _noteLines(live.lines);
+        final shownCount = live.lines.length - _pending;
+        final visible = _pending == 0 ? live.lines.length : shownCount + 1;
+        if (_pending > 0) _followEnd();
         return Semantics(
           container: true,
           label: 'متن زنده‌ی جلسه',
@@ -79,12 +151,23 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
                       : ListView.separated(
                           controller: _scroll,
                           padding: const EdgeInsets.all(12),
-                          itemCount: live.lines.length,
+                          itemCount: visible,
                           separatorBuilder: (_, _) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) => Text(
-                            live.lines[index],
-                            style: textTheme.bodyMedium?.copyWith(height: 1.7),
-                          ),
+                          itemBuilder: (context, index) {
+                            final line = live.lines[index];
+                            final typing = index >= shownCount;
+                            return Text(
+                              typing
+                                  ? line.substring(
+                                      0,
+                                      math.min(_typedChars, line.length),
+                                    )
+                                  : line,
+                              style: textTheme.bodyMedium?.copyWith(
+                                height: 1.7,
+                              ),
+                            );
+                          },
                         ),
                 ),
                 if (live.note != null && live.lines.isNotEmpty)

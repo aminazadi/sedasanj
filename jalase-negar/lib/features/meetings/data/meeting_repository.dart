@@ -126,6 +126,23 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     return rows.map((r) => (r['text'] as String).trim()).join(' ');
   }
 
+  /// Ids of meetings whose stored transcript contains [query]. Arabic ی/ک
+  /// variants are folded so typing either form finds the same text.
+  Future<Set<String>> searchTranscripts(String query) async {
+    final q = foldPersianLetters(query.trim());
+    if (q.isEmpty) return const {};
+    final escaped = q
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    final rows = await _db.db.rawQuery(
+      "SELECT DISTINCT meeting_id FROM segments WHERE "
+      "REPLACE(REPLACE(text, 'ي', 'ی'), 'ك', 'ک') LIKE ? ESCAPE '\\'",
+      ['%$escaped%'],
+    );
+    return {for (final r in rows) r['meeting_id']! as String};
+  }
+
   @override
   Future<void> replaceSegments(String meetingId, List<Segment> segments) async {
     final batch = _db.db.batch();
@@ -411,3 +428,7 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     return (sent, rows.length);
   }
 }
+
+/// Folds Arabic yeh/kaf to their Persian forms for text matching.
+String foldPersianLetters(String s) =>
+    s.replaceAll('ي', 'ی').replaceAll('ك', 'ک');

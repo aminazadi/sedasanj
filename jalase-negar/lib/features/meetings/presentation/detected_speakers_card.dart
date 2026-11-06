@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
@@ -10,7 +9,6 @@ import '../../people/data/person.dart';
 import '../application/meeting_providers.dart';
 import '../data/meeting.dart';
 import '../data/speaker_discovery.dart';
-import 'speaker_lines_card.dart';
 
 /// Voices the app heard in this meeting that nobody enrolled. Each one can be
 /// named in one step: it becomes a person with a voiceprint made from this
@@ -29,39 +27,20 @@ class DetectedSpeakersCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final detected = detectUnnamedSpeakers(segments);
+    if (detected.isEmpty) return const SizedBox.shrink();
     return SsCard(
-      title: 'گویندگان این جلسه',
+      title: 'نام‌گذاری صداهای ناشناس',
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (detected.isEmpty)
-            Text(
-              'اپ می‌تواند صدای همه‌ی حاضران را از هم جدا کند (مثلاً ۴ یا ۵ نفر) '
-              'و هر کدام را «ناشناس ۱»، «ناشناس ۲»، … بنامد؛ بعد فقط نامشان را بنویسید.',
-              style: theme.textTheme.bodySmall,
-            )
-          else ...[
-            Text(
-              '${toPersianDigits('${detected.length}')} صدای ناشناس پیدا شد. '
-              'نام هر کدام را بنویسید تا به «افراد» اضافه شود و در جلسه‌های بعد '
-              'خودکار شناخته شود.',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            for (final d in detected)
-              _DetectedTile(speaker: d, onName: () => _name(context, ref, d)),
-          ],
-          const SizedBox(height: 8),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: OutlinedButton.icon(
-              onPressed: () => runPreciseWithToast(context, ref, meetingId),
-              icon: const Icon(Icons.groups_outlined, size: 18),
-              label: Text(
-                detected.isEmpty ? 'تشخیص خودکار گویندگان' : 'تشخیص دوباره',
-              ),
-            ),
+          Text(
+            'نام هر صدا را بنویسید تا در جلسه‌های بعد خودکار شناخته شود.',
+            style: theme.textTheme.bodySmall,
           ),
+          const SizedBox(height: 4),
+          for (final d in detected)
+            _DetectedTile(speaker: d, onName: () => _name(context, ref, d)),
         ],
       ),
     );
@@ -121,32 +100,21 @@ class _DetectedTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SsBadge(speaker.label),
-                    Text(
-                      '${toPersianDigits('${speaker.lineCount}')} خط · '
-                      '${toPersianDigits('$seconds')} ثانیه',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    if (!speaker.usable)
-                      const SsBadge('گفتار کم', color: SsColors.warning),
-                  ],
+                Text(
+                  '${speaker.label} · ${toPersianDigits('$seconds')} ثانیه'
+                  '${speaker.usable ? '' : ' · گفتار کم'}',
+                  style: theme.textTheme.labelLarge,
                 ),
-                const SizedBox(height: 2),
                 Text(
                   speaker.sampleText,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          FilledButton(
+          TextButton(
             onPressed: speaker.usable ? onName : null,
             child: const Text('نام‌گذاری'),
           ),

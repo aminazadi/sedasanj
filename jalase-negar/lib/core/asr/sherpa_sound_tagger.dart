@@ -23,13 +23,14 @@ class SherpaSoundTagger implements SoundTagger {
   /// library rejects it. Never throws: sound events are an extra, and a
   /// recording must start without them rather than not at all.
   ///
-  /// [topK] classes are reported per clip. The default is wide enough that a
-  /// laugh hidden under "Speech" and "Male speech" still shows up.
+  /// [topK] classes are reported per clip. The benchmark gave identical
+  /// results for 12, 30 and 80; 30 leaves room for a quiet laugh hidden under
+  /// «Speech», «Male speech» and similar classes.
   static SherpaSoundTagger? tryCreate({
     required String modelPath,
     required String labelsPath,
     int numThreads = 1,
-    int topK = 12,
+    int topK = 30,
   }) {
     try {
       if (!File(modelPath).existsSync() || !File(labelsPath).existsSync()) {

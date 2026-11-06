@@ -93,4 +93,40 @@ void main() {
     expect(find.text('کمی عقب است'), findsOneWidget);
     expect(find.textContaining('ضبط بدون مشکل ادامه دارد'), findsOneWidget);
   });
+
+  testWidgets('types a new line out character by character', (tester) async {
+    final state = ValueNotifier(
+      const LiveTranscriptState(phase: LivePhase.listening, lines: ['سلام']),
+    );
+    await tester.pumpWidget(host(state));
+    state.value = state.value.copyWith(
+      lines: [...state.value.lines, 'این یک جمله‌ی نسبتاً بلند برای تایپ است'],
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.text('سلام'), findsOneWidget);
+    expect(find.text('این یک جمله‌ی نسبتاً بلند برای تایپ است'), findsNothing);
+    expect(find.textContaining('این یک'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(
+      find.text('این یک جمله‌ی نسبتاً بلند برای تایپ است'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('types faster when many lines are queued', (tester) async {
+    final state = ValueNotifier(
+      const LiveTranscriptState(phase: LivePhase.listening, lines: ['اول']),
+    );
+    await tester.pumpWidget(host(state));
+    final burst = [
+      for (var i = 0; i < 10; i++) 'جمله‌ی شماره $i است و ادامه دارد',
+    ];
+    state.value = state.value.copyWith(lines: [...state.value.lines, ...burst]);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text(burst.last), findsOneWidget);
+  });
 }

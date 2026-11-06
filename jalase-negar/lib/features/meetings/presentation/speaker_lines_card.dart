@@ -32,8 +32,12 @@ class SpeakerLinesCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final share = overlapShare(segments);
+    final lines = <int>[
+      for (var i = 0; i < segments.length; i++)
+        if (segments[i].text.trim().isNotEmpty) i,
+    ];
     return SsCard(
-      title: 'گویندگان',
+      title: 'گفت‌وگو',
       trailing: share > 0
           ? SsBadge(
               'هم‌زمان ${toPersianDigits('${(share * 100).round()}')}٪',
@@ -43,45 +47,52 @@ class SpeakerLinesCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < segments.length; i++)
-            if (segments[i].text.trim().isNotEmpty)
-              _Line(
-                segment: segments[i],
-                onTap: editable ? () => _edit(context, ref, i) : null,
-              ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await Clipboard.setData(
-                    ClipboardData(text: labeledTranscriptText(segments)),
-                  );
-                  if (context.mounted) {
-                    SsToastHost.show(context, 'متن با نام گویندگان کپی شد');
-                  }
-                },
-                icon: const Icon(Icons.copy, size: 18),
-                label: const Text('کپی با نام گوینده'),
-              ),
-              if (editable)
-                OutlinedButton.icon(
-                  onPressed: () => _precise(context, ref),
-                  icon: const Icon(Icons.auto_fix_high, size: 18),
-                  label: const Text('پردازش دقیق'),
-                ),
-            ],
-          ),
           if (editable)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'روی هر خط بزنید تا گوینده‌اش را عوض کنید یا آن را بین دو نفر تقسیم کنید. '
-                'انتخاب دستی شما با «پردازش دقیق» عوض نمی‌شود.',
+                'برای تغییر گوینده، روی هر خط بزنید.',
                 style: theme.textTheme.bodySmall,
               ),
             ),
+          for (var n = 0; n < lines.length; n++)
+            _Line(
+              segment: segments[lines[n]],
+              showSpeaker:
+                  n == 0 ||
+                  segments[lines[n - 1]].speakerLabel !=
+                      segments[lines[n]].speakerLabel,
+              onTap: editable ? () => _edit(context, ref, lines[n]) : null,
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: labeledTranscriptText(segments)),
+                    );
+                    if (context.mounted) {
+                      SsToastHost.show(context, 'متن با نام گویندگان کپی شد');
+                    }
+                  },
+                  icon: const Icon(Icons.copy, size: 18),
+                  label: const Text('کپی متن'),
+                ),
+              ),
+              if (editable) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _precise(context, ref),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('تحلیل دوباره'),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
@@ -187,9 +198,10 @@ class _Split extends _EditAction {
 }
 
 class _Line extends StatelessWidget {
-  const _Line({required this.segment, this.onTap});
+  const _Line({required this.segment, required this.showSpeaker, this.onTap});
 
   final Segment segment;
+  final bool showSpeaker;
   final VoidCallback? onTap;
 
   @override
@@ -199,26 +211,32 @@ class _Line extends StatelessWidget {
         !segment.speakerManual &&
         segment.speaker != null &&
         (segment.speakerConfidence ?? 100) < 60;
+    final notes = [if (segment.overlap) 'هم‌زمان', if (low) 'احتمالاً اشتباه'];
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: EdgeInsets.only(top: showSpeaker ? 12 : 2, bottom: 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SsBadge(segment.speakerLabel ?? 'بدون گوینده'),
-                if (segment.overlap)
-                  const SsBadge('هم‌زمان', color: SsColors.warning),
-                if (low)
-                  const SsBadge('احتمالاً اشتباه', color: SsColors.warning),
-              ],
-            ),
-            const SizedBox(height: 2),
+            if (showSpeaker)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  segment.speakerLabel ?? 'بدون گوینده',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: SsColors.primary,
+                  ),
+                ),
+              ),
             Text(segment.text, style: theme.textTheme.bodyMedium),
+            if (notes.isNotEmpty)
+              Text(
+                notes.join(' · '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: SsColors.warning,
+                ),
+              ),
           ],
         ),
       ),

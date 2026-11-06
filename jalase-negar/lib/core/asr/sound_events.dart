@@ -42,6 +42,8 @@ class SoundEventKind {
     required this.audioSetNames,
     required this.threshold,
     this.minWindows = 2,
+    this.nameThreshold = 0,
+    this.fallbackId,
   });
 
   /// Stable English id (settings, tests, logs).
@@ -63,6 +65,15 @@ class SoundEventKind {
   /// put a word into the text.
   final int minWindows;
 
+  /// A specific kind (giggle, belly laugh, baby cry, ...) is only named when
+  /// its own probability reached this value at least once during the event;
+  /// otherwise the event is written with the general kind [fallbackId]
+  /// (laughter, crying). The general kind is detected at a low threshold
+  /// because it is the right word whenever *some* laughter is heard, while the
+  /// specific kinds are only trustworthy when the tagger is fairly sure.
+  final double nameThreshold;
+  final String? fallbackId;
+
   /// The text as it appears in the transcript.
   String get marker => '[$labelFa]';
 }
@@ -71,118 +82,134 @@ class SoundEventKind {
 ///
 /// The tagger uses one shared class for crying and sobbing.
 const List<SoundEventKind> kSoundEventKinds = [
-  // Laughter: the specific kinds first so they win a tie with the parent.
+  // Laughter. Presence is decided at a low threshold shared by every kind
+  // (measured: 0.06 finds laughter mixed into speech and wrote nothing on
+  // about 70 minutes of speech, 0.30 missed most of it). A specific name
+  // (belly laugh, giggle, ...) is only used when its own probability reached
+  // 0.30; otherwise the event is the general «خنده».
   SoundEventKind(
     id: 'belly_laugh',
     labelFa: 'قهقهه',
     group: SoundEventGroup.laughter,
     audioSetNames: ['Belly laugh'],
-    threshold: 0.30,
+    threshold: 0.06,
+    nameThreshold: 0.30,
+    fallbackId: 'laughter',
   ),
   SoundEventKind(
     id: 'giggle',
     labelFa: 'ریزخنده',
     group: SoundEventGroup.laughter,
     audioSetNames: ['Giggle'],
-    threshold: 0.30,
+    threshold: 0.06,
+    nameThreshold: 0.30,
+    fallbackId: 'laughter',
   ),
   SoundEventKind(
     id: 'snicker',
     labelFa: 'پوزخند',
     group: SoundEventGroup.laughter,
     audioSetNames: ['Snicker'],
-    threshold: 0.35,
+    threshold: 0.06,
+    nameThreshold: 0.35,
+    fallbackId: 'laughter',
   ),
   SoundEventKind(
     id: 'chuckle',
     labelFa: 'خنده‌ی آرام',
     group: SoundEventGroup.laughter,
     audioSetNames: ['Chuckle, chortle'],
-    threshold: 0.30,
+    threshold: 0.06,
+    nameThreshold: 0.30,
+    fallbackId: 'laughter',
   ),
   SoundEventKind(
     id: 'baby_laughter',
     labelFa: 'خنده‌ی کودک',
     group: SoundEventGroup.laughter,
     audioSetNames: ['Baby laughter'],
-    threshold: 0.35,
+    threshold: 0.06,
+    nameThreshold: 0.35,
+    fallbackId: 'laughter',
   ),
   SoundEventKind(
     id: 'laughter',
     labelFa: 'خنده',
     group: SoundEventGroup.laughter,
     audioSetNames: ['Laughter'],
-    threshold: 0.30,
+    threshold: 0.06,
   ),
-  // Crying and related.
+  // Crying and related. Same idea: 0.08 finds crying under speech with no
+  // false events on speech; specific names need 0.30.
   SoundEventKind(
     id: 'baby_cry',
     labelFa: 'گریه‌ی نوزاد',
     group: SoundEventGroup.crying,
     audioSetNames: ['Baby cry, infant cry'],
-    threshold: 0.35,
+    threshold: 0.08,
+    nameThreshold: 0.30,
+    fallbackId: 'crying',
   ),
   SoundEventKind(
     id: 'whimper',
     labelFa: 'ناله‌ی آهسته',
     group: SoundEventGroup.crying,
     audioSetNames: ['Whimper'],
-    threshold: 0.35,
+    // Whimper fired on speech at 0.05 and below; 0.08 is the lowest clean value.
+    threshold: 0.08,
+    nameThreshold: 0.30,
+    fallbackId: 'crying',
   ),
   SoundEventKind(
     id: 'wail',
     labelFa: 'ناله',
     group: SoundEventGroup.crying,
     audioSetNames: ['Wail, moan'],
-    threshold: 0.35,
+    threshold: 0.08,
+    nameThreshold: 0.30,
+    fallbackId: 'crying',
   ),
   SoundEventKind(
     id: 'crying',
     labelFa: 'گریه',
     group: SoundEventGroup.crying,
     audioSetNames: ['Crying, sobbing'],
-    threshold: 0.30,
+    threshold: 0.08,
   ),
   SoundEventKind(
     id: 'sigh',
     labelFa: 'آه کشیدن',
     group: SoundEventGroup.crying,
     audioSetNames: ['Sigh'],
-    // Rare in AudioSet (about 300 clips), so the tagger rarely goes high.
-    threshold: 0.20,
+    // Breathing, footsteps and clicks are read as sighs up to about 0.40;
+    // speech never was. No labelled sighs exist to measure recall. ⚠
+    threshold: 0.50,
     minWindows: 1,
   ),
-  SoundEventKind(
-    id: 'gasp',
-    labelFa: 'هین',
-    group: SoundEventGroup.crying,
-    audioSetNames: ['Gasp'],
-    threshold: 0.25,
-    minWindows: 1,
-  ),
-  // How it is said.
+  // «Gasp» is not written: breathing near a microphone was read as a gasp at
+  // every threshold up to 0.70 (5 of 48 clips of unrelated sounds).
+  // How it is said. No labelled clips: thresholds sit just above the highest
+  // value that wrote anything on speech or on unrelated sounds. ⚠
   SoundEventKind(
     id: 'scream',
     labelFa: 'جیغ',
     group: SoundEventGroup.voice,
     audioSetNames: ['Screaming'],
-    threshold: 0.40,
+    threshold: 0.25,
   ),
   SoundEventKind(
     id: 'shout',
     labelFa: 'فریاد',
     group: SoundEventGroup.voice,
     audioSetNames: ['Shout', 'Yell', 'Children shouting'],
-    threshold: 0.45,
+    threshold: 0.25,
   ),
   SoundEventKind(
     id: 'whisper',
     labelFa: 'پچ‌پچ',
     group: SoundEventGroup.voice,
     audioSetNames: ['Whispering'],
-    // Quiet speech from a distant microphone looks like a whisper, so this
-    // is deliberately strict.
-    threshold: 0.60,
+    threshold: 0.30,
     minWindows: 3,
   ),
   SoundEventKind(
@@ -195,9 +222,9 @@ const List<SoundEventKind> kSoundEventKinds = [
       'Female singing',
       'Child singing',
     ],
-    // Persian meetings are full of drawn-out hesitation sounds:
-    // on one benchmark clip a hesitation scored 0.66 as singing, so this is
-    // strict until it is calibrated on more audio.
+    // Persian meetings are full of drawn-out hesitation sounds («اااا») and
+    // overlapped speech: «Singing» wrote events on 70 minutes of speech at
+    // every threshold below 0.60 (5 at 0.40, 1 at 0.50, none at 0.60).
     threshold: 0.70,
     minWindows: 4,
   ),
@@ -206,15 +233,15 @@ const List<SoundEventKind> kSoundEventKinds = [
     labelFa: 'زمزمه',
     group: SoundEventGroup.voice,
     audioSetNames: ['Humming'],
-    threshold: 0.70,
-    minWindows: 4,
+    threshold: 0.30,
+    minWindows: 3,
   ),
   SoundEventKind(
     id: 'whistling',
     labelFa: 'سوت',
     group: SoundEventGroup.voice,
     audioSetNames: ['Whistling'],
-    threshold: 0.45,
+    threshold: 0.25,
   ),
   // Body sounds.
   SoundEventKind(
@@ -222,7 +249,9 @@ const List<SoundEventKind> kSoundEventKinds = [
     labelFa: 'سرفه',
     group: SoundEventGroup.body,
     audioSetNames: ['Cough'],
-    threshold: 0.40,
+    // 0.20 on labelled coughs: found 11 of 15 alone and 12 of 15 mixed into
+    // speech at equal level, no event on speech.
+    threshold: 0.20,
     minWindows: 1,
   ),
   SoundEventKind(
@@ -230,15 +259,19 @@ const List<SoundEventKind> kSoundEventKinds = [
     labelFa: 'صاف کردن گلو',
     group: SoundEventGroup.body,
     audioSetNames: ['Throat clearing'],
-    threshold: 0.40,
+    // A cough is often read as throat clearing (6 of 25 labelled coughs), so
+    // it is only named when the tagger is fairly sure.
+    threshold: 0.20,
     minWindows: 1,
+    nameThreshold: 0.50,
+    fallbackId: 'cough',
   ),
   SoundEventKind(
     id: 'sneeze',
     labelFa: 'عطسه',
     group: SoundEventGroup.body,
     audioSetNames: ['Sneeze'],
-    threshold: 0.40,
+    threshold: 0.16,
     minWindows: 1,
   ),
   SoundEventKind(
@@ -246,6 +279,7 @@ const List<SoundEventKind> kSoundEventKinds = [
     labelFa: 'سکسکه',
     group: SoundEventGroup.body,
     audioSetNames: ['Hiccup'],
+    // Written on other body sounds down to 0.30. No labelled hiccups. ⚠
     threshold: 0.40,
     minWindows: 1,
   ),
@@ -254,8 +288,7 @@ const List<SoundEventKind> kSoundEventKinds = [
     labelFa: 'خروپف',
     group: SoundEventGroup.body,
     audioSetNames: ['Snoring'],
-    threshold: 0.45,
-    minWindows: 3,
+    threshold: 0.10,
   ),
   // Crowd.
   SoundEventKind(
@@ -263,14 +296,14 @@ const List<SoundEventKind> kSoundEventKinds = [
     labelFa: 'تشویق',
     group: SoundEventGroup.crowd,
     audioSetNames: ['Applause', 'Clapping'],
-    threshold: 0.40,
+    threshold: 0.08,
   ),
   SoundEventKind(
     id: 'cheering',
     labelFa: 'هلهله',
     group: SoundEventGroup.crowd,
     audioSetNames: ['Cheering'],
-    threshold: 0.40,
+    threshold: 0.30,
   ),
 ];
 
@@ -344,14 +377,25 @@ class SoundEventDetector {
     this.hopMs = 1000,
     this.gapWindows = 1,
     this.silenceRms = 0.002,
+    List<SoundEventKind> kinds = kSoundEventKinds,
   }) : assert(windowMs >= hopMs && hopMs > 0),
        _tagger = tagger,
+       _kinds = kinds,
+       _kindByName = {
+         for (final kind in kinds)
+           for (final name in kind.audioSetNames) name.toLowerCase(): kind,
+       },
        _windowSamples = windowMs * kAsrSampleRate ~/ 1000,
        _hopSamples = hopMs * kAsrSampleRate ~/ 1000 {
     _buffer = Float32List(_windowSamples);
   }
 
   final SoundTagger _tagger;
+
+  /// The kinds this detector writes (the app table unless a benchmark tries
+  /// other thresholds).
+  final List<SoundEventKind> _kinds;
+  final Map<String, SoundEventKind> _kindByName;
   final int windowMs;
   final int hopMs;
 
@@ -409,7 +453,7 @@ class SoundEventDetector {
   List<DetectedSoundEvent> flush() {
     final events = <DetectedSoundEvent>[];
     for (final group in _runs.keys.toList()) {
-      final event = _runs.remove(group)!.finish();
+      final event = _runs.remove(group)!.finish(_kinds);
       if (event != null) events.add(event);
     }
     return events;
@@ -441,15 +485,14 @@ class SoundEventDetector {
     if (_rms(_buffer) >= silenceRms) {
       final scores = _tagger.tag(_buffer);
       for (final score in scores) {
-        final kind = soundEventKindForName(score.name);
+        final kind = _kindByName[score.name.trim().toLowerCase()];
         if (kind == null || score.probability < kind.threshold) continue;
         final best = votes[kind.group];
         // Equal scores keep the earlier (more specific) kind of the table.
         if (best == null || score.probability > best.p + 1e-9) {
           votes[kind.group] = (kind: kind, p: score.probability);
         } else if ((score.probability - best.p).abs() <= 1e-9 &&
-            kSoundEventKinds.indexOf(kind) <
-                kSoundEventKinds.indexOf(best.kind)) {
+            _kinds.indexOf(kind) < _kinds.indexOf(best.kind)) {
           votes[kind.group] = (kind: kind, p: score.probability);
         }
       }
@@ -464,7 +507,7 @@ class SoundEventDetector {
         run.idle += 1;
         if (run.idle > gapWindows) {
           _runs.remove(group);
-          final event = run.finish();
+          final event = run.finish(_kinds);
           if (event != null) events.add(event);
         }
       }
@@ -488,6 +531,7 @@ class _Run {
   int idle = 0;
   double peak = 0;
   final Map<SoundEventKind, double> _sums = {};
+  final Map<SoundEventKind, double> _peaks = {};
 
   void add(SoundEventKind kind, double p, int fromMs, int toMs) {
     _start ??= fromMs;
@@ -496,10 +540,11 @@ class _Run {
     idle = 0;
     if (p > peak) peak = p;
     _sums[kind] = (_sums[kind] ?? 0) + p;
+    if (p > (_peaks[kind] ?? 0)) _peaks[kind] = p;
   }
 
   /// The finished event, or null when it was too short for its kind.
-  DetectedSoundEvent? finish() {
+  DetectedSoundEvent? finish(List<SoundEventKind> order) {
     final start = _start;
     if (start == null || _sums.isEmpty) return null;
     SoundEventKind? best;
@@ -509,16 +554,27 @@ class _Run {
           entry.value > bestSum + 1e-9 ||
           ((entry.value - bestSum).abs() <= 1e-9 &&
               best != null &&
-              kSoundEventKinds.indexOf(entry.key) <
-                  kSoundEventKinds.indexOf(best));
+              order.indexOf(entry.key) < order.indexOf(best));
       if (better) {
         best = entry.key;
         bestSum = entry.value;
       }
     }
-    if (best == null || windows < best.minWindows) return null;
+    if (best == null) return null;
+    var chosen = best;
+    // A specific name needs real evidence; otherwise use the general kind.
+    final fallbackId = chosen.fallbackId;
+    if (fallbackId != null && (_peaks[chosen] ?? 0) < chosen.nameThreshold) {
+      for (final kind in order) {
+        if (kind.id == fallbackId) {
+          chosen = kind;
+          break;
+        }
+      }
+    }
+    if (windows < chosen.minWindows) return null;
     return DetectedSoundEvent(
-      kind: best,
+      kind: chosen,
       startMs: start,
       endMs: _end,
       score: peak,

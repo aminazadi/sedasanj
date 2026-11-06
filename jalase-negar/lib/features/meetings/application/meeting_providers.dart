@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:isolate';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -274,9 +276,23 @@ class MeetingActions {
     };
     final PreciseAnalysis analysis;
     final progress = ReceivePort();
+    final notifier = ref.read(speakerProgressProvider.notifier);
+    // sherpa reports progress only while it embeds, not during the (long)
+    // segmentation pass, so the bar would sit at 0. Until real progress
+    // arrives, creep towards 40 % from the elapsed time.
+    var real = 0;
+    final clock = Stopwatch()..start();
+    final audioSeconds = math.max(1, meeting.duration.inSeconds);
+    final estimator = Timer.periodic(const Duration(seconds: 1), (_) {
+      final seconds = clock.elapsedMilliseconds / 1000;
+      final guess = (40 * (1 - math.exp(-seconds / (audioSeconds * 0.15))))
+          .floor();
+      if (real == 0 && guess > 0) notifier.set(meetingId, guess);
+    });
     final subscription = progress.listen((value) {
       if (value is int) {
-        ref.read(speakerProgressProvider.notifier).set(meetingId, value);
+        if (value > 0) real = value;
+        notifier.set(meetingId, value);
       }
     });
     try {
@@ -305,6 +321,7 @@ class MeetingActions {
     } catch (_) {
       return const PreciseOutcome(PreciseStatus.failed);
     } finally {
+      estimator.cancel();
       await subscription.cancel();
       progress.close();
     }
@@ -355,6 +372,7 @@ class MeetingActions {
           wavPath: meeting.audioPath,
           embeddingModelPath: store.filePath(embedding, embedding.files[0]),
           groups: groups,
+          threads: (await ref.read(cpuBudgetProvider.future)).voiceprintThreads,
         ),
       );
     } catch (_) {
@@ -493,6 +511,18 @@ final meetingPreviewProvider = FutureProvider.family<String, String>((
   );
   final repo = await ref.watch(meetingRepositoryProvider.future);
   return repo.previewText(meetingId);
+});
+
+/// Ids of meetings whose transcript text contains the query; reloads when the
+/// meeting list changes (a finished transcription or an edit).
+final transcriptMatchesProvider = FutureProvider.family<Set<String>, String>((
+  ref,
+  query,
+) async {
+  if (query.trim().isEmpty) return const {};
+  ref.watch(meetingsProvider);
+  final repo = await ref.watch(meetingRepositoryProvider.future);
+  return repo.searchTranscripts(query);
 });
 
 /// Meetings swiped away in the list whose deletion is still undoable.
