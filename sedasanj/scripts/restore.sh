@@ -2,6 +2,7 @@
 # Full restore from a backup made by backup.sh (also the monthly restore drill).
 # Usage: restore.sh [--yes] [--skip-snapshot] [--skip-audio] [--skip-tenants]
 #                   [--restore-secrets] [--audio-dir DIR] <backup-dir>
+#        restore.sh [--verify-only] <snapshot.gzip>
 #
 #   * checksums and every dump are verified before anything is stopped
 #   * all writers (api, every worker) are stopped
@@ -16,7 +17,7 @@ set -euo pipefail
 # shellcheck source=backup_lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/backup_lib.sh"
 
-YES=0; SNAPSHOT=1; AUDIO=1; TENANTS=1; SECRETS=0; AUDIO_DIR=""
+YES=0; SNAPSHOT=1; AUDIO=1; TENANTS=1; SECRETS=0; AUDIO_DIR=""; VERIFY_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes) YES=1 ;;
@@ -24,6 +25,7 @@ while [ $# -gt 0 ]; do
     --skip-audio) AUDIO=0 ;;
     --skip-tenants) TENANTS=0 ;;
     --restore-secrets) SECRETS=1 ;;
+    --verify-only) VERIFY_ONLY=1 ;;
     --audio-dir) shift; AUDIO_DIR="${1:?--audio-dir needs a path}" ;;
     --) shift; break ;;
     -*) die "unknown option: $1" ;;
@@ -32,6 +34,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ $# -eq 1 ] || die "usage: restore.sh [options] <backup-dir>"
+if [ -f "$1" ]; then
+  if [ "${VERIFY_ONLY}" = 1 ]; then
+    exec "${SCRIPT_DIR}/restore_generation.sh" --verify-only "$1"
+  fi
+  [ "${SNAPSHOT}${AUDIO}${TENANTS}${SECRETS}${AUDIO_DIR}" = "1110" ] \
+    || die "restore the full gzip generation in a fresh project"
+  exec "${SCRIPT_DIR}/restore_generation.sh" "$1"
+fi
+[ "${VERIFY_ONLY}" = 0 ] || die "--verify-only expects a gzip generation"
 SRC="${1%/}"
 SRC="$(cd "${SRC}" && pwd)"
 BACKUP_ROOT="${BACKUP_DIR:-$(dirname "${SRC}")}"

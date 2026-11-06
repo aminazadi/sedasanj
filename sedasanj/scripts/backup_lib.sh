@@ -45,9 +45,26 @@ verify_dump_file() {
     || die "pg_restore --list rejected $1"
 }
 
+# Only a tenant's active database owns its object references after dedicated cutover.
+LEGACY_MEDIA_SCOPE="tenant_id NOT IN (SELECT tenant_id FROM tenant_database_registry WHERE status = 'ready')"
+verify_media_files() {
+  local db="$1" directory="$2" references="$3" condition="$4" key
+  docker compose exec -T postgres psql -U cbi -d "${db}" -v ON_ERROR_STOP=1 -qAt -c "
+    SELECT object_key FROM audio_objects
+      WHERE deleted_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND (${condition})
+    UNION
+    SELECT storage_key FROM assistant_exports
+      WHERE deleted_at IS NULL AND expires_at > now() AND (${condition})
+  " </dev/null > "${references}"
+  while IFS= read -r key; do
+    case "${key}" in ''|/*|..|../*|*/../*|*/..) die "invalid media reference in ${db}" ;; esac
+    [ -f "${directory}/${key}" ] || die "snapshot lacks media referenced by ${db}"
+  done < "${references}"
+}
+
 # Every service that writes to PostgreSQL, Redis or MinIO. Only those defined in the
 # Compose project are touched, so older deployments without a worker still work.
-WRITER_SERVICES="api worker-asr worker-emotion worker-llm worker-notify worker-meeting worker-dispatch worker-provision worker-organization-data"
+WRITER_SERVICES="api worker-asr worker-emotion worker-llm worker-assistant worker-notify worker-meeting worker-dispatch worker-provision worker-organization-data worker-tenant-backup"
 
 defined_writers() {
   local defined svc
@@ -63,6 +80,7 @@ stop_writers() {
   local writers
   writers="$(defined_writers)"
   log "stopping writers: ${writers}"
+  [ -n "${writers}" ] || return 0
   # shellcheck disable=SC2086
   docker compose stop ${writers}
 }
@@ -71,6 +89,7 @@ start_writers() {
   local writers
   writers="$(defined_writers)"
   log "starting writers: ${writers}"
+  [ -n "${writers}" ] || return 0
   # shellcheck disable=SC2086
   docker compose up -d ${writers}
 }

@@ -23,6 +23,7 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/backup_lib.sh"
 
 BACKUP_ROOT="${BACKUP_DIR:-/srv/backup}"
+FORMAT="${BACKUP_FORMAT:-legacy}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 KEEP_LAST="${BACKUP_KEEP_LAST:-7}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -32,27 +33,72 @@ LOCK="${BACKUP_ROOT}/.backup.lock"
 
 case "${KEEP_LAST}" in ''|*[!0-9]*) die "BACKUP_KEEP_LAST must be a non-negative integer" ;; esac
 case "${RETENTION_DAYS}" in ''|*[!0-9]*) die "BACKUP_RETENTION_DAYS must be a non-negative integer" ;; esac
-if [ "${BACKUP_SKIP_SECRETS:-0}" != 1 ]; then
+case "${FORMAT}" in legacy|gzip) ;; *) die "set BACKUP_FORMAT to legacy or gzip" ;; esac
+if [ "${FORMAT}" = gzip ]; then
+  [ "${KEEP_LAST}" -ge 1 ] || die "set BACKUP_KEEP_LAST to at least 1"
+  [ "${BACKUP_ALLOW_QUIESCE:-0}" = 1 ] || die "schedule a writer pause and set BACKUP_ALLOW_QUIESCE=1"
+  [ "${BACKUP_SKIP_SECRETS:-0}" = 0 ] && [ "${BACKUP_SKIP_AUDIO:-0}" = 0 ] \
+    || die "a gzip disaster-recovery generation requires media and secrets"
+  command -v age >/dev/null || die "install age for encrypted gzip backups"
+  [ -s "${BACKUP_AGE_RECIPIENTS_FILE:-}" ] && [ -s "${BACKUP_SIGNING_KEY_FILE:-}" ] \
+    || die "configure BACKUP_AGE_RECIPIENTS_FILE and BACKUP_SIGNING_KEY_FILE"
+  [ -f "${ENV_FILE}" ] || die "configure ENV_FILE with the deployment recovery settings"
+elif [ "${BACKUP_SKIP_SECRETS:-0}" != 1 ]; then
   [ -n "${BACKUP_PASSPHRASE_FILE:-}" ] && [ -s "${BACKUP_PASSPHRASE_FILE}" ] \
     || die "set BACKUP_PASSPHRASE_FILE to a non-empty passphrase file (or BACKUP_SKIP_SECRETS=1)"
 fi
 
 umask 077
 mkdir -p "${BACKUP_ROOT}"
+BACKUP_ROOT="$(cd "${BACKUP_ROOT}" && pwd)"
+FINAL="${BACKUP_ROOT}/${STAMP}"
+WORK="${FINAL}.partial"
+LOCK="${BACKUP_ROOT}/.backup.lock"
 if ! mkdir "${LOCK}" 2>/dev/null; then
   die "another backup is running (remove ${LOCK} if it is stale)"
 fi
 TMPFILES="$(mktemp -d)"
+RUNNING_WRITERS=""
+resume_capture() {
+  if [ -n "${RUNNING_WRITERS}" ]; then
+    # Service names come from the allowlist in backup_lib.sh.
+    # shellcheck disable=SC2086
+    docker compose up -d --no-deps ${RUNNING_WRITERS} || return 1
+    RUNNING_WRITERS=""
+  fi
+}
 cleanup() {
+  resume_capture || warn "could not resume writers; inspect docker compose ps"
   rm -rf "${LOCK}" "${TMPFILES}"
-  # An interrupted run leaves only the .partial directory, which is never used for restore.
+  if [ "${FORMAT}" = gzip ]; then
+    rm -rf "${WORK}"
+  fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "${WORK}/tenants"
+
+if [ "${FORMAT}" = gzip ]; then
+  running="$(docker compose ps --services --status running)"
+  for service in $(defined_writers); do
+    if printf '%s\n' "${running}" | grep -Fxq "${service}"; then
+      RUNNING_WRITERS="${RUNNING_WRITERS} ${service}"
+    fi
+  done
+  if [ -n "${RUNNING_WRITERS}" ]; then
+    log "quiescing writers for consistent database and object capture"
+    # shellcheck disable=SC2086
+    docker compose stop ${RUNNING_WRITERS}
+  fi
+fi
 
 dump_database() {
   local db="$1" out="$2" tmp="$2.tmp"
   shift 2
+  if [ "${FORMAT}" = gzip ]; then
+    set -- --compress=0 "$@"
+  fi
   docker compose exec -T postgres pg_dump -U cbi -d "${db}" -Fc "$@" </dev/null > "${tmp}"
   [ -s "${tmp}" ] || die "empty dump for ${db}"
   verify_dump_file "${tmp}"
@@ -64,9 +110,10 @@ dump_database cbi "${WORK}/cbi.dump"
 
 log "tenant databases"
 TENANT_DBS=()
+database_names="$(psql_admin -c "SELECT datname FROM pg_database WHERE datname ~ '^cbi_tenant_[0-9a-f]{32}$' ORDER BY 1")"
 while IFS= read -r db; do
   [ -n "${db}" ] && TENANT_DBS+=("${db}")
-done < <(psql_admin -c "SELECT datname FROM pg_database WHERE datname LIKE 'cbi\_tenant\_%' AND NOT datname LIKE '%\_pre%' AND NOT datname LIKE '%\_new%' ORDER BY 1")
+done <<< "${database_names}"
 for db in "${TENANT_DBS[@]+"${TENANT_DBS[@]}"}"; do
   echo "    ${db}"
   dump_database "${db}" "${WORK}/tenants/${db}.dump" --no-owner --no-acl
@@ -78,19 +125,35 @@ if [ "${BACKUP_SKIP_AUDIO:-0}" = 1 ]; then
   echo "    skipped"
 else
   MIRROR="${BACKUP_ROOT}/audio-mirror"
+  if [ "${FORMAT}" = gzip ]; then
+    MIRROR="${WORK}/objects"
+  fi
   mkdir -p "${MIRROR}"
+  touch "${MIRROR}/.sedasanj-capture-mount"
   # Mirror straight to the host so it survives container recreation. No --remove: objects deleted
   # by retention stay recoverable until the mirror is pruned by the operator.
   docker compose run --rm --no-deps -T -v "${MIRROR}:/backup-out" --entrypoint sh minio -c '
+    test -f /backup-out/.sedasanj-capture-mount &&
     mc alias set src http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null &&
     mc mirror --overwrite --quiet src/audio /backup-out &&
     mc ls --recursive src/audio
   ' </dev/null > "${WORK}/audio.manifest"
+  rm "${MIRROR}/.sedasanj-capture-mount"
+  if [ "${FORMAT}" = gzip ]; then
+    log "checking that database media references exist in the capture"
+    verify_media_files cbi "${MIRROR}" "${TMPFILES}/references" "${LEGACY_MEDIA_SCOPE}"
+    for db in "${TENANT_DBS[@]+"${TENANT_DBS[@]}"}"; do
+      verify_media_files "${db}" "${MIRROR}" "${TMPFILES}/references" true
+    done
+  fi
 fi
 
 if [ "${BACKUP_SKIP_SECRETS:-0}" != 1 ]; then
   log "encrypted secrets bundle"
   SECRETS="${TMPFILES}/secrets"
+  if [ "${FORMAT}" = gzip ]; then
+    SECRETS="${WORK}/secrets"
+  fi
   mkdir -p "${SECRETS}"
   [ -f "${ENV_FILE}" ] || die "${ENV_FILE} not found in $(pwd); it holds the keys that decrypt tenant data"
   cp "${ENV_FILE}" "${SECRETS}/env"
@@ -104,13 +167,15 @@ if [ "${BACKUP_SKIP_SECRETS:-0}" != 1 ]; then
     seed_found=1
   fi
   [ "${seed_found}" = 1 ] || warn "no module release signing seed found (covered by MODULE_RELEASE_SIGNING_KEY in .env if set)"
-  tar -C "${SECRETS}" -cf - . \
+  if [ "${FORMAT}" = legacy ]; then
+    tar -C "${SECRETS}" -cf - . \
     | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass "file:${BACKUP_PASSPHRASE_FILE}" \
       -out "${WORK}/secrets.tar.enc.tmp"
   mv "${WORK}/secrets.tar.enc.tmp" "${WORK}/secrets.tar.enc"
   # Prove the bundle can be decrypted before the backup is declared good.
-  openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass "file:${BACKUP_PASSPHRASE_FILE}" \
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass "file:${BACKUP_PASSPHRASE_FILE}" \
     -in "${WORK}/secrets.tar.enc" | tar -tf - >/dev/null || die "secrets bundle failed decrypt check"
+  fi
 fi
 
 log "checksums and manifest"
@@ -119,6 +184,26 @@ log "checksums and manifest"
   echo "tenant_databases=${#TENANT_DBS[@]}"
   echo "created_by=$(id -un)@$(hostname)"
 } > "${WORK}/MANIFEST"
+
+if [ "${FORMAT}" = gzip ]; then
+  resume_capture || die "could not resume writers; inspect docker compose ps"
+  log "compressing and sealing the captured generation"
+  generation="$(python3 "${SCRIPT_DIR}/backup_bundle.py" capture "${WORK}" "${BACKUP_ROOT}" "${STAMP}")"
+  rm -rf "${WORK}"
+  if [ -n "${BACKUP_OFFSITE_TARGET:-}" ]; then
+    rsync -aH --delay-updates --exclude '.capture-*' \
+      "${BACKUP_ROOT}/generations/" "${BACKUP_OFFSITE_TARGET%/}/generations/" \
+      || die "off-host copy failed; the local generation is intact"
+  else
+    warn "BACKUP_OFFSITE_TARGET is not set; copy the encrypted generation off-host"
+  fi
+  date -u +%Y-%m-%dT%H:%M:%SZ > "${BACKUP_ROOT}/.last_success.tmp"
+  mv "${BACKUP_ROOT}/.last_success.tmp" "${BACKUP_ROOT}/.last_success"
+  python3 "${SCRIPT_DIR}/backup_bundle.py" prune "${BACKUP_ROOT}" "${RETENTION_DAYS}" "${KEEP_LAST}"
+  echo "backup complete: ${generation}"
+  exit 0
+fi
+
 (
   cd "${WORK}"
   for f in cbi.dump tenants/*.dump secrets.tar.enc audio.manifest MANIFEST; do

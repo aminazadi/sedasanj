@@ -1,5 +1,6 @@
 ## 2026-11-06 — AMINAZADI
 
+- Added signed gzip disaster-recovery generations with deduplicated encrypted objects and isolated full restore.
 - Added authenticated gzip organization archives with legacy import, attendee data, integrity checks, and verified FTPS transfers.
 - Added independently scheduled tenant database backups with verified downloads and isolated restore.
 - Improved assistant responsiveness with a dedicated interactive queue, indexed lookups, shared query embeddings, batched indexing, deferred chat titles, and bounded event retention.
