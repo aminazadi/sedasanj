@@ -16,6 +16,11 @@ const MESSAGES: Record<string, string> = {
 
 /** Persian message that names the next action for a release API failure. */
 export function releaseErrorMessage(error: unknown): string {
+  // The API uses one `unauthorized` code for a wrong password/2FA code and for an expired
+  // login. Only the first is about the password; an upload never asks for one.
+  if (error instanceof ApiError && error.code === "unauthorized" && !/password|two-factor/i.test(error.message)) {
+    return "نشست ورود شما منقضی شده است. صفحه را باز کنید، دوباره وارد پنل شوید و APK را بارگذاری کنید.";
+  }
   if (error instanceof ApiError && MESSAGES[error.code]) return MESSAGES[error.code];
   if (error instanceof Error && /[؀-ۿ]/.test(error.message)) return error.message;
   return "درخواست انجام نشد. اتصال را بررسی کنید و دوباره تلاش کنید.";

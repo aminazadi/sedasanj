@@ -21,6 +21,7 @@ import HelpErrorCodes from "./pages/HelpErrorCodes";
 import HelpMediaPage from "./pages/HelpMedia";
 import JalaseNegarReleaseEditor from "./pages/JalaseNegarReleaseEditor";
 import JalasePush from "./pages/JalasePush";
+import JalaseSedasanjIntro from "./pages/JalaseSedasanjIntro";
 import JalaseNegarReleases from "./pages/JalaseNegarReleases";
 import ModelReleases from "./pages/ModelReleases";
 import ModuleFleet from "./pages/ModuleFleet";
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/commerce-settings" element={<CommerceSettings />} />
         <Route path="/payment-gateways" element={<PaymentGateways />} />
         <Route path="/audit" element={<Audit />} />
+        <Route path="/jalase-negar-intro" element={session.role === "super_admin" ? <JalaseSedasanjIntro /> : <Navigate to="/" replace />} />
         <Route path="/site-pages" element={<SitePages />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />

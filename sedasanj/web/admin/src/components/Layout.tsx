@@ -77,6 +77,7 @@ const NAVIGATION: NavigationGroup[] = [
     label: "محتوای سایت",
     items: [
       { to: "/site-pages", label: "درباره، تماس و قوانین", icon: icons.file },
+      { to: "/jalase-negar-intro", label: "معرفی صداسنج در جلسه‌نگار", icon: icons.file },
     ],
   },
   {
@@ -119,7 +120,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
           <div className="mb-5" key={group.label}>
             <p className="mb-2 px-3 text-[11px] font-medium text-[#B2AC88]">{group.label}</p>
             <div className="space-y-1">
-              {group.items.filter((item) => item.to !== "/jalase-negar-push" || session?.role === "super_admin").map((item) => (
+              {group.items.filter((item) => (item.to !== "/jalase-negar-push" && item.to !== "/jalase-negar-intro") || session?.role === "super_admin").map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
