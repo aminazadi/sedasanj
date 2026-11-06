@@ -27,7 +27,7 @@ export default function SiteFooter() {
         </div>
       </section>
       <div className="site-container site-footer-main">
-        <div className="site-footer-brand"><strong>{footer.about_title}</strong><Link to="/" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></Link><p>{footer.description}</p></div>
+        <div className="site-footer-brand"><Link to="/" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></Link><p>{footer.description}</p></div>
         <nav className="site-footer-links" aria-label={footer.links_title || "لینک‌های پرکاربرد"}>{footer.links_title && <strong>{footer.links_title}</strong>}{footer.links.map(renderLink)}</nav>
         <nav className="site-footer-legal" aria-label="قوانین و حریم خصوصی">{footer.legal_links.map(renderLink)}</nav>
         <div className="site-footer-trust" aria-label="نمادهای اعتماد"><strong>{footer.trust_title}</strong>{siteContact.trust_html ? <iframe className="site-footer-trust-frame" title="نمادهای اعتماد صداسنج" sandbox="allow-scripts" srcDoc={siteContact.trust_html}/> : <div className="site-footer-trust-slots"><span aria-hidden="true">جایگاه نماد</span><span aria-hidden="true">جایگاه نماد</span></div>}</div>

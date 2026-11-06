@@ -28,7 +28,6 @@ export default function FooterSettingsEditor({ value, onChange }: { value: Foote
   const fields = [
     ["contact_title", "عنوان بخش تماس", 200],
     ["contact_description", "توضیحات بخش تماس", 2000],
-    ["about_title", "عنوان معرفی", 200],
     ["description", "توضیحات معرفی", 4000],
     ["links_title", "عنوان لینک‌های پرکاربرد", 200],
     ["trust_title", "عنوان نمادها", 200],

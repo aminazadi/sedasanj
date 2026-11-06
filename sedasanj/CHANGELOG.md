@@ -1,5 +1,6 @@
 ## 2026-11-06 — AMINAZADI
 
+- Removed the title above the public footer logo and its editor field.
 - Expanded the public footer copyright and added a linked ROBOLINK credit on the left.
 - Added speaker names to the live transcript in the Jalase-Negar landing page preview.
 - Added ASR benchmark tooling for Jalase-Negar: `asr_eval.py` now reports substitutions/deletions/insertions, hallucination on non-speech clips, cpWER for speaker-labelled references, RTF/latency from an optional sidecar, and separate `compare` gates for `clean` (no regression) and `noisy`/`overlap`; the new `asr_augment.py` builds seeded noisy (SNR 20/10/5/0), reverberant and overlapped (0/10/20/40%) clips with a matching manifest.
