@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/utils/format.dart';
 import '../../onboarding/tour_overlay.dart';
@@ -57,12 +58,18 @@ class _InstallAllCard extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    state.ready
-                        ? Icons.check_circle_outline
-                        : Icons.download_for_offline_outlined,
-                    size: 48,
-                    color: theme.colorScheme.primary,
+                  ExcludeSemantics(
+                    child: AspectRatio(
+                      aspectRatio: 480 / 230,
+                      child: SvgPicture.asset(
+                        state.ready
+                            ? 'assets/images/brand/model-ready.svg'
+                            : state.installingAll
+                            ? 'assets/images/brand/model-progress.svg'
+                            : 'assets/images/brand/model-download.svg',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(

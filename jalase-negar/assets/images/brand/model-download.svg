@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 230" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <defs><linearGradient id="paper" x1="100" y1="40" x2="380" y2="210" gradientUnits="userSpaceOnUse"><stop stop-color="#fbfaf7"/><stop offset="1" stop-color="#e9ede3"/></linearGradient></defs>
+  <ellipse cx="240" cy="212" rx="120" ry="7" fill="#b2ac88" opacity=".12"/>
+  <g stroke="#aab194" stroke-width="1.5"><path d="M60 110h60l20 20h30M60 160h80M420 110h-60l-20 20h-30M420 160h-80M60 60v-14m-7 7h14M420 60v-14m-7 7h14" stroke-dasharray="none"/>
+  <circle cx="56" cy="110" r="5" fill="#f2f0ef" stroke="#4b6e48"/><circle cx="56" cy="160" r="5" fill="#f2f0ef" stroke="#4b6e48"/><circle cx="424" cy="110" r="5" fill="#f2f0ef" stroke="#4b6e48"/><circle cx="424" cy="160" r="5" fill="#f2f0ef" stroke="#4b6e48"/></g>
+  <g stroke="#9eaa88" stroke-width="2"><path d="M205 88v-14m23 14v-14m24 14v-14m23 14v-14M205 182v14m23-14v14m24-14v14m23-14v14M168 112h-14m14 23h-14m14 24h-14M312 112h14m-14 23h14m-14 24h14"/></g>
+  <rect x="175" y="88" width="130" height="94" rx="14" fill="url(#paper)" stroke="#9eaa88" stroke-width="2" stroke-dasharray="4 5"/>
+  <rect x="187" y="100" width="106" height="70" rx="8" stroke="#b9bfa5" stroke-width="1.2" stroke-dasharray="3 5"/>
+  <g stroke="#728f71" stroke-width="3"><path d="M240 108v36m-14-14l14 14 14-14M224 158h32"/></g>
+  <g stroke="#9caf9a" stroke-width="2.5" opacity=".8"><path d="M96 70c0-9 7-15 16-15 3-9 14-12 22-7 8-3 17 3 17 12-9 0-12 7-20 7H102c-4 0-6-2-6-4z" fill="#f5f6ef"/></g>
+</svg>
