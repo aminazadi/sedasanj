@@ -1,10 +1,12 @@
 """Validated public footer content stored in platform settings."""
 
+from typing import Annotated, Literal, get_args
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 DEFAULT_COPYRIGHT = "© ۱۴۰۵ صداسنج. تمامی حقوق این وب‌سایت برای صداسنج محفوظ است."
+SocialNetwork = Literal["eitaa", "bale", "telegram", "instagram", "aparat", "youtube"]
 
 
 class FooterLink(BaseModel):
@@ -41,6 +43,9 @@ class FooterSettings(BaseModel):
     links_title: str = Field(default="لینک‌های پرکاربرد", max_length=200)
     trust_title: str = Field(default="نمادهای اعتماد", max_length=200)
     copyright: str = Field(default=DEFAULT_COPYRIGHT, max_length=500)
+    social_links: dict[SocialNetwork, Annotated[str, Field(max_length=2048)]] = Field(
+        default_factory=dict
+    )
     links: list[FooterLink] = Field(
         default_factory=lambda: [
             FooterLink(label="امکانات", url="/#features"),
@@ -59,6 +64,36 @@ class FooterSettings(BaseModel):
         ],
         max_length=30,
     )
+
+    @field_validator("social_links", mode="before")
+    @classmethod
+    def validate_social_networks(cls, links: object) -> object:
+        if isinstance(links, dict) and set(links).difference(get_args(SocialNetwork)):
+            raise ValueError("Use one of the supported social networks")
+        return links
+
+    @field_validator("social_links")
+    @classmethod
+    def validate_social_links(cls, links: dict[SocialNetwork, str]) -> dict[SocialNetwork, str]:
+        configured = {}
+        for network, value in links.items():
+            if not value:
+                continue
+            try:
+                FooterLink.safe_url(value)
+                parsed = urlsplit(value)
+                valid = (
+                    value.startswith("https://")
+                    and parsed.username is None
+                    and parsed.password is None
+                    and parsed.port != 0
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("Enter a complete HTTPS URL for each configured social network")
+            configured[network] = value
+        return configured
 
     @field_validator("copyright")
     @classmethod

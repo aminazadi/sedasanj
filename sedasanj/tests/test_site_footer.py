@@ -77,6 +77,21 @@ def test_footer_refreshes_only_the_legacy_default_copyright():
     assert FooterSettings(copyright="© متن سفارشی").copyright == "© متن سفارشی"
 
 
+def test_footer_social_links_allow_each_network_and_omit_empty_links():
+    links = {
+        "eitaa": "https://eitaa.com/sedasanj",
+        "bale": "https://ble.ir/sedasanj",
+        "telegram": "https://t.me/sedasanj",
+        "instagram": "https://www.instagram.com/sedasanj",
+        "aparat": "https://www.aparat.com/sedasanj",
+        "youtube": "https://www.youtube.com/@sedasanj",
+    }
+    assert FooterSettings.model_validate_json('{"description":"Old footer"}').social_links == {}
+    assert FooterSettings.model_validate({"social_links": links}).social_links == links
+    cleared = FooterSettings.model_validate({"social_links": {**links, "youtube": ""}})
+    assert cleared.social_links == {key: url for key, url in links.items() if key != "youtube"}
+
+
 async def test_footer_defaults_save_public_read_and_legacy_update(monkeypatch):
     session = SettingsSession()
     staff = SimpleNamespace(id=uuid4())
@@ -86,7 +101,10 @@ async def test_footer_defaults_save_public_read_and_legacy_update(monkeypatch):
     initial = await public_site_contact_settings(session)
     assert initial["footer"] == FooterSettings().model_dump()
     footer = FooterSettings(
-        description="متن جدید", links=[], legal_links=[FooterLink(label="راهنما", url="/help")]
+        description="متن جدید",
+        links=[],
+        legal_links=[FooterLink(label="راهنما", url="/help")],
+        social_links={"eitaa": "https://eitaa.com/sedasanj"},
     )
     saved = await update_site_contact_settings(
         SiteContactSettingsUpdate(phone="09399093062", trust_html="badge", footer=footer),
@@ -106,7 +124,19 @@ async def test_footer_defaults_save_public_read_and_legacy_update(monkeypatch):
     assert audit.call_args.kwargs["payload"]["footer_updated"] is False
 
 
-def test_invalid_footer_returns_existing_error_code_without_echoing_url():
+@pytest.mark.parametrize(
+    "footer",
+    [
+        {"links": [{"label": "link", "url": "javascript:private-value"}]},
+        {"social_links": {"eitaa": "javascript:private-value"}},
+        {"social_links": {"bale": "http://private-value.example"}},
+        {"social_links": {"aparat": "/private-value"}},
+        {"social_links": {"telegram": "https://private-value@t.me/channel"}},
+        {"social_links": {"youtube": "https://example.com:private-value"}},
+        {"social_links": {"private-value": "https://example.com"}},
+    ],
+)
+def test_invalid_footer_returns_existing_error_code_without_echoing_url(footer):
     app = FastAPI()
     install_error_handlers(app)
 
@@ -118,7 +148,7 @@ def test_invalid_footer_returns_existing_error_code_without_echoing_url():
         "/settings",
         json={
             "phone": "09399093062",
-            "footer": {"links": [{"label": "link", "url": "javascript:private-value"}]},
+            "footer": footer,
         },
     )
     assert response.status_code == 422
@@ -126,13 +156,18 @@ def test_invalid_footer_returns_existing_error_code_without_echoing_url():
     assert "private-value" not in response.text
 
 
-def test_footer_help_migration_is_reversible(monkeypatch):
+@pytest.mark.parametrize(
+    ("filename", "slug"),
+    [
+        ("0088_site_footer_help_content.py", "site-footer-settings-guide"),
+        ("0122_footer_social_links_help.py", "footer-social-links"),
+    ],
+)
+def test_footer_help_migration_is_reversible(monkeypatch, filename, slug):
     import runpy
     from pathlib import Path
 
-    migration_path = (
-        Path(__file__).parents[1] / "apps/api/alembic/versions/0088_site_footer_help_content.py"
-    )
+    migration_path = Path(__file__).parents[1] / "apps/api/alembic/versions" / filename
     migration = runpy.run_path(str(migration_path))
     calls = []
     bind = SimpleNamespace(execute=lambda statement, values: calls.append((str(statement), values)))
@@ -142,6 +177,6 @@ def test_footer_help_migration_is_reversible(monkeypatch):
     assert len(calls) == 2
     assert "INSERT INTO help_articles" in calls[0][0]
     assert "DELETE FROM help_articles" in calls[1][0]
-    assert all(values["slug"] == "site-footer-settings-guide" for _, values in calls)
+    assert all(values["slug"] == slug for _, values in calls)
     assert "invalid_request" in calls[0][1]["body"]
     assert all(";" not in statement for statement, _ in calls)

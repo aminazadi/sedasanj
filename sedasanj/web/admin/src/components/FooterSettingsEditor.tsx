@@ -1,4 +1,4 @@
-import { isSafeFooterUrl, type FooterSettings, type FooterLink } from "../../../shared/lib/siteFooter";
+import { footerSocialNetworks, isSafeFooterUrl, type FooterSettings, type FooterLink } from "../../../shared/lib/siteFooter";
 
 export default function FooterSettingsEditor({ value, onChange }: { value: FooterSettings; onChange: (value: FooterSettings) => void }) {
   function linksEditor(key: "links" | "legal_links", title: string) {
@@ -36,6 +36,25 @@ export default function FooterSettingsEditor({ value, onChange }: { value: Foote
   return <div className="space-y-5">
     <h3 className="text-lg">محتوای فوتر</h3>
     {fields.map(([key, label, limit]) => <label key={key} className="block"><span className="label">{label}</span><textarea className="input" maxLength={limit} value={value[key]} onChange={(event) => onChange({ ...value, [key]: event.target.value })}/></label>)}
+    <fieldset className="grid gap-3 border border-slate-200 p-4 sm:grid-cols-2">
+      <legend className="px-2">شبکه‌های اجتماعی</legend>
+      <p className="text-sm text-slate-500 sm:col-span-2">لینک کامل کانال یا صفحه را وارد کنید. برای پنهان کردن آیکن، فیلد را خالی بگذارید.</p>
+      {footerSocialNetworks.map(({ key, label }) => <label key={key} className="block">
+        <span className="label">{label}</span>
+        <input
+          className="input"
+          type="url"
+          dir="ltr"
+          maxLength={2048}
+          placeholder="https://"
+          value={value.social_links?.[key] ?? ""}
+          onChange={(event) => onChange({
+            ...value,
+            social_links: { ...value.social_links, [key]: event.target.value.trim() },
+          })}
+        />
+      </label>)}
+    </fieldset>
     {linksEditor("links", "لینک‌های پرکاربرد")}
     {linksEditor("legal_links", "لینک‌های قوانین و حریم خصوصی")}
   </div>;

@@ -1,4 +1,14 @@
 export interface FooterLink { label: string; url: string }
+export const footerSocialNetworks = [
+  { key: "eitaa", label: "ایتا" },
+  { key: "bale", label: "بله" },
+  { key: "telegram", label: "تلگرام" },
+  { key: "instagram", label: "اینستاگرام" },
+  { key: "aparat", label: "آپارات" },
+  { key: "youtube", label: "یوتیوب" },
+] as const;
+export type FooterSocialNetwork = (typeof footerSocialNetworks)[number]["key"];
+
 export interface FooterSettings {
   contact_title: string;
   contact_description: string;
@@ -9,6 +19,7 @@ export interface FooterSettings {
   copyright: string;
   links: FooterLink[];
   legal_links: FooterLink[];
+  social_links?: Partial<Record<FooterSocialNetwork, string>>;
 }
 export interface SiteContactSettingsValue { phone: string; trust_html: string; footer: FooterSettings }
 
@@ -42,4 +53,8 @@ export function isSafeFooterUrl(url: string): boolean {
     const parsed = new URL(url);
     return ["http:", "https:"].includes(parsed.protocol) && !!parsed.hostname && !parsed.username && !parsed.password;
   } catch { return false; }
+}
+
+export function isSafeFooterSocialUrl(url: string): boolean {
+  return url.startsWith("https://") && isSafeFooterUrl(url);
 }

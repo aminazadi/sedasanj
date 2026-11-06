@@ -31,7 +31,7 @@ export default function SiteContactSettings() {
       setNotice("تنظیمات سایت ذخیره شد.");
     } catch (reason) {
       setError(reason instanceof ApiError && reason.code === "invalid_request"
-        ? "اطلاعات فوتر معتبر نیست. عنوان و نشانی لینک‌ها، تعداد لینک‌ها و طول متن‌ها را بررسی و دوباره ذخیره کنید."
+        ? "اطلاعات فوتر معتبر نیست. عنوان، تعداد و نشانی لینک‌ها و طول متن‌ها را بررسی کنید. نشانی شبکه‌های اجتماعی باید با https:// شروع شود. سپس دوباره ذخیره کنید."
         : (reason as Error).message);
     } finally {
       setBusy(false);
