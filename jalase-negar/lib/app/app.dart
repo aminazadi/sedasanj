@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
+import '../features/push/push_host.dart';
 import '../features/updates/application/update_controller.dart';
 import '../features/updates/presentation/update_prompt_host.dart';
 import 'router.dart';
@@ -91,8 +92,9 @@ class _RouterAppState extends ConsumerState<_RouterApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: buildAppTheme(),
-      builder: (context, child) =>
-          SsToastHost(child: UpdatePromptHost(child: child!)),
+      builder: (context, child) => SsToastHost(
+        child: PushHost(child: UpdatePromptHost(child: child!)),
+      ),
       routerConfig: ref.watch(routerProvider),
     );
   }

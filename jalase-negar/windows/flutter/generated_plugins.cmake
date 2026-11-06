@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
+  firebase_core
   flutter_secure_storage_windows
   just_audio_windows
   record_windows
@@ -12,6 +13,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  flutter_local_notifications_windows
   jni
   sherpa_onnx_windows
 )

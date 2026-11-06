@@ -61,6 +61,10 @@ _CONTROL_ONLY = {
     "module_diagnostics",
     # Android release catalogue for the Jalase-Negar app: platform-wide, never a tenant's data.
     "jalase_negar_releases",
+    "jalase_push_settings",
+    "jalase_push_installations",
+    "jalase_push_campaigns",
+    "jalase_push_deliveries",
     # ML model registry (speaker models etc.): platform-wide artifacts, never a tenant's data.
     "ml_model_releases",
 }

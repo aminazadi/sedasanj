@@ -34,6 +34,7 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
   @override
   Future<ConnectionState> build() async {
     final store = await ref.watch(connectionStoreProvider.future);
+    await store.preparePushBinding();
     return ConnectionState(connection: await store.load());
   }
 

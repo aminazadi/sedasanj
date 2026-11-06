@@ -1,5 +1,7 @@
 ## 2026-11-06 — AMINAZADI
 
+- Added super-admin Jalase-Negar push campaigns with audience targeting, scheduling, Firebase settings, and delivery history.
+
 - Removed the title above the public footer logo and its editor field.
 - Expanded the public footer copyright and added a linked ROBOLINK credit on the left.
 - Added authenticated gzip organization archives with legacy import, attendee data, integrity checks, and verified FTPS transfers.

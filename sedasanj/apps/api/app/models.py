@@ -3418,3 +3418,56 @@ class OrganizationImportReceipt(Base):
         PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
+class JalasePushSettings(Base):
+    __tablename__ = "jalase_push_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    project: Mapped[str] = mapped_column(Text)
+    credentials: Mapped[str | None] = mapped_column(Text)
+
+
+class JalasePushInstallation(Base):
+    __tablename__ = "jalase_push_installations"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    secret_hash: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    token: Mapped[str] = mapped_column(Text)
+    mobile_key_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"), index=True
+    )
+    version: Mapped[str] = mapped_column(Text)
+    channel: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    invalidated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    seen_at: Mapped[datetime] = mapped_column(TSTZ)
+
+
+class JalasePushCampaign(Base):
+    __tablename__ = "jalase_push_campaigns"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    actor_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    scheduled_at: Mapped[datetime] = mapped_column(TSTZ, index=True)
+    expires_at: Mapped[datetime] = mapped_column(TSTZ)
+    started_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    cancelled_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class JalasePushDelivery(Base):
+    __tablename__ = "jalase_push_deliveries"
+
+    campaign_id: Mapped[UUID] = mapped_column(
+        ForeignKey("jalase_push_campaigns.id", ondelete="CASCADE"), primary_key=True
+    )
+    installation_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    state: Mapped[str] = mapped_column(Text)
+    next_at: Mapped[datetime] = mapped_column(TSTZ)
+    attempts: Mapped[int] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (Index("ix_jalase_push_deliveries_ready", "state", "next_at"),)

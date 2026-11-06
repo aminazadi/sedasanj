@@ -1,3 +1,5 @@
+import java.net.URI
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -16,12 +18,39 @@ val keyProperties = Properties().apply {
     if (file.isFile) file.inputStream().use { load(it) }
 }
 
+// FirebaseInitProvider needs these public Android resources before any Dart isolate starts.
+val pushResourceNames = mapOf(
+    "PUSH_FIREBASE_APP_ID" to "google_app_id",
+    "PUSH_FIREBASE_API_KEY" to "google_api_key",
+    "PUSH_FIREBASE_PROJECT" to "project_id",
+    "PUSH_FIREBASE_SENDER_ID" to "gcm_defaultSenderId",
+)
+val dartDefines = (findProperty("dart-defines") as String?).orEmpty().split(",")
+    .filter { it.isNotEmpty() }
+    .map { String(Base64.getDecoder().decode(it), Charsets.UTF_8).split("=", limit = 2) }
+    .filter { it.size == 2 }
+    .associate { it[0] to it[1] }
+val pushConfigured = pushResourceNames.keys.any(dartDefines::containsKey) ||
+    dartDefines.containsKey("PUSH_ORIGIN")
+if (pushConfigured) {
+    require((pushResourceNames.keys + "PUSH_ORIGIN").all { !dartDefines[it].isNullOrBlank() }) {
+        "Supply all PUSH_FIREBASE_* values and PUSH_ORIGIN for Android push."
+    }
+    val pushOrigin = URI(dartDefines.getValue("PUSH_ORIGIN"))
+    require(pushOrigin.scheme == "https" && !pushOrigin.host.isNullOrBlank() &&
+        pushOrigin.userInfo == null && pushOrigin.path.isNullOrEmpty() &&
+        pushOrigin.query == null && pushOrigin.fragment == null) {
+        "PUSH_ORIGIN must be a bare HTTPS origin."
+    }
+}
+
 android {
     namespace = "app.jalasenegar.jalase_negar"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -31,6 +60,11 @@ android {
     }
 
     defaultConfig {
+        if (pushConfigured) {
+            pushResourceNames.forEach { (key, name) ->
+                resValue("string", name, dartDefines.getValue(key))
+            }
+        }
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "app.jalasenegar.jalase_negar"
         // You can update the following values to match your application needs.
@@ -112,4 +146,8 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.con
             })
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

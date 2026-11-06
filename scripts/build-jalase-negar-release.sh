@@ -12,8 +12,13 @@ export JALASE_KEY_PROPERTIES="${JALASE_KEY_PROPERTIES:-$HOME/.sedasanj-secrets/j
 
 android() {
   [ -f "$JALASE_KEY_PROPERTIES" ] || { echo "Missing release signing file: $JALASE_KEY_PROPERTIES (set JALASE_KEY_PROPERTIES)." >&2; exit 1; }
+  local -a build_args=(--target-platform android-arm64)
+  if [ -n "${JALASE_PUSH_CONFIG:-}" ]; then
+    [ -f "$JALASE_PUSH_CONFIG" ] || { echo "Firebase build config file is missing." >&2; exit 1; }
+    build_args+=("--dart-define-from-file=$JALASE_PUSH_CONFIG")
+  fi
   for store in direct bazaar myket; do
-    flutter build apk --release --flavor "$store" --dart-define=STORE="$store" --target-platform android-arm64
+    flutter build apk --release --flavor "$store" --dart-define=STORE="$store" "${build_args[@]}"
     cp "build/app/outputs/flutter-apk/app-$store-release.apk" "$out/JalaseNegar-$store-v$version.apk"
   done
 }

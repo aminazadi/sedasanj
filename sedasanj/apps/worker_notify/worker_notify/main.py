@@ -403,6 +403,12 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
         return "retry" if retried else "dead_letter"
 
 
+async def jalase_push_cron(ctx: dict[str, Any]) -> int:
+    from app.services.jalase_push_worker import run_batch
+
+    return await run_batch()
+
+
 async def assistant_exports_cron(ctx: dict[str, Any]) -> str:
     from app.services.assistant_exports import purge_expired
 
@@ -486,6 +492,7 @@ class WorkerSettings:
     job_deserializer = queue.job_deserializer
     functions = [deliver_event]
     cron_jobs = [
+        cron(jalase_push_cron, second={10, 40}),
         cron(retention_cron, hour=2, minute=15),
         cron(audio_cleanup_cron, second=5),
         cron(assistant_exports_cron, minute={0, 10, 20, 30, 40, 50}),

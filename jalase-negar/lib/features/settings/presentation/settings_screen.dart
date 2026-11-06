@@ -10,6 +10,7 @@ import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
+import '../../push/push_host.dart';
 import '../../recording/application/live_engine_provider.dart';
 import '../../updates/presentation/update_check_card.dart';
 import '../../upload/upload_controller.dart';
@@ -71,6 +72,7 @@ class SettingsScreen extends ConsumerWidget {
         const CpuLimitCard(),
         const SizedBox(height: 12),
         const UpdateCheckCard(),
+        const PushSettingsCard(),
         if (state?.error != null) ...[
           const SizedBox(height: 12),
           SsCard(

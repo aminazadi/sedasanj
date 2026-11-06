@@ -59,6 +59,7 @@ const NAVIGATION: NavigationGroup[] = [
   {
     label: "جلسه‌نگار اندروید",
     items: [
+      { to: "/jalase-negar-push", label: "پوش جلسه‌نگار", icon: icons.upload },
       { to: "/jalase-negar-releases", label: "نسخه‌های جلسه‌نگار", icon: icons.upload },
       { to: "/model-releases", label: "مدل‌های یادگیری", icon: icons.upload },
     ],
@@ -118,7 +119,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
           <div className="mb-5" key={group.label}>
             <p className="mb-2 px-3 text-[11px] font-medium text-[#B2AC88]">{group.label}</p>
             <div className="space-y-1">
-              {group.items.map((item) => (
+              {group.items.filter((item) => item.to !== "/jalase-negar-push" || session?.role === "super_admin").map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
