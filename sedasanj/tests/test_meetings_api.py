@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -25,10 +26,14 @@ from plan_routes import api_routes, dependency_calls, scope_names
 from sqlalchemy import select, text
 
 from app import db, deps
+from app.errors import ApiError
 from app.models import ApiKey, AudioObject, JalaseNegarRelease, Meeting, MeetingChunk
 from app.services import jalase_negar_releases as apks
+from app.services.audio_lifecycle import protect_tenant_media, purge_tenant
+from app.services.meeting_audio import assemble_meeting_audio, wav_data, wav_header
 from app.services.queue import QUEUE_MEETING, set_queue
 from app.services.storage import MemoryStorage, set_storage
+from app.services.storage_inventory import storage_usage
 
 # --------------------------------------------------------------------------- wiring (no database)
 
@@ -689,6 +694,7 @@ async def test_panel_visibility_edit_and_delete(world) -> None:
     assert gone.status_code == 204
     assert await _balance(workspace) == before + 60
     assert (await client.get(f"/v1/meetings/{theirs}", headers=workspace.admin)).status_code == 404
+    await purge_tenant(workspace.tenant_id)
     assert not [k for k in storage.objects if str(theirs) in k]
     async with db.session_scope(workspace.tenant_id) as session:
         assert (await session.execute(select(MeetingChunk))).first() is None
@@ -792,6 +798,87 @@ def _transcript(*texts: str) -> dict[str, object]:
             for i, text in enumerate(texts)
         ],
     }
+
+
+@requires_postgres
+@requires_ffprobe
+async def test_audio_assembly_is_verified_and_retry_safe(world, monkeypatch) -> None:
+    client, workspace, _queue, storage = world
+    headers = await pair_token(client, workspace.admin)
+    meeting_id = (
+        await client.post(
+            "/v1/meetings/sessions", json=_session_body(input_kind="text"), headers=headers
+        )
+    ).json()["meeting_id"]
+    chunks = [wav_bytes(1), wav_bytes(2)]
+    for seq, chunk in enumerate(chunks):
+        assert (await _put(client, headers, meeting_id, seq, chunk)).status_code == 200
+    assert (
+        await client.put(
+            f"/v1/meetings/{meeting_id}/transcript", json=_transcript("متن جلسه"), headers=headers
+        )
+    ).status_code == 200
+    assert (
+        await client.post(
+            f"/v1/meetings/{meeting_id}/finish",
+            json={
+                "ended_at": datetime.now(UTC).isoformat(), "total_chunks": 2, "duration_ms": 3000,
+            },
+            headers=headers,
+        )
+    ).status_code == 202
+
+    bad_key = f"{workspace.tenant_id}/meetings/{meeting_id}/1.wav"
+    storage.objects[bad_key] = chunks[1][:-2]
+    with pytest.raises(ApiError) as failure:
+        await assemble_meeting_audio(workspace.tenant_id, UUID(meeting_id))
+    assert failure.value.code == "meeting_incomplete_chunks"
+    assert len(storage.objects) == 2
+    storage.objects[bad_key] = chunks[1]
+
+    ready = asyncio.Event()
+    real_put = storage.put_path
+    attempts = 0
+
+    async def wait_for_other_attempt(*args, **kwargs) -> None:
+        nonlocal attempts
+        await real_put(*args, **kwargs)
+        attempts += 1
+        if attempts == 2:
+            ready.set()
+        await asyncio.wait_for(ready.wait(), timeout=10)
+
+    monkeypatch.setattr(storage, "put_path", wait_for_other_attempt)
+    results = await asyncio.gather(
+        assemble_meeting_audio(workspace.tenant_id, UUID(meeting_id)),
+        assemble_meeting_audio(workspace.tenant_id, UUID(meeting_id)),
+    )
+    assert sorted(results) == ["assembled", "done"]
+    assert len(storage.objects) == 4
+    async with protect_tenant_media(workspace.tenant_id):
+        assert await purge_tenant(workspace.tenant_id) == 0
+    assert await purge_tenant(workspace.tenant_id) == 3
+    assert len(storage.objects) == 1
+
+    pcm = b"".join(wav_data(chunk) for chunk in chunks)
+    expected = wav_header(len(pcm)) + pcm
+    content = await client.get(f"/v1/meetings/{meeting_id}/audio/content", headers=workspace.admin)
+    assert content.status_code == 200 and content.content == expected
+    usage = await client.get("/v1/account/storage", headers=workspace.admin)
+    assert usage.status_code == 200
+    assert usage.json()["audio_bytes"] == len(expected)
+    assert usage.json()["pending_audio_cleanup_bytes"] == 0
+    assert "database_bytes" not in usage.json()
+    assert (
+        await client.get("/v1/account/storage", headers=workspace.operator)
+    ).status_code == 403
+    await storage.put(f"ml-models/test/{uuid4()}.onnx", b"platform model")
+    staff_usage = await storage_usage(workspace.tenant_id, staff=True, scan=True)
+    assert staff_usage.database_bytes is None
+    assert staff_usage.duplicate_audio_candidate_bytes == 0
+    assert staff_usage.object_store is not None and staff_usage.object_store.complete
+    assert staff_usage.object_store.objects == 1
+    assert staff_usage.object_store.bytes_by_category["media"] == len(expected)
 
 
 @requires_postgres

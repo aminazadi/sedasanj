@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+import gzip
 import hashlib
 import io
 import json
 import os
 import re
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,6 +21,9 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from app.errors import ApiError
 
 MAGIC = b"SEDASANJ\x01"
+GZIP_MAGIC = b"\x1f\x8b\x08"
+GZIP_ENVELOPE = b"SEDASANJ\x02"
+GZIP_FORMAT = "gzip_v2"
 CHUNK_SIZE = 1024 * 1024
 MAX_ROW_BYTES = 4 * CHUNK_SIZE
 MAX_ROWS = 500_000
@@ -104,6 +109,123 @@ def unseal(source: Path, target: Path, key: bytes, limit: int) -> None:
         raise
 
 
+def is_gzip(path: Path) -> bool:
+    with path.open("rb") as source:
+        return source.read(len(GZIP_MAGIC)) == GZIP_MAGIC
+
+
+def is_supported(path: Path) -> bool:
+    with path.open("rb") as source:
+        header = source.read(len(MAGIC))
+    return header == MAGIC or header.startswith(GZIP_MAGIC)
+
+
+def seal_gzip(source: Path, target: Path, key: bytes, limit: int) -> tuple[int, str]:
+    """Wrap an already-compressed dataset in an authenticated gzip file."""
+    nonce = os.urandom(12)
+    header = GZIP_ENVELOPE + nonce
+    if source.stat().st_size + len(header) + 16 > limit:
+        raise archive_too_large()
+    encryptor = Cipher(algorithms.AES(key), modes.GCM(nonce)).encryptor()
+    encryptor.authenticate_additional_data(header)
+    try:
+        # The payload is compressed before encryption. Ciphertext only needs gzip framing.
+        with (
+            source.open("rb") as incoming,
+            target.open("wb") as raw,
+            gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=0, mtime=0) as out,
+        ):
+            out.write(header)
+            while block := incoming.read(CHUNK_SIZE):
+                out.write(encryptor.update(block))
+                if raw.tell() > limit:
+                    raise archive_too_large()
+            out.write(encryptor.finalize())
+            out.write(encryptor.tag)
+        size = target.stat().st_size
+        if size > limit:
+            raise archive_too_large()
+        with target.open("rb") as published:
+            return size, hashlib.file_digest(published, "sha256").hexdigest()
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+
+
+def unseal_gzip(source: Path, target: Path, key: bytes, limit: int, expanded_limit: int) -> None:
+    """Verify the full envelope before reading the compressed dataset."""
+    if source.stat().st_size > limit:
+        raise archive_too_large()
+    inner = target.with_suffix(".zip.gzip")
+    try:
+        with gzip.open(source, "rb") as incoming, inner.open("wb") as outgoing:
+            header = incoming.read(len(GZIP_ENVELOPE) + 12)
+            if len(header) != len(GZIP_ENVELOPE) + 12 or not header.startswith(GZIP_ENVELOPE):
+                raise invalid_archive()
+            decryptor = Cipher(algorithms.AES(key), modes.GCM(header[-12:])).decryptor()
+            decryptor.authenticate_additional_data(header)
+            size = len(header)
+            tail = b""
+            while block := incoming.read(CHUNK_SIZE):
+                size += len(block)
+                if size > limit:
+                    raise archive_too_large()
+                data = tail + block
+                outgoing.write(decryptor.update(data[:-16]))
+                tail = data[-16:]
+            if len(tail) != 16 or size == len(header) + 16:
+                raise invalid_archive()
+            outgoing.write(decryptor.finalize_with_tag(tail))
+
+        # Entry payloads have their own expanded cap. Allow bounded ZIP headers and directory.
+        zip_limit = expanded_limit + MAX_ZIP_DIRECTORY_BYTES + (MAX_ROWS + 256) * 128
+        size = 0
+        with gzip.open(inner, "rb") as payload, target.open("wb") as output:
+            while block := payload.read(CHUNK_SIZE):
+                size += len(block)
+                if size > zip_limit:
+                    raise archive_too_large()
+                output.write(block)
+    except (InvalidTag, ValueError, EOFError, gzip.BadGzipFile, zlib.error) as exc:
+        target.unlink(missing_ok=True)
+        raise invalid_archive() from exc
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        inner.unlink(missing_ok=True)
+
+
+class _StreamingSink:
+    """ZIP writes trailing entry descriptors when its sink cannot seek."""
+
+    def __init__(self, output: gzip.GzipFile) -> None:
+        self.output = output
+
+    def write(self, data: bytes, /) -> int:
+        return self.output.write(data)
+
+    def flush(self) -> None:
+        self.output.flush()
+
+    def close(self) -> None:
+        self.output.close()
+
+
+@contextmanager
+def write_zip(path: Path, *, gzip_payload: bool) -> Iterator[ZipFile]:
+    if gzip_payload:
+        with (
+            path.open("wb") as raw,
+            gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=9, mtime=0) as out,
+            ZipFile(_StreamingSink(out), "w", compression=ZIP_STORED) as archive,
+        ):
+            yield archive
+    else:
+        with ZipFile(path, "w", compression=ZIP_DEFLATED, compresslevel=1) as archive:
+            yield archive
+
+
 def json_bytes(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
 
@@ -157,23 +279,30 @@ def read_manifest(archive: ZipFile) -> dict[str, Any]:
         manifest = json.loads(archive.read(info))
     except (BadZipFile, UnicodeError, ValueError) as exc:
         raise invalid_archive() from exc
-    if not isinstance(manifest, dict) or manifest.get("version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("version") not in (1, 2):
         raise invalid_archive()
     return manifest
 
 
-def records(archive: ZipFile, member: str) -> Iterator[dict[str, Any]]:
+def records(
+    archive: ZipFile, member: str, expected_sha256: str | None = None
+) -> Iterator[dict[str, Any]]:
+    digest = hashlib.sha256() if expected_sha256 is not None else None
     try:
         with archive.open(member) as source:
             while line := source.readline(MAX_ROW_BYTES + 1):
                 if len(line) > MAX_ROW_BYTES:
                     raise archive_too_large()
+                if digest is not None:
+                    digest.update(line)
                 value = json.loads(line)
                 if not isinstance(value, dict):
                     raise invalid_archive()
                 yield value
     except (BadZipFile, UnicodeError, ValueError) as exc:
         raise invalid_archive() from exc
+    if digest is not None and digest.hexdigest() != expected_sha256:
+        raise invalid_archive()
 
 
 def media_member(name: str) -> ZipInfo:

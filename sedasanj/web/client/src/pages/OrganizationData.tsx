@@ -28,12 +28,16 @@ const TABLE_LABELS: Record<string, string> = {
   chat_conversations: "گفتگوهای دستیار", chat_messages: "پیام‌های دستیار", assistant_exports: "فایل‌های دستیار",
   assistant_tool_runs: "خروجی ابزارهای دستیار", organization_memories: "حافظهٔ سازمان", follow_up_tasks: "وظایف", follow_up_task_events: "رویدادهای وظیفه",
   meetings: "جلسات", meeting_chunks: "قطعه‌های صوت جلسه", meeting_segments: "بخش‌های متن جلسه",
-  meeting_chunk_speakers: "گویندگان قطعه", meeting_speakers: "گویندگان جلسه",
+  meeting_chunk_speakers: "گویندگان قطعه", meeting_speakers: "گویندگان جلسه", meeting_attendees: "حاضران جلسه",
   meeting_analysis_steps: "مراحل تحلیل جلسه", meeting_minutes: "صورت‌جلسه‌ها",
   meeting_events: "رویدادهای جلسه", tenant_ai_instructions: "دستورهای هوش مصنوعی",
   scheduled_reports: "تعریف گزارش‌ها", scheduled_report_runs: "گزارش‌های آرشیوشده",
 };
 type Member = { id: string; label: string; role: string };
+type StorageUsage = {
+  measured_at: string; audio_retention_days: number; audio_bytes: number;
+  assistant_file_bytes: number; archive_bytes: number; pending_audio_cleanup_bytes: number;
+};
 type Destination = {
   protocol: "ftp" | "ftps"; host: string; port: number; directory: string; username: string;
 };
@@ -143,6 +147,19 @@ export default function OrganizationData() {
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState<"apply" | "delete" | "rotate" | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
+  const [storageError, setStorageError] = useState(false);
+
+  useEffect(() => {
+    let stopped = false;
+    void request<StorageUsage>("/v1/account/storage").then((usage) => {
+      if (!stopped) {
+        setStorageUsage(usage);
+        setStorageError(false);
+      }
+    }).catch(() => { if (!stopped) setStorageError(true); });
+    return () => { stopped = true; };
+  }, [refreshVersion]);
 
   const requestedRun = params.get("archive_run");
   const runId = requestedRun && /^[a-f0-9-]{36}$/i.test(requestedRun) ? requestedRun : null;
@@ -275,6 +292,27 @@ export default function OrganizationData() {
     {(error || notice) && <div className="org-data-wide" aria-live="polite">
       <ErrorBox message={error} />{notice && <p className="org-data-notice" role="status">{notice}</p>}
     </div>}
+    <div className="org-data-wide">
+      <Card title="فضای سازمان" icon={databaseIcon}>
+        <div className="org-data-body">
+          {storageUsage ? <>
+            <dl className="org-data-counts">
+              <div><dt>صداهای ثبت‌شده</dt><dd>{fileSize(storageUsage.audio_bytes)}</dd></div>
+              <div><dt>فایل‌های دستیار</dt><dd>{fileSize(storageUsage.assistant_file_bytes)}</dd></div>
+              <div><dt>بک‌آپ‌های در دسترس</dt><dd>{fileSize(storageUsage.archive_bytes)}</dd></div>
+              <div><dt>صدا در صف پاک‌سازی</dt><dd>{fileSize(storageUsage.pending_audio_cleanup_bytes)}</dd></div>
+            </dl>
+            <p className="org-data-muted">
+              نگهداشت صوت {fmt.int(storageUsage.audio_retention_days)} روز ·
+              اندازه‌گیری در {scheduledTime(storageUsage.measured_at, settings.timezone)}
+            </p>
+          </> : storageError
+            ? <button className="btn-ghost" type="button"
+              onClick={() => setRefreshVersion((version) => version + 1)}>تلاش دوباره برای دریافت مصرف فضا</button>
+            : <p className="org-data-muted" role="status">در حال دریافت مصرف فضا</p>}
+        </div>
+      </Card>
+    </div>
     <Card title="خروجی و بازیابی" icon={databaseIcon}>
       <div className="org-data-body">
         <p className="org-data-muted">یک فایل رمزگذاری‌شده از داده‌های کاری سازمان بگیرید یا فایل موجود را بازیابی کنید.</p>
@@ -323,11 +361,11 @@ export default function OrganizationData() {
           {current?.error_code && <ErrorBox message={ERRORS[current.error_code] ?? "عملیات انجام نشد. دوباره تلاش کنید."} />}
           {!selectedBusy && !current?.can_review && <>
             <label className="org-data-file"><span><Icon icon={fileUpIcon} aria-hidden="true" /> انتخاب فایل بک‌آپ</span>
-              <small><bdi>.sedasanj</bdi> · حداکثر {fileSize(settings.max_bytes)}</small>
+              <small><bdi>.gzip</bdi> یا <bdi>.sedasanj</bdi> · حداکثر {fileSize(settings.max_bytes)}</small>
               <span className="org-data-file-name" aria-live="polite">
                 {file ? <bdi>{file.name}</bdi> : "هنوز فایلی انتخاب نشده است"}
               </span>
-              <input id="org-data-file" aria-label="فایل بک‌آپ" type="file" accept=".sedasanj,application/octet-stream" required
+              <input id="org-data-file" aria-label="فایل بک‌آپ" type="file" accept=".gzip,.gz,.sedasanj,application/gzip,application/octet-stream" required
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             </label>
             {!current?.can_upload && <label><span>کلید بازیابی فایل</span>

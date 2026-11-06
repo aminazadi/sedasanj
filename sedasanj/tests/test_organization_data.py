@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 import io
 import os
@@ -51,6 +52,94 @@ def test_authenticated_binary_archive(tmp_path: Path) -> None:
     with pytest.raises(ApiError) as error:
         archive.unseal(encrypted, restored, key, 100)
     assert error.value.code == "org_archive_too_large"
+
+
+def test_gzip_archive_is_lossless_and_authenticates_before_extraction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    key = bytes(range(32))
+    payload = tmp_path / "data.zip.gzip"
+    published = tmp_path / "export.gzip"
+    output = tmp_path / "restored.zip"
+    audio = bytes(range(256)) * 10_000
+    member = f"media/audio_objects/{uuid4().hex}"
+    with archive.write_zip(payload, gzip_payload=True) as writer:
+        writer.writestr(member, audio)
+    assert payload.stat().st_size < len(audio) // 20
+
+    limit = 100_000
+    size, checksum = archive.seal_gzip(payload, published, key, limit)
+    saved = published.read_bytes()
+    assert size == len(saved) and checksum == hashlib.sha256(saved).hexdigest()
+    assert archive.is_supported(published)
+    envelope = gzip.decompress(saved)
+    assert envelope.startswith(archive.GZIP_ENVELOPE)
+    archive.unseal_gzip(published, output, key, limit, len(audio))
+    with archive.open_zip(output) as reader:
+        assert reader.read(member) == audio
+
+    for damaged, wrong_key in (
+        (saved, bytes(32)),
+        (saved[:-1], key),
+        (gzip.compress(envelope[:-1] + bytes([envelope[-1] ^ 1])), key),
+        (gzip.compress(b"not a SedaSanj backup"), key),
+    ):
+        published.write_bytes(damaged)
+        with pytest.raises(ApiError) as invalid:
+            archive.unseal_gzip(published, output, wrong_key, limit, len(audio))
+        assert invalid.value.code == "org_archive_invalid"
+        assert not output.exists()
+    published.write_bytes(saved)
+    with pytest.raises(ApiError) as oversized:
+        archive.unseal_gzip(published, output, key, len(saved) - 1, len(audio))
+    assert oversized.value.code == "org_archive_too_large"
+    monkeypatch.setattr(archive, "MAX_ZIP_DIRECTORY_BYTES", 1024)
+    monkeypatch.setattr(archive, "MAX_ROWS", 1)
+    with pytest.raises(ApiError) as oversized:
+        archive.unseal_gzip(published, output, key, limit, 1024)
+    assert oversized.value.code == "org_archive_too_large"
+    assert not output.exists()
+
+
+def test_ftp_verifies_uploaded_hash_before_publish(tmp_path: Path) -> None:
+    path = tmp_path / "export.gzip"
+    path.write_bytes(b"expected")
+
+    class Remote:
+        def __init__(self) -> None:
+            self.files: dict[str, bytes] = {}
+            self.corrupt = True
+
+        def voidcmd(self, _command) -> None:
+            pass
+
+        def size(self, name):
+            return len(self.files[name]) if name in self.files else None
+
+        def storbinary(self, command, source, _size, callback) -> None:
+            payload = source.read()
+            callback(payload)
+            self.files[command[5:]] = b"damaged!" if self.corrupt else payload
+
+        def retrbinary(self, command, callback) -> None:
+            callback(self.files[command[5:]])
+
+        def rename(self, source, target) -> None:
+            self.files[target] = self.files.pop(source)
+
+        def delete(self, name) -> None:
+            del self.files[name]
+
+    remote = Remote()
+    with pytest.raises(OSError, match="integrity"):
+        ftp._publish(remote, path, path.name, 10)
+    assert not remote.files
+    remote.corrupt = False
+    ftp._publish(remote, path, path.name, 10)
+    assert remote.files == {path.name: b"expected"}
+    remote.corrupt = True
+    ftp._publish(remote, path, path.name, 10)
+    assert remote.files == {path.name: b"expected"}
 
 
 @pytest.mark.parametrize("name", ("../payload", "/etc/test", "rows/not-allowed.ndjson"))
@@ -130,6 +219,7 @@ async def _seed(source: UUID, target: UUID, wav: bytes):
         uuid4() for _ in range(10)
     )
     now = datetime.now(UTC)
+    profile, attendee = uuid4(), uuid4()
     storage = get_storage()
     object_key = f"{source}/qa.wav"
     await storage.ensure_bucket()
@@ -261,6 +351,34 @@ async def _seed(source: UUID, target: UUID, wav: bytes):
         )
         await _insert(
             session,
+            "speaker_profiles",
+            id=profile,
+            tenant_id=source,
+            owner_user_id=owner,
+            client_id=attendee,
+            display_name="Private profile",
+            change_seq=1,
+        )
+        await _insert(
+            session,
+            "meeting_speakers",
+            tenant_id=source,
+            meeting_id=meeting,
+            speaker_idx=0,
+            label="Speaker label",
+            profile_id=profile,
+        )
+        await _insert(
+            session,
+            "meeting_attendees",
+            tenant_id=source,
+            meeting_id=meeting,
+            profile_client_id=attendee,
+            profile_id=profile,
+            name="Attendance label",
+        )
+        await _insert(
+            session,
             "chat_conversations",
             id=chat,
             tenant_id=source,
@@ -328,9 +446,11 @@ async def _seed(source: UUID, target: UUID, wav: bytes):
 
 
 @pytest.mark.skipif(not os.getenv("ORG_DATA_TEST_DSN"), reason="disposable PostgreSQL DSN required")
-async def test_portable_archive_api_and_worker(monkeypatch, wav_factory) -> None:
+@pytest.mark.parametrize("gzip_payload", [False, True])
+async def test_portable_archive_api_and_worker(monkeypatch, wav_factory, gzip_payload) -> None:
     monkeypatch.setenv("DATABASE_URL", os.environ["ORG_DATA_TEST_DSN"])
     monkeypatch.setenv("TENANT_DATABASES_ENABLED", "false")
+    monkeypatch.setenv("ORG_ARCHIVE_WRITE_V2", "true" if gzip_payload else "false")
     monkeypatch.setenv("PLATFORM_SECRETS_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("MINIO_BUCKET_AUDIO", f"org-data-qa-{uuid4().hex}")
     monkeypatch.setenv("STORAGE_BACKEND", "s3" if os.getenv("MINIO_ENDPOINT") else "memory")
@@ -381,7 +501,16 @@ async def test_portable_archive_api_and_worker(monkeypatch, wav_factory) -> None
             response = await client.get(download)
             assert response.status_code == 200
             content = response.content
-            assert content.startswith(archive.MAGIC)
+            expected_type = "application/gzip" if gzip_payload else "application/octet-stream"
+            suffix = ".gzip" if gzip_payload else ".sedasanj"
+            assert response.headers["content-type"] == expected_type
+            assert response.headers["content-disposition"].endswith(f'{suffix}"')
+            assert "content-encoding" not in response.headers
+            assert summary["checksum"] == hashlib.sha256(content).hexdigest()
+            if gzip_payload:
+                assert gzip.decompress(content).startswith(archive.GZIP_ENVELOPE)
+            else:
+                assert content.startswith(archive.MAGIC)
 
             async def upload(recovery_key: str = key) -> tuple[str, dict[str, Any]]:
                 created = await client.post(
@@ -394,9 +523,10 @@ async def test_portable_archive_api_and_worker(monkeypatch, wav_factory) -> None
                 response = await client.put(
                     f"{route}/import/{run_id}/file",
                     content=content,
-                    headers={**dst, "Content-Type": "application/octet-stream"},
+                    headers={**dst, "Content-Type": expected_type},
                 )
                 assert response.status_code == 202, response.text
+                assert response.json()["checksum"] == summary["checksum"]
                 assert await jobs.run_one()
                 review = (await client.get(f"{route}/runs/{run_id}", headers=dst)).json()
                 return run_id, review
@@ -464,6 +594,22 @@ async def test_portable_archive_api_and_worker(monkeypatch, wav_factory) -> None
                     {"id": target},
                 )
                 assert await get_storage().get(object_key) == audio
+                speaker = (
+                    await session.execute(
+                        text("SELECT label, profile_id FROM meeting_speakers WHERE tenant_id=:id"),
+                        {"id": target},
+                    )
+                ).one()
+                assert tuple(speaker) == ("Speaker label", None)
+                attendees = (
+                    await session.execute(
+                        text("SELECT name, profile_id FROM meeting_attendees WHERE tenant_id=:id"),
+                        {"id": target},
+                    )
+                ).all()
+                assert list(map(tuple, attendees)) == (
+                    [("Attendance label", None)] if gzip_payload else []
+                )
                 assert (
                     await session.scalar(
                         text(
@@ -564,8 +710,9 @@ async def test_portable_archive_api_and_worker(monkeypatch, wav_factory) -> None
                         assert scheduled.transfer_state == "queued"
                         scheduled.due_at = before
 
-            def recovered(destination, path, *args, **kwargs):
+            def recovered(destination, path, filename, **kwargs):
                 assert destination.protocol == "ftps"
+                assert filename.endswith(suffix)
                 assert hashlib.sha256(path.read_bytes()).hexdigest() == original_checksum
 
             monkeypatch.setattr(ftp, "transfer", recovered)

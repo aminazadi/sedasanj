@@ -14,12 +14,14 @@ from app.services.queue_serialization import job_deserializer, job_serializer
 QUEUE_ASR = "q:asr"
 QUEUE_EMOTION = "q:emotion"
 QUEUE_LLM = "q:llm"
+QUEUE_ASSISTANT = "q:assistant"
 QUEUE_NOTIFY = "q:notify"
 QUEUE_MEETING = "q:meeting"
 
 JOB_ASR = "transcribe_call"
 JOB_EMOTION = "analyze_voice_sentiment"
 JOB_LLM = "analyze_call"
+JOB_ASSISTANT = "run_assistant_chat"
 JOB_CORRECTION = "start_transcript_correction"
 JOB_NOTIFY = "deliver_event"
 JOB_MEETING_CHUNK = "transcribe_meeting_chunk"
@@ -118,6 +120,19 @@ def get_queue() -> Queue:
 def set_queue(queue: Queue | None) -> None:
     global _queue
     _queue = queue
+
+
+async def enqueue_assistant(tenant_id: UUID, run_id: UUID) -> None:
+    settings = get_settings()
+    dedicated = (
+        settings.assistant_dedicated_queue or tenant_id in settings.assistant_dedicated_tenants
+    )
+    await get_queue().enqueue(
+        QUEUE_ASSISTANT if dedicated else QUEUE_LLM,
+        JOB_ASSISTANT,
+        {"run_id": str(run_id), "tenant_id": str(tenant_id)},
+        job_id=f"assistant:{run_id}",
+    )
 
 
 async def enqueue_asr(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from contextlib import asynccontextmanager
 
 import httpx
@@ -86,3 +88,67 @@ async def test_embedding_does_not_fallback_for_non_contract_errors(
         await knowledge.embed("sample")
 
     assert requested_paths == ["/v1/ninerouter/embeddings"]
+
+
+@pytest.mark.parametrize("reject_batch", [False, True])
+async def test_chunk_embeddings_reuse_only_compatible_vectors_and_preserve_order(
+    monkeypatch: pytest.MonkeyPatch, reject_batch: bool
+) -> None:
+    inputs = []
+    settings_reads = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        values = json.loads(request.content)["input"]
+        inputs.append(values)
+        if reject_batch and isinstance(values, list):
+            return httpx.Response(422, json={"detail": "batch unsupported"})
+        if isinstance(values, str):
+            values = [values]
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": index, "embedding": [float(len(value)), 1.0]}
+                    for index, value in reversed(list(enumerate(values)))
+                ]
+            },
+        )
+
+    @asynccontextmanager
+    async def fake_session_scope(*args: object, **kwargs: object):
+        yield object()
+
+    async def fake_effective_models(session: object) -> dict[str, str]:
+        nonlocal settings_reads
+        settings_reads += 1
+        return {
+            "voicesanj_base_url": "https://aiservice.example",
+            "api_key": "secret",
+            "embedding_model": "local-embedding",
+            "embedding_route": "native",
+        }
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(knowledge, "session_scope", fake_session_scope)
+    monkeypatch.setattr(knowledge, "effective_models", fake_effective_models)
+    monkeypatch.setattr(
+        knowledge.httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: real_client(transport=httpx.MockTransport(handler)),
+    )
+
+    cached = {
+        (hashlib.sha256(b"cached").hexdigest(), "local-embedding", "aiservice"): "[9,1]",
+        (hashlib.sha256(b"one").hexdigest(), "previous-model", "aiservice"): "[9,1]",
+        (hashlib.sha256(b"second").hexdigest(), "local-embedding", "other"): "[9,1]",
+    }
+    results, _error = await knowledge.embed_index_chunks(["one", "cached", "second", "one"], cached)
+
+    assert settings_reads == 1
+    assert inputs == ([["one", "second"], "one", "second"] if reject_batch else [["one", "second"]])
+    assert results == [
+        ([3.0, 1.0], "local-embedding"),
+        ([9.0, 1.0], "local-embedding"),
+        ([6.0, 1.0], "local-embedding"),
+        ([3.0, 1.0], "local-embedding"),
+    ]

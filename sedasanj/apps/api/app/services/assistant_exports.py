@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.services import audit, contacts, follow_up_tasks, platform, ratelimit
 from app.services.assistant_export_renderers import MEDIA_TYPES, render
+from app.services.audio_lifecycle import try_media_cleanup
 from app.services.storage import get_storage
 
 Dataset = Literal["calls_analysis", "contacts", "follow_up_tasks", "transcripts"]
@@ -586,12 +587,15 @@ async def purge_expired() -> int:
     failed = 0
     for tenant_id in await export_tenant_ids():
         try:
-            while True:
-                async with session_scope(tenant_id) as session:
-                    batch = await purge_session(session, tenant_id)
-                removed += batch
-                if batch < 100:
-                    break
+            async with try_media_cleanup(tenant_id) as acquired:
+                if not acquired:
+                    continue
+                while True:
+                    async with session_scope(tenant_id) as session:
+                        batch = await purge_session(session, tenant_id)
+                    removed += batch
+                    if batch < 100:
+                        break
         except Exception:
             failed += 1
             logger.error(

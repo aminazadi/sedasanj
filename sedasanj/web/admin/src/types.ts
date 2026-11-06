@@ -56,6 +56,8 @@ export interface TenantDatabaseStatus {
   backup_status: string | null;
   backup_completed_at: string | null;
   backup_checksum: string | null;
+  backup_id: string | null;
+  backup_restore_verified_at: string | null;
 }
 
 export interface Job {

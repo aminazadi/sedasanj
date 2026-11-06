@@ -139,7 +139,15 @@ groups:
         for: 5m
         labels: { severity: critical }
         annotations:
-          summary: "worker-provision is down (tenant databases, backups and projections stop)"
+          summary: "worker-provision is down (tenant database provisioning and projections stop)"
+
+      - alert: TenantBackupOverdue
+        expr: cbi_tenant_backups_overdue > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "one or more tenant databases lack a recent verified backup"
+          runbook: "docs/runbook.md#gzip-backup"
 
       - alert: ApiServerErrors
         expr: |
@@ -164,6 +172,14 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "many uploads rejected for insufficient credit"
+
+      - alert: AudioCleanupFailures
+        expr: sum(increase(cbi_audio_cleanup_total{result!="deleted"}[15m])) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "deferred audio deletion is failing"
+          runbook: "docs/runbook.md#audio-cleanup"
 
       - alert: WebhookFailures
         expr: |

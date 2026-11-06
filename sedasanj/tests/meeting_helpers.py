@@ -139,6 +139,7 @@ async def drop_workspace(workspace: Workspace) -> None:
         for table in (
             "credit_reservations",
             "meetings",
+            "audio_deletions",
             "audio_objects",
             *OWNED_TABLES,
             "credit_grants",

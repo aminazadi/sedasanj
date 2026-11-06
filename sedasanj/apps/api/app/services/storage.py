@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import abc
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,11 @@ class Storage(abc.ABC):
     @abc.abstractmethod
     async def list_keys(self, prefix: str) -> list[tuple[str, datetime]]:
         """Every object under ``prefix`` with its last-modified time (UTC)."""
+        ...
+
+    @abc.abstractmethod
+    def iter_sizes(self, prefix: str) -> AsyncGenerator[int, None]:
+        """Object sizes under the prefix, fetched incrementally."""
         ...
 
     @abc.abstractmethod
@@ -147,6 +152,13 @@ class S3Storage(Storage):
                 raise
             return True
 
+    async def iter_sizes(self, prefix: str) -> AsyncGenerator[int, None]:
+        async with self._client() as client:
+            pages = client.get_paginator("list_objects_v2")
+            async for page in pages.paginate(Bucket=self.bucket, Prefix=prefix):
+                for item in page.get("Contents", []):
+                    yield int(item["Size"])
+
     async def presigned_url(self, key: str, expires_in: int) -> str:
         async with self._client(public=True) as client:
             url: str = await client.generate_presigned_url(
@@ -206,6 +218,11 @@ class MemoryStorage(Storage):
 
     async def exists(self, key: str) -> bool:
         return key in self.objects
+
+    async def iter_sizes(self, prefix: str) -> AsyncGenerator[int, None]:
+        for key, data in self.objects.items():
+            if key.startswith(prefix):
+                yield len(data)
 
     async def presigned_url(self, key: str, expires_in: int) -> str:
         return f"memory://{self.bucket}/{key}?expires_in={expires_in}"

@@ -16,6 +16,9 @@ class _Result:
     def scalar_one_or_none(self) -> object:
         return self._value
 
+    def __iter__(self):
+        return iter(())
+
 
 class _Session:
     def __init__(self, transcript: SimpleNamespace, fail_inserts: set[int] | None = None) -> None:
@@ -84,10 +87,10 @@ async def test_failed_chunk_is_recorded_and_call_is_backed_off(
     call, transcript = _call_and_transcript("الف " * 1000)
     session = _Session(transcript, fail_inserts={2})
 
-    async def fake_embed(content: str) -> tuple[list[float], str]:
-        return [0.1, 0.2, 0.3], "model-x"
+    async def fake_embed(chunks, cached):
+        return [([0.1, 0.2, 0.3], "model-x")] * len(chunks), ""
 
-    monkeypatch.setattr(knowledge, "embed", fake_embed)
+    monkeypatch.setattr(knowledge, "embed_index_chunks", fake_embed)
 
     await knowledge._index_transcript_chunks(session, call, uuid4())  # type: ignore[arg-type]
 
@@ -109,10 +112,10 @@ async def test_all_chunks_ready_leaves_call_without_backoff(
     call, transcript = _call_and_transcript("الف " * 1000)
     session = _Session(transcript)
 
-    async def fake_embed(content: str) -> tuple[list[float], str]:
-        return [0.1] * 768, "model-768"
+    async def fake_embed(chunks, cached):
+        return [([0.1] * 768, "model-768")] * len(chunks), ""
 
-    monkeypatch.setattr(knowledge, "embed", fake_embed)
+    monkeypatch.setattr(knowledge, "embed_index_chunks", fake_embed)
 
     await knowledge._index_transcript_chunks(session, call, uuid4())  # type: ignore[arg-type]
 
@@ -253,10 +256,10 @@ async def test_failed_embedding_keeps_previous_complete_chunks(
 
     session = _CompleteSession(transcript)
 
-    async def broken_embed(content: str) -> tuple[list[float], str]:
-        raise RuntimeError("provider down")
+    async def broken_embed(chunks, cached):
+        return [None] * len(chunks), "provider down"
 
-    monkeypatch.setattr(knowledge, "embed", broken_embed)
+    monkeypatch.setattr(knowledge, "embed_index_chunks", broken_embed)
 
     await knowledge._index_transcript_chunks(session, call, uuid4())  # type: ignore[arg-type]
 

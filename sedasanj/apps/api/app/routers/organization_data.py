@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -449,7 +450,7 @@ def _assert_import(row: OrganizationDataRun, principal: Principal, state: str) -
 
 @router.put("/import/{run_id}/file", status_code=202)
 async def upload_import(run_id: UUID, request: Request, principal: OrgAdminDep) -> dict[str, Any]:
-    if request.headers.get("content-type") != "application/octet-stream":
+    if request.headers.get("content-type") not in {"application/octet-stream", "application/gzip"}:
         raise archive.invalid_archive()
     limit = get_settings().org_archive_max_bytes
     header = request.headers.get("content-length")
@@ -465,6 +466,7 @@ async def upload_import(run_id: UUID, request: Request, principal: OrgAdminDep) 
     with TemporaryDirectory(prefix="sedasanj-archive-upload-") as directory:
         path = Path(directory) / "archive.sedasanj"
         size = 0
+        digest = hashlib.sha256()
         deadline = time.monotonic() + UPLOAD_MAX_SECONDS
         try:
             with path.open("wb") as output:
@@ -480,13 +482,13 @@ async def upload_import(run_id: UUID, request: Request, principal: OrgAdminDep) 
                     if size > limit or time.monotonic() > deadline:
                         raise archive.archive_too_large()
                     output.write(block)
+                    digest.update(block)
         except ClientDisconnect as exc:
             raise archive.invalid_archive() from exc
         except OSError as exc:
             raise jobs.unavailable() from exc
-        with path.open("rb") as source:
-            if source.read(len(archive.MAGIC)) != archive.MAGIC:
-                raise archive.invalid_archive()
+        if not archive.is_supported(path):
+            raise archive.invalid_archive()
         # Re-lock and re-check: the run may have been cancelled or finished while uploading.
         async with control_session_scope() as session:
             row = await _run(session, run_id, principal, lock=True)
@@ -495,11 +497,16 @@ async def upload_import(run_id: UUID, request: Request, principal: OrgAdminDep) 
             try:
                 await storage.ensure_bucket()
                 await storage.put_path(
-                    jobs.file_key(row), path, content_type="application/octet-stream"
+                    jobs.file_key(row),
+                    path,
+                    content_type="application/gzip"
+                    if archive.is_gzip(path)
+                    else "application/octet-stream",
                 )
             except Exception as exc:
                 raise jobs.unavailable() from exc
             row.size_bytes, row.state, row.due_at = size, "queued", _now()
+            row.checksum = digest.hexdigest()
             await _audit(session, request, principal, "file_uploaded", row.id)
             return _view(row, principal)
 
@@ -637,7 +644,7 @@ async def download_backup(
             raise _missing()
     return StreamingResponse(
         get_storage().iter_chunks(jobs.file_key(row)),
-        media_type="application/octet-stream",
+        media_type=jobs.content_type(row),
         headers={
             "Content-Disposition": f'attachment; filename="{jobs.filename(row)}"',
             "Content-Length": str(row.size_bytes),

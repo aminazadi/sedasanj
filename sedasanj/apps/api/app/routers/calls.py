@@ -78,6 +78,7 @@ from app.services import (
     ratelimit,
 )
 from app.services.asr_revisions import activate_existing
+from app.services.audio_lifecycle import has_audio_reference, retire_audio
 from app.services.ingest import accept_upload
 from app.services.platform import (
     capability_model,
@@ -1249,14 +1250,18 @@ async def delete_call(
     await session.delete(call)
     await session.flush()
 
+    audio_retired = False
     if audio is not None:
-        await get_storage().delete(audio.object_key)
-        await session.execute(
-            delete(AudioObject).where(
+        still_referenced = await session.scalar(
+            select(has_audio_reference(tenant_id)).select_from(AudioObject).where(
                 AudioObject.id == audio.id,
                 AudioObject.tenant_id == tenant_id,
             )
         )
+        if not still_referenced:
+            await retire_audio(session, audio)
+            await session.delete(audio)
+            audio_retired = True
 
     await audit.record(
         session,
@@ -1264,7 +1269,7 @@ async def delete_call(
         actor_id=principal.id,
         tenant_id=tenant_id,
         action="call.delete",
-        payload={"call_id": str(call_id), "audio_deleted": audio is not None},
+        payload={"call_id": str(call_id), "audio_deleted": audio_retired},
         ip=client_ip(request),
     )
 

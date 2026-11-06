@@ -14,8 +14,9 @@ from sqlalchemy import exists, select
 
 from app.config import get_settings
 from app.db import dispose_engine, session_scope
+from app.errors import ApiError
 from app.logging import configure_logging, log_context
-from app.metrics import start_metrics_server
+from app.metrics import meeting_failures_total, start_metrics_server
 from app.models import Meeting, MeetingChunk, MeetingMinutes, Tenant
 from app.services import queue
 from app.services.meeting_audio import assemble_meeting_audio
@@ -48,7 +49,11 @@ async def assemble_meeting_audio_job(ctx: dict[str, Any], payload: dict[str, Any
     """Join the uploaded chunks of a text meeting into the WAV the panel plays."""
     tenant_id = UUID(str(payload["tenant_id"]))
     log_context(tenant_id=str(tenant_id))
-    return await assemble_meeting_audio(tenant_id, UUID(str(payload["meeting_id"])))
+    try:
+        return await assemble_meeting_audio(tenant_id, UUID(str(payload["meeting_id"])))
+    except ApiError as exc:
+        meeting_failures_total.labels(code=exc.code).inc()
+        raise
 
 
 async def transcribe_meeting_chunk(ctx: dict[str, Any], payload: dict[str, Any]) -> str:

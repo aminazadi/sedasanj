@@ -24,6 +24,7 @@ from app.models import (
     User,
 )
 from app.services import audit
+from app.services.audio_lifecycle import protect_tenant_media
 from app.services.organization_data import archive, dataset, ftp
 from app.services.platform_secrets import decrypt_secret, encrypt_secret
 from app.services.storage import get_storage
@@ -109,7 +110,14 @@ def imported_media_prefix(run: OrganizationDataRun) -> str:
 
 def filename(run: OrganizationDataRun) -> str:
     stamp = run.created_at.astimezone(UTC).strftime("%Y%m%d-%H%M%SZ")
-    return f"sedasanj-{stamp}-{run.id.hex}.sedasanj"
+    suffix = ".gzip" if content_type(run) == "application/gzip" else ".sedasanj"
+    return f"sedasanj-{stamp}-{run.id.hex}{suffix}"
+
+
+def content_type(run: OrganizationDataRun) -> str:
+    if (run.summary or {}).get("archive_format") == archive.GZIP_FORMAT:
+        return "application/gzip"
+    return "application/octet-stream"
 
 
 def destination(options: dict[str, Any], secret: str) -> ftp.Destination:
@@ -184,12 +192,19 @@ async def _download(run: OrganizationDataRun, target: Path) -> None:
 async def _export(run: OrganizationDataRun, workspace: Path) -> None:
     settings = get_settings()
     source, target = workspace / "data.zip", workspace / "archive.sedasanj"
-    summary = await dataset.export_zip(
-        run.tenant_id, source, settings.org_archive_expanded_max_bytes
-    )
+    gzip_payload = settings.org_archive_write_v2 or run.tenant_id in settings.org_archive_v2_tenants
+    async with protect_tenant_media(run.tenant_id):
+        summary = await dataset.export_zip(
+            run.tenant_id,
+            source,
+            settings.org_archive_expanded_max_bytes,
+            gzip_payload=gzip_payload,
+        )
+    if gzip_payload:
+        summary["archive_format"] = archive.GZIP_FORMAT
     key = archive.recovery_key(decrypt_secret(run.secret or ""))
     size, checksum = await asyncio.to_thread(
-        archive.seal,
+        archive.seal_gzip if gzip_payload else archive.seal,
         source,
         target,
         key,
@@ -197,7 +212,19 @@ async def _export(run: OrganizationDataRun, workspace: Path) -> None:
     )
     storage = get_storage()
     await storage.ensure_bucket()
-    await storage.put_path(file_key(run), target, content_type="application/octet-stream")
+    media_type = "application/gzip" if gzip_payload else "application/octet-stream"
+    await storage.put_path(file_key(run), target, content_type=media_type)
+    if gzip_payload:
+        remote_size = 0
+        remote_hash = hashlib.sha256()
+        async for block in storage.iter_chunks(file_key(run)):
+            remote_size += len(block)
+            if remote_size > size:
+                break
+            remote_hash.update(block)
+        if remote_size != size or remote_hash.hexdigest() != checksum:
+            await storage.delete(file_key(run))
+            raise unavailable()
     async with control_session_scope() as session:
         row = await session.get(OrganizationDataRun, run.id, with_for_update=True)
         if row is not None:
@@ -238,13 +265,22 @@ async def _restore(run: OrganizationDataRun, workspace: Path) -> None:
         source, target = workspace / "archive.sedasanj", workspace / "data.zip"
         await _download(run, source)
         settings = get_settings()
-        await asyncio.to_thread(
-            archive.unseal,
-            source,
-            target,
-            archive.recovery_key(decrypt_secret(run.secret or "")),
-            settings.org_archive_max_bytes,
-        )
+        key = archive.recovery_key(decrypt_secret(run.secret or ""))
+        gzip_payload = archive.is_gzip(source)
+        if gzip_payload:
+            await asyncio.to_thread(
+                archive.unseal_gzip,
+                source,
+                target,
+                key,
+                settings.org_archive_max_bytes,
+                settings.org_archive_expanded_max_bytes,
+            )
+        else:
+            await asyncio.to_thread(
+                archive.unseal, source, target, key, settings.org_archive_max_bytes
+            )
+        source.unlink()
         mappings = {uid: UUID(target) for uid, target in run.options.get("mappings", {}).items()}
         with archive.open_zip(target) as data:
             async with session_scope(run.tenant_id) as session:
@@ -260,6 +296,7 @@ async def _restore(run: OrganizationDataRun, workspace: Path) -> None:
                     expanded_limit=settings.org_archive_expanded_max_bytes,
                     preview=not applying,
                     expected=run.summary if applying else None,
+                    expected_version=2 if gzip_payload else 1,
                 )
                 if applying:
                     session.add(

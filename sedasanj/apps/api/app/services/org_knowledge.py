@@ -27,6 +27,7 @@ from app.services.knowledge import (
     _embedding_provider,
     _vector_literal,
     embed,
+    embed_index_chunks,
     expected_embedding,
 )
 from app.services.platform import effective_models
@@ -219,14 +220,17 @@ async def index_source_row(session: AsyncSession, tenant_id: UUID, source: Sourc
             base,
         )
         return "ready"
-    embedded: list[tuple[list[float], str] | None] = []
-    last_error = ""
-    for chunk in chunks:
-        try:
-            embedded.append(await embed(chunk))
-        except Exception as exc:
-            embedded.append(None)
-            last_error = str(exc)[:500]
+    cached = await session.execute(
+        text(
+            "SELECT content_sha256, embedding_model, embedding_provider, embedding::text "
+            "FROM org_knowledge_chunks WHERE tenant_id = :tenant_id AND source_type = :source_type "
+            "AND source_id = :source_id AND vector_status = 'ready' AND embedding IS NOT NULL"
+        ),
+        base,
+    )
+    embedded, last_error = await embed_index_chunks(
+        chunks, {(digest, model, provider): vector for digest, model, provider, vector in cached}
+    )
     failures = sum(1 for item in embedded if item is None)
     if failures:
         complete = (await session.execute(text(_COMPLETE_SQL), base)).scalar_one_or_none()

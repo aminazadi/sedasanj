@@ -7,17 +7,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from arq import Retry
 from arq.connections import RedisSettings
 from pydantic import ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from app.config import Settings, get_settings
-from app.db import dispose_engine, resolve_tenant_for_call, session_scope
+from app.db import control_session_scope, dispose_engine, resolve_tenant_for_call, session_scope
 from app.deps import Principal
 from app.logging import configure_logging, log_context
-from app.metrics import llm_json_failures_total, start_metrics_server
+from app.metrics import assistant_socket_run_seconds, llm_json_failures_total, start_metrics_server
 from app.models import (
     AnalysisRun,
     AssistantRun,
@@ -33,7 +34,7 @@ from app.models import (
     Transcript,
     User,
 )
-from app.routers.assistant import _tool_run_payload, stream_message
+from app.routers.assistant import _generate_conversation_title, _tool_run_payload, stream_message
 from app.schemas import ChatMessageCreate, ChatMessageOut, ExtractionResult
 from app.sentiment import merge_sentiment_profile
 from app.services import (
@@ -624,6 +625,23 @@ async def score_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str
 
 
 async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
+    if not ctx.get("assistant_dedicated_worker"):
+        return await _run_assistant_chat(ctx, payload)
+    tenant_id = UUID(payload["tenant_id"])
+    async with control_session_scope() as control:
+        acquired = await control.scalar(
+            select(
+                func.pg_try_advisory_xact_lock(
+                    func.hashtextextended(f"assistant-worker:{tenant_id}", 0)
+                )
+            )
+        )
+        if not acquired:
+            raise Retry(defer=5)
+        return await _run_assistant_chat(ctx, payload)
+
+
+async def _run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
     run_id = UUID(payload["run_id"])
     tenant_id = UUID(payload["tenant_id"])
     terminal_completion: dict[str, Any] | None = None
@@ -633,6 +651,7 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
         )
         if run is None or run.status in {"cancelled", "running"}:
             return "already finished"
+        created_at = run.created_at
         if run.status in {"succeeded", "failed"} and run.assistant_message_id:
             assistant_message = await session.get(ChatMessage, run.assistant_message_id)
             conversation = await session.get(ChatConversation, run.conversation_id)
@@ -660,6 +679,9 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
             status = "running"
             run.status = status
             run.updated_at = datetime.now(UTC)
+            assistant_socket_run_seconds.labels(stage="queue").observe(
+                max(0.0, (run.updated_at - created_at).total_seconds())
+            )
         else:
             return "already finished"
     if status in {"succeeded", "failed"}:
@@ -673,8 +695,8 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
         user_message = await session.get(ChatMessage, user_message_id)
         if user is None or user_message is None:
             raise RuntimeError("assistant owner no longer exists")
-        content = payload.get("content") or user_message.content
-        attachments = payload.get("attachments") or user_message.attachments or {}
+        content = user_message.content
+        attachments = user_message.attachments or {}
         principal = Principal(
             kind="user",
             id=owner_id,
@@ -713,6 +735,7 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
         buffer = ""
         completion: dict[str, Any] | None = None
         cancelled = False
+        first_delta = True
         async for chunk in response.body_iterator:
             if await ctx["redis"].get(f"assistant:cancel:{run_id}"):
                 cancelled = True
@@ -737,6 +760,11 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
                         completion = data
                     else:
                         await assistant_socket.publish(tenant_id, run_id, event, data)
+                        if first_delta and event == "delta" and data.get("content"):
+                            assistant_socket_run_seconds.labels(stage="first_delta").observe(
+                                max(0.0, (datetime.now(UTC) - created_at).total_seconds())
+                            )
+                            first_delta = False
         if buffer.strip():
             lines = buffer.splitlines()
             event = next(
@@ -770,7 +798,67 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
             run.status = "succeeded" if message.get("status") != "failed" else "failed"
             run.updated_at = datetime.now(UTC)
     await assistant_socket.publish(tenant_id, run_id, "message:completed", completion)
+    assistant_socket_run_seconds.labels(stage="completion").observe(
+        max(0.0, (datetime.now(UTC) - created_at).total_seconds())
+    )
     return str(message.get("status", "succeeded"))
+
+
+async def generate_assistant_title(ctx: dict[str, Any], payload: dict[str, str]) -> str:
+    tenant_id, owner_id, conversation_id = (
+        UUID(payload[field]) for field in ("tenant_id", "owner_id", "conversation_id")
+    )
+    version = datetime.fromisoformat(payload["version"])
+    eligible = (
+        ChatConversation.id == conversation_id,
+        ChatConversation.tenant_id == tenant_id,
+        ChatConversation.owner_id == owner_id,
+        ChatConversation.title.is_(None),
+        ChatConversation.updated_at == version,
+    )
+    async with session_scope(tenant_id) as session:
+        owner = await session.get(User, owner_id)
+        if not owner or owner.tenant_id != tenant_id or owner.role not in {"operator", "org_admin"}:
+            return "obsolete"
+        if not await session.scalar(select(ChatConversation.id).where(*eligible)):
+            return "obsolete"
+        question = await session.get(ChatMessage, UUID(payload["question_id"]))
+        answer = await session.get(ChatMessage, UUID(payload["answer_id"]))
+        if (
+            question is None
+            or answer is None
+            or question.conversation_id != conversation_id
+            or answer.conversation_id != conversation_id
+            or question.role != "user"
+            or answer.role != "assistant"
+            or answer.status != "succeeded"
+            or not answer.model
+        ):
+            return "obsolete"
+        runtime = await resolve_provider_settings(session, capability="assistant")
+        content, response, model = question.content, answer.content, answer.model
+    client = build_client(runtime, request_namespace=payload["answer_id"], purpose="chat")
+    try:
+        title = await _generate_conversation_title(client, model, content, response)
+    finally:
+        await client.close()
+    if title is None:
+        return "unavailable"
+    async with session_scope(tenant_id) as session:
+        updated = await session.scalar(
+            update(ChatConversation)
+            .where(*eligible)
+            .values(title=title)
+            .returning(ChatConversation.id)
+        )
+    if updated is None:
+        return "obsolete"
+    await assistant_socket.publisher().emit(
+        "assistant:conversation:title",
+        {"conversation_id": str(conversation_id), "title": title},
+        room=assistant_socket.room_for(tenant_id, owner_id, conversation_id),
+    )
+    return "updated"
 
 
 async def startup(ctx: dict[str, Any]) -> None:
@@ -800,6 +888,7 @@ class WorkerSettings:
     job_deserializer = queue.job_deserializer
     functions = [
         generate_scheduled_report,
+        generate_assistant_title,
         run_assistant_chat,
         analyze_call,
         start_transcript_correction,
@@ -813,6 +902,28 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 3
+    job_timeout = 1800
+    keep_result = 3600
+    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+
+
+async def startup_assistant(ctx: dict[str, Any]) -> None:
+    settings = get_settings()
+    configure_logging("worker-assistant", settings.log_level)
+    start_metrics_server(settings)
+    ctx["assistant_dedicated_worker"] = True
+
+
+class AssistantWorkerSettings:
+    job_serializer = queue.job_serializer
+    job_deserializer = queue.job_deserializer
+    functions = [run_assistant_chat]
+    queue_name = queue.QUEUE_ASSISTANT
+    on_startup = startup_assistant
+    on_shutdown = shutdown
+    # Each active chat holds a tenant connection while publishing through another one.
+    max_jobs = max(1, min(3, get_settings().tenant_database_pool_size - 1))
+    max_tries = 720
     job_timeout = 1800
     keep_result = 3600
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

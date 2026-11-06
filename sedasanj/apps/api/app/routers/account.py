@@ -26,9 +26,16 @@ from app.models import (
 )
 from app.schemas import TenantOut, UserOut
 from app.services import audit
-from app.services.storage import get_storage
+from app.services.audio_lifecycle import has_audio_reference, retire_audio
+from app.services.storage_inventory import StorageUsage, storage_usage
 
 router = APIRouter(prefix="/v1/account", tags=["account"])
+
+
+@router.get("/storage")
+async def get_storage_usage(principal: OrgAdminDep) -> StorageUsage:
+    assert principal.tenant_id is not None
+    return await storage_usage(principal.tenant_id)
 
 
 @router.get("")
@@ -122,14 +129,13 @@ async def delete_tenant_data(
     """Hard delete of call data for this tenant, audio included (§13)."""
     tenant_id = principal.tenant_id
     assert tenant_id is not None
-    audio_rows = (
-        (await session.execute(select(AudioObject).where(AudioObject.tenant_id == tenant_id)))
-        .scalars()
-        .all()
-    )
-    storage = get_storage()
-    for audio in audio_rows:
-        await storage.delete(audio.object_key)
+    audio_ids = (
+        await session.scalars(
+            select(Call.audio_id)
+            .where(Call.tenant_id == tenant_id, Call.audio_id.is_not(None))
+            .distinct()
+        )
+    ).all()
 
     # Every statement carries the tenant predicate; RLS is only the second line of defence.
     await session.execute(delete(Utterance).where(Utterance.tenant_id == tenant_id))
@@ -144,13 +150,25 @@ async def delete_tenant_data(
     )
     await session.execute(delete(CreditReservation).where(CreditReservation.tenant_id == tenant_id))
     await session.execute(delete(Call).where(Call.tenant_id == tenant_id))
-    await session.execute(delete(AudioObject).where(AudioObject.tenant_id == tenant_id))
+    audio_count = 0
+    for offset in range(0, len(audio_ids), 500):
+        rows = await session.scalars(
+            select(AudioObject).where(
+                AudioObject.tenant_id == tenant_id,
+                AudioObject.id.in_(audio_ids[offset : offset + 500]),
+                ~has_audio_reference(tenant_id),
+            )
+        )
+        for audio in rows:
+            await retire_audio(session, audio)
+            await session.delete(audio)
+            audio_count += 1
     await audit.record(
         session,
         actor_type="user",
         actor_id=principal.id,
         tenant_id=principal.tenant_id,
         action="tenant.data_delete",
-        payload={"audio_objects": len(audio_rows)},
+        payload={"audio_objects": audio_count},
         ip=client_ip(request),
     )

@@ -272,7 +272,30 @@ class AudioObject(Base):
 
     __table_args__ = (
         Index("idx_audio_expiry", "expires_at", postgresql_where=text("expires_at IS NOT NULL")),
+        Index(
+            "idx_audio_objects_live_key",
+            "tenant_id",
+            "bucket",
+            "object_key",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
+
+
+class AudioDeletion(Base):
+    __tablename__ = "audio_deletions"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    bucket: Mapped[str] = mapped_column(Text, primary_key=True)
+    object_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), nullable=False)
+    due_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (Index("idx_audio_deletions_due", "tenant_id", "due_at"),)
 
 
 class Call(Base):

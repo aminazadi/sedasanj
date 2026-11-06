@@ -21,6 +21,8 @@ from app.models import (
     CreditGrant,
     Job,
     LedgerEntry,
+    Meeting,
+    MeetingChunk,
     Order,
     OrderItem,
     PaymentAttempt,
@@ -32,9 +34,16 @@ from app.models import (
     User,
     WebhookDelivery,
 )
-from app.services import commerce, outbox, pipeline, queue, speaker_profiles, subscription_state
+from app.services import (
+    audio_lifecycle,
+    commerce,
+    outbox,
+    pipeline,
+    queue,
+    speaker_profiles,
+    subscription_state,
+)
 from app.services.commerce_settings import get_commerce_settings
-from app.services.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -322,40 +331,75 @@ def reanalysis_recovery_context(
 
 
 async def run_retention() -> int:
-    """§13 retention: drop MinIO objects past `audio_objects.expires_at`; keep transcripts."""
-    storage = get_storage()
-    deleted = 0
+    """Expire audio without removing transcripts or audio still in processing."""
+    retired = 0
     for tenant_id in await operational_tenant_ids():
-        async with session_scope(tenant_id) as session:
-            rows = (
-                (
-                    await session.execute(
-                        select(AudioObject).where(
-                            AudioObject.deleted_at.is_(None),
-                            AudioObject.expires_at.is_not(None),
-                            AudioObject.expires_at < datetime.now(UTC),
-                        )
+        try:
+            # Use independent transactions so a large backlog or a bad tenant cannot stall
+            # retention for the rest of the fleet.
+            for _ in range(10):
+                async with session_scope(tenant_id) as session:
+                    batch = await _retire_expired_audio(session, tenant_id)
+                retired += batch
+                if batch < 100:
+                    break
+            async with session_scope(tenant_id) as session:
+                await session.execute(
+                    delete(WebhookDelivery).where(
+                        WebhookDelivery.tenant_id == tenant_id,
+                        WebhookDelivery.created_at
+                        < datetime.now(UTC)
+                        - timedelta(days=get_settings().webhook_delivery_retention_days),
                     )
                 )
-                .scalars()
-                .all()
+                await speaker_profiles.purge_tombstones(session, tenant_id)
+        except Exception:
+            logger.warning(
+                "Tenant retention failed; check the database and retry",
+                extra={"extra_fields": {"tenant_id": str(tenant_id)}},
             )
-            for audio in rows:
-                await storage.delete(audio.object_key)
-                audio.deleted_at = datetime.now(UTC)
-                deleted += 1
-            await session.execute(
-                delete(WebhookDelivery).where(
-                    WebhookDelivery.tenant_id == tenant_id,
-                    WebhookDelivery.created_at
-                    < datetime.now(UTC)
-                    - timedelta(days=get_settings().webhook_delivery_retention_days),
-                )
-            )
-            await speaker_profiles.purge_tombstones(session, tenant_id)
-    if deleted:
-        logger.info("retention deleted audio", extra={"extra_fields": {"objects": deleted}})
-    return deleted
+    return retired
+
+
+async def _retire_expired_audio(session: AsyncSession, tenant_id: UUID) -> int:
+    now = datetime.now(UTC)
+    active_since = now - timedelta(days=1)
+    active_call = (
+        select(Call.id)
+        .where(
+            Call.audio_id == AudioObject.id,
+            Call.status.not_in(("complete", "failed_terminal", "canceled", "missed")),
+            Call.updated_at > active_since,
+        )
+        .exists()
+    )
+    active_meeting_chunk = (
+        select(MeetingChunk.id)
+        .join(Meeting, Meeting.id == MeetingChunk.meeting_id)
+        .where(
+            MeetingChunk.audio_id == AudioObject.id,
+            Meeting.status.in_(("receiving", "processing", "failed_retryable")),
+            Meeting.updated_at > active_since,
+        )
+        .exists()
+    )
+    rows = await session.scalars(
+        select(AudioObject)
+        .where(
+            AudioObject.tenant_id == tenant_id,
+            AudioObject.deleted_at.is_(None),
+            AudioObject.expires_at < now,
+            ~active_call,
+            ~active_meeting_chunk,
+        )
+        .order_by(AudioObject.expires_at, AudioObject.id)
+        .limit(100)
+        .with_for_update(skip_locked=True)
+    )
+    batch = rows.all()
+    for audio in batch:
+        await audio_lifecycle.retire_audio(session, audio)
+    return len(batch)
 
 
 async def reconcile_stuck_calls() -> int:
@@ -543,7 +587,13 @@ async def refresh_failure_gauge() -> None:
 
 async def refresh_queue_depth() -> None:
     q = queue.get_queue()
-    for name in (queue.QUEUE_ASR, queue.QUEUE_EMOTION, queue.QUEUE_LLM, queue.QUEUE_NOTIFY):
+    for name in (
+        queue.QUEUE_ASR,
+        queue.QUEUE_EMOTION,
+        queue.QUEUE_LLM,
+        queue.QUEUE_ASSISTANT,
+        queue.QUEUE_NOTIFY,
+    ):
         queue_depth.labels(queue=name).set(await q.depth(name))
     now = datetime.now(UTC)
     oldest: dict[str, datetime] = {}

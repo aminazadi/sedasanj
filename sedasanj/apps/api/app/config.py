@@ -44,13 +44,19 @@ class Settings(BaseSettings):
     tenant_migration_rollback_days: int = Field(default=7, ge=1, le=90)
     org_archive_max_bytes: int = Field(default=10 * 1024**3, ge=1024, le=30 * 1024**3)
     org_archive_expanded_max_bytes: int = Field(default=20 * 1024**3, ge=1024)
+    org_archive_write_v2: bool = False
+    org_archive_v2_tenants: tuple[UUID, ...] = ()
     org_backup_allow_plain_ftp: bool = False
     tenant_backup_enabled: bool = True
+    tenant_backup_write_v2: bool = False
+    tenant_backup_max_bytes: int = Field(default=32 * 1024**3, ge=1024, le=32 * 1024**3)
     tenant_backup_interval_hours: int = Field(default=24, ge=1, le=168)
     tenant_backup_retention_days: int = Field(default=30, ge=1, le=3650)
     redis_url: str = "redis://127.0.0.1:6379/0"
     assistant_export_ttl_minutes: int = Field(default=60, ge=1, le=1440)
     assistant_event_retention_days: int = Field(default=7, ge=1, le=90)
+    assistant_dedicated_queue: bool = False
+    assistant_dedicated_tenants: tuple[UUID, ...] = ()
 
     environment: Literal["development", "production"] = "development"
     # Debug conveniences (OTP returned in the response / written to the log) need BOTH

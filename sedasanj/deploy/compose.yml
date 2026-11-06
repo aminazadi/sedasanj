@@ -18,12 +18,18 @@ x-python-env: &python-env
   TENANT_MIGRATION_ROLLBACK_DAYS: ${TENANT_MIGRATION_ROLLBACK_DAYS:-7}
   ORG_ARCHIVE_MAX_BYTES: ${ORG_ARCHIVE_MAX_BYTES:-10737418240}
   ORG_ARCHIVE_EXPANDED_MAX_BYTES: ${ORG_ARCHIVE_EXPANDED_MAX_BYTES:-21474836480}
+  ORG_ARCHIVE_WRITE_V2: ${ORG_ARCHIVE_WRITE_V2:-false}
+  ORG_ARCHIVE_V2_TENANTS: ${ORG_ARCHIVE_V2_TENANTS:-[]}
   ORG_BACKUP_ALLOW_PLAIN_FTP: ${ORG_BACKUP_ALLOW_PLAIN_FTP:-false}
   TENANT_BACKUP_ENABLED: ${TENANT_BACKUP_ENABLED:-true}
+  TENANT_BACKUP_WRITE_V2: ${TENANT_BACKUP_WRITE_V2:-false}
+  TENANT_BACKUP_MAX_BYTES: ${TENANT_BACKUP_MAX_BYTES:-34359738368}
   TENANT_BACKUP_INTERVAL_HOURS: ${TENANT_BACKUP_INTERVAL_HOURS:-24}
   TENANT_BACKUP_RETENTION_DAYS: ${TENANT_BACKUP_RETENTION_DAYS:-30}
   REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD (URL-safe, e.g. openssl rand -hex 32)}@redis:6379/0
   ASSISTANT_EVENT_RETENTION_DAYS: ${ASSISTANT_EVENT_RETENTION_DAYS:-7}
+  ASSISTANT_DEDICATED_QUEUE: ${ASSISTANT_DEDICATED_QUEUE:-false}
+  ASSISTANT_DEDICATED_TENANTS: ${ASSISTANT_DEDICATED_TENANTS:-[]}
   MINIO_ENDPOINT: http://minio:9000
   MINIO_PUBLIC_ENDPOINT: https://${AUDIO_DOMAIN:?Set AUDIO_DOMAIN}
   MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
@@ -361,6 +367,29 @@ services:
       resources:
         limits: { cpus: "1", memory: 512M }
 
+  worker-assistant:
+    <<: *hardening
+    build: *api-build
+    restart: unless-stopped
+    command: ["arq", "worker_llm.main.AssistantWorkerSettings"]
+    environment:
+      <<: *python-env
+      SERVICE_NAME: worker-assistant
+    dns: *external-dns
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512M }
+
   worker-notify:
     build: *api-build
     restart: unless-stopped
@@ -409,6 +438,30 @@ services:
     environment:
       <<: *python-env
       SERVICE_NAME: worker-organization-data
+    dns: *external-dns
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1G }
+
+  worker-tenant-backup:
+    <<: *hardening
+    build: *api-build
+    restart: unless-stopped
+    command: ["python", "-m", "app.services.tenant_backup_worker"]
+    environment:
+      <<: *python-env
+      SERVICE_NAME: worker-tenant-backup
+      PROVISIONER_DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/cbi
     dns: *external-dns
     depends_on:
       postgres: { condition: service_healthy }

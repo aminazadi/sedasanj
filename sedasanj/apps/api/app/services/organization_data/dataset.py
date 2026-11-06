@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid5
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZipFile
 
 from sqlalchemy import Table, bindparam, func, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -58,6 +58,7 @@ TABLE_NAMES = (
     "meeting_segments",
     "meeting_chunk_speakers",
     "meeting_speakers",
+    "meeting_attendees",
     "meeting_analysis_steps",
     "meeting_minutes",
     "meeting_events",
@@ -101,6 +102,7 @@ OMIT_COLUMNS = {
     "tenant_id",
 }
 MEDIA_COLUMNS = {"audio_objects": "object_key", "assistant_exports": "storage_key"}
+PROFILE_REFERENCES = {"meeting_speakers", "meeting_attendees"}
 OPERATOR_REFERENCES = {
     ("pbx_extensions", "user_id"),
     ("meeting_speakers", "user_id"),
@@ -185,19 +187,24 @@ def _audio_references(tenant: UUID, *, completed_only: bool = False) -> list[Any
     return links
 
 
-async def export_zip(tenant: UUID, path: Path, limit: int) -> dict[str, Any]:
+async def export_zip(
+    tenant: UUID, path: Path, limit: int, *, gzip_payload: bool = False
+) -> dict[str, Any]:
     counts: dict[str, int] = {}
     omitted: dict[str, int] = {}
     owners: set[UUID] = set()
     media: dict[str, list[Any]] = {}
+    row_hashes: dict[str, str] = {}
     seen: dict[str, set[tuple[Any, ...]]] = {}
     expanded = 0
     row_count = 0
     storage = get_storage()
     now = datetime.now(UTC)
-    with ZipFile(path, "w", compression=ZIP_DEFLATED, compresslevel=1) as archive:
+    with binary.write_zip(path, gzip_payload=gzip_payload) as archive:
         async with session_scope(tenant, repeatable_read=True) as session:
             for name, table in TABLES.items():
+                if not gzip_payload and name == "meeting_attendees":
+                    continue
                 included: set[tuple[Any, ...]] = set()
                 seen[name] = included
                 counts[name] = omitted[name] = 0
@@ -219,6 +226,7 @@ async def export_zip(tenant: UUID, path: Path, limit: int) -> dict[str, Any]:
                 result = await session.stream_scalars(query.execution_options(yield_per=24))
                 # A ZIP cannot write rows and their media members simultaneously.
                 files: list[tuple[str, str, int, str | None]] = []
+                row_digest = hashlib.sha256() if gzip_payload else None
                 with archive.open(f"rows/{name}.ndjson", "w", force_zip64=True) as target:
                     async for row in result:
                         if name in TERMINAL and row["status"] not in TERMINAL[name]:
@@ -247,6 +255,8 @@ async def export_zip(tenant: UUID, path: Path, limit: int) -> dict[str, Any]:
                                 and (row[field],) not in seen[parent]
                             ):
                                 row[field] = None
+                        if gzip_payload and name in PROFILE_REFERENCES:
+                            row["profile_id"] = None
                         row_count += 1
                         if row_count > binary.MAX_ROWS:
                             raise binary.archive_too_large()
@@ -275,8 +285,12 @@ async def export_zip(tenant: UUID, path: Path, limit: int) -> dict[str, Any]:
                         expanded += len(encoded)
                         if len(encoded) > binary.MAX_ROW_BYTES or expanded > limit:
                             raise binary.archive_too_large()
+                        if row_digest is not None:
+                            row_digest.update(encoded)
                         target.write(encoded)
                         counts[name] += 1
+                if row_digest is not None:
+                    row_hashes[name] = row_digest.hexdigest()
                 for member, key, expected_size, expected_hash in files:
                     size, digest = await _write_media(
                         archive, storage, member, key, limit - expanded
@@ -292,7 +306,7 @@ async def export_zip(tenant: UUID, path: Path, limit: int) -> dict[str, Any]:
             ).all()
             tenant_name = await session.scalar(select(Tenant.name).where(Tenant.id == tenant))
         manifest = {
-            "version": 1,
+            "version": 2 if gzip_payload else 1,
             "tenant_id": str(tenant),
             "organization": tenant_name,
             "owners": {str(row.id): row.email for row in users},
@@ -300,6 +314,8 @@ async def export_zip(tenant: UUID, path: Path, limit: int) -> dict[str, Any]:
             "counts": counts,
             "omitted": omitted,
         }
+        if gzip_payload:
+            manifest["row_hashes"] = row_hashes
         payload = binary.json_bytes(manifest)
         if len(payload) > binary.MAX_MANIFEST_BYTES or len(payload) + expanded > limit:
             raise binary.archive_too_large()
@@ -317,6 +333,8 @@ def _uuid(value: Any) -> UUID:
 def _entries(
     archive: ZipFile,
     limit: int,
+    *,
+    expected_version: int = 1,
 ) -> tuple[dict[str, Any], dict[str, list[Any]], set[str]]:
     entries = binary.checked_entries(archive, limit)
     manifest = binary.read_manifest(archive)
@@ -324,7 +342,8 @@ def _entries(
     owners = manifest.get("owners")
     counts = manifest.get("counts")
     if (
-        not isinstance(media, dict)
+        manifest["version"] != expected_version
+        or not isinstance(media, dict)
         or not isinstance(owners, dict)
         or len(owners) > 10_000
         or not isinstance(counts, dict)
@@ -351,8 +370,27 @@ def _entries(
         ):
             raise binary.invalid_archive()
     allowed = {f"rows/{table}.ndjson" for table in TABLES} | {"manifest.json"} | set(media)
+    if expected_version == 1:
+        allowed.discard("rows/meeting_attendees.ndjson")
+        if "meeting_attendees" in counts:
+            raise binary.invalid_archive()
     if entries - allowed or set(counts) - set(TABLES):
         raise binary.invalid_archive()
+    if expected_version == 2:
+        row_hashes = manifest.get("row_hashes")
+        row_members = {f"rows/{name}.ndjson" for name in counts}
+        if (
+            not isinstance(row_hashes, dict)
+            or set(row_hashes) != set(counts)
+            or row_members != entries - set(media) - {"manifest.json"}
+            or any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(char not in "0123456789abcdef" for char in value)
+                for value in row_hashes.values()
+            )
+        ):
+            raise binary.invalid_archive()
     return manifest, media, entries
 
 
@@ -379,11 +417,12 @@ def _row_batches(
     archive: ZipFile,
     member: str,
     table: Table,
+    expected_sha256: str | None = None,
 ) -> Iterator[list[dict[str, Any]]]:
     batch: list[dict[str, Any]] = []
     available = columns(table)
     size = 0
-    for row in binary.records(archive, member):
+    for row in binary.records(archive, member, expected_sha256):
         if set(row) - available or any(value is None for value in identity(table, row)):
             raise binary.invalid_archive()
         for col in table.primary_key:
@@ -507,6 +546,9 @@ def _restore_row(
     defaults: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, set[str]]:
     row = {**original, "tenant_id": str(tenant), **defaults}
+    if name in PROFILE_REFERENCES:
+        # Portable archives retain labels and attendance, but do not restore private profiles.
+        row["profile_id"] = None
     used_fallback = set()
     if name in TERMINAL and row.get("status") not in TERMINAL[name]:
         raise binary.invalid_archive()
@@ -576,8 +618,9 @@ async def restore_zip(
     expanded_limit: int,
     preview: bool,
     expected: dict[str, Any] | None = None,
+    expected_version: int = 1,
 ) -> dict[str, Any]:
-    manifest, media, entries = _entries(archive, expanded_limit)
+    manifest, media, entries = _entries(archive, expanded_limit, expected_version=expected_version)
     source = _uuid(manifest.get("tenant_id"))
     declared_owners = manifest["owners"]
     roles = dict(
@@ -603,6 +646,8 @@ async def restore_zip(
     now = datetime.now(UTC)
     settings = await session.scalar(select(Tenant.audio_retention_days).where(Tenant.id == tenant))
     for name, table in TABLES.items():
+        if expected_version == 1 and name == "meeting_attendees":
+            continue
         mapped: dict[tuple[Any, ...], tuple[Any, ...]] = {}
         identities[name] = mapped
         defaults = await _set_defaults(session, table, tenant)
@@ -613,7 +658,7 @@ async def restore_zip(
             if manifest["counts"].get(name):
                 raise binary.invalid_archive()
             continue
-        for batch in _row_batches(archive, member, table):
+        for batch in _row_batches(archive, member, table, manifest.get("row_hashes", {}).get(name)):
             ready: dict[tuple[Any, ...], tuple[dict[str, Any], tuple[Any, ...], set[str]]] = {}
             # Resolve self references in version order.
             batches = ([row] for row in batch) if name == "organization_memories" else (batch,)

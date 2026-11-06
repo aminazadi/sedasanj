@@ -986,6 +986,14 @@ export default function Assistant() {
         setRunState(key, runId);
       }
     });
+    socket.on("assistant:conversation:title", (payload: { conversation_id: string; title: string }) => {
+      if (!payload?.conversation_id || !payload.title) return;
+      const applyTitle = (item: ChatConversation) => item.id === payload.conversation_id && !item.title
+        ? { ...item, title: payload.title }
+        : item;
+      setConversation((current) => current ? applyTitle(current) : current);
+      setConversations((current) => current.map(applyTitle));
+    });
     socket.on("assistant:conversation:state", (state: any) => {
       const stateConversationId = String(state?.conversation_id || "");
       if (stateConversationId !== selectedConversationIdRef.current) {

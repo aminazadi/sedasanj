@@ -14,7 +14,6 @@ from app.services.identity_projection import dispatch_next as dispatch_identity_
 from app.services.knowledge import backfill_graph_next, backfill_next
 from app.services.org_knowledge import backfill_org_next
 from app.services.queue_serialization import job_deserializer, job_serializer
-from app.services.tenant_backups import backup_next_due, purge_expired
 from app.services.tenant_provisioning import (
     run_next_fleet_migration,
     run_next_migration,
@@ -44,17 +43,6 @@ async def identity_projection_tick(ctx: dict[str, Any]) -> str:
         return await dispatch_identity_projection()
     except Exception:
         logger.exception("identity projection failed")
-        return "failed"
-
-
-async def backup_tick(ctx: dict[str, Any]) -> str:
-    if not get_settings().tenant_databases_enabled:
-        return "disabled"
-    try:
-        await purge_expired()
-        return await backup_next_due()
-    except Exception:
-        logger.exception("tenant backup failed")
         return "failed"
 
 
@@ -99,7 +87,6 @@ class WorkerSettings:
     functions = [
         provision_tick,
         identity_projection_tick,
-        backup_tick,
         knowledge_backfill_tick,
         global_reference_tick,
     ]
@@ -108,7 +95,6 @@ class WorkerSettings:
         cron(identity_projection_tick, second={5, 20, 35, 50}),
         cron(knowledge_backfill_tick, second={10, 25, 40, 55}),
         cron(global_reference_tick, second={12, 42}),
-        cron(backup_tick, minute={7}),
     ]
     queue_name = "q:provision"
     on_startup = startup

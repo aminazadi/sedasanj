@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import dispose_engine, resolve_tenant_for_call, session_scope
 from app.logging import configure_logging, log_context
-from app.metrics import start_metrics_server, webhook_responses_total
+from app.metrics import audio_cleanup_total, start_metrics_server, webhook_responses_total
 from app.models import (
     Call,
     CallInsight,
@@ -409,6 +409,12 @@ async def assistant_exports_cron(ctx: dict[str, Any]) -> str:
     return f"assistant-exports:{await purge_expired()}"
 
 
+async def audio_cleanup_cron(ctx: dict[str, Any]) -> str:
+    from app.services.audio_lifecycle import purge_audio_deletions
+
+    return f"audio-cleanup:{await purge_audio_deletions()}"
+
+
 async def retention_cron(ctx: dict[str, Any]) -> str:
     deleted = await run_retention()
     purged = await outbox.purge_dispatched()
@@ -452,6 +458,8 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
 async def startup(ctx: dict[str, Any]) -> None:
     settings = get_settings()
     configure_logging("worker-notify", settings.log_level)
+    for result in ("deleted", "database_error", "storage_error", "invalid_location"):
+        audio_cleanup_total.labels(result=result)
     start_metrics_server(settings)
     ctx["http"] = httpx.AsyncClient(timeout=20.0, follow_redirects=False)
     try:
@@ -479,6 +487,7 @@ class WorkerSettings:
     functions = [deliver_event]
     cron_jobs = [
         cron(retention_cron, hour=2, minute=15),
+        cron(audio_cleanup_cron, second=5),
         cron(assistant_exports_cron, minute={0, 10, 20, 30, 40, 50}),
         cron(reconciler_cron, second=30),
     ]

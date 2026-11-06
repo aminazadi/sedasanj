@@ -113,6 +113,8 @@ from app.services.platform import (
 )
 from app.services.platform_secrets import decrypt_secret, encrypt_secret
 from app.services.provider_errors import ProviderError
+from app.services.storage_inventory import StaffStorageUsage, storage_usage
+from app.services.tenant_backup_restore import VERIFIED_RESTORE_ACTION
 from app.services.tenant_provisioning import rollback_tenant
 from app.services.transcript_corrections import CorrectionClient, validate_result
 from app.services.voicesanj import VoiceSanjClient
@@ -370,6 +372,7 @@ async def kpis(staff: StaffDep, session: StaffSession) -> PlatformKpis:
         "q:asr": await q.depth(queue.QUEUE_ASR),
         "q:emotion": await q.depth(queue.QUEUE_EMOTION),
         "q:llm": await q.depth(queue.QUEUE_LLM),
+        "q:assistant": await q.depth(queue.QUEUE_ASSISTANT),
         "q:notify": await q.depth(queue.QUEUE_NOTIFY),
     }
     return PlatformKpis(
@@ -409,6 +412,14 @@ async def list_tenants(
     return {"items": items, "total": total, "next_cursor": next_cursor}
 
 
+@router.get("/tenants/{tenant_id}/storage")
+async def get_tenant_storage_usage(
+    tenant_id: UUID, staff: StaffDep, scan: bool = False
+) -> StaffStorageUsage:
+    await ratelimit.enforce(f"tenant-storage:{staff.id}", 10)
+    return await storage_usage(tenant_id, staff=True, scan=scan)
+
+
 @router.get("/tenant-databases")
 async def list_tenant_databases(
     staff: StaffDep,
@@ -432,16 +443,30 @@ async def list_tenant_databases(
             .limit(limit)
         )
     ).all()
+    tenant_ids = [tenant.id for tenant, _, _ in rows]
     latest_backups = {
         row.tenant_id: row
         for row in (
             await session.execute(
                 select(TenantBackup)
+                .where(TenantBackup.tenant_id.in_(tenant_ids))
                 .distinct(TenantBackup.tenant_id)
                 .order_by(TenantBackup.tenant_id, TenantBackup.started_at.desc())
             )
         ).scalars()
     }
+    last_verified_restores = dict(
+        (
+            await session.execute(
+                select(AuditEvent.tenant_id, func.max(AuditEvent.created_at))
+                .where(
+                    AuditEvent.tenant_id.in_(tenant_ids),
+                    AuditEvent.action == VERIFIED_RESTORE_ACTION,
+                )
+                .group_by(AuditEvent.tenant_id)
+            )
+        ).tuples().all()
+    )
     items = [
         {
             "tenant_id": str(tenant.id),
@@ -464,6 +489,8 @@ async def list_tenant_databases(
             "backup_checksum": (
                 latest_backups[tenant.id].checksum_sha256 if tenant.id in latest_backups else None
             ),
+            "backup_id": str(latest_backups[tenant.id].id) if tenant.id in latest_backups else None,
+            "backup_restore_verified_at": last_verified_restores.get(tenant.id),
         }
         for tenant, registry, migration in rows
     ]
@@ -471,6 +498,11 @@ async def list_tenant_databases(
         "items": items,
         "total": total,
         "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+        "backup_interval_hours": (
+            get_settings().tenant_backup_interval_hours
+            if get_settings().tenant_backup_enabled
+            else None
+        ),
     }
 
 

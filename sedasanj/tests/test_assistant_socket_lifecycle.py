@@ -1,10 +1,12 @@
+import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
-from app.services import assistant_socket
+from app.routers import assistant
+from app.services import assistant_socket, queue
 
 
 class _Rows:
@@ -66,7 +68,7 @@ async def test_join_subscribes_before_reading_conversation_snapshot(monkeypatch)
     )
 
     assert result == {"ok": True, "sequence": 0}
-    assert events == ["room-joined", "snapshot-query", "snapshot-query", "snapshot-query", "state-emitted"]
+    assert events == ["room-joined", *(["snapshot-query"] * 3), "state-emitted"]
 
 
 @pytest.mark.asyncio
@@ -103,6 +105,126 @@ async def test_running_assistant_job_cannot_start_twice(monkeypatch) -> None:
         yield _Session()
 
     monkeypatch.setattr("worker_llm.main.session_scope", fake_session_scope)
-    assert await run_assistant_chat(
-        {}, {"tenant_id": str(tenant_id), "run_id": str(run_id)}
-    ) == "already finished"
+    assert (
+        await run_assistant_chat({}, {"tenant_id": str(tenant_id), "run_id": str(run_id)})
+        == "already finished"
+    )
+
+
+@pytest.mark.parametrize(("dedicated", "canary"), [(False, False), (False, True), (True, False)])
+async def test_assistant_job_contains_only_durable_ids(monkeypatch, dedicated, canary) -> None:
+    tenant_id, run_id = uuid4(), uuid4()
+    enqueued = []
+
+    async def enqueue(*args, **kwargs):
+        enqueued.append((args, kwargs))
+
+    monkeypatch.setattr(
+        queue,
+        "get_settings",
+        lambda: SimpleNamespace(
+            assistant_dedicated_queue=dedicated,
+            assistant_dedicated_tenants=(tenant_id,) if canary else (),
+        ),
+    )
+    monkeypatch.setattr(queue, "get_queue", lambda: SimpleNamespace(enqueue=enqueue))
+    await queue.enqueue_assistant(tenant_id, run_id)
+
+    assert enqueued == [
+        (
+            (
+                queue.QUEUE_ASSISTANT if dedicated or canary else queue.QUEUE_LLM,
+                "run_assistant_chat",
+                {"run_id": str(run_id), "tenant_id": str(tenant_id)},
+            ),
+            {"job_id": f"assistant:{run_id}"},
+        )
+    ]
+
+
+def test_assistant_worker_uses_json_and_only_consumes_its_own_queue() -> None:
+    from arq.worker import get_kwargs
+
+    from worker_llm.main import AssistantWorkerSettings, run_assistant_chat
+
+    settings = get_kwargs(AssistantWorkerSettings)
+    assert settings["queue_name"] == queue.QUEUE_ASSISTANT
+    assert settings["functions"] == [run_assistant_chat]
+    assert settings["job_serializer"] is queue.job_serializer
+    assert settings["job_deserializer"] is queue.job_deserializer
+
+
+async def test_dispatch_cleanup_visits_every_tenant_after_one_fails(monkeypatch) -> None:
+    tenant_ids = [uuid4(), uuid4(), uuid4()]
+    visited = []
+
+    @asynccontextmanager
+    async def session_scope(_tenant_id, *, staff):
+        class _Session:
+            async def execute(self, _statement):
+                return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: tenant_ids))
+
+        assert staff
+        yield _Session()
+
+    async def dispatch(tenant_id, cutoff):
+        visited.append((tenant_id, cutoff))
+        if tenant_id == tenant_ids[0]:
+            raise RuntimeError("tenant offline")
+
+    async def stop(_seconds):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(assistant_socket, "session_scope", session_scope)
+    monkeypatch.setattr(assistant_socket, "_dispatch_tenant_pending", dispatch)
+    monkeypatch.setattr(assistant_socket.asyncio, "sleep", stop)
+    with pytest.raises(asyncio.CancelledError):
+        await assistant_socket._dispatch_pending()
+
+    assert [tenant_id for tenant_id, _cutoff in visited] == tenant_ids
+    assert visited[0][1] is not None
+    assert all(cutoff == visited[0][1] for _tenant_id, cutoff in visited)
+
+
+async def test_deltas_flush_while_provider_is_waiting_and_close_cleanly() -> None:
+    release_provider = asyncio.Event()
+    closed = asyncio.Event()
+
+    async def chunks():
+        yield "پاسخ"
+        yield " فارسی"
+        yield " دقیق"
+        try:
+            await release_provider.wait()
+        finally:
+            closed.set()
+
+    batches = assistant._coalesced_deltas(chunks())
+    assert await anext(batches) == "پاسخ"
+    assert await asyncio.wait_for(anext(batches), timeout=2) == " فارسی دقیق"
+    await batches.aclose()
+    assert closed.is_set()
+
+
+async def test_deltas_flush_on_end_without_losing_text() -> None:
+    async def chunks():
+        for value in ("اول", "دوم", "سوم"):
+            yield value
+
+    assert [batch async for batch in assistant._coalesced_deltas(chunks())] == ["اول", "دومسوم"]
+
+
+async def test_stopping_after_first_delta_closes_the_provider_stream() -> None:
+    closed = asyncio.Event()
+
+    async def chunks():
+        try:
+            yield "پاسخ"
+            yield "ادامه"
+        finally:
+            closed.set()
+
+    batches = assistant._coalesced_deltas(chunks())
+    assert await anext(batches) == "پاسخ"
+    await batches.aclose()
+    assert closed.is_set()

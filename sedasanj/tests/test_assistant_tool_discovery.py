@@ -388,7 +388,8 @@ async def test_selected_file_tool_runs_after_planning_with_date_scope(monkeypatc
     assert loader.call_args.args[3].from_date == attachments.from_date
     assert loader.call_args.args[3].to_date == attachments.to_date
     answer, _ = assistant_agent.final_response("فایل آماده شد", set(), [(planned, result)])
-    assert result["notice"] in answer
+    assert f'/v1/assistant/exports/{result["file"]["export_id"]}/download' in answer
+    assert result["notice"] not in answer
     assert duration >= 0
 
 

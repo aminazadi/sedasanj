@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from unittest.mock import call as awaited
 from uuid import uuid4
 
 import pytest
@@ -14,7 +15,14 @@ async def test_delete_call_removes_audio_and_call_owned_data(
 ) -> None:
     call_id, tenant_id, audio_id, user_id = uuid4(), uuid4(), uuid4(), uuid4()
     call = SimpleNamespace(id=call_id, audio_id=audio_id)
-    audio = SimpleNamespace(id=audio_id, tenant_id=tenant_id, object_key="tenant/call.wav")
+    audio = SimpleNamespace(
+        id=audio_id,
+        tenant_id=tenant_id,
+        bucket="audio",
+        object_key=f"{tenant_id}/call.wav",
+        bytes=len(b"RIFFsample"),
+        deleted_at=None,
+    )
     session = SimpleNamespace(
         execute=AsyncMock(
             side_effect=[
@@ -25,6 +33,7 @@ async def test_delete_call_removes_audio_and_call_owned_data(
                 SimpleNamespace(),
             ]
         ),
+        scalar=AsyncMock(return_value=False),
         delete=AsyncMock(),
         flush=AsyncMock(),
     )
@@ -42,7 +51,9 @@ async def test_delete_call_removes_audio_and_call_owned_data(
         session,
     )
 
-    session.delete.assert_awaited_once_with(call)
-    assert audio.object_key not in storage.objects
+    session.delete.assert_has_awaits([awaited(call), awaited(audio)])
+    assert audio.object_key in storage.objects
+    assert audio.deleted_at is not None
     assert session.execute.await_count == 5
+    assert session.execute.call_args.args[0].table.name == "audio_deletions"
     audit_record.assert_awaited_once()

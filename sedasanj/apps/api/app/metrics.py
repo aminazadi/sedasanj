@@ -7,6 +7,7 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 ingest_total = Counter("cbi_ingest_total", "Accepted ingest uploads", ["tenant", "result"])
+audio_cleanup_total = Counter("cbi_audio_cleanup_total", "Audio deletion outcomes", ["result"])
 credit_rejects_total = Counter(
     "cbi_credit_rejects_total", "Ingests rejected for credit", ["tenant"]
 )
@@ -91,6 +92,12 @@ assistant_socket_connections_total = Counter(
 )
 assistant_socket_events_total = Counter(
     "cbi_assistant_socket_events_total", "Assistant Socket.IO events", ["event"]
+)
+assistant_socket_run_seconds = Histogram(
+    "cbi_assistant_socket_run_seconds",
+    "Assistant Socket.IO run time from submission to the measured stage",
+    ["stage"],
+    buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60, 120, 300, 600, 1800),
 )
 scheduled_report_attempts_total = Counter(
     "cbi_scheduled_report_attempts_total", "Scheduled report generation attempts", ["result"]

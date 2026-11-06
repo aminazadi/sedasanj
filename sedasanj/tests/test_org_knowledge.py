@@ -16,6 +16,9 @@ class _Result:
     def scalar_one_or_none(self) -> object:
         return self._value
 
+    def __iter__(self):
+        return iter(())
+
 
 class _Session:
     def __init__(self, complete: object = None) -> None:
@@ -89,10 +92,10 @@ def test_only_org_admin_can_read_admin_chunks(role: str, expects_admin: bool) ->
 
 @pytest.mark.asyncio
 async def test_failed_embedding_keeps_complete_vectors(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def broken(content: str) -> tuple[list[float], str]:
-        raise RuntimeError("down")
+    async def broken(chunks, cached):
+        return [None] * len(chunks), "down"
 
-    monkeypatch.setattr(org_knowledge, "embed", broken)
+    monkeypatch.setattr(org_knowledge, "embed_index_chunks", broken)
     session = _Session(complete=True)
 
     result = await org_knowledge.index_source_row(
@@ -110,10 +113,10 @@ async def test_failed_embedding_keeps_complete_vectors(monkeypatch: pytest.Monke
 async def test_new_source_row_with_failed_embedding_gets_retry_placeholder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def broken(content: str) -> tuple[list[float], str]:
-        raise RuntimeError("down")
+    async def broken(chunks, cached):
+        return [None] * len(chunks), "down"
 
-    monkeypatch.setattr(org_knowledge, "embed", broken)
+    monkeypatch.setattr(org_knowledge, "embed_index_chunks", broken)
     session = _Session(complete=None)
 
     result = await org_knowledge.index_source_row(
@@ -132,10 +135,10 @@ async def test_new_source_row_with_failed_embedding_gets_retry_placeholder(
 
 @pytest.mark.asyncio
 async def test_successful_row_is_embedded_and_stored(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_embed(content: str) -> tuple[list[float], str]:
-        return [0.1, 0.2], "model-x"
+    async def fake_embed(chunks, cached):
+        return [([0.1, 0.2], "model-x")] * len(chunks), ""
 
-    monkeypatch.setattr(org_knowledge, "embed", fake_embed)
+    monkeypatch.setattr(org_knowledge, "embed_index_chunks", fake_embed)
     session = _Session()
 
     result = await org_knowledge.index_source_row(

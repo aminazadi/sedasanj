@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 from uuid import UUID
 
@@ -27,7 +29,10 @@ def _embedding_provider(model: str) -> str:
     return "ninerouter_direct" if model.startswith("ninerouter_direct:") else "aiservice"
 
 
-async def embed(content: str) -> tuple[list[float], str]:
+@asynccontextmanager
+async def _embedding_requests() -> AsyncIterator[
+    tuple[str, int, Callable[[list[str]], Awaitable[list[list[float]]]]]
+]:
     async with session_scope(None, staff=True) as control_session:
         settings = await effective_models(control_session)
         runtime = (
@@ -39,35 +44,116 @@ async def embed(content: str) -> tuple[list[float], str]:
         model = settings["ninerouter_embedding_model"].strip()
         assert runtime is not None
         client = NineRouterClient(runtime)
+
+        async def direct_embeddings(contents: list[str]) -> list[list[float]]:
+            return [await client.embedding(model=model, content=content) for content in contents]
+
         try:
-            vector = await client.embedding(model=model, content=content)
+            yield f"ninerouter_direct:{model}", 1, direct_embeddings
         finally:
             await client.close()
-        return vector, f"ninerouter_direct:{model}"
+        return
+
     base_url = settings["voicesanj_base_url"].rstrip("/")
     api_key = settings["api_key"].strip()
     model = settings["embedding_model"].strip()
     if not base_url or not api_key or not model:
         raise RuntimeError("embedding provider is not configured")
     route = settings["embedding_route"]
-    async with httpx.AsyncClient(timeout=120.0, follow_redirects=False) as client:
-        response = await client.post(
-            f"{base_url}{AISERVICE_ROUTES['embedding_route'][route]}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "input": content},
-        )
-        if response.status_code == 422 and route == "ninerouter":
-            response = await client.post(
-                f"{base_url}{AISERVICE_ROUTES['embedding_route']['native']}",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": model, "input": content},
+    async with httpx.AsyncClient(timeout=120.0, follow_redirects=False) as http_client:
+
+        async def local_embeddings(contents: list[str]) -> list[list[float]]:
+            payload = {"model": model, "input": contents[0] if len(contents) == 1 else contents}
+            headers = {"Authorization": f"Bearer {api_key}"}
+            routes = AISERVICE_ROUTES["embedding_route"]
+            response = await http_client.post(
+                f"{base_url}{routes[route]}", headers=headers, json=payload
             )
-    response.raise_for_status()
-    body = response.json()
-    vector = body.get("data", [{}])[0].get("embedding")
-    if not isinstance(vector, list):
-        raise RuntimeError("embedding provider returned no vector")
-    return [float(value) for value in vector], model
+            if response.status_code == 422 and route == "ninerouter":
+                response = await http_client.post(
+                    f"{base_url}{routes['native']}", headers=headers, json=payload
+                )
+            response.raise_for_status()
+            return _embedding_vectors(response.json(), len(contents))
+
+        yield model, 16, local_embeddings
+
+
+def _embedding_vectors(body: object, expected: int) -> list[list[float]]:
+    rows = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(rows, list) or len(rows) != expected:
+        raise ValueError("embedding provider returned an invalid vector count")
+    vectors: dict[int, list[float]] = {}
+    for row in rows:
+        index = row.get("index", 0 if expected == 1 else None) if isinstance(row, dict) else None
+        vector = row.get("embedding") if isinstance(row, dict) else None
+        if (
+            type(index) is not int
+            or index in vectors
+            or not 0 <= index < expected
+            or not isinstance(vector, list)
+        ):
+            raise ValueError("embedding provider returned an invalid vector index")
+        try:
+            converted = [float(value) for value in vector]
+        except (TypeError, ValueError) as exc:
+            raise ValueError("embedding provider returned a nonnumeric vector") from exc
+        if not converted or len(converted) > 4096 or not all(map(math.isfinite, converted)):
+            raise ValueError("embedding provider returned an invalid vector")
+        vectors[index] = converted
+    if len({len(vector) for vector in vectors.values()}) > 1:
+        raise ValueError("embedding provider returned inconsistent dimensions")
+    return [vectors[index] for index in range(expected)]
+
+
+async def embed(content: str) -> tuple[list[float], str]:
+    async with _embedding_requests() as (model, _batch_size, request):
+        return (await request([content]))[0], model
+
+
+async def embed_index_chunks(
+    chunks: list[str],
+    cached: dict[tuple[str, str, str], str],
+) -> tuple[list[tuple[list[float], str] | None], str]:
+    """Embed unique missing chunks for one source and reuse its compatible vectors."""
+    results: dict[str, tuple[list[float], str]] = {}
+    last_error = ""
+    try:
+        async with _embedding_requests() as (model, batch_size, request):
+            provider = _embedding_provider(model)
+            missing: list[str] = []
+            for content in dict.fromkeys(chunks):
+                digest = hashlib.sha256(content.encode()).hexdigest()
+                stored = cached.get((digest, model, provider))
+                if stored is not None:
+                    results[content] = (json.loads(stored), model)
+                else:
+                    missing.append(content)
+
+            for offset in range(0, len(missing), batch_size):
+                batch = missing[offset : offset + batch_size]
+                try:
+                    vectors = await request(batch)
+                except Exception as exc:
+                    last_error = type(exc).__name__
+                    rejected_batch = isinstance(exc, ValueError) or (
+                        isinstance(exc, httpx.HTTPStatusError)
+                        and exc.response.status_code in {400, 422}
+                    )
+                    if len(batch) > 1 and rejected_batch:
+                        for content in batch:
+                            try:
+                                results[content] = ((await request([content]))[0], model)
+                            except Exception as single_error:
+                                last_error = type(single_error).__name__
+                    continue
+                results.update(
+                    (content, (vector, model))
+                    for content, vector in zip(batch, vectors, strict=True)
+                )
+    except Exception as exc:
+        last_error = type(exc).__name__
+    return [results.get(chunk) for chunk in chunks], last_error
 
 
 async def invalidate_embeddings() -> int:
@@ -330,18 +416,19 @@ async def _index_transcript_chunks(session: AsyncSession, call: Call, tenant_id:
     chunks = _chunks(content)
     if not chunks:
         return
-    # Embed everything first so a provider failure never leaves a previously complete
-    # chunk set half deleted.
-    embedded: list[tuple[list[float], str] | None] = []
-    failed = 0
-    last_error = ""
-    for chunk in chunks:
-        try:
-            embedded.append(await embed(chunk))
-        except Exception as exc:
-            embedded.append(None)
-            failed += 1
-            last_error = str(exc)[:500]
+    cached = await session.execute(
+        text(
+            "SELECT content_sha256, embedding_model, embedding_provider, embedding::text "
+            "FROM transcript_chunks WHERE tenant_id = :tenant_id AND call_id = :call_id "
+            "AND vector_status = 'ready' AND embedding IS NOT NULL"
+        ),
+        {"tenant_id": tenant_id, "call_id": call.id},
+    )
+    # Prepare the replacement before deleting old rows so partial provider failures are safe.
+    embedded, last_error = await embed_index_chunks(
+        chunks, {(digest, model, provider): vector for digest, model, provider, vector in cached}
+    )
+    failed = sum(item is None for item in embedded)
     if failed and await _transcript_chunks_complete(session, call.id, tenant_id):
         await _record_chunk_failure(session, tenant_id, call.id, failed, len(chunks), last_error)
         return
@@ -442,9 +529,16 @@ async def vector_call_context(
     *,
     from_date: datetime | None = None,
     to_date: datetime | None = None,
+    query_embedding: tuple[list[float], str] | None = None,
 ) -> list[dict[str, object]]:
-    vector, model = await embed(question)
-    operator_clause = "AND k.operator_id = :operator_id" if operator_id else ""
+    vector, model = query_embedding if query_embedding is not None else await embed(question)
+    operator_clause = (
+        "AND EXISTS (SELECT 1 FROM call_operator_assignments a "
+        "WHERE a.tenant_id = k.tenant_id AND a.call_id = k.call_id "
+        "AND a.operator_id = :operator_id AND a.superseded_at IS NULL)"
+        if operator_id
+        else ""
+    )
     call_clause = "AND k.call_id = :call_id" if call_id else ""
     window_clause = ""
     if from_date is not None:
@@ -494,8 +588,9 @@ async def vector_transcript_context(
     *,
     from_date: datetime | None = None,
     to_date: datetime | None = None,
+    query_embedding: tuple[list[float], str] | None = None,
 ) -> list[dict[str, object]]:
-    vector, model = await embed(question)
+    vector, model = query_embedding if query_embedding is not None else await embed(question)
     operator_join = ""
     operator_clause = ""
     if operator_id:

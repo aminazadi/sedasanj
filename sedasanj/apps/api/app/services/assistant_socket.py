@@ -10,7 +10,7 @@ from uuid import UUID
 
 import jwt
 import socketio
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, tuple_
 from starlette.requests import Request
 
 from app.config import get_settings
@@ -21,7 +21,7 @@ from app.metrics import assistant_socket_connections_total, assistant_socket_eve
 from app.models import AssistantRun, AssistantRunEvent, ChatConversation, ChatMessage, Tenant, User
 from app.security import decode_access_token
 from app.services.assistant_tool_runs import for_messages as tool_runs_for_messages
-from app.services.queue import QUEUE_LLM, get_queue
+from app.services.queue import enqueue_assistant
 
 logger = logging.getLogger(__name__)
 _manager: socketio.AsyncRedisManager | None = None
@@ -321,12 +321,7 @@ async def join_conversation(sid: str, data: dict[str, Any]) -> dict[str, Any]:
     for run in active_runs:
         if run.status == "queued":
             try:
-                await get_queue().enqueue(
-                    QUEUE_LLM,
-                    "run_assistant_chat",
-                    {"run_id": str(run.id), "tenant_id": str(tenant_id)},
-                    job_id=f"assistant:{run.id}",
-                )
+                await enqueue_assistant(tenant_id, run.id)
             except Exception:
                 logger.exception("could not ensure queued assistant run")
     return {"ok": True, "sequence": latest}
@@ -374,10 +369,6 @@ async def send_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         ).scalar_one_or_none()
         if existing:
             conversation_id = existing.conversation_id
-            existing_message = await session.get(ChatMessage, existing.user_message_id)
-            if existing_message is not None:
-                content = existing_message.content
-                attachments = existing_message.attachments or {}
             accepted = {
                 "ok": True,
                 "request_id": request_id,
@@ -450,17 +441,7 @@ async def send_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
     await sio.enter_room(sid, room)
     await sio.emit("assistant:message:accepted", accepted, to=sid)
     try:
-        await get_queue().enqueue(
-            QUEUE_LLM,
-            "run_assistant_chat",
-            {
-                "run_id": accepted["run_id"],
-                "tenant_id": str(tenant_id),
-                "content": content,
-                "attachments": attachments,
-            },
-            job_id=f"assistant:{accepted['run_id']}",
-        )
+        await enqueue_assistant(tenant_id, UUID(accepted["run_id"]))
     except Exception:
         logger.exception("failed to enqueue assistant run")
     return accepted
@@ -686,7 +667,7 @@ async def _recover_stale_runs(tenant_id: UUID) -> list[tuple[UUID, dict[str, Any
 
 
 async def _dispatch_pending() -> None:
-    last_event_cleanup = 0.0
+    next_event_cleanup = 0.0
     while True:
         try:
             async with session_scope(None, staff=True) as session:
@@ -695,44 +676,57 @@ async def _dispatch_pending() -> None:
                     .scalars()
                     .all()
                 )
+            cleanup_cutoff = None
+            if time.monotonic() >= next_event_cleanup:
+                next_event_cleanup = time.monotonic() + 300
+                cleanup_cutoff = datetime.now(UTC) - timedelta(
+                    days=get_settings().assistant_event_retention_days
+                )
             for tenant_id in tenant_ids:
-                recovered = await _recover_stale_runs(tenant_id)
-                async with session_scope(tenant_id) as session:
-                    if time.time() - last_event_cleanup >= 300:
-                        cutoff = datetime.now(UTC) - timedelta(
-                            days=get_settings().assistant_event_retention_days
-                        )
-                        await session.execute(
-                            delete(AssistantRunEvent).where(AssistantRunEvent.created_at < cutoff)
-                        )
-                    run_ids = (
-                        (
-                            await session.execute(
-                                select(AssistantRun.id)
-                                .where(AssistantRun.status == "queued")
-                                .order_by(AssistantRun.created_at)
-                                .limit(100)
-                            )
-                        )
-                        .scalars()
-                        .all()
-                    )
-                if time.time() - last_event_cleanup >= 300:
-                    last_event_cleanup = time.time()
-                for run_id, completion in recovered:
-                    await publish(tenant_id, run_id, "message:completed", completion)
-                for run_id in run_ids:
-                    await get_queue().enqueue(
-                        QUEUE_LLM,
-                        "run_assistant_chat",
-                        {"run_id": str(run_id), "tenant_id": str(tenant_id)},
-                        job_id=f"assistant:{run_id}",
-                    )
+                try:
+                    await _dispatch_tenant_pending(tenant_id, cleanup_cutoff)
+                except Exception:
+                    logger.exception("assistant tenant dispatch failed")
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("assistant run dispatch cycle failed")
         await asyncio.sleep(5)
+
+
+async def _dispatch_tenant_pending(tenant_id: UUID, cleanup_cutoff: datetime | None) -> None:
+    recovered = await _recover_stale_runs(tenant_id)
+    async with session_scope(tenant_id) as session:
+        run_ids = (
+            await session.scalars(
+                select(AssistantRun.id)
+                .where(AssistantRun.status == "queued")
+                .order_by(AssistantRun.created_at)
+                .limit(100)
+            )
+        ).all()
+    for run_id, completion in recovered:
+        await publish(tenant_id, run_id, "message:completed", completion)
+    for run_id in run_ids:
+        await enqueue_assistant(tenant_id, run_id)
+    if cleanup_cutoff is not None:
+        async with session_scope(tenant_id) as session:
+            expired = (
+                select(AssistantRunEvent.run_id, AssistantRunEvent.sequence)
+                .join(AssistantRun, AssistantRun.id == AssistantRunEvent.run_id)
+                .where(
+                    AssistantRunEvent.created_at < cleanup_cutoff,
+                    AssistantRun.status.in_(("succeeded", "failed", "cancelled")),
+                )
+                .order_by(AssistantRunEvent.created_at)
+                .limit(5000)
+                .with_for_update(of=AssistantRunEvent, skip_locked=True)
+            )
+            await session.execute(
+                delete(AssistantRunEvent).where(
+                    tuple_(AssistantRunEvent.run_id, AssistantRunEvent.sequence).in_(expired)
+                )
+            )
 
 
 async def close() -> None:

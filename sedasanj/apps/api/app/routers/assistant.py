@@ -4,14 +4,15 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from contextlib import aclosing
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import case, delete, func, select, text, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import OperatorDep, OrgAdminDep, TenantSession, UserDep, client_ip
@@ -60,6 +61,8 @@ from app.services import (
     operator_coaching,
     operator_scope,
     organization_memory,
+    outbox,
+    queue,
     ratelimit,
     tool_gateway,
 )
@@ -864,37 +867,36 @@ async def _chat_history(
     if not any(item.id == conversation_id for item in conversations):
         conversations.append(active)
     titles = {item.id: item.title or "گفتگوی بدون عنوان" for item in conversations}
-    ranked = (
+    recent_messages = (
         select(
             ChatMessage.conversation_id,
             ChatMessage.role,
             ChatMessage.content,
             ChatMessage.created_at,
             ChatMessage.ordinal,
-            func.row_number()
-            .over(partition_by=ChatMessage.conversation_id, order_by=ChatMessage.ordinal.desc())
-            .label("position"),
         )
-        .where(ChatMessage.tenant_id == tenant_id, ChatMessage.conversation_id.in_(titles))
-        .subquery()
+        .where(
+            ChatMessage.tenant_id == tenant_id,
+            ChatMessage.conversation_id == ChatConversation.id,
+        )
+        .order_by(ChatMessage.ordinal.desc())
+        .limit(
+            case(
+                (ChatConversation.id == conversation_id, ACTIVE_HISTORY_MESSAGES),
+                else_=OTHER_HISTORY_MESSAGES,
+            )
+        )
+        .correlate(ChatConversation)
+        .lateral()
     )
     rows = (
         (
             await session.execute(
-                select(ranked)
-                .where(
-                    or_(
-                        ranked.c.conversation_id == conversation_id,
-                        ranked.c.position <= OTHER_HISTORY_MESSAGES,
-                    )
-                )
-                .where(
-                    or_(
-                        ranked.c.conversation_id != conversation_id,
-                        ranked.c.position <= ACTIVE_HISTORY_MESSAGES,
-                    )
-                )
-                .order_by(ranked.c.conversation_id, ranked.c.ordinal)
+                select(recent_messages)
+                .select_from(ChatConversation)
+                .join(recent_messages, true())
+                .where(ChatConversation.id.in_(titles))
+                .order_by(recent_messages.c.conversation_id, recent_messages.c.ordinal)
             )
         )
         .mappings()
@@ -1180,6 +1182,30 @@ async def _generate_conversation_title(
         return None
 
 
+async def _queue_conversation_title(
+    session: AsyncSession,
+    conversation: ChatConversation,
+    question: ChatMessage,
+    answer: ChatMessage,
+) -> None:
+    if conversation.title is not None or answer.status != "succeeded" or not answer.content:
+        return
+    await outbox.stage(
+        session,
+        tenant_id=conversation.tenant_id,
+        queue_name=queue.QUEUE_LLM,
+        function_name="generate_assistant_title",
+        payload={
+            "tenant_id": str(conversation.tenant_id),
+            "owner_id": str(conversation.owner_id),
+            "conversation_id": str(conversation.id),
+            "version": conversation.updated_at.isoformat(),
+            "question_id": str(question.id),
+            "answer_id": str(answer.id),
+        },
+    )
+
+
 def _ephemeral_history(payload: EphemeralChatMessageCreate) -> str:
     history: list[str] = ["[گفتگوی موقت فعال]"]
     for item in payload.history:
@@ -1314,41 +1340,48 @@ async def send_message(
             )
             if plan.tool_calls:
                 results = []
-                seen: set[str] = set()
-                for planned in plan.tool_calls:
-                    marker = assistant_tools.fingerprint(planned.name, planned.arguments)
-                    if marker in seen:
-                        continue
-                    seen.add(marker)
-                    run = AssistantToolRun(
-                        tenant_id=principal.tenant_id,
-                        conversation_id=conversation.id,
-                        user_message_id=user_message.id,
-                        tool_call_id=planned.id,
-                        tool_name=planned.name,
-                        status="running",
-                        arguments=planned.arguments,
+                for batch in _planned_tool_batches(plan.tool_calls, models):
+                    started_rows = []
+                    for planned in batch:
+                        run = AssistantToolRun(
+                            tenant_id=principal.tenant_id,
+                            conversation_id=conversation.id,
+                            user_message_id=user_message.id,
+                            tool_call_id=planned.id,
+                            tool_name=planned.name,
+                            status="running",
+                            arguments=planned.arguments,
+                        )
+                        session.add(run)
+                        await session.flush()
+                        stored_runs.append(run)
+                        started_rows.append(run)
+                    outcomes = await _run_tool_batch(
+                        batch, principal, conversation.call_id, conversation.id
                     )
-                    session.add(run)
-                    await session.flush()
-                    stored_runs.append(run)
-                    try:
-                        result, duration_ms = await _execute_planned_tool(
-                            planned, principal, conversation.call_id, conversation.id
-                        )
-                        results.append((planned, result))
-                        run.status = "succeeded"
-                        run.duration_ms = duration_ms
-                        run.result_preview = assistant_tools.preview(result)
-                    except Exception as exc:
-                        if isinstance(exc, ApiError):
-                            results.append((planned, {"error": exc.code, "message": exc.message}))
-                        logger.exception(
-                            "assistant tool failed", extra={"extra_fields": {"tool": planned.name}}
-                        )
-                        run.status = "failed"
-                        run.error_code = exc.code if isinstance(exc, ApiError) else "tool_failed"
-                    run.completed_at = datetime.now(UTC)
+                    for planned, run, outcome in zip(batch, started_rows, outcomes, strict=True):
+                        try:
+                            if isinstance(outcome, BaseException):
+                                raise outcome
+                            result, duration_ms = outcome
+                            results.append((planned, result))
+                            run.status = "succeeded"
+                            run.duration_ms = duration_ms
+                            run.result_preview = assistant_tools.preview(result)
+                        except Exception as exc:
+                            if isinstance(exc, ApiError):
+                                results.append(
+                                    (planned, {"error": exc.code, "message": exc.message})
+                                )
+                            logger.exception(
+                                "assistant tool failed",
+                                extra={"extra_fields": {"tool": planned.name}},
+                            )
+                            run.status = "failed"
+                            run.error_code = (
+                                exc.code if isinstance(exc, ApiError) else "tool_failed"
+                            )
+                        run.completed_at = datetime.now(UTC)
                 raw_answer = await client.complete(
                     system_prompt,
                     assistant_agent.final_input(payload.content, history, results),
@@ -1367,10 +1400,6 @@ async def send_message(
                 )
             else:
                 answer = plan.answer or ""
-            if conversation.title is None and answer.strip():
-                conversation.title = await _generate_conversation_title(
-                    client, model, payload.content, answer
-                )
         finally:
             await client.close()
         status_value = "succeeded"
@@ -1394,6 +1423,7 @@ async def send_message(
     conversation.updated_at = datetime.now(UTC)
     session.add(assistant_message)
     await session.flush()
+    await _queue_conversation_title(session, conversation, user_message, assistant_message)
     for run in stored_runs:
         run.assistant_message_id = assistant_message.id
     usage.status = "succeeded" if status_value == "succeeded" else "failed"
@@ -1418,6 +1448,52 @@ async def send_message(
 
 def _sse(event: str, payload: dict[str, Any]) -> bytes:
     return f"event: {event}\ndata: {json.dumps({'version': 1, **payload}, ensure_ascii=False, default=str)}\n\n".encode()
+
+
+async def _coalesced_deltas(chunks: AsyncIterator[str]) -> AsyncGenerator[str, None]:
+    """Send the first chunk immediately and batch later chunks for delivery."""
+    loop = asyncio.get_running_loop()
+    pending: asyncio.Future[str | None] | None = None
+    batch: list[str] = []
+    batch_size = 0
+    flush_at = 0.0
+    try:
+        first = await anext(chunks, None)
+        if first is None:
+            return
+        yield first
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(anext(chunks, None))
+            if batch:
+                remaining = max(0.0, flush_at - loop.time())
+                done, _ = await asyncio.wait((pending,), timeout=remaining)
+                if not done:
+                    yield "".join(batch)
+                    batch.clear()
+                    batch_size = 0
+                    continue
+            chunk = await pending
+            pending = None
+            if chunk is None:
+                if batch:
+                    yield "".join(batch)
+                return
+            if not batch:
+                flush_at = loop.time() + 0.05
+            batch.append(chunk)
+            batch_size += len(chunk)
+            if batch_size >= 256 or loop.time() >= flush_at:
+                yield "".join(batch)
+                batch.clear()
+                batch_size = 0
+    finally:
+        if pending is not None:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        close = getattr(chunks, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def _tool_run_payload(run: AssistantToolRun) -> dict[str, Any]:
@@ -1498,6 +1574,51 @@ async def _execute_planned_tool(
     )
 
 
+_PARALLEL_READ_TOOLS = frozenset({
+    "get_current_time", "search_calls", "get_call_details", "search_transcripts",
+    "search_knowledge", "get_call_analysis", "get_call_analytics",
+    "get_operator_performance", "visualize_statistics",
+})
+
+
+def _planned_tool_batches(
+    calls: list[assistant_agent.PlannedToolCall], models: dict[str, str]
+) -> Iterator[list[assistant_agent.PlannedToolCall]]:
+    limit = min(2, max(1, int(models.get("assistant_parallel_tools", "1"))))
+    batch: list[assistant_agent.PlannedToolCall] = []
+    seen: set[str] = set()
+    for call in calls:
+        marker = assistant_tools.fingerprint(call.name, call.arguments)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        if call.name not in _PARALLEL_READ_TOOLS:
+            if batch:
+                yield batch
+                batch = []
+            yield [call]
+            continue
+        batch.append(call)
+        if len(batch) == limit:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+async def _run_tool_batch(
+    batch: list[assistant_agent.PlannedToolCall],
+    principal: Any,
+    bound_call_id: UUID | None,
+    conversation_id: UUID | None,
+) -> list[tuple[dict[str, Any], int] | BaseException]:
+    # The gateway gives each tool a separately authenticated, tenant-scoped session.
+    return await asyncio.gather(
+        *(_execute_planned_tool(call, principal, bound_call_id, conversation_id) for call in batch),
+        return_exceptions=True,
+    )
+
+
 @router.post("/assistant/ephemeral/messages/stream")
 async def stream_ephemeral_message(
     payload: EphemeralChatMessageCreate,
@@ -1569,53 +1690,58 @@ async def stream_ephemeral_message(
                             "phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"}
                         )
                         results = []
-                        seen: set[str] = set()
-                        for planned in plan.tool_calls:
-                            marker = assistant_tools.fingerprint(planned.name, planned.arguments)
-                            if marker in seen:
-                                continue
-                            seen.add(marker)
-                            started = {
-                                "tool_call_id": planned.id,
-                                "name": planned.name,
-                                "title": assistant_tools.title(planned.name),
-                                "status": "running",
-                            }
-                            public_runs.append(started)
-                            yield _sse("tool_started", started)
-                            try:
-                                result, duration_ms = await _execute_planned_tool(
-                                    planned, principal, payload.call_id
-                                )
-                                results.append((planned, result))
-                                completed = {
-                                    **started,
-                                    "status": "succeeded",
-                                    "duration_ms": duration_ms,
-                                    "summary": assistant_tools.result_summary(result),
-                                    "charts": result.get("charts", []),
-                                    "files": result.get("files", []),
+                        for batch in _planned_tool_batches(plan.tool_calls, models):
+                            started_rows = []
+                            base_index = len(public_runs)
+                            for planned in batch:
+                                started = {
+                                    "tool_call_id": planned.id,
+                                    "name": planned.name,
+                                    "title": assistant_tools.title(planned.name),
+                                    "status": "running",
                                 }
-                                public_runs[-1] = completed
-                                yield _sse("tool_completed", completed)
-                            except Exception as exc:
-                                if isinstance(exc, ApiError):
-                                    results.append(
-                                        (planned, {"error": exc.code, "message": exc.message})
+                                public_runs.append(started)
+                                yield _sse("tool_started", started)
+                                started_rows.append(started)
+                            outcomes = await _run_tool_batch(
+                                batch, principal, payload.call_id, None
+                            )
+                            for index, (planned, started, outcome) in enumerate(
+                                zip(batch, started_rows, outcomes, strict=True)
+                            ):
+                                try:
+                                    if isinstance(outcome, BaseException):
+                                        raise outcome
+                                    result, duration_ms = outcome
+                                    results.append((planned, result))
+                                    completed = {
+                                        **started,
+                                        "status": "succeeded",
+                                        "duration_ms": duration_ms,
+                                        "summary": assistant_tools.result_summary(result),
+                                        "charts": result.get("charts", []),
+                                        "files": result.get("files", []),
+                                    }
+                                    public_runs[base_index + index] = completed
+                                    yield _sse("tool_completed", completed)
+                                except Exception as exc:
+                                    if isinstance(exc, ApiError):
+                                        results.append(
+                                            (planned, {"error": exc.code, "message": exc.message})
+                                        )
+                                    logger.exception(
+                                        "ephemeral assistant tool failed",
+                                        extra={"extra_fields": {"tool": planned.name}},
                                     )
-                                logger.exception(
-                                    "ephemeral assistant tool failed",
-                                    extra={"extra_fields": {"tool": planned.name}},
-                                )
-                                failed = {
-                                    **started,
-                                    "status": "failed",
-                                    "error_code": (
-                                        exc.code if isinstance(exc, ApiError) else "tool_failed"
-                                    ),
-                                }
-                                public_runs[-1] = failed
-                                yield _sse("tool_failed", failed)
+                                    failed = {
+                                        **started,
+                                        "status": "failed",
+                                        "error_code": (
+                                            exc.code if isinstance(exc, ApiError) else "tool_failed"
+                                        ),
+                                    }
+                                    public_runs[base_index + index] = failed
+                                    yield _sse("tool_failed", failed)
                         yield _sse("tool_batch_completed", {"count": len(public_runs)})
                         yield _sse(
                             "phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"}
@@ -1773,64 +1899,68 @@ async def stream_message(
                             "phase", {"phase": "using_tools", "label": "در حال دریافت اطلاعات"}
                         )
                         results = []
-                        seen: set[str] = set()
-                        for planned in plan.tool_calls:
-                            marker = assistant_tools.fingerprint(planned.name, planned.arguments)
-                            if marker in seen:
-                                continue
-                            seen.add(marker)
-                            run = AssistantToolRun(
-                                tenant_id=principal.tenant_id,
-                                conversation_id=conversation.id,
-                                user_message_id=user_message.id,
-                                tool_call_id=planned.id,
-                                tool_name=planned.name,
-                                status="running",
-                                arguments=planned.arguments,
-                            )
-                            session.add(run)
-                            await session.flush()
-                            stored_runs.append(run)
-                            yield _sse("tool_started", _tool_run_payload(run))
-                            try:
-                                result, duration_ms = await _execute_planned_tool(
-                                    planned, principal, conversation.call_id, conversation.id
+                        for batch in _planned_tool_batches(plan.tool_calls, models):
+                            started_rows = []
+                            for planned in batch:
+                                run = AssistantToolRun(
+                                    tenant_id=principal.tenant_id,
+                                    conversation_id=conversation.id,
+                                    user_message_id=user_message.id,
+                                    tool_call_id=planned.id,
+                                    tool_name=planned.name,
+                                    status="running",
+                                    arguments=planned.arguments,
                                 )
-                                results.append((planned, result))
-                                run.status = "succeeded"
-                                run.duration_ms = duration_ms
-                                run.result_preview = assistant_tools.preview(result)
-                            except Exception as exc:
-                                if isinstance(exc, ApiError):
-                                    results.append(
-                                        (planned, {"error": exc.code, "message": exc.message})
+                                session.add(run)
+                                await session.flush()
+                                stored_runs.append(run)
+                                yield _sse("tool_started", _tool_run_payload(run))
+                                started_rows.append(run)
+                            outcomes = await _run_tool_batch(
+                                batch, principal, conversation.call_id, conversation.id
+                            )
+                            for planned, run, outcome in zip(
+                                batch, started_rows, outcomes, strict=True
+                            ):
+                                try:
+                                    if isinstance(outcome, BaseException):
+                                        raise outcome
+                                    result, duration_ms = outcome
+                                    results.append((planned, result))
+                                    run.status = "succeeded"
+                                    run.duration_ms = duration_ms
+                                    run.result_preview = assistant_tools.preview(result)
+                                except Exception as exc:
+                                    if isinstance(exc, ApiError):
+                                        results.append(
+                                            (planned, {"error": exc.code, "message": exc.message})
+                                        )
+                                    logger.exception(
+                                        "assistant tool failed",
+                                        extra={"extra_fields": {"tool": planned.name}},
                                     )
-                                logger.exception(
-                                    "assistant tool failed",
-                                    extra={"extra_fields": {"tool": planned.name}},
-                                )
-                                run.status = "failed"
-                                run.error_code = (
-                                    exc.code if isinstance(exc, ApiError) else "tool_failed"
-                                )
-                            run.completed_at = datetime.now(UTC)
-                            await session.flush()
-                            yield _sse(
-                                "tool_completed" if run.status == "succeeded" else "tool_failed",
-                                _tool_run_payload(run),
-                            )
+                                    run.status = "failed"
+                                    run.error_code = (
+                                        exc.code if isinstance(exc, ApiError) else "tool_failed"
+                                    )
+                                run.completed_at = datetime.now(UTC)
+                                await session.flush()
+                                event = "tool_completed" if run.status == "succeeded" else "tool_failed"
+                                yield _sse(event, _tool_run_payload(run))
                         yield _sse("tool_batch_completed", {"count": len(stored_runs)})
                         yield _sse(
                             "phase", {"phase": "writing_answer", "label": "در حال آماده‌سازی پاسخ"}
                         )
-                        async for chunk in client.stream(
+                        chunks = client.stream(
                             system_prompt,
                             assistant_agent.final_input(payload.content, chat_history, results),
                             json_object=False,
                             model=model,
-                        ):
-                            answer += chunk
-                            yield _sse("delta", {"content": chunk})
+                        )
+                        async with aclosing(_coalesced_deltas(chunks)) as batches:
+                            async for chunk in batches:
+                                answer += chunk
+                                yield _sse("delta", {"content": chunk})
                         answer, selected_call_ids = assistant_agent.final_response(
                             answer, assistant_agent.result_call_ids(results), results
                         )
@@ -1845,10 +1975,6 @@ async def stream_message(
                     else:
                         answer = plan.answer or ""
                         yield _sse("delta", {"content": answer})
-                    if conversation.title is None and answer.strip():
-                        conversation.title = await _generate_conversation_title(
-                            client, model, payload.content, answer
-                        )
                 finally:
                     await client.close()
             if not answer.strip():
@@ -1898,6 +2024,7 @@ async def stream_message(
         conversation.updated_at = datetime.now(UTC)
         session.add(assistant_message)
         await session.flush()
+        await _queue_conversation_title(session, conversation, user_message, assistant_message)
         if assistant_run is not None:
             assistant_run.assistant_message_id = assistant_message.id
             assistant_run.status = "succeeded" if status_value != "failed" else "failed"

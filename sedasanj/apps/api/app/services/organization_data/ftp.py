@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import ftplib
+import hashlib
 import ipaddress
 import socket
 import ssl
@@ -137,29 +138,31 @@ def _publish(client: ftplib.FTP, path: Path, filename: str, timeout: float) -> N
         if time.monotonic() >= deadline:
             raise TimeoutError("FTP transfer exceeded its deadline")
 
+    def remote_digest(name: str) -> bytes:
+        digest = hashlib.sha256()
+
+        def verify(block: bytes) -> None:
+            check_deadline(block)
+            digest.update(block)
+
+        client.retrbinary(f"RETR {name}", verify)
+        return digest.digest()
+
+    size = path.stat().st_size
+    with path.open("rb") as existing:
+        expected = hashlib.file_digest(existing, "sha256").digest()
     try:
         try:
             client.voidcmd("TYPE I")
             published_size = client.size(filename)
         except ftplib.error_perm:
             published_size = None
-        if published_size == path.stat().st_size:
-            import hashlib
-
-            published_hash = hashlib.sha256()
-
-            def verify(block: bytes) -> None:
-                check_deadline(block)
-                published_hash.update(block)
-
-            client.retrbinary(f"RETR {filename}", verify)
-            with path.open("rb") as existing:
-                if published_hash.digest() == hashlib.file_digest(existing, "sha256").digest():
-                    return
+        if published_size == size and remote_digest(filename) == expected:
+            return
         with path.open("rb") as payload:
             client.storbinary(f"STOR {temporary}", payload, 256 * 1024, check_deadline)
-        if client.size(temporary) != path.stat().st_size:
-            raise OSError("FTP transfer size mismatch")
+        if client.size(temporary) != size or remote_digest(temporary) != expected:
+            raise OSError("FTP transfer integrity check failed")
         client.rename(temporary, filename)
     except BaseException:
         with contextlib.suppress(*ftplib.all_errors):

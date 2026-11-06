@@ -92,6 +92,7 @@ from app.services import (
     speaker_profiles,
 )
 from app.services.api_scopes import MOBILE_KEY_SCOPES
+from app.services.audio_lifecycle import has_audio_reference, retire_audio
 from app.services.call_export import to_jalali
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.meeting_scope import (
@@ -1234,17 +1235,21 @@ async def delete_meeting(
     )
     if meeting.audio_id is not None:
         audio_ids.add(meeting.audio_id)
-    storage = get_storage()
-    now = datetime.now(UTC)
     if audio_ids:
         for audio in (
-            (await session.execute(select(AudioObject).where(AudioObject.id.in_(audio_ids))))
+            (
+                await session.execute(
+                    select(AudioObject).where(
+                        AudioObject.tenant_id == principal.tenant_id,
+                        AudioObject.id.in_(audio_ids),
+                        ~has_audio_reference(principal.tenant_id, other_than_meeting=meeting.id),
+                    )
+                )
+            )
             .scalars()
             .all()
         ):
-            if audio.deleted_at is None:
-                await storage.delete(audio.object_key)
-                audio.deleted_at = now
+            await retire_audio(session, audio)
     await audit.record(
         session,
         actor_type="user",

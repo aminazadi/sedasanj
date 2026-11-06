@@ -42,6 +42,8 @@ from app.services import (
 logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 25
+QUERY_EMBEDDING_TIMEOUT_SECONDS = 30
+SEMANTIC_LOOKUP_TIMEOUT_SECONDS = 10
 
 
 class ToolArguments(BaseModel):
@@ -393,7 +395,7 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
         .join(Call, Call.id == Transcript.call_id)
         .join(call_stmt, call_stmt.c.id == Transcript.call_id)
         .where(
-            func.to_tsvector("simple", Transcript.full_text).op("@@")(
+            Transcript.search.op("@@")(
                 func.websearch_to_tsquery("simple", args.query)
             )
         )
@@ -414,37 +416,49 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
         }
         for call_id, full_text, started_at in rows
     ]
-    semantic_status = "ok"
+    semantic_failures = 0
     operator_filter = ctx.principal.id if operator_scope.is_operator(ctx.principal) else None
     call_filter = args.call_id or ctx.bound_call_id
     window_end = end + timedelta(microseconds=1)
     semantic: list[dict[str, Any]] = []
     try:
-        # Hybrid search: vectors always run next to the lexical match, because a lexical
-        # hit says nothing about semantically related calls. A savepoint keeps a failed
-        # vector query from aborting the tool transaction.
-        async with ctx.session.begin_nested():
-            for kind, retrieve in (
-                ("semantic_transcript", knowledge.vector_transcript_context),
-                ("semantic_summary", knowledge.vector_call_context),
-            ):
-                for hit in await retrieve(
-                    ctx.session,
-                    ctx.principal.tenant_id,
-                    args.query,
-                    args.limit,
-                    operator_filter,
-                    call_filter,
-                    from_date=start,
-                    to_date=window_end,
-                ):
-                    semantic.append({**hit, "match": kind})
+        async with asyncio.timeout(QUERY_EMBEDDING_TIMEOUT_SECONDS):
+            query_embedding = await knowledge.embed(args.query)
     except Exception:
-        logger.warning("assistant semantic search failed", exc_info=True)
-        semantic = []
-        semantic_status = "unavailable"
+        logger.warning("assistant query embedding unavailable")
+        semantic_failures = 2
+    else:
+        for kind, retrieve in (
+            ("semantic_transcript", knowledge.vector_transcript_context),
+            ("semantic_summary", knowledge.vector_call_context),
+        ):
+            try:
+                # Separate savepoints keep a failed retrieval from losing the other results.
+                async with ctx.session.begin_nested():
+                    async with asyncio.timeout(SEMANTIC_LOOKUP_TIMEOUT_SECONDS):
+                        hits = await retrieve(
+                            ctx.session,
+                            ctx.principal.tenant_id,
+                            args.query,
+                            args.limit,
+                            operator_filter,
+                            call_filter,
+                            from_date=start,
+                            to_date=window_end,
+                            query_embedding=query_embedding,
+                        )
+            except Exception:
+                logger.warning(
+                    "assistant semantic retrieval unavailable",
+                    extra={"extra_fields": {"kind": kind}},
+                )
+                semantic_failures += 1
+            else:
+                semantic.extend({**hit, "match": kind} for hit in hits)
     known = {item["call_id"] for item in items}
     for row in semantic:
+        if len(items) >= args.limit:
+            break
         call_id = str(row["call_id"])
         if call_id in known:
             continue
@@ -458,14 +472,17 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
                 "score": row.get("score"),
             }
         )
-        if len(items) >= args.limit:
-            break
     result: dict[str, Any] = {"version": 1, "count": len(items), "items": items}
-    if semantic_status != "ok":
-        result["semantic_search"] = semantic_status
+    if semantic_failures == 2:
+        result["semantic_search"] = "unavailable"
         result["notice"] = (
             "Semantic search is unavailable; only exact-word matches are shown. "
             "Tell the user the result may be incomplete."
+        )
+    elif semantic_failures:
+        result["semantic_search"] = "partial"
+        result["notice"] = (
+            "One semantic source is unavailable. Tell the user the result may be incomplete."
         )
     return result
 

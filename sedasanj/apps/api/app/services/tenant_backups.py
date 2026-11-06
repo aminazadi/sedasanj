@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import os
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -12,9 +13,8 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.db import control_session_scope
 from app.models import TenantBackup, TenantDatabaseRegistry
+from app.services import tenant_backup_format
 from app.services.storage import get_storage
-
-_MAGIC = b"CBIBACKUP1"
 
 
 def _encrypt_file(source: Path, target: Path, secret: str) -> tuple[str, int]:
@@ -26,7 +26,7 @@ def _encrypt_file(source: Path, target: Path, secret: str) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
     with source.open("rb") as src, target.open("wb") as dst:
-        header = _MAGIC + nonce
+        header = tenant_backup_format.LEGACY_MAGIC + nonce
         dst.write(header)
         digest.update(header)
         size += len(header)
@@ -45,38 +45,84 @@ def _encrypt_file(source: Path, target: Path, secret: str) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
-async def _dump(database_name: str, destination: Path) -> None:
+def pg_connection_args(database_name: str) -> tuple[list[str], dict[str, str]]:
     from app.services.tenant_provisioning import _admin_url
 
     url = _admin_url(database_name)
     env = dict(os.environ)
     if url.password:
         env["PGPASSWORD"] = url.password
-    command = ["pg_dump", "--format=custom", "--no-owner", "--no-acl"]
+    command: list[str] = []
     if url.host:
         command.extend(["--host", url.host])
     if url.port:
         command.extend(["--port", str(url.port)])
     if url.username:
         command.extend(["--username", url.username])
-    command.extend(["--file", str(destination), database_name])
+    return command, env
+
+
+async def _dump(database_name: str, destination: Path, limit: int, *, modern: bool) -> None:
+    connection, env = pg_connection_args(database_name)
+    command = ["pg_dump", "--format=custom", "--no-owner", "--no-acl", *connection]
+    if modern:
+        command.append("--compress=0")
     process = await asyncio.create_subprocess_exec(
         *command,
+        "--dbname",
+        database_name,
         env=env,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
     )
-    stdout, stderr = await process.communicate()
-    if process.returncode:
-        detail = (stderr or stdout).decode("utf-8", errors="replace")[-4000:]
-        raise RuntimeError(f"tenant backup failed: {detail}")
+    assert process.stdout is not None
+    try:
+        with destination.open("xb") as output:
+            while block := await process.stdout.read(tenant_backup_format.BLOCK):
+                limit -= len(block)
+                if limit < 0:
+                    raise tenant_backup_format.InvalidBackup("backup exceeds the size limit")
+                output.write(block)
+        if await process.wait() or not destination.stat().st_size:
+            raise tenant_backup_format.InvalidBackup("pg_dump failed; check database access")
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.communicate()
+
+
+async def verify_dump(path: Path) -> None:
+    process = await asyncio.create_subprocess_exec(
+        "pg_restore",
+        "--list",
+        str(path),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    if await process.wait():
+        raise tenant_backup_format.InvalidBackup("pg_restore rejected the dump")
 
 
 async def backup_next_due() -> str:
     settings = get_settings()
     if not settings.tenant_backup_enabled:
         return "disabled"
-    cutoff = datetime.now(UTC) - timedelta(hours=settings.tenant_backup_interval_hours)
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(hours=settings.tenant_backup_interval_hours)
+    modern = settings.tenant_backup_write_v2
+    suffix = "gzip" if modern else "dump.enc"
+    recent_attempt = (
+        select(TenantBackup.id)
+        .where(
+            TenantBackup.tenant_id == TenantDatabaseRegistry.tenant_id,
+            (
+                (TenantBackup.status == "running")
+                & (TenantBackup.started_at > now - timedelta(hours=3))
+            )
+            | (TenantBackup.started_at > now - timedelta(minutes=10)),
+        )
+        .exists()
+    )
     latest = (
         select(
             TenantBackup.tenant_id,
@@ -94,9 +140,12 @@ async def backup_next_due() -> str:
                 .where(
                     TenantDatabaseRegistry.status == "ready",
                     (latest.c.last_completed.is_(None) | (latest.c.last_completed < cutoff)),
+                    ~recent_attempt,
                 )
-                .order_by(latest.c.last_completed.asc().nullsfirst())
-                .with_for_update(skip_locked=True)
+                .order_by(
+                    latest.c.last_completed.asc().nullsfirst(), TenantDatabaseRegistry.tenant_id
+                )
+                .with_for_update(of=TenantDatabaseRegistry, skip_locked=True)
                 .limit(1)
             )
         ).scalar_one_or_none()
@@ -112,35 +161,47 @@ async def backup_next_due() -> str:
         backup_id = backup.id
         tenant_id = registry.tenant_id
         database_name = registry.database_name
+        timestamp = now.strftime("%Y%m%dT%H%M%SZ")
+        object_key = f"tenant-backups/{tenant_id}/{timestamp}-{backup_id}.{suffix}"
+        backup.object_key = object_key
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    object_key = f"tenant-backups/{tenant_id}/{timestamp}-{backup_id}.dump.enc"
     try:
         with tempfile.TemporaryDirectory(prefix="cbi-tenant-backup-") as directory:
             dump_path = Path(directory) / "tenant.dump"
-            encrypted_path = Path(directory) / "tenant.dump.enc"
-            await _dump(database_name, dump_path)
+            encrypted_path = Path(directory) / f"tenant.{suffix}"
             if not settings.tenant_database_master_key:
-                raise RuntimeError("tenant database master key is not configured")
-            checksum, size = await asyncio.to_thread(
-                _encrypt_file,
-                dump_path,
-                encrypted_path,
-                settings.tenant_database_master_key,
-            )
+                raise tenant_backup_format.InvalidBackup("configure the tenant backup recovery key")
+            await _dump(database_name, dump_path, settings.tenant_backup_max_bytes, modern=modern)
+            await verify_dump(dump_path)
+            args = (dump_path, encrypted_path, settings.tenant_database_master_key)
+            if modern:
+                checksum, size = await asyncio.to_thread(
+                    tenant_backup_format.seal, *args, settings.tenant_backup_max_bytes
+                )
+            else:
+                checksum, size = await asyncio.to_thread(_encrypt_file, *args)
             storage = get_storage()
             await storage.ensure_bucket()
             await storage.put_path(
                 object_key,
                 encrypted_path,
-                content_type="application/octet-stream",
+                content_type="application/gzip" if modern else "application/octet-stream",
             )
-    except Exception as exc:
+            actual = hashlib.sha256()
+            stored_bytes = 0
+            async for block in storage.iter_chunks(object_key):
+                stored_bytes += len(block)
+                if stored_bytes > size:
+                    break
+                actual.update(block)
+            if stored_bytes != size or not hmac.compare_digest(actual.hexdigest(), checksum):
+                raise tenant_backup_format.InvalidBackup("uploaded backup checksum differs")
+    except (Exception, asyncio.CancelledError):
         async with control_session_scope() as control:
             row = await control.get(TenantBackup, backup_id, with_for_update=True)
             if row is not None:
                 row.status = "failed"
-                row.error_detail = str(exc)[:4000]
+                row.error_detail = "tenant_backup_failed"
                 row.completed_at = datetime.now(UTC)
         raise
 
@@ -148,7 +209,6 @@ async def backup_next_due() -> str:
         row = await control.get(TenantBackup, backup_id, with_for_update=True)
         if row is not None:
             row.status = "succeeded"
-            row.object_key = object_key
             row.checksum_sha256 = checksum
             row.size_bytes = size
             row.completed_at = datetime.now(UTC)
@@ -166,10 +226,15 @@ async def purge_expired() -> int:
                 await control.execute(
                     select(TenantBackup)
                     .where(
-                        TenantBackup.status == "succeeded",
-                        TenantBackup.expires_at.is_not(None),
-                        TenantBackup.expires_at < now,
+                        TenantBackup.object_key.is_not(None),
+                        ((TenantBackup.status == "succeeded") & (TenantBackup.expires_at < now))
+                        | (TenantBackup.status == "failed")
+                        | (
+                            (TenantBackup.status == "running")
+                            & (TenantBackup.started_at < now - timedelta(hours=3))
+                        ),
                     )
+                    .order_by(TenantBackup.started_at)
                     .with_for_update(skip_locked=True)
                     .limit(20)
                 )
@@ -185,6 +250,12 @@ async def purge_expired() -> int:
         async with control_session_scope() as control:
             row = await control.get(TenantBackup, backup_id, with_for_update=True)
             if row is not None:
-                row.status = "expired"
+                if row.status == "succeeded":
+                    row.status = "expired"
+                else:
+                    row.status = "failed"
+                    row.error_detail = "tenant_backup_failed"
+                    row.completed_at = row.completed_at or now
+                row.object_key = None
                 removed += 1
     return removed

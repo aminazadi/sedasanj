@@ -23,7 +23,7 @@ scrape_configs:
   - job_name: workers
     metrics_path: /metrics
     dns_sd_configs:
-      - names: ["worker-asr", "worker-emotion", "worker-llm", "worker-notify", "worker-meeting"]
+      - names: ["worker-asr", "worker-emotion", "worker-llm", "worker-assistant", "worker-notify", "worker-meeting", "worker-tenant-backup"]
         type: A
         port: 9100
 
