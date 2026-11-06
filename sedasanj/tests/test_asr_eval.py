@@ -298,3 +298,90 @@ def test_compare_overlap_gate_uses_cpwer_when_available() -> None:
         cand, base, max_delta=1.0, max_clean_delta=0.0, noisy_min_gain=0.0
     )
     assert len(reverse) == 1 and "cpWER" in reverse[0]
+
+
+# --- Iteration 2: paired bootstrap and the identical-text gate --------------------------------
+
+
+def test_word_error_profile_charges_each_error_to_a_reference_word() -> None:
+    ref = ["a", "b", "c", "d"]
+    assert asr_eval.word_error_profile(ref, ref) == [0, 0, 0, 0]
+    assert asr_eval.word_error_profile(ref, ["a", "x", "c", "d"]) == [0, 1, 0, 0]  # substitution
+    assert asr_eval.word_error_profile(ref, ["a", "c", "d"]) == [0, 1, 0, 0]  # deletion of b
+    # An insertion belongs to the word that follows it, or the last word when it trails.
+    assert asr_eval.word_error_profile(ref, ["a", "b", "x", "c", "d"]) == [0, 0, 1, 0]
+    assert asr_eval.word_error_profile(ref, ["a", "b", "c", "d", "x"]) == [0, 0, 0, 1]
+    assert asr_eval.word_error_profile([], ["x"]) == []
+
+
+@pytest.mark.parametrize(
+    ("ref", "hyp"),
+    [
+        ("a b c d e", "a x c e"),
+        ("a b c", "x y z w"),
+        ("a b c d", "d c b a"),
+        ("a", ""),
+    ],
+)
+def test_word_error_profile_sums_to_the_edit_distance(ref: str, hyp: str) -> None:
+    r, h = ref.split(), hyp.split()
+    assert sum(asr_eval.word_error_profile(r, h)) == asr_eval.edit_distance(r, h)
+
+
+def _bootstrap_inputs() -> tuple[list[dict[str, object]], dict[str, str], dict[str, str]]:
+    words = [f"w{i}" for i in range(200)]
+    clips: list[dict[str, object]] = [{"id": "x", "reference": " ".join(words), "tags": ["noisy"]}]
+    base = list(words)
+    for i in range(0, 200, 5):  # baseline: 40 substitutions
+        base[i] = "zz"
+    better = list(words)
+    for i in range(0, 200, 20):  # candidate: 10 substitutions, a subset of the baseline's
+        better[i] = "zz"
+    return clips, {"x": " ".join(base)}, {"x": " ".join(better)}
+
+
+def test_paired_bootstrap_is_deterministic_and_finds_a_clear_gain() -> None:
+    clips, base, cand = _bootstrap_inputs()
+    first = asr_eval.paired_bootstrap(clips, base, cand, samples=500, seed=7)
+    second = asr_eval.paired_bootstrap(clips, base, cand, samples=500, seed=7)
+    assert first is not None and first == second
+    assert first.delta == pytest.approx(-30 / 200)
+    assert first.high < 0 and first.better_share == 1.0
+    assert asr_eval.paired_bootstrap(clips, base, cand, tag="clean") is None
+
+
+def test_paired_bootstrap_of_identical_systems_is_centred_on_zero() -> None:
+    clips, base, _ = _bootstrap_inputs()
+    result = asr_eval.paired_bootstrap(clips, base, dict(base), samples=200)
+    assert result is not None
+    assert (result.delta, result.low, result.high, result.better_share) == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_compare_bootstrap_gates(tmp_path: Path) -> None:
+    clips, base, cand = _bootstrap_inputs()
+    manifest = _write(tmp_path, "m.json", {"clips": clips})
+    baseline = _write(tmp_path, "base.json", base)
+    better = _write(tmp_path, "better.json", cand)
+    args = ["compare", str(manifest), str(baseline)]
+    assert (
+        asr_eval.main([*args, str(better), "--bootstrap", "300", "--require-better", "noisy"]) == 0
+    )
+    # The same system twice is not "better", whatever the point estimate.
+    assert (
+        asr_eval.main([*args, str(baseline), "--bootstrap", "300", "--require-better", "noisy"])
+        == 1
+    )
+    assert (
+        asr_eval.main([*args, str(better), "--require-better", "noisy"]) == 1
+    )  # needs --bootstrap
+
+
+def test_identical_gate_ignores_script_variants_but_not_words(tmp_path: Path) -> None:
+    a = _write(tmp_path, "a.json", {"x": "سلام دنیا", "y": "یک دو"})
+    same = _write(tmp_path, "same.json", {"x": "سلام، دنیا!", "y": "یک  دو"})
+    other = _write(tmp_path, "other.json", {"x": "سلام دنیا", "y": "یک سه"})
+    missing = _write(tmp_path, "missing.json", {"x": "سلام دنیا"})
+    assert asr_eval.main(["identical", str(a), str(same)]) == 0
+    assert asr_eval.main(["identical", str(a), str(other)]) == 1
+    assert asr_eval.main(["identical", str(a), str(missing)]) == 1
+    assert asr_eval.main(["identical", str(a), str(tmp_path / "nope.json")]) == 2

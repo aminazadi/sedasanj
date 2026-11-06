@@ -10,6 +10,8 @@
 - Expanded the public footer copyright and added a linked ROBOLINK credit on the left.
 - Added speaker names to the live transcript in the Jalase-Negar landing page preview.
 - Added ASR benchmark tooling for Jalase-Negar: `asr_eval.py` now reports substitutions/deletions/insertions, hallucination on non-speech clips, cpWER for speaker-labelled references, RTF/latency from an optional sidecar, and separate `compare` gates for `clean` (no regression) and `noisy`/`overlap`; the new `asr_augment.py` builds seeded noisy (SNR 20/10/5/0), reverberant and overlapped (0/10/20/40%) clips with a matching manifest.
+- Added paired-bootstrap confidence intervals to `asr_eval.py compare` (`--bootstrap`, `--require-better`, `--clean-max-ci-upper`) so a change is accepted only when its 95% interval is wholly better, and an `identical` command that passes only when the normalized text matches on every clip, for speed-only changes.
+- Added quiet copies (`--quiet`, default 20 and 30 dB down), a noise-only clip that counts hallucinated words (`--noise-only`) and `--keep-originals` to `asr_augment.py`, plus the `quiet-N` and `noise-only` tags in `asr_eval.py`.
 - Fixed Jalase-Negar APK inspection in Docker deployments by installing `aapt2` and `apksigner` in the API image.
 
 ## 2026-11-05 — AMINAZADI

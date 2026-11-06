@@ -18,9 +18,9 @@ Speaker-attributed references/hypotheses (for cpWER) are either a list of
 A plain-string hypothesis against a speaker-labelled reference is scored as a single stream.
 
 Tags: meeting, phone-8k, quiet, noisy, clean, overlap, numbers, long, codeswitch, lavalier,
-table, rev (reverberant), snr-N (SNR in dB), ovl-N (overlap percent), and
-non-speech/silence (clips whose reference is empty; every hypothesis word there counts as
-hallucination, not WER).
+table, rev (reverberant), snr-N (SNR in dB), ovl-N (overlap percent), quiet-N (level lowered by
+N dB), noise-only (a non-speech clip of noise alone), and non-speech/silence (clips whose
+reference is empty; every hypothesis word there counts as hallucination, not WER).
 
 Usage:
     asr_eval.py score MANIFEST HYP.json [HYP2.json ...] [--json OUT]
@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import random
 import re
 import sys
 import unicodedata
@@ -84,11 +85,13 @@ def edit_distance(ref: list[str], hyp: list[str]) -> int:
     return previous[-1]
 
 
-def align_counts(ref: list[str], hyp: list[str]) -> tuple[int, int, int]:
-    """Minimum-edit alignment split into (substitutions, deletions, insertions).
+def _edit_ops(ref: list[str], hyp: list[str]) -> list[tuple[str, int, int]]:
+    """Backtrace of the minimum-edit alignment, last operation first.
 
-    Ties prefer a match/substitution, then a deletion, so the split is deterministic. The sum
-    always equals `edit_distance`.
+    Each item is `(op, i, j)` with op one of "match", "sub", "del", "ins": `i` is the number of
+    reference words before the step (for "ins" that is the index of the reference word the
+    insertion precedes) and `j` the same for the hypothesis. Ties prefer a match/substitution,
+    then a deletion, so the split is deterministic.
     """
     rows, cols = len(ref), len(hyp)
     cost = [[0] * (cols + 1) for _ in range(rows + 1)]
@@ -103,19 +106,46 @@ def align_counts(ref: list[str], hyp: list[str]) -> tuple[int, int, int]:
                 cost[i - 1][j] + 1,
                 cost[i][j - 1] + 1,
             )
-    subs = dels = ins = 0
+    ops: list[tuple[str, int, int]] = []
     i, j = rows, cols
     while i > 0 or j > 0:
         if i > 0 and j > 0 and cost[i][j] == cost[i - 1][j - 1] + (ref[i - 1] != hyp[j - 1]):
-            subs += ref[i - 1] != hyp[j - 1]
+            ops.append(("sub" if ref[i - 1] != hyp[j - 1] else "match", i, j))
             i, j = i - 1, j - 1
         elif i > 0 and cost[i][j] == cost[i - 1][j] + 1:
-            dels += 1
+            ops.append(("del", i, j))
             i -= 1
         else:
-            ins += 1
+            ops.append(("ins", i, j))
             j -= 1
-    return subs, dels, ins
+    return ops
+
+
+def align_counts(ref: list[str], hyp: list[str]) -> tuple[int, int, int]:
+    """Minimum-edit alignment split into (substitutions, deletions, insertions).
+
+    The sum always equals `edit_distance`.
+    """
+    ops = [op for op, _i, _j in _edit_ops(ref, hyp)]
+    return ops.count("sub"), ops.count("del"), ops.count("ins")
+
+
+def word_error_profile(ref: list[str], hyp: list[str]) -> list[int]:
+    """Errors charged to each reference word; the sum equals `edit_distance`.
+
+    A substitution or deletion is charged to its reference word. An insertion is charged to the
+    reference word that follows it (to the last word when it comes after all of them). This
+    gives paired systems a common set of positions to resample. Empty reference: empty list.
+    """
+    profile = [0] * len(ref)
+    if not ref:
+        return profile
+    for op, i, _j in _edit_ops(ref, hyp):
+        if op in ("sub", "del"):
+            profile[i - 1] += 1
+        elif op == "ins":
+            profile[min(i, len(ref) - 1)] += 1
+    return profile
 
 
 NON_SPEECH_TAGS = frozenset({"non-speech", "silence"})
@@ -133,10 +163,11 @@ KNOWN_TAGS = frozenset(
         "lavalier",
         "table",
         "rev",
+        "noise-only",
     }
     | NON_SPEECH_TAGS
 )
-_PARAM_TAG = re.compile(r"^(snr|ovl)-\d+$")
+_PARAM_TAG = re.compile(r"^(snr|ovl|quiet)-\d+$")
 MAX_SPEAKERS = 8  # cpWER tries every speaker permutation; 8! = 40320 assignments is the cap.
 
 
@@ -603,6 +634,88 @@ def _gate_value(summary: Summary, tag: str) -> float | None:
     return summary.by_tag.get(tag)
 
 
+@dataclass(frozen=True)
+class BootstrapResult:
+    words: int
+    blocks: int
+    delta: float  # candidate WER - baseline WER on the real data
+    low: float  # 95% interval of that difference over resamples
+    high: float
+    better_share: float  # share of resamples where the candidate made fewer errors
+
+
+def paired_bootstrap(
+    clips: list[dict[str, Any]],
+    base: dict[str, Any],
+    cand: dict[str, Any],
+    *,
+    tag: str | None = None,
+    samples: int = 2000,
+    block: int = 10,
+    seed: int = 1234,
+) -> BootstrapResult | None:
+    """Paired block bootstrap of the WER difference (candidate - baseline).
+
+    Both systems are aligned to the same reference words (`word_error_profile`), the words are
+    cut into blocks of `block` consecutive words (so neighbouring errors stay together), and
+    blocks are resampled with replacement from all selected clips. A 95% interval that does
+    not contain 0 means the difference is unlikely to be noise on this data. With only minutes
+    of reference audio the interval is wide: a small effect shows up as "inconclusive", not as
+    "no effect". Returns None when no clip has reference words.
+    """
+    blocks: list[tuple[int, int, int]] = []  # (baseline errors, candidate errors, words)
+    for clip in clips:
+        tags = tuple(clip.get("tags", ()))
+        if NON_SPEECH_TAGS.intersection(tags) or (tag is not None and tag not in tags):
+            continue
+        ref = normalize_for_scoring(flatten_text(clip["reference"])).split()
+        if not ref:
+            continue
+        base_words = normalize_for_scoring(flatten_text(base[clip["id"]])).split()
+        cand_words = normalize_for_scoring(flatten_text(cand[clip["id"]])).split()
+        base_profile = word_error_profile(ref, base_words)
+        cand_profile = word_error_profile(ref, cand_words)
+        for start in range(0, len(ref), block):
+            part = slice(start, start + block)
+            blocks.append((sum(base_profile[part]), sum(cand_profile[part]), len(ref[part])))
+    if not blocks:
+        return None
+    words = sum(b[2] for b in blocks)
+    observed = (sum(b[1] for b in blocks) - sum(b[0] for b in blocks)) / words
+    rng = random.Random(seed)
+    deltas: list[float] = []
+    for _ in range(samples):
+        picked = [blocks[rng.randrange(len(blocks))] for _ in blocks]
+        total = sum(b[2] for b in picked)
+        deltas.append((sum(b[1] for b in picked) - sum(b[0] for b in picked)) / total)
+    deltas.sort()
+    return BootstrapResult(
+        words=words,
+        blocks=len(blocks),
+        delta=observed,
+        low=deltas[round(0.025 * (samples - 1))],
+        high=deltas[round(0.975 * (samples - 1))],
+        better_share=sum(1 for d in deltas if d < 0) / samples,
+    )
+
+
+def differing_clips(first: dict[str, Any], second: dict[str, Any]) -> list[str]:
+    """Clip ids whose normalised text differs (or that only one system has)."""
+
+    def text(system: dict[str, Any], clip_id: str) -> str | None:
+        return normalize_for_scoring(flatten_text(system[clip_id])) if clip_id in system else None
+
+    return [c for c in sorted(set(first) | set(second)) if text(first, c) != text(second, c)]
+
+
+def _format_bootstrap(label: str, result: BootstrapResult) -> str:
+    return (
+        f"  {label:<10} delta WER {result.delta:+.2%}  95% CI [{result.low:+.2%}, "
+        f"{result.high:+.2%}]  candidate better in {result.better_share:.0%} of resamples "
+        f"({result.words} words, {result.blocks} blocks)"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -624,7 +737,51 @@ def main(argv: list[str] | None = None) -> int:
         default=0.0,
         help="required relative improvement on noisy (WER) and overlap (cpWER) tags",
     )
+    compare.add_argument(
+        "--bootstrap",
+        type=int,
+        default=0,
+        metavar="N",
+        help="also report a paired block-bootstrap 95%% interval of the WER difference "
+        "(N resamples, e.g. 2000), overall and per tag",
+    )
+    compare.add_argument("--block", type=int, default=10, help="bootstrap block size in words")
+    compare.add_argument("--seed", type=int, default=1234, help="bootstrap random seed")
+    compare.add_argument(
+        "--require-better",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help="fail unless the bootstrap interval for TAG ('all' = every clip) is entirely "
+        "below 0 (needs --bootstrap)",
+    )
+    compare.add_argument(
+        "--clean-max-ci-upper",
+        type=float,
+        default=None,
+        metavar="X",
+        help="fail when the upper end of the clean-tag bootstrap interval exceeds X "
+        "(absolute, 0.003 = 0.3 points; needs --bootstrap)",
+    )
+    identical = sub.add_parser(
+        "identical",
+        help="exit 0 only when two systems give the same normalised text on every clip "
+        "(the gate for speed-only changes; no reference needed)",
+    )
+    identical.add_argument("first", type=Path)
+    identical.add_argument("second", type=Path)
     args = parser.parse_args(argv)
+    if args.command == "identical":
+        try:
+            different = differing_clips(load_hypotheses(args.first), load_hypotheses(args.second))
+        except EvalInputError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if different:
+            print(f"FAIL: text differs on {len(different)} clip(s): {different}", file=sys.stderr)
+            return 1
+        print("identical: every clip has the same normalised text")
+        return 0
 
     try:
         clips = load_manifest(args.manifest)
@@ -654,6 +811,40 @@ def main(argv: list[str] | None = None) -> int:
         max_clean_delta=args.max_clean_delta,
         noisy_min_gain=args.noisy_min_gain,
     )
+    if args.bootstrap > 0:
+        base_hyp, cand_hyp = load_hypotheses(args.baseline), load_hypotheses(args.candidate)
+        tags = sorted({t for c in clips for t in c.get("tags", ()) if t in base.by_tag})
+        results: dict[str, BootstrapResult | None] = {}
+        print(f"paired block bootstrap ({args.bootstrap} resamples, block {args.block} words):")
+        for label, tag in [("all", None)] + [(t, t) for t in tags]:
+            result = paired_bootstrap(
+                clips,
+                base_hyp,
+                cand_hyp,
+                tag=tag,
+                samples=args.bootstrap,
+                block=args.block,
+                seed=args.seed,
+            )
+            results[label] = result
+            if result is not None:
+                print(_format_bootstrap(label, result))
+        for label in args.require_better:
+            found = results.get(label)
+            if found is None or found.high >= 0:
+                failures.append(
+                    f"{label}: the candidate is not shown to be better (95% interval must be "
+                    "entirely below 0); add reference audio or keep the baseline"
+                )
+        if args.clean_max_ci_upper is not None:
+            clean = results.get("clean")
+            if clean is not None and clean.high > args.clean_max_ci_upper:
+                failures.append(
+                    f"clean: the interval reaches {clean.high:+.2%}, above "
+                    f"{args.clean_max_ci_upper:.2%}; a clean-audio regression is not excluded"
+                )
+    elif args.require_better or args.clean_max_ci_upper is not None:
+        failures.append("--require-better / --clean-max-ci-upper need --bootstrap N")
     for failure in failures:
         print(f"FAIL: {failure}", file=sys.stderr)
     return 1 if failures else 0
