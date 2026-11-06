@@ -19,7 +19,7 @@ export const defaultFooter: FooterSettings = {
   description: "سامانه هوشمند تحلیل مکالمات فارسی",
   links_title: "لینک‌های پرکاربرد",
   trust_title: "نمادهای اعتماد",
-  copyright: "© ۱۴۰۵ صداسنج",
+  copyright: "© ۱۴۰۵ صداسنج. تمامی حقوق این وب‌سایت برای صداسنج محفوظ است.",
   links: [
     { label: "امکانات", url: "/#features" },
     { label: "پلن‌ها", url: "/#pricing" },

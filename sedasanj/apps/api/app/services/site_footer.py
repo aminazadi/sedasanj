@@ -4,6 +4,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+DEFAULT_COPYRIGHT = "© ۱۴۰۵ صداسنج. تمامی حقوق این وب‌سایت برای صداسنج محفوظ است."
+
 
 class FooterLink(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -38,7 +40,7 @@ class FooterSettings(BaseModel):
     description: str = Field(default="سامانه هوشمند تحلیل مکالمات فارسی", max_length=4000)
     links_title: str = Field(default="لینک‌های پرکاربرد", max_length=200)
     trust_title: str = Field(default="نمادهای اعتماد", max_length=200)
-    copyright: str = Field(default="© ۱۴۰۵ صداسنج", max_length=500)
+    copyright: str = Field(default=DEFAULT_COPYRIGHT, max_length=500)
     links: list[FooterLink] = Field(
         default_factory=lambda: [
             FooterLink(label="امکانات", url="/#features"),
@@ -57,3 +59,10 @@ class FooterSettings(BaseModel):
         ],
         max_length=30,
     )
+
+    @field_validator("copyright")
+    @classmethod
+    def refresh_legacy_copyright(cls, value: str) -> str:
+        if value == "© ۱۴۰۵ صداسنج":
+            return DEFAULT_COPYRIGHT
+        return value

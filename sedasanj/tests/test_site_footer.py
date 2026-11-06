@@ -70,6 +70,13 @@ def test_footer_limits_and_empty_groups():
             FooterSettings(**overrides)
 
 
+def test_footer_refreshes_only_the_legacy_default_copyright():
+    expected = "© ۱۴۰۵ صداسنج. تمامی حقوق این وب‌سایت برای صداسنج محفوظ است."
+    assert FooterSettings().copyright == expected
+    assert FooterSettings(copyright="© ۱۴۰۵ صداسنج").copyright == expected
+    assert FooterSettings(copyright="© متن سفارشی").copyright == "© متن سفارشی"
+
+
 async def test_footer_defaults_save_public_read_and_legacy_update(monkeypatch):
     session = SettingsSession()
     staff = SimpleNamespace(id=uuid4())

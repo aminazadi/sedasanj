@@ -32,7 +32,12 @@ export default function SiteFooter() {
         <nav className="site-footer-legal" aria-label="قوانین و حریم خصوصی">{footer.legal_links.map(renderLink)}</nav>
         <div className="site-footer-trust" aria-label="نمادهای اعتماد"><strong>{footer.trust_title}</strong>{siteContact.trust_html ? <iframe className="site-footer-trust-frame" title="نمادهای اعتماد صداسنج" sandbox="allow-scripts" srcDoc={siteContact.trust_html}/> : <div className="site-footer-trust-slots"><span aria-hidden="true">جایگاه نماد</span><span aria-hidden="true">جایگاه نماد</span></div>}</div>
       </div>
-      <div className="site-container site-footer-bottom"><small>{footer.copyright}</small></div>
+      <div className="site-container site-footer-bottom" dir="rtl">
+        <small>{footer.copyright}</small>
+        <small className="site-footer-credit" dir="ltr" lang="en">
+          developed with ❤️ by <a href="https://t.me/Robolink_F1">ROBOLINK</a>
+        </small>
+      </div>
     </footer>
   );
 }
