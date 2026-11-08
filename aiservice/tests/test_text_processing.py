@@ -50,6 +50,45 @@ class ModelPoolTests(unittest.TestCase):
         self.assertEqual(1, pool.total)
 
 
+class ContextFallbackTests(unittest.TestCase):
+    def _llama_module(self, side_effect):
+        module = MagicMock()
+        module.Llama = MagicMock(side_effect=side_effect)
+        return module
+
+    def test_context_failure_retries_with_half_context_then_succeeds(self):
+        failure = ValueError("Failed to create llama_context")
+        module = self._llama_module([failure, "model"])
+        with patch.dict("sys.modules", {"llama_cpp": module}), patch.object(
+            text_processing.gpu_runtime, "llm_context_size", return_value=12288
+        ), patch.object(text_processing, "_build_options", side_effect=lambda mid, ctx, dev, split: {"n_ctx": ctx, "dev": dev}):
+            self.assertEqual("model", text_processing._load("m", device_index=1))
+        self.assertEqual([12288, 6144], [call.kwargs["n_ctx"] for call in module.Llama.call_args_list])
+
+    def test_context_failure_falls_back_to_cpu_and_raises_typed_error_when_all_fail(self):
+        failure = ValueError("Failed to create llama_context")
+        module = self._llama_module([failure, failure, failure])
+        with patch.dict("sys.modules", {"llama_cpp": module}), patch.object(
+            text_processing.gpu_runtime, "llm_context_size", return_value=12288
+        ), patch.object(text_processing, "_build_options", side_effect=lambda mid, ctx, dev, split: {"n_ctx": ctx, "dev": dev}):
+            with self.assertRaises(text_processing.ModelContextError):
+                text_processing._load("m", device_index=1)
+        self.assertEqual([1, 1, None], [call.kwargs["dev"] for call in module.Llama.call_args_list])
+
+    def test_non_resource_errors_are_not_retried(self):
+        module = self._llama_module([ValueError("model file is corrupt")])
+        with patch.dict("sys.modules", {"llama_cpp": module}), patch.object(
+            text_processing.gpu_runtime, "llm_context_size", return_value=12288
+        ), patch.object(text_processing, "_build_options", return_value={}):
+            with self.assertRaises(ValueError):
+                text_processing._load("m", device_index=1)
+        self.assertEqual(1, module.Llama.call_count)
+
+    def test_attempt_order_never_goes_below_minimum_context(self):
+        self.assertEqual([(3000, None)], text_processing._load_attempts(3000, None))
+        self.assertEqual([(4096, 0), (2048, 0), (4096, None)], text_processing._load_attempts(4096, 0))
+
+
 class SegmentCorrectionTests(unittest.TestCase):
     def test_segment_prompt_uses_strict_schema_and_preserves_ids(self):
         segments = [

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-08 — AMINAZADI
+
+- Fixed `ValueError: Failed to create llama_context` for large-context models such as Gemma 3 4B: the scheduler now estimates weights, KV cache and compute buffers and skips a GPU that cannot hold them (an idle resident context still counts as fitting), and the model loader retries with half the context and then on CPU before failing with a typed `ModelContextError`.
+- Treated `Failed to create llama_context` as a resource failure for GPU error accounting and multi-GPU split, logged free VRAM and `n_ctx` per failed attempt, and kept stderr of failed chat subprocesses in the service log.
+
 ## 2026-11-04 — AMINAZADI
 
 - Fixed GPU-only tasks that stayed queued with no compatible GPU and kept CPU queue workers alive across transient monitoring failures.

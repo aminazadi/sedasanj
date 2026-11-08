@@ -244,7 +244,18 @@ async def _structured_plan(
         json_object=True,
         model=model,
     )
-    parsed = extract_json(raw)
+    try:
+        parsed = extract_json(raw)
+    except ValueError:
+        # Small local models often ignore the JSON contract. A reply that has no
+        # tool-call structure at all is a plain answer, not a failed plan.
+        if '"tool_calls"' in raw:
+            raise ApiError(
+                "assistant_tool_plan_invalid",
+                "دستیار نتوانست ابزار را با ورودی معتبر انتخاب کند؛ دسته داده، قالب فایل "
+                "و بازه موردنظر را در پیام مشخص کنید و دوباره بفرستید.",
+            ) from None
+        return AgentPlan(raw.strip() or None, [])
     return _parse_plan(
         parsed.get("answer"),
         parsed.get("tool_calls", []),
@@ -299,6 +310,10 @@ async def _request_plan(
             assistant_agent_turns_total.labels(mode="native", result="succeeded").inc()
             return planned
         except Exception as exc:
+            if isinstance(exc, ProviderError) and exc.code == "llm_provider_timeout":
+                # A second call would wait just as long on the same overloaded model.
+                assistant_agent_turns_total.labels(mode=mode, result="failed").inc()
+                raise
             # A provider that rejects tool schemas can still plan through text JSON.
             compatible_fallback = isinstance(exc, ValidationError) or (
                 isinstance(exc, ProviderError)
@@ -418,6 +433,15 @@ async def plan(
                 continue
             if file_forced and any(call.name == "export_data" for call in pending):
                 pending = [call for call in pending if call.name == "export_data"]
+            elif file_forced and not pending:
+                # Asked twice for the file tool and the model still only wrote prose;
+                # its text would claim a file that was never created.
+                raise ApiError(
+                    "assistant_model_no_tools",
+                    "مدل انتخاب‌شده ابزار ساخت فایل را فراخوانی نکرد و فایلی ساخته نشد؛ "
+                    "در تنظیمات دستیار مدل دیگری انتخاب کنید یا مسیر «پایدار» را فعال کنید "
+                    "و دوباره امتحان کنید.",
+                )
             return AgentPlan(None if pending else planned.answer, pending[:4])
         history += "\n[نتایج جست‌وجوی فهرست ابزارها؛ فقط معرفی قابلیت‌ها]\n" + json.dumps(
             discoveries,

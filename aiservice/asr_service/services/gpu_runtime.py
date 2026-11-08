@@ -239,7 +239,34 @@ def current_device_indices():
     return [index] if index is not None else []
 
 
-def model_memory_estimate(model_id):
+DEFAULT_LLM_CONTEXT = 12288
+# Conservative KV-cache heuristic: bytes per context token as a fraction of the GGUF size.
+# Measured: Gemma 3 4B Q4_K_M 12288 tokens = 1392 MiB; Dorna/Llama-3 8B is about 128 KiB/token.
+KV_BYTES_PER_TOKEN_PER_WEIGHT_BYTE = 0.00005
+COMPUTE_BUFFER_BYTES = 1024 * 1024 * 1024
+RESOURCE_FAILURE_MARKERS = (
+    "out of memory",
+    "cuda_error_out_of_memory",
+    "failed to create llama_context",
+)
+
+
+def is_resource_failure(message):
+    """Whether an exception text means the device ran out of memory for a model."""
+    lowered = str(message).lower()
+    return any(marker in lowered for marker in RESOURCE_FAILURE_MARKERS)
+
+
+def llm_context_size(model_id):
+    from asr_service.domain.catalog import CATALOG
+
+    model = CATALOG.get(model_id)
+    configured = model.decoding.get("context_size") if model else None
+    return int(configured or os.getenv("DORNA_CONTEXT_SIZE", str(DEFAULT_LLM_CONTEXT)))
+
+
+def model_memory_estimate(model_id, context=None):
+    """Bytes one GPU needs: weights, KV cache for the context and compute buffers."""
     from asr_service.domain.catalog import CATALOG
     from asr_service.infrastructure.storage import MODEL_DIR
 
@@ -253,7 +280,29 @@ def model_memory_estimate(model_id):
         required = model.files[0].expected_size or 0
     if not required:
         return 0
-    return int(required * 1.15)
+    tokens = int(context or llm_context_size(model_id))
+    kv_cache = int(required * tokens * KV_BYTES_PER_TOKEN_PER_WEIGHT_BYTE)
+    return int(required * 1.15) + kv_cache + COMPUTE_BUFFER_BYTES
+
+
+def device_has_room(device_uuid, kind, model_id):
+    """False when a single GPU clearly cannot hold the model plus its context.
+
+    A context that is already resident and idle on that GPU needs no new allocation,
+    so it always fits. Unknown devices or models are not blocked.
+    """
+    if kind not in {"chat", "chat_async", "text"}:
+        return True
+    required = model_memory_estimate(model_id)
+    device = next((item for item in discover_gpus() if item["uuid"] == device_uuid), None)
+    if not required or not device:
+        return True
+    if kind != "chat_async":
+        from .text_processing import has_resident_context
+
+        if has_resident_context(model_id, device["index"]):
+            return True
+    return device["memory_free"] >= required
 
 
 def split_devices(kind, model_id):
@@ -287,8 +336,7 @@ def requires_multi_gpu(kind, model_id):
 
 
 def note_model_oom(model_id, message):
-    lowered = str(message).lower()
-    if "out of memory" in lowered or "cuda_error_out_of_memory" in lowered:
+    if is_resource_failure(message):
         with _lock:
             _oom_split_models.add(model_id)
             _lock.notify_all()
@@ -302,10 +350,10 @@ def forget_model(model_id):
 def record_error(device_id, message):
     identifiers = device_id.split(",") if isinstance(device_id, str) else [device_id]
     with _lock:
-        lowered = str(message).lower()
+        resource_failure = is_resource_failure(message)
         for identifier in identifiers:
             _last_errors[identifier] = {"message": str(message)[:300], "at": time.time()}
-            if "out of memory" in lowered or "cuda_error_out_of_memory" in lowered:
+            if resource_failure:
                 _oom_counts[identifier] = _oom_counts.get(identifier, 0) + 1
                 _effective_limits[identifier] = max(1, _effective_limits.get(identifier, 1) - 1)
                 _success_streaks[identifier] = 0

@@ -1029,6 +1029,11 @@ export default function Settings() {
           <option value="synchronous">/v1/chat/completions — پاسخ مستقیم AISERVICE</option>
           <option value="ninerouter">/v1/ninerouter/chat/completions — 9Router از AISERVICE</option>
         </select>
+        {settings.assistant_provider === "aiservice" && settings.chat_route === "synchronous" ? (
+          <p className="mt-2 text-xs text-amber-700">
+            در مسیر «پاسخ مستقیم»، مدل‌های محلی روی CPU ممکن است از مهلت بیشتر طول بکشند و پاسخ در پنل نرسد. برای مدل‌های محلی مسیر durable پیشنهاد می‌شود.
+          </p>
+        ) : null}
         {settings.assistant_provider === "aiservice" && settings.chat_route === "ninerouter" ? (
           <div className="mt-3">
             <label className="label" htmlFor="ninerouter-chat-prompt">دستور تکمیلی دستیار در 9Router</label>

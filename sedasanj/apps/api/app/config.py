@@ -141,6 +141,8 @@ class Settings(BaseSettings):
     voicesanj_correction_timeout_seconds: float = 120.0
     voicesanj_poll_interval_seconds: float = 2.0
     voicesanj_poll_timeout_seconds: float = 1800.0
+    # Read timeout for the synchronous /v1/chat/completions route; aiservice itself waits 120 s.
+    voicesanj_sync_read_timeout_seconds: float = Field(default=120.0, ge=30.0, le=600.0)
     correction_enabled: bool = True
     correction_mode: Literal["text_only", "audio_only", "two_stage"] = "two_stage"
     correction_audio_models: list[str] = Field(default_factory=lambda: ["buzzasr-persian"])

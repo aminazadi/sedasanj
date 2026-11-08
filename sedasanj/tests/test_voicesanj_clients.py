@@ -690,3 +690,30 @@ async def test_voicesanj_validate_api_key_uses_user_endpoint() -> None:
     with patch("app.services.voicesanj.httpx.AsyncClient", FakeClient):
         await client.validate_api_key()
     assert seen == ["http://aiservice.voicesanj.ir/v1/models"]
+
+
+def test_sync_route_read_timeout_covers_local_model_generation() -> None:
+    sync = VoiceSanjChatClient(
+        _voicesanj_settings(
+            aiservice_analysis_path="/v1/chat/completions",
+            voicesanj_sync_read_timeout_seconds=120.0,
+        )
+    )
+    durable = VoiceSanjChatClient(_voicesanj_settings(aiservice_analysis_path="/v1/chat/tasks"))
+    assert sync._client.timeout.read == 120.0
+    assert durable._client.timeout.read == 30.0
+
+
+async def test_native_tool_call_timeout_becomes_a_provider_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow local model", request=request)
+
+    client = VoiceSanjChatClient(
+        _voicesanj_settings(aiservice_analysis_path="/v1/chat/completions")
+    )
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderError) as raised:
+        await client.complete_with_tools("system", "user", [{"type": "function"}])
+    assert raised.value.code == "llm_provider_timeout"
+    assert raised.value.retryable is True
+    await client.close()

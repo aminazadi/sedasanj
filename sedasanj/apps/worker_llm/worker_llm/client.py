@@ -485,7 +485,14 @@ class VoiceSanjChatClient(LlmClient):
         # A stable AnalysisRun ID makes a resubmission after an HTTP timeout
         # resolve to the same provider task, without sharing work across calls.
         self._request_namespace = request_namespace or str(uuid4())
-        timeout = httpx.Timeout(connect=15.0, read=30.0, write=30.0, pool=15.0)
+        # The synchronous route holds the connection while a local model generates, so its
+        # read timeout must cover generation. Durable task calls only submit and poll.
+        read_timeout = (
+            30.0
+            if self._path == "/v1/chat/tasks"
+            else max(settings.voicesanj_sync_read_timeout_seconds, 30.0)
+        )
+        timeout = httpx.Timeout(connect=15.0, read=read_timeout, write=30.0, pool=15.0)
         self._client = httpx.AsyncClient(
             timeout=timeout,
             headers={
@@ -602,7 +609,20 @@ class VoiceSanjChatClient(LlmClient):
                     break
                 await asyncio.sleep(self._poll_interval)
             raise ProviderError("llm_provider_response", "فراخوانی ابزار توسط مدل کامل نشد.")
-        response = await self._client.post(f"{self._base}{self._path}", json=body)
+        try:
+            response = await self._client.post(f"{self._base}{self._path}", json=body)
+        except httpx.TimeoutException as exc:
+            raise ProviderError(
+                "llm_provider_timeout",
+                "پاسخ سرویس هوش مصنوعی در زمان مقرر آماده نشد.",
+                retryable=True,
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError(
+                "llm_provider_unavailable",
+                "ارتباط با سرویس هوش مصنوعی برقرار نشد.",
+                retryable=True,
+            ) from exc
         self._check_response(response, expected=200)
         payload = response.json()
         choices = payload.get("choices") if isinstance(payload, dict) else None

@@ -1,3 +1,9 @@
+## 2026-11-08 — AMINAZADI
+
+- Fixed assistant answers from local AISERVICE models never reaching the panel: the synchronous chat route now waits up to `VOICESANJ_SYNC_READ_TIMEOUT_SECONDS` (default 120 s, was 30 s), native tool calls report `llm_provider_timeout` instead of a raw `ReadTimeout`, and a timeout is no longer retried through a second slow call.
+- Fixed `ValueError` shown to users when a small local model answers in plain text instead of JSON; plain prose is now accepted as the answer.
+- Added error `assistant_model_no_tools`: a file request answered with prose and no export tool call is rejected instead of showing a made-up "file is ready" reply. Added Persian help articles `assistant-model-no-tools` and `ai-local-model-timeout` (migration 0124) and an admin hint that recommends the durable route for local models.
+
 ## 2026-11-07 — AMINAZADI
 
 - Added an admin-managed address to the public footer (Settings → Site settings → footer content); empty hides it. Added the Persian help article `footer-address` (migration 0123).

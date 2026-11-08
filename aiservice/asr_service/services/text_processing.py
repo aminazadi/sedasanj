@@ -1,4 +1,6 @@
+import gc
 import json
+import logging
 import os
 import threading
 from collections import defaultdict
@@ -11,10 +13,16 @@ from .resources import LLM_CPU_THREADS, LLM_MAX_CONCURRENT
 from . import gpu_runtime
 
 
-def _load(mid, device_index=None, split=False):
- from llama_cpp import Llama
+logger=logging.getLogger(__name__)
+MIN_FALLBACK_CONTEXT=2048
+
+
+class ModelContextError(RuntimeError):
+ """The model could not allocate its context on any attempted device or size."""
+
+
+def _build_options(mid,context,device_index,split):
  filename=CATALOG[mid].files[0].filename
- context=CATALOG[mid].decoding.get("context_size") or int(os.getenv("DORNA_CONTEXT_SIZE","12288"))
  options={"model_path":str(MODEL_DIR/mid/filename),"n_ctx":context,"n_gpu_layers":0,"n_threads":LLM_CPU_THREADS,"n_threads_batch":LLM_CPU_THREADS,"verbose":False}
  if device_index is not None:
   from llama_cpp import LLAMA_SPLIT_MODE_LAYER, LLAMA_SPLIT_MODE_NONE
@@ -22,7 +30,42 @@ def _load(mid, device_index=None, split=False):
   if split:
    indices=gpu_runtime.current_device_indices()
    options["tensor_split"]=[1.0 if index in indices else 0.0 for index in range(max(indices)+1)]
- return Llama(**options)
+ return options
+
+
+def _load_attempts(context,device_index):
+ """Ordered (context, device) tries: as configured, half context, then CPU."""
+ attempts=[(context,device_index)]
+ half=context//2
+ if half>=MIN_FALLBACK_CONTEXT:
+  attempts.append((half,device_index))
+ if device_index is not None:
+  attempts.append((context,None))
+ return attempts
+
+
+def _free_vram_mb(device_index):
+ try:
+  for device in gpu_runtime.discover_gpus():
+   if device["index"]==device_index:return device["memory_free"]//(1024*1024)
+ except Exception:
+  pass
+ return None
+
+
+def _load(mid,device_index=None,split=False):
+ from llama_cpp import Llama
+ context=gpu_runtime.llm_context_size(mid)
+ last_error=None
+ for attempt,(n_ctx,device) in enumerate(_load_attempts(context,device_index)):
+  try:
+   return Llama(**_build_options(mid,n_ctx,device,split and device is not None))
+  except Exception as exc:
+   if not gpu_runtime.is_resource_failure(exc):raise
+   last_error=exc
+   logger.warning("Model %s could not allocate its context (attempt %d: n_ctx=%d, gpu=%s, free_vram_mb=%s): %s",mid,attempt+1,n_ctx,device,_free_vram_mb(device) if device is not None else None,exc)
+   gc.collect()
+ raise ModelContextError(f"Failed to create llama_context for {mid} on every fallback (reduce the model context size or free GPU memory): {last_error}") from last_error
 
 
 class ModelPool:
@@ -78,6 +121,10 @@ class GlobalModelPool:
   self.idle = defaultdict(list)
   self.total = 0
   self.condition = threading.Condition()
+
+ def has_resident(self, model_id, device_index):
+  with self.condition:
+   return any(values for key,values in self.idle.items() if key[0]==model_id and key[1]==device_index)
 
  def evict(self, model_id):
   removed=[]
@@ -163,6 +210,11 @@ _global_pool = GlobalModelPool(LLM_MAX_CONCURRENT)
 
 def evict_model(model_id):
  _global_pool.evict(model_id)
+
+
+def has_resident_context(model_id,device_index):
+ """Whether an idle context for this model already lives on that GPU."""
+ return _global_pool.has_resident(model_id,device_index)
 
 
 def _pool(model_id):

@@ -10,6 +10,7 @@ from app.errors import ApiError
 from app.routers import assistant
 from app.schemas import AssistantMessageAttachments
 from app.services import assistant_agent, assistant_tools
+from app.services.provider_errors import ProviderError
 from worker_llm.client import LlmClient
 
 
@@ -315,3 +316,101 @@ def test_enabled_tools_without_a_data_tool_fall_back_to_all() -> None:
     assert assistant._enabled_assistant_tools({}) == every
     chosen = assistant._enabled_assistant_tools({"assistant_enabled_tools": '["search_calls"]'})
     assert chosen == {"search_calls"} | assistant_tools.ALWAYS_ENABLED
+
+
+class ProseClient(LlmClient):
+    """A small local model that ignores the JSON and tool contracts."""
+
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.calls = 0
+
+    async def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_object: bool = True,
+        model: str | None = None,
+    ) -> str:
+        self.calls += 1
+        return self.reply
+
+
+@pytest.mark.asyncio
+async def test_structured_plan_treats_plain_prose_as_the_answer() -> None:
+    plan = await assistant_agent.plan(
+        ProseClient("سلام، چطور کمک کنم؟"),
+        "system",
+        "سلام",
+        "",
+        model="chat-model",
+        mode="structured",
+    )
+    assert plan.answer == "سلام، چطور کمک کنم؟"
+    assert plan.tool_calls == []
+
+
+@pytest.mark.asyncio
+async def test_structured_plan_with_broken_tool_calls_is_a_clear_error() -> None:
+    with pytest.raises(ApiError) as raised:
+        await assistant_agent.plan(
+            ProseClient('{"answer": null, "tool_calls": [{"name": '),
+            "system",
+            "آمار تماس‌ها",
+            "",
+            model="chat-model",
+            mode="structured",
+        )
+    assert raised.value.code == "assistant_tool_plan_invalid"
+
+
+@pytest.mark.asyncio
+async def test_prose_that_claims_a_file_without_calling_the_tool_is_rejected() -> None:
+    client = ProseClient("فایل اکسل خروجی تماس‌ها آماده است.")
+    with pytest.raises(ApiError) as raised:
+        await assistant_agent.plan(
+            client,
+            "system",
+            "خروجی اکسل تماس‌های امروز را بده",
+            "",
+            model="chat-model",
+            mode="structured",
+        )
+    assert raised.value.code == "assistant_model_no_tools"
+    assert client.calls == 2  # one retry with the file-tool hint, then a clear error
+
+
+class TimeoutNativeClient(LlmClient):
+    def __init__(self) -> None:
+        self.complete_calls = 0
+
+    async def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_object: bool = True,
+        model: str | None = None,
+    ) -> str:
+        self.complete_calls += 1
+        return "{}"
+
+    async def complete_with_tools(
+        self,
+        system: str,
+        user: str,
+        tools: list[dict[str, object]],
+        *,
+        model: str | None = None,
+    ) -> dict[str, object]:
+        raise ProviderError("llm_provider_timeout", "slow", retryable=True)
+
+
+@pytest.mark.asyncio
+async def test_native_timeout_is_not_retried_through_a_second_slow_call() -> None:
+    client = TimeoutNativeClient()
+    with pytest.raises(ProviderError) as raised:
+        await assistant_agent.plan(client, "system", "سلام", "", model="chat-model", mode="auto")
+    assert raised.value.code == "llm_provider_timeout"
+    assert client.complete_calls == 0

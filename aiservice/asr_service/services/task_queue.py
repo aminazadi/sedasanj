@@ -889,6 +889,9 @@ class TaskManager:
                         continue
                     if gpu_group and {device["uuid"] for device in selected_group} != {device["uuid"] for device in gpu_group}:
                         continue
+                    if not gpu_group and not gpu_runtime.device_has_room(gpu_id, kind, model_id):
+                        # Leave the task for a GPU with enough free VRAM (or CPU fallback).
+                        continue
                 elif cpu_silero:
                     device_reason = "silero_vad_cpu"
                 elif not remote:
@@ -1331,7 +1334,7 @@ class TaskManager:
                             child_env["ASR_ASSIGNED_GPU_SPLIT"] = "1"
                     with subprocess.Popen(
                         [sys.executable, "-m", "asr_service.services.chat_task_runner"],
-                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         text=True, env=child_env,
                     ) as child:
                         try:
@@ -1341,7 +1344,7 @@ class TaskManager:
                                 if (get_task(task_id) or {}).get("cancel_requested"):
                                     raise CancelledError()
                                 try:
-                                    output, _ = child.communicate(
+                                    output, child_errors = child.communicate(
                                         payload if not sent else None,
                                         timeout=min(2, max(0.01, deadline - time.monotonic())),
                                     )
@@ -1355,6 +1358,10 @@ class TaskManager:
                             child.communicate()
                             raise
                         if child.returncode:
+                            detail = (child_errors or "").strip()[-600:]
+                            logger.warning("Chat subprocess for %s exited with %s: %s", run["model_id"], child.returncode, detail)
+                            if gpu_runtime.is_resource_failure(detail):
+                                gpu_runtime.note_model_oom(run["model_id"], detail)
                             raise ChatTaskModelFailure()
                     try:
                         result = json.loads(output)

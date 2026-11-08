@@ -94,10 +94,12 @@ class GpuRuntimeTests(unittest.TestCase):
             model_dir = Path(directory) / "dorna-8b-q4_k_m"
             model_dir.mkdir()
             with (model_dir / "Dorna-Llama3-8B-Instruct.Q4_K_M.gguf").open("wb") as model_file:
-                model_file.truncate(5 * 1024**3)
+                model_file.truncate(4 * 1024**3)
             with patch.object(gpu_runtime, "enabled_devices", return_value=devices), patch.object(
                 gpu_runtime, "get_settings", return_value=settings
-            ), patch.object(storage, "MODEL_DIR", Path(directory)):
+            ), patch.object(gpu_runtime, "llm_context_size", return_value=2048), patch.object(
+                storage, "MODEL_DIR", Path(directory)
+            ):
                 self.assertFalse(gpu_runtime.requires_multi_gpu("chat", "dorna-8b-q4_k_m"))
                 devices[0]["memory_total"] = 6 * 1024**3
                 devices[1]["memory_total"] = 6 * 1024**3
@@ -117,7 +119,9 @@ class GpuRuntimeTests(unittest.TestCase):
                 model_file.truncate(6 * 1024**3)
             with patch.object(gpu_runtime, "enabled_devices", return_value=devices), patch.object(
                 gpu_runtime, "get_settings", return_value={"min_free_vram_mb": 1024}
-            ), patch.object(storage, "MODEL_DIR", Path(directory)):
+            ), patch.object(gpu_runtime, "llm_context_size", return_value=2048), patch.object(
+                storage, "MODEL_DIR", Path(directory)
+            ):
                 self.assertEqual(2, len(gpu_runtime.split_devices("chat", "dorna-8b-q4_k_m")))
 
     def test_cpu_mode_preserves_selected_devices_for_admin_settings(self):
@@ -133,6 +137,39 @@ class GpuRuntimeTests(unittest.TestCase):
             observed = gpu_runtime.snapshot()["devices"][0]
         self.assertTrue(observed["selected"])
         self.assertFalse(observed["enabled"])
+
+    def test_memory_estimate_includes_kv_cache_and_compute_buffers(self):
+        import tempfile
+        from asr_service.domain.catalog import CATALOG, ModelFile, ModelSpec
+        from asr_service.infrastructure import storage
+
+        spec = ModelSpec("gemma-test", "llm", "Gemma", "", "", "gguf",
+                         files=(ModelFile("g.gguf", "", 2489757856),))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(CATALOG, {"gemma-test": spec}), patch.object(
+            storage, "MODEL_DIR", Path(directory)
+        ):
+            small = gpu_runtime.model_memory_estimate("gemma-test", 4096)
+            large = gpu_runtime.model_memory_estimate("gemma-test", 12288)
+        self.assertGreater(large, small)
+        # 12288 tokens on one GPU must not fit GPU1's measured 4493 MiB free.
+        self.assertGreater(large, 4493 * 1024**2)
+
+    def test_device_has_room_rejects_a_gpu_that_cannot_hold_the_context(self):
+        device = {"index": 1, "uuid": "GPU-b", "memory_free": 4493 * 1024**2}
+        with patch.object(gpu_runtime, "discover_gpus", return_value=[device]), patch.object(
+            gpu_runtime, "model_memory_estimate", return_value=5 * 1024**3
+        ), patch("asr_service.services.text_processing.has_resident_context", return_value=False):
+            self.assertFalse(gpu_runtime.device_has_room("GPU-b", "chat", "gemma-test"))
+            self.assertTrue(gpu_runtime.device_has_room("GPU-b", "asr", "gemma-test"))
+        with patch.object(gpu_runtime, "discover_gpus", return_value=[device]), patch.object(
+            gpu_runtime, "model_memory_estimate", return_value=5 * 1024**3
+        ), patch("asr_service.services.text_processing.has_resident_context", return_value=True):
+            self.assertTrue(gpu_runtime.device_has_room("GPU-b", "chat", "gemma-test"))
+
+    def test_llama_context_failure_counts_as_resource_failure(self):
+        self.assertTrue(gpu_runtime.is_resource_failure("ValueError: Failed to create llama_context"))
+        self.assertTrue(gpu_runtime.is_resource_failure("CUDA error: out of memory"))
+        self.assertFalse(gpu_runtime.is_resource_failure("file not found"))
 
 
 if __name__ == "__main__":
