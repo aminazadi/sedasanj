@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-08 — AMINAZADI
+
+- Added a Persian design wiki in `docs/design-wiki/` (public pages, client panel, admin panel, Jalase-Negar app, design-system brief, user journeys, sample data) as input for building redesign prototypes.
+
 ## 2026-11-06 — AMINAZADI
 
 - Added the CED audio-tagging model to the Jalase-Negar model downloads for on-device sound detection; Jalase-Negar now writes laughter, crying, coughs and similar sounds inside the speech line (calibrated on labelled clips, see `jalase-negar/docs/asr-benchmark.md`).
