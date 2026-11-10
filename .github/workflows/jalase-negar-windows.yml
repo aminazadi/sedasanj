@@ -30,6 +30,9 @@ jobs:
         env:
           # firebase_cpp_sdk (via firebase_core) declares cmake_minimum_required < 3.5, which CMake 4 rejects.
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          # just_audio_windows and flutter_local_notifications_windows use <experimental/coroutine>, which the
+          # newest MSVC STL turns into a hard error; the compiler reads the CL variable.
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: |
           flutter build windows --release --dart-define=STORE=desktop 2>&1 | Tee-Object -FilePath build.log
           if ($LASTEXITCODE -ne 0) { exit 1 }
