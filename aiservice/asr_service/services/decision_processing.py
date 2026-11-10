@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
 from .resources import DECISION_CPU_THREADS, DECISION_MAX_CONCURRENT
-from . import gpu_runtime
+from . import gpu_memory, gpu_runtime
 
 
 CAPABILITIES = {
@@ -37,6 +37,16 @@ class DecisionRuntimeRegistry:
                 raise HTTPException(409, "Wait for active decision inference before deleting this model")
             for key in [key for key in self._items if key[0] == model_id]:
                 self._items.pop(key, None)
+
+    def evict_idle(self, device_index):
+        """Drop resident GPU runtimes on one device that no request is using."""
+        if device_index is None:
+            return 0
+        with self._lock:
+            keys = [key for key, item in self._items.items() if key[1] == device_index and not item["active"]]
+            for key in keys:
+                self._items.pop(key, None)
+        return len(keys)
 
     def _load(self, model_id, device_index=None):
         spec = CATALOG.get(model_id)
@@ -83,6 +93,7 @@ class DecisionRuntimeRegistry:
 
 
 registry = DecisionRuntimeRegistry()
+gpu_memory.register_idle_evictor("decision", registry.evict_idle)
 
 
 def _question_payload(questions):

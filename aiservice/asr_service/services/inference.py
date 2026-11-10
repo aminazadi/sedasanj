@@ -1,10 +1,11 @@
 import io, os, threading
 from pathlib import Path
+from collections import OrderedDict
 from functools import lru_cache
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
 from .resources import ASR_CPU_THREADS,INFERENCE_SLOTS
-from . import gpu_runtime
+from . import gpu_memory, gpu_runtime
 THREADS = ASR_CPU_THREADS
 COMPUTE = os.getenv("ASR_COMPUTE_TYPE", "int8")
 DEVICE = os.getenv("ASR_DEVICE", "cpu")
@@ -48,8 +49,29 @@ def _whisper_audio(audio,sample_rate):
 def denoiser():
  import sherpa_onnx
  p=MODEL_DIR/"gtcrn-denoiser"/"gtcrn_simple.onnx";cfg=sherpa_onnx.OfflineSpeechDenoiserConfig(model=sherpa_onnx.OfflineSpeechDenoiserModelConfig(gtcrn=sherpa_onnx.OfflineSpeechDenoiserGtcrnModelConfig(model=str(p)),debug=False,num_threads=1,provider="cpu"));return sherpa_onnx.OfflineSpeechDenoiser(cfg)
-@lru_cache(maxsize=4)
+_MODEL_CACHE_SIZE=4
+_models=OrderedDict();_model_guard=threading.Lock();_model_key_locks={}
 def _load(mid, device_index):
+ """LRU model cache (size 4). A per-key lock stops two threads loading the same model twice."""
+ key=(mid,device_index)
+ with _model_guard:
+  if key in _models:
+   _models.move_to_end(key);return _models[key]
+  key_lock=_model_key_locks.setdefault(key,threading.Lock())
+ with key_lock:
+  with _model_guard:
+   if key in _models:
+    _models.move_to_end(key);return _models[key]
+  engine=_build(mid,device_index)
+  with _model_guard:
+   _models[key]=engine
+   while len(_models)>_MODEL_CACHE_SIZE:_models.popitem(last=False)
+  return engine
+def _clear_models(mid=None):
+ with _model_guard:
+  for key in [key for key in _models if mid is None or key[0]==mid]:_models.pop(key,None)
+_load.cache_clear=_clear_models
+def _build(mid, device_index):
  spec=CATALOG[mid];root=MODEL_DIR/mid
  if spec.architecture in {"nemoCtc","transducer"} and device_index is not None:
   from .sherpa_gpu import SherpaGpuModel
@@ -67,8 +89,10 @@ def _load(mid, device_index):
  return sherpa_onnx.OfflineRecognizer.from_transducer(encoder=str(root/"encoder.int8.onnx"),decoder=str(root/"decoder.int8.onnx"),joiner=str(root/"joiner.int8.onnx"),tokens=str(root/"tokens.txt"),num_threads=THREADS,model_type="nemo_transducer",decoding_method=CONTRACT["decoding_method"],max_active_paths=CONTRACT["max_active_paths"])
 def load(mid):return _load(mid,gpu_runtime.current_device_index())
 def evict_model(mid):
- _load.cache_clear()
+ """Drop only this model's cached engines, then return their memory to the driver."""
+ _clear_models(mid)
  if mid=="gtcrn-denoiser":denoiser.cache_clear()
+ gpu_memory.trim_now()
 def _decode_whisper(engine, source, options):
  """Materialize the lazy segment iterator while its input stream is still alive."""
  iterator, info = engine.transcribe(source, **options)

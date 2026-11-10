@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-11 — AMINAZADI
+
+- Fixed deleting one ASR model dropping every cached ASR engine (all models reloaded afterwards) and two threads loading the same model concurrently (double VRAM): the ASR model cache now evicts only the target model and builds each model once.
+- Added a GPU memory manager: PyTorch caches are returned to the driver after `ASR_GPU_IDLE_TRIM_SECONDS` (default 10) of GPU inactivity, never after each request, and idle resident GGUF/embedding/decision models on a GPU are released when another job does not fit, so a resident model no longer causes OOM for the next job. Models in use are never touched; set `ASR_GPU_MEMORY_MANAGER=0` to disable.
+
 ## 2026-11-08 — AMINAZADI
 
 - Fixed `ValueError: Failed to create llama_context` for large-context models such as Gemma 3 4B: the scheduler now estimates weights, KV cache and compute buffers and skips a GPU that cannot hold them (an idle resident context still counts as fitting), and the model loader retries with half the context and then on CPU before failing with a typed `ModelContextError`.

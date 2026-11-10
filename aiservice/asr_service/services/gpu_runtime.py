@@ -13,6 +13,8 @@ from importlib.metadata import version
 
 from asr_service.infrastructure.storage import execute, row, rows
 
+from . import gpu_memory
+
 
 _current_gpu = ContextVar("asr_current_gpu", default=None)
 _lock = threading.Condition()
@@ -69,6 +71,11 @@ def discover_gpus():
     with _lock:
         _device_cache.update(at=time.monotonic(), value=[dict(item) for item in devices])
     return devices
+
+
+def _invalidate_device_cache():
+    with _lock:
+        _device_cache["at"] = 0.0
 
 
 def _default_settings():
@@ -302,7 +309,14 @@ def device_has_room(device_uuid, kind, model_id):
 
         if has_resident_context(model_id, device["index"]):
             return True
-    return device["memory_free"] >= required
+    if device["memory_free"] >= required:
+        return True
+    # Idle resident models of other kinds may be the only obstacle: free them and re-check.
+    if gpu_memory.evict_idle(device["index"]):
+        _invalidate_device_cache()
+        refreshed = next((item for item in discover_gpus() if item["uuid"] == device_uuid), None)
+        return bool(refreshed) and refreshed["memory_free"] >= required
+    return False
 
 
 def split_devices(kind, model_id):
@@ -399,6 +413,7 @@ def reserve_group(devices, timeout=0, required_bytes=0):
                 primary = current[identifiers[0]]
                 context = dict(primary, uuid=",".join(identifiers), split=True, indices=[current[item]["index"] for item in identifiers])
                 token = _current_gpu.set(context)
+                gpu_memory.job_started()
                 break
         if time.monotonic() >= deadline:
             raise TimeoutError("Multi-GPU capacity is currently full")
@@ -413,6 +428,7 @@ def reserve_group(devices, timeout=0, required_bytes=0):
             for item in identifiers:
                 _active[item] = max(0, _active.get(item, 1) - 1)
             _lock.notify_all()
+        gpu_memory.job_finished()
 
 
 @contextmanager
@@ -421,16 +437,24 @@ def reserve(device, timeout=0):
     device_id = device["uuid"]
     token = None
     deadline = time.monotonic() + timeout
+    freed = False
     while True:
         settings = get_settings()
         current = next((item for item in discover_gpus() if item["uuid"] == device_id), None)
         limit = min(int(settings["max_concurrent_per_device"]), _effective_limits.get(device_id, 1))
         floor = int(settings["min_free_vram_mb"]) * 1024 * 1024
+        if current and not freed and current["memory_free"] < floor:
+            # Idle resident models may be what is holding the VRAM; release them once.
+            freed = True
+            if gpu_memory.evict_idle(current["index"]):
+                _invalidate_device_cache()
+                continue
         with _lock:
             active = _active.get(device_id, 0)
             if current and device_id in set(settings.get("enabled_devices") or ()) and settings["mode"] != "cpu" and current["memory_free"] >= floor and active < limit:
                 _active[device_id] = active + 1
                 token = _current_gpu.set(current)
+                gpu_memory.job_started()
                 break
         if time.monotonic() >= deadline:
             raise TimeoutError("GPU capacity is currently full")
@@ -444,6 +468,7 @@ def reserve(device, timeout=0):
         with _lock:
             _active[device_id] = max(0, _active.get(device_id, 1) - 1)
             _lock.notify_all()
+        gpu_memory.job_finished()
 
 
 def snapshot():

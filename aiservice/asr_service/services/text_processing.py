@@ -10,7 +10,7 @@ from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
 
 from .resources import LLM_CPU_THREADS, LLM_MAX_CONCURRENT
-from . import gpu_runtime
+from . import gpu_memory, gpu_runtime
 
 
 logger=logging.getLogger(__name__)
@@ -139,6 +139,21 @@ class GlobalModelPool:
     try:close()
     except Exception:pass
 
+ def evict_device(self, device_index):
+  """Close idle contexts (never leased ones) living on one GPU; returns the count."""
+  removed=[]
+  with self.condition:
+   for key in [key for key,values in self.idle.items() if key[1]==device_index and values]:
+    removed.extend(self.idle.pop(key))
+   self.total-=len(removed)
+   self.condition.notify_all()
+  for model in removed:
+   close=getattr(model,"close",None)
+   if close:
+    try:close()
+    except Exception:pass
+  return len(removed)
+
  @contextmanager
  def lease(self, model_id):
   device_index=gpu_runtime.current_device_index()
@@ -206,6 +221,7 @@ class _ModelLease:
 
 
 _global_pool = GlobalModelPool(LLM_MAX_CONCURRENT)
+gpu_memory.register_idle_evictor("gguf",_global_pool.evict_device)
 
 
 def evict_model(model_id):
