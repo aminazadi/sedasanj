@@ -8,6 +8,9 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
+    if let registrar = self.registrar(forPlugin: "JalaseMultichannelCapture") {
+      MultichannelCapture.register(with: registrar.messenger())
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

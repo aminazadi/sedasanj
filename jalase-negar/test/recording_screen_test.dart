@@ -47,10 +47,30 @@ void main() {
 
     wave.addPcm(Uint8List.sublistView(bytes, 17));
     expect(updates, 1);
-    expect(wave.amplitudeAt(count - 2), closeTo(0.625, 0.0001));
+    expect(
+      wave.amplitudeAt(count - 2),
+      closeTo(LiveAudioWaveform.barFor(0.125), 0.0001),
+    );
     expect(wave.amplitudeAt(count - 1), 0);
     wave.clear();
     expect(wave.amplitudeAt(count - 2), 0);
+  });
+
+  test('waveform bars follow dBFS and report clipping', () {
+    expect(LiveAudioWaveform.barFor(0), 0);
+    expect(LiveAudioWaveform.barFor(0.0005), 0); // below -60 dBFS
+    expect(LiveAudioWaveform.barFor(1), 1);
+    // Speech around -30 dBFS sits mid-height instead of filling the bar.
+    expect(LiveAudioWaveform.barFor(0.0316), closeTo(0.5, 0.01));
+    final wave = LiveAudioWaveform(sampleRate: kRecordSampleRate);
+    addTearDown(wave.dispose);
+    final pcm = ByteData(4)
+      ..setInt16(0, 100, Endian.little)
+      ..setInt16(2, -32768, Endian.little);
+    wave.addPcm(pcm.buffer.asUint8List());
+    expect(wave.clipped, isTrue);
+    wave.clear();
+    expect(wave.clipped, isFalse);
   });
 
   test('the final cue is an 800 ms PCM wave', () async {
@@ -272,21 +292,13 @@ void main() {
     expect(find.byKey(_transcript), findsNothing);
   });
 
-  testWidgets('the header uses matching icon buttons and keeps the mic menu', (
+  testWidgets('the header has no microphone menu or live toggle', (
     tester,
   ) async {
     await _openScreen(tester, reducedMotion: true);
-    final mic = find.byIcon(Icons.mic_none);
-    final live = find.byIcon(Icons.subtitles_outlined);
-    expect(tester.getSize(mic), tester.getSize(live));
-    expect(tester.getCenter(mic).dy, tester.getCenter(live).dy);
-    expect(find.text('میکروفون پیش‌فرض'), findsNothing);
-
-    await tester.tap(mic);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('میکروفون پیش‌فرض'), findsOneWidget);
-    expect(find.text('به‌روزرسانی لیست'), findsOneWidget);
+    expect(find.byIcon(Icons.subtitles_outlined), findsNothing);
+    expect(find.byTooltip('متن زنده روشن است'), findsNothing);
+    expect(find.text('۰۰:۰۰'), findsNothing);
   });
 
   testWidgets('losing app focus cancels countdown before capture', (

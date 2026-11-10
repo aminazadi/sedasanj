@@ -1,10 +1,11 @@
 import 'dart:async';
+import '../../../core/speaker/speaker_matcher.dart';
+import 'channel_owner_sheet.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:record/record.dart' show InputDevice;
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
@@ -15,7 +16,7 @@ import '../../onboarding/tour_overlay.dart';
 import '../../people/application/people_providers.dart';
 import '../../people/presentation/attendee_picker_sheet.dart';
 import '../../onboarding/tour_step.dart';
-import '../application/live_engine_provider.dart';
+import '../application/live_audio_waveform.dart';
 import '../application/pending_attendees.dart';
 import '../application/recorder_controller.dart';
 import 'live_transcript_panel.dart';
@@ -153,7 +154,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
           return;
         }
         if (!isActive || isSaving) return;
-        final leave = await showDialog<bool>(
+        final leave = await showDialog<String>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('توقف ضبط؟'),
@@ -162,39 +163,59 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(context, 'continue'),
                 child: const Text('ادامه ضبط'),
               ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: SsColors.danger),
+                onPressed: () => Navigator.pop(context, 'discard'),
+                child: const Text('حذف'),
+              ),
               FilledButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(context, 'save'),
                 child: const Text('توقف و ذخیره'),
               ),
             ],
           ),
         );
-        if (leave == true) await controller.stop();
+        if (leave == 'save') await controller.stop();
+        if (leave == 'discard') {
+          if (!context.mounted) return;
+          final sure = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('حذف این ضبط؟'),
+              content: const Text(
+                'ضبط و متن آن برای همیشه پاک می‌شود و برگشتی ندارد.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('انصراف'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: SsColors.danger,
+                  ),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('حذف'),
+                ),
+              ],
+            ),
+          );
+          if (sure == true) {
+            await controller.stopAndDiscard();
+            if (!context.mounted) return;
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          }
+        }
       },
       child: Scaffold(
-        appBar: SsAppBar(
-          title: const Text('ضبط جلسه'),
-          actions: [
-            if (!isActive && !_preparing)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const TourTarget(step: TourStep.live, child: _LiveToggle()),
-                    const SizedBox(width: 4),
-                    TourTarget(
-                      step: TourStep.microphone,
-                      child: _MicMenu(state: state, controller: controller),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+        appBar: SsAppBar(title: const Text('ضبط جلسه'), actions: []),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -205,10 +226,16 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                   children: [
                     Expanded(
                       child: isActive
+                          // Just the text, from the top of the page down to the
+                          // waveform: new lines slide in and, once the page
+                          // is full, older ones scroll up and fade out.
                           ? ClipRect(
                               child:
                                   widget.liveTranscript ??
-                                  LiveTranscriptPanel(state: controller.live),
+                                  LiveTranscriptPanel(
+                                    state: controller.live,
+                                    bare: true,
+                                  ),
                             )
                           : const SizedBox.expand(),
                     ),
@@ -226,12 +253,63 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
-                      _RecordingMonitor(
-                        state: state,
-                        waveform: LiveWaveform(
-                          waveform: controller.waveform,
-                          active: isRecording && !state.interrupted,
-                        ),
+                      ValueListenableBuilder<String?>(
+                        valueListenable: controller.channelNotice,
+                        builder: (context, notice, _) => notice == null
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Text(
+                                  notice,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                      ),
+                      ValueListenableBuilder<List<LiveAudioWaveform>>(
+                        valueListenable: controller.channelWaveforms,
+                        builder: (context, waveforms, _) =>
+                            ValueListenableBuilder<Set<int>>(
+                              valueListenable: controller.mutedChannels,
+                              builder: (context, muted, _) =>
+                                  ValueListenableBuilder<
+                                    Map<int, SpeakerIdentity>
+                                  >(
+                                    valueListenable: controller.channelOwners,
+                                    builder: (context, owners, _) =>
+                                        _RecordingMonitor(
+                                          state: state,
+                                          active:
+                                              isRecording && !state.interrupted,
+                                          waveforms: waveforms,
+                                          muted: muted,
+                                          owners: owners,
+                                          onToggleMute:
+                                              controller.toggleChannelMute,
+                                          onPickOwner: (i, label) async {
+                                            final choice =
+                                                await showChannelOwnerPicker(
+                                                  context,
+                                                  channelLabel: label,
+                                                  currentPersonId:
+                                                      owners[i]?.personId,
+                                                );
+                                            if (choice == null) return;
+                                            final p = choice.person;
+                                            controller.assignChannel(
+                                              i,
+                                              p == null
+                                                  ? null
+                                                  : SpeakerIdentity(
+                                                      name: p.name,
+                                                      personId: p.clientId,
+                                                      confidence: 100,
+                                                    ),
+                                            );
+                                          },
+                                        ),
+                                  ),
+                            ),
                       ),
                     ],
                     SizedBox(
@@ -362,16 +440,6 @@ class _RecordingPreview extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                formatDuration(Duration.zero),
-                textDirection: TextDirection.ltr,
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontSize: 56,
-                  fontWeight: FontWeight.w300,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
                 'برای شروع ضبط، دکمهٔ زیر را بزنید',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
@@ -423,14 +491,31 @@ class _CountdownNumber extends StatelessWidget {
 }
 
 class _RecordingMonitor extends StatelessWidget {
-  const _RecordingMonitor({required this.state, required this.waveform});
+  const _RecordingMonitor({
+    required this.state,
+    required this.active,
+    required this.waveforms,
+    required this.muted,
+    required this.owners,
+    required this.onToggleMute,
+    required this.onPickOwner,
+  });
 
   final RecorderState state;
-  final LiveWaveform waveform;
+  final bool active;
+  final List<LiveAudioWaveform> waveforms;
+  final Set<int> muted;
+  final Map<int, SpeakerIdentity> owners;
+  final ValueChanged<int> onToggleMute;
+  final void Function(int channel, String label) onPickOwner;
+
+  /// Height of three channel rows (button height 32).
+  static const double _maxRowsHeight = 3 * 32.0;
 
   @override
   Widget build(BuildContext context) {
-    final color = waveform.active ? SsColors.danger : SsColors.ink;
+    final color = active ? SsColors.danger : SsColors.ink;
+    final many = waveforms.length > 1;
     return DecoratedBox(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: SsColors.line)),
@@ -452,136 +537,186 @@ class _RecordingMonitor extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
-            Expanded(child: waveform),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Input device picker in the app bar: a compact button that opens a dropdown
-/// of the available microphones (the current one is ticked).
-class _MicMenu extends StatelessWidget {
-  const _MicMenu({required this.state, required this.controller});
-
-  final RecorderState state;
-  final RecorderController controller;
-
-  static const _refresh = '__refresh__';
-
-  String _labelOf(InputDevice device) =>
-      device.label.isEmpty ? 'میکروفون ${device.id}' : device.label;
-
-  @override
-  Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.labelMedium;
-
-    PopupMenuItem<String> item(String value, String label, {bool on = false}) {
-      return PopupMenuItem<String>(
-        value: value,
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 18,
-              child: on
-                  ? const Icon(Icons.check, size: 16, color: SsColors.primary)
-                  : null,
-            ),
-            const SizedBox(width: 6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: textStyle?.copyWith(
-                  color: on ? SsColors.primary : SsColors.ink,
-                  fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+            Expanded(
+              // Up to three channels are shown; more scroll, so the text keeps
+              // its room.
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: _maxRowsHeight),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < waveforms.length; i++)
+                        Row(
+                          textDirection: TextDirection.rtl,
+                          children: [
+                            Expanded(
+                              child: Opacity(
+                                opacity: muted.contains(i) ? 0.3 : 1,
+                                child: LiveWaveform(
+                                  waveform: waveforms[i],
+                                  active: active && !muted.contains(i),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _MuteButton(
+                              muted: muted.contains(i),
+                              label: many
+                                  ? 'کانال ${toPersianDigits('${i + 1}')}'
+                                  : 'میکروفون',
+                              number: many ? toPersianDigits('${i + 1}') : null,
+                              onTap: () => onToggleMute(i),
+                            ),
+                            const SizedBox(width: 4),
+                            _OwnerButton(
+                              name: owners[i]?.name,
+                              onTap: () => onPickOwner(
+                                i,
+                                many
+                                    ? 'کانال ${toPersianDigits('${i + 1}')}'
+                                    : 'میکروفون',
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
-      );
-    }
-
-    return PopupMenuButton<String>(
-      tooltip: 'انتخاب ورودی صوتی',
-      position: PopupMenuPosition.under,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 200),
-      onSelected: (value) {
-        if (value == _refresh) {
-          controller.refreshInputDevices();
-        } else {
-          controller.setInputDevice(value);
-        }
-      },
-      itemBuilder: (context) => [
-        item('', 'میکروفون پیش‌فرض', on: state.selectedInputDeviceId.isEmpty),
-        for (final device in state.inputDevices)
-          item(
-            device.id,
-            _labelOf(device),
-            on: device.id == state.selectedInputDeviceId,
-          ),
-        const PopupMenuDivider(height: 1),
-        PopupMenuItem<String>(
-          value: _refresh,
-          height: 40,
-          enabled: !state.discoveringInputDevices,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(width: 18),
-              const SizedBox(width: 6),
-              const Icon(Icons.refresh, size: 16, color: SsColors.neutral),
-              const SizedBox(width: 6),
-              Text(
-                'به‌روزرسانی لیست',
-                style: textStyle?.copyWith(color: SsColors.neutral),
-              ),
-            ],
-          ),
-        ),
-      ],
-      child: _HeaderActionIcon(
-        icon: Icons.mic_none,
-        busy: state.discoveringInputDevices,
       ),
     );
   }
 }
 
-class _HeaderActionIcon extends StatelessWidget {
-  const _HeaderActionIcon({required this.icon, this.busy = false});
+/// Flat outlined button naming who holds a microphone ("نامشخص" while nobody
+/// does and voices are recognised automatically); opens the picker.
+class _OwnerButton extends StatelessWidget {
+  const _OwnerButton({required this.name, required this.onTap});
 
-  final IconData icon;
-  final bool busy;
+  final String? name;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 44,
-      child: Center(
-        child: Container(
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: SsColors.ink.withValues(alpha: 0.06),
-            border: Border.all(color: SsColors.ink.withValues(alpha: 0.25)),
+    final assigned = name != null;
+    final color = assigned ? SsColors.primary : SsColors.ink;
+    return Tooltip(
+      message: assigned
+          ? 'صاحب میکروفون: $name؛ برای تغییر بزنید'
+          : 'انتساب میکروفون به یک فرد',
+      child: Semantics(
+        button: true,
+        label: assigned ? 'صاحب میکروفون $name' : 'انتساب میکروفون',
+        child: Material(
+          color: assigned ? SsColors.primary : Colors.transparent,
+          shape: RoundedRectangleBorder(
+            side: BorderSide(
+              color: assigned ? SsColors.primary : SsColors.line,
+            ),
           ),
-          child: busy
-              ? const SizedBox.square(
-                  dimension: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(icon, size: 18, color: SsColors.primary),
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 32, maxWidth: 110),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.person_outline,
+                      size: 16,
+                      color: assigned ? SsColors.canvas : color,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        name ?? 'فرد',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: assigned ? SsColors.canvas : color,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Square mute toggle in the app's flat style (like the play buttons): an
+/// outlined mic while the channel is live, a filled red crossed-out mic when
+/// it is muted.
+class _MuteButton extends StatelessWidget {
+  const _MuteButton({
+    required this.muted,
+    required this.label,
+    required this.onTap,
+    this.number,
+  });
+
+  final bool muted;
+  final String label;
+  final String? number;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = muted ? SsColors.danger : SsColors.primary;
+    return Tooltip(
+      message: muted
+          ? '$label بی‌صدا است؛ برای باز کردن بزنید'
+          : 'بی‌صدا کردن $label',
+      child: Semantics(
+        button: true,
+        toggled: muted,
+        label: label,
+        child: Material(
+          color: muted ? SsColors.danger : Colors.transparent,
+          shape: RoundedRectangleBorder(side: BorderSide(color: color)),
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              width: 32,
+              height: 32,
+              child: Center(
+                child: number == null
+                    ? Icon(
+                        muted ? Icons.mic_off : Icons.mic_none,
+                        size: 18,
+                        color: muted ? SsColors.canvas : color,
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            muted ? Icons.mic_off : Icons.mic_none,
+                            size: 15,
+                            color: muted ? SsColors.canvas : color,
+                          ),
+                          Text(
+                            number!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: muted ? SsColors.canvas : color,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -675,9 +810,11 @@ class _DiamondButtonState extends State<_DiamondButton>
   Widget build(BuildContext context) {
     final d = widget.half;
     final side = d * math.sqrt2;
-    final main = widget.danger ? SsColors.danger : SsColors.primary;
-    final colors = widget.danger
-        ? const [Color(0xFFD1305A), SsColors.danger, Color(0xFF9F0F36)]
+    // The pulsing start button is the record button: red, like the bar's.
+    final red = widget.danger || widget.pulse;
+    final main = red ? SsColors.danger : SsColors.primary;
+    final colors = red
+        ? const [Color(0xFFE5484D), SsColors.danger, Color(0xFF8F0E2E)]
         : const [SsColors.primaryLight, SsColors.primary, SsColors.primaryDark];
     return Semantics(
       button: true,
@@ -697,33 +834,58 @@ class _DiamondButtonState extends State<_DiamondButton>
               clipBehavior: Clip.none,
               children: [
                 if (animate)
-                  for (final offset in [0.0, 0.5])
-                    Builder(
-                      builder: (context) {
-                        final progress = (_pulse.value + offset) % 1.0;
-                        final eased = Curves.easeOut.transform(progress);
-                        final ringSize = side * (1 + 0.55 * eased);
-                        return Positioned(
-                          left: (2 * d + 8 - ringSize) / 2,
-                          top: (2 * d + 8 - ringSize) / 2,
-                          width: ringSize,
-                          height: ringSize,
-                          child: Transform.rotate(
-                            angle: math.pi / 4,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: main.withValues(
-                                    alpha: 0.38 * (1 - progress),
-                                  ),
-                                  width: 1.5,
-                                ),
+                  Container(
+                    width: side * 0.9,
+                    height: side * 0.9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: main.withValues(
+                            alpha:
+                                0.25 +
+                                0.3 *
+                                    (0.5 +
+                                        0.5 *
+                                            math.sin(
+                                              _pulse.value * 2 * math.pi,
+                                            )),
+                          ),
+                          blurRadius:
+                              18 +
+                              12 *
+                                  (0.5 +
+                                      0.5 *
+                                          math.sin(_pulse.value * 2 * math.pi)),
+                          spreadRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                if (animate)
+                  Builder(
+                    builder: (context) {
+                      // Same single ring as the bottom bar's record diamond.
+                      final t = Curves.easeOut.transform(_pulse.value);
+                      final ringSize = side + 12 * t;
+                      return Positioned(
+                        left: (2 * d + 8 - ringSize) / 2,
+                        top: (2 * d + 8 - ringSize) / 2,
+                        width: ringSize,
+                        height: ringSize,
+                        child: Transform.rotate(
+                          angle: math.pi / 4,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: main.withValues(alpha: 0.35 * (1 - t)),
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
+                  ),
                 child!,
               ],
             );
@@ -763,6 +925,38 @@ class _DiamondButtonState extends State<_DiamondButton>
                                 ),
                               ],
                       ),
+                      child: widget.pulse
+                          ? ClipRect(
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  const SsDots.onPrimary(
+                                    child: SizedBox.expand(),
+                                  ),
+                                  FractionallySizedBox(
+                                    alignment: Alignment(
+                                      -2 + 4 * _pulse.value,
+                                      0,
+                                    ),
+                                    widthFactor: 0.35,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.white.withValues(alpha: 0),
+                                            Colors.white.withValues(
+                                              alpha: 0.35,
+                                            ),
+                                            Colors.white.withValues(alpha: 0),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : null,
                     ),
                   ),
                   Icon(
@@ -776,34 +970,6 @@ class _DiamondButtonState extends State<_DiamondButton>
           ),
         ),
       ),
-    );
-  }
-}
-
-/// App-bar switch for live transcription; the choice is remembered.
-class _LiveToggle extends ConsumerWidget {
-  const _LiveToggle();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final enabled = ref.watch(liveTranscriptEnabledProvider).value ?? true;
-    return IconButton(
-      tooltip: enabled ? 'متن زنده روشن است' : 'متن زنده خاموش است',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-      icon: _HeaderActionIcon(
-        icon: enabled ? Icons.subtitles_outlined : Icons.subtitles_off_outlined,
-      ),
-      onPressed: () {
-        ref.read(liveTranscriptEnabledProvider.notifier).set(!enabled);
-        SsToastHost.show(
-          context,
-          enabled
-              ? 'متن زنده خاموش شد؛ ضبط مثل قبل انجام می‌شود.'
-              : 'متن زنده روشن شد؛ از ضبط بعدی متن هم‌زمان نمایش داده می‌شود.',
-          queue: SsToastQueue.dismissCurrent,
-        );
-      },
     );
   }
 }

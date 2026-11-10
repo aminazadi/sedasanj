@@ -81,6 +81,13 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   @override
   Widget build(BuildContext context) {
     final hidden = ref.watch(pendingDeletesProvider);
+    // Search results follow list changes (a finished transcription or an
+    // edit), refreshed after the frame so no provider is invalidated mid-build.
+    ref.listen(meetingsProvider, (_, _) {
+      Future.microtask(() {
+        if (mounted) ref.invalidate(transcriptMatchesProvider);
+      });
+    });
     // Narrow watches: reloading the list (status polling, upload ticks) must
     // not rebuild or flash the screen. It only rebuilds when the set/order of
     // visible meetings changes; each tile then updates itself.
@@ -527,22 +534,6 @@ class _MeetingTile extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (canSendMeetingText(meeting, hasText: preview.isNotEmpty))
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      iconSize: 20,
-                      tooltip: 'ارسال به صداسنج',
-                      icon: const Icon(
-                        Icons.cloud_upload_outlined,
-                        color: SsColors.primary,
-                      ),
-                      onPressed: () =>
-                          sendMeetingToSedasanj(context, ref, meeting.id),
-                    ),
-                  ),
                 _menu(context, ref, meeting, preview),
               ],
             ),
@@ -651,8 +642,10 @@ class _MeetingTile extends ConsumerWidget {
       IconData icon,
       String label, {
       Color? color,
+      bool enabled = true,
     }) => PopupMenuItem(
       value: value,
+      enabled: enabled,
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
@@ -681,11 +674,18 @@ class _MeetingTile extends ConsumerWidget {
         position: PopupMenuPosition.under,
         onSelected: (value) => switch (value) {
           'rename' => _rename(context, ref, meeting),
+          'send' => sendMeetingToSedasanj(context, ref, meeting.id),
           'share' => shareMeetingAudio(context, meeting),
           _ => _confirmDelete(context, ref, meeting),
         },
         itemBuilder: (context) => [
           item('rename', Icons.edit_outlined, 'تغییر نام'),
+          item(
+            'send',
+            Icons.cloud_upload_outlined,
+            'ارسال به صداسنج',
+            enabled: canSendMeetingText(meeting, hasText: preview.isNotEmpty),
+          ),
           item('share', Icons.ios_share, 'اشتراک‌گذاری فایل صوتی'),
           item(
             'delete',

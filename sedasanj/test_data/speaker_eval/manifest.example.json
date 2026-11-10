@@ -1,0 +1,21 @@
+{
+  "enrolled": {
+    "Ali": "enroll/ali.wav",
+    "Sara": "enroll/sara.wav"
+  },
+  "meetings": [
+    {
+      "id": "meeting-1",
+      "audio": "audio/meeting-1.wav",
+      "truth": "truth/meeting-1.json",
+      "attendees": ["Ali", "Sara"],
+      "tags": ["overlap"]
+    },
+    {
+      "id": "meeting-2-noisy",
+      "audio": "audio/meeting-2-noisy.wav",
+      "truth": "truth/meeting-2-noisy.json",
+      "tags": ["noisy", "guest"]
+    }
+  ]
+}

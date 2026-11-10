@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/asr/asr_identity.dart';
 import '../../../core/asr/consolidate.dart';
+import '../../../core/audio/channel_ownership.dart';
 import '../../../core/asr/inline_sound_events.dart';
 import '../../../core/asr/live_asr_engine.dart';
 import '../../../core/asr/transcriber.dart' show AsrSegmenter;
@@ -80,7 +81,12 @@ class LiveTranscriptSession {
     this.maxLines = 300,
     this.persistInterval = const Duration(seconds: 2),
     this.persistDelay = const Duration(seconds: 6),
+    this.ownership,
   });
+
+  /// Microphone owners. When it names someone for a line, that person is the
+  /// speaker and voice recognition is not used for the line.
+  final ChannelOwnership? ownership;
 
   final LiveAsrEngine engine;
   final TranscriptStore store;
@@ -160,6 +166,7 @@ class LiveTranscriptSession {
               speaker2PersonId: turn.speaker2PersonId,
               overlap: turn.overlap,
               speakerConfidence: turn.speakerConfidence,
+              speakerManual: turn.speakerManual,
             ),
         ]);
       }
@@ -183,6 +190,7 @@ class LiveTranscriptSession {
   }
 
   void _onEvent(LiveEvent event) {
+    if (event is! LiveSpeechState) debugPrint('JN-LIVE: ${event.runtimeType}');
     final current = state.value;
     switch (event) {
       case LiveReady():
@@ -191,7 +199,7 @@ class LiveTranscriptSession {
           clearNote: true,
         );
       case LiveUtterance():
-        _utterances.add(event);
+        _utterances.add(_withOwners(event));
         _unsaved.add((_utterances.length - 1, DateTime.now()));
         state.value = current.copyWith(lines: _renderLines());
       case LiveSoundEvent():
@@ -253,6 +261,22 @@ class LiveTranscriptSession {
     }
   }
 
+  LiveUtterance _withOwners(LiveUtterance u) {
+    final owners = ownership?.ownersOf(u.startMs, u.endMs);
+    if (owners == null) return u;
+    return LiveUtterance(
+      startMs: u.startMs,
+      endMs: u.endMs,
+      text: u.text,
+      words: u.words,
+      speaker: owners.first,
+      speaker2: owners.second,
+      overlap: owners.second != null,
+      speakerConfidence: 100,
+      speakerManual: true,
+    );
+  }
+
   List<SpeechSpan> get _spans => [
     for (final u in _utterances)
       SpeechSpan(
@@ -274,6 +298,7 @@ class LiveTranscriptSession {
     speaker2PersonId: u.speaker2?.personId,
     overlap: u.overlap,
     speakerConfidence: u.speakerConfidence,
+    speakerManual: u.speakerManual,
   );
 
   /// The lines shown on screen, in time order: every utterance with its
@@ -320,6 +345,7 @@ class LiveTranscriptSession {
           speaker2PersonId: _utterances[i].speaker2?.personId,
           overlap: _utterances[i].overlap,
           speakerConfidence: _utterances[i].speakerConfidence,
+          speakerManual: _utterances[i].speakerManual,
         ),
       for (final loose in placement.loose)
         AsrTurn(

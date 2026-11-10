@@ -360,6 +360,19 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     [id],
   );
 
+  /// Turns sending back on for meetings that were recorded while the switch
+  /// was off (or before SedaSanj was connected) and have text but were never
+  /// sent. Called when the app connects and when the switch is turned on.
+  Future<int> enableSendForUnsent() => _db.db.rawUpdate('''
+    UPDATE meetings SET send_text = 1
+    WHERE send_text = 0 AND remote_meeting_id IS NULL
+      AND status IN ('recorded', 'transcribed')
+      AND EXISTS (
+        SELECT 1 FROM segments s
+        WHERE s.meeting_id = meetings.id AND TRIM(s.text) != ''
+      )
+  ''');
+
   @override
   Future<List<Meeting>> textSyncPendingMeetings() async {
     final rows = await _db.db.query(

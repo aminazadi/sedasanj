@@ -21,9 +21,9 @@ class _Fixed extends CpuBudgetNotifier {
 }
 
 void main() {
-  test('the limit is half the cores and never below one', () {
-    expect(maxCpuCores(8), 4);
-    expect(maxCpuCores(6), 3);
+  test('the limit is all cores but one and never below one', () {
+    expect(maxCpuCores(8), 7);
+    expect(maxCpuCores(6), 5);
     expect(maxCpuCores(2), 1);
     expect(maxCpuCores(1), 1);
   });
@@ -37,7 +37,7 @@ void main() {
   });
 
   test('a stored value is kept inside 1..max', () {
-    expect(clampCpuCores(99, 8), 4);
+    expect(clampCpuCores(99, 8), 7);
     expect(clampCpuCores(0, 8), 1);
     expect(clampCpuCores(-3, 8), 1);
     expect(clampCpuCores(3, 8), 3);
@@ -60,7 +60,7 @@ void main() {
     expect(b.voiceprintThreads, 2);
   });
 
-  testWidgets('the slider stops at half of the cores', (tester) async {
+  testWidgets('the slider stops at one less than the cores', (tester) async {
     final notifier = _Fixed(2);
     await tester.pumpWidget(
       ProviderScope(
@@ -77,10 +77,10 @@ void main() {
     await tester.pumpAndSettle();
     final slider = tester.widget<Slider>(find.byType(Slider));
     expect(slider.min, 1);
-    expect(slider.max, 4);
+    expect(slider.max, 7);
     expect(slider.value, 2);
     slider.onChanged!(9);
     await tester.pump();
-    expect(notifier.chosen, 4);
+    expect(notifier.chosen, 7);
   });
 }

@@ -27,7 +27,7 @@ class ModelsScreen extends ConsumerWidget {
         ),
       ),
       body: state.loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: SsProcessingMark(size: 30))
           : const _InstallAllCard(),
     );
   }

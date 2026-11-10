@@ -5,6 +5,41 @@ import 'package:flutter/material.dart';
 import '../../../app/theme.dart';
 import '../application/live_audio_waveform.dart';
 
+/// Live wave driven by a stream of power levels (enrollment screens).
+class LevelWaveform extends StatefulWidget {
+  const LevelWaveform({super.key, required this.level, required this.active});
+
+  final double level;
+  final bool active;
+
+  @override
+  State<LevelWaveform> createState() => _LevelWaveformState();
+}
+
+class _LevelWaveformState extends State<LevelWaveform> {
+  final _wave = LiveAudioWaveform(sampleRate: 16000);
+
+  @override
+  void didUpdateWidget(covariant LevelWaveform old) {
+    super.didUpdateWidget(old);
+    if (!widget.active) {
+      if (old.active) _wave.clear();
+    } else {
+      _wave.addPower(widget.level);
+    }
+  }
+
+  @override
+  void dispose() {
+    _wave.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      LiveWaveform(waveform: _wave, active: widget.active);
+}
+
 class LiveWaveform extends StatelessWidget {
   const LiveWaveform({super.key, required this.waveform, required this.active});
 

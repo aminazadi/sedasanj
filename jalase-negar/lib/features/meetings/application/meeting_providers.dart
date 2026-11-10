@@ -102,6 +102,10 @@ enum NameSpeakerStatus {
   /// A person was created (or found) and the lines were given to them.
   done,
 
+  /// The lines were given to an existing person, but no voiceprint was
+  /// added (model not installed, or too little clean speech).
+  assignedWithoutVoiceprint,
+
   /// The speaker model is not installed.
   needsModels,
 
@@ -347,9 +351,13 @@ class MeetingActions {
     required String name,
     required PersonVisibility visibility,
     required bool consentGiven,
+    Person? existingPerson,
+    bool addVoiceprints = true,
   }) async {
     final cleanName = name.trim();
-    if (!consentGiven || cleanName.isEmpty) return NameSpeakerStatus.failed;
+    if (existingPerson == null && (!consentGiven || cleanName.isEmpty)) {
+      return NameSpeakerStatus.failed;
+    }
     final repo = await ref.read(meetingRepositoryProvider.future);
     final meeting = await repo.byId(meetingId);
     if (meeting == null ||
@@ -357,14 +365,52 @@ class MeetingActions {
         meeting.status == MeetingStatus.uploading) {
       return NameSpeakerStatus.busy;
     }
+    // An existing person already consented; the lines are theirs even when no
+    // voiceprint can be added.
+    Future<NameSpeakerStatus> assignOnly(Person person) async {
+      final current = await repo.segments(meetingId);
+      await saveSegments(
+        discovery.nameDetectedSpeaker(
+          current,
+          label,
+          SpeakerChoice(name: person.name, personId: person.clientId),
+        ),
+      );
+      return NameSpeakerStatus.assignedWithoutVoiceprint;
+    }
+
+    // Too little clean speech for a voiceprint: the name is still worth
+    // having, so a new person is created (without a voiceprint, which can be
+    // added later from their page) and the lines are named.
+    Future<NameSpeakerStatus> assignWithoutVoiceprint() async {
+      final existing = existingPerson;
+      if (existing != null) return assignOnly(existing);
+      final people = await ref.read(peopleRepositoryProvider.future);
+      final created = await people.create(
+        name: cleanName,
+        visibility: visibility,
+        consentAt: DateTime.now(),
+        consentVersion: kSpeakerConsentVersion,
+      );
+      ref.read(peopleActionsProvider).samplesAdded();
+      return assignOnly(created);
+    }
+
     final store = await ref.read(modelStoreProvider.future);
     const embedding = ModelCatalog.speakerEmbedding;
+    if (existingPerson != null && !addVoiceprints) {
+      final status = await assignOnly(existingPerson);
+      return status == NameSpeakerStatus.assignedWithoutVoiceprint
+          ? NameSpeakerStatus.done
+          : status;
+    }
     if (!await store.isInstalled(embedding)) {
+      if (existingPerson != null) return assignOnly(existingPerson);
       return NameSpeakerStatus.needsModels;
     }
     final segments = await repo.segments(meetingId);
     final groups = discovery.voiceprintGroups(segments, label);
-    if (groups.isEmpty) return NameSpeakerStatus.tooShort;
+    if (groups.isEmpty) return assignWithoutVoiceprint();
     final List<ExtractedVoiceprint> samples;
     try {
       samples = await ref.read(voiceprintExtractorProvider)(
@@ -376,16 +422,19 @@ class MeetingActions {
         ),
       );
     } catch (_) {
+      if (existingPerson != null) return assignOnly(existingPerson);
       return NameSpeakerStatus.failed;
     }
-    if (samples.isEmpty) return NameSpeakerStatus.tooShort;
+    if (samples.isEmpty) return assignWithoutVoiceprint();
     final people = await ref.read(peopleRepositoryProvider.future);
-    final person = await people.create(
-      name: cleanName,
-      visibility: visibility,
-      consentAt: DateTime.now(),
-      consentVersion: kSpeakerConsentVersion,
-    );
+    final person =
+        existingPerson ??
+        await people.create(
+          name: cleanName,
+          visibility: visibility,
+          consentAt: DateTime.now(),
+          consentVersion: kSpeakerConsentVersion,
+        );
     const uuid = Uuid();
     await people.addVoiceprints(person.clientId, [
       for (final sample in samples)
@@ -399,6 +448,9 @@ class MeetingActions {
           durationMs: sample.durationMs,
         ),
     ]);
+    // Alike samples are thinned to three per voice condition (and twelve per
+    // person); enrolment readings stay.
+    await people.pruneVoiceprints(person.clientId);
     ref.read(peopleActionsProvider).samplesAdded();
     // Read the lines only now: the user may have edited while this ran.
     final current = await repo.segments(meetingId);
@@ -471,6 +523,7 @@ class MeetingActions {
     await repo.delete(
       meeting,
       extraFiles: [
+        paths.multiChannelWavPath(meetingId),
         for (var ch = 0; ch < meeting.channels; ch++)
           paths.channelWavPath(meetingId, ch),
       ],
@@ -513,14 +566,15 @@ final meetingPreviewProvider = FutureProvider.family<String, String>((
   return repo.previewText(meetingId);
 });
 
-/// Ids of meetings whose transcript text contains the query; reloads when the
-/// meeting list changes (a finished transcription or an edit).
+/// Ids of meetings whose transcript text contains the query. It does not
+/// watch [meetingsProvider]: that provider is flushed while the list screen
+/// builds, and a dependent invalidating itself then throws "setState() called
+/// during build". The screen refreshes it after the frame instead.
 final transcriptMatchesProvider = FutureProvider.family<Set<String>, String>((
   ref,
   query,
 ) async {
   if (query.trim().isEmpty) return const {};
-  ref.watch(meetingsProvider);
   final repo = await ref.watch(meetingRepositoryProvider.future);
   return repo.searchTranscripts(query);
 });

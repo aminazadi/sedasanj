@@ -45,7 +45,7 @@ class UpdateCheckCard extends ConsumerWidget {
             icon: state.checking
                 ? const SizedBox.square(
                     dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: SsProcessingMark(size: 14),
                   )
                 : const Icon(Icons.system_update_alt),
             label: const Text('بررسی به‌روزرسانی'),

@@ -16,6 +16,7 @@ class AsrTurn {
     this.speaker2PersonId,
     this.overlap = false,
     this.speakerConfidence,
+    this.speakerManual = false,
   });
 
   final int channel;
@@ -35,6 +36,9 @@ class AsrTurn {
   final String? speaker2PersonId;
   final bool overlap;
   final int? speakerConfidence;
+
+  /// The speaker was set by a microphone's owner, not by voice recognition.
+  final bool speakerManual;
 
   /// Identifies the voice for merging: two turns only join when it is equal.
   String? get voiceKey =>
@@ -90,6 +94,7 @@ List<AsrTurn> consolidateSegments(
       speaker2PersonId: segment.speaker2PersonId,
       overlap: segment.overlap,
       speakerConfidence: segment.speakerConfidence,
+      speakerManual: segment.speakerManual,
     );
     if (merged.isEmpty) {
       merged.add(current);
@@ -102,6 +107,7 @@ List<AsrTurn> consolidateSegments(
         !previous.overlap &&
         !current.overlap &&
         previous.voiceKey == current.voiceKey &&
+        previous.speakerManual == current.speakerManual &&
         current.startMs <= previous.endMs + mergeGapMs) {
       final overlaps = current.startMs <= previous.endMs;
       final String combined;
@@ -131,6 +137,7 @@ List<AsrTurn> consolidateSegments(
             previous.timestampSource ?? current.timestampSource ?? 'native',
         speaker: previous.speaker,
         speakerPersonId: previous.speakerPersonId,
+        speakerManual: previous.speakerManual,
         speakerConfidence: _minNullable(
           previous.speakerConfidence,
           current.speakerConfidence,

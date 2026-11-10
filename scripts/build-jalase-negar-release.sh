@@ -25,17 +25,25 @@ android() {
 
 ios() {
   # Unsigned archive: SibApp Export / the store panel re-signs it. No Apple certificate is used.
-  flutter build ipa --release --no-codesign --dart-define=STORE=sibapp
-  rm -rf "$out/Runner.xcarchive"
+  # `flutter build ipa --no-codesign` stops at "requires a Development Team", so Flutter only
+  # prepares the project (pods + --dart-define) and xcodebuild makes the archive with signing off.
+  flutter build ios --config-only --release --no-codesign --dart-define=STORE=sibapp
+  rm -rf build/ios/archive
+  xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
+    -archivePath build/ios/archive/Runner.xcarchive \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" archive
+  rm -rf "$out/JalaseNegar-v$version.xcarchive"
   cp -R build/ios/archive/Runner.xcarchive "$out/JalaseNegar-v$version.xcarchive"
   rm -rf "$out/Payload" && mkdir -p "$out/Payload"
   cp -R build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app "$out/Payload/"
-  (cd "$out" && zip -qry "JalaseNegar-unsigned-v$version.ipa" Payload && rm -rf Payload)
+  (cd "$out" && rm -f "JalaseNegar-unsigned-v$version.ipa" && zip -qry "JalaseNegar-unsigned-v$version.ipa" Payload && rm -rf Payload)
 }
 
 macos() {
   flutter build macos --release --dart-define=STORE=desktop
   ditto -c -k --keepParent build/macos/Build/Products/Release/Jalase-Negar.app "$out/JalaseNegar-macos-v$version.zip"
+  # Styled DMG (branded background, drag-to-Applications). Unsigned: first launch needs right-click > Open.
+  "$(cd "$(dirname "$0")" && pwd)/make-jalase-negar-dmg.sh" build/macos/Build/Products/Release/Jalase-Negar.app "$out/JalaseNegar-macos-v$version.dmg"
 }
 
 case "$target" in

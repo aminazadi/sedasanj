@@ -6,6 +6,7 @@ import '../../../app/theme.dart';
 import '../../../core/utils/format.dart';
 import '../application/people_providers.dart';
 import '../data/person.dart';
+import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 
 /// Lets the user tick the people present in a meeting and add a new person
 /// without leaving the flow. Returns the chosen client ids, or null when
@@ -84,7 +85,7 @@ class _AttendeePickerSheetState extends ConsumerState<_AttendeePickerSheet> {
           const SizedBox(height: 8),
           Expanded(
             child: people.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: SsProcessingMark(size: 30)),
               error: (_, _) => const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),

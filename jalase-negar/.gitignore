@@ -66,3 +66,4 @@ LICENSE_KEYS.txt
 /android/build/
 /android/.kotlin/
 .DS_Store
+/installer-out/

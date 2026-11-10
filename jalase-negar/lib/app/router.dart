@@ -84,8 +84,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/people/:id/enroll',
-        builder: (context, state) =>
-            EnrollScreen(personId: state.pathParameters['id']!),
+        builder: (context, state) => EnrollScreen(
+          personId: state.pathParameters['id']!,
+          popOnFinish: state.uri.queryParameters['return'] == '1',
+        ),
       ),
       GoRoute(
         path: '/models',

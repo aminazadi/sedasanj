@@ -38,6 +38,12 @@ class AppPaths {
   String recordingPath(String meetingId) =>
       '${recordingsDir.path}/$meetingId.wav';
 
+  /// Every microphone channel of a multi-microphone recording, interleaved.
+  /// The meeting's own WAV stays a mono mix so playback, upload and speaker
+  /// analysis keep working unchanged.
+  String multiChannelWavPath(String meetingId) =>
+      '${derivedDir.path}/$meetingId-all.wav';
+
   String channelWavPath(String meetingId, int channel) =>
       '${derivedDir.path}/$meetingId-ch$channel.wav';
 

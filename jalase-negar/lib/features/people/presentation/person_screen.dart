@@ -27,7 +27,7 @@ class PersonScreen extends ConsumerWidget {
         appBar: SsAppBar(title: const Text('فرد')),
         body: Center(
           child: people.isLoading
-              ? const CircularProgressIndicator()
+              ? const SsProcessingMark(size: 30)
               : const Text('این فرد پیدا نشد.'),
         ),
       );

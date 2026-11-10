@@ -49,7 +49,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     return detail.when(
       skipLoadingOnReload: true,
       loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
+          const Scaffold(body: Center(child: SsProcessingMark(size: 30))),
       error: (error, _) => Scaffold(body: Center(child: Text('خطا: $error'))),
       data: (data) {
         if (data == null) {
@@ -60,25 +60,21 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
         final hasSpeakers = data.segments.any((s) => s.speaker != null);
         final showSpeakers = transcript.isNotEmpty;
+        final attendees =
+            ref.watch(meetingAttendeesProvider(meetingId)).value ??
+            const <Attendee>[];
+        final showAttendees = attendees.isNotEmpty;
+        final tabCount = 1 + (showSpeakers ? 1 : 0) + (showAttendees ? 1 : 0);
         final canSend = canSendMeetingText(
           data.meeting,
           hasText: transcript.isNotEmpty,
         );
 
         return DefaultTabController(
-          length: showSpeakers ? 2 : 1,
+          length: tabCount,
           child: Scaffold(
             appBar: SsAppBar(
-              actions: [
-                if (canSend)
-                  IconButton(
-                    tooltip: 'ارسال به صداسنج',
-                    icon: const Icon(Icons.cloud_upload_outlined),
-                    onPressed: () =>
-                        sendMeetingToSedasanj(context, ref, meetingId),
-                  ),
-                _MeetingMenu(meeting: data.meeting),
-              ],
+              actions: [_MeetingMenu(meeting: data.meeting, canSend: canSend)],
               title: Hero(
                 tag: 'meeting-title-${data.meeting.id}',
                 child: Material(
@@ -89,11 +85,12 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   ),
                 ),
               ),
-              bottom: showSpeakers
-                  ? const TabBar(
+              bottom: tabCount > 1
+                  ? TabBar(
                       tabs: [
-                        Tab(text: 'متن جلسه'),
-                        Tab(text: 'گوینده‌ها'),
+                        const Tab(text: 'متن جلسه'),
+                        if (showSpeakers) const Tab(text: 'گوینده‌ها'),
+                        if (showAttendees) const Tab(text: 'حاضران'),
                       ],
                     )
                   : null,
@@ -109,7 +106,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   builder: (context, _) => Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (showSpeakers &&
+                      if (tabCount > 1 &&
                           DefaultTabController.of(context).index == 0)
                         ValueListenableBuilder<Widget?>(
                           valueListenable: _transcriptStatus,
@@ -122,11 +119,23 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                 ),
               ),
             ),
-            body: showSpeakers
+            body: tabCount > 1
                 ? TabBarView(
                     children: [
                       _transcriptTab(context, ref, data, transcript),
-                      _speakersTab(context, ref, data, transcript, hasSpeakers),
+                      if (showSpeakers)
+                        _speakersTab(
+                          context,
+                          ref,
+                          data,
+                          transcript,
+                          hasSpeakers,
+                        ),
+                      if (showAttendees)
+                        _AttendeesTab(
+                          attendees: attendees,
+                          segments: data.segments,
+                        ),
                     ],
                   )
                 : _transcriptTab(context, ref, data, transcript),
@@ -182,18 +191,29 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     MeetingDetail data,
     String transcript,
   ) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
-        if (data.meeting.analyzingSpeakers) ...[
-          _AnalyzingBanner(meetingId: meetingId),
-          const SizedBox(height: 12),
+    if (transcript.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          if (data.meeting.analyzingSpeakers) ...[
+            _AnalyzingBanner(meetingId: meetingId),
+            const SizedBox(height: 12),
+          ],
+          const _EmptyTranscriptCard(),
         ],
-        _AttendeesSection(meetingId: meetingId),
-        if (transcript.isEmpty)
-          const _EmptyTranscriptCard()
-        else
-          TranscriptEditor(
+      );
+    }
+    // The editor fills the tab edge to edge: no card, margin or border.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (data.meeting.analyzingSpeakers)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: _AnalyzingBanner(meetingId: meetingId),
+          ),
+        Expanded(
+          child: TranscriptEditor(
             key: _editorKey,
             statusDestination: _transcriptStatus,
             savedText: transcript,
@@ -207,6 +227,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                 .read(meetingActionsProvider(meetingId))
                 .saveTranscript(text, settle: settle),
           ),
+        ),
       ],
     );
   }
@@ -241,9 +262,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
 /// Dropdown at the end of the app bar, opposite the title: rename or delete.
 class _MeetingMenu extends ConsumerWidget {
-  const _MeetingMenu({required this.meeting});
+  const _MeetingMenu({required this.meeting, required this.canSend});
 
   final Meeting meeting;
+  final bool canSend;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -252,8 +274,10 @@ class _MeetingMenu extends ConsumerWidget {
       IconData icon,
       String label, {
       Color? color,
+      bool enabled = true,
     }) => PopupMenuItem<String>(
       value: value,
+      enabled: enabled,
       child: Row(
         children: [
           Icon(icon, size: 18, color: color ?? SsColors.ink),
@@ -275,11 +299,18 @@ class _MeetingMenu extends ConsumerWidget {
       position: PopupMenuPosition.under,
       onSelected: (value) => switch (value) {
         'rename' => _rename(context, ref),
+        'send' => sendMeetingToSedasanj(context, ref, meeting.id),
         'share' => shareMeetingAudio(context, meeting),
         _ => _confirmDelete(context, ref),
       },
       itemBuilder: (context) => [
         item('rename', Icons.edit_outlined, 'ویرایش عنوان'),
+        item(
+          'send',
+          Icons.cloud_upload_outlined,
+          'ارسال به صداسنج',
+          enabled: canSend,
+        ),
         item('share', Icons.ios_share, 'اشتراک‌گذاری فایل صوتی'),
         item(
           'delete',
@@ -468,27 +499,71 @@ class _EmptyTranscriptCard extends StatelessWidget {
   }
 }
 
-/// Who was present, as chosen before recording. Hidden when nobody was.
-class _AttendeesSection extends ConsumerWidget {
-  const _AttendeesSection({required this.meetingId});
+/// Who was present, as chosen before recording, with how much each person
+/// spoke once speakers are identified. Only shown when somebody was chosen.
+class _AttendeesTab extends StatelessWidget {
+  const _AttendeesTab({required this.attendees, required this.segments});
 
-  final String meetingId;
+  final List<Attendee> attendees;
+  final List<Segment> segments;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final attendees =
-        ref.watch(meetingAttendeesProvider(meetingId)).value ??
-        const <Attendee>[];
-    if (attendees.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: SsCard(
-        title: 'حاضران جلسه',
-        child: Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [for (final a in attendees) Chip(label: Text(a.name))],
-        ),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final a in attendees) ...[
+          _tile(context, theme, a),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _tile(BuildContext context, ThemeData theme, Attendee a) {
+    var lines = 0;
+    var spokenMs = 0;
+    for (final s in segments) {
+      if (s.speakerPersonId == a.personId ||
+          (s.speakerPersonId == null && s.speaker == a.name)) {
+        lines++;
+        spokenMs += s.endMs - s.startMs;
+      }
+    }
+    return SsCard(
+      ripple: true,
+      onTap: () => context.push('/people/${a.personId}'),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(a.name, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (lines > 0) ...[
+                      SsBadge(
+                        '${toPersianDigits('$lines')} خط',
+                        color: SsColors.primary,
+                      ),
+                      SsBadge(
+                        'مدت صحبت ${formatDuration(Duration(milliseconds: spokenMs))}',
+                        color: SsColors.neutral,
+                      ),
+                    ] else
+                      const SsBadge('صحبتی ثبت نشده', color: SsColors.neutral),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right),
+        ],
       ),
     );
   }

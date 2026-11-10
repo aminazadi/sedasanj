@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MultichannelCapture.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
         // The update channel: what the check sends the server (SDK level, ABIs, the SHA-256 of the
         // public signing certificate, an anonymous install id), plus the calm-moment inputs the
         // background installer needs from the Dart side.

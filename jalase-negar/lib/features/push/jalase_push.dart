@@ -9,7 +9,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:jalase_negar/core/platform/secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
 
@@ -21,7 +21,7 @@ const _appId = String.fromEnvironment('PUSH_FIREBASE_APP_ID');
 const _sender = String.fromEnvironment('PUSH_FIREBASE_SENDER_ID');
 const _project = String.fromEnvironment('PUSH_FIREBASE_PROJECT');
 const _origin = String.fromEnvironment('PUSH_ORIGIN');
-const _storage = FlutterSecureStorage();
+const _storage = appSecureStorage;
 const _identityKey = 'jalase_push_identity';
 const _enabledKey = 'jalase_push_enabled';
 const _latestDataKey = 'jalase_push_latest_data';

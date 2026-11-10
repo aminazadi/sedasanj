@@ -143,7 +143,12 @@ void main() {
         ],
       ),
     );
-    expect(find.byTooltip('ارسال به صداسنج'), findsOneWidget);
+    await tester.tap(find.byTooltip('گزینه‌ها'));
+    await tester.pumpAndSettle();
+    final send = tester.widget<PopupMenuItem<String>>(
+      find.widgetWithText(PopupMenuItem<String>, 'ارسال به صداسنج'),
+    );
+    expect(send.enabled, isTrue);
     expect(find.text('گوینده‌ها'), findsOneWidget);
   });
 
@@ -180,7 +185,12 @@ void main() {
         ],
       ),
     );
-    expect(find.byTooltip('ارسال به صداسنج'), findsNothing);
+    await tester.tap(find.byTooltip('گزینه‌ها'));
+    await tester.pump(const Duration(milliseconds: 400));
+    final send = tester.widget<PopupMenuItem<String>>(
+      find.widgetWithText(PopupMenuItem<String>, 'ارسال به صداسنج'),
+    );
+    expect(send.enabled, isFalse);
     expect(find.textContaining('در حال استخراج گوینده‌ها'), findsWidgets);
   });
 

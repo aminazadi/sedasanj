@@ -24,3 +24,10 @@ test_data/asr_golden/audio/
 test_data/asr_golden/manifest.json
 test_data/asr_golden/hypotheses/
 asterisk-module-*.zip
+
+# Speaker evaluation set: real meetings, enrolment clips, labels and system outputs stay out of git.
+test_data/speaker_eval/audio/
+test_data/speaker_eval/enroll/
+test_data/speaker_eval/truth/
+test_data/speaker_eval/manifest.json
+test_data/speaker_eval/hypotheses/

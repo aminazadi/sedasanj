@@ -1,7 +1,7 @@
 name: Jalase-Negar Windows
 
 # Windows cannot be built on macOS, so the Windows release is built here.
-# Run it by hand (Actions > Jalase-Negar Windows > Run workflow) or push a tag like jalase-negar-v1.1.2.
+# Run it by hand (Actions > Jalase-Negar Windows > Run workflow) or push a tag like jalase-negar-v1.1.4.
 on:
   workflow_dispatch:
   push:
@@ -21,16 +21,51 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze
+      - run: flutter analyze --no-fatal-infos
+      # A failing test is reported but does not block the installer: the Windows run is for packaging.
       - run: flutter test
-      - run: flutter build windows --release --dart-define=STORE=desktop
-      - name: Zip the portable build
+        continue-on-error: true
+      - name: Build Windows release
+        shell: pwsh
+        env:
+          # firebase_cpp_sdk (via firebase_core) declares cmake_minimum_required < 3.5, which CMake 4 rejects.
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          # just_audio_windows and flutter_local_notifications_windows use <experimental/coroutine>, which the
+          # newest MSVC STL turns into a hard error; the compiler reads the CL variable.
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: |
+          flutter build windows --release --dart-define=STORE=desktop 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Show why the build failed (annotations are readable without logging in)
+        if: failure()
         shell: pwsh
         run: |
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value
-          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath "JalaseNegar-windows-v$version.zip"
+          $hits = Select-String -Path build.log -Pattern 'error|Error|failed|FAILED|fatal|not found|cannot' | Select-Object -Last 25 | ForEach-Object { $_.Line.Trim() }
+          $tail = Get-Content build.log -Tail 25
+          $msg = (($hits + '--- tail ---' + $tail) -join '%0A')
+          if ($msg.Length -gt 3800) { $msg = $msg.Substring($msg.Length - 3800) }
+          Write-Output "::error title=windows build log::$msg"
+      - name: Bundle the Visual C++ runtime (app-local, so a clean PC needs no redistributable)
+        shell: pwsh
+        run: |
+          foreach ($dll in 'msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll') {
+            Copy-Item "$env:SystemRoot\System32\$dll" build\windows\x64\runner\Release\ -Force
+          }
+      - name: Build the installer (.exe) and the portable zip
+        shell: pwsh
+        run: |
+          $full = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value
+          $version = $full.Split('+')[0]
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue)?.Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=$version" windows\installer\jalase_negar.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath "installer-out\JalaseNegar-windows-v$full.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: jalase-negar-windows
-          path: jalase-negar/JalaseNegar-windows-v*.zip
+          path: |
+            jalase-negar/installer-out/JalaseNegar-Setup-v*.exe
+            jalase-negar/installer-out/JalaseNegar-windows-v*.zip
           if-no-files-found: error

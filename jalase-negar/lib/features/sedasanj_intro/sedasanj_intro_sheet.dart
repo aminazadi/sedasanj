@@ -4,6 +4,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../app/theme.dart';
 import 'sedasanj_intro.dart';
+import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 
 /// Opens the drawer. Resolves with true when the user ticked "I know SedaSanj,
 /// don't show again", whichever way the drawer was closed.
@@ -94,7 +95,7 @@ class _SedasanjIntroSheetState extends State<SedasanjIntroSheet> {
     if (controller == null || !controller.value.isInitialized) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: SsProcessingMark(size: 30)),
       );
     }
     return Padding(
