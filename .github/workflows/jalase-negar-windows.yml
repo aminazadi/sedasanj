@@ -27,6 +27,9 @@ jobs:
         continue-on-error: true
       - name: Build Windows release
         shell: pwsh
+        env:
+          # firebase_cpp_sdk (via firebase_core) declares cmake_minimum_required < 3.5, which CMake 4 rejects.
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: |
           flutter build windows --release --dart-define=STORE=desktop 2>&1 | Tee-Object -FilePath build.log
           if ($LASTEXITCODE -ne 0) { exit 1 }
