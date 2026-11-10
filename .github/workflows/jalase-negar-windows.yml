@@ -25,7 +25,20 @@ jobs:
       # A failing test is reported but does not block the installer: the Windows run is for packaging.
       - run: flutter test
         continue-on-error: true
-      - run: flutter build windows --release --dart-define=STORE=desktop
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          flutter build windows --release --dart-define=STORE=desktop 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Show why the build failed (annotations are readable without logging in)
+        if: failure()
+        shell: pwsh
+        run: |
+          $hits = Select-String -Path build.log -Pattern 'error|Error|failed|FAILED|fatal|not found|cannot' | Select-Object -Last 25 | ForEach-Object { $_.Line.Trim() }
+          $tail = Get-Content build.log -Tail 25
+          $msg = (($hits + '--- tail ---' + $tail) -join '%0A')
+          if ($msg.Length -gt 3800) { $msg = $msg.Substring($msg.Length - 3800) }
+          Write-Output "::error title=windows build log::$msg"
       - name: Bundle the Visual C++ runtime (app-local, so a clean PC needs no redistributable)
         shell: pwsh
         run: |
