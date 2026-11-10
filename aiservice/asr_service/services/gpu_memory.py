@@ -35,12 +35,18 @@ _lock = threading.Lock()
 _active_jobs = 0
 _last_activity = time.monotonic()
 _trim_pending = False
+_unload_pending = False
 _thread = None
 _evictors = {}
 
 
 def idle_trim_seconds():
     return _float_env("ASR_GPU_IDLE_TRIM_SECONDS", "10")
+
+
+def idle_unload_seconds():
+    """Idle window before resident models are released; 0 keeps them loaded."""
+    return _float_env("ASR_GPU_IDLE_UNLOAD_SECONDS", "5")
 
 
 def register_idle_evictor(name, evictor):
@@ -71,7 +77,7 @@ def job_started():
 
 def job_finished():
     """Record that a GPU job ended; schedules one trim after the idle window."""
-    global _active_jobs, _last_activity, _trim_pending
+    global _active_jobs, _last_activity, _trim_pending, _unload_pending
     if not enabled():
         with _lock:
             _active_jobs = max(0, _active_jobs - 1)
@@ -80,6 +86,7 @@ def job_finished():
         _active_jobs = max(0, _active_jobs - 1)
         _last_activity = time.monotonic()
         _trim_pending = True
+        _unload_pending = True
     _ensure_thread()
 
 
@@ -105,10 +112,34 @@ def trim_when_idle_due(now=None):
     return due
 
 
+def unload_when_idle_due(now=None):
+    """Release idle resident models on every GPU once no job has run for the idle window."""
+    global _unload_pending, _trim_pending
+    window = idle_unload_seconds()
+    if not window:
+        return False
+    now = time.monotonic() if now is None else now
+    with _lock:
+        due = _unload_pending and _active_jobs == 0 and now - _last_activity >= window
+        if due:
+            _unload_pending = False
+    if not due:
+        return False
+    from . import gpu_runtime
+
+    for device in gpu_runtime.discover_gpus():
+        evict_idle(device["index"])
+    trim_now()
+    with _lock:
+        _trim_pending = False
+    return True
+
+
 def _run():
     while True:
         time.sleep(1.0)
         try:
+            unload_when_idle_due()
             trim_when_idle_due()
         except Exception:
             logger.warning("GPU idle trim loop error", exc_info=True)

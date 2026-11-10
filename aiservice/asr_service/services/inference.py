@@ -138,7 +138,21 @@ def _transcribe_vad_segments(path, mid, event, threshold):
  return text, segments, duration, sum(segment["end"] - segment["start"] for segment in segments)
 
 
+_busy={};_busy_lock=threading.Lock()
+def _evict_idle_engines(device_index):
+ """Drop cached GPU engines on one device that no transcription is using."""
+ if device_index is None:return 0
+ with _busy_lock,_model_guard:
+  keys=[key for key in _models if key[1]==device_index and not _busy.get(key[0])]
+  for key in keys:_models.pop(key,None)
+ return len(keys)
+gpu_memory.register_idle_evictor("asr",_evict_idle_engines)
 def transcribe(path,mid,beam,vad,prompt,on_event=None,*,segmenter=None,silero_threshold=None):
+ with _busy_lock:_busy[mid]=_busy.get(mid,0)+1
+ try:return _transcribe(path,mid,beam,vad,prompt,on_event,segmenter=segmenter,silero_threshold=silero_threshold)
+ finally:
+  with _busy_lock:_busy[mid]-=1
+def _transcribe(path,mid,beam,vad,prompt,on_event=None,*,segmenter=None,silero_threshold=None):
  event=on_event or (lambda _message:None)
  path=str(path)
  if not os.path.isfile(path):raise FileNotFoundError(f"Audio input does not exist: {path}")

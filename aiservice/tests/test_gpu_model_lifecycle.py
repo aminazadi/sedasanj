@@ -119,6 +119,7 @@ class GpuMemoryTests(unittest.TestCase):
     def setUp(self):
         gpu_memory._active_jobs = 0
         gpu_memory._trim_pending = False
+        gpu_memory._unload_pending = False
         gpu_memory._evictors.clear()
 
     def test_trim_waits_for_idle_window_and_never_runs_while_a_job_is_active(self):
@@ -150,6 +151,47 @@ class GpuMemoryTests(unittest.TestCase):
         with patch.object(gpu_memory, "trim_now") as trim:
             self.assertEqual(2, gpu_memory.evict_idle(0))
         trim.assert_called_once()
+
+    def test_idle_models_are_unloaded_after_the_idle_window_on_every_gpu(self):
+        evictor = Mock(return_value=1)
+        gpu_memory.register_idle_evictor("m", evictor)
+        gpus = [{"index": 0}, {"index": 1}]
+        with patch.object(gpu_memory, "trim_now"), patch.object(gpu_memory, "_ensure_thread"), patch.object(
+            gpu_memory, "idle_unload_seconds", return_value=5
+        ), patch("asr_service.services.gpu_runtime.discover_gpus", return_value=gpus):
+            gpu_memory.job_started()
+            gpu_memory.job_finished()
+            now = gpu_memory._last_activity
+            self.assertFalse(gpu_memory.unload_when_idle_due(now + 2))
+            self.assertTrue(gpu_memory.unload_when_idle_due(now + 6))
+            self.assertFalse(gpu_memory.unload_when_idle_due(now + 60))
+        self.assertEqual([0, 1], [call.args[0] for call in evictor.call_args_list])
+
+    def test_unload_never_runs_during_a_job_or_when_disabled(self):
+        evictor = Mock(return_value=1)
+        gpu_memory.register_idle_evictor("m", evictor)
+        with patch.object(gpu_memory, "trim_now"), patch.object(gpu_memory, "_ensure_thread"):
+            gpu_memory.job_started()
+            gpu_memory.job_finished()
+            gpu_memory.job_started()
+            now = gpu_memory._last_activity
+            self.assertFalse(gpu_memory.unload_when_idle_due(now + 60))
+            gpu_memory._active_jobs = 0
+            with patch.dict("os.environ", {"ASR_GPU_IDLE_UNLOAD_SECONDS": "0"}):
+                self.assertFalse(gpu_memory.unload_when_idle_due(now + 60))
+        evictor.assert_not_called()
+
+    def test_asr_idle_engine_is_released_but_busy_one_is_kept(self):
+        inference._clear_models()
+        with patch.object(inference, "_build", side_effect=lambda mid, dev: object()):
+            inference._load("idle", 0)
+            inference._load("busy", 0)
+            inference._load("cpu", None)
+        inference._busy["busy"] = 1
+        self.assertEqual(1, inference._evict_idle_engines(0))
+        self.assertEqual({("busy", 0), ("cpu", None)}, set(inference._models))
+        inference._busy.clear()
+        inference._clear_models()
 
     def test_manager_can_be_switched_off(self):
         gpu_memory.register_idle_evictor("ok", Mock(return_value=1))
