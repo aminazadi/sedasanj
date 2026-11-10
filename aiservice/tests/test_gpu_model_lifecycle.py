@@ -65,6 +65,16 @@ class ModelLifecycleTests(unittest.TestCase):
         second.close.assert_not_called()
         self.assertEqual(1, pool.total)
 
+    def test_gguf_evict_device_also_releases_split_contexts_of_other_main_gpu(self):
+        pool = GlobalModelPool(2)
+        split, other = Mock(), Mock()
+        pool.idle[("big", 0, True)].append(split)
+        pool.idle[("small", 1, False)].append(other)
+        pool.total = 2
+        self.assertEqual(2, pool.evict_device(1))
+        split.close.assert_called_once()
+        other.close.assert_called_once()
+
     def test_asr_evict_removes_only_the_target_model(self):
         inference._clear_models()
         with patch.object(inference, "_build", side_effect=lambda mid, dev: object()):

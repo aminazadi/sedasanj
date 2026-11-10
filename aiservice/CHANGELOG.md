@@ -4,6 +4,7 @@
 
 - Fixed deleting one ASR model dropping every cached ASR engine (all models reloaded afterwards) and two threads loading the same model concurrently (double VRAM): the ASR model cache now evicts only the target model and builds each model once.
 - Added a GPU memory manager: PyTorch caches are returned to the driver after `ASR_GPU_IDLE_TRIM_SECONDS` (default 10) of GPU inactivity, never after each request, and idle resident GGUF/embedding/decision models on a GPU are released when another job does not fit, so a resident model no longer causes OOM for the next job. Models in use are never touched; set `ASR_GPU_MEMORY_MANAGER=0` to disable.
+- Fixed multi-GPU (split) tasks such as Gemma 12B on two 12 GB cards staying queued forever while an idle split model from an earlier request still held ~7 GB on each GPU: group reservation now releases idle resident models when VRAM is short, and a split context is released for any of its GPUs.
 
 ## 2026-11-08 — AMINAZADI
 

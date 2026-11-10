@@ -395,10 +395,22 @@ def reserve_group(devices, timeout=0, required_bytes=0):
         raise TimeoutError("Multi-GPU capacity is unavailable")
     deadline = time.monotonic() + timeout
     token = None
+    freed = False
     while True:
         settings = get_settings()
         current = {item["uuid"]: item for item in discover_gpus()}
         minimum = int(settings["min_free_vram_mb"]) * 1024 * 1024
+        if not freed and all(item in current for item in identifiers):
+            short = any(current[item]["memory_free"] < minimum for item in identifiers) or sum(
+                max(0, current[item]["memory_free"] - minimum) for item in identifiers
+            ) < required_bytes
+            if short:
+                # Idle resident models (often a split GGUF from an earlier request) may hold the VRAM.
+                freed = True
+                released = sum(gpu_memory.evict_idle(current[item]["index"]) for item in identifiers)
+                if released:
+                    _invalidate_device_cache()
+                    continue
         with _lock:
             available = (
                 settings["mode"] != "cpu"

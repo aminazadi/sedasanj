@@ -143,7 +143,8 @@ class GlobalModelPool:
   """Close idle contexts (never leased ones) living on one GPU; returns the count."""
   removed=[]
   with self.condition:
-   for key in [key for key,values in self.idle.items() if key[1]==device_index and values]:
+   # A split context spans several GPUs but is keyed by its main GPU only, so it counts for any device.
+   for key in [key for key,values in self.idle.items() if (key[1]==device_index or key[2]) and values]:
     removed.extend(self.idle.pop(key))
    self.total-=len(removed)
    self.condition.notify_all()

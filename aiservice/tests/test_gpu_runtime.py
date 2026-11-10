@@ -52,6 +52,46 @@ class GpuRuntimeTests(unittest.TestCase):
                         pass
             self.assertIsNone(gpu_runtime.current_device_index())
 
+    def test_group_reservation_frees_idle_resident_models_when_vram_is_short(self):
+        gib = 1024**3
+        state = {"free": 5 * gib}
+        devices = lambda: [
+            {"index": 0, "uuid": "GPU-a", "memory_free": state["free"]},
+            {"index": 1, "uuid": "GPU-b", "memory_free": state["free"]},
+        ]
+        settings = {
+            "mode": "auto", "enabled_devices": ["GPU-a", "GPU-b"],
+            "max_concurrent_per_device": 1, "min_free_vram_mb": 1024,
+        }
+
+        def release(index):
+            state["free"] = 11 * gib  # the idle split context was closed
+            return 1
+
+        with patch.object(gpu_runtime, "get_settings", return_value=settings), patch.object(
+            gpu_runtime, "discover_gpus", side_effect=lambda: devices()
+        ), patch.object(gpu_runtime.gpu_memory, "evict_idle", side_effect=release) as evict:
+            with gpu_runtime.reserve_group(devices(), timeout=0, required_bytes=14 * gib) as context:
+                self.assertTrue(context["split"])
+        self.assertEqual(2, evict.call_count)
+
+    def test_group_reservation_still_times_out_when_eviction_frees_nothing(self):
+        gib = 1024**3
+        devices = [
+            {"index": 0, "uuid": "GPU-a", "memory_free": 5 * gib},
+            {"index": 1, "uuid": "GPU-b", "memory_free": 5 * gib},
+        ]
+        settings = {
+            "mode": "auto", "enabled_devices": ["GPU-a", "GPU-b"],
+            "max_concurrent_per_device": 1, "min_free_vram_mb": 1024,
+        }
+        with patch.object(gpu_runtime, "get_settings", return_value=settings), patch.object(
+            gpu_runtime, "discover_gpus", return_value=devices
+        ), patch.object(gpu_runtime.gpu_memory, "evict_idle", return_value=0):
+            with self.assertRaises(TimeoutError):
+                with gpu_runtime.reserve_group(devices, timeout=0, required_bytes=14 * gib):
+                    pass
+
     def test_cuda_runtime_gates_gpu_eligibility(self):
         device = {"index": 0, "uuid": "GPU-a", "memory_free": 8 * 1024**3}
         with patch.object(gpu_runtime, "enabled_devices", return_value=[device]), patch.object(
