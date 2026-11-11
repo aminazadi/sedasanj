@@ -41,9 +41,15 @@ ios() {
 
 macos() {
   flutter build macos --release --dart-define=STORE=desktop
-  ditto -c -k --keepParent build/macos/Build/Products/Release/Jalase-Negar.app "$out/JalaseNegar-macos-v$version.zip"
+  # Xcode signs with the developer's own Apple Development cert + a device-bound provisioning profile,
+  # which another Mac refuses to run. Drop the profile and ad-hoc re-sign with the real entitlements.
+  local app=build/macos/Build/Products/Release/Jalase-Negar.app
+  rm -f "$app/Contents/embedded.provisionprofile"
+  codesign --force --deep --sign - --entitlements macos/Runner/Release.entitlements "$app"
+  codesign --verify --deep --strict "$app"
+  ditto -c -k --keepParent "$app" "$out/JalaseNegar-macos-v$version.zip"
   # Styled DMG (branded background, drag-to-Applications). Unsigned: first launch needs right-click > Open.
-  "$(cd "$(dirname "$0")" && pwd)/make-jalase-negar-dmg.sh" build/macos/Build/Products/Release/Jalase-Negar.app "$out/JalaseNegar-macos-v$version.dmg"
+  "$(cd "$(dirname "$0")" && pwd)/make-jalase-negar-dmg.sh" "$app" "$out/JalaseNegar-macos-v$version.dmg"
 }
 
 case "$target" in
