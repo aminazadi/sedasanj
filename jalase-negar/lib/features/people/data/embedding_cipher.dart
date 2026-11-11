@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:jalase_negar/core/platform/secure_storage.dart';
 
 /// Encrypts voiceprints before they are written to the local database, so a
 /// copy of the database file alone does not reveal biometric data.
@@ -55,7 +56,7 @@ const _kVoiceKey = 'voiceprint_local_key';
 Future<EmbeddingCipher> loadDeviceEmbeddingCipher({
   FlutterSecureStorage? storage,
 }) async {
-  final secure = storage ?? const FlutterSecureStorage();
+  final secure = storage ?? appSecureStorage;
   final stored = await secure.read(key: _kVoiceKey);
   if (stored != null && stored.length == 64) {
     return AesGcmEmbeddingCipher([

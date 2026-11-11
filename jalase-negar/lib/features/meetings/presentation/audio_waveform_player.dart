@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -38,6 +39,27 @@ final _emptyWaveform = [
   for (var i = 0; i < _barCount; i++) 0.18 + ((i * 17) % 11) / 18,
 ];
 
+/// Asks the meeting's bottom player to play one stretch of the recording (for
+/// example one line of an unnamed voice) and stop at its end.
+class SpanPlayRequest {
+  SpanPlayRequest(this.startMs, this.endMs);
+
+  final int startMs;
+  final int endMs;
+}
+
+final ValueNotifier<SpanPlayRequest?> spanPlayRequests = ValueNotifier(null);
+
+/// The stretch being played right now (null when paused or stopped), so the
+/// lists that start a span can show which one is playing.
+final ValueNotifier<SpanPlayRequest?> playingSpan = ValueNotifier(null);
+
+/// 0..1 progress inside [playingSpan] (null when nothing plays).
+final ValueNotifier<double?> playingSpanProgress = ValueNotifier(null);
+
+/// Bumped to pause the span that is playing.
+final ValueNotifier<int> spanPauseRequests = ValueNotifier(0);
+
 /// Fixed bottom player that mirrors the web panel's waveform player.
 class AudioWaveformPlayer extends StatefulWidget {
   const AudioWaveformPlayer({super.key, required this.path});
@@ -55,11 +77,62 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
   bool _muted = false;
   bool _failed = false;
   double? _dragRatio;
+  int? _stopAtMs;
+  StreamSubscription<Duration>? _stopWatch;
+  StreamSubscription<bool>? _playingWatch;
+
+  void _onSpanPause() {
+    _stopAtMs = null;
+    _player.pause();
+  }
 
   @override
   void initState() {
     super.initState();
     _load();
+    spanPlayRequests.addListener(_onSpanRequest);
+    spanPauseRequests.addListener(_onSpanPause);
+    _playingWatch = _player.playingStream.listen((playing) {
+      if (!playing) {
+        playingSpan.value = null;
+        playingSpanProgress.value = null;
+      }
+    });
+    _stopWatch = _player.positionStream.listen((position) {
+      final span = playingSpan.value;
+      if (span != null && span.endMs > span.startMs) {
+        playingSpanProgress.value =
+            ((position.inMilliseconds - span.startMs) /
+                    (span.endMs - span.startMs))
+                .clamp(0.0, 1.0);
+      }
+      final stop = _stopAtMs;
+      if (stop != null && position.inMilliseconds >= stop) {
+        _stopAtMs = null;
+        _player.pause();
+      }
+    });
+  }
+
+  Future<void> _onSpanRequest() async {
+    final request = spanPlayRequests.value;
+    if (request == null || _failed) return;
+    _stopAtMs = null;
+    try {
+      await _player.seek(Duration(milliseconds: request.startMs));
+    } catch (e) {
+      debugPrint('JN-PLAYER: seek failed: $e');
+      return;
+    }
+    // Set after the seek: the position stream may still report the old
+    // position (past the end) and would stop playback at once.
+    _stopAtMs = request.endMs;
+    playingSpan.value = request;
+    unawaited(
+      _player.play().catchError((Object e) {
+        debugPrint('JN-PLAYER: play failed: $e');
+      }),
+    );
   }
 
   @override
@@ -72,7 +145,8 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
     try {
       await _player.setFilePath(widget.path);
       if (mounted) setState(() => _failed = false);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('JN-PLAYER: loading ${widget.path} failed: $e');
       if (mounted) setState(() => _failed = true);
       return;
     }
@@ -86,11 +160,19 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
 
   @override
   void dispose() {
+    spanPlayRequests.removeListener(_onSpanRequest);
+    spanPauseRequests.removeListener(_onSpanPause);
+    _playingWatch?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => playingSpan.value = null,
+    );
+    _stopWatch?.cancel();
     _player.dispose();
     super.dispose();
   }
 
   void _toggle() {
+    _stopAtMs = null;
     if (_player.playing) {
       _player.pause();
       return;
@@ -104,6 +186,7 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
   void _seekToRatio(double ratio) {
     final total = _player.duration;
     if (total == null || total == Duration.zero) return;
+    _stopAtMs = null;
     _player.seek(total * ratio.clamp(0.0, 1.0));
   }
 

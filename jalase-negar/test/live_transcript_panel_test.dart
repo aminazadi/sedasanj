@@ -94,39 +94,60 @@ void main() {
     expect(find.textContaining('ضبط بدون مشکل ادامه دارد'), findsOneWidget);
   });
 
-  testWidgets('types a new line out character by character', (tester) async {
+  testWidgets('types a new line out, newest words first faint', (tester) async {
     final state = ValueNotifier(
       const LiveTranscriptState(phase: LivePhase.listening, lines: ['سلام']),
     );
     await tester.pumpWidget(host(state));
-    state.value = state.value.copyWith(
-      lines: [...state.value.lines, 'این یک جمله‌ی نسبتاً بلند برای تایپ است'],
-    );
+    const sentence =
+        'این یک جمله‌ی نسبتاً بلند برای تایپ است که باید کمی طول بکشد تا کامل شود و '
+        'هنوز ادامه دارد و ادامه دارد';
+    state.value = state.value.copyWith(lines: [...state.value.lines, sentence]);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 30));
-    await tester.pump(const Duration(milliseconds: 120));
-    expect(find.text('سلام'), findsOneWidget);
-    expect(find.text('این یک جمله‌ی نسبتاً بلند برای تایپ است'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 32));
     expect(find.textContaining('این یک'), findsOneWidget);
+    expect(find.textContaining('ادامه دارد و ادامه دارد'), findsNothing);
     await tester.pump(const Duration(seconds: 2));
-    expect(
-      find.text('این یک جمله‌ی نسبتاً بلند برای تایپ است'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('ادامه دارد و ادامه دارد'), findsOneWidget);
   });
 
-  testWidgets('types faster when many lines are queued', (tester) async {
+  testWidgets('only the last lines are kept on screen', (tester) async {
     final state = ValueNotifier(
       const LiveTranscriptState(phase: LivePhase.listening, lines: ['اول']),
     );
     await tester.pumpWidget(host(state));
-    final burst = [
-      for (var i = 0; i < 10; i++) 'جمله‌ی شماره $i است و ادامه دارد',
-    ];
+    final burst = [for (var i = 0; i < 20; i++) 'جمله‌ی شماره $i است'];
     state.value = state.value.copyWith(lines: [...state.value.lines, ...burst]);
     await tester.pump();
     await tester.pump(const Duration(seconds: 3));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text(burst.last), findsOneWidget);
+    expect(find.textContaining(burst.last), findsOneWidget);
+    expect(find.text('اول'), findsNothing);
+  });
+
+  testWidgets('the bare panel shows the text without header or frame', (
+    tester,
+  ) async {
+    final state = ValueNotifier(
+      const LiveTranscriptState(phase: LivePhase.listening),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fa'),
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: SizedBox(
+              height: 230,
+              child: LiveTranscriptPanel(state: state, bare: true),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('متن زنده'), findsNothing);
+    expect(find.text('زنده'), findsNothing);
+    // The empty state still tells the user what to do.
+    expect(find.textContaining('شروع به صحبت کنید'), findsOneWidget);
   });
 }

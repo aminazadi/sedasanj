@@ -27,7 +27,11 @@ const double kSileroMinSilenceSeconds = 0.9;
 /// instead of one long one. The post-recording transcript keeps
 /// [kSileroMinSilenceSeconds] (the server contract); the saved live text is
 /// merged into turns when recording stops.
-const double kLiveMinSilenceSeconds = 0.5;
+const double kLiveMinSilenceSeconds = 0.35;
+
+/// Live speech is cut at most this long, so a long monologue shows up every
+/// few seconds instead of after 30.
+const double kLiveMaxSpeechSeconds = 12.0;
 const double kSileroMinSpeechSeconds = 0.2;
 const int kSileroWindowSize = 512;
 
@@ -351,7 +355,7 @@ void _liveEntry(_Init init) {
         minSilenceSeconds: config.minSilenceSeconds,
         minSpeechSeconds: kSileroMinSpeechSeconds,
         windowSize: kSileroWindowSize,
-        maxSpeechSeconds: kAsrWindowSeconds,
+        maxSpeechSeconds: kLiveMaxSpeechSeconds,
       ),
       decoder: SherpaLiveDecoder(created),
       maxBacklogMs: config.maxBacklogMs,
@@ -432,8 +436,7 @@ void _liveEntry(_Init init) {
         if (live.hasDeferred &&
             !lagging &&
             backlog < _lagOffMs &&
-            !live.speechDetected &&
-            !live.lightMode) {
+            !live.speechDetected) {
           report(live.recover());
         }
         final nowSpeaking = live.speechDetected;

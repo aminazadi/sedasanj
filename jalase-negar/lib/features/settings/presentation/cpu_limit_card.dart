@@ -31,7 +31,7 @@ class CpuLimitCard extends ConsumerWidget {
             'تعیین کنید جلسه‌نگار برای کارهای سنگینش (متن زنده، تشخیص گوینده، '
             'تشخیص صداهایی مثل خنده و تحلیل دقیق) از چند هستهٔ گوشی استفاده کند. عدد بیشتر سریع‌تر '
             'است ولی گوشی را گرم‌تر و باتری را زودتر خالی می‌کند. حداکثر '
-            'نصف هسته‌های گوشی (${toPersianDigits('$max')} از '
+            'همهٔ هسته‌ها به‌جز یکی (${toPersianDigits('$max')} از '
             '${toPersianDigits('${processors ?? Platform.numberOfProcessors}')}) مجاز است.',
             style: theme.textTheme.bodyMedium,
           ),

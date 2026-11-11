@@ -40,4 +40,15 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+  # sherpa_onnx_ios ships `sherpa-onnx.xcframework` whose framework is named `SherpaOnnxC`, so
+  # CocoaPods emits `-framework "sherpa-onnx"` and `sherpa-onnx.framework` (link fails with
+  # "Framework 'sherpa-onnx' not found", embed script fails). Point both at the real name.
+  Dir.glob(File.join(installer.sandbox.root.to_s, 'Target Support Files', 'Pods-*', '*')).each do |path|
+    next unless File.file?(path)
+    text = File.read(path)
+    fixed = text.gsub('-framework "sherpa-onnx"', '-framework "SherpaOnnxC"')
+                .gsub('sherpa-onnx.framework', 'SherpaOnnxC.framework')
+    File.write(path, fixed) if fixed != text
+  end
 end

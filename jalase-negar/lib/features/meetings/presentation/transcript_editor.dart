@@ -460,52 +460,43 @@ class TranscriptEditorState extends State<TranscriptEditor>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _toolbar(),
+          const Divider(height: 1),
+          if (_findOpen) _findBar(theme),
           if (widget.notice != null) ...[
             _Notice(
               message: widget.notice!,
               actionLabel: widget.noticeActionLabel,
               onAction: widget.onNoticeAction,
             ),
-            const SizedBox(height: 10),
           ],
-          Container(
-            decoration: BoxDecoration(
+          Expanded(
+            child: ColoredBox(
               color: Colors.white,
-              border: Border.all(
-                color: _focus.hasFocus ? SsColors.primary : SsColors.neutral,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _toolbar(),
-                const Divider(height: 1),
-                if (_findOpen) _findBar(theme),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: TextField(
-                    key: _fieldKey,
-                    controller: _text,
-                    focusNode: _focus,
-                    readOnly: _locked,
-                    minLines: 8,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.9),
-                    decoration: const InputDecoration(
-                      hintText: 'متن را اینجا بنویسید',
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      filled: false,
-                      contentPadding: EdgeInsets.zero,
-                    ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: TextField(
+                  key: _fieldKey,
+                  controller: _text,
+                  focusNode: _focus,
+                  readOnly: _locked,
+                  expands: true,
+                  minLines: null,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.9),
+                  decoration: const InputDecoration(
+                    hintText: 'متن را اینجا بنویسید',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ),
-              ],
+              ),
             ),
           ),
           if (widget.statusDestination == null) ...[

@@ -24,11 +24,18 @@ class ModelFileSpec {
     required this.filename,
     required this.sizeBytes,
     this.sizeIsEstimate = false,
+    this.sha256,
   });
 
   final String url;
   final String filename;
   final int sizeBytes;
+
+  /// Lowercase hex SHA-256 of the file, copied from the files the benchmark
+  /// used (`docs/asr-benchmark.md`). Recorded only: the downloader does not
+  /// check it yet, and the copy hosted on sedasanj.ir has not been compared
+  /// with it. ⚠ needs lab confirmation before any check is enforced.
+  final String? sha256;
 
   /// Some upstream release pages do not expose stable byte sizes. Such files
   /// are validated by successful download rather than an invented exact size.
@@ -48,6 +55,7 @@ class ModelSpec {
     required this.files,
     this.recommended = false,
     this.asrArchitecture = AsrArchitecture.nemoCtc,
+    this.license,
   });
 
   final String id;
@@ -58,6 +66,10 @@ class ModelSpec {
   final List<ModelFileSpec> files;
   final bool recommended;
   final AsrArchitecture asrArchitecture;
+
+  /// SPDX id of the licence, only where the catalog already states it. Null
+  /// means "not confirmed", not "unlicensed".
+  final String? license;
 
   int get totalSizeBytes => files.fold(0, (sum, f) => sum + f.sizeBytes);
 }

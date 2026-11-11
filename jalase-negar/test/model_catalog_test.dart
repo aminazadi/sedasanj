@@ -16,6 +16,33 @@ void main() {
       ]);
     });
 
+    test('recorded SHA-256 values are well formed and unique per file', () {
+      final seen = <String>{};
+      for (final spec in ModelCatalog.all) {
+        for (final file in spec.files) {
+          final hash = file.sha256;
+          if (hash == null) continue;
+          expect(hash, matches(RegExp(r'^[0-9a-f]{64}$')), reason: file.url);
+          expect(seen.add(hash), isTrue, reason: 'repeated hash: ${file.url}');
+        }
+      }
+      // Every weight file is covered; only the CED label list is not.
+      final missing = [
+        for (final spec in ModelCatalog.all)
+          for (final file in spec.files)
+            if (file.sha256 == null) '${spec.id}/${file.filename}',
+      ];
+      expect(missing, [
+        'ced-tiny-audio-tagging-2024-04-19/class_labels_indices.csv',
+      ]);
+    });
+
+    test('only licences the catalog already states are recorded', () {
+      expect(ModelCatalog.speakerEmbedding.license, 'Apache-2.0');
+      expect(ModelCatalog.speakerSegmentation.license, 'MIT');
+      expect(ModelCatalog.soundEvents.license, isNull);
+    });
+
     test('ids are unique', () {
       final ids = ModelCatalog.all.map((m) => m.id).toSet();
       expect(ids.length, ModelCatalog.all.length);

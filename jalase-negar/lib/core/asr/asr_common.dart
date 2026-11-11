@@ -56,8 +56,10 @@ bool isDuplicateTranscript({
     if (!overlaps) return false;
     final previous = item.$3;
     if (previous == candidate) return true;
+    // Only a candidate that adds nothing is a duplicate. A longer one that
+    // merely contains the earlier line carries new words and must be kept.
     if (candidate.length >= kAsrDuplicateMinChars &&
-        (previous.contains(candidate) || candidate.contains(previous))) {
+        previous.contains(candidate)) {
       return true;
     }
     final previousTokens = previous
@@ -65,9 +67,10 @@ bool isDuplicateTranscript({
         .where((token) => token.isNotEmpty)
         .toSet();
     if (candidateTokens.length < 3 || previousTokens.length < 3) return false;
+    // Share of the CANDIDATE's own words already said; a candidate with many
+    // new words is never dropped just because it repeats an old line.
     final shared = candidateTokens.intersection(previousTokens).length;
-    final shorter = math.min(candidateTokens.length, previousTokens.length);
-    return shared / shorter >= kAsrDuplicateTokenRatio;
+    return shared / candidateTokens.length >= kAsrDuplicateTokenRatio;
   });
 }
 

@@ -93,11 +93,10 @@ enum _Glyph { sessions, people, guide, settings, mic }
 /// Hand-drawn 24-grid line icons so the bar does not depend on stock Material
 /// glyphs (the old mic tab duplicated the record button).
 class _GlyphPainter extends CustomPainter {
-  _GlyphPainter(this.glyph, this.color, {this.filled = false});
+  _GlyphPainter(this.glyph, this.color);
 
   final _Glyph glyph;
   final Color color;
-  final bool filled;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -166,19 +165,14 @@ class _GlyphPainter extends CustomPainter {
         for (final (y, kx) in rows) {
           canvas.drawLine(Offset(4, y), Offset(kx - 2.7, y), line);
           canvas.drawLine(Offset(kx + 2.7, y), Offset(20, y), line);
-          if (filled) canvas.drawCircle(Offset(kx, y), 2.2, fill);
-          canvas.drawCircle(Offset(kx, y), 2.2, filled ? fill : line);
+          canvas.drawCircle(Offset(kx, y), 2.2, line);
         }
       case _Glyph.mic:
         final body = RRect.fromRectAndRadius(
           const Rect.fromLTWH(8.8, 2.8, 6.4, 11.4),
           const Radius.circular(3.2),
         );
-        if (filled) {
-          canvas.drawRRect(body, fill);
-        } else {
-          canvas.drawRRect(body, line);
-        }
+        canvas.drawRRect(body, line);
         canvas.drawArc(
           Rect.fromCircle(center: const Offset(12, 11), radius: 6.8),
           0.12,
@@ -193,26 +187,20 @@ class _GlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GlyphPainter old) =>
-      old.glyph != glyph || old.color != color || old.filled != filled;
+      old.glyph != glyph || old.color != color;
 }
 
 class _GlyphIcon extends StatelessWidget {
-  const _GlyphIcon(
-    this.glyph,
-    this.color, {
-    this.filled = false,
-    this.size = 27,
-  });
+  const _GlyphIcon(this.glyph, this.color, {this.size = 27});
 
   final _Glyph glyph;
   final Color color;
-  final bool filled;
   final double size;
 
   @override
   Widget build(BuildContext context) => CustomPaint(
     size: Size.square(size),
-    painter: _GlyphPainter(glyph, color, filled: filled),
+    painter: _GlyphPainter(glyph, color),
   );
 }
 
@@ -277,6 +265,9 @@ class _SsBottomBar extends StatelessWidget {
   static const _bar = 72.0;
   static const _lift = 60.0;
   static const _half = 38.0;
+
+  /// How much lower the diamond sits and how much deeper the notch is cut.
+  static const _drop = 16.0;
   static const _slotWidth = 132.0;
 
   @override
@@ -288,7 +279,7 @@ class _SsBottomBar extends StatelessWidget {
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: _BarPainter(lift: _lift, half: _half),
+              painter: _BarPainter(lift: _lift, half: _half + _drop),
             ),
           ),
           Positioned(
@@ -351,6 +342,7 @@ class _SsBottomBar extends StatelessWidget {
                 onTap: onRecord,
                 lift: _lift,
                 half: _half,
+                drop: _drop,
                 width: _slotWidth,
                 height: _lift + _bar,
               ),
@@ -398,11 +390,6 @@ class _NavTab extends StatelessWidget {
               width: 44,
               height: 32,
               alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected
-                    ? SsColors.primary.withValues(alpha: 0.12)
-                    : Colors.transparent,
-              ),
               child: TweenAnimationBuilder<Color?>(
                 duration: _anim,
                 curve: Curves.easeOutCubic,
@@ -435,6 +422,7 @@ class _RecordSlot extends StatefulWidget {
     required this.onTap,
     required this.lift,
     required this.half,
+    required this.drop,
     required this.width,
     required this.height,
   });
@@ -442,6 +430,7 @@ class _RecordSlot extends StatefulWidget {
   final VoidCallback onTap;
   final double lift;
   final double half;
+  final double drop;
   final double width;
   final double height;
 
@@ -469,7 +458,7 @@ class _RecordSlotState extends State<_RecordSlot>
     // Square side whose 45° rotation has half-diagonal d.
     final side = d * math.sqrt2;
     // The diamond's centre sits above the bar's top edge, as in the sketch.
-    final centerY = widget.lift - 0.4 * d;
+    final centerY = widget.lift - 0.4 * d + widget.drop;
     return Semantics(
       button: true,
       label: 'ضبط جلسه',
@@ -510,11 +499,34 @@ class _RecordSlotState extends State<_RecordSlot>
                               height: s,
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: SsColors.primary.withValues(
+                                  color: SsColors.danger.withValues(
                                     alpha: 0.35 * (1 - t),
                                   ),
                                 ),
                               ),
+                            ),
+                          );
+                        },
+                      ),
+                      AnimatedBuilder(
+                        animation: _pulse,
+                        builder: (context, _) {
+                          final glow =
+                              0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi);
+                          return Container(
+                            width: side * 0.9,
+                            height: side * 0.9,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: SsColors.danger.withValues(
+                                    alpha: 0.25 + 0.3 * glow,
+                                  ),
+                                  blurRadius: 18 + 12 * glow,
+                                  spreadRadius: 2 + 4 * glow,
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -529,53 +541,63 @@ class _RecordSlotState extends State<_RecordSlot>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                SsColors.primaryLight,
-                                SsColors.primary,
-                                SsColors.primaryDark,
+                                Color(0xFFE5484D),
+                                SsColors.danger,
+                                Color(0xFF8F0E2E),
                               ],
                               stops: [0, 0.55, 1],
                             ),
                             border: Border.all(
-                              color: SsColors.primary,
+                              color: SsColors.danger,
                               width: 1.5,
                             ),
                             boxShadow: const [
                               BoxShadow(
-                                color: Color(0x663E5C3B),
+                                color: Color(0x66BE123C),
                                 blurRadius: 14,
                                 offset: Offset(0, 5),
                               ),
                             ],
                           ),
-                          child: const SsDots.onPrimary(
-                            child: SizedBox.expand(),
+                          child: ClipRect(
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                const SsDots.onPrimary(
+                                  child: SizedBox.expand(),
+                                ),
+                                // A soft light band sweeping across the
+                                // diamond, once per pulse.
+                                AnimatedBuilder(
+                                  animation: _pulse,
+                                  builder: (context, _) => FractionallySizedBox(
+                                    alignment: Alignment(
+                                      -2 + 4 * _pulse.value,
+                                      0,
+                                    ),
+                                    widthFactor: 0.35,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.white.withValues(alpha: 0),
+                                            Colors.white.withValues(
+                                              alpha: 0.35,
+                                            ),
+                                            Colors.white.withValues(alpha: 0),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                      const _GlyphIcon(
-                        _Glyph.mic,
-                        SsColors.canvas,
-                        filled: true,
-                        size: 34,
-                      ),
+                      const Icon(Icons.add, color: SsColors.canvas, size: 40),
                     ],
-                  ),
-                ),
-                // Aligned with the other tabs' labels.
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: widget.lift + 43,
-                  child: const Text(
-                    'ضبط جلسه',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: 'Vazirmatn',
-                      fontSize: 12,
-                      height: 1.2,
-                      fontWeight: FontWeight.w600,
-                      color: SsColors.primary,
-                    ),
                   ),
                 ),
               ],

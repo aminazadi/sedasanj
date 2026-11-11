@@ -54,7 +54,7 @@ class PeopleScreen extends ConsumerWidget {
           people.when(
             loading: () => const Padding(
               padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: SsProcessingMark(size: 30)),
             ),
             error: (e, _) => SsCard(child: Text('خطا در خواندن افراد: $e')),
             data: (list) => list.isEmpty
@@ -95,14 +95,6 @@ class _PersonTile extends ConsumerWidget {
       onTap: () => context.push('/people/${person.clientId}'),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: SsColors.selected,
-            foregroundColor: SsColors.primaryDark,
-            child: Text(
-              person.name.isEmpty ? '؟' : person.name.characters.first,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

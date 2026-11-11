@@ -31,16 +31,18 @@ Widget _host({
     home: Builder(
       builder: (context) => Scaffold(
         body: onOpenEditor == null
-            ? ListView(
+            ? Column(
                 children: [
-                  TranscriptEditor(
-                    key: _editorKey,
-                    savedText: text,
-                    onSave: onSave,
-                    readOnly: readOnly,
-                    notice: notice,
-                    noticeActionLabel: noticeActionLabel,
-                    onNoticeAction: onNoticeAction,
+                  Expanded(
+                    child: TranscriptEditor(
+                      key: _editorKey,
+                      savedText: text,
+                      onSave: onSave,
+                      readOnly: readOnly,
+                      notice: notice,
+                      noticeActionLabel: noticeActionLabel,
+                      onNoticeAction: onNoticeAction,
+                    ),
                   ),
                 ],
               )
@@ -49,9 +51,14 @@ Widget _host({
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => Scaffold(
-                        body: ListView(
+                        body: Column(
                           children: [
-                            TranscriptEditor(savedText: text, onSave: onSave),
+                            Expanded(
+                              child: TranscriptEditor(
+                                savedText: text,
+                                onSave: onSave,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -516,11 +523,13 @@ void main() {
         home: Scaffold(
           body: ValueListenableBuilder<String>(
             valueListenable: stored,
-            builder: (context, text, _) => ListView(
+            builder: (context, text, _) => Column(
               children: [
-                TranscriptEditor(
-                  savedText: text,
-                  onSave: (_, {required settle}) async => _ok,
+                Expanded(
+                  child: TranscriptEditor(
+                    savedText: text,
+                    onSave: (_, {required settle}) async => _ok,
+                  ),
                 ),
               ],
             ),

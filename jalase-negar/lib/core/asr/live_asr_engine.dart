@@ -31,6 +31,7 @@ class LiveUtterance extends LiveEvent {
     this.speaker2,
     this.overlap = false,
     this.speakerConfidence,
+    this.speakerManual = false,
   });
 
   final int startMs;
@@ -50,6 +51,9 @@ class LiveUtterance extends LiveEvent {
 
   /// 0..100, null when speakers were not identified.
   final int? speakerConfidence;
+
+  /// Set by the microphone's owner (see ChannelOwnership), not by the voice.
+  final bool speakerManual;
 }
 
 /// A non-speech human sound (laughter, crying, a cough, ...) found in the

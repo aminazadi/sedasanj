@@ -9,6 +9,7 @@ import '../../../core/platform/speaker_api.dart';
 import '../../../core/speaker/speaker_math.dart';
 import 'embedding_cipher.dart';
 import 'person.dart';
+import '../../../core/speaker/voiceprint_diversity.dart';
 
 /// Settings keys of the sync state.
 const String kSpeakerSyncCursorKey = 'speaker_sync_cursor';
@@ -240,6 +241,40 @@ class PeopleRepository {
       );
       await _queue(txn, personId, 'upsert', stamp);
     });
+  }
+
+  /// Keeps this person's voiceprints varied: alike samples are grouped and a
+  /// group holds at most [policy].perGroup of them (see
+  /// `voiceprint_diversity.dart`). Readings made during enrolment (they have a
+  /// quality score) are never removed. Models are pruned separately, because
+  /// their embeddings cannot be compared. Returns how many were removed.
+  Future<int> pruneVoiceprints(
+    String personId, {
+    DiversityPolicy policy = const DiversityPolicy(),
+  }) async {
+    final byModel = <String, List<VoiceSample>>{};
+    for (final v in await voiceprints(personId)) {
+      byModel
+          .putIfAbsent('${v.modelId}/${v.modelVersion}', () => [])
+          .add(
+            VoiceSample(
+              id: v.clientId,
+              embedding: v.embedding,
+              createdAt: v.createdAt,
+              protected: v.quality != null,
+              quality: v.quality,
+              durationMs: v.durationMs,
+            ),
+          );
+    }
+    var removed = 0;
+    for (final samples in byModel.values) {
+      for (final id in voiceSamplesToRemove(samples, policy)) {
+        await removeVoiceprint(personId, id);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   Future<void> removeVoiceprint(String personId, String voiceprintId) async {

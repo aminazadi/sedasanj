@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
+import '../../../core/providers.dart';
+import '../../meetings/application/meeting_providers.dart';
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
 import '../../push/push_host.dart';
@@ -61,6 +63,26 @@ class SettingsScreen extends ConsumerWidget {
                     _Row('سرور', connection.serverUrl, ltr: true),
                     if (connection.tokenPrefix.isNotEmpty)
                       _Row('توکن', '${connection.tokenPrefix}…', ltr: true),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: busy ? null : controller.recheck,
+                            child: const Text('بررسی اتصال'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: busy
+                                ? null
+                                : () => _confirmDisconnect(context, controller),
+                            child: const Text('قطع اتصال'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
         ),
@@ -86,7 +108,7 @@ class SettingsScreen extends ConsumerWidget {
         ],
         const SizedBox(height: 12),
         if (busy)
-          const Center(child: CircularProgressIndicator())
+          const Center(child: SsProcessingMark(size: 30))
         else if (connection == null)
           SsCard(
             title: 'اتصال',
@@ -149,24 +171,6 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ],
             ),
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: controller.recheck,
-                  child: const Text('بررسی اتصال'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _confirmDisconnect(context, controller),
-                  child: const Text('قطع اتصال'),
-                ),
-              ),
-            ],
           ),
       ],
     );
@@ -240,7 +244,12 @@ class _SendTranscriptCard extends ConsumerWidget {
       enabled: enabled,
       onChanged: (value) async {
         await ref.read(sendTranscriptEnabledProvider.notifier).set(value);
-        if (value) ref.read(uploadQueueProvider.notifier).kick();
+        if (value) {
+          final repo = await ref.read(meetingRepositoryProvider.future);
+          await repo.enableSendForUnsent();
+          ref.invalidate(meetingsProvider);
+          ref.read(uploadQueueProvider.notifier).kick();
+        }
       },
     );
   }

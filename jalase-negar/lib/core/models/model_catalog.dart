@@ -20,6 +20,8 @@ abstract final class ModelCatalog {
             'https://sedasanj.ir/jalase-negar-models/v1/silero-vad/silero_vad.onnx',
         filename: 'silero_vad.onnx',
         sizeBytes: 643854,
+        sha256:
+            '9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6',
       ),
     ],
   );
@@ -37,6 +39,8 @@ abstract final class ModelCatalog {
         filename: 'gtcrn_simple.onnx',
         sizeBytes: 1700000,
         sizeIsEstimate: true,
+        sha256:
+            'e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534',
       ),
     ],
   );
@@ -59,12 +63,15 @@ abstract final class ModelCatalog {
     descriptionFa:
         'پیش‌نیاز «افراد و صدا»؛ ردصدا را از گفتار می‌سازد تا گویندگان شناخته شوند',
     repoUrl: 'https://github.com/k2-fsa/sherpa-onnx',
+    license: 'Apache-2.0',
     files: [
       ModelFileSpec(
         url:
             'https://sedasanj.ir/jalase-negar-models/v1/campplus-sv-zh-en-16k/speaker_embedding.onnx',
         filename: 'speaker_embedding.onnx',
         sizeBytes: 28281164,
+        sha256:
+            'aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2',
       ),
     ],
   );
@@ -77,12 +84,15 @@ abstract final class ModelCatalog {
     descriptionFa:
         'اختیاری؛ تغییر گوینده و صحبت هم‌زمان دو نفر را در جلسه تشخیص می‌دهد',
     repoUrl: 'https://huggingface.co/pyannote/segmentation-3.0',
+    license: 'MIT',
     files: [
       ModelFileSpec(
         url:
             'https://sedasanj.ir/jalase-negar-models/v1/pyannote-segmentation-3-0/model.int8.onnx',
         filename: 'model.int8.onnx',
         sizeBytes: 1540506,
+        sha256:
+            'd582f4b4c6b48205de7e0643c57df0df5615a3c176189be3fc461e9d18827b5d',
       ),
     ],
   );
@@ -110,6 +120,8 @@ abstract final class ModelCatalog {
             'https://sedasanj.ir/jalase-negar-models/v1/ced-tiny-audio-tagging-2024-04-19/model.int8.onnx',
         filename: 'model.int8.onnx',
         sizeBytes: 6133417,
+        sha256:
+            '73aa22e783115f6a4ae169b36089907e07d0fd44795595eddea9c1bfc74cc945',
       ),
       ModelFileSpec(
         url:
@@ -137,6 +149,8 @@ abstract final class ModelCatalog {
         filename: 'encoder.int8.onnx',
         sizeBytes: 131000000,
         sizeIsEstimate: true,
+        sha256:
+            'b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3',
       ),
       ModelFileSpec(
         url:
@@ -144,6 +158,8 @@ abstract final class ModelCatalog {
         filename: 'decoder.int8.onnx',
         sizeBytes: 3960000,
         sizeIsEstimate: true,
+        sha256:
+            '0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947',
       ),
       ModelFileSpec(
         url:
@@ -151,12 +167,16 @@ abstract final class ModelCatalog {
         filename: 'joiner.int8.onnx',
         sizeBytes: 1410000,
         sizeIsEstimate: true,
+        sha256:
+            'e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde',
       ),
       ModelFileSpec(
         url:
             'https://sedasanj.ir/jalase-negar-models/v1/shenava-koochik-v1-5-rnnt/tokens.txt',
         filename: 'tokens.txt',
         sizeBytes: 12236,
+        sha256:
+            '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954',
       ),
     ],
   );

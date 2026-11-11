@@ -7,11 +7,13 @@ import '../providers.dart';
 
 const kCpuCoresSettingKey = 'cpu_cores';
 
-/// The most cores the owner may hand to the app: half of what the phone has
-/// (8 cores -> 4), never less than 1. The rest stay free for the system, so
-/// the phone does not heat up or lag.
+/// The most cores the owner may hand to the app: all but one (8 cores -> 7),
+/// never less than 1. One core always stays free for the system and the
+/// screen. (Half of the cores was too narrow a range for the slider to make a
+/// visible difference, especially with several microphones transcribed in
+/// parallel.)
 int maxCpuCores([int? processors]) =>
-    math.max(1, (processors ?? Platform.numberOfProcessors) ~/ 2);
+    math.max(1, (processors ?? Platform.numberOfProcessors) - 1);
 
 /// Out of the box the app keeps using what it always used: 2 cores, or fewer
 /// on a phone that cannot spare them.

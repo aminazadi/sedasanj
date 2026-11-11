@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,17 +5,27 @@ import 'package:go_router/go_router.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../recording/presentation/live_waveform.dart';
 import '../application/people_providers.dart';
 import '../data/enrollment_session.dart';
 import '../data/people_repository.dart';
 import '../data/person.dart';
+import 'voiceprint_ring.dart';
 
 /// Records a person reading the prompt texts, one at a time. Each accepted
 /// recording is stored immediately.
 class EnrollScreen extends ConsumerWidget {
-  const EnrollScreen({super.key, required this.personId});
+  const EnrollScreen({
+    super.key,
+    required this.personId,
+    this.popOnFinish = false,
+  });
 
   final String personId;
+
+  /// Opened by the new-person page: finishing goes back to it instead of
+  /// replacing this page with the person's page.
+  final bool popOnFinish;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,7 +43,7 @@ class EnrollScreen extends ConsumerWidget {
         (prompts.isLoading && !prompts.hasValue) ||
         (embedder.isLoading && !embedder.hasValue) ||
         (repo.isLoading && !repo.hasValue)) {
-      return scaffold(const Center(child: CircularProgressIndicator()));
+      return scaffold(const Center(child: SsProcessingMark(size: 30)));
     }
     final person = people.value
         ?.where((p) => p.clientId == personId)
@@ -77,6 +85,7 @@ class EnrollScreen extends ConsumerWidget {
       prompts: prompts.value!,
       embedder: service,
       repository: repo.value!,
+      popOnFinish: popOnFinish,
     );
   }
 }
@@ -87,8 +96,10 @@ class _EnrollBody extends ConsumerStatefulWidget {
     required this.prompts,
     required this.embedder,
     required this.repository,
+    required this.popOnFinish,
   });
 
+  final bool popOnFinish;
   final Person person;
   final SpeakerPrompts prompts;
   final VoiceEmbeddingService embedder;
@@ -119,6 +130,14 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
     super.dispose();
   }
 
+  void _finish() {
+    if (widget.popOnFinish) {
+      context.pop();
+    } else {
+      context.pushReplacement('/people/${widget.person.clientId}');
+    }
+  }
+
   Future<void> _toggle() async {
     final phase = _session.state.value.phase;
     if (phase == EnrollmentPhase.recording) {
@@ -142,23 +161,44 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
           final recording = state.phase == EnrollmentPhase.recording;
           final busy = state.phase == EnrollmentPhase.processing;
           if (state.phase == EnrollmentPhase.finished) {
-            return _Done(person: widget.person, state: state);
+            return _Done(person: widget.person, state: state, onDone: _finish);
           }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                'متن ${toPersianDigits('${state.index + 1}')} از ${toPersianDigits('${prompts.length}')}'
-                '${prompt.required ? '' : ' (اختیاری؛ دقت را بیشتر می‌کند)'}',
-                style: theme.textTheme.labelLarge,
-              ),
-              const SizedBox(height: 4),
-              LinearProgressIndicator(
-                value: state.accepted.length / prompts.length,
-                color: SsColors.primary,
-                backgroundColor: SsColors.selected,
+                'برای ساختن ردصدای ${widget.person.name}، '
+                '${toPersianDigits('${prompts.length}')} متن کوتاه را بلند بخوانید. '
+                '${toPersianDigits('${widget.prompts.requiredCount}')} متن لازم است و بقیه دقت را بیشتر می‌کنند.',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
+              Center(
+                child: VoiceprintRing(
+                  filled: [
+                    for (final p in prompts) state.accepted.contains(p.id),
+                  ],
+                  required: [for (final p in prompts) p.required],
+                  current: state.index,
+                  level: state.level,
+                  recording: recording,
+                  complete: _session.canFinish,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'متن ${toPersianDigits('${state.index + 1}')} از ${toPersianDigits('${prompts.length}')}'
+                '${prompt.required ? '' : ' · اختیاری'}',
+                style: theme.textTheme.labelLarge,
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                '${toPersianDigits('${state.accepted.length}')} از ${toPersianDigits('${prompts.length}')} ثبت شد',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
               SsCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +218,7 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
                 ),
               ),
               const SizedBox(height: 12),
-              _LevelMeter(level: state.level, active: recording),
+              LevelWaveform(level: state.level, active: recording),
               if (state.message != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -195,7 +235,7 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: SsProcessingMark(size: 14),
                       )
                     : Icon(recording ? Icons.stop : Icons.mic),
                 label: Text(
@@ -232,11 +272,7 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
               ),
               if (_session.canFinish)
                 OutlinedButton(
-                  onPressed: recording || busy
-                      ? null
-                      : () => context.pushReplacement(
-                          '/people/${widget.person.clientId}',
-                        ),
+                  onPressed: recording || busy ? null : _finish,
                   child: const Text('پایان ثبت صدا'),
                 ),
             ],
@@ -247,36 +283,14 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
   }
 }
 
-class _LevelMeter extends StatelessWidget {
-  const _LevelMeter({required this.level, required this.active});
-
-  final double level;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    // Power to a perceptual bar: speech sits around -30 dB.
-    final bar = active && level > 0
-        ? ((10 * math.log(level) / math.ln10 + 50) / 50).clamp(0.0, 1.0)
-        : 0.0;
-    return Semantics(
-      label: 'تراز صدای ورودی',
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: LinearProgressIndicator(
-          minHeight: 10,
-          value: bar,
-          color: bar > 0.92 ? SsColors.danger : SsColors.primary,
-          backgroundColor: SsColors.selected,
-        ),
-      ),
-    );
-  }
-}
-
 class _Done extends StatelessWidget {
-  const _Done({required this.person, required this.state});
+  const _Done({
+    required this.person,
+    required this.state,
+    required this.onDone,
+  });
 
+  final VoidCallback onDone;
   final Person person;
   final EnrollmentState state;
 
@@ -294,11 +308,7 @@ class _Done extends StatelessWidget {
                 'از این پس، در جلسه‌هایی که با «نوشتن نام گوینده» ضبط می‌کنید، نام این فرد کنار گفته‌هایش می‌آید.',
               ),
               const SizedBox(height: 12),
-              FilledButton(
-                onPressed: () =>
-                    context.pushReplacement('/people/${person.clientId}'),
-                child: const Text('تمام'),
-              ),
+              FilledButton(onPressed: onDone, child: const Text('تمام')),
             ],
           ),
         ),

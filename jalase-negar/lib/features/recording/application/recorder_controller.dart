@@ -3,16 +3,21 @@ import 'dart:io';
 
 import 'package:disk_space_plus/disk_space_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/utils/format.dart';
+import '../../../core/audio/channel_ownership.dart';
 import '../../../core/audio/chunk_writer.dart';
+import '../../../core/audio/multichannel_capture.dart';
+import '../../../core/audio/pcm_channels.dart';
 import '../../../core/audio/wav.dart';
 import '../../../core/platform/recording_service.dart';
 import '../../../core/providers.dart';
+import '../../../core/speaker/speaker_matcher.dart';
 import '../../meetings/application/meeting_providers.dart';
 import '../../meetings/data/attendee.dart';
 import '../../meetings/data/meeting.dart';
@@ -31,9 +36,29 @@ const int kRecordSampleRate = 16000;
 /// wait for upload.
 const int kMinFreeDiskMb = 500;
 
+/// Prefix of [RecorderState.selectedInputDeviceId] for a native multi-channel
+/// device (the rest is its CoreAudio UID).
+const kMultichannelPrefix = 'mc:';
+
+/// Uid of the combined "all connected microphones" input.
+const kAllMicrophonesUid = '__all__';
+
 const _saveErrorCode = 'JN-REC-0003';
 const _finalizationWarningCode = 'JN-REC-0004';
 const _attendeesWarningCode = 'JN-REC-0005';
+const _usbInputCode = 'JN-REC-0007';
+const _usbInputStartError =
+    'ورودی USB باز نشد. گیرنده را از گوشی جدا و دوباره وصل کنید، سپس ضبط را دوباره شروع کنید. ($_usbInputCode)';
+const _usbInputLostError =
+    'ورودی USB قطع شد یا صدا به میکروفون دیگری رفت؛ ضبط تا اینجا ذخیره شد. گیرنده را دوباره وصل کنید و ضبط تازه‌ای شروع کنید. ($_usbInputCode)';
+const _usbInputErrorCodes = {
+  'wrong_route',
+  'device_lost',
+  'device_missing',
+  'no_input',
+  'format',
+  'start',
+};
 const _saveError =
     'ذخیرهٔ ضبط کامل نشد. برنامه را دوباره باز کنید و فهرست جلسات را بررسی کنید. ($_saveErrorCode)';
 const _finalizationWarning =
@@ -53,6 +78,8 @@ class RecorderState {
     this.interrupted = false,
     this.interruptions = 0,
     this.chunkCount = 0,
+    this.captureSources = const [],
+    this.channels = 1,
   });
 
   final RecorderStatus status;
@@ -70,6 +97,12 @@ class RecorderState {
   final int interruptions;
   final int chunkCount;
 
+  /// Multi-channel devices (2+ input channels) found on this computer.
+  final List<CaptureSource> captureSources;
+
+  /// Microphone channels of the running recording (1 = ordinary mono).
+  final int channels;
+
   RecorderState copyWith({
     RecorderStatus? status,
     Duration? elapsed,
@@ -81,6 +114,8 @@ class RecorderState {
     bool? interrupted,
     int? interruptions,
     int? chunkCount,
+    List<CaptureSource>? captureSources,
+    int? channels,
   }) => RecorderState(
     status: status ?? this.status,
     elapsed: elapsed ?? this.elapsed,
@@ -93,12 +128,122 @@ class RecorderState {
     interrupted: interrupted ?? this.interrupted,
     interruptions: interruptions ?? this.interruptions,
     chunkCount: chunkCount ?? this.chunkCount,
+    captureSources: captureSources ?? this.captureSources,
+    channels: channels ?? this.channels,
   );
 }
 
 class RecorderController extends Notifier<RecorderState> {
   /// Repaint the waveform directly without rebuilding the recording screen.
   final waveform = LiveAudioWaveform(sampleRate: kRecordSampleRate);
+
+  /// One waveform per microphone channel of the running recording; the first
+  /// one is [waveform]. Extra ones are created once and reused.
+  final ValueNotifier<List<LiveAudioWaveform>> channelWaveforms =
+      ValueNotifier<List<LiveAudioWaveform>>(const []);
+  final List<LiveAudioWaveform> _waveformPool = [];
+
+  /// Channels (0-based) the user muted. A muted channel is silenced before
+  /// anything uses it: the per-channel file, the mix, the live text and the
+  /// upload all get silence for it. Cleared when a new recording starts.
+  final ValueNotifier<Set<int>> mutedChannels = ValueNotifier(const {});
+
+  void toggleChannelMute(int channel) {
+    final next = {...mutedChannels.value};
+    if (!next.remove(channel)) next.add(channel);
+    mutedChannels.value = next;
+  }
+
+  /// Who holds each microphone (0-based channel → person). While a channel
+  /// has an owner its lines are named after that person and voice recognition
+  /// is not used for them. The owner can change during the recording: the new
+  /// one counts from that moment on and earlier lines keep the old one.
+  final ValueNotifier<Map<int, SpeakerIdentity>> channelOwners = ValueNotifier(
+    const {},
+  );
+  ChannelAssignments _assignments = ChannelAssignments();
+  ChannelActivityLog? _activityLog;
+
+  /// Samples fed to the live transcript so far: its clock, which the owner
+  /// changes are stamped with (paused time is not counted, like the text).
+  int _liveSamples = 0;
+
+  void assignChannel(int channel, SpeakerIdentity? who) {
+    _assignments.assign(
+      channel,
+      who,
+      atMs: _liveSamples * 1000 ~/ kRecordSampleRate,
+    );
+    final next = {...channelOwners.value};
+    if (who == null) {
+      next.remove(channel);
+    } else {
+      next[channel] = who;
+    }
+    channelOwners.value = next;
+  }
+
+  /// A one-line Persian note about the microphone channels (a copied or silent
+  /// channel), or null when all is well. Cleared when a recording starts.
+  final ValueNotifier<String?> channelNotice = ValueNotifier(null);
+  ChannelProbe? _probe;
+
+  /// Channels left out of the mix because they are silent or a copy of another.
+  Set<int> _excluded = const {};
+
+  /// Channels of the phone's own microphone in the running recording.
+  Set<int> _ownMicChannels = const {};
+
+  void _applyHealth(List<ChannelHealth> health) {
+    final skip = <int>{};
+    final copies = <int>[];
+    final dead = <int>[];
+    for (var c = 0; c < health.length; c++) {
+      if (health[c] == ChannelHealth.duplicate) {
+        skip.add(c);
+        copies.add(c);
+      } else if (health[c] == ChannelHealth.dead) {
+        skip.add(c);
+        dead.add(c);
+      }
+    }
+    _excluded = skip;
+    debugPrint('JN-REC: channel health $health');
+    if (copies.isNotEmpty) {
+      channelNotice.value =
+          'این گیرنده صدای همهٔ میکروفون‌ها را در یک کانال می‌فرستد؛ تفکیک گوینده با تشخیص خودکار صدا انجام می‌شود.';
+    } else if (dead.isNotEmpty && dead.every(_ownMicChannels.contains)) {
+      channelNotice.value =
+          'این گوشی میکروفون خودش را هم‌زمان با گیرندهٔ USB در اختیار نمی‌گذارد؛ فقط صدای گیرنده ضبط می‌شود.';
+    } else if (dead.isNotEmpty) {
+      final names = dead.map((c) => toPersianDigits('${c + 1}')).join('، ');
+      channelNotice.value =
+          'کانال $names صدایی نمی‌فرستد؛ فرستندهٔ آن را روشن کنید یا اتصال را بررسی کنید.';
+    } else {
+      channelNotice.value = null;
+    }
+  }
+
+  final MultichannelCapture _native = MultichannelCapture();
+  PcmDeinterleaver? _deinterleaver;
+  ChannelMixdown? _mixdown;
+  WavFileWriter? _rawWriter;
+  bool _nativeActive = false;
+
+  List<LiveAudioWaveform> _waveformsFor(int channels) {
+    if (_waveformPool.isEmpty) _waveformPool.add(waveform);
+    while (_waveformPool.length < channels) {
+      _waveformPool.add(LiveAudioWaveform(sampleRate: kRecordSampleRate));
+    }
+    return List.unmodifiable(_waveformPool.take(channels));
+  }
+
+  void _clearWaveforms() {
+    for (final w in _waveformPool) {
+      w.clear();
+    }
+    waveform.clear();
+  }
 
   /// Live transcript of the running recording; like [waveform], separate from
   /// [RecorderState] so a new line does not rebuild the whole screen.
@@ -138,7 +283,14 @@ class RecorderController extends Notifier<RecorderState> {
   @override
   RecorderState build() {
     ref.onDispose(_disposeResources);
-    ref.onDispose(waveform.dispose);
+    ref.onDispose(() {
+      for (final w in _waveformPool) {
+        if (w != waveform) w.dispose();
+      }
+      channelWaveforms.dispose();
+      waveform.dispose();
+    });
+    channelWaveforms.value = [waveform];
     return const RecorderState();
   }
 
@@ -176,13 +328,19 @@ class RecorderController extends Notifier<RecorderState> {
         );
         return;
       }
-      final devices = await recorder.listInputDevices();
-      var selectedId = state.selectedInputDeviceId;
-      if (selectedId.isNotEmpty && !devices.any((d) => d.id == selectedId)) {
-        selectedId = '';
-      }
+      // CoreAudio's own temporary "CADefaultDeviceAggregate-…" device is not a
+      // microphone; offering it only confuses.
+      final devices = [
+        for (final d in await recorder.listInputDevices())
+          if (!d.label.startsWith('CADefaultDeviceAggregate') &&
+              !d.id.startsWith('CADefaultDeviceAggregate'))
+            d,
+      ];
+      final sources = await _multichannelSources();
+      final selectedId = _validSelection(devices, sources);
       state = state.copyWith(
         inputDevices: devices,
+        captureSources: sources,
         selectedInputDeviceId: selectedId,
         discoveringInputDevices: false,
       );
@@ -197,6 +355,47 @@ class RecorderController extends Notifier<RecorderState> {
       await recorder.dispose();
     }
   }
+
+  Future<List<CaptureSource>> _multichannelSources() async {
+    try {
+      final all = await _native.listSources();
+      // Channels of the device's own microphone inside the combined input.
+      final own = <int>{};
+      var at = 0;
+      for (final s in all) {
+        if (s.builtIn) {
+          own.addAll([for (var c = 0; c < s.channels; c++) at + c]);
+        }
+        at += s.channels;
+      }
+      return [
+        // Two or more separate microphones are offered as one combined input:
+        // macOS opens several devices at once; Android opens the USB receiver
+        // together with the phone's own microphone.
+        if (all.length >= 2 && (Platform.isMacOS || Platform.isAndroid))
+          CaptureSource(
+            uid: kAllMicrophonesUid,
+            name: 'همهٔ میکروفون‌های متصل (${all.length})',
+            channels: all.fold(0, (sum, s) => sum + s.channels),
+            sampleRate: all.first.sampleRate,
+            memberUids: [for (final s in all) s.uid],
+            builtInChannels: own,
+          ),
+        for (final s in all)
+          if (s.channels >= 2 && !s.builtIn) s,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Every connected microphone is always used: the combined input when
+  /// there are several devices (macOS), else the one multi-channel device.
+  /// Empty means the ordinary single default microphone.
+  String _validSelection(
+    List<InputDevice> devices,
+    List<CaptureSource> sources,
+  ) => sources.isEmpty ? '' : '$kMultichannelPrefix${sources.first.uid}';
 
   Future<int?> _freeDiskMb() async {
     try {
@@ -231,13 +430,23 @@ class RecorderController extends Notifier<RecorderState> {
         return;
       }
       final devices = await recorder.listInputDevices();
-      var selectedId = state.selectedInputDeviceId;
-      if (selectedId.isNotEmpty && !devices.any((d) => d.id == selectedId)) {
-        selectedId = '';
-      }
+      final sources = await _multichannelSources();
+      final selectedId = _validSelection(devices, sources);
       state = state.copyWith(
         inputDevices: devices,
+        captureSources: sources,
         selectedInputDeviceId: selectedId,
+      );
+      CaptureSource? multi;
+      if (selectedId.startsWith(kMultichannelPrefix)) {
+        final uid = selectedId.substring(kMultichannelPrefix.length);
+        for (final s in sources) {
+          if (s.uid == uid) multi = s;
+        }
+      }
+      final channelCount = multi?.channels ?? 1;
+      debugPrint(
+        'JN-REC: input=${multi == null ? 'default mono' : '${multi.name} x${multi.channels}'}',
       );
 
       final paths = await ref.read(appPathsProvider.future);
@@ -251,6 +460,23 @@ class RecorderController extends Notifier<RecorderState> {
         sampleRate: kRecordSampleRate,
         channels: 1,
       );
+      if (channelCount > 1) {
+        // Every microphone untouched, next to the mono mix the app works on.
+        final rawPath = paths.multiChannelWavPath(meetingId);
+        await File(rawPath).parent.create(recursive: true);
+        _rawWriter = await WavFileWriter.open(
+          File(rawPath),
+          sampleRate: kRecordSampleRate,
+          channels: channelCount,
+        );
+        _deinterleaver = PcmDeinterleaver(channelCount);
+        _probe = ChannelProbe(channelCount, sampleRate: kRecordSampleRate);
+        _excluded = const {};
+        _ownMicChannels = multi?.builtInChannels ?? const {};
+        channelNotice.value = null;
+        _activityLog = ChannelActivityLog(sampleRate: kRecordSampleRate);
+        _mixdown = ChannelMixdown(log: _activityLog);
+      }
       _chunkRows = Future.value();
       _chunkRegistrationFailed = false;
       _chunks = ChunkWriter(
@@ -307,52 +533,87 @@ class RecorderController extends Notifier<RecorderState> {
         }
       }
 
+      if (multi == null) _activityLog = null;
+      _assignments = ChannelAssignments();
+      channelOwners.value = const {};
+      _liveSamples = 0;
       await _startLive(
         repo,
         meetingId,
         attendeeIds: {for (final a in attendees) a.personId},
       );
       final warning = await RecordingService.start();
-      final stream = await recorder.startStream(
-        RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: kRecordSampleRate,
-          numChannels: 1,
-          device: devices.isEmpty ? null : _selectedInputDevice(),
-          // Quiet speech is lifted by the platform before it is written;
-          // meeting audio never contains app playback, so echo cancel is off.
-          autoGain: true,
-          noiseSuppress: true,
-          echoCancel: false,
-          audioInterruption: AudioInterruptionMode.pauseResume,
-        ),
-      );
-      waveform.clear();
-      _recorder = recorder;
+      _clearWaveforms();
+      channelWaveforms.value = _waveformsFor(channelCount);
+      mutedChannels.value = const {};
+      if (channelCount == 1) channelNotice.value = null;
       _userPaused = false;
       _failing = false;
-      _subscription = stream.listen(
-        _onPcm,
-        onError: (Object error) =>
-            _captureFailed('Receive microphone audio', error),
-      );
-      _stateSubscription = recorder.onStateChanged().listen(_onRecorderState);
+      if (multi != null) {
+        // The plugin recorder is not used for a multi-channel device.
+        await recorder.dispose();
+        // Listen first so the native side has a sink before audio flows.
+        _subscription = _native.pcm.listen(
+          _onPcm,
+          onError: (Object error) =>
+              _captureFailed('Receive microphone audio', error),
+        );
+        final info = await _native.start(multi.uids);
+        _nativeActive = true;
+        if (info.channels != channelCount) {
+          throw StateError(
+            'JN-REC-0006: device reports ${info.channels} channels, expected $channelCount',
+          );
+        }
+      } else {
+        final stream = await recorder.startStream(
+          RecordConfig(
+            encoder: AudioEncoder.pcm16bits,
+            sampleRate: kRecordSampleRate,
+            numChannels: 1,
+            device: devices.isEmpty ? null : _selectedInputDevice(),
+            // Quiet speech is lifted by the platform before it is written;
+            // meeting audio never contains app playback, so echo cancel is off.
+            autoGain: true,
+            noiseSuppress: true,
+            echoCancel: false,
+            audioInterruption: AudioInterruptionMode.pauseResume,
+          ),
+        );
+        _recorder = recorder;
+        _subscription = stream.listen(
+          _onPcm,
+          onError: (Object error) =>
+              _captureFailed('Receive microphone audio', error),
+        );
+        _stateSubscription = recorder.onStateChanged().listen(_onRecorderState);
+      }
       _startTicker();
       await WakelockPlus.enable();
       state = RecorderState(
         status: RecorderStatus.recording,
         inputDevices: devices,
+        captureSources: sources,
         selectedInputDeviceId: selectedId,
+        channels: channelCount,
         error: warning,
       );
     } catch (e) {
       await _abortStart(recorder);
-      state = RecorderState(error: 'ضبط شروع نشد: $e');
+      if (e is PlatformException && _usbInputErrorCodes.contains(e.code)) {
+        _reportFailure(_usbInputCode, 'Open USB input (${e.code})', e);
+        state = const RecorderState(error: _usbInputStartError);
+      } else {
+        state = RecorderState(error: 'ضبط شروع نشد: $e');
+      }
     }
   }
 
   Future<void> _abortStart(AudioRecorder recorder) async {
-    await recorder.dispose();
+    try {
+      await recorder.dispose();
+    } catch (_) {}
+    await _stopNative();
     _recorder = null;
     await RecordingService.stop();
     await _disposeLive();
@@ -361,7 +622,12 @@ class RecorderController extends Notifier<RecorderState> {
     try {
       await _chunks?.close();
       await _writer?.close();
+      await _rawWriter?.close();
     } catch (_) {}
+    _rawWriter = null;
+    _deinterleaver = null;
+    _mixdown = null;
+    _probe = null;
     final id = _meetingId;
     final repo = _repo;
     if (id != null && repo != null) {
@@ -375,11 +641,57 @@ class RecorderController extends Notifier<RecorderState> {
     _repo = null;
   }
 
-  void _onPcm(Uint8List pcm) {
-    if (!_userPaused &&
-        !state.interrupted &&
-        state.status != RecorderStatus.saving) {
-      waveform.addPcm(pcm);
+  Future<void> _stopNative() async {
+    if (!_nativeActive) return;
+    _nativeActive = false;
+    try {
+      await _native.stop();
+    } catch (_) {}
+  }
+
+  void _onPcm(Uint8List input) {
+    var pcm = input;
+    final split = _deinterleaver;
+    if (split != null) {
+      // A native device keeps delivering while the user has paused.
+      if (_userPaused) return;
+      final channels = split.split(input);
+      final probe = _probe;
+      if (probe != null && probe.add(channels)) _applyHealth(probe.health);
+      final muted = mutedChannels.value;
+      if (muted.isNotEmpty) {
+        for (final c in muted) {
+          if (c < channels.length) channels[c] = Uint8List(channels[c].length);
+        }
+      }
+      if (!state.interrupted && state.status != RecorderStatus.saving) {
+        final waveforms = channelWaveforms.value;
+        for (var i = 0; i < channels.length && i < waveforms.length; i++) {
+          waveforms[i].addPcm(channels[i]);
+        }
+      }
+      _rawWriter
+          ?.add(muted.isEmpty ? input : interleavePcm(channels))
+          .catchError(
+            (Object error) => _captureFailed('Write channel audio', error),
+          );
+      var skipped = muted;
+      if (_excluded.isNotEmpty) {
+        final both = {...muted, ..._excluded};
+        // Never leave nothing to mix: if every channel would be skipped, only
+        // the user's own mutes count.
+        if (both.length < channels.length) skipped = both;
+      }
+      pcm = _mixdown!.mix(channels, muted: skipped);
+      if (pcm.isEmpty) return;
+    } else {
+      // One microphone: muting it records silence everywhere.
+      if (mutedChannels.value.contains(0)) pcm = Uint8List(input.length);
+      if (!_userPaused &&
+          !state.interrupted &&
+          state.status != RecorderStatus.saving) {
+        waveform.addPcm(pcm);
+      }
     }
     _writer
         ?.add(pcm)
@@ -387,6 +699,12 @@ class RecorderController extends Notifier<RecorderState> {
           (Object error) => _captureFailed('Write recording audio', error),
         );
     _live?.feed(pcm);
+    _liveSamples += pcm.length ~/ 2;
+    if (_liveSamples % 160000 < pcm.length ~/ 2) {
+      debugPrint(
+        'JN-LIVE: fed ${_liveSamples ~/ 16000} s, live=${_live != null}',
+      );
+    }
     _chunks
         ?.add(pcm)
         .catchError(
@@ -400,7 +718,7 @@ class RecorderController extends Notifier<RecorderState> {
       return;
     }
     if (recorderState == RecordState.pause && !_userPaused) {
-      waveform.clear();
+      _clearWaveforms();
       _live?.pause();
       state = state.copyWith(
         interrupted: true,
@@ -415,6 +733,12 @@ class RecorderController extends Notifier<RecorderState> {
   /// captured, so a long meeting is never lost to one write error.
   Future<void> _captureFailed(String operation, Object error) async {
     if (_failing || state.status == RecorderStatus.saving) return;
+    if (error is PlatformException &&
+        _usbInputErrorCodes.contains(error.code)) {
+      _reportFailure(_usbInputCode, '$operation (${error.code})', error);
+      await _fail(_usbInputLostError);
+      return;
+    }
     _reportFailure(_finalizationWarningCode, operation, error);
     await _fail(_finalizationWarning);
   }
@@ -448,7 +772,7 @@ class RecorderController extends Notifier<RecorderState> {
   Future<void> pause() async {
     if (state.status != RecorderStatus.recording) return;
     _userPaused = true;
-    waveform.clear();
+    _clearWaveforms();
     await _recorder?.pause();
     _live?.pause();
     state = state.copyWith(status: RecorderStatus.paused);
@@ -461,13 +785,37 @@ class RecorderController extends Notifier<RecorderState> {
     state = state.copyWith(status: RecorderStatus.recording);
   }
 
+  /// Stops the recording and throws it away: the meeting row, the recording
+  /// and the per-channel file are deleted. Nothing is kept.
+  bool _discarding = false;
+
+  Future<void> stopAndDiscard() async {
+    final id = _meetingId;
+    final repo = _repo;
+    _discarding = true;
+    try {
+      await stop();
+    } finally {
+      _discarding = false;
+    }
+    if (id == null || repo == null) return;
+    try {
+      final meeting = await repo.byId(id);
+      if (meeting == null) return;
+      final paths = await ref.read(appPathsProvider.future);
+      await repo.delete(meeting, extraFiles: [paths.multiChannelWavPath(id)]);
+    } catch (e) {
+      debugPrint('JN-REC: discard failed ($e)');
+    }
+  }
+
   Future<void> stop({String? streamError}) async {
     if (state.status != RecorderStatus.recording &&
         state.status != RecorderStatus.paused) {
       return;
     }
     state = state.copyWith(status: RecorderStatus.saving);
-    waveform.clear();
+    _clearWaveforms();
     _ticker?.cancel();
     _diskTimer?.cancel();
 
@@ -476,6 +824,7 @@ class RecorderController extends Notifier<RecorderState> {
     final chunks = _chunks;
     final writer = _writer;
     final recorder = _recorder;
+    final rawWriter = _rawWriter;
 
     String? error = streamError;
     Future<void> finishOptional(
@@ -492,6 +841,7 @@ class RecorderController extends Notifier<RecorderState> {
 
     await finishOptional('Stop microphone', () async {
       await recorder?.stop();
+      await _stopNative();
     });
     await finishOptional(
       'Release microphone',
@@ -512,6 +862,10 @@ class RecorderController extends Notifier<RecorderState> {
     _repo = null;
     _chunks = null;
     _writer = null;
+    _rawWriter = null;
+    _deinterleaver = null;
+    _mixdown = null;
+    _probe = null;
 
     // Flush the draft after capture ends, in parallel with closing the WAVs.
     final liveDone = finishOptional('Finalize live transcript', _finishLive);
@@ -528,7 +882,11 @@ class RecorderController extends Notifier<RecorderState> {
       if (meetingId == null || repo == null || writer == null) {
         throw StateError('Missing active recording data');
       }
-      await Future.wait([writer.close(), liveDone]);
+      await Future.wait([
+        writer.close(),
+        liveDone,
+        if (rawWriter != null) rawWriter.close(),
+      ]);
       await repo.finishRecording(meetingId, writer.duration);
     } catch (failure) {
       await liveDone;
@@ -544,7 +902,11 @@ class RecorderController extends Notifier<RecorderState> {
     ref.invalidate(meetingsProvider);
     ref.invalidate(meetingDetailProvider(meetingId));
     ref.invalidate(meetingPreviewProvider(meetingId));
-    state = RecorderState(savedMeetingId: meetingId, error: error);
+    // A discarded recording must not open the meeting it is about to delete.
+    state = RecorderState(
+      savedMeetingId: _discarding ? null : meetingId,
+      error: error,
+    );
     unawaited(_resumeUpload());
   }
 
@@ -570,6 +932,8 @@ class RecorderController extends Notifier<RecorderState> {
     _subscription?.cancel();
     _stateSubscription?.cancel();
     _recorder?.dispose();
+    _stopNative();
+    _rawWriter?.close();
     _writer?.close();
     _chunks?.close();
     _live?.dispose();
@@ -599,6 +963,10 @@ class RecorderController extends Notifier<RecorderState> {
         store: repo,
         meetingId: meetingId,
         modelId: setup.modelId,
+        ownership: ChannelOwnership(
+          assignments: _assignments,
+          log: _activityLog,
+        ),
       );
       void mirror() => _setLive(session.state.value);
       session.state.addListener(mirror);

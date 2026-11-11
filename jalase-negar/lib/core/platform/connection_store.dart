@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:jalase_negar/core/platform/secure_storage.dart';
 
 import '../db/app_database.dart';
 import 'platform_config.dart';
@@ -17,7 +18,7 @@ const _kPushBinding = 'platform_push_binding';
 /// in the platform secure storage (Keystore / Keychain).
 class ConnectionStore {
   ConnectionStore(this._db, {FlutterSecureStorage? secure})
-    : _secure = secure ?? const FlutterSecureStorage();
+    : _secure = secure ?? appSecureStorage;
 
   final AppDatabase _db;
   final FlutterSecureStorage _secure;
@@ -54,7 +55,7 @@ class ConnectionStore {
   }
 
   static Future<String?> pushToken(String origin) async {
-    const storage = FlutterSecureStorage();
+    const storage = appSecureStorage;
     final secret = await storage.read(key: _kTokenKey);
     final binding = await storage.read(key: _kPushBinding);
     return secret != null && binding == _binding(origin, secret)

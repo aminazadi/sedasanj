@@ -11,7 +11,8 @@ import '../../../core/providers.dart';
 import '../../models/application/models_controller.dart';
 import '../../people/application/people_providers.dart';
 
-/// Settings key: live transcription during recording (absent means on).
+/// Retired settings key. Live transcription is always on; an old value of 0
+/// left by the removed switch is ignored (and cleared when a recording starts).
 const String kLiveTranscriptSettingKey = 'live_transcript_enabled';
 
 /// Settings key of the switch that sends each meeting's transcript to
@@ -53,9 +54,13 @@ typedef LiveEngineBuilder =
 final liveEngineBuilderProvider = Provider<LiveEngineBuilder>((ref) {
   return ({Set<String> attendeeIds = const {}}) async {
     final db = await ref.read(appDatabaseProvider.future);
-    if (await db.getSetting(kLiveTranscriptSettingKey) == '0') {
-      return const LiveEngineSetup.unavailable();
-    }
+    // Live text is always on. A stale 0 from the removed switch must not
+    // silently disable it, so it is cleared.
+    try {
+      if (await db.getSetting(kLiveTranscriptSettingKey) == '0') {
+        await db.setSetting(kLiveTranscriptSettingKey, '1');
+      }
+    } catch (_) {}
     final store = await ref.read(modelStoreProvider.future);
     final asrId = await db.getSetting(kAsrModelSettingKey);
     if (asrId != ModelCatalog.shenavaKoochikRnnt.id) {
@@ -220,26 +225,6 @@ class SoundEventsEnabled extends AsyncNotifier<bool> {
 
 final soundEventsEnabledProvider =
     AsyncNotifierProvider<SoundEventsEnabled, bool>(SoundEventsEnabled.new);
-
-/// The user's on/off choice for live transcription.
-class LiveTranscriptEnabled extends AsyncNotifier<bool> {
-  @override
-  Future<bool> build() async {
-    final db = await ref.watch(appDatabaseProvider.future);
-    return await db.getSetting(kLiveTranscriptSettingKey) != '0';
-  }
-
-  Future<void> set(bool enabled) async {
-    final db = await ref.read(appDatabaseProvider.future);
-    await db.setSetting(kLiveTranscriptSettingKey, enabled ? '1' : '0');
-    state = AsyncData(enabled);
-  }
-}
-
-final liveTranscriptEnabledProvider =
-    AsyncNotifierProvider<LiveTranscriptEnabled, bool>(
-      LiveTranscriptEnabled.new,
-    );
 
 /// The user's on/off choice for sending meeting transcripts to SedaSanj.
 class SendTranscriptEnabled extends AsyncNotifier<bool> {
