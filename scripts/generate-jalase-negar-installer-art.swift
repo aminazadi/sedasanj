@@ -105,10 +105,10 @@ func gradient(_ w: CGFloat, _ h: CGFloat) {
     NSGradient(starting: bg, ending: bgDeep)!.draw(in: NSRect(x: 0, y: 0, width: w, height: h), angle: -90)
 }
 
-func text(_ s: String, _ f: NSFont, _ c: NSColor, centerX: CGFloat, y: CGFloat) {
+func text(_ s: String, _ f: NSFont, _ c: NSColor, centerX: CGFloat, y: CGFloat, kern: CGFloat = 0) {
     let style = NSMutableParagraphStyle(); style.alignment = .center
     style.baseWritingDirection = .rightToLeft
-    let a = NSAttributedString(string: s, attributes: [.font: f, .foregroundColor: c, .paragraphStyle: style])
+    let a = NSAttributedString(string: s, attributes: [.font: f, .foregroundColor: c, .paragraphStyle: style, .kern: kern])
     let size = a.size()
     a.draw(in: NSRect(x: centerX - size.width / 2 - 4, y: y, width: size.width + 8, height: size.height + 4))
 }
@@ -134,7 +134,7 @@ for scale in [1, 2] {
         text("اگر مک هنگام اولین اجرا هشدار داد: روی برنامه راست‌کلیک کنید و Open را بزنید", font("Vazirmatn-SSMedium.ttf", 12 * k), beige,
              centerX: w / 2, y: 78 * k)
         wordmark(width: 82 * k, centerX: w / 2, y: 38 * k, color: paper.withAlphaComponent(0.9))
-        text("sedasanj.ir", font("Vazirmatn-SSMedium.ttf", 12 * k), beige, centerX: w / 2, y: 12 * k)
+        text("sedasanj.ir", font("Vazirmatn-SSText.ttf", 12 * k), beige, centerX: w / 2, y: 20 * k, kern: 1.6 * k)
     }
     save(rep, "macos/dmg/background\(scale == 2 ? "@2x" : "").png", .png)
 }
@@ -147,7 +147,7 @@ for scale in [1, 2] {
         waveform(in: NSRect(x: 32 * k, y: h - 140 * k, width: 100 * k, height: 100 * k))
         text("جلسه‌نگار", font("Vazirmatn-SSStrong.ttf", 26 * k), paper, centerX: w / 2, y: h - 205 * k)
         wordmark(width: 92 * k, centerX: w / 2, y: 44 * k, color: paper.withAlphaComponent(0.9))
-        text("sedasanj.ir", font("Vazirmatn-SSMedium.ttf", 12 * k), beige, centerX: w / 2, y: 18 * k)
+        text("sedasanj.ir", font("Vazirmatn-SSText.ttf", 12 * k), beige, centerX: w / 2, y: 28 * k, kern: 1.6 * k)
     }
     saveBMP(big, "windows/installer/wizard\(scale == 2 ? "@2x" : "").bmp")
     let small = render(55 * scale, 55 * scale) { w, h in
