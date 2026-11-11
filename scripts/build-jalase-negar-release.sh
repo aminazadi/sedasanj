@@ -3,7 +3,8 @@
 # Usage: scripts/build-jalase-negar-release.sh [android|ios|macos|all]
 # Windows cannot be built on macOS: use .github/workflows/jalase-negar-windows.yml.
 set -euo pipefail
-cd "$(dirname "$0")/../jalase-negar"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+cd "$script_dir/../jalase-negar"
 target="${1:-all}"
 version="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
 out="dist/$version"
@@ -49,7 +50,7 @@ macos() {
   codesign --verify --deep --strict "$app"
   ditto -c -k --keepParent "$app" "$out/JalaseNegar-macos-v$version.zip"
   # Styled DMG (branded background, drag-to-Applications). Unsigned: first launch needs right-click > Open.
-  "$(cd "$(dirname "$0")" && pwd)/make-jalase-negar-dmg.sh" "$app" "$out/JalaseNegar-macos-v$version.dmg"
+  "$script_dir/make-jalase-negar-dmg.sh" "$app" "$out/JalaseNegar-macos-v$version.dmg"
 }
 
 case "$target" in
