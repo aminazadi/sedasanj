@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,9 +59,11 @@ from app.services import (
     entitlements,
     gateway_settings,
     payments,
+    plan_credit,
     ratelimit,
     smsir,
     subscription_state,
+    token_quota,
 )
 from app.services.commerce_settings import (
     credit_preset_minutes,
@@ -188,6 +190,8 @@ class PlanVersionCreate(BaseModel):
     assistant_monthly_messages: int = Field(ge=0)
     assistant_source_limit: int = Field(ge=1, le=200)
     assistant_model: str | None = None
+    # Monthly LLM token budget; null means unlimited.
+    llm_monthly_tokens: int | None = Field(default=None, ge=0)
     allows_extra_operators: bool = False
     extra_operator_annual_toman: int | None = Field(default=None, ge=0)
     trial_days: int | None = Field(default=None, ge=1, le=90)
@@ -288,6 +292,7 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
         "assistant_monthly_messages": version.assistant_monthly_messages,
         "assistant_source_limit": version.assistant_source_limit,
         "assistant_model": version.assistant_model,
+        "llm_monthly_tokens": version.llm_monthly_tokens,
         "allows_extra_operators": version.allows_extra_operators,
         "extra_operator_annual_toman": version.extra_operator_annual_toman,
         "trial_days": version.trial_days,
@@ -740,6 +745,9 @@ async def order_payment_status(
         "status": order.status,
         "amount_toman": order.amount_toman,
         "credit_minutes": credit_minutes,
+        "needs_attention": any(
+            item.metadata_json.get("fulfilment") == "needs_attention" for item in items
+        ),
         "paid_at": order.paid_at,
         "payment": None
         if attempt is None
@@ -844,7 +852,15 @@ async def get_subscription(principal: OrgAdminDep, session: TenantSession) -> di
                 "effective_at": change.effective_at,
                 "order_id": str(change.order_id) if change.order_id else None,
             }
+    tokens = await token_quota.budget(session, principal.tenant_id, value=value)
     return {
+        "llm_tokens_unlimited": tokens.unlimited,
+        "llm_tokens_limit": None if tokens.unlimited else tokens.limit,
+        "llm_tokens_used": tokens.used,
+        "llm_tokens_plan_remaining": None if tokens.unlimited else tokens.plan_remaining,
+        "llm_tokens_topup_remaining": tokens.topup_remaining,
+        "llm_tokens_remaining": tokens.remaining,
+        "llm_tokens_unavailable_events": tokens.unavailable_events,
         "scheduled_change": scheduled_change,
         "grace_ends_at": (
             subscription_state.grace_end(row, await subscription_state.grace_days(session))
@@ -1624,6 +1640,18 @@ async def admin_commerce_overview(staff: StaffDep, session: StaffSession) -> dic
                     )
                 ).scalar_one()
             )
+            # Net revenue: money refunded this month leaves this month's total.
+            revenue_month -= int(
+                (
+                    await tenant_session.execute(
+                        select(func.coalesce(func.sum(Refund.amount_toman), 0)).where(
+                            Refund.tenant_id == tenant_id,
+                            Refund.status == "completed",
+                            Refund.created_at >= month_start,
+                        )
+                    )
+                ).scalar_one()
+            )
             pending_orders += int(
                 (
                     await tenant_session.execute(
@@ -2117,6 +2145,7 @@ def _subscription_item(
         "base_operators": sub.base_operators,
         "extra_operators": sub.extra_operators,
         "assistant_monthly_messages": sub.assistant_monthly_messages,
+        "llm_monthly_tokens": sub.llm_monthly_tokens,
         "next_plan_version_id": str(sub.next_plan_version_id) if sub.next_plan_version_id else None,
     }
 
@@ -2294,6 +2323,7 @@ async def admin_tenant_commerce(
                 "extra_operators": row.extra_operators,
                 "price_per_minute_toman": row.price_per_minute_toman,
                 "assistant_monthly_messages": row.assistant_monthly_messages,
+                "llm_monthly_tokens": row.llm_monthly_tokens,
             }
             for row in subscriptions
         ],
@@ -2374,6 +2404,18 @@ async def admin_subscription_action(
             row.period_end = now
             row.next_plan_version_id = None
             await subscription_state.close_open_changes(tenant_session, row.id, status="canceled")
+            # Stopping now also ends this term's plan minutes; prepaid credit is untouched.
+            await tenant_session.execute(
+                update(CreditGrant)
+                .where(
+                    CreditGrant.tenant_id == row.tenant_id,
+                    CreditGrant.source == "monthly_plan",
+                    CreditGrant.expires_at > now,
+                )
+                .values(expires_at=now)
+            )
+            cache = await billing._lock_cache(tenant_session, row.tenant_id)
+            await plan_credit.expire_lapsed_grants(tenant_session, row.tenant_id, cache, now)
         elif payload.action == "extend":
             if not payload.days:
                 raise ApiError("invalid_request", "days are required")
@@ -2581,6 +2623,7 @@ async def admin_payments(
     staff: StaffDep,
     session: StaffSession,
     payment_status: str | None = Query(default=None, alias="status"),
+    needs_attention: bool = False,
     cursor: int = 0,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
@@ -2590,6 +2633,12 @@ async def admin_payments(
             stmt = select(PaymentAttempt).where(PaymentAttempt.tenant_id == tenant_id)
             if payment_status:
                 stmt = stmt.where(PaymentAttempt.status == payment_status)
+            if needs_attention:
+                # Money was taken by the bank but the order could not be applied.
+                stmt = stmt.where(
+                    PaymentAttempt.status == "pending_verification",
+                    PaymentAttempt.failure_code.like("fulfill_failed:%"),
+                )
             rows.extend((await tenant_session.execute(stmt)).scalars())
     rows.sort(key=lambda row: row.created_at, reverse=True)
     total = len(rows)
@@ -2608,6 +2657,8 @@ async def admin_payments(
                 "rrn": row.rrn,
                 "card_pan": row.card_pan,
                 "failure_code": row.failure_code,
+                "needs_attention": row.status == "pending_verification"
+                and (row.failure_code or "").startswith("fulfill_failed:"),
                 "order_ref": row.order_ref,
                 "settled_at": row.settled_at,
                 "gateway_label": GATEWAYS[row.gateway].label

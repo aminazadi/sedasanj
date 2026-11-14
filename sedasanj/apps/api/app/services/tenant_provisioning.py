@@ -55,6 +55,8 @@ _CONTROL_ONLY = {
     "organization_data_runs",
     "identity_projection_state",
     "contact_leads",
+    "sms_templates",
+    "sms_deliveries",
     # Pairing codes are redeemed before the tenant is known, so only the control database sees them.
     "meeting_pairing_codes",
     # Module fleet telemetry is read and written through the control database only; copying it into

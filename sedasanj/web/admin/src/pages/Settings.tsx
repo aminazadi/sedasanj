@@ -1,6 +1,7 @@
 import TwoFactorSettings from "../components/TwoFactorSettings";
 import QuickDemoSettings from "../components/QuickDemoSettings";
 import SiteContactSettings from "../components/SiteContactSettings";
+import SmsTemplateSettings from "../components/SmsTemplateSettings";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -25,7 +26,7 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
   ["get_operator_performance", "عملکرد اپراتورها"],
   ["visualize_statistics", "نمودارهای آماری"],
 ];
-type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security" | "quick-demo" | "site-contact";
+type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security" | "quick-demo" | "sms-templates" | "site-contact";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "اتصال سرویس‌ها" },
   { id: "models", label: "مدل‌ها و مسیرها" },
@@ -35,6 +36,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "prompts", label: "پرامپت‌ها" },
   { id: "security", label: "امنیت" },
   { id: "quick-demo", label: "تست سریع و پیامک" },
+  { id: "sms-templates", label: "قالب‌های پیامک" },
   { id: "site-contact", label: "تنظیمات سایت" },
 ];
 function normalizeApiKey(value: string): string {
@@ -538,12 +540,13 @@ export default function Settings() {
         </div>
       ) : null}
     {activeTab === "quick-demo" ? <QuickDemoSettings /> : null}
+    {activeTab === "sms-templates" ? <SmsTemplateSettings /> : null}
     {activeTab === "site-contact" ? <SiteContactSettings /> : null}
     <form
       id={activeTab === "security" ? undefined : `settings-panel-${activeTab}`}
       role="tabpanel"
       aria-labelledby={`settings-tab-${activeTab}`}
-      className={`card space-y-5 ${activeTab === "security" || activeTab === "quick-demo" || activeTab === "site-contact" ? "hidden" : ""}`}
+      className={`card space-y-5 ${activeTab === "security" || activeTab === "quick-demo" || activeTab === "sms-templates" || activeTab === "site-contact" ? "hidden" : ""}`}
       noValidate
       onSubmit={save}
     >

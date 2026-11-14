@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import case, delete, func, select, text, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import session_scope
 from app.deps import OperatorDep, OrgAdminDep, TenantSession, UserDep, client_ip
 from app.errors import ApiError
 from app.models import (
@@ -64,6 +65,7 @@ from app.services import (
     outbox,
     queue,
     ratelimit,
+    token_quota,
     tool_gateway,
 )
 from app.services.ai_usage import set_ai_feature
@@ -376,6 +378,7 @@ async def regenerate_call_coaching(
     call = await session.get(Call, call_id)
     if call is None or call.tenant_id != principal.tenant_id:
         raise ApiError("not_found", "call not found")
+    await token_quota.require_ai_work(session, principal.tenant_id)
     await operator_scope.assert_call_visible_canonical(session, call, principal)
     models = await effective_models(session)
     if models["coach_enabled"].strip().lower() not in {"1", "true", "yes", "on"}:
@@ -1232,27 +1235,37 @@ def _enabled_assistant_tools(settings: dict[str, str]) -> set[str]:
 async def _reserve_assistant_usage(
     session: Any, tenant_id: UUID, user_id: UUID
 ) -> tuple[entitlements.Entitlements, AssistantUsage]:
-    entitlement = await entitlements.effective(session, tenant_id, lock=True)
-    if not entitlement.consumption_allowed:
-        raise ApiError(
-            "subscription_inactive", "assistant is unavailable without an active subscription"
+    """Check quotas and reserve one message in its own short transaction.
+
+    The subscription row lock is held only for the check and the insert, not for the whole
+    LLM call, so one slow answer cannot block the tenant's other requests.
+    """
+    async with session_scope(tenant_id) as short:
+        entitlement = await entitlements.effective(short, tenant_id, lock=True)
+        if not entitlement.consumption_allowed:
+            raise ApiError(
+                "subscription_inactive", "assistant is unavailable without an active subscription"
+            )
+        if entitlement.period_start is None:
+            raise ApiError("quota_exceeded", "assistant quota period is unavailable")
+        now = datetime.now(UTC)
+        period_start = assistant_quota.period_start(entitlement.period_start, now)
+        used = await assistant_quota.used_messages(short, tenant_id, period_start)
+        if used >= entitlement.assistant_monthly_messages:
+            raise ApiError("quota_exceeded", "assistant monthly message quota is exhausted")
+        await token_quota.require_budget(short, tenant_id)
+        reserved = AssistantUsage(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            period_start=period_start,
+            status="reserved",
+            model=entitlement.assistant_model,
         )
-    if entitlement.period_start is None:
-        raise ApiError("quota_exceeded", "assistant quota period is unavailable")
-    now = datetime.now(UTC)
-    period_start = assistant_quota.period_start(entitlement.period_start, now)
-    used = await assistant_quota.used_messages(session, tenant_id, period_start)
-    if used >= entitlement.assistant_monthly_messages:
-        raise ApiError("quota_exceeded", "assistant monthly message quota is exhausted")
-    usage = AssistantUsage(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        period_start=period_start,
-        status="reserved",
-        model=entitlement.assistant_model,
-    )
-    session.add(usage)
-    await session.flush()
+        short.add(reserved)
+        await short.flush()
+        usage_id = reserved.id
+    usage = await session.get(AssistantUsage, usage_id)
+    assert usage is not None
     return entitlement, usage
 
 
@@ -1577,11 +1590,19 @@ async def _execute_planned_tool(
     )
 
 
-_PARALLEL_READ_TOOLS = frozenset({
-    "get_current_time", "search_calls", "get_call_details", "search_transcripts",
-    "search_knowledge", "get_call_analysis", "get_call_analytics",
-    "get_operator_performance", "visualize_statistics",
-})
+_PARALLEL_READ_TOOLS = frozenset(
+    {
+        "get_current_time",
+        "search_calls",
+        "get_call_details",
+        "search_transcripts",
+        "search_knowledge",
+        "get_call_analysis",
+        "get_call_analytics",
+        "get_operator_performance",
+        "visualize_statistics",
+    }
+)
 
 
 def _planned_tool_batches(
@@ -1950,7 +1971,9 @@ async def stream_message(
                                     )
                                 run.completed_at = datetime.now(UTC)
                                 await session.flush()
-                                event = "tool_completed" if run.status == "succeeded" else "tool_failed"
+                                event = (
+                                    "tool_completed" if run.status == "succeeded" else "tool_failed"
+                                )
                                 yield _sse(event, _tool_run_payload(run))
                         yield _sse("tool_batch_completed", {"count": len(stored_runs)})
                         yield _sse(

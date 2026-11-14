@@ -33,9 +33,7 @@ async def test_seed_creates_missing_legacy_subscription() -> None:
         price_per_minute_toman=2_000,
     )
     session = SimpleNamespace(
-        execute=AsyncMock(
-            side_effect=[ScalarResult(None), ScalarResult(version)]
-        ),
+        execute=AsyncMock(side_effect=[ScalarResult(None), ScalarResult(version)]),
         add=Mock(),
     )
 

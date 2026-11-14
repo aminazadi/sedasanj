@@ -413,9 +413,7 @@ async def test_dual_channel_sends_preprocessed_files_to_asr(tmp_path: Path) -> N
         left_out.write_bytes(b"left-raw")
         right_out.write_bytes(b"right-raw")
 
-    async def fake_preprocess(
-        source: Path, target: Path, config: AudioPreprocessingConfig
-    ) -> None:
+    async def fake_preprocess(source: Path, target: Path, config: AudioPreprocessingConfig) -> None:
         assert config.enabled is True
         assert source.read_bytes() in {b"left-raw", b"right-raw"}
         target.write_bytes(b"processed")

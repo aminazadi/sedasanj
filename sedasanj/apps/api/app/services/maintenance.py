@@ -36,6 +36,7 @@ from app.models import (
 )
 from app.services import (
     audio_lifecycle,
+    billing,
     commerce,
     outbox,
     pipeline,
@@ -71,6 +72,99 @@ RETRY_KIND_STATUS = {
     "llm": "llm",
     "notify": "notify",
 }
+
+
+ABANDONED_RESERVATION_AFTER = timedelta(hours=6)
+
+
+async def release_abandoned_reservations() -> int:
+    """Give back credit held by calls whose upload never finished.
+
+    A crash between the reservation commit and the audio store leaves a call in ``reserved``
+    with no audio; nothing else would ever release that hold.
+    """
+    released = 0
+    cutoff = datetime.now(UTC) - ABANDONED_RESERVATION_AFTER
+    for tenant_id in await routable_tenant_ids():
+        try:
+            async with session_scope(tenant_id) as session:
+                call_ids = (
+                    (
+                        await session.execute(
+                            select(Call.id)
+                            .where(
+                                Call.tenant_id == tenant_id,
+                                Call.status == "reserved",
+                                Call.audio_id.is_(None),
+                                Call.created_at < cutoff,
+                            )
+                            .limit(200)
+                            .with_for_update(skip_locked=True)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for call_id in call_ids:
+                    await billing.release(session, tenant_id=tenant_id, call_id=call_id)
+                    call = await session.get(Call, call_id)
+                    if call is not None:
+                        call.status = "failed_terminal"
+                        call.error_code = "ingest_abandoned"
+                    released += 1
+        except Exception:  # noqa: BLE001 - one tenant must not stop the sweep
+            logger.exception(
+                "abandoned reservation sweep failed",
+                extra={"extra_fields": {"tenant_id": str(tenant_id)}},
+            )
+    return released
+
+
+async def settle_stuck_meetings() -> int:
+    """Settle finished meetings whose billing failed, and free holds of dead meetings.
+
+    ``meeting_minutes`` swallows a failed settlement so the minutes are still delivered; this
+    sweep is the other half of that promise: the customer is charged once, never left held.
+    """
+    from app.services import meeting_ingest
+
+    fixed = 0
+    now = datetime.now(UTC)
+    for tenant_id in await routable_tenant_ids():
+        try:
+            async with session_scope(tenant_id) as session:
+                meetings = (
+                    (
+                        await session.execute(
+                            select(Meeting)
+                            .where(
+                                Meeting.tenant_id == tenant_id,
+                                Meeting.updated_at < now - timedelta(minutes=10),
+                                ((Meeting.status == "complete") & Meeting.billed_seconds.is_(None))
+                                | (
+                                    Meeting.status.in_(("canceled", "failed_terminal"))
+                                    & (Meeting.updated_at < now - timedelta(hours=24))
+                                ),
+                            )
+                            .limit(100)
+                            .with_for_update(skip_locked=True)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for meeting in meetings:
+                    if meeting.status == "complete":
+                        await meeting_ingest.settle_meeting(session, meeting)
+                    else:
+                        await meeting_ingest.release_meeting(session, meeting)
+                    fixed += 1
+        except Exception:  # noqa: BLE001 - one tenant must not stop the sweep
+            logger.exception(
+                "stuck meeting billing sweep failed",
+                extra={"extra_fields": {"tenant_id": str(tenant_id)}},
+            )
+    return fixed
 
 
 async def expire_commerce_state() -> tuple[int, int]:

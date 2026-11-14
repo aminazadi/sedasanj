@@ -123,12 +123,21 @@ async def record_usage(
             "call_id": call_id or _uuid(call_id_var.get()),
             "dedupe_key": f"{provider}:{provider_task_id}" if provider_task_id else None,
         }
+        from app.services import token_quota  # local: token_quota imports entitlements
+
         async with session_scope(tenant) as session:
-            await session.execute(
-                insert(AiUsageEvent)
-                .values(**values)
-                .on_conflict_do_nothing(index_elements=["dedupe_key"])
-            )
+            # Serialize per tenant so the plan/top-up split below is exact under concurrency.
+            await token_quota.lock_tenant(session, tenant)
+            inserted = (
+                await session.execute(
+                    insert(AiUsageEvent)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["dedupe_key"])
+                    .returning(AiUsageEvent.id)
+                )
+            ).first()
+            if inserted is not None and usage.total_tokens:
+                await token_quota.consume_overflow(session, tenant, int(usage.total_tokens))
         ai_usage_events_total.labels(provider, usage.source).inc()
     except Exception:  # noqa: BLE001 - accounting must never fail the AI work
         ai_usage_record_failures_total.labels("write_failed").inc()

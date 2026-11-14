@@ -14,8 +14,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "ALTER TABLE processing_events "
-        "DROP CONSTRAINT IF EXISTS processing_events_kind_check"
+        "ALTER TABLE processing_events DROP CONSTRAINT IF EXISTS processing_events_kind_check"
     )
     op.execute(
         "ALTER TABLE processing_events "
@@ -27,8 +26,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DELETE FROM processing_events WHERE kind = 'correction'")
     op.execute(
-        "ALTER TABLE processing_events "
-        "DROP CONSTRAINT IF EXISTS processing_events_kind_check"
+        "ALTER TABLE processing_events DROP CONSTRAINT IF EXISTS processing_events_kind_check"
     )
     op.execute(
         "ALTER TABLE processing_events "

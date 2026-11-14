@@ -501,8 +501,13 @@ async def test_cleanup_continues_after_one_tenant_fails(monkeypatch):
             raise RuntimeError("tenant unavailable")
         yield Session()
 
+    @asynccontextmanager
+    async def cleanup_lock(tenant):
+        yield True  # the media-cleanup advisory lock needs a database; this test is about errors
+
     monkeypatch.setattr(exports, "export_tenant_ids", AsyncMock(return_value=tenants))
     monkeypatch.setattr(exports, "session_scope", scope)
+    monkeypatch.setattr(exports, "try_media_cleanup", cleanup_lock)
     monkeypatch.setattr(exports, "purge_session", AsyncMock(return_value=1))
     with pytest.raises(RuntimeError, match="1 tenants"):
         await exports.purge_expired()

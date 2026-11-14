@@ -270,6 +270,7 @@ export interface PlanVersion {
   assistant_monthly_messages?: number;
   assistant_source_limit?: number;
   assistant_model?: string | null;
+  llm_monthly_tokens?: number | null;
   allows_extra_operators?: boolean;
   extra_operator_annual_toman?: number | null;
   trial_days?: number | null;
@@ -291,6 +292,7 @@ export interface SubscriptionAdmin {
   base_operators: number;
   extra_operators: number;
   assistant_monthly_messages: number;
+  llm_monthly_tokens?: number | null;
   next_plan_version_id?: string | null;
 }
 

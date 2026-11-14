@@ -6,9 +6,7 @@ from types import ModuleType
 
 import pytest
 
-MIGRATION_DIR = (
-    Path(__file__).resolve().parents[1] / "apps" / "api" / "alembic" / "versions"
-)
+MIGRATION_DIR = Path(__file__).resolve().parents[1] / "apps" / "api" / "alembic" / "versions"
 MIGRATIONS = (
     "0020_tenant_database_control_plane.py",
     "0021_identity_projection_outbox.py",
@@ -148,10 +146,7 @@ def test_assistant_index_repair_migration_is_idempotent(
     assert bind.statements[0] == "SELECT 1 FROM pg_available_extensions WHERE name = 'age'"
     assert bind.statements[1] == "CREATE EXTENSION IF NOT EXISTS age"
     assert any("GRANT USAGE ON SCHEMA ag_catalog" in sql for sql in bind.statements)
-    assert any(
-        "UPDATE platform_settings SET value = 'native'" in sql
-        for sql in bind.statements
-    )
+    assert any("UPDATE platform_settings SET value = 'native'" in sql for sql in bind.statements)
     create_graph = [sql for sql in bind.statements if "create_graph" in sql]
     assert bool(create_graph) is not graph_exists
 

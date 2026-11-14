@@ -19,6 +19,7 @@ def _exec(sql: str) -> None:
         if statement:
             bind.execute(text(statement))
 
+
 revision = "0002_integrity_hardening"
 down_revision = "0001"
 branch_labels = None

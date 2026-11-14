@@ -39,7 +39,9 @@ async def sync_extensions(
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"extensions-sync:{principal.id}", 30)
     outcome = await extensions.sync(
-        session, principal.tenant_id, ((item.extension, item.name) for item in payload.extensions),
+        session,
+        principal.tenant_id,
+        ((item.extension, item.name) for item in payload.extensions),
         payload.host_uuid,
     )
     return ExtensionSyncOut(
@@ -52,7 +54,9 @@ async def sync_extensions(
 
 @router.post("/missed-calls", status_code=status.HTTP_201_CREATED)
 async def ingest_missed_call(
-    principal: IngestKeyDep, session: ApiKeySession, payload: MissedCallIngest,
+    principal: IngestKeyDep,
+    session: ApiKeySession,
+    payload: MissedCallIngest,
     pbx_host_uuid: Annotated[UUID | None, Header(alias="X-CBI-PBX-Host")] = None,
 ) -> dict[str, object]:
     """Accept an idempotent metadata-only no-answer, busy, congestion, failed, or canceled call event."""
@@ -98,9 +102,12 @@ async def ingest_missed_call(
         "status": "missed",
         "call_type": payload.call_type,
     }
-    statement = pg_insert(Call).values(**values).on_conflict_do_nothing(
-        index_elements=[Call.tenant_id, Call.asterisk_uniqueid]
-    ).returning(Call)
+    statement = (
+        pg_insert(Call)
+        .values(**values)
+        .on_conflict_do_nothing(index_elements=[Call.tenant_id, Call.asterisk_uniqueid])
+        .returning(Call)
+    )
     call = (await session.execute(statement)).scalar_one_or_none()
     if call is None:
         existing = (

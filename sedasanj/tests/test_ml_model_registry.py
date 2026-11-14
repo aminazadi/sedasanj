@@ -128,7 +128,8 @@ def test_migrations_have_one_head_after_the_merge() -> None:
             () if down is None else (down,) if isinstance(down, str) else tuple(down)
         )
     referenced = {parent for parents in revisions.values() for parent in parents}
-    assert [rev for rev in revisions if rev not in referenced] == ["0111_ml_model_help_content"]
+    heads = [rev for rev in revisions if rev not in referenced]
+    assert len(heads) == 1, heads
 
 
 def test_migration_follows_the_conventions() -> None:

@@ -601,6 +601,13 @@ export interface SubscriptionInfo {
   assistant_monthly_messages: number;
   assistant_messages_used: number;
   assistant_messages_remaining: number;
+  llm_tokens_unlimited?: boolean;
+  llm_tokens_limit?: number | null;
+  llm_tokens_used?: number;
+  llm_tokens_plan_remaining?: number | null;
+  llm_tokens_topup_remaining?: number;
+  llm_tokens_remaining?: number | null;
+  llm_tokens_unavailable_events?: number;
   assistant_quota_period_start: string | null;
   plan_monthly_minutes: number;
   period_end: string | null;

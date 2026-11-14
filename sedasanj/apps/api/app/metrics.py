@@ -42,9 +42,7 @@ outbox_pending = Gauge("cbi_outbox_pending", "Undispatched durable queue message
 outbox_oldest_seconds = Gauge(
     "cbi_outbox_oldest_seconds", "Age of the oldest undispatched durable message"
 )
-oldest_job_seconds = Gauge(
-    "cbi_oldest_job_seconds", "Age of the oldest queued job", ["kind"]
-)
+oldest_job_seconds = Gauge("cbi_oldest_job_seconds", "Age of the oldest queued job", ["kind"])
 llm_submit_seconds = Histogram(
     "cbi_llm_submit_seconds", "Time from LLM job creation to provider submission"
 )
@@ -109,7 +107,8 @@ scheduled_report_stuck = Counter(
     "cbi_scheduled_report_stuck_total", "Scheduled report runs recovered after worker timeout"
 )
 scheduled_report_final_failures_total = Counter(
-    "cbi_scheduled_report_final_failures_total", "Scheduled report runs exhausted or rejected retry policy"
+    "cbi_scheduled_report_final_failures_total",
+    "Scheduled report runs exhausted or rejected retry policy",
 )
 
 
@@ -121,6 +120,7 @@ def start_metrics_server(settings: Settings) -> None:
         start_http_server(settings.worker_metrics_port)
     except OSError as exc:
         logger.warning("could not start worker metrics server: %r", exc)
+
 
 ai_usage_events_total = Counter(
     "cbi_ai_usage_events_total",

@@ -8,9 +8,7 @@ from app.main import create_app
 async def test_customer_openapi_excludes_admin_and_declares_security() -> None:
     app = create_app()
     route = next(
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == "/v1/openapi/customer.json"
+        route for route in app.routes if getattr(route, "path", None) == "/v1/openapi/customer.json"
     )
     response = await route.endpoint()
     schema = json.loads(response.body)
@@ -31,7 +29,5 @@ async def test_customer_openapi_excludes_admin_and_declares_security() -> None:
     ingest = paths["/v1/ingest/calls"]["post"]
     assert "AES-256" in ingest["description"]
     assert "Idempotency-Key" in ingest["description"]
-    assert {"400", "401", "402", "413", "415", "422", "429"} <= set(
-        ingest["responses"]
-    )
+    assert {"400", "401", "402", "413", "415", "422", "429"} <= set(ingest["responses"])
     assert "CustomerJWT" in schema["components"]["securitySchemes"]

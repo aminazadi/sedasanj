@@ -43,6 +43,13 @@ export default function ChangePlan() {
   }, []);
 
   const target = plans.find((item) => item.code === code) ?? null;
+
+  // A created upgrade order belongs to one choice; picking another plan or operator count voids it.
+  useEffect(() => {
+    setOrder(null);
+    setGateway(null);
+    setError("");
+  }, [code, extra]);
   const total = useMemo(
     () => (target ? (target.annual_price_toman ?? 0) + (target.extra_operator_annual_toman ?? 0) * extra : 0),
     [target, extra],
@@ -88,6 +95,17 @@ export default function ChangePlan() {
   }
 
   if (!current && !error) return <div className="card">در حال دریافت اطلاعات اشتراک…</div>;
+  if (current && current.status !== "active") {
+    return (
+      <div className="commerce-page">
+        <div className="card space-y-3">
+          <h1>تغییر پلن</h1>
+          <p className="commerce-error">تغییر پلن فقط برای اشتراک فعال ممکن است. برای اشتراک منقضی یا در انتظار پرداخت، از صفحه حساب اشتراک را تمدید یا پرداخت کنید.</p>
+          <Link className="btn" to="/account">بازگشت به حساب</Link>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="commerce-page">
       <div className="commerce-heading">

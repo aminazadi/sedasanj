@@ -392,3 +392,89 @@ async def test_permanent_subscription_cannot_be_bought_again(scratch: None) -> N
         assert commerce.add_months(datetime(9999, 12, 31, tzinfo=UTC), 12).year == 9999
     finally:
         await drop_org(org)
+
+
+async def test_stale_renewal_never_downgrades_a_plan_bought_after_it(scratch: None) -> None:
+    from app import db
+    from app.models import Order, OrderItem, Subscription, Tenant
+    from app.services import commerce, payments
+
+    org = await make_org("bronze")
+    try:
+        async with db.session_scope(staff=True) as session:
+            tenant = await session.get(Tenant, org.tenant_id)
+            assert tenant is not None
+            order = await commerce.create_subscription_order(
+                session,
+                tenant=tenant,
+                plan_code="bronze",
+                period="annual",
+                extra_operators=0,
+                customer_name="Admin",
+                customer_email="admin@example.com",
+                customer_mobile="09120000000",
+                invoice_profile={},
+                idempotency_key=uuid4().hex,
+            )
+            await session.flush()
+            # Meanwhile the organization moved to another plan (an upgrade was paid first).
+            sub = await session.get(Subscription, org.subscription_id)
+            assert sub is not None
+            gold = await version_id(session, "gold")
+            sub.plan_version_id = gold
+            await session.flush()
+            await payments.fulfill_order(session, order)
+            await session.flush()
+            after = await session.get(Subscription, org.subscription_id)
+            assert after is not None and after.plan_version_id == gold
+            assert (await session.get(Order, order.id)).status == "paid"  # type: ignore[union-attr]
+            item = (
+                await session.execute(
+                    select(OrderItem).where(
+                        OrderItem.order_id == order.id, OrderItem.kind == "subscription"
+                    )
+                )
+            ).scalar_one()
+            assert item.metadata_json.get("fulfilment") == "needs_attention"
+    finally:
+        await drop_org(org)
+
+
+async def test_upgrade_then_first_call_never_double_grants_the_window(scratch: None) -> None:
+    from app import db
+    from app.models import Order, PlanVersion, Subscription, TenantBalanceCache
+    from app.routers.commerce import SubscriptionChangeCreate, change_subscription
+    from app.services import payments, plan_credit
+
+    org = await make_org("bronze", start_days=-10, end_days=355)
+    try:
+        async with db.session_scope(staff=True) as session:
+            out = await change_subscription(
+                SubscriptionChangeCreate(plan_code="gold", extra_operators=0),
+                request(),
+                org.principal,
+                session,
+                uuid4().hex,
+            )
+            order = await session.get(Order, UUID(out["order_id"]))
+            assert order is not None
+            await payments.fulfill_order(session, order)
+            await session.flush()
+            sub = await session.get(Subscription, org.subscription_id)
+            gold = await session.get(PlanVersion, await version_id(session, "gold"))
+            assert sub is not None and gold is not None
+            # The first call after the upgrade runs the lazy window grant with the new plan.
+            await plan_credit.ensure_period_credit(
+                session,
+                org.tenant_id,
+                subscription_id=sub.id,
+                subscription_start=sub.period_start,
+                subscription_end=sub.period_end,
+                minutes=gold.intro_minutes,
+                now=datetime.now(UTC),
+            )
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None
+            assert cache.seconds <= gold.intro_minutes * 60
+    finally:
+        await drop_org(org)

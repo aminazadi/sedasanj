@@ -327,7 +327,8 @@ class VoiceSanjEngine(AsrEngine):
             engine_profile=self._settings.call_asr_profile if self._silero else None,
             silero_threshold=(
                 self._settings.call_asr_telephony_threshold
-                if self._silero and self._settings.call_asr_profile == "telephony" else None
+                if self._silero and self._settings.call_asr_profile == "telephony"
+                else None
             ),
             turn_min_seconds=self._settings.turn_min_seconds,
             turn_padding_seconds=self._settings.turn_padding_seconds,

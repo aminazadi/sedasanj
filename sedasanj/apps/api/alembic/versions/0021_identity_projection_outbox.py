@@ -37,9 +37,7 @@ def upgrade() -> None:
           ON identity_projection_outbox(applied_at, available_at, created_at)
     """)
     op.execute("REVOKE ALL ON identity_projection_outbox FROM PUBLIC")
-    op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON identity_projection_outbox TO cbi_app"
-    )
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON identity_projection_outbox TO cbi_app")
 
 
 def downgrade() -> None:

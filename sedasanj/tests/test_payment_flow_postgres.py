@@ -581,3 +581,27 @@ async def test_fulfil_failure_after_payment_stays_retryable(tenant, fake, monkey
     monkeypatch.setattr(payments, "fulfill_order", real_fulfill)
     assert await payments.verify_and_fulfill(tenant, attempt_id) == "paid"
     assert (await balance(tenant))[0] == 10 * 60
+
+
+async def test_order_canceled_while_paying_is_never_fulfilled(tenant, fake):  # type: ignore[no-untyped-def]
+    from app import db
+    from app.models import Order
+    from app.services import payments
+
+    order_id, token = await make_order(tenant, minutes=20)
+    attempt_id, order_ref, _ = await initiate(tenant, order_id)
+    async with db.session_scope(tenant) as session:
+        order = await session.get(Order, order_id)
+        assert order is not None
+        order.status = "canceled"
+    outcome = await payments.handle_callback(
+        "behpardakht",
+        callback_params(order_ref),
+        token=token,
+        attempt_id=attempt_id,
+        tenant_hint=tenant,
+    )
+    assert outcome.result == "failed"
+    status, failure, _, _ = await attempt_state(tenant, attempt_id)
+    assert status == "failed" and failure == "order_canceled"
+    assert (await balance(tenant))[0] == 0

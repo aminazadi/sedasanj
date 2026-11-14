@@ -16,8 +16,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "ALTER TABLE credit_reservations "
-        "DROP CONSTRAINT IF EXISTS credit_reservations_call_id_fkey"
+        "ALTER TABLE credit_reservations DROP CONSTRAINT IF EXISTS credit_reservations_call_id_fkey"
     )
     op.execute(
         "ALTER TABLE credit_reservations "
@@ -28,8 +27,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "ALTER TABLE credit_reservations "
-        "DROP CONSTRAINT IF EXISTS credit_reservations_call_id_fkey"
+        "ALTER TABLE credit_reservations DROP CONSTRAINT IF EXISTS credit_reservations_call_id_fkey"
     )
     op.execute(
         "ALTER TABLE credit_reservations "

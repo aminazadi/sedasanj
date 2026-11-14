@@ -58,6 +58,7 @@ def test_plan_output_includes_lifecycle_and_assistant_model() -> None:
         published_at=None,
         retired_at=None,
         assistant_model="model-a",
+        llm_monthly_tokens=5000,
         **version_payload(),
         extra_operator_annual_toman=None,
         trial_days=None,
@@ -65,3 +66,4 @@ def test_plan_output_includes_lifecycle_and_assistant_model() -> None:
     output = _plan_out(plan, version)
     assert output["status"] == "draft"
     assert output["assistant_model"] == "model-a"
+    assert output["llm_monthly_tokens"] == 5000

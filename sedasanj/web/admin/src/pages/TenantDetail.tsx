@@ -30,6 +30,9 @@ export default function TenantDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [topup, setTopup] = useState({ minutes: 100, toman: "", note: "" });
+  const [tokenBudget, setTokenBudget] = useState<{ unlimited: boolean; limit: number; used: number; plan_remaining: number; topup_remaining: number; unavailable_events: number } | null>(null);
+  const [tokenGrant, setTokenGrant] = useState({ tokens: "", note: "" });
+  const [tokenKey, setTokenKey] = useState(() => crypto.randomUUID());
   const [settingsDraft, setSettingsDraft] = useState<
     Pick<TenantDetail, "max_concurrent_jobs" | "audio_retention_days" | "call_asr_mode" | "call_asr_profile">
   >({ max_concurrent_jobs: 0, audio_retention_days: 0, call_asr_mode: "inherit", call_asr_profile: "inherit" });
@@ -45,6 +48,7 @@ export default function TenantDetailPage() {
         request<{subscriptions:Array<Record<string,unknown>>;orders:Array<Record<string,unknown>>;credit_grants:Array<Record<string,unknown>>;reservations:Array<Record<string,unknown>>;assistant_messages_total:number;audit:Array<Record<string,unknown>>}>(`/v1/admin/commerce/tenants/${tenantId}`),
       ]);
       setTenant(detail);
+      request<typeof tokenBudget>(`/v1/admin/tenants/${tenantId}/token-budget`).then(setTokenBudget).catch(() => setTokenBudget(null));
       setUserPage(userData);
       setLedger(entries.items);
       setLedgerTotal(entries.total);
@@ -67,6 +71,24 @@ export default function TenantDetailPage() {
   async function setStatus(action: "suspend" | "activate") {
     try {
       await request(`/v1/admin/tenants/${tenantId}/${action}`, { method: "POST" });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function submitTokenGrant(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    try {
+      await request(`/v1/admin/tenants/${tenantId}/token-grants`, {
+        method: "POST",
+        retry: false,
+        body: { tokens: Number(fmt.latinDigits(tokenGrant.tokens)), note: tokenGrant.note, idempotency_key: tokenKey },
+      });
+      setNotice("توکن اضافه شد.");
+      setTokenGrant({ tokens: "", note: "" });
+      setTokenKey(crypto.randomUUID());
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -108,7 +130,7 @@ export default function TenantDetailPage() {
     }
   }
 
-  if (!tenant) return <Loading />;
+  if (!tenant) return error ? <ErrorBox message={error} /> : <Loading />;
 
   return (
     <div className="space-y-4">
@@ -143,6 +165,20 @@ export default function TenantDetailPage() {
         <Stat title="کل تماس‌ها" value={fmt.int(tenant.calls_total)} />
         <Stat title="دقیقه رایگان ماهانه" value={fmt.int(tenant.plan_monthly_minutes ?? 0)} />
       </div>
+
+      {tokenBudget ? (
+        <form className="card grid gap-3 md:grid-cols-4" onSubmit={submitTokenGrant}>
+          <h2 className="font-bold md:col-span-4">توکن هوش مصنوعی این ماه</h2>
+          <Stat title="مصرف" value={fmt.int(tokenBudget.used)} />
+          <Stat title="سقف پلن" value={tokenBudget.unlimited ? "نامحدود" : fmt.int(tokenBudget.limit)} />
+          <Stat title="باقی‌مانده پلن" value={tokenBudget.unlimited ? "—" : fmt.int(tokenBudget.plan_remaining)} />
+          <Stat title="توکن بسته/دستی" value={fmt.int(tokenBudget.topup_remaining)} />
+          {tokenBudget.unavailable_events ? <p className="text-sm text-amber-700 md:col-span-4">{fmt.int(tokenBudget.unavailable_events)} فراخوانی بدون عدد مصرف از سرویس هوش مصنوعی ثبت شده و در مصرف شمرده نشده است.</p> : null}
+          <label><span className="label">افزودن توکن</span><input className="input" inputMode="numeric" dir="ltr" required value={tokenGrant.tokens} onChange={(event) => setTokenGrant({ ...tokenGrant, tokens: fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "") })} /></label>
+          <label className="md:col-span-2"><span className="label">توضیح</span><input className="input" value={tokenGrant.note} onChange={(event) => setTokenGrant({ ...tokenGrant, note: event.target.value })} /></label>
+          <div className="flex items-end"><button className="btn" disabled={!tokenGrant.tokens}>اعمال توکن</button></div>
+        </form>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <form className="card grid gap-3" onSubmit={submitTopup}>

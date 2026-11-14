@@ -6,9 +6,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Annotated, Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, Query, Request, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +43,7 @@ from app.models import (
     TenantDatabaseRegistry,
     TenantDataMigration,
     TenantProvisioningJob,
+    TokenGrant,
     Transcript,
     TranscriptChunk,
     User,
@@ -99,6 +101,7 @@ from app.services import (
     progress,
     queue,
     ratelimit,
+    token_quota,
 )
 from app.services.audio import DENOISER_MODELS, ENHANCEMENT_MODELS
 from app.services.commerce_settings import get_commerce_settings
@@ -116,10 +119,10 @@ from app.services.platform_secrets import decrypt_secret, encrypt_secret
 from app.services.provider_errors import ProviderError
 from app.services.storage_inventory import StaffStorageUsage, storage_usage
 from app.services.tenant_backup_restore import VERIFIED_RESTORE_ACTION
+from app.services.tenant_backups import backup_error_info
 from app.services.tenant_provisioning import migration_error_info, rollback_tenant
 from app.services.transcript_corrections import CorrectionClient, validate_result
 from app.services.voicesanj import VoiceSanjClient
-from app.services.tenant_backups import backup_error_info
 from worker_llm.client import available_prompt_versions
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -751,6 +754,7 @@ async def create_tenant(
             assistant_monthly_messages=plan_version.assistant_monthly_messages,
             assistant_source_limit=plan_version.assistant_source_limit,
             assistant_model=plan_version.assistant_model,
+            llm_monthly_tokens=plan_version.llm_monthly_tokens,
         )
     )
     session.add(
@@ -957,6 +961,86 @@ async def _set_tenant_status(
         ip=client_ip(request),
     )
     return TenantOut.model_validate(tenant)
+
+
+class TokenGrantCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+    tokens: int = Field(gt=0, le=10_000_000_000)
+    note: str = Field(default="", max_length=300)
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+@router.post("/tenants/{tenant_id}/token-grants", status_code=status.HTTP_201_CREATED)
+async def create_token_grant(
+    tenant_id: UUID,
+    payload: TokenGrantCreate,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, Any]:
+    """Staff-applied LLM tokens that extend the plan budget; purchases reuse the same table."""
+    if await session.get(Tenant, tenant_id) is None:
+        raise ApiError("not_found", "tenant not found")
+    source_id = uuid5(NAMESPACE_URL, f"token-grant:{tenant_id}:{payload.idempotency_key}")
+    async with session_scope(tenant_id) as tenant_session:
+        await token_quota.lock_tenant(tenant_session, tenant_id)
+        grant = None
+        if payload.idempotency_key:
+            grant = (
+                await tenant_session.execute(
+                    select(TokenGrant).where(
+                        TokenGrant.tenant_id == tenant_id,
+                        TokenGrant.source == "admin_adjustment",
+                        TokenGrant.source_id == source_id,
+                    )
+                )
+            ).scalar_one_or_none()
+        if grant is None:
+            grant = TokenGrant(
+                tenant_id=tenant_id,
+                source="admin_adjustment",
+                source_id=source_id if payload.idempotency_key else None,
+                total_tokens=payload.tokens,
+                remaining_tokens=payload.tokens,
+            )
+            tenant_session.add(grant)
+            await tenant_session.flush()
+            await audit.record(
+                tenant_session,
+                actor_type="staff",
+                actor_id=staff.id,
+                tenant_id=tenant_id,
+                action="tenant.token_grant",
+                payload={"tokens": payload.tokens, "note": payload.note},
+                ip=client_ip(request),
+            )
+        budget = await token_quota.budget(tenant_session, tenant_id)
+    return {
+        "grant_id": str(grant.id),
+        "tokens": grant.total_tokens,
+        "topup_remaining": budget.topup_remaining,
+        "remaining": budget.remaining,
+    }
+
+
+@router.get("/tenants/{tenant_id}/token-budget")
+async def tenant_token_budget(
+    tenant_id: UUID, staff: StaffDep, session: StaffSession
+) -> dict[str, Any]:
+    """This month's LLM token use for one organization, from provider-reported counts."""
+    if await session.get(Tenant, tenant_id) is None:
+        raise ApiError("not_found", "tenant not found")
+    async with session_scope(tenant_id) as tenant_session:
+        budget = await token_quota.budget(tenant_session, tenant_id)
+    return {
+        "unlimited": budget.unlimited,
+        "limit": budget.limit,
+        "used": budget.used,
+        "plan_remaining": budget.plan_remaining,
+        "topup_remaining": budget.topup_remaining,
+        "unavailable_events": budget.unavailable_events,
+        "period_start": budget.period_start,
+    }
 
 
 @router.post("/tenants/{tenant_id}/topups", status_code=status.HTTP_201_CREATED)

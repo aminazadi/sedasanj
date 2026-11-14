@@ -50,9 +50,11 @@ from app.routers import (
     quick_demo,
     scheduled_reports,
     site_pages,
+    sms_templates,
     speaker_profiles,
     tasks,
     tenant_restores,
+    token_packages,
     webhooks,
 )
 from app.services import assistant_socket
@@ -347,6 +349,8 @@ def create_app() -> FastAPI:
         auth,
         phone_auth,
         quick_demo,
+        sms_templates,
+        token_packages,
         tenant_restores,
         ingest,
         integration_api,

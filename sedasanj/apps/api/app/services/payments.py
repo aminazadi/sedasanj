@@ -32,8 +32,16 @@ from app.models import (
     SubscriptionExtra,
     Tenant,
     TenantBalanceCache,
+    TokenGrant,
 )
-from app.services import audit, billing, gateway_settings, plan_credit, subscription_state
+from app.services import (
+    audit,
+    billing,
+    gateway_settings,
+    plan_credit,
+    sms_notify,
+    subscription_state,
+)
 from app.services.commerce import add_months
 from app.services.gateways import (
     AttemptRef,
@@ -327,6 +335,9 @@ async def _apply_upgrade(
     if not usable:
         for change in changes:
             change.status = "failed"
+        # The money is taken but the plan did not change: flag it so the receipt tells the
+        # truth and staff can refund or apply the change by hand.
+        upgrade_item.metadata_json = {**upgrade_item.metadata_json, "fulfilment": "needs_attention"}
         await audit.record(
             session,
             actor_type="system",
@@ -361,9 +372,21 @@ async def _apply_upgrade(
     subscription.assistant_monthly_messages = version.assistant_monthly_messages
     subscription.assistant_source_limit = version.assistant_source_limit
     subscription.assistant_model = version.assistant_model
+    subscription.llm_monthly_tokens = version.llm_monthly_tokens
     subscription.next_plan_version_id = None
     subscription.updated_at = now
     if old_version is not None:
+        # Issue the window's base credit at the OLD plan size first: the lazy grant on the next
+        # call would otherwise add the full new-plan minutes on top of the difference.
+        await plan_credit.ensure_period_credit(
+            session,
+            order.tenant_id,
+            subscription_id=subscription.id,
+            subscription_start=subscription.period_start,
+            subscription_end=subscription.period_end,
+            minutes=old_version.intro_minutes,
+            now=now,
+        )
         await plan_credit.grant_upgrade_difference(
             session,
             order.tenant_id,
@@ -394,6 +417,29 @@ async def _apply_upgrade(
     )
 
 
+async def _is_stale_plan_switch(
+    session: AsyncSession, order: Order, subscription_item: OrderItem, now: datetime
+) -> bool:
+    """True when a live paid subscription runs another plan than this order buys."""
+    version = await session.get(
+        PlanVersion, UUID(str(subscription_item.metadata_json["plan_version_id"]))
+    )
+    if version is None:
+        return False
+    current = (
+        await session.execute(
+            select(Subscription)
+            .where(Subscription.tenant_id == order.tenant_id, Subscription.status == "active")
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if current is None or current.period_end <= now or current.billing_period == "trial":
+        return False
+    current_version = await session.get(PlanVersion, current.plan_version_id)
+    return current_version is not None and current_version.plan_id != version.plan_id
+
+
 async def fulfill_order(session: AsyncSession, order: Order) -> None:
     if order.status in {"paid", "partially_refunded", "refunded"}:
         return
@@ -407,6 +453,28 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
     if upgrade_item is not None:
         await _apply_upgrade(session, order, upgrade_item, now)
     subscription_item = next((item for item in items if item.kind == "subscription"), None)
+    if subscription_item is not None and await _is_stale_plan_switch(
+        session, order, subscription_item, now
+    ):
+        # A different plan became active after this order was created (for example an upgrade
+        # was paid first).  Applying it would silently downgrade a paid term, so keep the plan
+        # and flag the order for staff to refund.
+        subscription_item.metadata_json = {
+            **subscription_item.metadata_json,
+            "fulfilment": "needs_attention",
+        }
+        await audit.record(
+            session,
+            actor_type="system",
+            tenant_id=order.tenant_id,
+            action="subscription.stale_order_not_applied",
+            payload={"order_id": str(order.id)},
+        )
+        logger.error(
+            "paid subscription order is stale and was not applied",
+            extra={"extra_fields": {"order_id": str(order.id)}},
+        )
+        subscription_item = None
     if subscription_item is not None:
         version = await session.get(
             PlanVersion, UUID(str(subscription_item.metadata_json["plan_version_id"]))
@@ -473,6 +541,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
                 assistant_monthly_messages=version.assistant_monthly_messages,
                 assistant_source_limit=version.assistant_source_limit,
                 assistant_model=version.assistant_model,
+                llm_monthly_tokens=version.llm_monthly_tokens,
             )
             session.add(current)
         else:
@@ -489,6 +558,7 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             current.assistant_monthly_messages = version.assistant_monthly_messages
             current.assistant_source_limit = version.assistant_source_limit
             current.assistant_model = version.assistant_model
+            current.llm_monthly_tokens = version.llm_monthly_tokens
             if current.next_plan_version_id == version.id:
                 current.next_plan_version_id = None
                 scheduled_changes = (
@@ -558,6 +628,27 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             toman=credit_item.total_toman,
             idem=f"credit-order:{order.id}",
         )
+    token_item = next((item for item in items if item.kind == "token_pack"), None)
+    if token_item is not None:
+        already = (
+            await session.execute(
+                select(TokenGrant.id).where(
+                    TokenGrant.tenant_id == order.tenant_id,
+                    TokenGrant.source == "purchase",
+                    TokenGrant.source_id == order.id,
+                )
+            )
+        ).first()
+        if already is None:
+            session.add(
+                TokenGrant(
+                    tenant_id=order.tenant_id,
+                    source="purchase",
+                    source_id=order.id,
+                    total_tokens=token_item.quantity,
+                    remaining_tokens=token_item.quantity,
+                )
+            )
     install_item = next((item for item in items if item.kind == "installation"), None)
     if install_item is not None:
         request = (
@@ -750,6 +841,7 @@ async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
     mismatch_ref: AttemptRef | None = None
     gateway: Gateway | None = None
     needs_settle = False
+    paid_order_id: UUID | None = None
     async with session_scope(tenant_id) as session:
         attempt = await session.get(PaymentAttempt, attempt_id, with_for_update=True)
         if attempt is None:
@@ -763,6 +855,11 @@ async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
             return "failed"
         if order.status in PAID_STATES:
             attempt.status, attempt.failure_code = "superseded", "order_already_paid"
+            return "failed"
+        if order.status == "canceled":
+            # Staff or the customer canceled the order while this payment was in flight.
+            # Never fulfil it; the bank returns unverified money by itself.
+            attempt.status, attempt.failure_code = "failed", "order_canceled"
             return "failed"
         gateway = await _gateway_for(attempt.gateway)
         attempt.check_count += 1
@@ -823,12 +920,38 @@ async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
                     },
                 )
                 return "pending"
+            paid_order_id = order.id
     if mismatch_ref is not None and gateway is not None:
         await _best_effort_reverse(gateway, mismatch_ref)
         return "failed"
     if needs_settle:
         await settle_attempt(tenant_id, attempt_id)
+    if paid_order_id is not None:
+        await _notify_payment_success(tenant_id, paid_order_id)
     return "paid"
+
+
+async def _notify_payment_success(tenant_id: UUID, order_id: UUID) -> None:
+    """Queue the payment-success SMS once per order (dedupe key); never raises."""
+    try:
+        async with session_scope(tenant_id) as session:
+            order = await session.get(Order, order_id)
+            tenant = await session.get(Tenant, tenant_id)
+            if (
+                order is None
+                or tenant is None
+                or order.status not in {"paid", "partially_refunded"}
+            ):
+                return
+            amount, name = order.amount_toman, tenant.name
+        await sms_notify.enqueue_for_org_admins(
+            tenant_id,
+            "payment_success",
+            {"ORG": name, "AMOUNT": f"{amount:,}", "ORDER": str(order_id)[:8]},
+            f"payment_success:{order_id}",
+        )
+    except Exception:  # noqa: BLE001 - a notification must never fail a paid order
+        logger.exception("payment success sms not queued")
 
 
 async def _ref_already_used(
@@ -1080,6 +1203,7 @@ async def _undo_subscription_effect(
         subscription.assistant_monthly_messages = previous.assistant_monthly_messages
         subscription.assistant_source_limit = previous.assistant_source_limit
         subscription.assistant_model = previous.assistant_model
+        subscription.llm_monthly_tokens = previous.llm_monthly_tokens
         subscription.updated_at = now
         change.status = "canceled"
         tenant = await session.get(Tenant, order.tenant_id, with_for_update=True)
@@ -1211,6 +1335,25 @@ async def refund_order(
         if grant is None or grant.remaining_seconds < seconds_to_revoke:
             raise ApiError("invalid_request", "purchased credit has already been consumed")
 
+    token_item = next((item for item in items if item.kind == "token_pack"), None)
+    tokens_to_revoke = 0
+    token_grant: TokenGrant | None = None
+    if token_item is not None:
+        tokens_to_revoke = math.ceil(token_item.quantity * amount_toman / order.amount_toman)
+        token_grant = (
+            await session.execute(
+                select(TokenGrant)
+                .where(
+                    TokenGrant.tenant_id == order.tenant_id,
+                    TokenGrant.source == "purchase",
+                    TokenGrant.source_id == order.id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if token_grant is None or token_grant.remaining_tokens < tokens_to_revoke:
+            raise ApiError("invalid_request", "purchased tokens have already been consumed")
+
     attempt: PaymentAttempt | None = None
     response: dict[str, Any] = {}
     if method == "reverse":
@@ -1279,17 +1422,25 @@ async def refund_order(
         grant.remaining_seconds -= seconds_to_revoke
         cache = await _balance_cache(session, order.tenant_id)
         cache.seconds = max(0, cache.seconds - seconds_to_revoke)
-        cache.toman = max(0, cache.toman - amount_toman)
+        # The balance was credited with the net price only (tax excluded); take back the same
+        # share of it, not the gross refund.
+        assert credit_item is not None
+        toman_to_revoke = (
+            credit_item.total_toman * amount_toman + order.amount_toman // 2
+        ) // order.amount_toman
+        cache.toman = max(0, cache.toman - toman_to_revoke)
         session.add(
             LedgerEntry(
                 tenant_id=order.tenant_id,
                 call_id=None,
                 kind="refund",
                 seconds_delta=-seconds_to_revoke,
-                toman_delta=-amount_toman,
+                toman_delta=-toman_to_revoke,
                 idempotency_key=f"refund:{row.id}",
             )
         )
+    if token_grant is not None and tokens_to_revoke:
+        token_grant.remaining_tokens -= tokens_to_revoke
     full_refund = refunded + amount_toman == order.amount_toman
     order.status = "refunded" if full_refund else "partially_refunded"
     if full_refund:

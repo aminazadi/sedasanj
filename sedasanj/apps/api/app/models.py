@@ -328,7 +328,9 @@ class Call(Base):
     voicemail_context: Mapped[str | None] = mapped_column(Text)
     voicemail_folder: Mapped[str | None] = mapped_column(Text)
     voicemail_message_id: Mapped[str | None] = mapped_column(Text)
-    call_type: Mapped[str] = mapped_column(Text, nullable=False, default="answered", server_default=text("'answered'"))
+    call_type: Mapped[str] = mapped_column(
+        Text, nullable=False, default="answered", server_default=text("'answered'")
+    )
     started_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     ended_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -399,7 +401,9 @@ class Contact(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "phone_number", name="contacts_tenant_phone_key"),
-        CheckConstraint("city IS NULL OR province IS NOT NULL", name="contacts_city_province_check"),
+        CheckConstraint(
+            "city IS NULL OR province IS NOT NULL", name="contacts_city_province_check"
+        ),
         CheckConstraint("phone_number ~ '^[0-9]{3,15}$'", name="contacts_phone_check"),
         Index("idx_contacts_tenant_name", "tenant_id", "name"),
     )
@@ -426,7 +430,9 @@ class PbxExtension(Base):
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     owner_linked_at: Mapped[datetime | None] = mapped_column(TSTZ)
-    owner_managed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
+    owner_managed: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
     synced_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -555,7 +561,9 @@ class TranscriptRevision(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     audio_models: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
     text_models: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
-    ai_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    ai_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     corrected_text: Mapped[str | None] = mapped_column(Text)
     provider_task_id: Mapped[str | None] = mapped_column(Text)
@@ -644,7 +652,9 @@ class AsrTranscriptRevision(Base):
     full_text: Mapped[str | None] = mapped_column(Text)
     asr_model: Mapped[str | None] = mapped_column(Text)
     asr_version: Mapped[str | None] = mapped_column(Text)
-    ai_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    ai_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
     asr_identity: Mapped[str | None] = mapped_column(Text)
     speaker_mode: Mapped[str | None] = mapped_column(Text)
     timestamp_source: Mapped[str | None] = mapped_column(Text)
@@ -711,7 +721,9 @@ class AnalysisRun(Base):
         PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
     llm_model: Mapped[str] = mapped_column(Text, nullable=False)
-    ai_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    ai_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
     decision_provider: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'aiservice'")
     )
@@ -1172,7 +1184,8 @@ class AssistantExport(Base):
 
     __table_args__ = (
         Index(
-            "idx_assistant_exports_expiry", "expires_at",
+            "idx_assistant_exports_expiry",
+            "expires_at",
             postgresql_where=text("deleted_at IS NULL"),
         ),
     )
@@ -1191,7 +1204,9 @@ class AssistantRun(Base):
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     conversation_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("chat_conversations.id", ondelete="CASCADE"), nullable=False
+        PgUUID(as_uuid=True),
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"),
+        nullable=False,
     )
     user_message_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=False
@@ -1202,14 +1217,18 @@ class AssistantRun(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'queued'"))
     next_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("1"))
-    last_event_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    last_event_sequence: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
     last_event_type: Mapped[str | None] = mapped_column(String(64))
     last_event_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "owner_id", "idempotency_key", name="assistant_runs_idempotency_key"),
+        UniqueConstraint(
+            "tenant_id", "owner_id", "idempotency_key", name="assistant_runs_idempotency_key"
+        ),
         Index("idx_assistant_runs_conversation_status", "conversation_id", "status"),
     )
 
@@ -1246,7 +1265,9 @@ class OrganizationMemory(Base):
     structured_payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
     applies_to: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default=text("'{}'")
     )
@@ -1281,8 +1302,12 @@ class OrganizationMemory(Base):
         ),
         CheckConstraint("version > 0", name="organization_memories_version_check"),
         CheckConstraint("lock_version > 0", name="organization_memories_lock_version_check"),
-        UniqueConstraint("tenant_id", "logical_key", "version", name="organization_memories_version_key"),
-        UniqueConstraint("tenant_id", "idempotency_key", name="organization_memories_idempotency_key"),
+        UniqueConstraint(
+            "tenant_id", "logical_key", "version", name="organization_memories_version_key"
+        ),
+        UniqueConstraint(
+            "tenant_id", "idempotency_key", name="organization_memories_idempotency_key"
+        ),
         Index("idx_organization_memories_tenant_status", "tenant_id", "status", "category"),
     )
 
@@ -1343,8 +1368,12 @@ class TranscriptChunk(Base):
         PgUUID(as_uuid=True), ForeignKey("transcript_revisions.id", ondelete="SET NULL")
     )
     embedding_model: Mapped[str | None] = mapped_column(Text)
-    embedding_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
-    vector_status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'pending'"))
+    embedding_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
+    vector_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default=text("'pending'")
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     last_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
     next_retry_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -1376,8 +1405,12 @@ class OrgKnowledgeChunk(Base):
     source_updated_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     embedding: Mapped[Any | None] = mapped_column(VectorType())
     embedding_model: Mapped[str | None] = mapped_column(Text)
-    embedding_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
-    vector_status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'pending'"))
+    embedding_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
+    vector_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default=text("'pending'")
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     last_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
     next_retry_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -1402,7 +1435,9 @@ class CallKnowledge(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Any | None] = mapped_column(VectorType())
     embedding_model: Mapped[str | None] = mapped_column(Text)
-    embedding_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    embedding_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
     vector_status: Mapped[str] = mapped_column(String(24), nullable=False)
     graph_status: Mapped[str] = mapped_column(String(24), nullable=False)
     indexed_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -1666,9 +1701,7 @@ class MeetingAttendee(Base):
         PgUUID(as_uuid=True), ForeignKey("speaker_profiles.id", ondelete="SET NULL")
     )
     name: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SpeakerSyncState(Base):
@@ -1883,7 +1916,9 @@ class Job(Base):
         PgUUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
     )
     kind: Mapped[str] = mapped_column(Text, nullable=False)
-    ai_provider: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'aiservice'"))
+    ai_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'aiservice'")
+    )
     ai_model: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -2030,7 +2065,9 @@ class CreditReservation(Base):
     )
     seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     toman: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    price_per_minute_toman: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    price_per_minute_toman: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     free_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -2066,6 +2103,19 @@ class Package(Base):
     minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class TokenPackage(Base):
+    __tablename__ = "token_packages"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
 class Plan(Base):
@@ -2105,6 +2155,7 @@ class PlanVersion(Base):
     assistant_monthly_messages: Mapped[int] = mapped_column(Integer, nullable=False)
     assistant_source_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     assistant_model: Mapped[str | None] = mapped_column(Text)
+    llm_monthly_tokens: Mapped[int | None] = mapped_column(BigInteger)
     allows_extra_operators: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -2164,6 +2215,7 @@ class Subscription(Base):
     assistant_monthly_messages: Mapped[int] = mapped_column(Integer, nullable=False)
     assistant_source_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     assistant_model: Mapped[str | None] = mapped_column(Text)
+    llm_monthly_tokens: Mapped[int | None] = mapped_column(BigInteger)
     intro_credit_issued_at: Mapped[datetime | None] = mapped_column(TSTZ)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
@@ -2482,6 +2534,62 @@ class AssistantUsage(Base):
     __table_args__ = (Index("idx_assistant_usage_period", "tenant_id", "period_start", "status"),)
 
 
+class SmsTemplate(Base):
+    """Admin-managed SMS.ir service template for one notification event (control database)."""
+
+    __tablename__ = "sms_templates"
+
+    event_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    template_id: Mapped[int | None] = mapped_column(BigInteger)
+    # SMS.ir parameter name -> canonical value key of the event (for example CODE -> ORG).
+    parameters: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class SmsDelivery(Base):
+    """One queued or sent notification SMS; ``dedupe_key`` makes enqueueing idempotent."""
+
+    __tablename__ = "sms_deliveries"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    event_key: Mapped[str] = mapped_column(Text, nullable=False)
+    tenant_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    mobile: Mapped[str] = mapped_column(Text, nullable=False)
+    params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    dedupe_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'pending'"))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class TokenGrant(Base):
+    """Purchased or staff-granted LLM tokens that extend a plan's monthly budget."""
+
+    __tablename__ = "token_grants"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    total_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    remaining_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
 class AiUsageEvent(Base):
     """One provider-reported token count. Counts are never estimated (`usage_source`)."""
 
@@ -2582,7 +2690,9 @@ class SignupOtp(Base):
 class PhoneOtp(Base):
     __tablename__ = "phone_otps"
 
-    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
     mobile: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     code_hash: Mapped[str] = mapped_column(Text, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -2597,9 +2707,15 @@ class PhoneOtp(Base):
 class QuickDemoSession(Base):
     __tablename__ = "quick_demo_sessions"
 
-    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
     mobile: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
@@ -2714,7 +2830,9 @@ class ModuleRelease(Base):
     changelog_plain: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
-    lab_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    lab_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     lab_evidence: Mapped[str | None] = mapped_column(Text)
     archive_format: Mapped[str] = mapped_column(String(8), nullable=False, server_default="zip")
     min_issabel_major: Mapped[int | None] = mapped_column(Integer)
@@ -2882,9 +3000,7 @@ class ModuleInstallation(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "product", "host_uuid", name="module_installations_host_key"
-        ),
+        UniqueConstraint("tenant_id", "product", "host_uuid", name="module_installations_host_key"),
     )
 
 
@@ -3141,20 +3257,14 @@ class ScheduledReport(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     schedule_mode: Mapped[str] = mapped_column(String(16), nullable=False)
     interval_hours: Mapped[int | None] = mapped_column(Integer)
-    fixed_hours: Mapped[list[int]] = mapped_column(
-        ARRAY(Integer), nullable=False, default=list
-    )
+    fixed_hours: Mapped[list[int]] = mapped_column(ARRAY(Integer), nullable=False, default=list)
     max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     retry_base_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     window_start: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
     next_run_at: Mapped[datetime | None] = mapped_column(TSTZ)
     archived_at: Mapped[datetime | None] = mapped_column(TSTZ)
-    created_at: Mapped[datetime] = mapped_column(
-        TSTZ, nullable=False, server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        TSTZ, nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=func.now())
     __table_args__ = (
         CheckConstraint(
             "schedule_mode IN ('interval','fixed')", name="scheduled_reports_mode_check"
@@ -3209,18 +3319,12 @@ class ScheduledReportRun(Base):
     charts: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
-    sources: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
-    coverage: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    coverage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     model: Mapped[str | None] = mapped_column(Text)
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_detail: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        TSTZ, nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(TSTZ)
     completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
     __table_args__ = (
@@ -3238,9 +3342,7 @@ class ScheduledReportRun(Base):
             "trigger IN ('scheduled','manual')",
             name="scheduled_report_runs_trigger_check",
         ),
-        CheckConstraint(
-            "from_date < to_date", name="scheduled_report_runs_window_check"
-        ),
+        CheckConstraint("from_date < to_date", name="scheduled_report_runs_window_check"),
         CheckConstraint(
             "attempt_count >= 0 AND max_retries BETWEEN 0 AND 3 AND retry_base_minutes BETWEEN 1 AND 60",
             name="scheduled_report_runs_retry_policy_check",
@@ -3358,10 +3460,10 @@ class HelpArticle(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
-
     @property
     def thumbnail_url(self) -> str | None:
         return f"/v1/help/media/{self.thumbnail_id}" if self.thumbnail_id else None
+
 
 class HelpErrorCode(Base):
     """Maps a stable error code (SS-UPL-0401, unauthorized, ...) to its help article."""
@@ -3412,12 +3514,16 @@ class ModuleDiagnostic(Base):
         PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     installation_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("module_installations.id", ondelete="CASCADE"), nullable=False
+        PgUUID(as_uuid=True),
+        ForeignKey("module_installations.id", ondelete="CASCADE"),
+        nullable=False,
     )
     module_version: Mapped[str] = mapped_column(String(32), nullable=False)
     ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
     failed_checks: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'"))
+    report: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
@@ -3448,7 +3554,6 @@ class NotificationLog(Base):
             "subscription_id", "kind", "period_key", "channel", name="notification_log_once"
         ),
     )
-
 
 
 class OrganizationBackupSettings(Base):

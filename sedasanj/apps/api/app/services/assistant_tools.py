@@ -394,11 +394,7 @@ async def _search_transcripts(ctx: ToolContext, raw: ToolArguments) -> dict[str,
         select(Transcript.call_id, Transcript.full_text, Call.started_at)
         .join(Call, Call.id == Transcript.call_id)
         .join(call_stmt, call_stmt.c.id == Transcript.call_id)
-        .where(
-            Transcript.search.op("@@")(
-                func.websearch_to_tsquery("simple", args.query)
-            )
-        )
+        .where(Transcript.search.op("@@")(func.websearch_to_tsquery("simple", args.query)))
     )
     if args.call_id is not None:
         if ctx.bound_call_id is not None and args.call_id != ctx.bound_call_id:

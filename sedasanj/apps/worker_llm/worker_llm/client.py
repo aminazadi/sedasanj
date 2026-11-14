@@ -85,27 +85,25 @@ def _repair_at_decode_error(text: str, exc: json.JSONDecodeError) -> str | None:
     current = text[position] if position < len(text) else ""
     previous = _previous_non_whitespace(text, position)
 
-    if (
-        "trailing comma" in exc.msg.lower()
-        and (
-            current == ","
-            or (current in {"}", "]"} and previous is not None and text[previous] == ",")
-        )
+    if "trailing comma" in exc.msg.lower() and (
+        current == "," or (current in {"}", "]"} and previous is not None and text[previous] == ",")
     ):
         if current == ",":
-            return f"{text[:position]}{text[position + 1:]}"
+            return f"{text[:position]}{text[position + 1 :]}"
         assert previous is not None
-        return f"{text[:previous]}{text[previous + 1:]}"
+        return f"{text[:previous]}{text[previous + 1 :]}"
 
     if exc.msg == "Expecting ',' delimiter":
         if current and (current in {'"', "{", "[", "-"} or current.isdigit()):
             return f"{text[:position]},{text[position:]}"
         if current in {"t", "f", "n"}:
             return f"{text[:position]},{text[position:]}"
-        if previous is not None and text[previous] == '"' and (
-            previous == 0 or text[previous - 1] != "\\"
+        if (
+            previous is not None
+            and text[previous] == '"'
+            and (previous == 0 or text[previous - 1] != "\\")
         ):
-            return f'{text[:previous]}\\"{text[previous + 1:]}'
+            return f'{text[:previous]}\\"{text[previous + 1 :]}'
 
     if (
         exc.msg == "Expecting property name enclosed in double quotes"
@@ -113,7 +111,7 @@ def _repair_at_decode_error(text: str, exc: json.JSONDecodeError) -> str | None:
         and previous is not None
         and text[previous] == ","
     ):
-        return f"{text[:previous]}{text[previous + 1:]}"
+        return f"{text[:previous]}{text[previous + 1 :]}"
 
     if (
         exc.msg == "Expecting value"
@@ -121,13 +119,13 @@ def _repair_at_decode_error(text: str, exc: json.JSONDecodeError) -> str | None:
         and previous is not None
         and text[previous] == ","
     ):
-        return f"{text[:previous]}{text[previous + 1:]}"
+        return f"{text[:previous]}{text[previous + 1 :]}"
 
     if exc.msg == "Invalid control character at" and position < len(text):
         replacements = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
         replacement = replacements.get(text[position])
         if replacement is not None:
-            return f"{text[:position]}{replacement}{text[position + 1:]}"
+            return f"{text[:position]}{replacement}{text[position + 1 :]}"
     return None
 
 
@@ -304,9 +302,10 @@ class LlamaClient(LlmClient):
                 if completion_tokens:
                     llm_tokens_per_second.observe(completion_tokens / elapsed)
                 content = message.get("content")
+                # The provider spent tokens even when the answer is unusable: record first.
+                await self._record(data, body["model"])
                 if not isinstance(content, str) or not content.strip():
                     raise ProviderError("llm_provider_response", "مدل متن معتبری برنگرداند.")
-                await self._record(data, body["model"])
                 return content
 
         if last_error is not None:
@@ -331,6 +330,7 @@ class LlamaClient(LlmClient):
             "temperature": 0.2,
             "max_tokens": self._max_tokens,
             "stream": True,
+            "stream_options": {"include_usage": True},
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -560,9 +560,7 @@ class VoiceSanjChatClient(LlmClient):
             if state == "succeeded":
                 content, tokens = await self.task_result(task_id)
                 if tokens:
-                    llm_tokens_per_second.observe(
-                        tokens / max(time.perf_counter() - started, 1e-6)
-                    )
+                    llm_tokens_per_second.observe(tokens / max(time.perf_counter() - started, 1e-6))
                 return content
             if state in {"failed", "cancelled", "partially_succeeded"}:
                 raise ProviderError(
@@ -601,14 +599,14 @@ class VoiceSanjChatClient(LlmClient):
         choices = payload.get("choices") if isinstance(payload, dict) else None
         message = choices[0].get("message") if isinstance(choices, list) and choices else None
         content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, str) or not content.strip():
-            raise ProviderError("llm_provider_empty", "سرویس هوش مصنوعی پاسخ متنی برنگرداند.")
         await record_usage(
             payload.get("usage"),
             provider="aiservice",
             model=str(payload.get("model") or body.get("model")),
             origin="9router" if self._path.startswith("/v1/ninerouter/") else "local",
         )
+        if not isinstance(content, str) or not content.strip():
+            raise ProviderError("llm_provider_empty", "سرویس هوش مصنوعی پاسخ متنی برنگرداند.")
         return content
 
     async def complete_with_tools(
@@ -624,9 +622,10 @@ class VoiceSanjChatClient(LlmClient):
         body["tool_choice"] = "auto"
         if self._path == "/v1/chat/tasks":
             identity = json.dumps(body, ensure_ascii=False, sort_keys=True)
-            key = "cbi-tools-" + hashlib.sha256(
-                f"{self._request_namespace}:{identity}".encode()
-            ).hexdigest()
+            key = (
+                "cbi-tools-"
+                + hashlib.sha256(f"{self._request_namespace}:{identity}".encode()).hexdigest()
+            )
             task_id = await self.submit_task(body, idempotency_key=key)
             deadline = time.monotonic() + self._poll_timeout
             while time.monotonic() < deadline:
@@ -634,7 +633,9 @@ class VoiceSanjChatClient(LlmClient):
                 if status.get("status") == "succeeded":
                     payload = await self.task_result_payload(task_id)
                     choices = payload.get("choices")
-                    message = choices[0].get("message") if isinstance(choices, list) and choices else None
+                    message = (
+                        choices[0].get("message") if isinstance(choices, list) and choices else None
+                    )
                     if isinstance(message, dict):
                         return message
                     break
@@ -670,9 +671,7 @@ class VoiceSanjChatClient(LlmClient):
         )
         return message
 
-    def _request_body(
-        self, system: str, user: str, *, model: str | None = None
-    ) -> dict[str, Any]:
+    def _request_body(self, system: str, user: str, *, model: str | None = None) -> dict[str, Any]:
         if self._ninerouter_prompt:
             system = f"{system.rstrip()}\n\n{self._ninerouter_prompt}"
         return {
@@ -846,7 +845,5 @@ def build_client(
     if settings.llm_client == "fixture":
         return FixtureClient()
     if settings.llm_client == "voicesanj":
-        return VoiceSanjChatClient(
-            settings, request_namespace=request_namespace, purpose=purpose
-        )
+        return VoiceSanjChatClient(settings, request_namespace=request_namespace, purpose=purpose)
     return LlamaClient(settings)

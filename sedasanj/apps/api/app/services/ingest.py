@@ -35,6 +35,7 @@ from app.services import (
     plan_credit,
     processing_events,
     progress,
+    token_quota,
 )
 from app.services.audio import probe_wav_bytes, probe_wav_file
 from app.services.phone_numbers import normalize_call_number
@@ -227,6 +228,14 @@ async def accept_upload(
                         plan_price if plan_price > 0 else entitlement.price_per_minute_toman
                     ),
                 )
+                # New AI work is refused once the plan's LLM tokens are used up; calls already
+                # accepted keep processing.
+                await token_quota.require_budget(session, tenant_id)
+            else:
+                # Not billed per minute (voicemail), but still needs a running subscription:
+                # an expired tenant must not keep consuming ASR and LLM work for free.
+                await entitlements.require_consumption(session, tenant_id)
+                await token_quota.require_budget(session, tenant_id)
 
             parties = await call_parties.resolve(
                 session,

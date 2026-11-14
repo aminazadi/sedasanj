@@ -90,6 +90,7 @@ from app.services import (
     meeting_progress,
     ratelimit,
     speaker_profiles,
+    token_quota,
 )
 from app.services.api_scopes import MOBILE_KEY_SCOPES
 from app.services.audio_lifecycle import has_audio_reference, retire_audio
@@ -444,6 +445,7 @@ async def create_session(
         tenant_id,
         price_per_minute_toman=plan_price if plan_price > 0 else entitlement.price_per_minute_toman,
     )
+    await token_quota.require_budget(session, tenant_id)
     balance = await billing.get_balance(session, tenant_id)
     if balance.seconds < settings.meeting_min_balance_seconds:
         raise ApiError(
@@ -1295,6 +1297,7 @@ async def reanalyze_meeting(
     """Build a new minutes version from the existing transcript; never re-billed."""
     assert principal.tenant_id is not None
     async with session_scope(principal.tenant_id) as session:
+        await token_quota.require_ai_work(session, principal.tenant_id)
         meeting = await _visible_meeting(session, meeting_id, principal, lock=True)
         if meeting.status != "complete":
             raise ApiError(

@@ -1,3 +1,4 @@
+import { billingErrorMessage } from "../lib/billingErrors.mjs";
 import { useEffect, useState } from "react";
 import { fmt } from "../api";
 import { startPayment, type GatewayCode } from "../lib/payment";
@@ -24,12 +25,14 @@ export default function OrderPaymentPanel({ orderId, amountToman, title = "پر�
   }, []);
 
   async function pay() {
+    if (busy) return;
     setBusy(true);
     onError(null);
     try {
       await startPayment(orderId, gateway);
     } catch (reason) {
-      onError((reason as Error).message);
+      const error = reason as { code?: string; message?: string };
+      onError(billingErrorMessage(error.code, error.message, "انتقال به درگاه انجام نشد؛ دوباره تلاش کنید."));
       setBusy(false);
     }
   }

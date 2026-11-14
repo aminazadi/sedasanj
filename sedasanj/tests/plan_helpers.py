@@ -36,6 +36,8 @@ CLEANUP_TABLES = (
     "credit_grants",
     "tenant_balance_cache",
     "subscriptions",
+    "ai_usage_events",
+    "token_grants",
     "users",
 )
 

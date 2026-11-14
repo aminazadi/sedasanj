@@ -277,7 +277,9 @@ async def post_streamed_chat(
     async with client.stream(
         "POST",
         url,
-        json={**body, "stream": True},
+        # include_usage asks OpenAI-compatible providers for a final usage chunk; without it the
+        # token ledger would record "unavailable" for every streamed call.
+        json={**body, "stream": True, "stream_options": {"include_usage": True}},
         headers={"Accept": "text/event-stream, application/json"},
     ) as response:
         if response.status_code != 200:

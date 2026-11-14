@@ -76,6 +76,7 @@ from app.services import (
     processing_events,
     progress,
     ratelimit,
+    token_quota,
 )
 from app.services.asr_revisions import activate_existing
 from app.services.audio_lifecycle import has_audio_reference, retire_audio
@@ -986,6 +987,7 @@ async def retranscribe_call(
     tenant_id = principal.tenant_id
     async with session_scope(tenant_id) as session:
         visible = await _load_call(session, call_id, tenant_id, principal)
+        await token_quota.require_ai_work(session, tenant_id)
         call = (
             await session.execute(
                 select(Call)
@@ -1255,7 +1257,9 @@ async def delete_call(
     audio_retired = False
     if audio is not None:
         still_referenced = await session.scalar(
-            select(has_audio_reference(tenant_id)).select_from(AudioObject).where(
+            select(has_audio_reference(tenant_id))
+            .select_from(AudioObject)
+            .where(
                 AudioObject.id == audio.id,
                 AudioObject.tenant_id == tenant_id,
             )
@@ -1333,6 +1337,7 @@ async def correct_call_transcript(
     tenant_id = principal.tenant_id
     async with session_scope(tenant_id) as session:
         call = await _load_call(session, call_id, tenant_id, principal, lock=True)
+        await token_quota.require_ai_work(session, tenant_id)
         transcript = (
             await session.execute(
                 select(Transcript).where(
@@ -1383,6 +1388,7 @@ async def reanalyze_call(call_id: UUID, request: Request, principal: OperatorDep
 
     async with session_scope(tenant_id) as session:
         call = await _load_call(session, call_id, tenant_id, principal, lock=True)
+        await token_quota.require_ai_work(session, tenant_id)
         transcript = (
             await session.execute(
                 select(Transcript).where(

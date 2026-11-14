@@ -29,9 +29,11 @@ async def test_create_tenant_uses_plan_price(
         assistant_monthly_messages=50,
         assistant_source_limit=8,
         assistant_model=None,
+        llm_monthly_tokens=None,
     )
     result = MagicMock()
     result.one_or_none.return_value = (SimpleNamespace(), plan_version)
+
     async def flush() -> None:
         for item in created:
             if isinstance(item, Tenant):
@@ -79,7 +81,7 @@ async def test_effective_price_uses_demo_rate_when_no_subscription() -> None:
         def one_or_none(self) -> None:
             return None
 
-        def scalars(self) -> "Result":
+        def scalars(self) -> Result:
             return self
 
         def all(self) -> list[object]:

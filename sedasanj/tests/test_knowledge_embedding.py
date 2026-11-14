@@ -152,3 +152,51 @@ async def test_chunk_embeddings_reuse_only_compatible_vectors_and_preserve_order
         ([6.0, 1.0], "local-embedding"),
         ([3.0, 1.0], "local-embedding"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_aiservice_embedding_reports_exact_tokens_to_the_usage_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "local-embedding",
+                "data": [{"embedding": [0.25, 0.75]}],
+                "usage": {"prompt_tokens": 7, "total_tokens": 7},
+            },
+        )
+
+    @asynccontextmanager
+    async def fake_session_scope(*args: object, **kwargs: object):
+        yield object()
+
+    async def fake_effective_models(session: object) -> dict[str, str]:
+        return {
+            "voicesanj_base_url": "https://aiservice.example",
+            "api_key": "secret",
+            "embedding_model": "local-embedding",
+            "embedding_route": "ninerouter",
+        }
+
+    async def fake_record(raw_usage: object, **kwargs: object) -> None:
+        recorded.append({"usage": raw_usage, **kwargs})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(knowledge, "session_scope", fake_session_scope)
+    monkeypatch.setattr(knowledge, "effective_models", fake_effective_models)
+    monkeypatch.setattr(knowledge, "record_usage", fake_record)
+    monkeypatch.setattr(
+        knowledge.httpx,
+        "AsyncClient",
+        lambda *a, **k: real_client(transport=httpx.MockTransport(handler)),
+    )
+
+    await knowledge.embed("sample")
+
+    assert len(recorded) == 1
+    assert recorded[0]["usage"] == {"prompt_tokens": 7, "total_tokens": 7}
+    assert recorded[0]["feature"] == "embedding" and recorded[0]["provider"] == "aiservice"

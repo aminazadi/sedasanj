@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -48,8 +49,9 @@ class _Session:
     def __init__(self, sink: list[Any]) -> None:
         self.sink = sink
 
-    async def execute(self, statement: Any) -> None:
+    async def execute(self, statement: Any) -> Any:
         self.sink.append(statement)
+        return SimpleNamespace(first=lambda: (1,))
 
 
 def _patch_scope(monkeypatch: pytest.MonkeyPatch, sink: list[Any]) -> None:
@@ -58,6 +60,17 @@ def _patch_scope(monkeypatch: pytest.MonkeyPatch, sink: list[Any]) -> None:
         yield _Session(sink)
 
     monkeypatch.setattr(ai_usage, "session_scope", scope)
+
+    async def no_lock(*_: Any, **__: Any) -> None:
+        return None
+
+    async def no_overflow(*_: Any, **__: Any) -> int:
+        return 0
+
+    from app.services import token_quota
+
+    monkeypatch.setattr(token_quota, "lock_tenant", no_lock)
+    monkeypatch.setattr(token_quota, "consume_overflow", no_overflow)
 
 
 async def test_record_usage_writes_one_row(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -19,6 +19,7 @@ def _exec(sql: str) -> None:
         if statement:
             bind.execute(text(statement))
 
+
 revision: str = "0001"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None

@@ -91,16 +91,24 @@ async def get_ledger(
         ).scalar_one()
     )
     rows = (
-        await session.execute(
-            select(LedgerEntry)
-            .where(LedgerEntry.tenant_id == principal.tenant_id)
-            .order_by(LedgerEntry.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await session.execute(
+                select(LedgerEntry)
+                .where(LedgerEntry.tenant_id == principal.tenant_id)
+                .order_by(LedgerEntry.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     items = [LedgerEntryOut.model_validate(row) for row in rows]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.get("/packages", response_model=list[PackageOut])

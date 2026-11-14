@@ -186,3 +186,27 @@ async def test_a_block_larger_than_the_balance_is_refused(funded) -> None:
                 session, tenant=tenant, meeting_id=meeting.id, block=0, duration_ms=10_000_000
             )
     assert short.value.code == "insufficient_credit"
+
+
+@requires_postgres
+async def test_sweep_settles_complete_meetings_whose_billing_failed(funded) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.services.maintenance import settle_stuck_meetings
+
+    meeting, tenant = await _new_meeting(funded)
+    async with db.session_scope(funded.tenant_id) as session:
+        await billing.reserve(
+            session, tenant=tenant, meeting_id=meeting.id, block=0, duration_ms=300_000
+        )
+        row = await session.get(Meeting, meeting.id)
+        row.status = "complete"
+        row.received_ms = 120_000
+        row.billed_seconds = None
+        row.updated_at = datetime.now(UTC) - timedelta(minutes=30)
+    assert await settle_stuck_meetings() >= 1
+    async with db.session_scope(funded.tenant_id) as session:
+        row = await session.get(Meeting, meeting.id)
+        assert row.billed_seconds == 120
+        assert await _balance(session, funded.tenant_id) == 3600 - 120
+    assert await settle_stuck_meetings() == 0  # charged once, never again

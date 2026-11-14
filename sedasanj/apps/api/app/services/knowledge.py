@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import operational_tenant_ids, session_scope
 from app.models import Call, CallInsight, Transcript
+from app.services.ai_usage import record_usage
 from app.services.apache_age import execute_cypher
 from app.services.ninerouter import NineRouterClient
 from app.services.platform import AISERVICE_ROUTES, effective_models, resolve_provider_settings
@@ -74,7 +75,18 @@ async def _embedding_requests() -> AsyncIterator[
                     f"{base_url}{routes['native']}", headers=headers, json=payload
                 )
             response.raise_for_status()
-            return _embedding_vectors(response.json(), len(contents))
+            body = response.json()
+            vectors = _embedding_vectors(body, len(contents))
+            # aiservice reports exact input tokens for embeddings; they count against the plan.
+            await record_usage(
+                body.get("usage") if isinstance(body, dict) else None,
+                provider="aiservice",
+                model=str(body.get("model") or model) if isinstance(body, dict) else model,
+                origin="aiservice",
+                feature="embedding",
+                output_optional=True,
+            )
+            return vectors
 
         yield model, 16, local_embeddings
 

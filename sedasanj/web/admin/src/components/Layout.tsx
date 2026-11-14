@@ -45,6 +45,7 @@ const NAVIGATION: NavigationGroup[] = [
       { to: "/subscriptions", label: "اشتراک‌ها", icon: icons.repeat },
       { to: "/commerce", label: "سفارش و پرداخت", icon: icons.card },
       { to: "/packages", label: "بسته‌های اعتبار", icon: icons.package },
+      { to: "/token-packages", label: "بسته‌های توکن", icon: icons.package },
       { to: "/sales", label: "فروش و سرنخ‌ها", icon: icons.chart },
       { to: "/installations", label: "نصب و استقرار", icon: icons.tool },
     ],

@@ -303,7 +303,7 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
     client = SimpleNamespace(
         complete=AsyncMock(
             side_effect=RuntimeError("provider failed") if fail else None,
-            return_value=f'# کیفیت پاسخ‌گویی به مشتریان\n\nگزارش {call}\n'
+            return_value=f"# کیفیت پاسخ‌گویی به مشتریان\n\nگزارش {call}\n"
             f'<call-sources>["{call}"]</call-sources>',
         ),
         close=AsyncMock(),
@@ -336,7 +336,9 @@ async def test_worker_persists_success_failure_and_does_not_regenerate_completed
             tool.await_args_list[0].args[2]["to_date"]
             == (now - timedelta(microseconds=1)).isoformat()
         )
-    assert await reports.generate_scheduled_report({}, payload) == ("not due" if fail else "skipped")
+    assert await reports.generate_scheduled_report({}, payload) == (
+        "not due" if fail else "skipped"
+    )
     assert client.complete.await_count == 1
 
 
@@ -396,8 +398,14 @@ async def test_scheduler_preserves_uncovered_window_and_skips_active_execution(m
 @pytest.mark.parametrize("attempt,delay", [(1, 5), (2, 15), (3, 45)])
 async def test_retry_backoff_is_bounded_and_reuses_the_same_run(monkeypatch, attempt, delay):
     run = SimpleNamespace(
-        id=uuid4(), tenant_id=uuid4(), usage_id=None, attempt_count=attempt,
-        max_retries=3, retry_base_minutes=5, status="running", started_at=datetime.now(UTC),
+        id=uuid4(),
+        tenant_id=uuid4(),
+        usage_id=None,
+        attempt_count=attempt,
+        max_retries=3,
+        retry_base_minutes=5,
+        status="running",
+        started_at=datetime.now(UTC),
     )
     session = SimpleNamespace()
     staged = AsyncMock()
@@ -412,8 +420,14 @@ async def test_retry_backoff_is_bounded_and_reuses_the_same_run(monkeypatch, att
 
 async def test_permanent_quota_failure_is_not_retried(monkeypatch):
     run = SimpleNamespace(
-        id=uuid4(), tenant_id=uuid4(), usage_id=None, attempt_count=1,
-        max_retries=3, retry_base_minutes=5, status="running", started_at=datetime.now(UTC),
+        id=uuid4(),
+        tenant_id=uuid4(),
+        usage_id=None,
+        attempt_count=1,
+        max_retries=3,
+        retry_base_minutes=5,
+        status="running",
+        started_at=datetime.now(UTC),
     )
     staged = AsyncMock()
     monkeypatch.setattr(reports.outbox, "stage", staged)
@@ -452,9 +466,12 @@ async def test_failure_from_old_attempt_cannot_replace_new_attempt(monkeypatch):
     staged = AsyncMock()
     monkeypatch.setattr(reports, "session_scope", scope)
     monkeypatch.setattr(reports.outbox, "stage", staged)
-    assert await reports.generate_scheduled_report(
-        {}, {"tenant_id": str(tenant_id), "run_id": str(run_id)}
-    ) == "superseded"
+    assert (
+        await reports.generate_scheduled_report(
+            {}, {"tenant_id": str(tenant_id), "run_id": str(run_id)}
+        )
+        == "superseded"
+    )
     assert run.status == "running"
     assert run.attempt_count == 2
     staged.assert_not_awaited()

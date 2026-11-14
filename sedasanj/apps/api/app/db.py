@@ -119,9 +119,7 @@ async def _tenant_engine(tenant_id: UUID) -> AsyncEngine | None:
         try:
             async with engine.connect() as connection:
                 identity = (
-                    await connection.execute(
-                        text("SELECT tenant_id FROM tenant_identity LIMIT 1")
-                    )
+                    await connection.execute(text("SELECT tenant_id FROM tenant_identity LIMIT 1"))
                 ).scalar_one_or_none()
                 if str(identity) != str(tenant_id):
                     raise RuntimeError("tenant database identity mismatch")
@@ -161,8 +159,7 @@ async def routable_tenant_ids() -> list[UUID]:
     async with get_sessionmaker()() as session:
         rows = await session.execute(
             text(
-                "SELECT id FROM tenants WHERE status IN ('active', 'suspended') "
-                "ORDER BY created_at"
+                "SELECT id FROM tenants WHERE status IN ('active', 'suspended') ORDER BY created_at"
             )
         )
         return [UUID(str(value)) for value in rows.scalars()]

@@ -39,9 +39,13 @@ MAX_STALE_RESUBMITS = 2
 
 
 def _compress_audio(source: Path, target: Path) -> None:
-    with source.open("rb") as audio, target.open("wb") as output, gzip.GzipFile(
-        filename="", fileobj=output, mode="wb", compresslevel=6, mtime=0
-    ) as zip_audio:
+    with (
+        source.open("rb") as audio,
+        target.open("wb") as output,
+        gzip.GzipFile(
+            filename="", fileobj=output, mode="wb", compresslevel=6, mtime=0
+        ) as zip_audio,
+    ):
         shutil.copyfileobj(audio, zip_audio)
 
 

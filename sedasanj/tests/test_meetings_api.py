@@ -438,6 +438,8 @@ async def test_session_needs_minimum_credit(world, monkeypatch: pytest.MonkeyPat
         assert refused.status_code == 402
         assert refused.json()["error"]["code"] == "insufficient_credit"
     finally:
+        monkeypatch.delenv("MEETING_MIN_BALANCE_SECONDS", raising=False)
+        get_settings.cache_clear()  # later tests must not inherit the 600 s minimum
         await drop_workspace(poor)
 
 
@@ -822,7 +824,9 @@ async def test_audio_assembly_is_verified_and_retry_safe(world, monkeypatch) -> 
         await client.post(
             f"/v1/meetings/{meeting_id}/finish",
             json={
-                "ended_at": datetime.now(UTC).isoformat(), "total_chunks": 2, "duration_ms": 3000,
+                "ended_at": datetime.now(UTC).isoformat(),
+                "total_chunks": 2,
+                "duration_ms": 3000,
             },
             headers=headers,
         )
@@ -869,9 +873,7 @@ async def test_audio_assembly_is_verified_and_retry_safe(world, monkeypatch) -> 
     assert usage.json()["audio_bytes"] == len(expected)
     assert usage.json()["pending_audio_cleanup_bytes"] == 0
     assert "database_bytes" not in usage.json()
-    assert (
-        await client.get("/v1/account/storage", headers=workspace.operator)
-    ).status_code == 403
+    assert (await client.get("/v1/account/storage", headers=workspace.operator)).status_code == 403
     await storage.put(f"ml-models/test/{uuid4()}.onnx", b"platform model")
     staff_usage = await storage_usage(workspace.tenant_id, staff=True, scan=True)
     assert staff_usage.database_bytes is None

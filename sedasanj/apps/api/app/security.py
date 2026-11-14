@@ -57,8 +57,7 @@ def generate_totp_secret() -> str:
 def totp_uri(secret: str, email: str) -> str:
     label = quote("SedaSanj:" + email, safe="")
     return (
-        f"otpauth://totp/{label}?secret={secret}&issuer=SedaSanj"
-        "&algorithm=SHA1&digits=6&period=30"
+        f"otpauth://totp/{label}?secret={secret}&issuer=SedaSanj&algorithm=SHA1&digits=6&period=30"
     )
 
 

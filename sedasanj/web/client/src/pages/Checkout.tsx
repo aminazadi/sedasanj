@@ -93,7 +93,7 @@ export default function Checkout() {
     return (
       <div className="card">
         <p className="commerce-error">{error || "پلن انتخاب‌شده پیدا نشد یا برای خرید در دسترس نیست."}</p>
-        <Link className="btn" to="/#pricing">انتخاب پلن</Link>
+        <Link className="btn" to="/plans">انتخاب پلن</Link>
       </div>
     );
   }

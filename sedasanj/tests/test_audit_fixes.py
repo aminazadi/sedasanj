@@ -668,3 +668,13 @@ async def test_llama_client_sends_per_run_model() -> None:
         await client.close()
 
     assert seen["model"] == "persisted-model"
+
+
+@pytest.fixture(autouse=True)
+def _allow_ai_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests use fake sessions; the subscription/token gate has its own tests."""
+
+    async def allow(*args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(calls.token_quota, "require_ai_work", allow)

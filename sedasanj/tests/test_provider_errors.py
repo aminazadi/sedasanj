@@ -137,8 +137,7 @@ def test_asr_model_contract_error_preserves_safe_provider_detail() -> None:
 def test_llm_extra_field_error_is_terminal_and_specific() -> None:
     error = classify_http(
         422,
-        '{"detail":[{"msg":"Extra inputs are not permitted",'
-        '"loc":["body","response_format"]}]}',
+        '{"detail":[{"msg":"Extra inputs are not permitted","loc":["body","response_format"]}]}',
         kind="llm",
     )
 

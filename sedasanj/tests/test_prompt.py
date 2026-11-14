@@ -54,11 +54,16 @@ def test_v3_prompt_example_matches_extraction_contract() -> None:
     example = json.loads("{" + text.split("\n{\n", 1)[1].split("\n}\n", 1)[0] + "}")
     result = ExtractionResult.model_validate(example)
     assert set(example) == {
-        "summary", "keywords", "sentiment", "intent", "ner", "action_items", "topics", "sales"
+        "summary",
+        "keywords",
+        "sentiment",
+        "intent",
+        "ner",
+        "action_items",
+        "topics",
+        "sales",
     }
-    assert set(example["ner"]) == {
-        "persons", "dates", "amounts", "phone_numbers", "organizations"
-    }
+    assert set(example["ner"]) == {"persons", "dates", "amounts", "phone_numbers", "organizations"}
     assert set(example["sentiment"]) == {"overall", "score", "phrases", "caller", "agent"}
     assert set(example["sentiment"]["caller"]) == {"start", "end", "overall"}
     assert set(example["sentiment"]["agent"]) == {"start", "end", "overall"}

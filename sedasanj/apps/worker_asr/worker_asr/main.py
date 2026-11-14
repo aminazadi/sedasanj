@@ -89,14 +89,9 @@ def consolidate_segments(
             merged.append((channel, current))
             continue
         previous_channel, previous = merged[-1]
-        if (
-            previous_channel == channel
-            and current.t_start_ms <= previous.t_end_ms + merge_gap_ms
-        ):
+        if previous_channel == channel and current.t_start_ms <= previous.t_end_ms + merge_gap_ms:
             overlaps = current.t_start_ms <= previous.t_end_ms
-            if overlaps and (
-                current.text == previous.text or previous.text.endswith(current.text)
-            ):
+            if overlaps and (current.text == previous.text or previous.text.endswith(current.text)):
                 combined_text = previous.text
             elif overlaps and current.text.startswith(previous.text):
                 combined_text = current.text
@@ -136,9 +131,7 @@ def consolidate_segments(
     return merged
 
 
-def build_full_text(
-    rows: list[tuple[int, AsrSegment]], *, direction: str | None, mode: str
-) -> str:
+def build_full_text(rows: list[tuple[int, AsrSegment]], *, direction: str | None, mode: str) -> str:
     return render_turns(
         ((channel, segment.t_start_ms, segment.text) for channel, segment in rows), direction, mode
     )
@@ -196,9 +189,7 @@ async def _load_or_create_analysis_run(
         await analysis_runs.ensure_snapshot(session, run)
         run.status = "queued"
         return run
-    run = await analysis_runs.create(
-        session, tenant_id=tenant_id, call_id=call_id, status="queued"
-    )
+    run = await analysis_runs.create(session, tenant_id=tenant_id, call_id=call_id, status="queued")
     session.add(run)
     return run
 
@@ -507,6 +498,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 async for chunk in get_storage().iter_chunks(object_key):
                     audio_file.write(chunk)
             probe = await probe_wav_file(original)
+
             async def mark_audio_ready() -> None:
                 async with session_scope(tenant_id) as session:
                     await processing_events.record(
@@ -616,11 +608,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 session, tenant_id=tenant_id, call_id=call_id, kind="asr", status="succeeded"
             )
             next_kind = (
-                "emotion"
-                if emotion_enabled
-                else "correction"
-                if correction_enabled
-                else "llm"
+                "emotion" if emotion_enabled else "correction" if correction_enabled else "llm"
             )
             if next_kind == "correction":
                 assert call is not None

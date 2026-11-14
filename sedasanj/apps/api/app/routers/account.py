@@ -25,7 +25,7 @@ from app.models import (
     WebhookDelivery,
 )
 from app.schemas import TenantOut, UserOut
-from app.services import audit
+from app.services import audit, billing
 from app.services.audio_lifecycle import has_audio_reference, retire_audio
 from app.services.storage_inventory import StorageUsage, storage_usage
 

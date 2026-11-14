@@ -421,7 +421,10 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                         call.progress_detail = str(finished_progress["progress_detail"])
                     else:
                         billed = await billing.settle(
-                            session, tenant_id=tenant_id, call_id=call_id, actual_duration_ms=duration_ms
+                            session,
+                            tenant_id=tenant_id,
+                            call_id=call_id,
+                            actual_duration_ms=duration_ms,
                         )
                         call.billed_seconds = billed
                         call.status = "billed"
@@ -597,6 +600,7 @@ async def _enqueue_coaching(tenant_id: UUID, call_id: UUID, run_id: UUID) -> Non
 
 
 async def coach_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str:
+    log_context(tenant_id=str(payload["tenant_id"]), call_id=str(payload["call_id"]))
     return await coach_call(
         UUID(str(payload["tenant_id"])),
         UUID(str(payload["call_id"])),
@@ -606,6 +610,7 @@ async def coach_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str
 
 
 async def score_operator_call(_: dict[str, Any], payload: dict[str, Any]) -> str:
+    log_context(tenant_id=str(payload["tenant_id"]), call_id=str(payload["call_id"]))
     result = await score_call(
         UUID(str(payload["tenant_id"])),
         UUID(str(payload["call_id"])),
@@ -647,6 +652,7 @@ async def run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> st
 async def _run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
     run_id = UUID(payload["run_id"])
     tenant_id = UUID(payload["tenant_id"])
+    log_context(tenant_id=str(tenant_id))
     terminal_completion: dict[str, Any] | None = None
     async with session_scope(tenant_id) as session:
         run = await session.scalar(
@@ -659,12 +665,16 @@ async def _run_assistant_chat(ctx: dict[str, Any], payload: dict[str, Any]) -> s
             assistant_message = await session.get(ChatMessage, run.assistant_message_id)
             conversation = await session.get(ChatConversation, run.conversation_id)
             tool_runs = (
-                await session.execute(
-                    select(AssistantToolRun).where(
-                        AssistantToolRun.user_message_id == run.user_message_id
+                (
+                    await session.execute(
+                        select(AssistantToolRun).where(
+                            AssistantToolRun.user_message_id == run.user_message_id
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             if assistant_message is not None:
                 message = ChatMessageOut.model_validate(assistant_message).model_copy(
                     update={"tool_runs": [_tool_run_payload(item) for item in tool_runs]}
@@ -812,6 +822,7 @@ async def generate_assistant_title(ctx: dict[str, Any], payload: dict[str, str])
         UUID(payload[field]) for field in ("tenant_id", "owner_id", "conversation_id")
     )
     version = datetime.fromisoformat(payload["version"])
+    log_context(tenant_id=str(tenant_id))
     eligible = (
         ChatConversation.id == conversation_id,
         ChatConversation.tenant_id == tenant_id,

@@ -19,5 +19,7 @@ async def run_tool(name: str, request: Request) -> dict[str, Any]:
     try:
         payload = tool_gateway.GatewayRequest.model_validate_json(body)
     except ValidationError:
-        raise ApiError("invalid_request", "درخواست ابزار ناقص است؛ پیام را دوباره بفرستید") from None
+        raise ApiError(
+            "invalid_request", "درخواست ابزار ناقص است؛ پیام را دوباره بفرستید"
+        ) from None
     return await tool_gateway.handle(name, payload)

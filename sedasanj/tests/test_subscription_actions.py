@@ -104,3 +104,43 @@ async def test_customer_can_cancel_at_period_end_and_resume(scratch: None) -> No
             assert resumed == {"cancel_at_period_end": False}
     finally:
         await drop_org(org)
+
+
+async def test_stop_now_removes_unused_plan_minutes_but_keeps_prepaid(scratch: None) -> None:
+    from app import db
+    from app.models import CreditGrant, Subscription, TenantBalanceCache
+    from app.services import plan_credit
+
+    org = await make_org("bronze")
+    try:
+        async with db.session_scope(staff=True) as session:
+            sub = await session.get(Subscription, org.subscription_id)
+            assert sub is not None
+            await plan_credit.ensure_period_credit(
+                session,
+                org.tenant_id,
+                subscription_id=sub.id,
+                subscription_start=sub.period_start,
+                subscription_end=sub.period_end,
+                minutes=10,
+                now=datetime.now(UTC),
+            )
+            session.add(
+                CreditGrant(
+                    tenant_id=org.tenant_id,
+                    source="prepaid",
+                    source_id=None,
+                    total_seconds=300,
+                    remaining_seconds=300,
+                    expires_at=None,
+                )
+            )
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None
+            cache.seconds += 300
+        await _act(org.subscription_id, "stop_now")
+        async with db.session_scope(staff=True) as session:
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None and cache.seconds == 300
+    finally:
+        await drop_org(org)

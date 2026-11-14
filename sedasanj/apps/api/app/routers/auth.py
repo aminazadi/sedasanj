@@ -369,17 +369,20 @@ async def list_api_keys(
     )
     if not include_revoked:
         base = base.where(ApiKey.revoked_at.is_(None))
-    total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
+    total = int(
+        (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    )
     rows = (
-        await session.execute(
-            base
-            .order_by(ApiKey.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-    ).scalars().all()
+        (await session.execute(base.order_by(ApiKey.created_at.desc()).offset(offset).limit(limit)))
+        .scalars()
+        .all()
+    )
     items = [_api_key_out(row) for row in rows]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.patch("/api-keys/{key_id}", response_model=ApiKeyOut)
@@ -653,14 +656,20 @@ async def list_users(
     limit: Annotated[int, Query(ge=1, le=200)] = 25,
 ) -> dict[str, Any]:
     base = select(User).where(User.tenant_id == principal.tenant_id)
-    total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one())
+    total = int(
+        (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    )
     rows = (
-        await session.execute(
-            base.order_by(User.created_at).offset(offset).limit(limit)
-        )
-    ).scalars().all()
+        (await session.execute(base.order_by(User.created_at).offset(offset).limit(limit)))
+        .scalars()
+        .all()
+    )
     items = [UserOut.model_validate(row) for row in rows]
-    return {"items": items, "total": total, "next_cursor": str(offset + limit) if offset + len(items) < total else None}
+    return {
+        "items": items,
+        "total": total,
+        "next_cursor": str(offset + limit) if offset + len(items) < total else None,
+    }
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)

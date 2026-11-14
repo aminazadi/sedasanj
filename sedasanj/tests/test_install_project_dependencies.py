@@ -36,12 +36,8 @@ def test_install_retries_each_index_without_extra_indexes(monkeypatch) -> None:
     installer._install(["fastapi>=0.115.0"], allow_source=False)
 
     assert len(calls) == 2
-    assert calls[0][0][calls[0][0].index("--index-url") + 1] == (
-        "https://primary.example/simple/"
-    )
-    assert calls[1][0][calls[1][0].index("--index-url") + 1] == (
-        "https://fallback.example/simple/"
-    )
+    assert calls[0][0][calls[0][0].index("--index-url") + 1] == ("https://primary.example/simple/")
+    assert calls[1][0][calls[1][0].index("--index-url") + 1] == ("https://fallback.example/simple/")
     assert all("PIP_EXTRA_INDEX_URL" not in environment for _, environment in calls)
     assert all("--only-binary=:all:" in command for command, _ in calls)
 

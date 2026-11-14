@@ -31,13 +31,21 @@ def upgrade() -> None:
 
     op.execute("ALTER TABLE staff_users ADD COLUMN disabled_at timestamptz")
     op.execute("ALTER TABLE plan_versions ALTER COLUMN published_at DROP NOT NULL")
-    op.execute("ALTER TABLE plan_versions ADD COLUMN status varchar(16) NOT NULL DEFAULT 'published'")
+    op.execute(
+        "ALTER TABLE plan_versions ADD COLUMN status varchar(16) NOT NULL DEFAULT 'published'"
+    )
     op.execute("ALTER TABLE plan_versions ADD COLUMN effective_at timestamptz")
     op.execute("ALTER TABLE plan_versions ADD COLUMN retired_at timestamptz")
-    op.execute("ALTER TABLE plan_versions ADD COLUMN created_by uuid REFERENCES staff_users(id) ON DELETE SET NULL")
+    op.execute(
+        "ALTER TABLE plan_versions ADD COLUMN created_by uuid REFERENCES staff_users(id) ON DELETE SET NULL"
+    )
     op.execute("UPDATE plan_versions SET status='published', effective_at=published_at")
-    op.execute("ALTER TABLE plan_versions ADD CONSTRAINT plan_versions_status_check CHECK (status IN ('draft','published','retired'))")
-    op.execute("CREATE UNIQUE INDEX subscriptions_one_live_per_tenant ON subscriptions(tenant_id) WHERE status IN ('active','trialing')")
+    op.execute(
+        "ALTER TABLE plan_versions ADD CONSTRAINT plan_versions_status_check CHECK (status IN ('draft','published','retired'))"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX subscriptions_one_live_per_tenant ON subscriptions(tenant_id) WHERE status IN ('active','trialing')"
+    )
 
     op.execute(
         """
@@ -58,10 +66,18 @@ def upgrade() -> None:
 
     op.execute("ALTER TABLE contact_leads ADD COLUMN internal_notes text")
     op.execute("ALTER TABLE contact_leads ADD COLUMN follow_up_at timestamptz")
-    op.execute("ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('draft','pending_payment','paid','canceled','partially_refunded','refunded'))")
-    op.execute("ALTER TABLE payment_attempts ADD CONSTRAINT payment_attempts_status_check CHECK (status IN ('redirected','canceled','pending_verification','failed','verified'))")
-    op.execute("ALTER TABLE subscription_changes ADD CONSTRAINT subscription_changes_status_check CHECK (status IN ('scheduled','pending_payment','applied','canceled','failed'))")
-    op.execute("ALTER TABLE installation_requests ADD CONSTRAINT installation_requests_status_check CHECK (status IN ('requested','paid','reviewing','scheduled','in_progress','completed','canceled'))")
+    op.execute(
+        "ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('draft','pending_payment','paid','canceled','partially_refunded','refunded'))"
+    )
+    op.execute(
+        "ALTER TABLE payment_attempts ADD CONSTRAINT payment_attempts_status_check CHECK (status IN ('redirected','canceled','pending_verification','failed','verified'))"
+    )
+    op.execute(
+        "ALTER TABLE subscription_changes ADD CONSTRAINT subscription_changes_status_check CHECK (status IN ('scheduled','pending_payment','applied','canceled','failed'))"
+    )
+    op.execute(
+        "ALTER TABLE installation_requests ADD CONSTRAINT installation_requests_status_check CHECK (status IN ('requested','paid','reviewing','scheduled','in_progress','completed','canceled'))"
+    )
     op.execute(
         """
         CREATE TABLE refunds (
@@ -98,9 +114,15 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS refunds")
-    op.execute("ALTER TABLE installation_requests DROP CONSTRAINT IF EXISTS installation_requests_status_check")
-    op.execute("ALTER TABLE subscription_changes DROP CONSTRAINT IF EXISTS subscription_changes_status_check")
-    op.execute("ALTER TABLE payment_attempts DROP CONSTRAINT IF EXISTS payment_attempts_status_check")
+    op.execute(
+        "ALTER TABLE installation_requests DROP CONSTRAINT IF EXISTS installation_requests_status_check"
+    )
+    op.execute(
+        "ALTER TABLE subscription_changes DROP CONSTRAINT IF EXISTS subscription_changes_status_check"
+    )
+    op.execute(
+        "ALTER TABLE payment_attempts DROP CONSTRAINT IF EXISTS payment_attempts_status_check"
+    )
     op.execute("ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check")
     op.execute("ALTER TABLE contact_leads DROP COLUMN IF EXISTS follow_up_at")
     op.execute("ALTER TABLE contact_leads DROP COLUMN IF EXISTS internal_notes")

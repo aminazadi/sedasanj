@@ -109,9 +109,7 @@ async def test_whisper_engine_prefers_admin_asr_endpoint_and_key(wav_file) -> No
 
 async def test_whisper_engine_sends_ninerouter_asr_prompt(wav_file) -> None:
     path = wav_file(seconds=1.0)
-    engine = WhisperEngine(
-        _openai_settings(ninerouter_asr_prompt="واژگان تخصصی را حفظ کن")
-    )
+    engine = WhisperEngine(_openai_settings(ninerouter_asr_prompt="واژگان تخصصی را حفظ کن"))
 
     class Response:
         status_code = 200

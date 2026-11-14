@@ -128,11 +128,12 @@ def test_tool_sources_respect_the_plan_limit() -> None:
 async def test_demo_signup_without_trial_days_is_a_config_error(
     scratch: None, trial_days: int | None
 ) -> None:
+    from plan_helpers import version_id
+
     from app import db
     from app.errors import ApiError
     from app.models import PlanVersion
     from app.services import signup
-    from plan_helpers import version_id
 
     async with db.session_scope(staff=True) as session:
         vid = await version_id(session, "demo")
@@ -267,5 +268,90 @@ async def test_refunded_upgrade_credit_is_taken_back(scratch: None) -> None:
             cache = await session.get(TenantBalanceCache, org.tenant_id)
             assert (taken, again) == (granted, 0)
             assert cache is not None and cache.seconds == 0
+    finally:
+        await drop_org(org)
+
+
+async def test_release_held_calls_returns_credit_before_a_call_is_deleted(scratch: None) -> None:
+    from app import db
+    from app.models import Subscription, Tenant, TenantBalanceCache
+    from app.services import billing, plan_credit
+
+    org = await make_org("bronze")
+    try:
+        async with db.session_scope(staff=True) as session:
+            sub = await session.get(Subscription, org.subscription_id)
+            tenant = await session.get(Tenant, org.tenant_id)
+            assert sub is not None and tenant is not None
+            await plan_credit.ensure_period_credit(
+                session,
+                org.tenant_id,
+                subscription_id=sub.id,
+                subscription_start=sub.period_start,
+                subscription_end=sub.period_end,
+                minutes=10,
+                now=datetime.now(UTC),
+            )
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None
+            before = cache.seconds
+            call = await _call(session, org.tenant_id, 120)
+            await billing.reserve(session, tenant=tenant, call_id=call.id, duration_ms=120_000)
+            await session.refresh(cache)
+            assert cache.seconds == before - 120
+            released = await billing.release_held_calls(
+                session, tenant_id=org.tenant_id, call_id=call.id
+            )
+            await session.refresh(cache)
+            assert released == 1 and cache.seconds == before
+            # Nothing is held any more: a second pass is a no-op.
+            assert await billing.release_held_calls(session, tenant_id=org.tenant_id) == 0
+    finally:
+        await drop_org(org)
+
+
+async def test_abandoned_reserved_call_gets_its_credit_back(scratch: None) -> None:
+    from sqlalchemy import update
+
+    from app import db
+    from app.models import Call, Subscription, Tenant, TenantBalanceCache
+    from app.services import billing, maintenance, plan_credit
+
+    org = await make_org("bronze")
+    try:
+        async with db.session_scope(staff=True) as session:
+            sub = await session.get(Subscription, org.subscription_id)
+            tenant = await session.get(Tenant, org.tenant_id)
+            assert sub is not None and tenant is not None
+            await plan_credit.ensure_period_credit(
+                session,
+                org.tenant_id,
+                subscription_id=sub.id,
+                subscription_start=sub.period_start,
+                subscription_end=sub.period_end,
+                minutes=10,
+                now=datetime.now(UTC),
+            )
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None
+            before = cache.seconds
+            call = await _call(session, org.tenant_id, 120)
+            await billing.reserve(session, tenant=tenant, call_id=call.id, duration_ms=120_000)
+            await session.execute(
+                update(Call)
+                .where(Call.id == call.id)
+                .values(
+                    status="reserved",
+                    audio_id=None,
+                    created_at=datetime.now(UTC) - timedelta(hours=7),
+                )
+            )
+            call_id = call.id
+        assert await maintenance.release_abandoned_reservations() >= 1
+        async with db.session_scope(staff=True) as session:
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            row = await session.get(Call, call_id)
+            assert cache is not None and cache.seconds == before
+            assert row is not None and row.status == "failed_terminal"
     finally:
         await drop_org(org)

@@ -50,6 +50,9 @@ export default function SubscriptionPanel({ subscription, onChanged, onError }: 
   const status = subscription.grace_ends_at ? "grace" : subscription.status;
   const live = ["active", "trialing", "grace"].includes(status);
   const change = subscription.scheduled_change;
+  // Expired, canceled and in-grace organizations must always have a way back to a paid plan.
+  const canRenew = ["grace", "expired", "canceled"].includes(status) && !!subscription.plan_code;
+  const awaitingPayment = status === "pending_payment";
 
   async function confirm() {
     if (!pending) return;
@@ -77,13 +80,30 @@ export default function SubscriptionPanel({ subscription, onChanged, onError }: 
           <h2 className="font-bold">اشتراک سازمان{subscription.plan_name ? ` · ${subscription.plan_name}` : ""}</h2>
           <p className="section-hint">
             وضعیت: {STATUS_LABELS[status] ?? status} · ظرفیت {fmt.int(subscription.max_operators)} اپراتور ·{" "}
-            {fmt.int(subscription.plan_monthly_minutes)} دقیقه رایگان در ماه · پیام دستیار:{" "}
+            {fmt.int(subscription.plan_monthly_minutes)} دقیقه در ماه (مصرف پردازش گفتار ASR از همین دقیقه‌ها، به ثانیه صوت، کم می‌شود) · پیام دستیار:{" "}
             {fmt.int(subscription.assistant_messages_used)} از {fmt.int(subscription.assistant_monthly_messages)} (باقی‌مانده{" "}
             {fmt.int(subscription.assistant_messages_remaining)})
           </p>
+          <p className="section-hint" data-testid="llm-token-meter">
+            توکن هوش مصنوعی این ماه:{" "}
+            {subscription.llm_tokens_unlimited
+              ? `نامحدود (مصرف ${fmt.int(subscription.llm_tokens_used ?? 0)})`
+              : `${fmt.int(subscription.llm_tokens_used ?? 0)} از ${fmt.int(subscription.llm_tokens_limit ?? 0)} (باقی‌مانده ${fmt.int(subscription.llm_tokens_remaining ?? 0)}${
+                  subscription.llm_tokens_topup_remaining ? `، شامل ${fmt.int(subscription.llm_tokens_topup_remaining)} توکن بسته` : ""
+                })`}
+          </p>
+          {!subscription.llm_tokens_unlimited && (subscription.llm_tokens_remaining ?? 1) <= 0 ? (
+            <p className="commerce-error">توکن هوش مصنوعی تمام شده است؛ بسته توکن بخرید یا پلن را ارتقا دهید.</p>
+          ) : null}
           {subscription.period_end ? <p className="field-hint">سررسید: {fmt.date(subscription.period_end)}</p> : null}
           {subscription.grace_ends_at ? (
             <p className="commerce-error">دوره اشتراک تمام شده است؛ تا {fmt.date(subscription.grace_ends_at)} فرصت دارید تمدید کنید.</p>
+          ) : null}
+          {awaitingPayment ? (
+            <p className="commerce-error">پرداخت اشتراک کامل نشده است؛ در جدول «سفارش‌ها و پرداخت‌ها» پایین همین صفحه روی «پرداخت» بزنید.</p>
+          ) : null}
+          {["expired", "canceled"].includes(status) ? (
+            <p className="commerce-error">اشتراک فعال نیست و پردازش جدید متوقف است؛ برای ادامه اشتراک را دوباره بخرید.</p>
           ) : null}
           {subscription.cancel_at_period_end ? (
             <p className="field-hint">لغو شده است و پس از سررسید تمدید نمی‌شود.</p>
@@ -97,7 +117,12 @@ export default function SubscriptionPanel({ subscription, onChanged, onError }: 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {live && subscription.status === "active" ? <Link className="btn" to="/billing/change-plan">تغییر پلن</Link> : null}
-          {subscription.status === "trialing" ? <Link className="btn" to="/#pricing">خرید پلن</Link> : null}
+          {canRenew ? (
+            <Link className="btn" to={`/checkout?plan=${encodeURIComponent(subscription.plan_code ?? "")}`}>
+              {status === "grace" ? "تمدید اشتراک" : "خرید دوباره اشتراک"}
+            </Link>
+          ) : null}
+          {subscription.status === "trialing" ? <Link className="btn" to="/plans">خرید پلن</Link> : null}
           {change ? <button className="btn-ghost" onClick={() => setPending("cancel_change")}>لغو تغییر پلن</button> : null}
           {live && !subscription.cancel_at_period_end && subscription.status === "active" ? (
             <button className="btn-ghost" onClick={() => setPending("cancel")}>لغو در پایان دوره</button>

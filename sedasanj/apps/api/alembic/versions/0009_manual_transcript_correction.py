@@ -13,10 +13,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE alembic_version "
-        "ALTER COLUMN version_num TYPE varchar(255)"
-    )
+    op.execute("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE varchar(255)")
     op.execute("ALTER TABLE transcripts ADD COLUMN corrected_text text")
     op.execute("ALTER TABLE transcripts ADD COLUMN corrected_at timestamptz")
 

@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.db import session_scope
+from app.logging import log_context
 from app.metrics import llm_provider_wait_seconds, llm_submit_seconds
 from app.models import AnalysisRun, AnalysisStep, Call, CallInsight, Job
 from app.schemas import ExtractionResult
@@ -172,6 +173,7 @@ async def submit_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> 
     del ctx
     step_id = UUID(str(payload["step_id"]))
     tenant_id = UUID(str(payload["tenant_id"]))
+    log_context(tenant_id=str(tenant_id))  # token usage is recorded per tenant
     async with session_scope(tenant_id) as session:
         step = (
             await session.execute(
@@ -241,6 +243,7 @@ async def poll_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> st
     del ctx
     step_id = UUID(str(payload["step_id"]))
     tenant_id = UUID(str(payload["tenant_id"]))
+    log_context(tenant_id=str(tenant_id))  # token usage is recorded per tenant
     async with session_scope(tenant_id) as session:
         step = await session.get(AnalysisStep, step_id)
         if step is None:

@@ -239,11 +239,7 @@ def require_scope(scope: str) -> Callable[..., Awaitable[Principal]]:
 
 async def _enforce_mobile(request: Request, principal: Principal, scope: str) -> Principal:
     """Personal mobile-token guard: right scope, a `mobile` key and the user it belongs to."""
-    if (
-        scope not in principal.scopes
-        or principal.key_kind != "mobile"
-        or principal.user_id is None
-    ):
+    if scope not in principal.scopes or principal.key_kind != "mobile" or principal.user_id is None:
         raise await _deny_scope(request, principal, scope)
     # One budget per device token, separate from integration-key traffic.
     await ratelimit.enforce(
@@ -269,9 +265,11 @@ async def current_meeting_actor(
     x_api_key: Annotated[str | None, Header()] = None,
 ) -> Principal:
     """Panel JWT or the app's personal token; used by routes both clients read."""
-    bearer = authorization.split(" ", 1)[1].strip() if (
-        authorization and authorization.lower().startswith("bearer ")
-    ) else ""
+    bearer = (
+        authorization.split(" ", 1)[1].strip()
+        if (authorization and authorization.lower().startswith("bearer "))
+        else ""
+    )
     if x_api_key or bearer.startswith(API_KEY_PREFIX):
         key_principal = await current_api_key(request, authorization, x_api_key)
         return await _enforce_mobile(request, key_principal, "meetings:write")

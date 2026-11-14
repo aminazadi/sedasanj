@@ -4,11 +4,51 @@
 
 - Added restoring an organization database from the admin panel: pick a verified backup, stage and verify it in a scratch database, then confirm to swap it in with automatic swap-back on failure (migration 0139, `TENANT_RESTORE_*` codes, password and two-factor confirmation).
 
+- Completed the plan/payment/usage hardening: retranscribe, transcript correction, call and meeting reanalysis and coach regeneration now require an active subscription and tokens; a sweep settles finished meetings whose billing failed and frees holds of dead meetings; provider usage is recorded even when the answer is unusable; the assistant quota lock is held only for the check; negative credit balances are forbidden by a database check; purchasable LLM token packs (customer purchase, taxed order, refund that takes back only unused tokens, admin package page and manual token grants with a per-organization token meter); a billing banner for expired, grace, low-credit and no-token states; tax-inclusive package prices in the credit checkout; a plan chooser for trial and expired organizations; and the change-plan page no longer keeps a stale order (migrations 0136–0138, 0140; help articles `payment-failure-codes`, `token-packs`).
+
+- Fixed customer and admin panel gaps: expired, canceled and grace organizations now get a renew/buy action and a plain next step, pending-payment organizations are pointed at the order to pay, the payment result page ends with a clear message when the bank confirmation stalls, the pay button cannot be double-submitted and shows mapped Persian errors, the admin organization page shows a load error instead of spinning forever, and the dashboard monthly revenue is net of refunds completed that month.
+
+- Added event SMS notifications through admin-managed SMS.ir service templates: welcome after signup, payment success, renewal due, trial ending, grace and expiry, plus 80% / 95% / exhausted alerts for plan minutes and LLM tokens, each sent once per quota window with an idempotent delivery log, a timeout never retried, and an admin tab "قالب‌های پیامک" with test-send and delivery list (migrations 0133, 0135; error code `sms_provider_error`; help article `sms-notifications`). Not run against the real SMS.ir service.
+
 - Fixed restored tenant databases failing every Apache AGE graph query (`graph with oid N does not exist`) by re-linking graph ids after pg_restore, in the staging restore tool and in `restore.sh` / `restore_tenant.sh`; restore now also verifies the graph.
 
 - Added on-demand tenant database backups (admin button, worker picks requested backups first) and stable `TENANT_BACKUP_*` error codes with the real pg_dump reason shown on the organization databases page (migration 0134).
 
 - Added a real-PostgreSQL backup round-trip test (dump, seal, unseal, restore, vectors and graph) that runs when `TENANT_BACKUP_TEST_URL` is set.
+
+- Added a per-plan monthly LLM token budget (`llm_monthly_tokens`, empty = unlimited) measured only from provider-reported usage; tokens above the plan allowance are taken from token grants, new AI work is refused with `token_quota_exceeded` once both are used up (migrations 0131 and 0132).
+
+- Added the token meter to the customer subscription panel and the token limit to the admin plan form, plus a super-admin endpoint to grant tokens to an organization.
+
+- Fixed refunds of taxed credit orders taking the gross amount back from the toman balance; only the net share credited at purchase is now revoked.
+
+- Fixed a stale subscription order being able to silently downgrade a plan bought after it; it is now left unapplied and flagged `needs_attention` for staff.
+
+- Fixed plan upgrades granting the new plan's full minutes on top of the upgrade difference on the first later call; the window's base credit is now issued first.
+
+- Added an admin filter and badge for payments the bank accepted but the platform could not apply (`needs_attention`).
+
+- Added a sweep that returns credit held by calls whose upload never finished (6 hours, `ingest_abandoned`).
+
+- Fixed knowledge-base embeddings through aiservice not being recorded in the AI usage ledger.
+
+- Fixed a replayed bank reference (`RefNum`) being able to pay a second order; the second attempt now fails with `bank_reference_reused` and a unique index (migration 0129) backs it.
+
+- Fixed paid orders that failed to apply being lost: the attempt now stays `pending_verification` with `fulfill_failed:<error>` and is retried by the payment sweeper instead of rolling back silently.
+
+- Fixed plan minutes only appearing after the next call; they are now granted the moment a subscription payment is fulfilled.
+
+- Fixed permanent (legacy) subscriptions crashing renewal payments; a new purchase is refused up front and the term math no longer overflows year 9999.
+
+- Fixed paid plan upgrades that could not be applied showing "activated"; the receipt now says the change was not applied, flagged `needs_attention`.
+
+- Fixed orders cancelled during payment still being fulfilled by a late bank callback, and made stopping a subscription now end its unused plan minutes while keeping prepaid credit.
+
+- Fixed deleting a call or all tenant data destroying held credit; held reservations are released first.
+
+- Fixed voicemail ingest running with no subscription check.
+
+- Fixed AI token usage being dropped for durable analysis steps, transcript correction, scoring, coaching, assistant and scheduled-report jobs by setting the tenant context, and streamed chat now requests provider usage (`include_usage`).
 
 - Fixed organization database migrations failing with `plans_code_key` by reconciling seeded plans with the control database before copying, in both the cutover copy and the global reference sync.
 

@@ -312,3 +312,119 @@ async def test_operator_quota_check_takes_a_tenant_lock(scratch: None) -> None:
             assert locks >= 1
     finally:
         await drop_org(org)
+
+
+async def test_refunding_a_taxed_credit_order_takes_back_only_the_net_toman(
+    scratch: None,
+) -> None:
+    from app import db
+    from app.models import Order, TenantBalanceCache
+    from app.routers.commerce import CreditOrderCreate, create_credit_order
+    from app.services import payments
+
+    org = await make_org("bronze")
+    await set_setting("tax_percent", "10")
+    try:
+        async with db.session_scope(staff=True) as session:
+            out = await create_credit_order(
+                CreditOrderCreate(minutes=60), request(), org.principal, session, uuid4().hex
+            )
+            order = await session.get(Order, UUID(out["id"]))
+            assert order is not None
+            await payments.fulfill_order(session, order)
+            await session.flush()
+            seeded = await session.get(TenantBalanceCache, org.tenant_id)
+            assert seeded is not None
+            seeded.toman += 5000  # unrelated balance that a gross deduction would eat into
+            await session.flush()
+            await payments.refund_order(
+                session,
+                order_id=order.id,
+                amount_toman=order.amount_toman,
+                method="manual",
+                reason="test refund",
+                idempotency_key=uuid4().hex,
+                created_by=None,
+                payment_attempt_id=None,
+            )
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None
+            # Credited net, refunded the same net: nothing is left over or over-deducted.
+            assert cache.toman == 5000 and cache.seconds == 0
+    finally:
+        await set_setting("tax_percent", None)
+        await drop_org(org)
+
+
+async def test_token_pack_is_granted_once_and_refund_takes_it_back(scratch: None) -> None:
+    from sqlalchemy import select
+
+    from app import db
+    from app.errors import ApiError
+    from app.models import Order, TokenGrant, TokenPackage
+    from app.routers.token_packages import TokenOrderCreate, create_token_order
+    from app.services import payments
+
+    org = await make_org("bronze")
+    package_id = None
+    try:
+        async with db.session_scope(staff=True) as session:
+            package = TokenPackage(name="test pack", tokens=2_000_000, price_toman=500_000)
+            session.add(package)
+            await session.flush()
+            package_id = package.id
+        async with db.session_scope(staff=True) as session:
+            out = await create_token_order(
+                TokenOrderCreate(package_id=package_id),
+                request(),
+                org.principal,
+                session,
+                uuid4().hex,
+            )
+            order = await session.get(Order, UUID(out["id"]))
+            assert order is not None and order.kind == "token_pack"
+            await payments.fulfill_order(session, order)
+            order.status = "paid"
+            await session.flush()
+            grants = (
+                (await session.execute(select(TokenGrant).where(TokenGrant.source_id == order.id)))
+                .scalars()
+                .all()
+            )
+            assert [grant.remaining_tokens for grant in grants] == [2_000_000]
+            # partly spent tokens cannot be refunded away
+            grants[0].remaining_tokens = 10
+            await session.flush()
+            with pytest.raises(ApiError):
+                await payments.refund_order(
+                    session,
+                    order_id=order.id,
+                    amount_toman=order.amount_toman,
+                    method="manual",
+                    reason="test",
+                    idempotency_key=uuid4().hex,
+                    created_by=None,
+                    payment_attempt_id=None,
+                )
+            grants[0].remaining_tokens = 2_000_000
+            await session.flush()
+            await payments.refund_order(
+                session,
+                order_id=order.id,
+                amount_toman=order.amount_toman,
+                method="manual",
+                reason="test",
+                idempotency_key=uuid4().hex,
+                created_by=None,
+                payment_attempt_id=None,
+            )
+            await session.flush()
+            await session.refresh(grants[0])
+            assert grants[0].remaining_tokens == 0
+    finally:
+        async with db.session_scope(staff=True) as session:
+            if package_id is not None:
+                package = await session.get(TokenPackage, package_id)
+                if package is not None:
+                    await session.delete(package)
+        await drop_org(org)

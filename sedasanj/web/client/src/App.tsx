@@ -18,6 +18,7 @@ import Extensions from "./pages/Extensions";
 import MeetingDetailPage from "./pages/MeetingDetail";
 import Meetings from "./pages/Meetings";
 import Contact from "./pages/Contact";
+import ChoosePlan from "./pages/ChoosePlan";
 import Checkout from "./pages/Checkout";
 import ChangePlan from "./pages/ChangePlan";
 import Install from "./pages/Install";
@@ -99,6 +100,7 @@ export default function App() {
         <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
+        {orgAdmin ? <Route path="/plans" element={<ChoosePlan />} /> : null}
         {orgAdmin ? <Route path="/billing/change-plan" element={<ChangePlan />} /> : null}
         <Route path="/account-settings" element={<AccountSettings />} />
         {orgAdmin ? <Route path={ORGANIZATION_DATA_HISTORY_PATH} element={<OrganizationDataHistory />} /> : null}

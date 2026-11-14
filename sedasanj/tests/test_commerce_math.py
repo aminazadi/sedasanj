@@ -40,9 +40,7 @@ def test_extra_operator_is_rejected_for_other_plans() -> None:
 
 
 def test_calendar_month_math_clamps_end_of_month() -> None:
-    assert add_months(datetime(2026, 1, 31, tzinfo=UTC), 1) == datetime(
-        2026, 2, 28, tzinfo=UTC
-    )
+    assert add_months(datetime(2026, 1, 31, tzinfo=UTC), 1) == datetime(2026, 2, 28, tzinfo=UTC)
 
 
 def test_monthly_quota_period_uses_tehran_subscription_anniversary() -> None:
@@ -57,12 +55,8 @@ def test_monthly_quota_period_keeps_month_end_anchor_after_short_month() -> None
     before_month_end = datetime(2026, 3, 30, 18, 0, tzinfo=UTC)
     at_month_end = datetime(2026, 3, 31, 8, 30, tzinfo=UTC)
 
-    assert monthly_period_start(start, before_month_end) == datetime(
-        2026, 2, 28, 8, 30, tzinfo=UTC
-    )
-    assert monthly_period_start(start, at_month_end) == datetime(
-        2026, 3, 31, 8, 30, tzinfo=UTC
-    )
+    assert monthly_period_start(start, before_month_end) == datetime(2026, 2, 28, 8, 30, tzinfo=UTC)
+    assert monthly_period_start(start, at_month_end) == datetime(2026, 3, 31, 8, 30, tzinfo=UTC)
 
 
 def test_monthly_credit_expires_on_the_next_tehran_anniversary() -> None:

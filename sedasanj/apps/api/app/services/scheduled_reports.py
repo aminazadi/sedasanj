@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 from app.db import operational_tenant_ids, session_scope
 from app.deps import Principal
 from app.errors import ApiError
+from app.logging import log_context
 from app.metrics import (
     scheduled_report_attempts_total,
     scheduled_report_final_failures_total,
@@ -320,6 +321,7 @@ async def _tool(principal, name, arguments):
 async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
     set_ai_feature("scheduled_report")
     tenant_id, run_id = UUID(payload["tenant_id"]), UUID(payload["run_id"])
+    log_context(tenant_id=str(tenant_id))
     usage_id = None
     client = None
     retry_scheduled = False

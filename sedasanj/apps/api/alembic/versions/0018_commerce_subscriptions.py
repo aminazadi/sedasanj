@@ -30,9 +30,7 @@ def upgrade() -> None:
         )
     ).scalar_one_or_none()
     if duplicate_email is not None:
-        raise RuntimeError(
-            "duplicate user emails must be resolved before commerce migration"
-        )
+        raise RuntimeError("duplicate user emails must be resolved before commerce migration")
     _exec("""
     CREATE UNIQUE INDEX users_email_global_key ON users (lower(email::text));
     ALTER TABLE ledger_entries DROP CONSTRAINT ledger_entries_kind_check;
@@ -73,13 +71,32 @@ def upgrade() -> None:
     INSERT INTO packages(name,minutes,price_toman,active) VALUES ('۱۰۰ دقیقه',100,200000,true),('۵۰۰ دقیقه',500,1000000,true),('۱۰۰۰ دقیقه',1000,2000000,true);
     """)
 
-    tenant_tables = ('subscriptions','subscription_extras','subscription_changes','orders','order_items','payment_attempts','invoices','credit_grants','reservation_allocations','assistant_usage','installation_requests','trial_claims')
+    tenant_tables = (
+        "subscriptions",
+        "subscription_extras",
+        "subscription_changes",
+        "orders",
+        "order_items",
+        "payment_attempts",
+        "invoices",
+        "credit_grants",
+        "reservation_allocations",
+        "assistant_usage",
+        "installation_requests",
+        "trial_claims",
+    )
     for table in tenant_tables:
         bind.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO cbi_app"))
         bind.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
         bind.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
-        bind.execute(text(f"CREATE POLICY {table}_tenant_isolation ON {table} USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid OR current_setting('app.staff', true) = 'on') WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid OR current_setting('app.staff', true) = 'on')"))
-    _exec("GRANT SELECT ON plans, plan_versions TO cbi_app; GRANT SELECT, INSERT, UPDATE, DELETE ON contact_leads, signup_otps TO cbi_app")
+        bind.execute(
+            text(
+                f"CREATE POLICY {table}_tenant_isolation ON {table} USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid OR current_setting('app.staff', true) = 'on') WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid OR current_setting('app.staff', true) = 'on')"
+            )
+        )
+    _exec(
+        "GRANT SELECT ON plans, plan_versions TO cbi_app; GRANT SELECT, INSERT, UPDATE, DELETE ON contact_leads, signup_otps TO cbi_app"
+    )
 
 
 def downgrade() -> None:

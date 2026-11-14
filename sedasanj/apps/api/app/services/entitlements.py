@@ -25,6 +25,8 @@ class Entitlements:
     assistant_model: str | None
     period_start: datetime | None
     period_end: datetime | None
+    # Monthly LLM token budget of the plan; None means unlimited.
+    llm_monthly_tokens: int | None = None
 
     @property
     def consumption_allowed(self) -> bool:
@@ -82,6 +84,7 @@ async def effective(session: AsyncSession, tenant_id: UUID, *, lock: bool = Fals
         row.assistant_model,
         row.period_start,
         row.period_end,
+        row.llm_monthly_tokens,
     )
 
 

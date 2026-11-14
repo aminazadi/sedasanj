@@ -40,3 +40,54 @@ async def send_verification(mobile: str, code: str, settings: DemoSettings | Non
         raise ApiError(
             "internal", "سرویس پیامک درخواست را نپذیرفت؛ تنظیمات قالب و اعتبار را بررسی کنید."
         )
+
+
+class SmsDeliveryError(Exception):
+    """A template send that did not go through.
+
+    ``retryable`` is only true when the provider definitely did not accept the message (5xx,
+    429).  A timeout is ``unknown``: the message may already be accepted, so it is never retried.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = False, unknown: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.unknown = unknown
+
+
+async def send_template(
+    mobile: str,
+    template_id: int,
+    parameters: dict[str, str],
+    settings: DemoSettings,
+) -> None:
+    """POST /send/verify with an approved service template and its named parameters."""
+    if not settings.smsir_api_key:
+        raise SmsDeliveryError("SMS.ir API key is not configured")
+    body = {
+        "mobile": mobile,
+        "templateId": template_id,
+        "parameters": [{"name": name, "value": value} for name, value in parameters.items()],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            response = await client.post(
+                f"{settings.smsir_base_url.rstrip('/')}/send/verify",
+                headers={"X-API-KEY": settings.smsir_api_key, "Content-Type": "application/json"},
+                json=body,
+            )
+    except httpx.TimeoutException as exc:
+        raise SmsDeliveryError("provider timeout", unknown=True) from exc
+    except httpx.HTTPError as exc:
+        raise SmsDeliveryError("provider unreachable", retryable=True) from exc
+    if response.status_code >= 500 or response.status_code == 429:
+        raise SmsDeliveryError(f"provider http {response.status_code}", retryable=True)
+    try:
+        result = response.json()
+    except ValueError:
+        result = None
+    if not response.is_success or not isinstance(result, dict) or result.get("status") != 1:
+        status = result.get("status") if isinstance(result, dict) else None
+        raise SmsDeliveryError(
+            f"provider rejected the message (http {response.status_code}, status {status})"
+        )

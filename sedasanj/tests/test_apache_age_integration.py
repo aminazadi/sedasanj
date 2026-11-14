@@ -23,17 +23,13 @@ async def test_non_superuser_can_use_age_across_fresh_connections() -> None:
         async with engine.connect() as connection:
             is_superuser = (
                 await connection.execute(
-                    text(
-                        "SELECT rolsuper FROM pg_roles "
-                        "WHERE rolname = current_user"
-                    )
+                    text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
                 )
             ).scalar_one()
             assert is_superuser is False
             await execute_cypher(
                 connection,
-                f'MERGE (c:Call {{id: "{call_id}"}}) '
-                f'SET c.tenant_id = "{tenant_id}" RETURN c.id',
+                f'MERGE (c:Call {{id: "{call_id}"}}) SET c.tenant_id = "{tenant_id}" RETURN c.id',
                 ("call_id",),
             )
             await connection.commit()

@@ -25,13 +25,23 @@ from app.models import (
     Webhook,
     WebhookDelivery,
 )
-from app.services import outbox, pipeline, progress, queue, webhook_delivery
+from app.services import (
+    outbox,
+    pipeline,
+    progress,
+    queue,
+    sms_notify,
+    usage_alerts,
+    webhook_delivery,
+)
 from app.services.maintenance import (
     expire_commerce_state,
     prepare_renewal_orders,
     reconcile_stuck_calls,
     refresh_failure_gauge,
     refresh_queue_depth,
+    release_abandoned_reservations,
+    settle_stuck_meetings,
     run_retention,
 )
 from app.services.payments import reconcile_pending
@@ -430,6 +440,15 @@ async def retention_cron(ctx: dict[str, Any]) -> str:
 async def reconciler_cron(ctx: dict[str, Any]) -> str:
     requeued = await reconcile_stuck_calls()
     try:
+        abandoned = await release_abandoned_reservations()
+    except Exception:  # noqa: BLE001 - credit release must not stall other reconciliation
+        logger.exception("abandoned reservation sweep failed")
+        abandoned = 0
+    try:
+        await settle_stuck_meetings()
+    except Exception:  # noqa: BLE001 - meeting billing repair must not stall reconciliation
+        logger.exception("stuck meeting billing sweep failed")
+    try:
         expired_subscriptions, expired_grants = await expire_commerce_state()
     except Exception:  # noqa: BLE001 - commerce expiry must not stall other reconciliation
         logger.exception("commerce expiry sweep failed")
@@ -451,10 +470,20 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
     except Exception:  # noqa: BLE001 - the payment sweep must not stall other reconciliation
         logger.exception("payment reconciliation sweep failed")
         payment_counts = {"verified": 0, "settled": 0, "expired": 0, "errors": 1}
+    try:
+        await usage_alerts.sweep()
+    except Exception:  # noqa: BLE001 - usage alerts must not stall other reconciliation
+        logger.exception("usage alert sweep failed")
+    try:
+        sms_counts = await sms_notify.deliver_pending()
+        if any(sms_counts.values()):
+            logger.info("sms sweep", extra={"extra_fields": sms_counts})
+    except Exception:  # noqa: BLE001 - sms must not stall other reconciliation
+        logger.exception("sms delivery sweep failed")
     await refresh_failure_gauge()
     await refresh_queue_depth()
     return (
-        f"reconciled:{requeued}:subscriptions:{expired_subscriptions}:"
+        f"reconciled:{requeued}:abandoned:{abandoned}:subscriptions:{expired_subscriptions}:"
         f"grants:{expired_grants}:renewals:{renewal_orders}:notices:{notices_sent}:"
         f"payments:{payment_counts['verified']}/{payment_counts['settled']}/"
         f"{payment_counts['expired']}/{payment_counts['errors']}"

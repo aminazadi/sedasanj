@@ -35,8 +35,13 @@ def text_migration() -> ModuleType:
     return module
 
 
-def test_every_meeting_code_has_a_help_row(migration: ModuleType, text_migration: ModuleType) -> None:
+def test_every_meeting_code_has_a_help_row(
+    migration: ModuleType, text_migration: ModuleType
+) -> None:
     seeded = {code for code, *_ in migration.ERRORS} | {code for code, *_ in text_migration.ERRORS}
+    # Later migrations seed single codes with raw SQL rather than an ERRORS table.
+    later = (VERSIONS / "0118_storage_deletions.py").read_text(encoding="utf-8")
+    seeded |= set(re.findall(r"SELECT '(meeting_[a-z_]+)'", later))
     assert seeded >= {code for code in ERROR_STATUS if code.startswith("meeting_")}
     assert "tenant_instructions_too_long" in seeded
     assert text_migration.down_revision == "0095_meeting_text_ingest"

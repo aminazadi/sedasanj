@@ -28,6 +28,7 @@ import closeIcon from "@iconify-icons/lucide/x";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
+import BillingBanner from "./BillingBanner";
 import ModuleUpdateBanner from "./ModuleUpdateBanner";
 import QuickAssistantWidget from "./QuickAssistantWidget";
 
@@ -368,7 +369,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{orgAdmin && hasPanelAccess(session, "pbx_servers") && !isAssistantPage ? <ModuleUpdateBanner /> : null}{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">{orgAdmin && !isAssistantPage && location.pathname !== "/account" ? <BillingBanner /> : null}{orgAdmin && hasPanelAccess(session, "pbx_servers") && !isAssistantPage ? <ModuleUpdateBanner /> : null}{children}</main>
         {!isAssistantPage && hasPanelAccess(session, "assistant") ? <QuickAssistantWidget /> : null}
       </div>
     </>

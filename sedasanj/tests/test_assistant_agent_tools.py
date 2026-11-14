@@ -1,5 +1,5 @@
-import json
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -66,9 +66,7 @@ async def test_agent_validates_tool_arguments() -> None:
         FakeClient(
             {
                 "answer": None,
-                "tool_calls": [
-                    {"name": "get_call_analytics", "arguments": {"status": "complete"}}
-                ],
+                "tool_calls": [{"name": "get_call_analytics", "arguments": {"status": "complete"}}],
             }
         ),
         "system",
@@ -117,13 +115,24 @@ def test_tool_schemas_never_expose_security_scope() -> None:
     assert chart_schema["function"]["parameters"]["properties"]["chart_types"]["maxItems"] == 4
     chart_types = chart_schema["function"]["parameters"]["properties"]["chart_types"]
     assert set(chart_types["items"]["enum"]) == {
-        "bar", "horizontal_bar", "line", "area", "pie", "donut", "radar",
-        "radial_bar", "scatter", "composed", "treemap", "funnel",
+        "bar",
+        "horizontal_bar",
+        "line",
+        "area",
+        "pie",
+        "donut",
+        "radar",
+        "radial_bar",
+        "scatter",
+        "composed",
+        "treemap",
+        "funnel",
     }
 
 
 def test_current_time_tool_returns_tenant_date_and_time() -> None:
     tool = assistant_tools.TOOL_BY_NAME["get_current_time"]
+
     class _Session:
         async def get(self, *_args: object) -> SimpleNamespace:
             return SimpleNamespace(timezone="UTC")
@@ -158,7 +167,7 @@ def test_final_response_only_retains_explicit_tool_backed_sources() -> None:
     ignored = uuid4()
 
     answer, call_ids = assistant_agent.final_response(
-        f"پاسخ نهایی\n<call-sources>[\"{selected}\", \"{ignored}\", \"{selected}\"]</call-sources>",
+        f'پاسخ نهایی\n<call-sources>["{selected}", "{ignored}", "{selected}"]</call-sources>',
         {str(selected)},
     )
 
@@ -170,7 +179,7 @@ def test_final_response_replaces_selected_call_ids_with_call_links() -> None:
     selected = uuid4()
 
     answer, call_ids = assistant_agent.final_response(
-        f"جزئیات تماس {selected} را بررسی کردم.\n<call-sources>[\"{selected}\"]</call-sources>",
+        f'جزئیات تماس {selected} را بررسی کردم.\n<call-sources>["{selected}"]</call-sources>',
         {str(selected)},
     )
 
@@ -254,9 +263,7 @@ async def test_operator_mentions_are_rejected_for_non_admin_users() -> None:
     attachments = AssistantMessageAttachments(operator_id=uuid4())
 
     with pytest.raises(ApiError):
-        await assistant._attachment_context(
-            object(), uuid4(), principal.id, principal, attachments
-        )
+        await assistant._attachment_context(object(), uuid4(), principal.id, principal, attachments)
 
 
 class SequenceClient(LlmClient):

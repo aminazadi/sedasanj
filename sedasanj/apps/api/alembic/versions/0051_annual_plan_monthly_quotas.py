@@ -9,9 +9,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE credit_reservations ADD COLUMN price_per_minute_toman integer NOT NULL DEFAULT 0")
+    op.execute(
+        "ALTER TABLE credit_reservations ADD COLUMN price_per_minute_toman integer NOT NULL DEFAULT 0"
+    )
     op.execute("ALTER TABLE credit_reservations ADD COLUMN free_seconds integer NOT NULL DEFAULT 0")
-    op.execute("ALTER TABLE plan_versions DROP CONSTRAINT IF EXISTS plan_versions_nonnegative_check")
+    op.execute(
+        "ALTER TABLE plan_versions DROP CONSTRAINT IF EXISTS plan_versions_nonnegative_check"
+    )
     op.execute(
         "ALTER TABLE plan_versions ADD CONSTRAINT plan_versions_nonnegative_check "
         "CHECK (monthly_price_toman >= 0 AND base_operators >= 0 AND intro_minutes >= 0)"
@@ -70,7 +74,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE plan_versions DROP CONSTRAINT IF EXISTS plan_versions_nonnegative_check")
+    op.execute(
+        "ALTER TABLE plan_versions DROP CONSTRAINT IF EXISTS plan_versions_nonnegative_check"
+    )
     op.execute(
         "ALTER TABLE plan_versions ADD CONSTRAINT plan_versions_nonnegative_check "
         "CHECK (monthly_price_toman >= 0 AND base_operators >= 0 AND intro_minutes >= 0)"

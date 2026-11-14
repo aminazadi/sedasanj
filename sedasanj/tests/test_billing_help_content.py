@@ -64,3 +64,25 @@ def test_article_html_survives_the_shared_sanitizer(migration: ModuleType) -> No
         body_html, _plain = migration._body(blocks)
         cleaned, _ = sanitize_help_html(body_html)
         assert cleaned.count("<li>") == body_html.count("<li>")
+
+
+def test_token_budget_error_code_has_status_and_help_migration() -> None:
+    path = MIGRATION.with_name("0132_token_budget_help.py")
+    spec = importlib.util.spec_from_file_location("token_help_migration", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    code, _title, _severity, _cause, steps, quick = module.ERROR
+    assert code == "token_quota_exceeded" and steps and quick
+    assert ERROR_STATUS[code] == 402
+
+
+def test_sms_provider_error_code_has_status_and_help_migration() -> None:
+    path = MIGRATION.with_name("0135_sms_notifications_help.py")
+    spec = importlib.util.spec_from_file_location("sms_help_migration", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    code, _title, _severity, _cause, steps, quick = module.ERROR
+    assert code == "sms_provider_error" and steps and quick
+    assert ERROR_STATUS[code] == 502

@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -126,6 +127,7 @@ async def test_retry_transcription_creates_a_fresh_job_after_commit(
 
     monkeypatch.setattr(calls, "_load_call", load_call)
     monkeypatch.setattr(calls, "session_scope", scope)
+    monkeypatch.setattr(calls.token_quota, "require_ai_work", AsyncMock())
     monkeypatch.setattr(calls.billing, "reserve_retry", reserve)
     monkeypatch.setattr(calls.processing_events, "record", record)
     monkeypatch.setattr(calls.audit, "record", audit_record)
@@ -314,11 +316,13 @@ async def test_retranscription_creates_revision_without_reserving_credit(
     monkeypatch.setattr(calls, "_load_call", load_call)
     monkeypatch.setattr(calls, "session_scope", scope)
     monkeypatch.setattr(calls.billing, "reserve_retry", reject_credit)
+    monkeypatch.setattr(calls.token_quota, "require_ai_work", no_op)
     monkeypatch.setattr(calls.processing_events, "record", no_op)
     monkeypatch.setattr(calls.audit, "record", no_op)
     monkeypatch.setattr(calls.outbox, "stage_job", stage)
     monkeypatch.setattr(calls.outbox, "dispatch_one", dispatch)
     monkeypatch.setattr(calls, "client_ip", lambda request: "127.0.0.1")
+
     async def models(session: object) -> dict[str, str]:
         return {"asr_ai_provider": "aiservice", "asr_model": "asr-model"}
 

@@ -284,9 +284,7 @@ async def recording_status(payload: SessionToken, request: Request) -> dict[str,
 
 
 @router.post("/quick-demo/recording/login", response_model=TokenPair)
-async def recording_login(
-    payload: SessionToken, request: Request, response: Response
-) -> TokenPair:
+async def recording_login(payload: SessionToken, request: Request, response: Response) -> TokenPair:
     await ratelimit.enforce(f"demo-login:{client_ip(request)}", 10, 600)
     async with control_session_scope() as session:
         row = await recording_session(session, payload.token, lock=True)
@@ -397,7 +395,11 @@ async def upload_recording(
                     action="quick_demo.recording_accepted",
                     payload={"session_id": str(row.id), "call_id": str(row.call_id)},
                 )
-                result = {"accepted": True, "replayed": accepted.replayed, "call_id": str(row.call_id)}
+                result = {
+                    "accepted": True,
+                    "replayed": accepted.replayed,
+                    "call_id": str(row.call_id),
+                }
     if failure:
         raise failure
     return result

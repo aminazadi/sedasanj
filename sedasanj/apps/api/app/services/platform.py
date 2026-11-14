@@ -353,7 +353,8 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "call_asr_profile": settings.call_asr_profile,
         "call_asr_telephony_threshold": (
             str(settings.call_asr_telephony_threshold)
-            if settings.call_asr_telephony_threshold is not None else ""
+            if settings.call_asr_telephony_threshold is not None
+            else ""
         ),
         "call_asr_fallback_models": json.dumps(settings.call_asr_fallback_models),
         "audio_preprocessing_enabled": str(settings.audio_preprocessing_enabled).lower(),
@@ -529,7 +530,8 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "call_asr_profile": values["call_asr_profile"],
         "call_asr_telephony_threshold": (
             float(values["call_asr_telephony_threshold"])
-            if values["call_asr_telephony_threshold"] else None
+            if values["call_asr_telephony_threshold"]
+            else None
         ),
         "call_asr_fallback_models": _string_list(values["call_asr_fallback_models"]),
         "audio_preprocessing_enabled": _as_bool(values["audio_preprocessing_enabled"]),
@@ -656,7 +658,8 @@ async def resolve_provider_settings(
             "call_asr_profile": call_profile,
             "call_asr_telephony_threshold": (
                 float(overrides["call_asr_telephony_threshold"])
-                if overrides["call_asr_telephony_threshold"] else None
+                if overrides["call_asr_telephony_threshold"]
+                else None
             ),
             "call_asr_fallback_models": _string_list(overrides["call_asr_fallback_models"]),
             "llm_client": "voicesanj",

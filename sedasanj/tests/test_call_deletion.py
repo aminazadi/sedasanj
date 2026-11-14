@@ -27,6 +27,11 @@ async def test_delete_call_removes_audio_and_call_owned_data(
         execute=AsyncMock(
             side_effect=[
                 SimpleNamespace(scalar_one_or_none=lambda: audio),
+                # billing.release_held_calls: no held reservation for this call
+                SimpleNamespace(
+                    distinct=lambda: None,
+                    scalars=lambda: SimpleNamespace(all=lambda: []),
+                ),
                 SimpleNamespace(),
                 SimpleNamespace(),
                 SimpleNamespace(),
@@ -54,6 +59,6 @@ async def test_delete_call_removes_audio_and_call_owned_data(
     session.delete.assert_has_awaits([awaited(call), awaited(audio)])
     assert audio.object_key in storage.objects
     assert audio.deleted_at is not None
-    assert session.execute.await_count == 5
+    assert session.execute.await_count == 6
     assert session.execute.call_args.args[0].table.name == "audio_deletions"
     audit_record.assert_awaited_once()

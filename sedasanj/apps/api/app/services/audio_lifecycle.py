@@ -102,7 +102,9 @@ async def _purge_batch(session: AsyncSession, tenant_id: UUID) -> int:
     storage = get_storage()
     rows = await session.scalars(
         select(AudioDeletion)
-        .where(AudioDeletion.tenant_id == tenant_id, AudioDeletion.due_at <= now)
+        # due_at defaults to the database clock, so compare with the database clock too: the app
+        # host's clock may be a little behind and would hide a just-queued deletion.
+        .where(AudioDeletion.tenant_id == tenant_id, AudioDeletion.due_at <= func.now())
         .order_by(AudioDeletion.due_at, AudioDeletion.object_key)
         .limit(BATCH_SIZE)
         .with_for_update(skip_locked=True)

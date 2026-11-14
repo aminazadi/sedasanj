@@ -23,9 +23,7 @@ def upgrade() -> None:
         )
     """)
     op.execute("REVOKE ALL ON identity_projection_state FROM PUBLIC")
-    op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON identity_projection_state TO cbi_app"
-    )
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON identity_projection_state TO cbi_app")
 
 
 def downgrade() -> None:

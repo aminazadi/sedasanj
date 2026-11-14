@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import routable_tenant_ids, session_scope
 from app.models import Invoice, NotificationLog, Subscription, Tenant, User
-from app.services import subscription_state
+from app.services import sms_notify, subscription_state
 from app.services.commerce_settings import get_commerce_settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,12 @@ MAX_ATTEMPTS = 3
 RENEWAL_NOTICE_DAYS = (7, 1)
 TRIAL_NOTICE_DAYS = 2
 EXPIRED_NOTICE_WINDOW = timedelta(days=7)
+SMS_EVENTS = {
+    "renewal_due": "renewal_due",
+    "trial_ending": "trial_ending",
+    "grace_started": "subscription_grace",
+    "subscription_expired": "subscription_expired",
+}
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,9 @@ class Notice:
     period_key: str
     subject: str
     body: str
+    org: str = ""
+    date: str = ""
+    days: int = 0
 
 
 def _day(value: datetime) -> str:
@@ -94,7 +103,19 @@ async def due_notices(session: AsyncSession, tenant_id: UUID, now: datetime) -> 
 
     def add(subscription: Subscription, kind: str, key: str) -> None:
         subject, body = _compose(kind, tenant.name, subscription.period_end, link)
-        notices.append(Notice(subscription.id, kind, key, subject, body))
+        days_left = max(0, (subscription.period_end - now).days)
+        notices.append(
+            Notice(
+                subscription.id,
+                kind,
+                key,
+                subject,
+                body,
+                org=tenant.name,
+                date=_day(subscription.period_end),
+                days=days_left,
+            )
+        )
 
     for subscription in subscriptions:
         left = subscription.period_end - now
@@ -157,6 +178,15 @@ async def send_tenant_notices(tenant_id: UUID, now: datetime, send: Send) -> int
         recipients = await _recipients(session, tenant_id) if notices else []
     delivered = 0
     for notice in notices:
+        # SMS is queued idempotently (dedupe key), independent of the email claim below.
+        sms_event = SMS_EVENTS.get(notice.kind)
+        if sms_event:
+            await sms_notify.enqueue_for_org_admins(
+                tenant_id,
+                sms_event,
+                {"ORG": notice.org, "DATE": notice.date, "DAYS": notice.days},
+                f"{notice.kind}:{notice.subscription_id}:{notice.period_key}",
+            )
         async with session_scope(tenant_id) as session:
             claim = await _claim(session, tenant_id, notice)
             claim_id = claim.id if claim else None

@@ -21,7 +21,9 @@ from app.services import audit, organization_memory
 router = APIRouter(prefix="/v1/assistant/memories", tags=["organization memory"])
 
 
-async def _row(session: AsyncSession, tenant_id: UUID, memory_id: UUID, *, lock: bool = False) -> OrganizationMemory:
+async def _row(
+    session: AsyncSession, tenant_id: UUID, memory_id: UUID, *, lock: bool = False
+) -> OrganizationMemory:
     query = select(OrganizationMemory).where(
         OrganizationMemory.id == memory_id, OrganizationMemory.tenant_id == tenant_id
     )
@@ -35,13 +37,17 @@ async def _row(session: AsyncSession, tenant_id: UUID, memory_id: UUID, *, lock:
 
 async def _out(session: AsyncSession, row: OrganizationMemory) -> OrganizationMemoryOut:
     active = (
-        await session.execute(
-            select(OrganizationMemory).where(
-                OrganizationMemory.tenant_id == row.tenant_id,
-                OrganizationMemory.status == "active",
+        (
+            await session.execute(
+                select(OrganizationMemory).where(
+                    OrganizationMemory.tenant_id == row.tenant_id,
+                    OrganizationMemory.status == "active",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     values = organization_memory.conflicts(row, list(active)) if row.status == "draft" else []
     return OrganizationMemoryOut.model_validate(row).model_copy(
         update={"conflicts": [item.id for item in values]}
@@ -65,19 +71,27 @@ async def list_memories(
         query = query.where(OrganizationMemory.status == memory_status)
     if category:
         query = query.where(OrganizationMemory.category == category)
-    rows = (await session.execute(query.order_by(OrganizationMemory.updated_at.desc()))).scalars().all()
+    rows = (
+        (await session.execute(query.order_by(OrganizationMemory.updated_at.desc())))
+        .scalars()
+        .all()
+    )
     return [await _out(session, row) for row in rows]
 
 
 @router.get("/export")
 async def export_memories(principal: OrgAdminDep, session: TenantSession) -> Response:
     rows = (
-        await session.execute(
-            select(OrganizationMemory)
-            .where(OrganizationMemory.tenant_id == principal.tenant_id)
-            .order_by(OrganizationMemory.logical_key, OrganizationMemory.version)
+        (
+            await session.execute(
+                select(OrganizationMemory)
+                .where(OrganizationMemory.tenant_id == principal.tenant_id)
+                .order_by(OrganizationMemory.logical_key, OrganizationMemory.version)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return Response(
         organization_memory.export_payload(list(rows)),
         media_type="application/json",
@@ -96,22 +110,30 @@ async def preview_context(
 
 
 @router.get("/{memory_id}", response_model=OrganizationMemoryOut)
-async def get_memory(memory_id: UUID, principal: OrgAdminDep, session: TenantSession) -> OrganizationMemoryOut:
+async def get_memory(
+    memory_id: UUID, principal: OrgAdminDep, session: TenantSession
+) -> OrganizationMemoryOut:
     return await _out(session, await _row(session, principal.tenant_id, memory_id))
 
 
 @router.get("/{logical_key}/versions", response_model=list[OrganizationMemoryOut])
-async def memory_versions(logical_key: str, principal: OrgAdminDep, session: TenantSession) -> list[OrganizationMemoryOut]:
+async def memory_versions(
+    logical_key: str, principal: OrgAdminDep, session: TenantSession
+) -> list[OrganizationMemoryOut]:
     rows = (
-        await session.execute(
-            select(OrganizationMemory)
-            .where(
-                OrganizationMemory.tenant_id == principal.tenant_id,
-                OrganizationMemory.logical_key == logical_key,
+        (
+            await session.execute(
+                select(OrganizationMemory)
+                .where(
+                    OrganizationMemory.tenant_id == principal.tenant_id,
+                    OrganizationMemory.logical_key == logical_key,
+                )
+                .order_by(OrganizationMemory.version.desc())
             )
-            .order_by(OrganizationMemory.version.desc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [await _out(session, row) for row in rows]
 
 
@@ -163,12 +185,22 @@ async def update_draft(
         raise ApiError("invalid_request", str(exc)) from exc
     row.lock_version += 1
     row.updated_at = datetime.now(UTC)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.memory_draft_update", payload={"memory_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.memory_draft_update",
+        payload={"memory_id": str(row.id)},
+        ip=client_ip(request),
+    )
     await session.flush()
     return await _out(session, row)
 
 
-async def _idempotent(session: AsyncSession, tenant_id: UUID, key: str | None) -> OrganizationMemory | None:
+async def _idempotent(
+    session: AsyncSession, tenant_id: UUID, key: str | None
+) -> OrganizationMemory | None:
     if not key:
         return None
     return (
@@ -182,7 +214,13 @@ async def _idempotent(session: AsyncSession, tenant_id: UUID, key: str | None) -
 
 
 @router.post("/{memory_id}/approve", response_model=OrganizationMemoryOut)
-async def approve_memory(memory_id: UUID, payload: OrganizationMemoryAction, request: Request, principal: OrgAdminDep, session: TenantSession) -> OrganizationMemoryOut:
+async def approve_memory(
+    memory_id: UUID,
+    payload: OrganizationMemoryAction,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> OrganizationMemoryOut:
     existing = await _idempotent(session, principal.tenant_id, payload.idempotency_key)
     if existing:
         return await _out(session, existing)
@@ -201,7 +239,18 @@ async def approve_memory(memory_id: UUID, payload: OrganizationMemoryAction, req
     ).scalar_one_or_none()
     if active is not None:
         raise ApiError("conflict_idempotency", "an active version exists; use replace or merge")
-    count = int((await session.execute(select(func.count()).select_from(OrganizationMemory).where(OrganizationMemory.tenant_id == principal.tenant_id, OrganizationMemory.status == "active"))).scalar_one())
+    count = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(OrganizationMemory)
+                .where(
+                    OrganizationMemory.tenant_id == principal.tenant_id,
+                    OrganizationMemory.status == "active",
+                )
+            )
+        ).scalar_one()
+    )
     if count >= organization_memory.MAX_ACTIVE_MEMORIES:
         raise ApiError("invalid_request", "active organization memory limit reached")
     now = datetime.now(UTC)
@@ -211,13 +260,27 @@ async def approve_memory(memory_id: UUID, payload: OrganizationMemoryAction, req
     row.updated_at = now
     row.idempotency_key = payload.idempotency_key
     row.lock_version += 1
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.memory_approve", payload={"memory_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.memory_approve",
+        payload={"memory_id": str(row.id)},
+        ip=client_ip(request),
+    )
     await session.flush()
     return await _out(session, row)
 
 
 @router.post("/{memory_id}/reject", response_model=OrganizationMemoryOut)
-async def reject_memory(memory_id: UUID, payload: OrganizationMemoryAction, request: Request, principal: OrgAdminDep, session: TenantSession) -> OrganizationMemoryOut:
+async def reject_memory(
+    memory_id: UUID,
+    payload: OrganizationMemoryAction,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> OrganizationMemoryOut:
     row = await _row(session, principal.tenant_id, memory_id, lock=True)
     _check_lock(row, payload.lock_version)
     if row.status != "draft":
@@ -225,13 +288,27 @@ async def reject_memory(memory_id: UUID, payload: OrganizationMemoryAction, requ
     row.status = "rejected"
     row.lock_version += 1
     row.updated_at = datetime.now(UTC)
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.memory_reject", payload={"memory_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.memory_reject",
+        payload={"memory_id": str(row.id)},
+        ip=client_ip(request),
+    )
     await session.flush()
     return await _out(session, row)
 
 
 @router.post("/{memory_id}/replace", response_model=OrganizationMemoryOut)
-async def replace_memory(memory_id: UUID, payload: OrganizationMemoryAction, request: Request, principal: OrgAdminDep, session: TenantSession) -> OrganizationMemoryOut:
+async def replace_memory(
+    memory_id: UUID,
+    payload: OrganizationMemoryAction,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> OrganizationMemoryOut:
     existing = await _idempotent(session, principal.tenant_id, payload.idempotency_key)
     if existing:
         return await _out(session, existing)
@@ -241,11 +318,13 @@ async def replace_memory(memory_id: UUID, payload: OrganizationMemoryAction, req
         raise ApiError("invalid_request", "replacement must be a draft")
     current = (
         await session.execute(
-            select(OrganizationMemory).where(
+            select(OrganizationMemory)
+            .where(
                 OrganizationMemory.tenant_id == principal.tenant_id,
                 OrganizationMemory.logical_key == draft.logical_key,
                 OrganizationMemory.status == "active",
-            ).with_for_update()
+            )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if current is None:
@@ -259,7 +338,9 @@ async def replace_memory(memory_id: UUID, payload: OrganizationMemoryAction, req
                     )
                     .with_for_update()
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         candidates = organization_memory.conflicts(draft, active_rows)
         current = candidates[0] if candidates else None
@@ -289,17 +370,43 @@ async def replace_memory(memory_id: UUID, payload: OrganizationMemoryAction, req
     draft.updated_at = now
     draft.idempotency_key = payload.idempotency_key
     draft.lock_version += 1
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.memory_replace", payload={"memory_id": str(draft.id), "replaced_id": str(current.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.memory_replace",
+        payload={"memory_id": str(draft.id), "replaced_id": str(current.id)},
+        ip=client_ip(request),
+    )
     await session.flush()
     return await _out(session, draft)
 
 
 @router.post("/merge", response_model=OrganizationMemoryOut, status_code=status.HTTP_201_CREATED)
-async def merge_memories(payload: OrganizationMemoryMerge, request: Request, principal: OrgAdminDep, session: TenantSession) -> OrganizationMemoryOut:
+async def merge_memories(
+    payload: OrganizationMemoryMerge,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> OrganizationMemoryOut:
     existing = await _idempotent(session, principal.tenant_id, payload.idempotency_key)
     if existing:
         return await _out(session, existing)
-    rows = list((await session.execute(select(OrganizationMemory).where(OrganizationMemory.tenant_id == principal.tenant_id, OrganizationMemory.id.in_(payload.memory_ids)).with_for_update())).scalars().all())
+    rows = list(
+        (
+            await session.execute(
+                select(OrganizationMemory)
+                .where(
+                    OrganizationMemory.tenant_id == principal.tenant_id,
+                    OrganizationMemory.id.in_(payload.memory_ids),
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
     if len(rows) != len(set(payload.memory_ids)):
         raise ApiError("not_found", "one or more organization memories were not found")
     for row in rows:
@@ -307,7 +414,9 @@ async def merge_memories(payload: OrganizationMemoryMerge, request: Request, pri
         if row.status not in {"active", "draft"}:
             raise ApiError("invalid_request", "only active or draft memories can be merged")
     try:
-        organization_memory.validate_fields(payload.category, list(payload.applies_to), payload.title, payload.content)
+        organization_memory.validate_fields(
+            payload.category, list(payload.applies_to), payload.title, payload.content
+        )
     except ValueError as exc:
         raise ApiError("invalid_request", str(exc)) from exc
     now = datetime.now(UTC)
@@ -317,33 +426,59 @@ async def merge_memories(payload: OrganizationMemoryMerge, request: Request, pri
         row.updated_at = now
     latest = max(rows, key=lambda row: row.version)
     logical_key = organization_memory.normalize_key(payload.logical_key)
-    next_version = int(
-        (
-            await session.execute(
-                select(func.max(OrganizationMemory.version)).where(
-                    OrganizationMemory.tenant_id == principal.tenant_id,
-                    OrganizationMemory.logical_key == logical_key,
+    next_version = (
+        int(
+            (
+                await session.execute(
+                    select(func.max(OrganizationMemory.version)).where(
+                        OrganizationMemory.tenant_id == principal.tenant_id,
+                        OrganizationMemory.logical_key == logical_key,
+                    )
                 )
-            )
-        ).scalar_one()
-        or 0
-    ) + 1
+            ).scalar_one()
+            or 0
+        )
+        + 1
+    )
     merged = OrganizationMemory(
-        tenant_id=principal.tenant_id, logical_key=logical_key,
-        version=next_version, supersedes_id=latest.id, category=payload.category,
-        title=payload.title.strip(), content=payload.content.strip(), structured_payload=payload.structured_payload,
-        tags=list(dict.fromkeys(tag.strip() for tag in payload.tags if tag.strip())), applies_to=list(dict.fromkeys(payload.applies_to)),
-        status="active", created_by=principal.id, approved_by=principal.id, approved_at=now,
+        tenant_id=principal.tenant_id,
+        logical_key=logical_key,
+        version=next_version,
+        supersedes_id=latest.id,
+        category=payload.category,
+        title=payload.title.strip(),
+        content=payload.content.strip(),
+        structured_payload=payload.structured_payload,
+        tags=list(dict.fromkeys(tag.strip() for tag in payload.tags if tag.strip())),
+        applies_to=list(dict.fromkeys(payload.applies_to)),
+        status="active",
+        created_by=principal.id,
+        approved_by=principal.id,
+        approved_at=now,
         idempotency_key=payload.idempotency_key,
     )
     session.add(merged)
     await session.flush()
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.memory_merge", payload={"memory_id": str(merged.id), "merged_ids": [str(row.id) for row in rows]}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.memory_merge",
+        payload={"memory_id": str(merged.id), "merged_ids": [str(row.id) for row in rows]},
+        ip=client_ip(request),
+    )
     return await _out(session, merged)
 
 
 @router.post("/{memory_id}/archive", response_model=OrganizationMemoryOut)
-async def archive_memory(memory_id: UUID, payload: OrganizationMemoryAction, request: Request, principal: OrgAdminDep, session: TenantSession) -> OrganizationMemoryOut:
+async def archive_memory(
+    memory_id: UUID,
+    payload: OrganizationMemoryAction,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+) -> OrganizationMemoryOut:
     row = await _row(session, principal.tenant_id, memory_id, lock=True)
     _check_lock(row, payload.lock_version)
     if row.status not in {"active", "draft"}:
@@ -352,6 +487,14 @@ async def archive_memory(memory_id: UUID, payload: OrganizationMemoryAction, req
     row.archived_at = datetime.now(UTC)
     row.updated_at = row.archived_at
     row.lock_version += 1
-    await audit.record(session, actor_type="user", actor_id=principal.id, tenant_id=principal.tenant_id, action="assistant.memory_archive", payload={"memory_id": str(row.id)}, ip=client_ip(request))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=principal.id,
+        tenant_id=principal.tenant_id,
+        action="assistant.memory_archive",
+        payload={"memory_id": str(row.id)},
+        ip=client_ip(request),
+    )
     await session.flush()
     return await _out(session, row)

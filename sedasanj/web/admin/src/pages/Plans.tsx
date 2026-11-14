@@ -18,6 +18,8 @@ interface VersionForm {
   assistant_monthly_messages: number;
   assistant_source_limit: number;
   assistant_model: string;
+  /** Monthly LLM tokens; empty means unlimited. */
+  llm_monthly_tokens: string;
   allows_extra_operators: boolean;
   extra_operator_annual_toman: number;
   trial_days: number;
@@ -32,6 +34,7 @@ const EMPTY_VERSION: VersionForm = {
   assistant_monthly_messages: 50,
   assistant_source_limit: 8,
   assistant_model: "",
+  llm_monthly_tokens: "",
   allows_extra_operators: false,
   extra_operator_annual_toman: 0,
   trial_days: 7,
@@ -62,6 +65,7 @@ function formFrom(rows: PlanVersion[]): VersionForm {
     assistant_monthly_messages: latest.assistant_monthly_messages ?? 0,
     assistant_source_limit: latest.assistant_source_limit ?? 8,
     assistant_model: latest.assistant_model ?? "",
+    llm_monthly_tokens: latest.llm_monthly_tokens == null ? "" : String(latest.llm_monthly_tokens),
     allows_extra_operators: latest.allows_extra_operators ?? false,
     extra_operator_annual_toman: latest.extra_operator_annual_toman ?? 0,
     trial_days: latest.trial_days ?? 7,
@@ -130,6 +134,7 @@ export default function Plans() {
           body: {
             ...form,
             assistant_model: form.assistant_model || null,
+            llm_monthly_tokens: form.llm_monthly_tokens.trim() === "" ? null : Number(fmt.latinDigits(form.llm_monthly_tokens)),
             extra_operator_annual_toman: form.allows_extra_operators ? form.extra_operator_annual_toman : null,
             trial_days: selectedPlan?.is_trial ? form.trial_days : null,
           },
@@ -197,6 +202,7 @@ export default function Plans() {
     <form className="card space-y-4" onSubmit={createVersion}>
       <div className="flex flex-wrap items-end gap-3"><div><label className="label">پلن</label><select className="input min-w-40" value={selected} onChange={(event) => setFilters({ plan: event.target.value })}>{codes.map((code) => <option key={code}>{code}</option>)}</select></div><button className="btn" disabled={!selected}>ساخت نسخه پیش‌نویس</button><p className="text-xs text-slate-500">مقادیر از آخرین نسخهٔ این پلن آمده‌اند.</p></div>
       <div className="grid gap-3 md:grid-cols-4">
+        <div><label className="label">توکن هوش مصنوعی ماهانه (خالی = نامحدود)</label><input className="input" inputMode="numeric" dir="ltr" placeholder="نامحدود" value={form.llm_monthly_tokens} onChange={(event) => setForm({ ...form, llm_monthly_tokens: fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "") })} /></div>
         {NUMBER_FIELDS.filter(([key]) => key !== "trial_days" || selectedPlan?.is_trial).map(([key, label]) => <div key={key}><label className="label">{label}</label><input className="input" inputMode="numeric" value={fmt.digits(form[key])} onChange={(event) => setForm({ ...form, [key]: Number(fmt.latinDigits(event.target.value)) })} /></div>)}
         <div><label className="label">سطح دستیار</label><input className="input" dir="ltr" value={form.assistant_tier} onChange={(event) => setForm({ ...form, assistant_tier: event.target.value })} /></div>
         <div><label className="label">مدل اختصاصی دستیار</label><input className="input" dir="ltr" value={form.assistant_model} onChange={(event) => setForm({ ...form, assistant_model: event.target.value })} /></div>
@@ -204,13 +210,13 @@ export default function Plans() {
         {form.allows_extra_operators ? <div><label className="label">اپراتور اضافه سالانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_annual_toman)} onChange={(event) => setForm({ ...form, extra_operator_annual_toman: Number(fmt.latinDigits(event.target.value)) })} /></div> : null}
       </div>
     </form>
-    <div className="card overflow-x-auto">{rows.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>پلن</th><th>نسخه</th><th>وضعیت</th><th>سالانه</th><th>دقیقه رایگان / ماه</th><th>تعرفه دقیقه</th><th>پیام دستیار / ماه</th><th>اپراتور</th><th>آزمایشی</th><th>اشتراک</th><th>عملیات</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id ?? `plan-${item.plan_id}`}>
+    <div className="card overflow-x-auto">{rows.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>پلن</th><th>نسخه</th><th>وضعیت</th><th>سالانه</th><th>دقیقه رایگان / ماه</th><th>تعرفه دقیقه</th><th>توکن هوش مصنوعی / ماه</th><th>پیام دستیار / ماه</th><th>اپراتور</th><th>آزمایشی</th><th>اشتراک</th><th>عملیات</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id ?? `plan-${item.plan_id}`}>
       <td>{item.name}<small className="block text-slate-400" dir="ltr">{item.code}</small><small className="block text-slate-500">{item.is_trial ? "آزمایشی" : item.sellable ? "قابل خرید" : "غیرقابل خرید"}{item.public ? "" : " · خصوصی"}{item.active ? "" : " · غیرفعال"}</small></td>
       {item.id ? <>
         <td>{fmt.int(item.version ?? 0)}{item.effective_at ? <small className="block text-slate-400">از {fmt.date(item.effective_at)}</small> : null}</td>
         <td>{item.status ? STATUS_LABELS[item.status] : "—"}</td>
         <td>{fmt.toman(item.annual_price_toman ?? 0)}{item.allows_extra_operators ? <small className="block text-slate-400">اپراتور اضافه {fmt.toman(item.extra_operator_annual_toman ?? 0)}</small> : null}</td>
-        <td>{fmt.int(item.intro_minutes ?? 0)}</td><td>{fmt.toman(item.overage_price_per_minute_toman ?? 0)}</td><td>{fmt.int(item.assistant_monthly_messages ?? 0)}<small className="block text-slate-400" dir="ltr">{item.assistant_tier}{item.assistant_model ? ` / ${item.assistant_model}` : ""}</small></td><td>{fmt.int(item.base_operators ?? 0)}</td><td>{item.trial_days ? `${fmt.int(item.trial_days)} روز` : "—"}</td>
+        <td>{fmt.int(item.intro_minutes ?? 0)}</td><td>{fmt.toman(item.overage_price_per_minute_toman ?? 0)}</td><td>{item.llm_monthly_tokens == null ? "نامحدود" : fmt.int(item.llm_monthly_tokens)}</td><td>{fmt.int(item.assistant_monthly_messages ?? 0)}<small className="block text-slate-400" dir="ltr">{item.assistant_tier}{item.assistant_model ? ` / ${item.assistant_model}` : ""}</small></td><td>{fmt.int(item.base_operators ?? 0)}</td><td>{item.trial_days ? `${fmt.int(item.trial_days)} روز` : "—"}</td>
         <td><Link className="text-brand-600" to={`/subscriptions?plan=${encodeURIComponent(item.code)}`}>{fmt.int(item.subscription_count)}</Link></td>
       </> : <td colSpan={9} className="text-slate-500">این پلن هنوز نسخه‌ای ندارد؛ از بالا «ساخت نسخه پیش‌نویس» را بزنید.</td>}
       <td className="space-x-2 space-x-reverse">{item.status === "draft" ? <button className="btn-ghost text-xs" onClick={() => void publish(item)}>انتشار</button> : null}{item.status === "published" ? <button className="btn-ghost text-xs text-rose-700" onClick={() => void retire(item)}>بازنشسته</button> : null}<button className="btn-ghost text-xs" onClick={() => void updatePlan(item, { public: !item.public }, item.public ? "پلن از صفحهٔ عمومی پنهان می‌شود." : "پلن در صفحهٔ عمومی نمایش داده می‌شود.")}>{item.public ? "خصوصی‌کردن" : "عمومی‌کردن"}</button><button className="btn-ghost text-xs" onClick={() => void updatePlan(item, { active: !item.active }, item.active ? `توقف فروش پلن ${item.name}؛ ${fmt.int(item.subscription_count)} اشتراک این نسخه فعال است.` : "پلن دوباره فعال می‌شود.")}>{item.active ? "توقف فروش" : "فعال‌سازی فروش"}</button></td></tr>)}</tbody></table>}</div>

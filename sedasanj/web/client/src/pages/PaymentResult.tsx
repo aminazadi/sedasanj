@@ -12,6 +12,7 @@ interface PaymentStatus {
   status: string;
   amount_toman: number;
   credit_minutes: number;
+  needs_attention?: boolean;
   payment: {
     gateway_label: string;
     status: string;
@@ -67,7 +68,21 @@ export default function PaymentResult() {
     return () => window.clearTimeout(timer);
   }, [outcome, tries]);
 
-  const copy = COPY[outcome];
+  const attention = outcome === "paid" && server?.needs_attention === true;
+  const stalled = outcome === "pending" && tries >= 20;
+  const copy = stalled
+    ? {
+        title: "تأیید پرداخت طول کشیده است",
+        body: "هنوز نتیجه‌ی بانک نرسیده است. اگر مبلغ کسر شده، نیازی به پرداخت دوباره نیست؛ تا چند ساعت دیگر خودکار تأیید می‌شود. وضعیت را از صفحه حساب (بخش سفارش‌ها) ببینید و در صورت ادامه‌ی مشکل شماره سفارش را برای پشتیبانی بفرستید.",
+        art: pendingArt,
+      }
+    : attention
+    ? {
+        title: "پرداخت ثبت شد، اما تغییر پلن اعمال نشد",
+        body: "مبلغ دریافت شده است ولی ارتقای پلن به‌دلیل وضعیت اشتراک انجام نشد. پشتیبانی بررسی می‌کند و مبلغ یا ارتقا اصلاح می‌شود؛ برای پیگیری سریع‌تر شماره سفارش را برای پشتیبانی بفرستید.",
+        art: pendingArt,
+      }
+    : COPY[outcome];
   return (
     <div className="card mx-auto max-w-xl p-10 text-center" aria-live="polite">
       <img className="mx-auto mb-4" src={copy.art} alt="" width={240} height={165} />

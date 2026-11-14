@@ -52,6 +52,7 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
   const [gateway, setGateway] = useState<GatewayCode | null>(null);
   const [anyMethod, setAnyMethod] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [taxPercent, setTaxPercent] = useState(0);
   // One order per distinct purchase: retrying after an error reuses it instead of piling up drafts.
   const orderKey = useRef<{ signature: string; key: string } | null>(null);
 
@@ -90,8 +91,16 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
     };
   }, [mode, minutes, valid]);
 
+  useEffect(() => {
+    request<{ tax_percent: number }>("/v1/billing/credit-settings")
+      .then((settings) => setTaxPercent(settings.tax_percent))
+      .catch(() => undefined);
+  }, []);
+
   const quoted = quote && quote.minutes === minutes ? quote : null;
-  const total = mode === "custom" ? (quoted?.total_toman ?? minutes * pricePerMinute) : (selectedPackage?.price_toman ?? 0);
+  const packageNet = selectedPackage?.price_toman ?? 0;
+  const packageTotal = packageNet + Math.floor((packageNet * taxPercent + 50) / 100);
+  const total = mode === "custom" ? (quoted?.total_toman ?? minutes * pricePerMinute) : packageTotal;
   const ready = anyMethod && gateway !== null && total > 0 && (mode === "custom" ? valid : selectedPackage !== null);
 
   async function pay() {
@@ -176,7 +185,7 @@ export default function CreditTopUp({ packages, pricePerMinute, onError }: Props
       <PaymentMethodPicker amountToman={total} value={gateway} onChange={setGateway} onAvailability={setAnyMethod} />
 
       <div className="topup-total">
-        <span>مبلغ قابل پرداخت</span>
+        <span>مبلغ قابل پرداخت{mode === "package" && taxPercent ? ` (شامل ${fmt.int(taxPercent)}٪ مالیات)` : ""}</span>
         <strong>{fmt.toman(total)}</strong>
       </div>
       <button type="button" className="btn w-full" disabled={!ready || busy} onClick={() => void pay()}>

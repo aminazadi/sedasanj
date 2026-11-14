@@ -28,6 +28,7 @@ import ModuleFleet from "./pages/ModuleFleet";
 import ModuleReleaseEditor from "./pages/ModuleReleaseEditor";
 import ModuleReleases from "./pages/ModuleReleases";
 import Packages from "./pages/Packages";
+import TokenPackages from "./pages/TokenPackages";
 import Settings from "./pages/Settings";
 import SitePages from "./pages/SitePages";
 import TenantDetailPage from "./pages/TenantDetail";
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/tenant-databases" element={<TenantDatabases />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/packages" element={<Packages />} />
+        <Route path="/token-packages" element={<TokenPackages />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/subscriptions" element={<Subscriptions />} />
         <Route path="/commerce" element={<Commerce />} />

@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.db import resolve_tenant_for_call, session_scope
+from app.logging import log_context
 from app.models import AnalysisRun, Call, Job, Transcript, TranscriptRevision, Utterance
 from app.services import analysis_runs, outbox, pipeline, processing_events, progress
 from app.services.organization_memory import append_untrusted_context
@@ -33,9 +34,7 @@ def _correction_prompt(runtime: Any, revision: TranscriptRevision) -> str:
     )
 
 
-async def _stage_analysis(
-    *, tenant_id: UUID, call_id: UUID, revision: TranscriptRevision
-) -> UUID:
+async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision: TranscriptRevision) -> UUID:
     async with session_scope(tenant_id) as session:
         call = await session.get(Call, call_id)
         run = (
@@ -103,9 +102,7 @@ async def _stage_analysis(
         )
 
 
-async def _fail(
-    tenant_id: UUID, call_id: UUID, revision_id: UUID, exc: Exception
-) -> str:
+async def _fail(tenant_id: UUID, call_id: UUID, revision_id: UUID, exc: Exception) -> str:
     code, detail, retryable = classify_failure(exc, kind="llm")
     async with session_scope(tenant_id) as session:
         revision = await session.get(TranscriptRevision, revision_id)
@@ -155,6 +152,7 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
     tenant_id = await resolve_tenant_for_call(call_id, tenant_hint)
     if tenant_id is None:
         return "missing"
+    log_context(tenant_id=str(tenant_id), call_id=str(call_id))
     try:
         async with session_scope(tenant_id) as session:
             revision = await session.get(TranscriptRevision, revision_id)
@@ -282,6 +280,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
     call_id = UUID(str(payload["call_id"]))
     revision_id = UUID(str(payload["correction_run_id"]))
     tenant_id = UUID(str(payload["tenant_id"]))
+    log_context(tenant_id=str(tenant_id), call_id=str(call_id))
     try:
         async with session_scope(tenant_id) as session:
             revision = await session.get(TranscriptRevision, revision_id)
@@ -291,9 +290,11 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
             runtime = await resolve_provider_settings(
                 session, capability="correction", provider_override=revision.ai_provider
             )
-            if revision.started_at is not None and (
-                datetime.now(UTC) - revision.started_at
-            ).total_seconds() > runtime.correction_timeout_seconds:
+            if (
+                revision.started_at is not None
+                and (datetime.now(UTC) - revision.started_at).total_seconds()
+                > runtime.correction_timeout_seconds
+            ):
                 raise TimeoutError("correction processing deadline exceeded")
             utterances = list(
                 (
@@ -420,17 +421,13 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                     )
                     return_value = ("polling", outbox_id)
                 else:
-                    raise RuntimeError(
-                        str(state.get("error") or state.get("error_code") or status)
-                    )
+                    raise RuntimeError(str(state.get("error") or state.get("error_code") or status))
             finally:
                 await client.close()
         if return_value[0] == "polling":
             await outbox.dispatch_one(return_value[1])
             return "polling"
-        outbox_id = await _stage_analysis(
-            tenant_id=tenant_id, call_id=call_id, revision=revision
-        )
+        outbox_id = await _stage_analysis(tenant_id=tenant_id, call_id=call_id, revision=revision)
         await outbox.dispatch_one(outbox_id)
         return "succeeded"
     except Exception as exc:  # noqa: BLE001

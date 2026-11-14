@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ApiError
 from app.models import Subscription, Tenant, TenantBalanceCache, TrialClaim, User
 from app.security import hash_password
-from app.services import audit, commerce, plan_credit
+from app.services import audit, commerce, plan_credit, sms_notify
 from app.services.commerce_settings import get_commerce_settings
 from app.services.phone_identity import mobile_lock
 
@@ -90,6 +90,7 @@ async def create_account(
         assistant_monthly_messages=version.assistant_monthly_messages,
         assistant_source_limit=version.assistant_source_limit,
         assistant_model=version.assistant_model,
+        llm_monthly_tokens=version.llm_monthly_tokens,
     )
     session.add(subscription)
     await session.flush()
@@ -113,5 +114,8 @@ async def create_account(
         action="signup.complete",
         payload={"plan": plan_code},
         ip=ip,
+    )
+    await sms_notify.enqueue(
+        "welcome", mobile, {"ORG": organization_name}, f"welcome:{tenant.id}", tenant_id=tenant.id
     )
     return tenant, user

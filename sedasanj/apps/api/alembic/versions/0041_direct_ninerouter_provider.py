@@ -14,17 +14,14 @@ depends_on = None
 
 def upgrade() -> None:
     for table in ("jobs", "analysis_runs", "transcript_revisions", "asr_transcript_revisions"):
-        op.execute(
-            f"ALTER TABLE {table} ADD COLUMN ai_provider text NOT NULL DEFAULT 'aiservice'"
-        )
+        op.execute(f"ALTER TABLE {table} ADD COLUMN ai_provider text NOT NULL DEFAULT 'aiservice'")
         op.execute(
             f"ALTER TABLE {table} ADD CONSTRAINT {table}_ai_provider_check "
             "CHECK (ai_provider IN ('aiservice','ninerouter_direct'))"
         )
     op.execute("ALTER TABLE jobs ADD COLUMN ai_model text")
     op.execute(
-        "ALTER TABLE analysis_runs ADD COLUMN decision_provider text NOT NULL "
-        "DEFAULT 'aiservice'"
+        "ALTER TABLE analysis_runs ADD COLUMN decision_provider text NOT NULL DEFAULT 'aiservice'"
     )
     op.execute("ALTER TABLE analysis_runs ADD COLUMN decision_model text NOT NULL DEFAULT ''")
     op.execute(

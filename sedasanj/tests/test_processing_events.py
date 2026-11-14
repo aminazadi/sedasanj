@@ -9,7 +9,7 @@ def test_call_details_returns_processing_events_in_chronological_order() -> None
     """The API orders the events oldest-to-newest, which is the timeline contract."""
     project_root = Path(__file__).parents[1]
     calls_source = (project_root / "apps/api/app/routers/calls.py").read_text(encoding="utf-8")
-    timeline_source = (project_root / "web/client/src/pages/CallDetail.tsx").read_text(
+    timeline_source = (project_root / "web/client/src/components/ProcessingTimeline.tsx").read_text(
         encoding="utf-8"
     )
 
@@ -23,8 +23,7 @@ def test_processing_event_kinds_cover_every_pipeline_job() -> None:
     project_root = Path(__file__).parents[1]
     model_source = (project_root / "apps/api/app/models.py").read_text(encoding="utf-8")
     migration_source = (
-        project_root
-        / "apps/api/alembic/versions/0034_repair_processing_event_kinds.py"
+        project_root / "apps/api/alembic/versions/0034_repair_processing_event_kinds.py"
     ).read_text(encoding="utf-8")
     client_types = (project_root / "web/client/src/types.ts").read_text(encoding="utf-8")
 

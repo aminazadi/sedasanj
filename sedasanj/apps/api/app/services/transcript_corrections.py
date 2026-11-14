@@ -477,7 +477,8 @@ async def activate_revision(
     call = await session.get(Call, transcript.call_id)
     asr = (
         await session.get(AsrTranscriptRevision, transcript.active_asr_revision_id)
-        if transcript.active_asr_revision_id else None
+        if transcript.active_asr_revision_id
+        else None
     )
     corrected_text = render_turns(
         ((item["channel"], item["t_start_ms"], item["corrected_text"]) for item in segments),
