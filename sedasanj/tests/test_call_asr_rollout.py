@@ -14,7 +14,9 @@ from app.services.audio import AudioPreprocessingConfig
 from app.services.call_speakers import render_turns
 from app.services.provider_errors import ASR_NO_SPEECH_DETAIL, ProviderError, classify_failure
 from worker_asr import main
-from worker_asr.engine import SHENAVA_CALL_MODEL, AsrSegment, VoiceSanjEngine
+from worker_asr.engine import AsrSegment, VoiceSanjEngine
+
+SHENAVA_CALL_MODEL = "shenava-koochik-v1-5-rnnt"
 
 
 async def test_call_mode_overrides_provider_and_disables_preprocessing(monkeypatch) -> None:
@@ -46,6 +48,7 @@ async def test_voice_engine_keeps_primary_on_both_channels_and_tracks_fallback(w
         call_asr_profile="telephony",
         call_asr_telephony_threshold=0.41,
         call_asr_fallback_models=["fallback"],
+        voicesanj_asr_model=SHENAVA_CALL_MODEL,
         correction_audio_models=["unrelated-correction-model"],
         mono_diarization_enabled=True,
     )
@@ -87,39 +90,46 @@ async def test_voice_engine_keeps_primary_on_both_channels_and_tracks_fallback(w
     )
 
 
-async def test_voice_engine_uses_admin_call_model_and_keeps_shenava_default(wav_file) -> None:
-    admin_choice = VoiceSanjEngine(
+async def test_silero_mode_runs_the_admin_model_alone(wav_file) -> None:
+    # The general ASR model alone: no implicit Shenava primary and no implicit fallback.
+    general = VoiceSanjEngine(
         Settings(
             voicesanj_api_key="fixture",
             call_asr_mode="vad_segment",
-            call_asr_model=" whisper-persian-v4 ",
-            voicesanj_asr_model="buzzasr-persian",
+            voicesanj_asr_model="whisper-persian-v4",
         )
     )
-    assert admin_choice.model_name == "whisper-persian-v4"
-    # The admin's general ASR model stays the fallback, so a Whisper failure still has a path.
-    assert admin_choice._models == ["whisper-persian-v4", "buzzasr-persian"]
-    admin_choice._client.transcribe = AsyncMock(
+    assert general.model_name == "whisper-persian-v4"
+    assert general._models == ["whisper-persian-v4"]
+    general._client.transcribe = AsyncMock(
         return_value={"model": "whisper-persian-v4", "text": "سلام"}
     )
-    await admin_choice.transcribe(wav_file())
-    request = admin_choice._client.transcribe.await_args.kwargs
-    assert (request["model"], request["segmenter"]) == ("whisper-persian-v4", "silero_vad")
+    await general.transcribe(wav_file())
+    request = general._client.transcribe.await_args.kwargs
+    assert (request["model"], request["models"], request["segmenter"]) == (
+        "whisper-persian-v4",
+        None,
+        "silero_vad",
+    )
 
-    unchanged = VoiceSanjEngine(
+    # An explicit call model wins; only the explicit fallback list adds models.
+    explicit = VoiceSanjEngine(
         Settings(
             voicesanj_api_key="fixture",
             call_asr_mode="vad_segment",
-            voicesanj_asr_model="buzzasr-persian",
+            call_asr_model=" whisper-large-v3 ",
+            call_asr_fallback_models=["buzzasr-persian"],
+            voicesanj_asr_model="whisper-persian-v4",
         )
     )
-    assert unchanged.model_name == SHENAVA_CALL_MODEL
-    # The legacy path ignores the call model and keeps using the general ASR model.
+    assert explicit._models == ["whisper-large-v3", "buzzasr-persian"]
+
+    # The legacy path ignores the call model.
     legacy = VoiceSanjEngine(
         Settings(
             voicesanj_api_key="fixture",
             call_asr_mode="legacy",
-            call_asr_model="whisper-persian-v4",
+            call_asr_model="whisper-large-v3",
             voicesanj_asr_model="buzzasr-persian",
         )
     )

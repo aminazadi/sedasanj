@@ -280,25 +280,20 @@ def _segments_from_whisper(payload: object, path: Path) -> list[AsrSegment]:
     return [AsrSegment(t_start_ms=0, t_end_ms=duration, text=text)]
 
 
-SHENAVA_CALL_MODEL = "shenava-koochik-v1-5-rnnt"
-
-
 class VoiceSanjEngine(AsrEngine):
     """Remote Persian ASR via aiservice.voicesanj.ir (async task + poll)."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._silero = settings.call_asr_mode == "vad_segment"
-        # Silero mode follows the admin's call model; empty keeps the Shenava default.
+        # Silero mode runs the admin's choice alone: the call model when set, otherwise the
+        # general ASR model. Only the explicit fallback list adds more models.
         self.model_name = (
-            (settings.call_asr_model.strip() or SHENAVA_CALL_MODEL)
+            settings.call_asr_model.strip() or settings.voicesanj_asr_model
             if self._silero
             else settings.voicesanj_asr_model
         )
-        fallbacks = settings.call_asr_fallback_models
-        if self._silero and not fallbacks:
-            fallbacks = [settings.voicesanj_asr_model]
-        self._models = list(dict.fromkeys([self.model_name, *fallbacks]))
+        self._models = list(dict.fromkeys([self.model_name, *settings.call_asr_fallback_models]))
         self.model_version = "voicesanj"
         self._prompt = settings.ninerouter_asr_prompt or None
         self._client = VoiceSanjClient(

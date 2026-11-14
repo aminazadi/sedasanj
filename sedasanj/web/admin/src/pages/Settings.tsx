@@ -667,8 +667,8 @@ export default function Settings() {
               value={settings.call_asr_model} models={sileroAsrModels}
               onChange={(call_asr_model) => setSettings({ ...settings, call_asr_model })} />
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              خالی بماند، مدل پیش‌فرض شنوا کوچیک ۱٫۵ (RNNT) استفاده می‌شود. مدل‌های شنوا و Whisper پشتیبانی می‌شوند؛
-              «مدل ASR» عمومی همان مدل جایگزین باقی می‌ماند.
+              خالی بماند، همان «مدل ASR» عمومی به‌تنهایی اجرا می‌شود (بدون شنوا و بدون جایگزین پنهان).
+              مدل‌های شنوا و Whisper پشتیبانی می‌شوند؛ جایگزین فقط از فهرست زیر می‌آید.
             </p>
           </div>
         ) : null}

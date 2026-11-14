@@ -117,7 +117,7 @@ Flutter contract test checks the live engine's defaults against the same file. B
 paths strip the combining mark produced by mapping `ۀ` and emit plain `ه`. Legacy AISERVICE
 normalization keeps its existing behavior.
 
-The admin setting `call_asr_model` picks the model for this path (empty = `shenava-koochik-v1-5-rnnt`). AISERVICE decodes every
+The admin setting `call_asr_model` picks the model for this path (empty = the general admin ASR model, run alone; only `call_asr_fallback_models` adds fallbacks). AISERVICE decodes every
 Silero span with either sherpa (Shenava CTC/RNNT) or faster-whisper (Whisper Large v3, Whisper Persian v4, BuzzASR); a Whisper span is decoded with
 `vad_filter=False` and `condition_on_previous_text=False`, and keeps `avg_logprob`, `no_speech_prob` and `compression_ratio`. The parity
 numbers above (WER ≤ 2 points against the phone) were measured for Shenava only; ⚠ Whisper models have no measured parity or speed numbers.
