@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import Annotated
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,7 @@ from app.deps import (
 from app.errors import ApiError
 from app.models import HelpArticle, HelpCategory, HelpErrorCode, HelpMedia
 from app.schemas import (
+    HelpArchiveMonth,
     HelpArticleIn,
     HelpArticleList,
     HelpArticleOut,
@@ -43,10 +45,19 @@ router = APIRouter(tags=["help"])
 
 HelpAuthorDep = Annotated[Principal, Depends(require_staff_roles("super_admin"))]
 _PUBLIC_RATE = (120, 60)
+_TEHRAN = ZoneInfo("Asia/Tehran")
 
 
 async def _limit(request: Request) -> None:
     await ratelimit.enforce(f"help:{client_ip(request) or 'unknown'}", *_PUBLIC_RATE)
+
+
+async def _check_thumbnail(session: AsyncSession, media_id: UUID | None) -> None:
+    if media_id is None:
+        return
+    media = await session.get(HelpMedia, media_id)
+    if media is None or media.kind != "image":
+        raise ApiError("invalid_request", "select an existing image from the media library")
 
 
 def _media_url(media_id: UUID) -> str:
@@ -149,11 +160,18 @@ async def public_articles(
     category: Annotated[str | None, Query(max_length=80)] = None,
     q: Annotated[str | None, Query(max_length=120)] = None,
     kind: Annotated[str | None, Query(pattern="^(article|error|faq)$")] = None,
+    month: Annotated[str | None, Query(pattern=r"^\d{4}-\d{2}$")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0, le=5000)] = 0,
 ) -> HelpArticleList:
     await _limit(request)
     where = [HelpArticle.status == "published"]
+    if month:
+        window = help_content.jalali_month_range(month)
+        if window is None:
+            raise ApiError("invalid_request", "month must look like 1405-08")
+        where.append(HelpArticle.published_at >= datetime.combine(window[0], time(), _TEHRAN))
+        where.append(HelpArticle.published_at < datetime.combine(window[1], time(), _TEHRAN))
     if kind:
         where.append(HelpArticle.kind == kind)
     if category:
@@ -185,9 +203,38 @@ async def public_articles(
             select(HelpArticle).where(*where).order_by(*order).limit(limit).offset(offset)
         )
     ).scalars()
-    return HelpArticleList(
-        items=[HelpArticleSummary.model_validate(r) for r in rows], total=int(total)
-    )
+    articles = list(rows)
+    titles = {
+        c.id: (c.slug, c.title) for c in (await session.execute(select(HelpCategory))).scalars()
+    }
+    items = []
+    for row in articles:
+        item = HelpArticleSummary.model_validate(row)
+        if row.category_id in titles:
+            item.category_slug, item.category_title = titles[row.category_id]
+        items.append(item)
+    return HelpArticleList(items=items, total=int(total))
+
+
+@router.get("/v1/help/archive", response_model=list[HelpArchiveMonth])
+async def public_archive(request: Request, session: PublicSession) -> list[HelpArchiveMonth]:
+    """Published articles per Persian month, newest month first."""
+    await _limit(request)
+    dates = (
+        await session.execute(
+            select(HelpArticle.published_at).where(
+                HelpArticle.status == "published", HelpArticle.published_at.is_not(None)
+            )
+        )
+    ).scalars()
+    buckets: dict[str, int] = {}
+    for stamp in dates:
+        if stamp is None:
+            continue
+        jy, jm, _ = help_content.gregorian_to_jalali(stamp.astimezone(_TEHRAN).date())
+        key = f"{jy:04d}-{jm:02d}"
+        buckets[key] = buckets.get(key, 0) + 1
+    return [HelpArchiveMonth(month=k, count=buckets[k]) for k in sorted(buckets, reverse=True)]
 
 
 @router.get("/v1/help/articles/{slug}", response_model=HelpArticleOut)
@@ -464,7 +511,9 @@ async def admin_create_article(
         raise ApiError("conflict_idempotency", "an article with this slug already exists")
     codes = _check_codes(body.error_codes)
     html, plain = help_content.sanitize_help_html(body.body_html)
+    await _check_thumbnail(session, body.thumbnail_id)
     article = HelpArticle(
+        thumbnail_id=body.thumbnail_id,
         slug=slug,
         title=body.title.strip(),
         summary=body.summary.strip(),
@@ -503,6 +552,10 @@ async def admin_update_article(
     if article is None:
         raise ApiError("not_found", "article not found")
     changed: list[str] = []
+    if "thumbnail_id" in body.model_fields_set:
+        await _check_thumbnail(session, body.thumbnail_id)
+        article.thumbnail_id = body.thumbnail_id
+        changed.append("thumbnail")
     if body.slug is not None:
         slug = _check_slug(body.slug)
         clash = (
@@ -821,7 +874,12 @@ async def admin_delete_media(
         await session.execute(
             select(func.count())
             .select_from(HelpArticle)
-            .where(HelpArticle.body_html.contains(str(media_id)))
+            .where(
+                or_(
+                    HelpArticle.body_html.contains(str(media_id)),
+                    HelpArticle.thumbnail_id == media_id,
+                )
+            )
         )
     ).scalar_one()
     if in_use:

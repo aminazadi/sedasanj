@@ -51,6 +51,7 @@ export interface TenantDatabaseStatus {
   migration_status: string | null;
   migration_phase: string | null;
   migration_error: string | null;
+  migration_error_info: { code: string; message: string; action: string } | null;
   cutover_at: string | null;
   rollback_until: string | null;
   backup_status: string | null;
@@ -436,6 +437,8 @@ export interface HelpCategory {
 }
 
 export interface HelpArticleSummary {
+  thumbnail_id: string | null;
+  thumbnail_url: string | null;
   id: string;
   slug: string;
   title: string;

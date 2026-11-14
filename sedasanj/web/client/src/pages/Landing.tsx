@@ -1,3 +1,4 @@
+import RelatedArticles from "../components/RelatedArticles";
 import { useScrollHeader } from "../components/useScrollHeader";
 import SiteFooter from "../components/SiteFooter";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -364,26 +365,19 @@ function SatisfactionShowcase() {
   </section>;
 }
 
-interface ArticleCard { id: string; slug: string; title: string; summary: string; published_at: string | null }
-
-const faDate = new Intl.DateTimeFormat("fa-IR", { year: "numeric", month: "long", day: "numeric" });
+interface ArticleCard { thumbnail_url?: string | null; category_title?: string | null; id: string; slug: string; title: string; summary: string; published_at: string | null }
 
 function LatestArticles() {
   const [items, setItems] = useState<ArticleCard[] | null>(null);
   useEffect(() => {
-    request<{ items: ArticleCard[] }>("/v1/help/articles?kind=article&limit=3")
+    request<{ items: ArticleCard[] }>("/v1/help/articles?kind=article&limit=9")
       .then((r) => setItems(r.items))
       .catch(() => setItems([]));
   }, []);
   if (!items || items.length === 0) return null;
   return <section className="site-section site-articles" id="articles"><div className="site-container">
     <h2>مقالات و آموزش‌ها</h2>
-    <div className="site-article-grid">{items.map((a) => <article key={a.id}>
-      {a.published_at ? <time dateTime={a.published_at}>{faDate.format(new Date(a.published_at))}</time> : null}
-      <h3><Link to={`/help/${a.slug}`}>{a.title}</Link></h3>
-      {a.summary ? <p>{a.summary}</p> : null}
-      <Link className="site-article-more" to={`/help/${a.slug}`}>ادامهٔ مطلب<Icon name="arrow" size={18}/></Link>
-    </article>)}</div>
+    <RelatedArticles items={items} title={null} />
     <p className="site-pricing-note"><Link to="/help">همهٔ مقالات و آموزش‌ها</Link></p>
   </div></section>;
 }
@@ -435,21 +429,33 @@ export default function Landing() {
       </section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-awareness" id="awareness">
-        <svg className="awareness-launch-edge" viewBox="0 0 1440 180" preserveAspectRatio="xMaxYMin slice" fill="none" aria-hidden="true" focusable="false">
+        <svg className="awareness-launch-edge" style={{ overflow: "visible" }} viewBox="0 0 1440 180" preserveAspectRatio="xMaxYMin slice" fill="none" aria-hidden="true" focusable="false">
           <path fill="var(--site-canvas)" d="M0 0H1440V68C1360 98 1300 54 1236 68C1160 84 1134 136 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
           <path stroke="#8fb58a" strokeWidth="2" opacity=".55" d="M0 112C180 68 260 138 408 150C552 162 590 86 732 78C864 70 920 146 1040 152C1134 156 1170 100 1220 88"/>
-          <path fill="#cfe0c9" d="M0 80C210 36 266 114 410 112C554 110 600 42 740 44C900 46 948 130 1050 114C1128 102 1168 66 1204 66C1160 90 1148 132 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
-          <g transform="translate(1204 64) rotate(38)">
-            <path fill="#f5c542" d="M-10 29Q-18 53 0 68Q18 53 10 29Z"/>
-            <path fill="#fff6cf" d="M-5 30Q-8 46 0 54Q8 46 5 30Z"/>
-            <path fill="#8fb58a" stroke="#203b25" strokeWidth="2" strokeLinejoin="round" d="M-15 4L-30 24L-28 43L-12 30M15 4L30 24L28 43L12 30"/>
-            <path fill="#f2f0ef" stroke="#203b25" strokeWidth="2.5" d="M0-49C-22-30-24 6-14 31H14C24 6 22-30 0-49Z"/>
-            <path fill="#8fb58a" d="M0-47C-9-39-14-30-17-20H17C14-30 9-39 0-47Z"/>
-            <circle cy="-3" r="10" fill="#2f4a2d" stroke="#f5c542" strokeWidth="3"/>
-            <path stroke="#fff" strokeWidth="2" strokeLinecap="round" d="M-4-6L0-10"/>
-            <path stroke="#203b25" strokeWidth="2.5" d="M-13 24H13"/>
+          <defs>
+            <clipPath id="launch-sky"><path d="M0 0H1440V68C1360 98 1300 54 1236 68C1160 84 1134 136 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/></clipPath>
+            <linearGradient id="launch-trail" x1="1200" y1="0" x2="0" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#c9dcc3"/><stop offset=".5" stopColor="#bcd3b5"/><stop offset="1" stopColor="#a9c8a1"/></linearGradient>
+          </defs>
+          <g clipPath="url(#launch-sky)">
+            <path fill="url(#launch-trail)" d="M1192 52C1192 70 1176 80 1140 88C1100 94 1060 98 1020 96C920 92 880 22 740 24C600 26 560 84 410 84C260 84 200 14 0 52V150H1300L1262 78C1232 74 1216 66 1216 52Z"/>
+            <path fill="#e4efe0" opacity=".9" d="M1201 54C1200 72 1184 86 1150 94C1110 104 1070 112 1020 110C920 106 880 46 740 46C600 46 560 112 410 112C260 112 200 40 0 80V150H1290L1250 80C1226 76 1208 68 1208 54Z"/>
+            <path stroke="#fff" strokeWidth="1.6" strokeLinecap="round" opacity=".7" d="M1199 60C1196 78 1170 90 1130 98C1090 108 1050 120 1010 118"/>
           </g>
-          <path stroke="#b2ac88" strokeWidth="2" strokeLinecap="round" d="M1300 24V36M1294 30H1306M1124 38V46M1120 42H1128"/>
+          <g fill="#cfe0c9"><circle cx="1182" cy="56" r="2.2" opacity=".8"/><circle cx="1226" cy="60" r="1.8" opacity=".7"/><circle cx="1174" cy="68" r="1.5" opacity=".6"/><circle cx="1234" cy="48" r="1.4" opacity=".6"/></g>
+          <g transform="translate(1204 9)">
+            <path fill="#f5c542" d="M-11 29Q-18 44 0 56Q18 44 11 29Z"/>
+            <path fill="#ffe08a" d="M-7 30Q-10 41 0 49Q10 41 7 30Z"/>
+            <path fill="#fff6cf" d="M-3.5 30Q-5 37 0 42Q5 37 3.5 30Z"/>
+            <path fill="#8fb58a" stroke="#203b25" strokeWidth="2.5" strokeLinejoin="round" d="M-15 2L-34 26L-32 47L-12 32M15 2L34 26L32 47L12 32"/>
+            <path fill="#f2f0ef" stroke="#203b25" strokeWidth="3" d="M0-49C-23-30-25 6-15 33H15C25 6 23-30 0-49Z"/>
+            <path fill="#dfe6dc" d="M9-34C20-14 18 14 11 31H15C25 6 23-30 0-49Z"/>
+            <path fill="#8fb58a" d="M0-47C-9-39-14-30-17-20H17C14-30 9-39 0-47Z"/>
+            <circle cy="-4" r="12" fill="#f5c542" stroke="#203b25" strokeWidth="2.5"/>
+            <circle cy="-4" r="8" fill="#2f4a2d"/>
+            <path stroke="#fff" strokeWidth="2.2" strokeLinecap="round" d="M-4-7L0-11"/>
+            <path stroke="#203b25" strokeWidth="2.5" strokeLinecap="round" d="M-12 22H12"/>
+          </g>
+          <path stroke="#b2ac88" strokeWidth="2" strokeLinecap="round" d="M1300 34V46M1294 40H1306M1124 38V46M1120 42H1128M1276 -2V8M1271 3H1281"/>
         </svg>
         <div className="site-container site-awareness-grid">
         <div>

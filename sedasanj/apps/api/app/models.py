@@ -2961,6 +2961,7 @@ class TenantProvisioningJob(Base):
     )
     step: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'pending'"))
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(String(48))
     error_detail: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(TSTZ)
     completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -2997,6 +2998,7 @@ class TenantDataMigration(Base):
     checkpoint: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'")
     )
+    error_code: Mapped[str | None] = mapped_column(String(48))
     error_detail: Mapped[str | None] = mapped_column(Text)
     source_locked_at: Mapped[datetime | None] = mapped_column(TSTZ)
     cutover_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -3295,6 +3297,10 @@ class HelpArticle(Base):
         PgUUID(as_uuid=True), ForeignKey("help_categories.id", ondelete="SET NULL")
     )
     title: Mapped[str] = mapped_column(String(250), nullable=False)
+    thumbnail_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("help_media.id", ondelete="SET NULL")
+    )
+
     summary: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     body_html: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     body_plain: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
@@ -3308,6 +3314,10 @@ class HelpArticle(Base):
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
+
+    @property
+    def thumbnail_url(self) -> str | None:
+        return f"/v1/help/media/{self.thumbnail_id}" if self.thumbnail_id else None
 
 class HelpErrorCode(Base):
     """Maps a stable error code (SS-UPL-0401, unauthorized, ...) to its help article."""

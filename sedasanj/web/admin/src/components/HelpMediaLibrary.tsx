@@ -25,7 +25,7 @@ function Thumb({ media }: { media: HelpMedia }) {
   return <img src={media.url} alt={media.alt} className="h-24 w-full rounded object-cover" loading="lazy" />;
 }
 
-export default function HelpMediaLibrary({ onPick }: { onPick?: (media: HelpMedia) => void }) {
+export default function HelpMediaLibrary({ onPick, imagesOnly = false }: { onPick?: (media: HelpMedia) => void; imagesOnly?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<HelpMedia[] | null>(null);
   const [alt, setAlt] = useState("");
@@ -54,7 +54,7 @@ export default function HelpMediaLibrary({ onPick }: { onPick?: (media: HelpMedi
       const media = await uploadWithProgress<HelpMedia>("/v1/admin/help/media", form, setProgress);
       setAlt("");
       await reload();
-      if (onPick) onPick(media);
+      if (onPick && (!imagesOnly || media.kind === "image")) onPick(media);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -89,7 +89,7 @@ export default function HelpMediaLibrary({ onPick }: { onPick?: (media: HelpMedi
               ref={input}
               type="file"
               className="hidden"
-              accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"
+              accept={imagesOnly ? "image/png,image/jpeg,image/webp,image/gif" : "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = "";
@@ -108,7 +108,7 @@ export default function HelpMediaLibrary({ onPick }: { onPick?: (media: HelpMedi
         <Empty>هنوز فایلی آپلود نشده است.</Empty>
       ) : (
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((media) => (
+          {items.filter((media) => !imagesOnly || media.kind === "image").map((media) => (
             <div key={media.id} className="card space-y-2 p-3">
               <Thumb media={media} />
               <div className="truncate text-xs text-slate-600" dir="ltr" title={media.filename}>

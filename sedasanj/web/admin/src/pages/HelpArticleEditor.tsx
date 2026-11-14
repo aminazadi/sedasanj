@@ -9,6 +9,7 @@ import type { HelpArticle, HelpCategory, HelpKind } from "../types";
 const RichTextEditor = lazy(() => import("../components/RichTextEditor"));
 
 interface Form {
+  thumbnail_id: string;
   title: string;
   slug: string;
   summary: string;
@@ -20,6 +21,7 @@ interface Form {
 }
 
 const EMPTY: Form = {
+  thumbnail_id: "",
   title: "",
   slug: "",
   summary: "",
@@ -36,6 +38,7 @@ const ERROR_TEMPLATE =
 
 function toForm(article: HelpArticle): Form {
   return {
+    thumbnail_id: article.thumbnail_id ?? "",
     title: article.title,
     slug: article.slug,
     summary: article.summary,
@@ -62,6 +65,7 @@ export default function HelpArticleEditor() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pickThumbnail, setPickThumbnail] = useState(false);
   const [preview, setPreview] = useState(false);
   const [insertMedia, setInsertMedia] = useState<((html: string) => void) | null>(null);
 
@@ -85,6 +89,7 @@ export default function HelpArticleEditor() {
 
   function payload() {
     return {
+      thumbnail_id: form.thumbnail_id || null,
       slug: form.slug.trim().toLowerCase(),
       title: form.title.trim(),
       summary: form.summary.trim(),
@@ -228,6 +233,13 @@ export default function HelpArticleEditor() {
 
         <div className="space-y-4">
           <div className="card space-y-3">
+            <h2 className="label">تصویر بندانگشتی</h2>
+            {form.thumbnail_id ? <img src={`/v1/help/media/${form.thumbnail_id}`} alt={form.title} className="aspect-video w-full rounded object-cover" /> : null}
+            <p className="text-xs text-slate-500">در صفحهٔ اصلی، فهرست و بالای مقاله نمایش داده می‌شود. تصویر افقی پیشنهاد می‌شود.</p>
+            <button type="button" className="btn btn-ghost" onClick={() => setPickThumbnail(true)}>انتخاب یا آپلود تصویر</button>
+            {form.thumbnail_id ? <button type="button" className="btn btn-ghost" onClick={() => set("thumbnail_id", "")}>حذف تصویر بندانگشتی</button> : null}
+          </div>
+          <div className="card space-y-3">
             <div>
               <label className="label">نشانی (slug)</label>
               <input
@@ -282,18 +294,20 @@ export default function HelpArticleEditor() {
         </div>
       </div>
 
-      {insertMedia ? (
+      {insertMedia || pickThumbnail ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-4xl rounded-xl bg-white p-4 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-bold">کتابخانهٔ تصویر و ویدئو</h2>
-              <button type="button" className="btn btn-ghost" onClick={() => setInsertMedia(null)}>
+              <button type="button" className="btn btn-ghost" onClick={() => { setInsertMedia(null); setPickThumbnail(false); }}>
                 بستن
               </button>
             </div>
             <HelpMediaLibrary
+              imagesOnly={pickThumbnail}
               onPick={(media) => {
-                insertMedia(mediaHtml(media));
+                if (pickThumbnail) { set("thumbnail_id", media.id); setPickThumbnail(false); }
+                else insertMedia?.(mediaHtml(media));
                 setInsertMedia(null);
               }}
             />

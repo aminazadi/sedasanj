@@ -199,3 +199,73 @@ async def test_memory_storage_byte_range() -> None:
     await storage.put("k", b"0123456789")
     assert b"".join([c async for c in storage.iter_chunks("k", byte_range=(2, 5))]) == b"2345"
     assert b"".join([c async for c in storage.iter_chunks("k")]) == b"0123456789"
+
+
+async def test_thumbnail_requires_existing_image() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from uuid import UUID as Uuid
+
+    from app.errors import ApiError
+    from app.routers.help import _check_thumbnail
+
+    session = AsyncMock()
+    await _check_thumbnail(session, None)
+    session.get.assert_not_awaited()
+    media_id = Uuid(UUID)
+    for media in (None, SimpleNamespace(kind="video")):
+        session.get.return_value = media
+        with pytest.raises(ApiError) as exc:
+            await _check_thumbnail(session, media_id)
+        assert exc.value.code == "invalid_request"
+    session.get.return_value = SimpleNamespace(kind="image")
+    await _check_thumbnail(session, media_id)
+
+
+def test_thumbnail_serialization_and_explicit_removal() -> None:
+    from datetime import UTC, datetime
+    from uuid import UUID as Uuid
+
+    from app.models import HelpArticle
+    from app.schemas import HelpArticleSummary, HelpArticleUpdate
+
+    article = HelpArticle(
+        id=Uuid(UUID),
+        slug="test",
+        title="Test",
+        summary="",
+        kind="article",
+        status="draft",
+        position=0,
+        updated_at=datetime.now(UTC),
+        thumbnail_id=Uuid(UUID),
+    )
+    assert HelpArticleSummary.model_validate(article).thumbnail_url == f"/v1/help/media/{UUID}"
+    article.thumbnail_id = None
+    assert HelpArticleSummary.model_validate(article).thumbnail_url is None
+    assert "thumbnail_id" not in HelpArticleUpdate(title="Changed").model_fields_set
+    assert "thumbnail_id" in HelpArticleUpdate(thumbnail_id=None).model_fields_set
+
+
+def test_jalali_conversion_round_trips_and_month_windows() -> None:
+    from datetime import date, timedelta
+
+    assert hc.gregorian_to_jalali(date(2026, 11, 14)) == (1405, 8, 23)
+    assert hc.gregorian_to_jalali(date(2025, 3, 20)) == (1403, 12, 30)  # leap year end
+    assert hc.jalali_month_range("1405-08") == (date(2026, 10, 23), date(2026, 11, 22))
+    assert hc.jalali_month_range("1404-12") == (date(2026, 2, 20), date(2026, 3, 21))
+    assert hc.jalali_month_range("1405-13") is None and hc.jalali_month_range("x") is None
+    start = date(2020, 1, 1)
+    for i in range(0, 3000, 7):
+        day = start + timedelta(i)
+        assert hc._jalali_to_gregorian(*hc.gregorian_to_jalali(day)) == day
+
+
+def test_public_archive_route_and_month_filter_are_exposed() -> None:
+    from app.main import create_app
+
+    paths = create_app().openapi()["paths"]
+    assert "get" in paths["/v1/help/archive"]
+    params = paths["/v1/help/articles"]["get"]["parameters"]
+    month = next(p for p in params if p["name"] == "month")
+    assert month["schema"]["anyOf"][0]["pattern"] == r"^\d{4}-\d{2}$"

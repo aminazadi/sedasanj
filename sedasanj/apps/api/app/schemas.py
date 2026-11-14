@@ -504,7 +504,9 @@ class AsrTranscriptRevisionOut(BaseModel):
     completed_at: datetime | None = None
     activated_at: datetime | None = None
     active: bool = False
-    correction_status: Literal["queued", "running", "validating", "succeeded", "failed"] | None = None
+    correction_status: Literal["queued", "running", "validating", "succeeded", "failed"] | None = (
+        None
+    )
     utterances: list[UtteranceOut] = Field(default_factory=list)
     corrected_utterances: list[UtteranceOut] = Field(default_factory=list)
 
@@ -641,7 +643,9 @@ class CoachResult(BaseModel):
 
     @model_validator(mode="after")
     def _require_substance(self) -> CoachResult:
-        if not self.insufficient_evidence and not (self.headline.strip() and self.narrative.strip()):
+        if not self.insufficient_evidence and not (
+            self.headline.strip() and self.narrative.strip()
+        ):
             raise ValueError("headline and narrative are required")
         return self
 
@@ -716,12 +720,24 @@ class ChatConversationOut(BaseModel):
 
 class OrganizationMemoryUpdate(BaseModel):
     lock_version: int = Field(ge=1)
-    category: Literal["organization_profile", "products_services", "terminology", "policies", "analysis_rules", "freeform"] | None = None
+    category: (
+        Literal[
+            "organization_profile",
+            "products_services",
+            "terminology",
+            "policies",
+            "analysis_rules",
+            "freeform",
+        ]
+        | None
+    ) = None
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, min_length=1, max_length=12_000)
     structured_payload: dict[str, Any] | None = None
     tags: list[str] | None = Field(default=None, max_length=30)
-    applies_to: list[Literal["assistant", "correction", "analysis", "scoring"]] | None = Field(default=None, min_length=1, max_length=4)
+    applies_to: list[Literal["assistant", "correction", "analysis", "scoring"]] | None = Field(
+        default=None, min_length=1, max_length=4
+    )
 
 
 class OrganizationMemoryAction(BaseModel):
@@ -733,12 +749,21 @@ class OrganizationMemoryMerge(BaseModel):
     memory_ids: list[UUID] = Field(min_length=2, max_length=10)
     lock_versions: dict[UUID, int]
     logical_key: str = Field(min_length=1, max_length=120)
-    category: Literal["organization_profile", "products_services", "terminology", "policies", "analysis_rules", "freeform"]
+    category: Literal[
+        "organization_profile",
+        "products_services",
+        "terminology",
+        "policies",
+        "analysis_rules",
+        "freeform",
+    ]
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=12_000)
     structured_payload: dict[str, Any] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list, max_length=30)
-    applies_to: list[Literal["assistant", "correction", "analysis", "scoring"]] = Field(min_length=1, max_length=4)
+    applies_to: list[Literal["assistant", "correction", "analysis", "scoring"]] = Field(
+        min_length=1, max_length=4
+    )
     idempotency_key: str | None = Field(default=None, max_length=120)
 
 
@@ -1378,20 +1403,23 @@ class SettingsUpdate(BaseModel):
     assistant_max_tool_calls: int | None = Field(default=None, ge=1, le=4)
     assistant_max_discovery_rounds: int | None = Field(default=None, ge=0, le=2)
     assistant_parallel_tools: int | None = Field(default=None, ge=1, le=2)
-    assistant_enabled_tools: list[
-        Literal[
-            "get_current_time",
-            "search_calls",
-            "get_call_details",
-            "search_transcripts",
-            "search_knowledge",
-            "get_call_analysis",
-            "get_call_analytics",
-            "get_operator_performance",
-            "visualize_statistics",
-            "export_data",
+    assistant_enabled_tools: (
+        list[
+            Literal[
+                "get_current_time",
+                "search_calls",
+                "get_call_details",
+                "search_transcripts",
+                "search_knowledge",
+                "get_call_analysis",
+                "get_call_analytics",
+                "get_operator_performance",
+                "visualize_statistics",
+                "export_data",
+            ]
         ]
-    ] | None = Field(default=None, min_length=1, max_length=10)
+        | None
+    ) = Field(default=None, min_length=1, max_length=10)
     assistant_export_ttl_minutes: int | None = Field(default=None, ge=1, le=1440)
     correction_enabled: bool | None = None
     correction_mode: Literal["text_only", "audio_only", "two_stage"] | None = None
@@ -1670,8 +1698,12 @@ class HelpArticleSummary(BaseModel):
     slug: str
     title: str
     summary: str
+    thumbnail_id: UUID | None = None
+    thumbnail_url: str | None = None
     kind: HelpKind
     category_id: UUID | None
+    category_slug: str | None = None
+    category_title: str | None = None
     status: HelpStatus
     position: int
     published_at: datetime | None
@@ -1688,6 +1720,7 @@ class HelpArticleIn(BaseModel):
     title: str = Field(min_length=1, max_length=250)
     summary: str = Field(default="", max_length=1000)
     body_html: str = Field(default="", max_length=400_000)
+    thumbnail_id: UUID | None = None
     kind: HelpKind = "article"
     category_id: UUID | None = None
     position: int = Field(default=0, ge=0, le=10000)
@@ -1699,6 +1732,7 @@ class HelpArticleUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=250)
     summary: str | None = Field(default=None, max_length=1000)
     body_html: str | None = Field(default=None, max_length=400_000)
+    thumbnail_id: UUID | None = None
     kind: HelpKind | None = None
     category_id: UUID | None = None
     clear_category: bool = False
@@ -1709,6 +1743,11 @@ class HelpArticleUpdate(BaseModel):
 class HelpArticleList(BaseModel):
     items: list[HelpArticleSummary]
     total: int
+
+
+class HelpArchiveMonth(BaseModel):
+    month: str  # Jalali "YYYY-MM"
+    count: int
 
 
 class HelpErrorCodeOut(BaseModel):

@@ -144,6 +144,8 @@ async def delete_tenant_data(
     await session.execute(delete(AnalysisRun).where(AnalysisRun.tenant_id == tenant_id))
     await session.execute(delete(WebhookDelivery).where(WebhookDelivery.tenant_id == tenant_id))
     await session.execute(delete(Job).where(Job.tenant_id == tenant_id))
+    # Held credit goes back to the balance before its reservations are deleted below.
+    await billing.release_held_calls(session, tenant_id=tenant_id)
     # Financial history survives as ledger entries; their call pointers are cleared first.
     await session.execute(
         update(LedgerEntry).where(LedgerEntry.tenant_id == tenant_id).values(call_id=None)

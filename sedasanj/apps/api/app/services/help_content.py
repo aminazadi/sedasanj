@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date, timedelta
 from functools import lru_cache
 from html import escape
 from html.parser import HTMLParser
@@ -232,3 +233,68 @@ CATALOG_PATH = Path(__file__).resolve().parents[1] / "data" / "module_error_code
 def module_error_catalog() -> list[dict[str, Any]]:
     """Error codes defined by the FreePBX module (exported from its ErrorCatalog.php)."""
     return list(json.loads(CATALOG_PATH.read_text(encoding="utf-8")))
+
+
+# --- Persian (Jalali) calendar helpers for the article archive ---------------
+
+_JALALI_BREAKS = (-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192,
+                  2262, 2324, 2394, 2456, 3178)  # fmt: skip
+_MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
+
+
+def _jal_cal(jy: int) -> tuple[int, int, int]:
+    """Leap offset, Gregorian year of 1 Farvardin and its March day (jalaali-js algorithm)."""
+    gy = jy + 621
+    leap_j = -14
+    jp = _JALALI_BREAKS[0]
+    jump = 0
+    for jm in _JALALI_BREAKS[1:]:
+        jump = jm - jp
+        if jy < jm:
+            break
+        leap_j += jump // 33 * 8 + (jump % 33) // 4
+        jp = jm
+    n = jy - jp
+    leap_j += n // 33 * 8 + ((n % 33) + 3) // 4
+    if jump % 33 == 4 and jump - n == 4:
+        leap_j += 1
+    leap_g = gy // 4 - (gy // 100 + 1) * 3 // 4 - 150
+    march = 20 + leap_j - leap_g
+    if jump - n < 6:
+        n = n - jump + (jump + 4) // 33 * 33
+    leap = ((n + 1) % 33 - 1) % 4
+    if leap == -1:
+        leap = 4
+    return leap, gy, march
+
+
+def gregorian_to_jalali(d: date) -> tuple[int, int, int]:
+    jy = d.year - 621
+    leap, gy, march = _jal_cal(jy)
+    first = date(gy, 3, march)
+    k = (d - first).days
+    if k < 0:
+        jy -= 1
+        leap, gy, march = _jal_cal(jy)
+        k = (d - date(gy, 3, march)).days
+    if k <= 185:
+        return jy, 1 + k // 31, k % 31 + 1
+    k -= 186
+    return jy, 7 + k // 30, k % 30 + 1
+
+
+def jalali_month_range(key: str) -> tuple[date, date] | None:
+    """`'1405-08'` -> first day (inclusive) and first day of the next month (exclusive)."""
+    match = _MONTH_RE.match(key)
+    if match is None:
+        return None
+    jy, jm = int(match.group(1)), int(match.group(2))
+    start = _jalali_to_gregorian(jy, jm, 1)
+    ny, nm = (jy + 1, 1) if jm == 12 else (jy, jm + 1)
+    return start, _jalali_to_gregorian(ny, nm, 1)
+
+
+def _jalali_to_gregorian(jy: int, jm: int, jd: int) -> date:
+    _, gy, march = _jal_cal(jy)
+    days = (jm - 1) * 31 + jd - 1 if jm <= 6 else 186 + (jm - 7) * 30 + jd - 1
+    return date(gy, 3, march) + timedelta(days=days)

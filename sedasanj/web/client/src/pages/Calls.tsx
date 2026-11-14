@@ -1,3 +1,4 @@
+import BulkActions, { SelectionCheckbox, useBulkSelection } from "../components/BulkActions";
 import { useTablePageSize } from "../lib/useTablePagination";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -7,7 +8,7 @@ import { isOperator, isOrgAdmin, useAuth } from "../auth";
 import { Empty, ErrorBox, Pagination, SentimentBadge, StatusBadge, SummaryCell, TrajectoryBadge } from "../components/Widgets";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { FilterSelect, useFilterBar, type FilterBarField } from "@cbi/web-shared/components/FilterBar";
-import type { CallPage, CallSummary } from "../types";
+import type { CallDetail, CallPage, CallSummary } from "../types";
 import { SkeletonTable, type SkeletonColumn } from "@cbi/web-shared/components/Skeleton";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 import CallUploadForm from "./CallUploadForm";
@@ -130,6 +131,8 @@ const CallsTableSection = memo(function CallsTableSection({
   const [deleteCandidate, setDeleteCandidate] = useState<CallSummary | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const appliedKey = JSON.stringify(applied);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selected, setSelected, toggle } = useBulkSelection(`${appliedKey}:${pageIndex}:${PAGE_SIZE}`);
 
   const calls = useResource<CallPage>(async (signal) => {
     const response = await request<CallPage>(`/v1/calls${query({ ...applied, offset: pageIndex * PAGE_SIZE, limit: PAGE_SIZE })}`, { signal });
@@ -146,10 +149,10 @@ const CallsTableSection = memo(function CallsTableSection({
   const columns = callColumns(canDelete);
 
   useEffect(() => {
-    if (!items.some((call) => call.processing)) return;
+    if (bulkBusy || !items.some((call) => call.processing)) return;
     const timer = window.setInterval(() => calls.reload({ silent: true }), 3000);
     return () => window.clearInterval(timer);
-  }, [items, calls.reload]);
+  }, [bulkBusy, items, calls.reload]);
 
   async function deleteCall(call: CallSummary) {
     setDeletingId(call.id);
@@ -173,7 +176,7 @@ const CallsTableSection = memo(function CallsTableSection({
           type="button"
           className="btn inline-flex h-[42px] w-[42px] items-center justify-center p-0"
           onClick={() => calls.reload()}
-          disabled={calls.loading}
+          disabled={bulkBusy || calls.loading}
           aria-busy={calls.loading}
           aria-label={calls.loading ? "در حال بروزرسانی تماس‌ها" : "بروزرسانی تماس‌ها"}
           title="بروزرسانی تماس‌ها"
@@ -188,6 +191,15 @@ const CallsTableSection = memo(function CallsTableSection({
       <ErrorBox message={calls.error ?? actionError} />
 
       <div className="card">
+        <BulkActions disabled={calls.loading} selected={selected} setSelected={setSelected} onBusy={setBulkBusy} onComplete={() => calls.reload()} actions={[
+          { label: "تحلیل مجدد", eligible: (id) => items.some((call) => call.id === id && !call.processing && ["answered", "voicemail"].includes(call.call_type)), execute: (id) => request(`/v1/calls/${id}/reanalyze`, { method: "POST" }) },
+          { label: "پردازش مجدد صوت", eligible: (id) => items.some((call) => call.id === id && !call.processing && ["answered", "voicemail"].includes(call.call_type)), execute: async (id) => {
+            const detail = await request<CallDetail>(`/v1/calls/${id}`);
+            if (!detail.can_retry_transcription) throw new Error("پردازش مجدد صوت برای این مورد مجاز نیست؛ وضعیت را در جزئیات بررسی کنید.");
+            return request(`/v1/calls/${id}/retry-transcription`, { method: "POST" });
+          } },
+          ...(canDelete ? [{ label: "حذف", destructive: true, eligible: (id: string) => items.some((call) => call.id === id), execute: (id: string) => request(`/v1/calls/${id}`, { method: "DELETE" }) }] : []),
+        ]} />
         {calls.loading ? (
           <SkeletonTable columns={columns} rows={calls.data ? Math.min(items.length || EMPTY_PREVIOUS_ROWS, PAGE_SIZE) : FIRST_LOAD_ROWS} />
         ) : items.length === 0 ? (
@@ -196,6 +208,7 @@ const CallsTableSection = memo(function CallsTableSection({
           <table className="table" dir="rtl">
             <thead>
               <tr>
+                <th><SelectionCheckbox label="انتخاب همه موارد این صفحه" checked={items.length > 0 && items.every((item) => selected.includes(item.id))} mixed={items.some((item) => selected.includes(item.id)) && !items.every((item) => selected.includes(item.id))} disabled={bulkBusy} onChange={() => setSelected(items.every((item) => selected.includes(item.id)) ? [] : items.map((item) => item.id))} /></th>
                 {columns.map((column, index) => (
                   <th key={index} aria-label={column.ariaLabel}>{column.label}</th>
                 ))}
@@ -216,6 +229,7 @@ const CallsTableSection = memo(function CallsTableSection({
                     }
                   }}
                 >
+                  <td><SelectionCheckbox label={`انتخاب مورد ${call.id}`} checked={selected.includes(call.id)} disabled={bulkBusy} onChange={() => toggle(call.id)} /></td>
                   <td>{fmt.dateTime(call.started_at)}</td>
                   <PartyCell number={call.caller_number} name={call.caller_name} />
                   <PartyCell number={call.dialed_number} name={call.dialed_name} />
@@ -238,7 +252,7 @@ const CallsTableSection = memo(function CallsTableSection({
                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label="حذف تماس"
                         title="حذف تماس"
-                        disabled={deletingId === call.id}
+                        disabled={bulkBusy || deletingId === call.id}
                         onClick={(event) => {
                           event.stopPropagation();
                           setDeleteCandidate(call);
@@ -259,7 +273,7 @@ const CallsTableSection = memo(function CallsTableSection({
           hasPrevious={pageIndex > 0}
           hasNext={pageIndex + 1 < pages}
           total={calls.data?.total}
-          loading={calls.loading}
+          loading={bulkBusy || calls.loading}
           onPrevious={() => onPage(pageIndex)}
           onNext={() => onPage(pageIndex + 2)}
         />

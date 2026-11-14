@@ -32,6 +32,16 @@ The same worker upgrades ready databases sequentially to the application schema 
 fleet migration removes the database from routing until an administrator retries it; rollout
 does not continue silently after a failed database.
 
+## Failure codes
+
+Admin > Tenant Databases shows a stable code, a Persian message and the next action for each
+failed organization; the full sanitized detail is under «جزئیات فنی». Codes: `TENANT_DB_KEY_INVALID`,
+`TENANT_DB_WORKER_STALE`, `TENANT_DB_PREFLIGHT`, `TENANT_DB_PLAN_CONFLICT`,
+`TENANT_DB_SCHEMA_REVISION`, `TENANT_DB_ALEMBIC_FAILED`, `TENANT_DB_DRAIN_TIMEOUT`,
+`TENANT_DB_VALIDATION`, `TENANT_DB_UNKNOWN`. After every deploy restart `worker-provision` together
+with the API so it runs the same schema head. Retry-all requeues every failed organization; the
+worker still runs them one at a time.
+
 ## Operational checks
 
 - Confirm the target database identity equals the signed tenant ID.

@@ -1,0 +1,1 @@
+export function runBulkAction(ids: string[], execute: (id: string) => Promise<unknown>, onProgress?: (done: number) => void): Promise<{ succeeded: string[]; failed: { id: string; message: string }[] }>;

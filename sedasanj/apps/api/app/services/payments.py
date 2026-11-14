@@ -535,6 +535,17 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             )
         if first_paid and version.intro_minutes:
             current.intro_credit_issued_at = now
+        # Grant this window's plan minutes now (idempotent per window) so the balance is right
+        # the moment the payment lands, not only after the next call is ingested.
+        await plan_credit.ensure_period_credit(
+            session,
+            order.tenant_id,
+            subscription_id=current.id,
+            subscription_start=current.period_start,
+            subscription_end=current.period_end,
+            minutes=version.intro_minutes,
+            now=now,
+        )
     credit_item = next((item for item in items if item.kind == "credit"), None)
     if credit_item is not None:
         await grant_credit(
@@ -770,6 +781,15 @@ async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
         if verification.amount_rial is not None and verification.amount_rial != attempt.amount_rial:
             attempt.status, attempt.failure_code = "failed", "amount_mismatch"
             mismatch_ref = _attempt_ref(attempt)
+        elif await _ref_already_used(session, attempt, verification.ref_id):
+            # The bank reference belongs to a payment another attempt already settled: a replayed
+            # callback must never pay a second order.  No reverse: that money is a real payment.
+            attempt.status, attempt.failure_code = "failed", "bank_reference_reused"
+            logger.warning(
+                "bank reference reused by another attempt",
+                extra={"extra_fields": {"gateway": attempt.gateway, "attempt_id": str(attempt.id)}},
+            )
+            return "failed"
         else:
             now = datetime.now(UTC)
             attempt.status = "verified"
@@ -780,13 +800,56 @@ async def verify_and_fulfill(tenant_id: UUID, attempt_id: UUID) -> str:
             attempt.verified_at = now
             attempt.settled_at = None if gateway.needs_settle else now
             needs_settle = gateway.needs_settle
-            await fulfill_order(session, order)
+            try:
+                async with session.begin_nested():
+                    await fulfill_order(session, order)
+            except Exception as exc:  # noqa: BLE001 - paid money must never lose its attempt
+                # The bank has the money but the order could not be applied.  Keep the attempt
+                # retryable (bounded by MAX_CHECKS) and visible to admin as "fulfil_failed".
+                await session.refresh(attempt)
+                attempt.status = "pending_verification"
+                attempt.failure_code = f"fulfill_failed:{type(exc).__name__}"[:64]
+                attempt.verified_at = None
+                attempt.settled_at = None
+                needs_settle = False
+                logger.exception(
+                    "paid order could not be fulfilled",
+                    extra={
+                        "extra_fields": {
+                            "attempt_id": str(attempt.id),
+                            "order_id": str(order.id),
+                            "check_count": attempt.check_count,
+                        }
+                    },
+                )
+                return "pending"
     if mismatch_ref is not None and gateway is not None:
         await _best_effort_reverse(gateway, mismatch_ref)
         return "failed"
     if needs_settle:
         await settle_attempt(tenant_id, attempt_id)
     return "paid"
+
+
+async def _ref_already_used(
+    session: AsyncSession, attempt: PaymentAttempt, ref_id: str | None
+) -> bool:
+    """True when another verified attempt of the same gateway already holds this bank reference."""
+    if not ref_id:
+        return False
+    other = (
+        await session.execute(
+            select(PaymentAttempt.id)
+            .where(
+                PaymentAttempt.gateway == attempt.gateway,
+                PaymentAttempt.ref_id == ref_id,
+                PaymentAttempt.status == "verified",
+                PaymentAttempt.id != attempt.id,
+            )
+            .limit(1)
+        )
+    ).first()
+    return other is not None
 
 
 def _safe(verification: Verification) -> dict[str, Any]:

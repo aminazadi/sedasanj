@@ -604,6 +604,42 @@ async def settle(
     return actual_seconds
 
 
+async def release_held_calls(
+    session: AsyncSession, *, tenant_id: UUID, call_id: UUID | None = None
+) -> int:
+    """Give back every held reservation of one call (or of the whole tenant) before deletion.
+
+    Deleting a reservation row directly would keep the seconds subtracted from the balance.
+    """
+    stmt = select(CreditReservation.call_id).where(
+        CreditReservation.tenant_id == tenant_id,
+        CreditReservation.status == "held",
+        CreditReservation.call_id.is_not(None),
+    )
+    if call_id is not None:
+        stmt = stmt.where(CreditReservation.call_id == call_id)
+    released = 0
+    for held_call_id in (await session.execute(stmt.distinct())).scalars().all():
+        # One call may carry several held rows (retries); release() gives back the newest each pass.
+        while True:
+            count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(CreditReservation)
+                    .where(
+                        CreditReservation.tenant_id == tenant_id,
+                        CreditReservation.call_id == held_call_id,
+                        CreditReservation.status == "held",
+                    )
+                )
+            ).scalar_one()
+            if not count:
+                break
+            await release(session, tenant_id=tenant_id, call_id=held_call_id)
+            released += 1
+    return released
+
+
 async def release(
     session: AsyncSession,
     *,

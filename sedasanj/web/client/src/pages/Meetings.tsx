@@ -1,8 +1,9 @@
+import BulkActions, { SelectionCheckbox, useBulkSelection } from "../components/BulkActions";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, fmt, MEETING_STATUS_LABELS, query, request } from "../api";
-import { isOrgAdmin, useAuth } from "../auth";
+import { CAN_MANAGE_MEETINGS, isOrgAdmin, useAuth } from "../auth";
 import { Empty, ErrorBox, Pagination, SummaryCell } from "../components/Widgets";
 import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { FilterSelect, useFilterBar, type FilterBarField } from "@cbi/web-shared/components/FilterBar";
@@ -67,6 +68,10 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
   const [deleteCandidate, setDeleteCandidate] = useState<MeetingListItem | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const appliedKey = JSON.stringify(applied);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selected, setSelected, toggle } = useBulkSelection(`${appliedKey}:${pageIndex}:${PAGE_SIZE}`);
+  const { session } = useAuth();
+  const canManage = CAN_MANAGE_MEETINGS.includes(session?.role ?? "");
 
   const meetings = useResource<MeetingPage>(async (signal) => {
     const response = await request<MeetingPage>(`/v1/meetings${query({ ...applied, page: pageIndex + 1, page_size: PAGE_SIZE })}`, { signal });
@@ -83,10 +88,10 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
   const columns = meetingColumns(showOwner);
 
   useEffect(() => {
-    if (!items.some((meeting) => isMeetingActive(meeting.status))) return;
+    if (bulkBusy || !items.some((meeting) => isMeetingActive(meeting.status))) return;
     const timer = window.setInterval(() => meetings.reload({ silent: true }), POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [items, meetings.reload]);
+  }, [bulkBusy, items, meetings.reload]);
 
   async function deleteMeeting(meeting: MeetingListItem) {
     setDeletingId(meeting.id);
@@ -110,7 +115,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
           type="button"
           className="btn inline-flex h-[42px] w-[42px] items-center justify-center p-0"
           onClick={() => meetings.reload()}
-          disabled={meetings.loading}
+          disabled={bulkBusy || meetings.loading}
           aria-busy={meetings.loading}
           aria-label={meetings.loading ? "در حال بروزرسانی جلسات" : "بروزرسانی جلسات"}
           title="بروزرسانی جلسات"
@@ -125,6 +130,13 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
       <ErrorBox message={meetings.error ?? actionError} />
 
       <div className="card">
+        <BulkActions disabled={meetings.loading} selected={selected} setSelected={setSelected} onBusy={setBulkBusy} onComplete={() => meetings.reload()} actions={[
+          ...(canManage ? [
+            { label: "بازتحلیل صورت‌جلسه", eligible: (id: string) => items.some((meeting) => meeting.id === id && meeting.status === "complete"), execute: (id: string) => request(`/v1/meetings/${id}/reanalyze`, { method: "POST" }) },
+            { label: "تلاش مجدد پردازش", eligible: (id: string) => items.some((meeting) => meeting.id === id && ["failed_retryable", "failed_terminal"].includes(meeting.status)), execute: (id: string) => request(`/v1/meetings/${id}/retry`, { method: "POST" }) },
+          ] : []),
+          { label: "حذف", destructive: true, eligible: (id) => items.some((meeting) => meeting.id === id && canDelete(meeting)), execute: (id) => request(`/v1/meetings/${id}`, { method: "DELETE" }) },
+        ]} />
         {meetings.loading ? (
           <SkeletonTable columns={columns} rows={meetings.data ? Math.min(items.length || EMPTY_PREVIOUS_ROWS, PAGE_SIZE) : FIRST_LOAD_ROWS} />
         ) : items.length === 0 ? (
@@ -133,6 +145,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
           <table className="table" dir="rtl">
             <thead>
               <tr>
+                <th><SelectionCheckbox label="انتخاب همه موارد این صفحه" checked={items.length > 0 && items.every((item) => selected.includes(item.id))} mixed={items.some((item) => selected.includes(item.id)) && !items.every((item) => selected.includes(item.id))} disabled={bulkBusy} onChange={() => setSelected(items.every((item) => selected.includes(item.id)) ? [] : items.map((item) => item.id))} /></th>
                 {columns.map((column, index) => (
                   <th key={index} aria-label={column.ariaLabel}>{column.label}</th>
                 ))}
@@ -153,6 +166,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
                     }
                   }}
                 >
+                  <td><SelectionCheckbox label={`انتخاب مورد ${meeting.id}`} checked={selected.includes(meeting.id)} disabled={bulkBusy} onChange={() => toggle(meeting.id)} /></td>
                   <td className="max-w-xs truncate font-bold">{meeting.title || "جلسه بدون عنوان"}</td>
                   <td>{fmt.dateTime(meeting.started_at)}</td>
                   <td>{meeting.duration_ms === null ? "—" : fmt.duration(meeting.duration_ms)}</td>
@@ -172,7 +186,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
                         className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label="حذف جلسه"
                         title="حذف جلسه"
-                        disabled={deletingId === meeting.id}
+                        disabled={bulkBusy || deletingId === meeting.id}
                         onClick={(event) => {
                           event.stopPropagation();
                           setDeleteCandidate(meeting);
@@ -193,7 +207,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
           hasPrevious={pageIndex > 0}
           hasNext={pageIndex + 1 < pages}
           total={meetings.data?.total}
-          loading={meetings.loading}
+          loading={bulkBusy || meetings.loading}
           onPrevious={() => onPage(pageIndex)}
           onNext={() => onPage(pageIndex + 2)}
         />

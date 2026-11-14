@@ -8,7 +8,7 @@ const table = source.slice(source.indexOf("const CallsTableSection = memo("), so
 test("manual refresh stays inside the table and reuses the filtered resource", () => {
   const button = table.match(/<button\s[^>]*onClick=\{\(\) => calls\.reload\(\)\}[^>]*>/s)?.[0];
   assert.ok(button);
-  assert.match(button, /disabled=\{calls.loading\}/);
+  assert.match(button, /disabled=\{bulkBusy \|\| calls.loading\}/);
   assert.match(button, /aria-busy=\{calls.loading\}/);
   assert.match(button, /aria-label=\{calls.loading \? "در حال بروزرسانی تماس‌ها" : "بروزرسانی تماس‌ها"\}/);
   assert.match(table, /createPortal\(/);

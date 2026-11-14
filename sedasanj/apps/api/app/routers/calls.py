@@ -1229,6 +1229,8 @@ async def delete_call(
             )
         ).scalar_one_or_none()
 
+    # Held credit must go back to the balance before the reservation rows disappear.
+    await billing.release_held_calls(session, tenant_id=tenant_id, call_id=call_id)
     # Ledger entries remain as financial history, without retaining a deleted call reference.
     await session.execute(
         update(LedgerEntry)

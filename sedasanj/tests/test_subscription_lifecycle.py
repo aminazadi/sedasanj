@@ -322,3 +322,73 @@ async def test_prorating_uses_the_current_paid_year(scratch: None) -> None:
     stacked = commerce.prorated_amount(1_000_000, start, stacked_end, now)
     assert single == stacked
     assert 0 < single < 1_000_000
+
+
+async def test_payment_grants_the_plan_minutes_immediately(scratch: None) -> None:
+    from app import db
+    from app.models import PlanVersion, Subscription, Tenant, TenantBalanceCache
+    from app.services import commerce, payments
+
+    org = await make_org("bronze", start_days=-340, end_days=25)
+    try:
+        async with db.session_scope(staff=True) as session:
+            sub = await session.get(Subscription, org.subscription_id)
+            assert sub is not None
+            version = await session.get(PlanVersion, sub.plan_version_id)
+            assert version is not None
+            tenant = await session.get(Tenant, org.tenant_id)
+            assert tenant is not None
+            order = await commerce.create_subscription_order(
+                session,
+                tenant=tenant,
+                plan_code="bronze",
+                period="annual",
+                extra_operators=0,
+                customer_name="Admin",
+                customer_email="admin@example.com",
+                customer_mobile="09120000000",
+                invoice_profile={},
+                idempotency_key=uuid4().hex,
+            )
+            await session.flush()
+            await payments.fulfill_order(session, order)
+            await session.flush()
+            cache = await session.get(TenantBalanceCache, org.tenant_id)
+            assert cache is not None
+            assert cache.seconds >= version.intro_minutes * 60
+    finally:
+        await drop_org(org)
+
+
+async def test_permanent_subscription_cannot_be_bought_again(scratch: None) -> None:
+    from app import db
+    from app.errors import ApiError
+    from app.models import Subscription, Tenant
+    from app.services import commerce
+
+    org = await make_org("bronze")
+    try:
+        async with db.session_scope(staff=True) as session:
+            sub = await session.get(Subscription, org.subscription_id)
+            assert sub is not None
+            sub.period_end = datetime(9999, 12, 31, tzinfo=UTC)
+            await session.flush()
+            tenant = await session.get(Tenant, org.tenant_id)
+            assert tenant is not None
+            with pytest.raises(ApiError) as caught:
+                await commerce.create_subscription_order(
+                    session,
+                    tenant=tenant,
+                    plan_code="bronze",
+                    period="annual",
+                    extra_operators=0,
+                    customer_name="Admin",
+                    customer_email="admin@example.com",
+                    customer_mobile="09120000000",
+                    invoice_profile={},
+                    idempotency_key=uuid4().hex,
+                )
+            assert caught.value.code == "invalid_request"
+        assert commerce.add_months(datetime(9999, 12, 31, tzinfo=UTC), 12).year == 9999
+    finally:
+        await drop_org(org)

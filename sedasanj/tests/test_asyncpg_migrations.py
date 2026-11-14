@@ -209,3 +209,23 @@ def test_knowledge_graph_labels_are_initialized(
     assert sum("create_vlabel" in sql for sql in bind.statements) == 4
     assert sum("create_elabel" in sql for sql in bind.statements) == 3
     assert any("GRANT SELECT, INSERT, UPDATE, DELETE" in sql for sql in bind.statements)
+
+
+def test_article_thumbnail_seed_uses_distinct_parameters_for_varchar_and_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import Mock
+
+    from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
+
+    migration = _load_migration("0127_article_thumbnails.py")
+    bind = Mock()
+    monkeypatch.setattr(migration.op, "execute", Mock())
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+    migration.upgrade()
+    statement, params = bind.execute.call_args.args
+    compiled = statement.compile(dialect=PGDialect_asyncpg())
+    # asyncpg cannot infer a single parameter as both varchar and text.
+    assert compiled.positiontup == ["slug", "title", "summary", "body", "plain"]
+    assert params["title"] == params["summary"] == params["plain"] == migration.TITLE
+    assert params["body"] == migration.BODY

@@ -41,6 +41,7 @@ from app.models import (
     TenantBalanceCache,
     TenantDatabaseRegistry,
     TenantDataMigration,
+    TenantProvisioningJob,
     Transcript,
     TranscriptChunk,
     User,
@@ -115,7 +116,7 @@ from app.services.platform_secrets import decrypt_secret, encrypt_secret
 from app.services.provider_errors import ProviderError
 from app.services.storage_inventory import StaffStorageUsage, storage_usage
 from app.services.tenant_backup_restore import VERIFIED_RESTORE_ACTION
-from app.services.tenant_provisioning import rollback_tenant
+from app.services.tenant_provisioning import migration_error_info, rollback_tenant
 from app.services.transcript_corrections import CorrectionClient, validate_result
 from app.services.voicesanj import VoiceSanjClient
 from worker_llm.client import available_prompt_versions
@@ -404,9 +405,17 @@ async def list_tenants(
     items: list[TenantOut] = []
     for row in rows:
         output = TenantOut.model_validate(row)
-        async with session_scope(row.id) as tenant_session:
-            value = await entitlements.effective(tenant_session, row.id)
-            output.price_per_minute_toman = value.price_per_minute_toman
+        try:
+            async with session_scope(row.id) as tenant_session:
+                value = await entitlements.effective(tenant_session, row.id)
+                output.price_per_minute_toman = value.price_per_minute_toman
+        except RuntimeError:
+            # One tenant whose database is not ready (failed/provisioning/migrating) must
+            # not take down the whole list; fall back to the platform default price.
+            logger.warning("tenant_list_database_not_ready", extra={"tenant_id": str(row.id)})
+            output.price_per_minute_toman = (
+                await get_commerce_settings(session)
+            ).default_price_per_minute_toman
         items.append(output)
     next_cursor = str(offset + len(rows)) if offset + len(rows) < total else None
     return {"items": items, "total": total, "next_cursor": next_cursor}
@@ -465,7 +474,9 @@ async def list_tenant_databases(
                 )
                 .group_by(AuditEvent.tenant_id)
             )
-        ).tuples().all()
+        )
+        .tuples()
+        .all()
     )
     items = [
         {
@@ -478,6 +489,11 @@ async def list_tenant_databases(
             "migration_status": migration.status if migration else None,
             "migration_phase": migration.phase if migration else None,
             "migration_error": migration.error_detail if migration else None,
+            "migration_error_info": (
+                migration_error_info(migration.error_code or "TENANT_DB_UNKNOWN")
+                if migration and (migration.error_code or migration.error_detail)
+                else None
+            ),
             "cutover_at": migration.cutover_at if migration else None,
             "rollback_until": migration.rollback_until if migration else None,
             "backup_status": (
@@ -538,11 +554,7 @@ async def retry_tenant_database_migration(
             ip=client_ip(request),
         )
         return {"status": "pending"}
-    migration.status = "pending"
-    migration.phase = "prechecking"
-    migration.error_detail = None
-    if tenant.status != "active":
-        tenant.status = "provisioning"
+    await _requeue_migration(session, tenant, migration)
     await audit.record(
         session,
         actor_type="staff",
@@ -553,6 +565,59 @@ async def retry_tenant_database_migration(
         ip=client_ip(request),
     )
     return {"status": "pending"}
+
+
+async def _requeue_migration(
+    session: AsyncSession, tenant: Tenant, migration: TenantDataMigration
+) -> None:
+    """Reset one migration so the provision worker picks it up with a fresh attempt budget."""
+    migration.status = "pending"
+    migration.phase = "prechecking"
+    migration.error_code = None
+    migration.error_detail = None
+    if tenant.status != "active":
+        tenant.status = "provisioning"
+    job = (
+        await session.execute(
+            select(TenantProvisioningJob)
+            .where(TenantProvisioningJob.tenant_id == tenant.id)
+            .order_by(TenantProvisioningJob.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if job is not None:
+        job.attempt = 0
+        job.error_code = None
+        job.error_detail = None
+
+
+@router.post("/tenant-databases/retry-failed", status_code=202)
+async def retry_failed_tenant_database_migrations(
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, int]:
+    """Requeue every failed migration; the provision worker runs them one at a time."""
+    rows = (
+        await session.execute(
+            select(Tenant, TenantDataMigration)
+            .join(TenantDataMigration, TenantDataMigration.tenant_id == Tenant.id)
+            .where(Tenant.status != "deleted", TenantDataMigration.status == "failed")
+            .with_for_update(of=TenantDataMigration)
+        )
+    ).all()
+    for tenant, migration in rows:
+        await _requeue_migration(session, tenant, migration)
+        await audit.record(
+            session,
+            actor_type="staff",
+            actor_id=staff.id,
+            tenant_id=tenant.id,
+            action="tenant_database.migration_retry",
+            payload={"bulk": True},
+            ip=client_ip(request),
+        )
+    return {"requeued": len(rows)}
 
 
 @router.post("/tenants/{tenant_id}/database-migration/rollback", status_code=202)
@@ -1464,9 +1529,8 @@ async def update_platform_settings(
         changes[key] = normalized
     if "call_asr_fallback_models" in changes:
         models = [model.strip() for model in changes["call_asr_fallback_models"]]
-        if (
-            any(not model or len(model) > 200 for model in models)
-            or len(set(models)) != len(models)
+        if any(not model or len(model) > 200 for model in models) or len(set(models)) != len(
+            models
         ):
             raise ApiError(
                 "call_asr_settings_invalid",

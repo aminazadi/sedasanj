@@ -36,3 +36,13 @@ test("login lands on the first permitted section when dashboard access is absent
   assert.equal(panelHome(limited), "/calls");
   assert.equal(panelHome({ role: "org_admin", panelPermissions: [] }), "/profile");
 });
+
+
+test("articles and tutorials remain available to every panel role, including empty grants", () => {
+  for (const role of ["org_admin", "supervisor", "operator", "viewer"]) {
+    const session = { role, panelPermissions: [] };
+    for (const path of ["/help", "/help/getting-started", "/help/errors/SS-UPL-0401"]) {
+      assert.equal(canVisitPanel(session, path), true, `${role}: ${path}`);
+    }
+  }
+});

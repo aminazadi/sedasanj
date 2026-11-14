@@ -322,33 +322,33 @@
   },
   {
     "path": "sedasanj/web/client/src/assets/plan-bronze.webp",
-    "width": 368,
-    "height": 368,
-    "bytes": 26646,
+    "width": 420,
+    "height": 420,
+    "bytes": 22350,
     "originalBytes": 26646,
     "variants": []
   },
   {
     "path": "sedasanj/web/client/src/assets/plan-demo.webp",
-    "width": 368,
-    "height": 368,
-    "bytes": 33384,
+    "width": 420,
+    "height": 420,
+    "bytes": 23882,
     "originalBytes": 33384,
     "variants": []
   },
   {
     "path": "sedasanj/web/client/src/assets/plan-gold.webp",
-    "width": 368,
-    "height": 368,
-    "bytes": 35148,
+    "width": 420,
+    "height": 420,
+    "bytes": 27762,
     "originalBytes": 35148,
     "variants": []
   },
   {
     "path": "sedasanj/web/client/src/assets/plan-silver.webp",
-    "width": 368,
-    "height": 368,
-    "bytes": 26616,
+    "width": 420,
+    "height": 420,
+    "bytes": 39390,
     "originalBytes": 26616,
     "variants": []
   },

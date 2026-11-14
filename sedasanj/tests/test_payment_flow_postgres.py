@@ -484,13 +484,19 @@ async def test_replayed_cancel_cannot_undo_a_pending_verification(tenant, fake):
     order_id, token = await make_order(tenant, minutes=10)
     attempt_id, order_ref, _ = await initiate(tenant, order_id)
     first = await payments.handle_callback(
-        "behpardakht", callback_params(order_ref), token=token, attempt_id=attempt_id,
+        "behpardakht",
+        callback_params(order_ref),
+        token=token,
+        attempt_id=attempt_id,
         tenant_hint=tenant,
     )
     assert first.result == "pending"
     replay = await payments.handle_callback(
-        "behpardakht", {"ResCode": "17", "RefId": "REF-" + str(order_ref)}, token=token,
-        attempt_id=attempt_id, tenant_hint=tenant,
+        "behpardakht",
+        {"ResCode": "17", "RefId": "REF-" + str(order_ref)},
+        token=token,
+        attempt_id=attempt_id,
+        tenant_hint=tenant,
     )
     assert replay.result == "pending"
     assert (await attempt_state(tenant, attempt_id))[0] == "pending_verification"
@@ -515,3 +521,63 @@ async def test_stale_redirect_expires_even_after_many_checks(tenant, fake):  # t
     counts = await payments.reconcile_pending()
     assert counts["expired"] == 1
     assert (await attempt_state(tenant, attempt_id))[0] == "expired"
+
+
+async def test_replayed_bank_reference_cannot_pay_a_second_order(tenant, fake):  # type: ignore[no-untyped-def]
+    from app.services import payments
+
+    first_order, first_token = await make_order(tenant, minutes=50)
+    first_attempt, first_ref, _ = await initiate(tenant, first_order)
+    paid = await payments.handle_callback(
+        "behpardakht",
+        callback_params(first_ref),
+        token=first_token,
+        attempt_id=first_attempt,
+        tenant_hint=tenant,
+    )
+    assert paid.result == "paid"
+
+    # A second, equally priced order replays the same bank reference (SRI-1).
+    second_order, second_token = await make_order(tenant, minutes=50)
+    second_attempt, second_ref, _ = await initiate(tenant, second_order)
+    replay = await payments.handle_callback(
+        "behpardakht",
+        callback_params(second_ref),
+        token=second_token,
+        attempt_id=second_attempt,
+        tenant_hint=tenant,
+    )
+    assert replay.result == "failed"
+    status, failure, _, _ = await attempt_state(tenant, second_attempt)
+    assert status == "failed" and failure == "bank_reference_reused"
+    seconds, _ = await balance(tenant)
+    assert seconds == 50 * 60  # only the first order was credited
+
+
+async def test_fulfil_failure_after_payment_stays_retryable(tenant, fake, monkeypatch):  # type: ignore[no-untyped-def]
+    from app.services import payments
+
+    real_fulfill = payments.fulfill_order
+
+    async def broken(session, order):  # type: ignore[no-untyped-def]
+        raise ValueError("boom")
+
+    monkeypatch.setattr(payments, "fulfill_order", broken)
+    order_id, token = await make_order(tenant, minutes=10)
+    attempt_id, order_ref, _ = await initiate(tenant, order_id)
+    outcome = await payments.handle_callback(
+        "behpardakht",
+        callback_params(order_ref),
+        token=token,
+        attempt_id=attempt_id,
+        tenant_hint=tenant,
+    )
+    assert outcome.result == "pending"
+    status, failure, settled_at, _ = await attempt_state(tenant, attempt_id)
+    assert status == "pending_verification" and settled_at is None
+    assert failure is not None and failure.startswith("fulfill_failed:ValueError")
+    assert (await balance(tenant))[0] == 0
+
+    monkeypatch.setattr(payments, "fulfill_order", real_fulfill)
+    assert await payments.verify_and_fulfill(tenant, attempt_id) == "paid"
+    assert (await balance(tenant))[0] == 10 * 60

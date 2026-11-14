@@ -1591,3 +1591,23 @@ html {
 .password-timer-track { stroke: #cfc9b5; }
 .password-timer-progress { stroke: #4b6e48; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 0.4s linear; }
 .password-timer-text { font-size: 0.8rem; font-weight: 700; color: #4b6e48; font-variant-numeric: tabular-nums; }
+
+.article-thumbnail { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; margin-bottom: .75rem; }
+.help-list .article-thumbnail { max-width: 320px; }
+.article-cover { display: block; width: 100%; height: auto; max-height: 560px; object-fit: cover; margin: 1.5rem 0; }
+
+img.article-thumbnail-fallback { object-fit: cover; background: #f2f0ef; padding: 0; }
+
+.related-articles { margin-block: 48px 0; }
+.related-articles-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.related-articles-heading h2 { margin: 0; font-size: 22px; }
+.related-articles-controls { display: flex; gap: 8px; }
+.related-articles-controls button { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--site-border, #d7d3c8); background: #fff; color: var(--site-primary, #4b6e48); cursor: pointer; }
+.related-articles-controls button:disabled { opacity: .3; cursor: default; }
+.related-articles-controls button:focus-visible { outline: 2px solid #4b6e48; outline-offset: 3px; }
+.related-articles-track { display: flex; gap: 24px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; padding: 1px; margin: -1px; }
+.related-articles-track::-webkit-scrollbar { display: none; }
+.related-article-slot { flex: 0 0 calc((100% - 48px) / 3); min-width: 0; display: flex; scroll-snap-align: start; }
+.related-article-slot .help-card { flex: 1; border: 1px solid #cfc9b5; }
+@media (max-width: 900px) { .related-article-slot { flex-basis: calc((100% - 24px) / 2); } }
+@media (max-width: 600px) { .related-article-slot { flex-basis: 85%; } }

@@ -14,10 +14,18 @@ from app.errors import ApiError
 from app.models import Order, OrderItem, Plan, PlanVersion, Subscription, Tenant
 from app.services.commerce_settings import get_commerce_settings
 
+PERMANENT_YEAR = 9000  # legacy/permanent subscriptions end in 9999 and never need payment
+
+
+def is_permanent(period_end: datetime) -> bool:
+    return period_end.year >= PERMANENT_YEAR
+
 
 def add_months(value: datetime, months: int) -> datetime:
     index = value.month - 1 + months
     year = value.year + index // 12
+    if year > 9999:
+        return value.replace(year=9999, month=12, day=31)
     month = index % 12 + 1
     day = min(value.day, calendar.monthrange(year, month)[1])
     return value.replace(year=year, month=month, day=day)
@@ -161,6 +169,22 @@ async def create_subscription_order(
     if not plan.sellable:
         raise ApiError("plan_not_sellable", "this plan is not available for purchase")
     await _reject_plan_switch_by_purchase(session, tenant.id, plan)
+    permanent = (
+        await session.execute(
+            select(Subscription.id)
+            .where(
+                Subscription.tenant_id == tenant.id,
+                Subscription.status == "active",
+                Subscription.period_end >= datetime(PERMANENT_YEAR, 1, 1, tzinfo=UTC),
+            )
+            .limit(1)
+        )
+    ).first()
+    if permanent is not None:
+        raise ApiError(
+            "invalid_request",
+            "this organization has a permanent subscription; contact support to change it",
+        )
     total, extra_unit = subscription_amount(version, period, extra_operators)
     order = Order(
         tenant_id=tenant.id,

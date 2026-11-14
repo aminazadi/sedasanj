@@ -2,6 +2,7 @@ import { canVisitPanel, hasPanelAccess } from "../lib/panelAccess";
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconifyIcon } from "@iconify/react";
+import bookOpenIcon from "@iconify-icons/lucide/book-open";
 import bookUserIcon from "@iconify-icons/lucide/book-user";
 import botIcon from "@iconify-icons/lucide/bot";
 import calendarClockIcon from "@iconify-icons/lucide/calendar-clock";
@@ -71,6 +72,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/install", label: "راه‌اندازی", icon: rocketIcon, hideForOperator: true },
       { to: "/freepbx-servers", label: "سرورهای تلفنی", icon: serverIcon, orgAdminOnly: true },
       { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: historyIcon, hideForOperator: true },
+      { to: "/help", label: "مقالات و آموزش‌ها", icon: bookOpenIcon },
       { to: "/api-docs", label: "مستندات API", icon: fileTextIcon },
     ],
   },
@@ -126,6 +128,7 @@ function localizePanelDigits(root: HTMLElement) {
 }
 
 function getPageTitle(pathname: string) {
+  if (pathname.startsWith("/help/")) return "مقالات و آموزش‌ها";
   if (pathname.startsWith("/calls/")) return "جزئیات تماس";
   if (pathname.startsWith("/meetings/")) return "جزئیات جلسه";
   const navigationItem = NAVIGATION.flatMap((group) => group.items).find((item) => item.to === pathname);
@@ -197,7 +200,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
   return (
     <>
     <div className="panel-sidebar flex h-full flex-col overflow-hidden text-white">
-      <div className={`relative flex shrink-0 items-center justify-center border-b border-white/10 ${collapsed ? "flex-col gap-2 px-2 py-3" : "h-[96px] px-5"}`}>
+      <div className={`relative flex shrink-0 items-center border-b border-white/10 ${collapsed ? "flex-col justify-center gap-2 px-2 py-3" : "h-[96px] justify-start px-5"}`}>
         {collapsed ? (
           <div className="relative h-32 w-14 shrink-0">
             <div className="absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 -rotate-90">

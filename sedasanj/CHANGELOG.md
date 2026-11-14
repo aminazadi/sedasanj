@@ -1,5 +1,40 @@
 ## 2026-11-14 — AMINAZADI
 
+- Fixed organization database migrations failing with `plans_code_key` by reconciling seeded plans with the control database before copying, in both the cutover copy and the global reference sync.
+
+- Added a preflight to organization database provisioning that checks the encryption key, worker/schema head match, database reachability and the vector and age extensions before touching any database.
+
+- Replaced raw SQL error dumps on the organization databases page with stable `TENANT_DB_*` codes, a Persian message and next action; stored details no longer contain SQL, parameters or DSNs (migration 0130).
+
+- Made organization database retry reset the attempt budget and error, and added a retry-all-failed action.
+
+- Added page-scoped multi-selection and permission-aware bulk deletion, reanalysis and processing retries for calls, voicemail and meetings, with confirmation, progress and per-item failure reporting.
+
+- Added an articles and tutorials sidebar entry for every client-panel role and adapted the existing searchable help center and article pages to the panel layout.
+
+- Right-aligned the logo in the expanded panel sidebar header.
+
+- Reduced mobile landing spacing, removed inherited app-section padding, and made app features, app actions, feature cards, security cards and article cards horizontally scrollable.
+
+- Swapped the Jalase-Negar download copy and phone illustration on desktop while preserving the mobile layout.
+
+- Refreshed the trial, bronze, silver and gold plan artwork with refined transparent illustrations and optimized WebP assets.
+
+- Added dynamic help-center categories, a Persian-month archive (`GET /v1/help/archive`, `month` filter), numbered pagination and uniform article cards with category and date to the public help center.
+
+- Simplified the default article thumbnail to a minimal transparent missing-image symbol.
+
+- Replaced the default article thumbnail with transparent office artwork matching the existing site illustrations.
+
+- Simplified article cards to solid borders and compact padding, refreshed default artwork, and converted related articles to a responsive RTL carousel with navigation controls.
+
+- Enlarged article-card border dashes and added an illustrated fallback for missing or unavailable article thumbnails in public cards and lists.
+
+- Fixed ambiguous asyncpg parameter types when seeding the article thumbnail guide in migration 0127.
+
+- Added optional image-library thumbnails to article editing and public article cards, lists and pages, with image validation and deletion protection.
+- Changed landing article card borders to dashed.
+
 - Redesigned the landing use-cases section as an auto-rotating, typed, layout-stable panel (no height shift between industries) with a progress ring around the active node, a labelled hub with two-way signal pulses on the active branch, and a clearer active node; renamed it to «چرا به صداسنج نیاز دارید؟», removed the source lines, and retitled the satisfaction section.
 
 - Added a hand-drawn down arrow beside section headings, enlarged heading sizes, centered the mobile hero and footer credit, moved the mobile menu icon beside the logo, and restyled the quick-demo button like the hero button with the label «تست صداسنج در کمتر از ۶۰ ثانیه».

@@ -85,6 +85,18 @@ export default function TenantDatabases() {
     }
   }
 
+  async function retryAllFailed() {
+    setRetrying("all");
+    try {
+      await request("/v1/admin/tenant-databases/retry-failed", { method: "POST" });
+      await load();
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setRetrying(null);
+    }
+  }
+
   async function rollback(tenantId: string) {
     setRetrying(tenantId);
     try {
@@ -122,6 +134,11 @@ export default function TenantDatabases() {
         ) : null}
       </div>
       <ErrorBox message={error} />
+      {rows.some((row) => row.migration_status === "failed") ? (
+        <button className="btn-ghost" type="button" disabled={retrying === "all"} onClick={() => void retryAllFailed()}>
+          تلاش مجدد همهٔ ناموفق‌ها
+        </button>
+      ) : null}
       {storageTenant && <section className="card space-y-3" aria-label="گزارش فضای سازمان">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-bold">فضای سازمان {rows.find((row) => row.tenant_id === storageTenant)?.tenant_name}</h2>
@@ -186,7 +203,21 @@ export default function TenantDatabases() {
                     <div>ریستور تأییدشده <bdi>{new Date(row.backup_restore_verified_at).toLocaleString("fa-IR")}</bdi></div>
                   ) : null}
                 </td>
-                <td className="max-w-xs whitespace-normal text-xs text-rose-700">{row.migration_error || "—"}</td>
+                <td className="max-w-xs whitespace-normal text-xs text-rose-700">
+                  {row.migration_error_info ? (
+                    <div className="space-y-1">
+                      <div dir="ltr" className="font-mono">{row.migration_error_info.code}</div>
+                      <div>{row.migration_error_info.message}</div>
+                      <div className="text-slate-600">{row.migration_error_info.action}</div>
+                      {row.migration_error ? (
+                        <details>
+                          <summary className="cursor-pointer">جزئیات فنی</summary>
+                          <div dir="ltr" className="mt-1 max-h-32 overflow-auto break-words text-left">{row.migration_error}</div>
+                        </details>
+                      ) : null}
+                    </div>
+                  ) : "—"}
+                </td>
                 <td className="space-y-1">
                   <button className="btn-ghost" type="button" onClick={() => showStorage(row.tenant_id)}>مصرف فضا</button>
                   <button className="btn-ghost" disabled={retrying === row.tenant_id} onClick={() => void retry(row.tenant_id)}>تلاش مجدد</button>

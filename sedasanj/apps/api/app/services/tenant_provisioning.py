@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -34,7 +35,7 @@ from app.models import (
     TenantProvisioningJob,
 )
 from app.services.apache_age import assert_age_ready
-from app.services.tenant_secrets import encrypt_dsn
+from app.services.tenant_secrets import decrypt_dsn, encrypt_dsn
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 _CONTROL_ONLY = {
@@ -82,6 +83,104 @@ def _schema_head() -> str:
 
 
 SCHEMA_HEAD = _schema_head()
+
+logger = logging.getLogger(__name__)
+
+# Stable codes for the admin page. Each maps to (Persian message, Persian next action).
+MIGRATION_ERRORS: dict[str, tuple[str, str]] = {
+    "TENANT_DB_KEY_INVALID": (
+        "کلید رمزنگاری دیتابیس سازمان‌ها تنظیم نشده یا کار نمی‌کند.",
+        "TENANT_DATABASE_MASTER_KEY را در API و worker-provision یکسان تنظیم و سرویس را "
+        "راه‌اندازی مجدد کنید، سپس «تلاش مجدد» بزنید.",
+    ),
+    "TENANT_DB_WORKER_STALE": (
+        "worker-provision با نسخهٔ قدیمی برنامه اجرا می‌شود.",
+        "worker-provision را راه‌اندازی مجدد کنید، سپس «تلاش مجدد» بزنید.",
+    ),
+    "TENANT_DB_PREFLIGHT": (
+        "پیش‌نیازهای ساخت دیتابیس برقرار نیست (اتصال مدیر دیتابیس یا افزونه‌ها).",
+        "PROVISIONER_DATABASE_URL و افزونه‌های vector و age را بررسی کنید، سپس تلاش مجدد بزنید.",
+    ),
+    "TENANT_DB_PLAN_CONFLICT": (
+        "پلن‌های دیتابیس سازمان با پلن‌های اصلی هم‌خوان نبود.",
+        "آخرین نسخهٔ برنامه را مستقر و worker-provision را راه‌اندازی مجدد کنید، سپس "
+        "«تلاش مجدد» بزنید.",
+    ),
+    "TENANT_DB_SCHEMA_REVISION": (
+        "نسخهٔ ساختار دیتابیس سازمان با نسخهٔ برنامه یکی نیست.",
+        "worker-provision را راه‌اندازی مجدد کنید و «تلاش مجدد» بزنید؛ اگر تکرار شد "
+        "گزارش سرور را برای مهاجرت ناموفق بررسی کنید.",
+    ),
+    "TENANT_DB_ALEMBIC_FAILED": (
+        "اجرای مهاجرت‌های ساختار در دیتابیس سازمان ناموفق بود.",
+        "گزارش worker-provision را برای مهاجرت ناموفق بررسی و پس از رفع، «تلاش مجدد» بزنید.",
+    ),
+    "TENANT_DB_DRAIN_TIMEOUT": (
+        "کارهای در حال اجرای سازمان در مهلت تعیین‌شده تمام نشد.",
+        "پس از پایان یا توقف کارهای در حال اجرا «تلاش مجدد» بزنید.",
+    ),
+    "TENANT_DB_VALIDATION": (
+        "تعداد یا هش داده‌ها پس از کپی با مبدأ برابر نبود؛ سازمان به حالت قبل برگشت.",
+        "«تلاش مجدد» بزنید؛ اگر تکرار شد گزارش worker-provision را بررسی کنید.",
+    ),
+    "TENANT_DB_UNKNOWN": (
+        "انتقال دیتابیس سازمان با خطای ناشناخته متوقف شد.",
+        "گزارش worker-provision را بررسی و سپس «تلاش مجدد» بزنید.",
+    ),
+}
+
+
+class TenantMigrationError(RuntimeError):
+    """A tenant migration failure with a stable code from ``MIGRATION_ERRORS``."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(detail)
+        self.code = code
+
+
+_SQL_BLOCK = re.compile(r"\[(?:SQL|parameters):.*?\](?=\s*(?:\[|\(Background|$))", re.DOTALL)
+_BACKGROUND = re.compile(r"\(Background on this error at:.*?\)", re.DOTALL)
+_DSN = re.compile(r"[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)
+_PASSWORD = re.compile(r"(password\s*[=:]\s*)\S+", re.IGNORECASE)
+
+
+def sanitize_error_detail(raw: str, limit: int = 500) -> str:
+    """Drop SQL text, bound parameters, DSNs and passwords, then cap the length."""
+    text_ = _SQL_BLOCK.sub("", raw)
+    text_ = _BACKGROUND.sub("", text_)
+    text_ = _DSN.sub("<dsn>", text_)
+    text_ = _PASSWORD.sub(r"\1<hidden>", text_)
+    text_ = " ".join(text_.split())
+    return text_[:limit]
+
+
+def classify_migration_error(exc: BaseException) -> tuple[str, str]:
+    """Return ``(code, sanitized detail)`` for a failed tenant migration."""
+    raw = str(exc)
+    detail = sanitize_error_detail(raw)
+    if isinstance(exc, TenantMigrationError):
+        return exc.code, detail
+    lowered = raw.lower()
+    if "master key" in lowered or "tenant database credential" in lowered:
+        return "TENANT_DB_KEY_INVALID", detail
+    if "plans_code_key" in lowered or ("plan_versions" in lowered and "unique" in lowered):
+        return "TENANT_DB_PLAN_CONFLICT", detail
+    if "schema revision check failed" in lowered:
+        return "TENANT_DB_SCHEMA_REVISION", detail
+    if "tenant migration failed" in lowered:
+        return "TENANT_DB_ALEMBIC_FAILED", detail
+    if "drain timed out" in lowered:
+        return "TENANT_DB_DRAIN_TIMEOUT", detail
+    if "validation failed" in lowered:
+        return "TENANT_DB_VALIDATION", detail
+    return "TENANT_DB_UNKNOWN", detail
+
+
+def migration_error_info(code: str | None) -> dict[str, str] | None:
+    if not code:
+        return None
+    message, action = MIGRATION_ERRORS.get(code, MIGRATION_ERRORS["TENANT_DB_UNKNOWN"])
+    return {"code": code, "message": message, "action": action}
 
 
 def database_identifiers(tenant_id: UUID) -> tuple[str, str]:
@@ -334,6 +433,61 @@ async def _copy_table(
     return copied
 
 
+async def _reconcile_global_reference(source: AsyncSession, target: AsyncSession) -> None:
+    """Remove target plan rows the control database does not have.
+
+    A fresh tenant database holds plans seeded by alembic with their own random ids. Upserting
+    the control plans by id on top would hit the unique ``plans.code`` constraint, so rows whose
+    id is unknown to the control database are dropped first (children before parents).
+    """
+    for name in ("plan_versions", "plans"):
+        reference = Base.metadata.tables[name]
+        source_ids = list((await source.execute(select(reference.c.id))).scalars())
+        await target.execute(reference.delete().where(reference.c.id.not_in(source_ids)))
+
+
+async def preflight() -> None:
+    """Fail fast, with a stable code, before any tenant database is touched."""
+    try:
+        encrypted = encrypt_dsn("postgresql://preflight")
+        if decrypt_dsn(encrypted) != "postgresql://preflight":
+            raise RuntimeError("round trip mismatch")
+    except Exception as exc:
+        raise TenantMigrationError(
+            "TENANT_DB_KEY_INVALID", "tenant database master key preflight failed"
+        ) from exc
+    on_disk = _schema_head()
+    if on_disk != SCHEMA_HEAD:
+        raise TenantMigrationError(
+            "TENANT_DB_WORKER_STALE",
+            f"worker runs schema head {SCHEMA_HEAD} but migrations on disk end at {on_disk}",
+        )
+    engine = create_async_engine(_admin_url().render_as_string(hide_password=False))
+    try:
+        async with engine.connect() as connection:
+            available = set(
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT name FROM pg_available_extensions "
+                            "WHERE name IN ('vector', 'age')"
+                        )
+                    )
+                ).scalars()
+            )
+    except Exception as exc:
+        raise TenantMigrationError(
+            "TENANT_DB_PREFLIGHT", "provisioner database is not reachable"
+        ) from exc
+    finally:
+        await engine.dispose()
+    missing = {"vector", "age"} - available
+    if missing:
+        raise TenantMigrationError(
+            "TENANT_DB_PREFLIGHT", f"missing postgres extensions: {', '.join(sorted(missing))}"
+        )
+
+
 async def copy_tenant_data(tenant_id: UUID, database_name: str) -> dict[str, int]:
     batch_size = get_settings().tenant_migration_batch_size
     target_engine = create_async_engine(
@@ -359,6 +513,7 @@ async def copy_tenant_data(tenant_id: UUID, database_name: str) -> dict[str, int
                     and "tenant_id" in table.c
                 ):
                     await target.execute(table.delete().where(table.c.tenant_id == tenant_id))
+            await _reconcile_global_reference(source, target)
             for table in Base.metadata.sorted_tables:
                 copied = await _copy_table(source, target, table, tenant_id, batch_size)
                 if (
@@ -514,6 +669,7 @@ async def migrate_tenant(tenant_id: UUID) -> None:
         job.started_at = now
         job.error_detail = None
 
+    await preflight()
     registry = await provision_database(tenant_id)
     database_name = registry.database_name
     async with get_sessionmaker()() as session, session.begin():
@@ -708,11 +864,20 @@ async def run_next_migration() -> str:
                 )
             ).scalar_one_or_none()
             exhausted = bool(job and job.attempt >= get_settings().tenant_migration_max_attempts)
+            code, detail = classify_migration_error(exc)
+            logger.error(
+                "tenant database migration failed tenant_id=%s code=%s detail=%s",
+                tenant_id,
+                code,
+                detail,
+            )
             migration.status = "failed" if exhausted else "retryable"
-            migration.error_detail = str(exc)[:4000]
+            migration.error_code = code
+            migration.error_detail = detail
             if job is not None:
                 job.status = "failed" if exhausted else "retryable"
-                job.error_detail = str(exc)[:4000]
+                job.error_code = code
+                job.error_detail = detail
             tenant = await session.get(Tenant, tenant_id, with_for_update=True)
             if tenant is not None:
                 source_status = str(
@@ -815,6 +980,7 @@ async def sync_global_references() -> str:
                 await source.begin()
                 await source.execute(text("SELECT set_config('app.staff', 'on', true)"))
                 await target.begin()
+                await _reconcile_global_reference(source, target)
                 for table in Base.metadata.sorted_tables:
                     if table.name in _GLOBAL_REFERENCE:
                         await _copy_table(source, target, table, UUID(int=0), 500)

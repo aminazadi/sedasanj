@@ -90,3 +90,120 @@ def test_tenant_dsn_accepts_a_stable_master_secret(monkeypatch: pytest.MonkeyPat
 def test_privacy_policy(question: str, role: str, expected: bool) -> None:
     assert must_refuse(question, role) is expected
     assert "محدوده دسترسی" in PRIVACY_REFUSAL
+
+
+_RAW_PLAN_ERROR = (
+    "(sqlalchemy.dialects.postgresql.asyncpg.UniqueViolationError) duplicate key value violates "
+    'unique constraint "plans_code_key" [SQL: INSERT INTO plans (id, code) VALUES ($1::UUID, '
+    "$2::VARCHAR)] [parameters: (UUID('7060b487-c68f-4f97-9d43-15c4e043855d'), 'bronze')] "
+    "(Background on this error at: https://sqlalche.me/e/21/gkpj)"
+)
+
+
+def test_sanitize_error_detail_drops_sql_parameters_and_dsn() -> None:
+    from app.services.tenant_provisioning import sanitize_error_detail
+
+    detail = sanitize_error_detail(_RAW_PLAN_ERROR)
+    assert "INSERT INTO" not in detail
+    assert "7060b487" not in detail
+    assert "sqlalche.me" not in detail
+    assert "plans_code_key" in detail
+    dsn = sanitize_error_detail(
+        "connect failed postgresql+asyncpg://u:secret@db:5432/x password=abc"
+    )
+    assert "secret" not in dsn
+    assert "abc" not in dsn
+    assert len(sanitize_error_detail("x" * 5000)) == 500
+
+
+@pytest.mark.parametrize(
+    ("message", "code"),
+    [
+        ("tenant database master key must be a valid Fernet key", "TENANT_DB_KEY_INVALID"),
+        (_RAW_PLAN_ERROR, "TENANT_DB_PLAN_CONFLICT"),
+        (
+            "tenant runtime schema revision check failed: expected a, found b",
+            "TENANT_DB_SCHEMA_REVISION",
+        ),
+        ("tenant migration failed: boom", "TENANT_DB_ALEMBIC_FAILED"),
+        ("tenant job drain timed out", "TENANT_DB_DRAIN_TIMEOUT"),
+        ("tenant data validation failed: {}", "TENANT_DB_VALIDATION"),
+        ("something else", "TENANT_DB_UNKNOWN"),
+    ],
+)
+def test_classify_migration_error_maps_known_failures(message: str, code: str) -> None:
+    from app.services.tenant_provisioning import MIGRATION_ERRORS, classify_migration_error
+
+    got, detail = classify_migration_error(RuntimeError(message))
+    assert got == code
+    assert code in MIGRATION_ERRORS
+    assert "[SQL:" not in detail
+    assert "[parameters:" not in detail
+
+
+def test_coded_migration_error_keeps_its_code_and_every_code_has_an_action() -> None:
+    from app.services.tenant_provisioning import (
+        MIGRATION_ERRORS,
+        TenantMigrationError,
+        classify_migration_error,
+        migration_error_info,
+    )
+
+    assert classify_migration_error(TenantMigrationError("TENANT_DB_PREFLIGHT", "x"))[0] == (
+        "TENANT_DB_PREFLIGHT"
+    )
+    for code, (message, action) in MIGRATION_ERRORS.items():
+        assert message and action, code
+        info = migration_error_info(code)
+        assert info is not None and info["code"] == code
+    assert migration_error_info(None) is None
+
+
+async def test_preflight_rejects_a_stale_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import tenant_provisioning as tp
+
+    monkeypatch.setattr(tp, "_schema_head", lambda: "9999_newer")
+    with pytest.raises(tp.TenantMigrationError) as caught:
+        await tp.preflight()
+    assert caught.value.code in {"TENANT_DB_WORKER_STALE", "TENANT_DB_KEY_INVALID"}
+
+
+async def test_reconcile_drops_target_plans_unknown_to_control() -> None:
+    from sqlalchemy.dialects import postgresql
+
+    from app.services.tenant_provisioning import _reconcile_global_reference
+
+    class _Scalars:
+        def scalars(self) -> list[UUID]:
+            return [UUID(int=1)]
+
+    class _Source:
+        async def execute(self, _statement: object) -> _Scalars:
+            return _Scalars()
+
+    class _Target:
+        def __init__(self) -> None:
+            self.sql: list[str] = []
+
+        async def execute(self, statement: object) -> None:
+            self.sql.append(str(statement.compile(dialect=postgresql.dialect())))  # type: ignore[attr-defined]
+
+    target = _Target()
+    await _reconcile_global_reference(_Source(), target)  # type: ignore[arg-type]
+    assert [s.split()[2] for s in target.sql] == ["plan_versions", "plans"]
+    assert all("NOT IN" in s for s in target.sql)
+
+
+def test_only_tenant_scoped_tables_reference_global_reference_tables() -> None:
+    from app.models import Base
+    from app.services.tenant_provisioning import _CONTROL_ONLY, _GLOBAL_REFERENCE
+
+    offenders = []
+    for table in Base.metadata.sorted_tables:
+        if table.name in _GLOBAL_REFERENCE or table.name in _CONTROL_ONLY:
+            continue
+        for fk in table.foreign_keys:
+            if fk.column.table.name in _GLOBAL_REFERENCE and "tenant_id" not in table.c:
+                offenders.append(table.name)
+    # Such tables would keep seeded rows pointing at plans the reconcile step deletes.
+    assert offenders == []
