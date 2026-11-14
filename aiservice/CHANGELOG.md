@@ -2,6 +2,8 @@
 
 ## 2026-11-14 — AMINAZADI
 
+- Added Whisper (faster-whisper) models to `segmenter=silero_vad`: every Silero span is decoded separately with `vad_filter=False` and `condition_on_previous_text=False`, so Whisper Large v3, Whisper Persian v4 and BuzzASR get the same Jalase-Negar pipeline (context padding, quiet-audio gain, duplicate filter) as Shenava. Whisper spans keep `avg_logprob`, `no_speech_prob` and `compression_ratio`; Shenava spans still run on the CPU only, Whisper spans follow the normal CPU/GPU choice and are never rerouted to 9Router. The 422 for an unsupported first model now names both families. ⚠ Whisper speed and accuracy on this path are not measured.
+
 - Added queue wake-ups and a read-only idle precheck: `enqueue` wakes idle workers immediately and an empty poll no longer takes the SQLite write lock.
 - Changed the default `ASR_QUEUE_LIMIT` from 100 to 1000 (compose included) and added `ASR_QUEUE_PER_KEY_LIMIT` (per-API-key fairness cap, default off) and `ASR_REMOTE_WORKERS` (default 2).
 - Changed the per-GPU concurrency to start at the configured `max_concurrent_per_device` and back off on out-of-memory, instead of starting at 1 after every restart; an out-of-memory forced multi-GPU split now expires after `ASR_OOM_SPLIT_TTL_SECONDS` (default 1800).

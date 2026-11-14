@@ -108,27 +108,69 @@ def _decode_whisper(engine, source, options):
  return [segment for segment in segments if segment["text"]], info
 
 
+SILERO_SHERPA_ARCHITECTURES = frozenset({"nemoCtc", "transducer"})
+SILERO_ARCHITECTURES = SILERO_SHERPA_ARCHITECTURES | {"fasterWhisper"}
+
+
 def supports_silero(mid):
+ """True when this local model can decode Silero-VAD spans (sherpa or faster-whisper)."""
  spec = CATALOG.get(mid)
- return spec is not None and spec.architecture in {"nemoCtc", "transducer"}
+ return spec is not None and spec.architecture in SILERO_ARCHITECTURES
 
 
-def _transcribe_vad_segments(path, mid, event, threshold):
+def silero_cpu_only(mid):
+ """Sherpa models run Silero spans on the CPU; faster-whisper follows the normal device choice."""
+ spec = CATALOG.get(mid)
+ return spec is not None and spec.architecture in SILERO_SHERPA_ARCHITECTURES
+
+
+def _whisper_span_decoder(engine, mid, spec, beam, prompt):
+ """Decode one Silero span with faster-whisper: no internal VAD, no cross-window context."""
+ options = {
+  "language": spec.language or "fa", "task": spec.task or "transcribe", "beam_size": beam,
+  "vad_filter": False, "initial_prompt": prompt or None, "temperature": WHISPER_TEMPERATURE,
+  "condition_on_previous_text": False, **spec.decoding,
+ }
+
+ def decode(samples):
+  with _engine_lock(mid):
+   iterator, _info = engine.transcribe(samples, **options)
+   rows = [row for row in iterator if normalize(row.text)]
+  if not rows:
+   return ""
+  stats = {}
+  logprobs = [row.avg_logprob for row in rows if getattr(row, "avg_logprob", None) is not None]
+  no_speech = [row.no_speech_prob for row in rows if getattr(row, "no_speech_prob", None) is not None]
+  ratios = [row.compression_ratio for row in rows if getattr(row, "compression_ratio", None) is not None]
+  if logprobs:stats["avg_logprob"] = sum(logprobs) / len(logprobs)
+  if no_speech:stats["no_speech_prob"] = max(no_speech)
+  if ratios:stats["compression_ratio"] = max(ratios)
+  return " ".join(normalize(row.text) for row in rows), stats
+
+ return decode
+
+
+def _transcribe_vad_segments(path, mid, event, threshold, beam=2, prompt=None):
  from . import vad_segment_decoder as vsd
 
+ spec = CATALOG[mid]
  silero = MODEL_DIR / "silero-vad" / "silero_vad.onnx"
  if not silero.is_file():
   raise AsrModelUnavailableError("Install silero-vad before using segmenter=silero_vad")
  event(f"Loading ASR model {mid}")
- engine = _load(mid, None)
+ whisper = spec.architecture == "fasterWhisper"
+ engine = load(mid) if whisper else _load(mid, None)
  event("ASR model is ready")
 
- def decode(samples):
-  with _engine_lock(mid):
-   stream = engine.create_stream()
-   stream.accept_waveform(vsd.SAMPLE_RATE, samples)
-   engine.decode_stream(stream)
-   return stream.result.text
+ if whisper:
+  decode = _whisper_span_decoder(engine, mid, spec, beam, prompt)
+ else:
+  def decode(samples):
+   with _engine_lock(mid):
+    stream = engine.create_stream()
+    stream.accept_waveform(vsd.SAMPLE_RATE, samples)
+    engine.decode_stream(stream)
+    return stream.result.text
 
  event("Decoding audio with Silero VAD segmentation")
  vad = vsd.SileroVad(str(silero), **({"threshold": threshold} if threshold is not None else {}))
@@ -162,7 +204,7 @@ def _transcribe(path,mid,beam,vad,prompt,on_event=None,*,segmenter=None,silero_t
  if segmenter and not (MODEL_DIR / mid / ".complete").is_file():
   raise AsrModelUnavailableError("Install the selected ASR model before retrying")
  if segmenter == "silero_vad" and supports_silero(mid):
-  return _transcribe_vad_segments(path, mid, event, silero_threshold)
+  return _transcribe_vad_segments(path, mid, event, silero_threshold, beam, prompt)
  event(f"Loading ASR model {mid}");engine=load(mid);event("ASR model is ready")
  if spec.architecture in {"nemoCtc","transducer"} and gpu_runtime.current_device_index() is not None:
   event("Decoding audio with sherpa-onnx CUDA")

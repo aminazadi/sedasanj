@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Annotated, Any
@@ -1480,6 +1481,7 @@ async def update_platform_settings(
     meeting_prompt = changes.pop("meeting_prompt", None)
     optional_blank_keys = {
         "call_asr_telephony_threshold",
+        "call_asr_model",
         "coach_model",
         "ninerouter_coach_model",
         "ninerouter_coach_prompt",
@@ -1671,6 +1673,11 @@ async def update_platform_settings(
                 "مدل‌های جایگزین تماس را با شناسه‌های معتبر و بدون تکرار انتخاب کنید.",
             )
         changes["call_asr_fallback_models"] = models
+    if changes.get("call_asr_model") and re.search(r"\s", changes["call_asr_model"]):
+        raise ApiError(
+            "call_asr_settings_invalid",
+            "مدل تبدیل صدای تماس را از فهرست AISERVICE انتخاب کنید (شناسه نباید فاصله داشته باشد).",
+        )
     denoiser_model = changes.get("audio_denoiser_model")
     if denoiser_model is not None and denoiser_model not in DENOISER_MODELS:
         raise ApiError("invalid_request", f"unknown denoiser model: {denoiser_model}")

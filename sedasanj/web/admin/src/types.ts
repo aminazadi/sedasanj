@@ -164,6 +164,7 @@ export interface PlatformSettings {
   call_asr_profile: CallAsrProfile;
   call_asr_telephony_threshold: number | null;
   call_asr_fallback_models: string[];
+  call_asr_model: string;
   correction_audio_models: string[];
   correction_text_models: string[];
   correction_prompt: string;

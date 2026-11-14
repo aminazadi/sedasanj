@@ -26,6 +26,9 @@ const ASSISTANT_TOOLS: Array<[string, string]> = [
   ["get_operator_performance", "عملکرد اپراتورها"],
   ["visualize_statistics", "نمودارهای آماری"],
 ];
+// AISERVICE architectures that can decode Silero-VAD speech spans.
+const SILERO_ARCHITECTURES = new Set(["nemoCtc", "transducer", "fasterWhisper"]);
+
 type SettingsTab = "connection" | "models" | "assistant" | "audio" | "correction" | "prompts" | "security" | "quick-demo" | "sms-templates" | "site-contact";
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "اتصال سرویس‌ها" },
@@ -271,6 +274,11 @@ export default function Settings() {
     () => models.filter((model) => model.kind === "embedding"),
     [models],
   );
+  // Silero-VAD spans can be decoded by sherpa (Shenava) and faster-whisper models only.
+  const sileroAsrModels = useMemo(
+    () => asrModels.filter((model) => model.architecture !== null && SILERO_ARCHITECTURES.has(model.architecture)),
+    [asrModels],
+  );
   const nineRouterAsrModels = useMemo(() => nineRouterModels.filter((model) => model.kind === "asr"), [nineRouterModels]);
   const nineRouterLlmModels = useMemo(() => nineRouterModels.filter((model) => LLM_KINDS.has(model.kind)), [nineRouterModels]);
   const nineRouterEmbeddingModels = useMemo(() => nineRouterModels.filter((model) => model.kind === "embedding"), [nineRouterModels]);
@@ -320,6 +328,7 @@ export default function Settings() {
           call_asr_profile: settings.call_asr_profile,
           call_asr_telephony_threshold: settings.call_asr_telephony_threshold,
           call_asr_fallback_models: settings.call_asr_fallback_models,
+          call_asr_model: settings.call_asr_model,
           llm_model: settings.llm_model,
           chat_model: settings.chat_model,
           decision_model: settings.decision_model,
@@ -652,6 +661,17 @@ export default function Settings() {
               })} />
           </div>
         </div>
+        {settings.call_asr_mode === "vad_segment" ? (
+          <div>
+            <ModelSelect id="call-asr-model" label="مدل تبدیل صدای تماس در حالت جلسه‌نگار"
+              value={settings.call_asr_model} models={sileroAsrModels}
+              onChange={(call_asr_model) => setSettings({ ...settings, call_asr_model })} />
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              خالی بماند، مدل پیش‌فرض شنوا کوچیک ۱٫۵ (RNNT) استفاده می‌شود. مدل‌های شنوا و Whisper پشتیبانی می‌شوند؛
+              «مدل ASR» عمومی همان مدل جایگزین باقی می‌ماند.
+            </p>
+          </div>
+        ) : null}
         <ModelPriorityList id="call-asr-fallback-models" label="مدل‌های جایگزین تبدیل صدای تماس"
           value={settings.call_asr_fallback_models} models={asrModels} min={0} max={4}
           onChange={(call_asr_fallback_models) => setSettings({ ...settings, call_asr_fallback_models })} />

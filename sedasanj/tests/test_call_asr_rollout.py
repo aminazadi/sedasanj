@@ -87,6 +87,63 @@ async def test_voice_engine_keeps_primary_on_both_channels_and_tracks_fallback(w
     )
 
 
+async def test_voice_engine_uses_admin_call_model_and_keeps_shenava_default(wav_file) -> None:
+    admin_choice = VoiceSanjEngine(
+        Settings(
+            voicesanj_api_key="fixture",
+            call_asr_mode="vad_segment",
+            call_asr_model=" whisper-persian-v4 ",
+            voicesanj_asr_model="buzzasr-persian",
+        )
+    )
+    assert admin_choice.model_name == "whisper-persian-v4"
+    # The admin's general ASR model stays the fallback, so a Whisper failure still has a path.
+    assert admin_choice._models == ["whisper-persian-v4", "buzzasr-persian"]
+    admin_choice._client.transcribe = AsyncMock(
+        return_value={"model": "whisper-persian-v4", "text": "سلام"}
+    )
+    await admin_choice.transcribe(wav_file())
+    request = admin_choice._client.transcribe.await_args.kwargs
+    assert (request["model"], request["segmenter"]) == ("whisper-persian-v4", "silero_vad")
+
+    unchanged = VoiceSanjEngine(
+        Settings(
+            voicesanj_api_key="fixture",
+            call_asr_mode="vad_segment",
+            voicesanj_asr_model="buzzasr-persian",
+        )
+    )
+    assert unchanged.model_name == SHENAVA_CALL_MODEL
+    # The legacy path ignores the call model and keeps using the general ASR model.
+    legacy = VoiceSanjEngine(
+        Settings(
+            voicesanj_api_key="fixture",
+            call_asr_mode="legacy",
+            call_asr_model="whisper-persian-v4",
+            voicesanj_asr_model="buzzasr-persian",
+        )
+    )
+    assert legacy.model_name == "buzzasr-persian"
+
+
+async def test_platform_call_model_reaches_runtime_settings(monkeypatch) -> None:
+    from app.services import platform
+
+    monkeypatch.setattr(platform, "get_settings", lambda: Settings())
+    stored = [SimpleNamespace(key="call_asr_model", value=" whisper-large-v3 ")]
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(scalars=lambda: stored)),
+    )
+    runtime = await platform.resolve_provider_settings(session, capability="asr")
+    assert runtime.call_asr_model == "whisper-large-v3"
+    assert (await platform.effective_models(session))["call_asr_model"] == " whisper-large-v3 "
+    # No stored row: the Shenava default applies (empty means "use the default").
+    session.execute.return_value = SimpleNamespace(scalars=lambda: [])
+    assert (
+        await platform.resolve_provider_settings(session, capability="asr")
+    ).call_asr_model == ""
+
+
 async def test_one_silent_channel_does_not_drop_speech_or_mask_other_errors(
     monkeypatch,
     tmp_path,

@@ -1,5 +1,9 @@
 ## 2026-11-14 — AMINAZADI
 
+- Redesigned the follow-up tasks page: compact two-line rows (empty fields are hidden, priority as a coloured edge), a one-click "done" checkbox, one toolbar with search, filters and refresh, and pagination shown only when there is more than one page.
+
+- Added the admin setting "مدل تبدیل صدای تماس در حالت جلسه‌نگار" (`call_asr_model`): the Silero-VAD call transcription (Jalase-Negar flow) now runs the model the admin selects, Shenava or Whisper (Whisper Persian v4, BuzzASR, Whisper Large v3), instead of the hard-coded `shenava-koochik-v1-5-rnnt`. Empty keeps the previous Shenava default, so existing deployments do not change; the general ASR model stays the fallback. Help article `call-asr-silero` and the `call_asr_settings_invalid` article were updated (migration 0142). ⚠ Whisper speed and WER on real calls are not measured yet.
+
 - Redesigned the account billing page: a flat red subscription alert banner, the subscription card with a status chip and a five-cell usage grid (icons and usage bars), the plan purchase moved into a dialog on the account page (plan cards with images, buyer details, payment method and order summary in one step; `/plans` now redirects to `/checkout`), and the credit ledger moved to its own page at `/account/transactions` (button in the page header).
 
 - Made the dotted background pattern lighter across the panel (sidebar, card headers, processing cards and loading backdrop); public pages are unchanged.

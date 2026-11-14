@@ -1427,6 +1427,7 @@ class SettingsUpdate(BaseModel):
     call_asr_profile: Literal["jalase_negar", "telephony"] | None = None
     call_asr_telephony_threshold: float | None = Field(default=None, gt=0, lt=1)
     call_asr_fallback_models: list[str] | None = Field(default=None, max_length=4)
+    call_asr_model: str | None = Field(default=None, max_length=200)
     correction_audio_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
     correction_text_models: list[str] | None = Field(default=None, min_length=1, max_length=5)
     correction_prompt: str | None = Field(default=None, min_length=20, max_length=20_000)

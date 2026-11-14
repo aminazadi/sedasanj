@@ -62,6 +62,17 @@ class VadSegmentDecoderTests(unittest.TestCase):
         self.assertEqual((seg[1]["start"], seg[1]["end"]), (4.0, 6.0))
         self.assertTrue(all(s["timestamp_source"] == "silero_vad" for s in seg))
 
+    def test_decoder_scores_are_attached_without_overriding_core_fields(self):
+        audio = np.full(160000, 0.2, dtype=np.float32)
+        seg, _ = self._decode(
+            audio,
+            [(16000, 16000)],
+            lambda _s: ("سلام", {"avg_logprob": -0.3, "no_speech_prob": 0.1, "text": "bad"}),
+        )
+        self.assertEqual(seg[0]["text"], "سلام")
+        self.assertEqual((seg[0]["avg_logprob"], seg[0]["no_speech_prob"]), (-0.3, 0.1))
+        self.assertEqual(seg[0]["timestamp_source"], "silero_vad")
+
     def test_duplicates_and_empty_are_dropped(self):
         audio = np.full(160000, 0.2, dtype=np.float32)
         texts = iter(["سلام وقت بخیر", "", "سلام وقت بخیر"])

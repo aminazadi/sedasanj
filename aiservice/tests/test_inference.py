@@ -27,6 +27,96 @@ class InferenceTests(unittest.TestCase):
         self.assertIsInstance(supplied, str)
         self.assertEqual(audio.name, supplied)
 
+    def _silero_models(self, root, model_id):
+        (root / "silero-vad").mkdir(parents=True)
+        (root / "silero-vad" / "silero_vad.onnx").touch()
+        (root / model_id).mkdir()
+        (root / model_id / ".complete").touch()
+
+    def test_silero_architectures_split_cpu_only_from_whisper(self):
+        for model_id in ("shenava-koochik-v1-5-rnnt", "shenava-rizeh"):
+            self.assertTrue(inference.supports_silero(model_id))
+            self.assertTrue(inference.silero_cpu_only(model_id))
+        for model_id in ("whisper-large-v3", "whisper-persian-v4", "buzzasr-persian"):
+            self.assertTrue(inference.supports_silero(model_id))
+            self.assertFalse(inference.silero_cpu_only(model_id))
+        for model_id in ("silero-vad", "dorna-8b-q4_k_m", "unknown-model"):
+            self.assertFalse(inference.supports_silero(model_id))
+            self.assertFalse(inference.silero_cpu_only(model_id))
+
+    def test_whisper_decodes_each_silero_span_without_inner_vad(self):
+        import numpy as np
+        from asr_service.services import vad_segment_decoder as vsd
+
+        engine = Mock()
+        engine.transcribe.return_value = (
+            iter((
+                Mock(text="سلام", avg_logprob=-0.2, no_speech_prob=0.1, compression_ratio=1.1),
+                Mock(text="دوست من", avg_logprob=-0.4, no_speech_prob=0.3, compression_ratio=1.3),
+            )),
+            Mock(),
+        )
+        seen = {}
+
+        def fake_decode_file(path, vad, decode, on_event):
+            seen["result"] = decode(np.zeros(16000, dtype=np.float32))
+            return [{"id": 0, "start": 0.0, "end": 1.0, "text": "x",
+                     "timestamp_source": "silero_vad"}], 1.0
+
+        with tempfile.TemporaryDirectory() as root, tempfile.NamedTemporaryFile(suffix=".wav") as audio:
+            self._silero_models(Path(root), "buzzasr-persian")
+            with patch.object(inference, "MODEL_DIR", Path(root)), patch.object(
+                inference, "load", return_value=engine
+            ) as load, patch.object(vsd, "decode_file", side_effect=fake_decode_file):
+                inference.transcribe(
+                    Path(audio.name), "buzzasr-persian", 4, True, "پرامپت", segmenter="silero_vad"
+                )
+        load.assert_called_once_with("buzzasr-persian")
+        options = engine.transcribe.call_args.kwargs
+        self.assertFalse(options["vad_filter"])
+        self.assertFalse(options["condition_on_previous_text"])
+        self.assertEqual((options["beam_size"], options["initial_prompt"]), (4, "پرامپت"))
+        self.assertEqual((options["language"], options["task"]), ("fa", "transcribe"))
+        # Model-specific decoding options from the catalog still apply (BuzzASR).
+        self.assertEqual(options["repetition_penalty"], 1.2)
+        text, stats = seen["result"]
+        self.assertEqual(text, "سلام دوست من")
+        self.assertAlmostEqual(stats["avg_logprob"], -0.3)
+        self.assertEqual((stats["no_speech_prob"], stats["compression_ratio"]), (0.3, 1.3))
+
+    def test_whisper_span_without_text_returns_empty(self):
+        engine = Mock()
+        engine.transcribe.return_value = (iter((Mock(text="  "),)), Mock())
+        decode = inference._whisper_span_decoder(
+            engine, "buzzasr-persian", inference.CATALOG["buzzasr-persian"], 2, None
+        )
+        self.assertEqual(decode(Mock()), "")
+
+    def test_sherpa_silero_path_still_uses_cpu_engine_cache(self):
+        import numpy as np
+        from asr_service.services import vad_segment_decoder as vsd
+
+        stream = Mock()
+        stream.result.text = "سلام"
+        engine = Mock()
+        engine.create_stream.return_value = stream
+
+        def fake_decode_file(path, vad, decode, on_event):
+            self.assertEqual(decode(np.zeros(160, dtype=np.float32)), "سلام")
+            return [{"id": 0, "start": 0.0, "end": 1.0, "text": "سلام",
+                     "timestamp_source": "silero_vad"}], 1.0
+
+        with tempfile.TemporaryDirectory() as root, tempfile.NamedTemporaryFile(suffix=".wav") as audio:
+            self._silero_models(Path(root), "shenava-koochik-v1-5-rnnt")
+            with patch.object(inference, "MODEL_DIR", Path(root)), patch.object(
+                inference, "_load", return_value=engine
+            ) as load, patch.object(vsd, "decode_file", side_effect=fake_decode_file):
+                inference.transcribe(
+                    Path(audio.name), "shenava-koochik-v1-5-rnnt", 2, True, None,
+                    segmenter="silero_vad",
+                )
+        load.assert_called_once_with("shenava-koochik-v1-5-rnnt", None)
+
     def test_denoised_samples_are_passed_as_readable_audio(self):
         engine = Mock()
         info = Mock(duration=1.0, duration_after_vad=1.0)

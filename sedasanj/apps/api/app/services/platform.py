@@ -38,6 +38,7 @@ OVERRIDE_KEYS = (
     "call_asr_profile",
     "call_asr_telephony_threshold",
     "call_asr_fallback_models",
+    "call_asr_model",
     "audio_preprocessing_enabled",
     "audio_denoiser_model",
     "audio_enhancement_model",
@@ -357,6 +358,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
             else ""
         ),
         "call_asr_fallback_models": json.dumps(settings.call_asr_fallback_models),
+        "call_asr_model": settings.call_asr_model,
         "audio_preprocessing_enabled": str(settings.audio_preprocessing_enabled).lower(),
         "audio_denoiser_model": settings.audio_denoiser_model,
         "audio_enhancement_model": settings.audio_enhancement_model,
@@ -534,6 +536,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
             else None
         ),
         "call_asr_fallback_models": _string_list(values["call_asr_fallback_models"]),
+        "call_asr_model": values["call_asr_model"],
         "audio_preprocessing_enabled": _as_bool(values["audio_preprocessing_enabled"]),
         "audio_denoiser_model": values["audio_denoiser_model"],
         "audio_enhancement_model": values["audio_enhancement_model"],
@@ -662,6 +665,7 @@ async def resolve_provider_settings(
                 else None
             ),
             "call_asr_fallback_models": _string_list(overrides["call_asr_fallback_models"]),
+            "call_asr_model": overrides["call_asr_model"].strip(),
             "llm_client": "voicesanj",
             "llm_model": overrides["llm_model"],
             "voicesanj_llm_model": overrides["llm_model"],

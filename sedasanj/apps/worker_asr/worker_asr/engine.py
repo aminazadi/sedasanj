@@ -289,7 +289,12 @@ class VoiceSanjEngine(AsrEngine):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._silero = settings.call_asr_mode == "vad_segment"
-        self.model_name = SHENAVA_CALL_MODEL if self._silero else settings.voicesanj_asr_model
+        # Silero mode follows the admin's call model; empty keeps the Shenava default.
+        self.model_name = (
+            (settings.call_asr_model.strip() or SHENAVA_CALL_MODEL)
+            if self._silero
+            else settings.voicesanj_asr_model
+        )
         fallbacks = settings.call_asr_fallback_models
         if self._silero and not fallbacks:
             fallbacks = [settings.voicesanj_asr_model]

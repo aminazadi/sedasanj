@@ -153,7 +153,7 @@ class SileroVad:
 def decode_file(
     path: Path,
     vad: SileroVad,
-    decode: Callable[[np.ndarray], str],
+    decode: Callable[[np.ndarray], str | tuple[str, dict]],
     on_event: Callable[[str], None],
 ) -> tuple[list[dict], float]:
     """Stream PCM blocks and read context by offset from the same on-disk timeline."""
@@ -220,7 +220,7 @@ def decode_file(
 def decode_spans(
     spans: Iterable[VadSpan],
     prepare: Callable[[VadSpan], np.ndarray],
-    decode: Callable[[np.ndarray], str],
+    decode: Callable[[np.ndarray], str | tuple[str, dict]],
     on_event: Callable[[str], None] | None = None,
     *,
     total_samples: int,
@@ -237,7 +237,10 @@ def decode_spans(
         start_ms = start * 1000 // SAMPLE_RATE
         end_ms = end * 1000 // SAMPLE_RATE
         prepared = normalize_quiet_audio(prepare(span))
-        text = normalize_persian_asr_text(decode(prepared))
+        decoded = decode(prepared)
+        # A decoder may return (text, extra) to attach scores such as Whisper's avg_logprob.
+        raw_text, extra = decoded if isinstance(decoded, tuple) else (decoded, {})
+        text = normalize_persian_asr_text(raw_text)
         if not text:
             continue
         key = re.sub(r"\s+", " ", text).strip().lower()
@@ -248,6 +251,7 @@ def decode_spans(
             recent.pop(0)
         segments.append(
             {
+                **extra,
                 "id": len(segments),
                 "start": start_ms / 1000.0,
                 "end": end_ms / 1000.0,

@@ -511,6 +511,40 @@ class TaskQueueTests(unittest.TestCase):
             )
             self.assertEqual(invalid.status_code, 422)
 
+    def test_silero_multipart_accepts_whisper_and_rejects_non_asr_first_model(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from asr_service.api.routers import tasks
+
+        app = FastAPI()
+        app.include_router(tasks.router)
+        app.dependency_overrides[tasks.authorize] = lambda: tasks.Principal(is_admin=True)
+        files = {"file": ("call.wav", b"RIFF", "audio/wav")}
+        with (
+            patch.object(tasks, "MODEL_DIR", storage.MODEL_DIR),
+            patch.object(tasks, "TASK_DIR", self.queue.TASK_DIR),
+            patch.object(tasks, "configured_models", return_value={"remote-asr"}),
+            TestClient(app) as client,
+        ):
+            accepted = client.post(
+                "/v1/audio/transcriptions",
+                data={"models": ["whisper-persian-v4", "shenava-koochik-v1-5-rnnt"],
+                      "segmenter": "silero_vad"},
+                files=files,
+            )
+            self.assertEqual(accepted.status_code, 202, accepted.text)
+            self.assertEqual(
+                accepted.json()["models"], ["whisper-persian-v4", "shenava-koochik-v1-5-rnnt"]
+            )
+            # A model that exists only on 9Router cannot cut Silero spans locally.
+            rejected = client.post(
+                "/v1/audio/transcriptions",
+                data={"models": ["remote-asr"], "segmenter": "silero_vad"}, files=files,
+            )
+            self.assertEqual(rejected.status_code, 422)
+            self.assertIn("Whisper", rejected.json()["detail"])
+
     def _silero_task(self):
         path = Path(self.temp.name) / "call.wav"
         path.touch()
@@ -539,6 +573,35 @@ class TaskQueueTests(unittest.TestCase):
         normalize.assert_not_called()
         result = self.queue.public_task(self.queue.get_task(task["task_id"]))["result"]
         self.assertEqual(result["results"][0]["result"]["segments"], segments)
+
+    def test_silero_whisper_is_local_and_not_pinned_to_cpu_only(self):
+        path = Path(self.temp.name) / "whisper.wav"
+        path.touch()
+        task, _ = self.queue.enqueue(
+            "asr", models=["whisper-persian-v4"],
+            input_data={"segmenter": "silero_vad", "beam_size": 3},
+            input_path=str(path), response_format="verbose_json",
+        )
+        manager = self.queue.TaskManager()
+        segments = [{"id": 0, "start": 0.2, "end": 0.5, "text": "سلام",
+                     "timestamp_source": "silero_vad", "avg_logprob": -0.2}]
+        with (
+            patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "cpu"}),
+            # A configured 9Router route must not steal a Silero span job for a local model.
+            patch.object(self.queue, "uses_ninerouter", return_value=True),
+            patch.object(self.queue, "NineRouterClient") as remote,
+            patch.object(self.queue, "transcribe", return_value=("سلام", segments, 1.0, 0.3)) as decode,
+            patch("asr_service.services.speech_segmentation.normalize_transcription") as normalize,
+        ):
+            claimed = manager._claim("cpu")
+            self.assertNotEqual(claimed["run"]["device_reason"], "silero_vad_cpu")
+            manager._run(claimed, admitted_slot=object())
+        remote.assert_not_called()
+        normalize.assert_not_called()
+        self.assertEqual(decode.call_args.args[1], "whisper-persian-v4")
+        self.assertEqual(decode.call_args.kwargs["segmenter"], "silero_vad")
+        result = self.queue.public_task(self.queue.get_task(task["task_id"]))["result"]
+        self.assertEqual(result["segments"], segments)
 
     def test_silero_silence_is_terminal_without_fallback(self):
         task = self._silero_task()

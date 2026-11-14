@@ -136,6 +136,8 @@ class Settings(BaseSettings):
     call_asr_profile: Literal["jalase_negar", "telephony"] = "jalase_negar"
     call_asr_telephony_threshold: float | None = Field(default=None, gt=0, lt=1)
     call_asr_fallback_models: list[str] = Field(default_factory=list)
+    # Model used by the Silero-VAD call path; empty keeps the Shenava RNNT default.
+    call_asr_model: str = ""
     voicesanj_llm_model: str = "dorna-8b-q4_k_m"
     voicesanj_text_correction_style: Literal["formal", "semi_formal", "action"] = "formal"
     voicesanj_correction_timeout_seconds: float = 120.0

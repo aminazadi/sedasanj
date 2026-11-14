@@ -358,7 +358,7 @@ async def transcription(
     segmenter: str | None = Form(
         None,
         pattern="^silero_vad$",
-        description="Optional speech segmenter. silero_vad cuts speech like the Jalase-Negar app (Shenava models only).",
+        description="Optional speech segmenter. silero_vad cuts speech like the Jalase-Negar app; it needs a local Shenava (sherpa) or Whisper (faster-whisper) model.",
     ),
     engine_profile: Literal["jalase_negar", "telephony"] | None = Form(None),
     silero_threshold: float | None = Form(None, gt=0, lt=1),
@@ -384,7 +384,11 @@ async def transcription(
     )
     require_access(principal, "transcription", selected_models)
     if segmenter and not supports_silero(selected_models[0]):
-        raise HTTPException(422, "Select a Shenava model first when using silero_vad")
+        raise HTTPException(
+            422,
+            "silero_vad needs a local Shenava (sherpa) or Whisper (faster-whisper) model; "
+            "select one as the first model",
+        )
     if response_format not in {"json", "verbose_json", "text", "srt", "vtt"}:
         raise HTTPException(400, "Unsupported response_format")
     if audio_encoding not in {"identity", "gzip"}:

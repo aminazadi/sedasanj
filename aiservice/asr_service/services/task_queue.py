@@ -38,7 +38,9 @@ from asr_service.infrastructure.storage import (
 from . import object_storage
 from . import gpu_runtime
 from .audio_compression import decompress_gzip
-from .inference import AsrModelUnavailableError, NoSpeechDetectedError, supports_silero, transcribe
+from .inference import (
+    AsrModelUnavailableError, NoSpeechDetectedError, silero_cpu_only, supports_silero, transcribe,
+)
 from .ingress import ensure_spool_capacity
 from .resources import (
     DECISION_MAX_CONCURRENT,
@@ -1038,13 +1040,15 @@ class TaskManager:
                 model_id = candidate["next_model_id"]
                 device_reason = None
                 route_kind = "asr" if kind == "asr" else "llm" if kind in {"chat", "chat_async", "text"} else kind
-                cpu_silero = (
+                local_silero = (
                     kind == "asr"
                     and supports_silero(model_id)
                     and json.loads(candidate["input_json"] or "{}").get("segmenter") == "silero_vad"
                 )
+                # Sherpa spans are CPU-only; faster-whisper spans use the normal device choice.
+                cpu_silero = local_silero and silero_cpu_only(model_id)
                 remote = (
-                    not cpu_silero and route_kind in {"asr", "llm"}
+                    not local_silero and route_kind in {"asr", "llm"}
                     and uses_ninerouter(route_kind, model_id)
                 )
                 if remote_only != remote:
