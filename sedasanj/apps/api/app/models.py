@@ -3057,6 +3057,7 @@ class TenantBackup(Base):
     checksum_sha256: Mapped[str | None] = mapped_column(String(64))
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     schema_revision: Mapped[str | None] = mapped_column(String(128))
+    error_code: Mapped[str | None] = mapped_column(String(48))
     error_detail: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -3068,6 +3069,49 @@ class TenantBackup(Base):
             name="tenant_backups_status_check",
         ),
         Index("idx_tenant_backups_tenant_started", "tenant_id", "started_at"),
+    )
+
+
+class TenantRestore(Base):
+    """An admin-requested restore of one tenant database from a verified backup."""
+
+    __tablename__ = "tenant_restores"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    backup_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenant_backups.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default=text("'requested'")
+    )
+    staging_database: Mapped[str | None] = mapped_column(String(63))
+    previous_database: Mapped[str | None] = mapped_column(String(63))
+    verification: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    checkpoint: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    error_code: Mapped[str | None] = mapped_column(String(48))
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    requested_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    applied_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('requested','staging','staged','apply_requested','applying',"
+            "'applied','failed','cancelled')",
+            name="tenant_restores_status_check",
+        ),
+        Index("idx_tenant_restores_tenant_created", "tenant_id", "created_at"),
     )
 
 
@@ -3160,7 +3204,6 @@ class ScheduledReportRun(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
     memory_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
-    error_code: Mapped[str | None] = mapped_column(String(48))
     )
     content: Mapped[str | None] = mapped_column(Text)
     charts: Mapped[list[dict[str, Any]]] = mapped_column(

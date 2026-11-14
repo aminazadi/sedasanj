@@ -508,9 +508,6 @@ async def list_tenant_databases(
             ),
             "backup_id": str(latest_backups[tenant.id].id) if tenant.id in latest_backups else None,
             "backup_restore_verified_at": last_verified_restores.get(tenant.id),
-        }
-        for tenant, registry, migration in rows
-    ]
             "backup_error_info": (
                 {
                     **(backup_error_info(latest_backups[tenant.id].error_code) or {}),
@@ -521,6 +518,9 @@ async def list_tenant_databases(
                 and latest_backups[tenant.id].error_code
                 else None
             ),
+        }
+        for tenant, registry, migration in rows
+    ]
     return {
         "items": items,
         "total": total,
@@ -602,9 +602,6 @@ async def _requeue_migration(
         job.error_detail = None
 
 
-@router.post("/tenant-databases/retry-failed", status_code=202)
-async def retry_failed_tenant_database_migrations(
-    request: Request,
 @router.post("/tenants/{tenant_id}/backup", status_code=202)
 async def request_tenant_backup(
     tenant_id: UUID,
@@ -644,6 +641,9 @@ async def request_tenant_backup(
     return {"status": "requested"}
 
 
+@router.post("/tenant-databases/retry-failed", status_code=202)
+async def retry_failed_tenant_database_migrations(
+    request: Request,
     staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, int]:

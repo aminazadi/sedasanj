@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { request } from "../api";
 import { ErrorBox, Loading, Pagination } from "../components/Widgets";
 import { formatBytes } from "../sanitize";
+import TenantRestorePanel from "../components/TenantRestorePanel";
 import type { Page, TenantDatabaseStatus } from "../types";
 
 type TenantDatabasePage = Page<TenantDatabaseStatus> & { backup_interval_hours: number | null };
@@ -28,6 +29,7 @@ export default function TenantDatabases() {
   const [page, setPage] = useState<TenantDatabasePage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [restoreTenant, setRestoreTenant] = useState<{ id: string; name: string } | null>(null);
   const storageParam = searchParams.get("storage");
   const storageTenant = storageParam && /^[0-9a-f-]{36}$/i.test(storageParam) ? storageParam : null;
   const [storage, setStorage] = useState<{ tenantId: string; usage: StorageUsage } | null>(null);
@@ -146,6 +148,7 @@ export default function TenantDatabases() {
         ) : null}
       </div>
       <ErrorBox message={error} />
+      {restoreTenant ? <TenantRestorePanel tenantId={restoreTenant.id} tenantName={restoreTenant.name} onClose={() => setRestoreTenant(null)} /> : null}
       {rows.some((row) => row.migration_status === "failed") ? (
         <button className="btn-ghost" type="button" disabled={retrying === "all"} onClick={() => void retryAllFailed()}>
           تلاش مجدد همهٔ ناموفق‌ها
@@ -248,6 +251,9 @@ export default function TenantDatabases() {
                   <button className="btn-ghost" disabled={retrying === row.tenant_id} onClick={() => void retry(row.tenant_id)}>تلاش مجدد</button>
                   {row.database_status === "ready" ? (
                     <button className="btn-ghost" disabled={retrying === row.tenant_id || row.backup_status === "requested" || row.backup_status === "running"} onClick={() => void requestBackup(row.tenant_id)}>پشتیبان‌گیری فوری</button>
+                  ) : null}
+                  {row.database_status === "ready" ? (
+                    <button className="btn-ghost" type="button" onClick={() => setRestoreTenant({ id: row.tenant_id, name: row.tenant_name })}>بازیابی</button>
                   ) : null}
                   {row.migration_status === "completed" && row.rollback_until && new Date(row.rollback_until) > new Date() ? (
                     <button className="btn-ghost text-rose-700" disabled={retrying === row.tenant_id} onClick={() => void rollback(row.tenant_id)}>بازگشت امن</button>

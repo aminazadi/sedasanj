@@ -226,3 +226,74 @@ async def test_age_repair_is_idempotent_and_needed_after_a_plain_restore(
     await tenant_backup_restore._repair_age(restored)
     await tenant_backup_restore._repair_age(restored)
     assert await _graph_names(servers, restored) == ['"a"']
+
+
+def test_restore_error_codes_have_actions_and_sanitized_details() -> None:
+    from app.services import tenant_restores as tr
+
+    for code, (message, action) in tr.RESTORE_ERRORS.items():
+        assert message and action, code
+        info = tr.restore_error_info(code)
+        assert info is not None and info["code"] == code
+    assert tr.restore_error_info(None) is None
+    code, detail = tr.classify_restore_error(
+        tenant_backup_format.InvalidBackup("bad [SQL: SELECT 1] [parameters: (1,)]")
+    )
+    assert code == "TENANT_RESTORE_BACKUP_INVALID"
+    assert "SELECT" not in detail
+    assert tr.classify_restore_error(RuntimeError("x"))[0] == "TENANT_RESTORE_UNKNOWN"
+    assert (
+        tr.classify_restore_error(tr.TenantRestoreError("TENANT_RESTORE_NOT_READY", "x"))[0]
+        == "TENANT_RESTORE_NOT_READY"
+    )
+
+
+@pytest.mark.parametrize("name", ["cbi_tenant_x", "postgres", "cbi_restore_ABC", "cbi_restore_1"])
+async def test_only_staging_databases_can_be_dropped(name: str) -> None:
+    from app.services import tenant_restores as tr
+
+    with pytest.raises(ValueError):
+        await tr._drop_database(name)
+
+
+@needs_postgres
+async def test_swap_replaces_the_live_database_and_undo_restores_it(servers: Any) -> None:
+    from app.services import tenant_restores as tr
+
+    suffix = uuid.uuid4().hex[:10]
+    live, staging, previous = (f"cbi_swap_{kind}_{suffix}" for kind in ("live", "stage", "prev"))
+    servers.created.extend([live, staging, previous])
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(tr, "_admin_url", servers.admin_url)
+    try:
+        async with servers.engine.connect() as connection:
+            for name in (live, staging):
+                await connection.execute(text(f"CREATE DATABASE {name} TEMPLATE template0"))
+        for name, marker in ((live, "live-data"), (staging, "backup-data")):
+            engine = _create_async_engine(servers.admin_url(name))
+            async with engine.begin() as connection:
+                await connection.execute(text("CREATE TABLE marker (value text)"))
+                await connection.execute(text("INSERT INTO marker VALUES (:v)"), {"v": marker})
+            await engine.dispose()
+
+        async def value(database: str) -> str:
+            engine = _create_async_engine(servers.admin_url(database))
+            try:
+                async with engine.connect() as connection:
+                    return str(await connection.scalar(text("SELECT value FROM marker")))
+            finally:
+                await engine.dispose()
+
+        await tr._swap(live, staging, previous)
+        assert await value(live) == "backup-data"
+        assert await value(previous) == "live-data"
+
+        await tr._undo_swap(live, staging, previous)
+        assert await value(live) == "live-data"
+        # The staged copy is usable again, so the apply can be retried.
+        assert await value(staging) == "backup-data"
+        await tr._swap(live, staging, f"{previous}2")
+        servers.created.append(f"{previous}2")
+        assert await value(live) == "backup-data"
+    finally:
+        monkey.undo()

@@ -1,5 +1,7 @@
 ## 2026-11-14 — AMINAZADI
 
+- Added restoring an organization database from the admin panel: pick a verified backup, stage and verify it in a scratch database, then confirm to swap it in with automatic swap-back on failure (migration 0139, `TENANT_RESTORE_*` codes, password and two-factor confirmation).
+
 - Fixed restored tenant databases failing every Apache AGE graph query (`graph with oid N does not exist`) by re-linking graph ids after pg_restore, in the staging restore tool and in `restore.sh` / `restore_tenant.sh`; restore now also verifies the graph.
 
 - Added on-demand tenant database backups (admin button, worker picks requested backups first) and stable `TENANT_BACKUP_*` error codes with the real pg_dump reason shown on the organization databases page (migration 0134).

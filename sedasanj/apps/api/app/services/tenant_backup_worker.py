@@ -13,6 +13,7 @@ from app.db import control_session_scope, dispose_engine
 from app.logging import configure_logging
 from app.metrics import start_metrics_server
 from app.models import TenantBackup, TenantDatabaseRegistry
+from app.services import tenant_restores
 from app.services.tenant_backups import backup_next_due, purge_expired
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,9 @@ async def main() -> None:
                     attempts.labels(result="succeeded").inc()
                     duration.observe(time.monotonic() - started)
                 await purge_expired()
+                await tenant_restores.stage_next()
+                await tenant_restores.apply_next()
+                await tenant_restores.cleanup()
             except Exception:
                 attempts.labels(result="failed").inc()
                 logger.error("tenant backup worker failed; check database and backup storage")

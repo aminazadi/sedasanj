@@ -17,7 +17,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import Table, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 
 from app.config import get_settings
 from app.db import (
@@ -49,6 +49,7 @@ _CONTROL_ONLY = {
     "tenant_data_migrations",
     "identity_projection_outbox",
     "tenant_backups",
+    "tenant_restores",
     "organization_backup_settings",
     "organization_data_runs",
     "identity_projection_state",
@@ -269,6 +270,47 @@ async def _verify_runtime_database(runtime_dsn: str, tenant_id: UUID) -> None:
 
 async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
     settings = get_settings()
+async def grant_database_access(connection: AsyncConnection, database: str, role: str) -> None:
+    """Database-level ACL; pg_dump --no-acl does not carry it, so restores must reapply it."""
+    _checked_identifier(database)
+    _checked_identifier(role)
+    await connection.execute(text(f"REVOKE ALL ON DATABASE {database} FROM PUBLIC"))
+    await connection.execute(text(f"GRANT CONNECT, TEMPORARY ON DATABASE {database} TO {role}"))
+
+
+async def grant_schema_access(connection: AsyncConnection, runtime_role: str) -> None:
+    """Schema, table and sequence grants for the tenant runtime role (run inside the tenant DB)."""
+    _checked_identifier(runtime_role)
+    await connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {runtime_role}"))
+    await connection.execute(text(f"GRANT USAGE ON SCHEMA ag_catalog TO {runtime_role}"))
+    await connection.execute(text(f"GRANT SELECT ON ag_catalog.ag_graph TO {runtime_role}"))
+    await connection.execute(text(f"GRANT USAGE, CREATE ON SCHEMA tenant_graph TO {runtime_role}"))
+    await connection.execute(
+        text(
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {runtime_role}"
+        )
+    )
+    await connection.execute(
+        text(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {runtime_role}")
+    )
+    await connection.execute(
+        text(
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
+            f"IN SCHEMA tenant_graph TO {runtime_role}"
+        )
+    )
+    await connection.execute(
+        text(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph TO {runtime_role}")
+    )
+    await connection.execute(
+        text(
+            f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, "
+            f"UPDATE, DELETE ON TABLES TO {runtime_role}"
+        )
+    )
+    await connection.execute(text(f"GRANT SELECT ON tenant_identity TO {runtime_role}"))
+
+
     if not settings.tenant_databases_enabled:
         raise RuntimeError("tenant databases are disabled")
     database_name, runtime_role = database_identifiers(tenant_id)
@@ -301,10 +343,7 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
                 await connection.execute(
                     text(f"CREATE DATABASE {database_name} ENCODING 'UTF8' TEMPLATE template0")
                 )
-            await connection.execute(text(f"REVOKE ALL ON DATABASE {database_name} FROM PUBLIC"))
-            await connection.execute(
-                text(f"GRANT CONNECT, TEMPORARY ON DATABASE {database_name} TO {runtime_role}")
-            )
+            await grant_database_access(connection, database_name, runtime_role)
     finally:
         await admin_engine.dispose()
 
@@ -334,39 +373,7 @@ async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
             ).scalar_one_or_none()
             if graph_exists is None:
                 await connection.execute(text("SELECT ag_catalog.create_graph('tenant_graph')"))
-            await connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {runtime_role}"))
-            await connection.execute(text(f"GRANT USAGE ON SCHEMA ag_catalog TO {runtime_role}"))
-            await connection.execute(text(f"GRANT SELECT ON ag_catalog.ag_graph TO {runtime_role}"))
-            await connection.execute(
-                text(f"GRANT USAGE, CREATE ON SCHEMA tenant_graph TO {runtime_role}")
-            )
-            await connection.execute(
-                text(
-                    f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public "
-                    f"TO {runtime_role}"
-                )
-            )
-            await connection.execute(
-                text(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {runtime_role}")
-            )
-            await connection.execute(
-                text(
-                    f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
-                    f"IN SCHEMA tenant_graph TO {runtime_role}"
-                )
-            )
-            await connection.execute(
-                text(
-                    f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tenant_graph TO {runtime_role}"
-                )
-            )
-            await connection.execute(
-                text(
-                    f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, "
-                    f"UPDATE, DELETE ON TABLES TO {runtime_role}"
-                )
-            )
-            await connection.execute(text(f"GRANT SELECT ON tenant_identity TO {runtime_role}"))
+            await grant_schema_access(connection, runtime_role)
             await assert_age_ready(connection)
     finally:
         await target.dispose()

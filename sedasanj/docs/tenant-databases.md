@@ -58,6 +58,25 @@ used; never restore a tenant dump with a bare `pg_restore`.
 Test the whole pipeline against a disposable PostgreSQL (pgvector + AGE, `age` preloaded):
 `TENANT_BACKUP_TEST_URL=postgresql+asyncpg://postgres:pw@127.0.0.1:55433/postgres pytest tests/test_tenant_backup_restore.py`.
 
+## Restore from the admin panel
+
+Admin > Tenant Databases > «بازیابی» (super admin only; every step asks for the account password
+and the two-factor code):
+
+1. Pick a successful backup. `worker-tenant-backup` downloads it, verifies checksum and
+   decryption, restores it into a scratch `cbi_restore_<hex>` database, repairs the Apache AGE
+   graph and verifies identity, revision, graph and media references. Status becomes `staged`.
+   Nothing live has changed yet; a staged restore expires after 24 hours or can be cancelled.
+2. Type the live database name to confirm. The organization turns read-only, running jobs drain,
+   the live database is renamed `<db>_pre<yymmddHHMMSS>` and the staged one takes its name. Grants
+   are reapplied and the runtime role must pass identity and graph checks; on any failure the
+   databases are swapped back and the restore returns to `staged` with a `TENANT_RESTORE_*` code.
+3. Data written after the backup is not in the restored database. The `_pre` database is kept;
+   drop it manually once verified. If the restored schema is older than the application head,
+   the fleet migration upgrades it automatically.
+
+API processes pick up the swapped database on their next connection (pools use `pre_ping`).
+
 ## Operational checks
 
 - Confirm the target database identity equals the signed tenant ID.
