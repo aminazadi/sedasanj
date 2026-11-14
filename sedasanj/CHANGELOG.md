@@ -1,5 +1,11 @@
 ## 2026-11-14 — AMINAZADI
 
+- Standardized public dialog close controls with 24px icons and 44px click targets, replacing font-dependent close characters.
+
+- Added a Jalase-Negar download dialog on the landing page: the button opens a dialog listing the Android APK, Windows and macOS installers and store links (Bazaar, Myket, Google Play, App Store, Anardoni, SibApp); when only the Android APK exists the button downloads it directly. New public `GET /v1/jalase-negar/downloads` and `GET /v1/jalase-negar/desktop/{id}/download`, super-admin `store-links` and `desktop-builds` endpoints, an admin page "دانلود جلسه‌نگار", migration 0143 (table `jalase_negar_desktop_builds`, help article `jalase-negar-download-dialog`).
+
+- Changed the public navigation app label to "جلسه‌نگار".
+
 - Redesigned the follow-up tasks page: compact two-line rows (empty fields are hidden, priority as a coloured edge), a one-click "done" checkbox, one toolbar with search, filters and refresh, and pagination shown only when there is more than one page.
 
 - Added the admin setting "مدل تبدیل صدای تماس در حالت جلسه‌نگار" (`call_asr_model`): the Silero-VAD call transcription (Jalase-Negar flow) now runs the model the admin selects, Shenava or Whisper (Whisper Persian v4, BuzzASR, Whisper Large v3), instead of the hard-coded `shenava-koochik-v1-5-rnnt`. Empty means the general admin ASR model runs alone; the hidden Shenava primary and the implicit fallback are gone, so only `call_asr_fallback_models` adds models (organizations in Jalase-Negar mode whose general model is not Shenava now run that model). Help article `call-asr-silero` and the `call_asr_settings_invalid` article were updated (migration 0142). ⚠ Whisper speed and WER on real calls are not measured yet.

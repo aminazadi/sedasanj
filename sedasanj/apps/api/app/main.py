@@ -38,6 +38,7 @@ from app.routers import (
     ingest,
     integration_api,
     internal_tools,
+    jalase_negar_downloads,
     jalase_negar_releases,
     jalase_push,
     jalase_sedasanj_intro,
@@ -344,6 +345,20 @@ def create_app() -> FastAPI:
                     ),
                     headers={"X-Request-ID": request_id},
                 )
+        if request.method == "POST" and request.url.path == "/v1/admin/jalase-negar/desktop-builds":
+            desktop_limit = get_settings().max_jalase_negar_desktop_bytes + 1024 * 1024
+            declared_desktop = request.headers.get("content-length", "")
+            if declared_desktop.isdigit() and int(declared_desktop) > desktop_limit:
+                return JSONResponse(
+                    status_code=413,
+                    content=error_body(
+                        "archive_too_large",
+                        "the installer is larger than the allowed size; shrink the build",
+                        False,
+                        request_id,
+                    ),
+                    headers={"X-Request-ID": request_id},
+                )
         started = time.perf_counter()
         response = await call_next(request)
         elapsed = time.perf_counter() - started
@@ -391,6 +406,7 @@ def create_app() -> FastAPI:
         meetings,
         ai_instructions,
         module_updates,
+        jalase_negar_downloads,
         jalase_negar_releases,
         jalase_push,
         jalase_sedasanj_intro,

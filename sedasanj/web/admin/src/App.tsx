@@ -20,6 +20,7 @@ import HelpCategories from "./pages/HelpCategories";
 import HelpErrorCodes from "./pages/HelpErrorCodes";
 import HelpMediaPage from "./pages/HelpMedia";
 import JalaseNegarReleaseEditor from "./pages/JalaseNegarReleaseEditor";
+import JalaseNegarDownloads from "./pages/JalaseNegarDownloads";
 import JalasePush from "./pages/JalasePush";
 import JalaseSedasanjIntro from "./pages/JalaseSedasanjIntro";
 import JalaseNegarReleases from "./pages/JalaseNegarReleases";
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/sales" element={<Sales />} />
         <Route path="/installations" element={<Installations />} />
         <Route path="/jalase-negar-push" element={session.role === "super_admin" ? <JalasePush /> : <Navigate to="/" replace />} />
+        <Route path="/jalase-negar-downloads" element={session.role === "super_admin" ? <JalaseNegarDownloads /> : <Navigate to="/" replace />} />
         <Route path="/jalase-negar-releases" element={<JalaseNegarReleases />} />
         <Route path="/model-releases" element={<ModelReleases />} />
         <Route path="/jalase-negar-releases/:releaseId" element={<JalaseNegarReleaseEditor />} />

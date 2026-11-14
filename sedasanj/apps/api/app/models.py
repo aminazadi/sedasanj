@@ -2920,6 +2920,32 @@ class JalaseNegarRelease(Base):
     )
 
 
+class JalaseNegarDesktopBuild(Base):
+    """A Windows or macOS installer offered on the public download dialog; global."""
+
+    __tablename__ = "jalase_negar_desktop_builds"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    platform: Mapped[str] = mapped_column(String(8), nullable=False)
+    version_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    artifact_key: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "platform IN ('windows','macos')", name="jalase_negar_desktop_builds_platform_check"
+        ),
+    )
+
+
 class MlModelRelease(Base):
     """A global ML artifact in `ml-models/`, never copied into a tenant database."""
 

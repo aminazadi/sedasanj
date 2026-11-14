@@ -10,7 +10,11 @@
 .demo-dialog-artwork{display:block;position:relative;width:min(100%,500px);height:auto;aspect-ratio:3 / 2;margin:-22px auto -36px;background-position:center;background-repeat:no-repeat;background-size:contain;opacity:.65;pointer-events:none}.demo-dialog-artwork.is-otp{width:min(100%,500px);aspect-ratio:1717 / 916;margin:-18px auto 0;opacity:.72}.demo-dialog .demo-phone-form{position:relative;z-index:1;margin-top:0}.demo-dialog .demo-phone-form.has-otp-artwork{gap:14px}
 .demo-dialog-artwork.is-organization{width:min(100%,500px);aspect-ratio:3 / 2;margin:-22px auto -36px;opacity:.65}
 .demo-dialog::backdrop{background:rgb(14 25 17 / .55);backdrop-filter:blur(4px)}
-.demo-dialog-close{position:absolute;top:8px;left:12px;border:0;background:transparent;font-size:36px;font-weight:300;line-height:1;color:#64748b;cursor:pointer}
+.demo-dialog .demo-dialog-close{position:absolute;top:8px;left:8px;z-index:3;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;background:transparent;color:#64748b;cursor:pointer}
+.demo-dialog .demo-dialog-close svg{width:24px;height:24px;flex:none;pointer-events:none}
+.demo-dialog .demo-dialog-close:hover:not(:disabled){background:#f2f0ef;color:#4b6e48}
+.demo-dialog .demo-dialog-close:focus-visible{outline:2px solid #4b6e48;outline-offset:2px}
+.demo-dialog .demo-dialog-close:disabled{opacity:.5;cursor:wait}
 .demo-phone-form{display:grid;gap:18px}
 .demo-phone-form h2,.marketing-site .demo-phone-form h2{font-size:1.3rem;line-height:1.6;font-weight:700;margin:0}
 .demo-phone-form p{font-size:.9rem;line-height:1.8;color:#64748b;margin:0}

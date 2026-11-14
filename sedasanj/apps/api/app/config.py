@@ -261,6 +261,8 @@ class Settings(BaseSettings):
     # signing certificate listed here (comma separated SHA-256 fingerprints) is accepted.
     max_jalase_negar_apk_bytes: int = 200 * 1024 * 1024
     jalase_negar_apk_cert_sha256: str = ""
+    # Windows and macOS installers uploaded for the public download dialog.
+    max_jalase_negar_desktop_bytes: int = 600 * 1024 * 1024
     jalase_negar_aapt2_path: str = "aapt2"
     jalase_negar_apksigner_path: str = "apksigner"
     jalase_negar_orphan_grace_minutes: int = Field(default=120, ge=10, le=10_080)

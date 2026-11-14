@@ -66,6 +66,7 @@ _CONTROL_ONLY = {
     "module_diagnostics",
     # Android release catalogue for the Jalase-Negar app: platform-wide, never a tenant's data.
     "jalase_negar_releases",
+    "jalase_negar_desktop_builds",
     "jalase_push_settings",
     "jalase_push_installations",
     "jalase_push_campaigns",

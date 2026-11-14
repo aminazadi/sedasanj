@@ -185,7 +185,28 @@ function UseCases() {
   </section>;
 }
 
-type AppRelease = { download_path: string };
+type AppFile = { version: string; size: number; download_path: string };
+type AppDownloads = { android: AppFile | null; windows: AppFile | null; macos: AppFile | null; stores: Record<string, string> };
+const STORE_LABELS: Array<[string, string]> = [
+  ["bazaar", "کافه‌بازار"], ["myket", "مایکت"], ["google_play", "گوگل‌پلی"],
+  ["app_store", "اپ‌استور"], ["anardoni", "اناردونی"], ["sibapp", "سیب‌اپ"],
+];
+const FILE_LABELS: Array<["android" | "windows" | "macos", string]> = [
+  ["android", "اندروید (فایل APK)"], ["windows", "ویندوز"], ["macos", "مک"],
+];
+const sizeLabel = (bytes: number) => `${fmt.int(Math.max(1, Math.round(bytes / (1024 * 1024))))} مگابایت`;
+
+function DownloadDialog({ data, onClose }: { data: AppDownloads; onClose: () => void }) {
+  const node = useRef<HTMLDialogElement>(null);
+  useEffect(() => { node.current?.showModal(); }, []);
+  const files = FILE_LABELS.filter(([key]) => data[key]);
+  const stores = STORE_LABELS.filter(([key]) => data.stores[key]);
+  return <dialog ref={node} className="site-dl-dialog" aria-labelledby="site-dl-title" onClose={onClose} onClick={(event) => { if (event.target === node.current) node.current?.close(); }}>
+    <div className="site-dl-head"><h3 id="site-dl-title">دانلود جلسه‌نگار</h3><button type="button" className="site-dl-close" aria-label="بستن" onClick={() => node.current?.close()}><Icon name="x" size={18}/></button></div>
+    {files.length > 0 && <><h4>دانلود مستقیم</h4><ul className="site-dl-list">{files.map(([key, label]) => { const file = data[key]!; return <li key={key}><a href={file.download_path} download><span><Icon name="download" size={16}/>{label}</span><small dir="ltr">v{file.version} · {sizeLabel(file.size)}</small></a></li>; })}</ul></>}
+    {stores.length > 0 && <><h4>فروشگاه‌ها</h4><ul className="site-dl-list">{stores.map(([key, label]) => <li key={key}><a href={data.stores[key]} target="_blank" rel="noopener noreferrer"><span><Icon name="arrow" size={16}/>{label}</span></a></li>)}</ul></>}
+  </dialog>;
+}
 const appFeatures: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "headset", title: "ضبط جلسه با یک لمس", body: "جلسه را روی گوشی ضبط کنید؛ متن فارسی هم‌زمان با ضبط ساخته می‌شود." },
   { icon: "users", title: "تفکیک گوینده‌ها", body: "برای افراد حاضر نمونهٔ صدا ثبت کنید تا هر جمله به گوینده‌اش نسبت داده شود." },
@@ -247,28 +268,36 @@ function RecClock() {
 }
 
 function AppDownload() {
-  const [release, setRelease] = useState<AppRelease | null>(null);
+  const [data, setData] = useState<AppDownloads | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   function load() {
     setState("loading");
-    request<{ release: AppRelease | null }>("/v1/jalase-negar/android/latest")
-      .then((data) => { setRelease(data.release); setState("ready"); })
+    request<AppDownloads>("/v1/jalase-negar/downloads")
+      .then((result) => { setData(result); setState("ready"); })
       .catch(() => setState("error"));
   }
   useEffect(load, []);
+  const fileCount = data ? FILE_LABELS.filter(([key]) => data[key]).length : 0;
+  const storeCount = data ? Object.keys(data.stores).length : 0;
+  // Only the Android file and nothing else: skip the dialog and start the download directly.
+  const directOnly = !!data?.android && fileCount === 1 && storeCount === 0;
+  const hasAny = fileCount + storeCount > 0;
   return <section className="site-hero site-app" id="app"><div className="site-container site-split site-app-grid">
     <div className="site-app-copy">
       <h2 className="site-hero-title site-hero-title-flow">راحت‌تر و هر زمان<br/><span className="site-hero-title-accent">صورت‌جلسه‌ای حرفه‌ای</span> داشته باشید</h2>
       <p className="site-app-pitch">با جلسه‌نگار <strong>جلسه‌های حضوری را ضبط کنید</strong>، <em>متن فارسی</em> گفت‌وگو را دریافت کنید و آن را به <em>پنل سازمان</em> بفرستید.</p>
       <ul className="site-app-features">{appFeatures.map((item) => <li key={item.title}><Icon name={item.icon} size={18}/><span>{item.title}</span></li>)}</ul>
       <div className="site-actions">
-        {state === "ready" && release && <a className="site-button" href={release.download_path} download><Icon name="download" size={18}/>دانلود جلسه‌نگار</a>}
+        {state === "ready" && data && directOnly && <a className="site-button" href={data.android!.download_path} download><Icon name="download" size={18}/>دانلود جلسه‌نگار</a>}
+        {state === "ready" && data && hasAny && !directOnly && <button className="site-button" type="button" onClick={() => setDialogOpen(true)}><Icon name="download" size={18}/>دانلود جلسه‌نگار</button>}
         {state === "loading" && <button className="site-button" type="button" disabled aria-busy="true"><Icon name="download" size={18}/>در حال آماده‌سازی لینک دانلود…</button>}
         {state === "error" && <button className="site-button site-button-outline" type="button" onClick={load}><Icon name="refresh" size={18}/>تلاش دوباره</button>}
-        {state === "ready" && !release && <button className="site-button" type="button" disabled><Icon name="download" size={18}/>دانلود به‌زودی در دسترس خواهد بود</button>}
+        {state === "ready" && !hasAny && <button className="site-button" type="button" disabled><Icon name="download" size={18}/>دانلود به‌زودی در دسترس خواهد بود</button>}
         <Link className="site-button site-button-outline" to="/help/jalase-negar-android-install"><Icon name="layers" size={18}/>راهنمای نصب</Link>
       </div>
     </div>
+    {dialogOpen && data && <DownloadDialog data={data} onClose={() => setDialogOpen(false)}/>}
     <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده با نام گوینده‌ها، موج صدا و دکمه‌های توقف موقت و پایان">
       <div className="site-app-phone" aria-hidden="true">
         <svg className="phone-app-icon" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="44" fill="#4b6e48"/><rect x="85" y="22" width="22" height="148" fill="#fff"/><rect x="54" y="54" width="22" height="84" fill="#b9b48f"/><rect x="116" y="54" width="22" height="84" fill="#b9b48f"/><rect x="24" y="76" width="22" height="40" fill="#b9b48f"/><rect x="146" y="76" width="22" height="40" fill="#b9b48f"/></svg>
@@ -413,7 +442,7 @@ export default function Landing() {
     <header ref={headerRef} className={`site-header${headerHidden ? " is-hidden" : ""}`}><div className="site-container site-nav">
       <a href="#top" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></a>
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
-        <a href="#features" onClick={() => setMenuOpen(false)}><Icon name="layers" size={16}/><span>امکانات</span></a><a href="#usecases" onClick={() => setMenuOpen(false)}><Icon name="target" size={16}/><span>کاربردها</span></a><a href="#app" onClick={() => setMenuOpen(false)}><Icon name="download" size={16}/><span>اپلیکیشن</span></a><a href="#pricing" onClick={() => setMenuOpen(false)}><Icon name="chart" size={16}/><span>تعرفه‌ها</span></a><Link to="/help"><Icon name="tasks" size={16}/><span>مقالات</span></Link><Link to="/about"><Icon name="users" size={16}/><span>درباره ما</span></Link><Link to="/contact"><Icon name="phone" size={16}/><span>تماس با ما</span></Link>
+        <a href="#features" onClick={() => setMenuOpen(false)}><Icon name="layers" size={16}/><span>امکانات</span></a><a href="#usecases" onClick={() => setMenuOpen(false)}><Icon name="target" size={16}/><span>کاربردها</span></a><a href="#app" onClick={() => setMenuOpen(false)}><Icon name="download" size={16}/><span>جلسه‌نگار</span></a><a href="#pricing" onClick={() => setMenuOpen(false)}><Icon name="chart" size={16}/><span>تعرفه‌ها</span></a><Link to="/help"><Icon name="tasks" size={16}/><span>مقالات</span></Link><Link to="/about"><Icon name="users" size={16}/><span>درباره ما</span></Link><Link to="/contact"><Icon name="phone" size={16}/><span>تماس با ما</span></Link>
       </nav>
       <div className="site-nav-actions"><Link className="site-login-button" to="/login"><span>ورود به پنل</span><Icon name="arrow" size={16} className="site-login-arrow"/></Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>

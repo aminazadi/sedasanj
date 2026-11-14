@@ -413,8 +413,8 @@
 .why-story-bar { flex: 1; block-size: 4px; background: rgba(255, 255, 255, .35); }
 .why-story-bar span { display: block; block-size: 100%; background: #b2ac88; }
 .why-story-time { font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
-.why-story-close { display: grid; place-items: center; flex: none; inline-size: 34px; block-size: 34px; padding: 0; border: 0; border-radius: 0; background: #4b6e48; color: #fff; cursor: pointer; }
-.why-story-close svg { inline-size: 16px; block-size: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: square; }
+.why-story-close { display: grid; place-items: center; flex: none; inline-size: 44px; block-size: 44px; padding: 0; border: 0; border-radius: 0; background: #4b6e48; color: #fff; cursor: pointer; }
+.why-story-close svg { inline-size: 24px; block-size: 24px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: square; }
 .why-story-loading { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: #1f2a1f; }
 .why-story-loading .assistant-conversation-processing { inline-size: 44px; block-size: 44px; }
 .why-story-icon { display: grid; place-items: center; inline-size: 56px; block-size: 56px; padding: 0; border: 2px solid #b2ac88; border-radius: 0; background: rgba(31, 42, 31, .65); color: #f2f0ef; cursor: pointer; }
@@ -638,3 +638,18 @@
   .marketing-site .site-benefits p { margin-top: 8px; }
   .marketing-site .uc-stage { margin-top: 28px; gap: 24px; }
 }
+
+/* Jalase-Negar download dialog */
+.marketing-site .site-dl-dialog { width: min(92vw, 440px); padding: 20px; border: 1px solid #b2ac88; background: var(--site-canvas); color: #334155; }
+.site-dl-dialog::backdrop { background: rgb(20 24 20 / .55); }
+.site-dl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.site-dl-head h3 { font-size: 18px; margin: 0; }
+.site-dl-close { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid #b2ac88; background: transparent; color: var(--site-primary); cursor: pointer; }
+.site-dl-dialog h4 { margin: 16px 0 8px; font-size: 13px; color: var(--site-muted); font-weight: 600; }
+.site-dl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.site-dl-list a { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 8px 14px; border: 1px solid #b2ac88; color: var(--site-primary); font-size: 14px; font-weight: 600; }
+.site-dl-list a:hover { background: #e8e5de; }
+.site-dl-list a span { display: inline-flex; align-items: center; gap: 8px; }
+.site-dl-list small { color: var(--site-muted); font-size: 12px; font-weight: 400; }
+
+.site-dl-close svg { width: 24px; height: 24px; }
