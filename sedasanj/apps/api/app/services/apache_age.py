@@ -68,3 +68,27 @@ async def assert_age_ready(executor: Any) -> None:
         raise
     except Exception as exc:
         raise ApacheAgeNotReadyError("Apache AGE readiness check failed") from exc
+
+
+# pg_dump keeps ag_catalog.ag_graph.graphid and ag_label.graph from the source database, but AGE
+# expects graphid to equal the graph schema's oid, which changes on restore. Without this repair
+# every Cypher query on a restored database fails with "graph with oid N does not exist".
+# scripts/backup_lib.sh carries the same statement; tests/test_tenant_backup_restore.py keeps
+# the two in sync.
+AGE_GRAPH_REPAIR_SQL = """DO $age_repair$
+BEGIN
+  IF EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE graphid <> namespace::oid) THEN
+    ALTER TABLE ag_catalog.ag_label DROP CONSTRAINT fk_graph_oid;
+    UPDATE ag_catalog.ag_label AS l SET graph = g.namespace::oid
+      FROM ag_catalog.ag_graph AS g WHERE l.graph = g.graphid AND g.graphid <> g.namespace::oid;
+    UPDATE ag_catalog.ag_graph SET graphid = namespace::oid WHERE graphid <> namespace::oid;
+    ALTER TABLE ag_catalog.ag_label ADD CONSTRAINT fk_graph_oid
+      FOREIGN KEY (graph) REFERENCES ag_catalog.ag_graph(graphid);
+  END IF;
+END
+$age_repair$"""
+
+
+async def repair_restored_graphs(executor: Any) -> None:
+    """Re-link Apache AGE graphs after pg_restore. Idempotent; needs the owning/admin role."""
+    await executor.execute(text(AGE_GRAPH_REPAIR_SQL))

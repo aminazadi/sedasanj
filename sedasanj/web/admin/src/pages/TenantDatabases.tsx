@@ -97,6 +97,18 @@ export default function TenantDatabases() {
     }
   }
 
+  async function requestBackup(tenantId: string) {
+    setRetrying(tenantId);
+    try {
+      await request(`/v1/admin/tenants/${tenantId}/backup`, { method: "POST" });
+      await load();
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setRetrying(null);
+    }
+  }
+
   async function rollback(tenantId: string) {
     setRetrying(tenantId);
     try {
@@ -199,6 +211,19 @@ export default function TenantDatabases() {
                   <div dir="ltr">{row.backup_completed_at ? new Date(row.backup_completed_at).toLocaleString("fa-IR") : "—"}</div>
                   {row.backup_checksum ? <div dir="ltr" title={row.backup_checksum}>{row.backup_checksum.slice(0, 12)}…</div> : null}
                   {row.backup_id ? <div dir="ltr" className="break-all">{row.backup_id}</div> : null}
+                  {row.backup_error_info ? (
+                    <div className="mt-1 space-y-1 text-rose-700">
+                      <div dir="ltr" className="font-mono">{row.backup_error_info.code}</div>
+                      <div>{row.backup_error_info.message}</div>
+                      <div className="text-slate-600">{row.backup_error_info.action}</div>
+                      {row.backup_error_info.detail ? (
+                        <details>
+                          <summary className="cursor-pointer">جزئیات فنی</summary>
+                          <div dir="ltr" className="mt-1 max-h-32 overflow-auto break-words text-left">{row.backup_error_info.detail}</div>
+                        </details>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {row.backup_restore_verified_at ? (
                     <div>ریستور تأییدشده <bdi>{new Date(row.backup_restore_verified_at).toLocaleString("fa-IR")}</bdi></div>
                   ) : null}
@@ -221,6 +246,9 @@ export default function TenantDatabases() {
                 <td className="space-y-1">
                   <button className="btn-ghost" type="button" onClick={() => showStorage(row.tenant_id)}>مصرف فضا</button>
                   <button className="btn-ghost" disabled={retrying === row.tenant_id} onClick={() => void retry(row.tenant_id)}>تلاش مجدد</button>
+                  {row.database_status === "ready" ? (
+                    <button className="btn-ghost" disabled={retrying === row.tenant_id || row.backup_status === "requested" || row.backup_status === "running"} onClick={() => void requestBackup(row.tenant_id)}>پشتیبان‌گیری فوری</button>
+                  ) : null}
                   {row.migration_status === "completed" && row.rollback_until && new Date(row.rollback_until) > new Date() ? (
                     <button className="btn-ghost text-rose-700" disabled={retrying === row.tenant_id} onClick={() => void rollback(row.tenant_id)}>بازگشت امن</button>
                   ) : null}

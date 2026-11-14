@@ -121,6 +121,27 @@ GRANT SELECT ON tenant_identity TO ${role};
 SQL
 }
 
+# Re-link Apache AGE graphs after pg_restore: pg_dump keeps the source graph ids, AGE expects the
+# graph schema oid, so every Cypher query fails until they match. Keep identical to
+# AGE_GRAPH_REPAIR_SQL in apps/api/app/services/apache_age.py (a test checks this).
+repair_age_graphs() {
+  local db="$1"
+  docker compose exec -T postgres psql -U cbi -d "${db}" -v ON_ERROR_STOP=1 -q <<'AGE_SQL'
+DO $age_repair$
+BEGIN
+  IF EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE graphid <> namespace::oid) THEN
+    ALTER TABLE ag_catalog.ag_label DROP CONSTRAINT fk_graph_oid;
+    UPDATE ag_catalog.ag_label AS l SET graph = g.namespace::oid
+      FROM ag_catalog.ag_graph AS g WHERE l.graph = g.graphid AND g.graphid <> g.namespace::oid;
+    UPDATE ag_catalog.ag_graph SET graphid = namespace::oid WHERE graphid <> namespace::oid;
+    ALTER TABLE ag_catalog.ag_label ADD CONSTRAINT fk_graph_oid
+      FOREIGN KEY (graph) REFERENCES ag_catalog.ag_graph(graphid);
+  END IF;
+END
+$age_repair$
+AGE_SQL
+}
+
 # Restore one database dump into a brand new database and swap it in by renaming.
 # The previous database is kept as <name>_pre<stamp> so a bad restore is reversible.
 #   swap_restore_database <db> <dump-file> <stamp>
@@ -136,6 +157,10 @@ swap_restore_database() {
       --no-owner --no-acl --exit-on-error --single-transaction < "${dump}"; then
     psql_admin -c "DROP DATABASE IF EXISTS ${fresh}" || true
     die "pg_restore failed for ${db}; the live database was not touched"
+  fi
+  if ! repair_age_graphs "${fresh}"; then
+    psql_admin -c "DROP DATABASE IF EXISTS ${fresh}" || true
+    die "Apache AGE graph repair failed for ${db}; the live database was not touched"
   fi
 
   log "swapping ${db} (old copy kept as ${old})"

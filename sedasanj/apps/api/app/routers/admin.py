@@ -119,6 +119,7 @@ from app.services.tenant_backup_restore import VERIFIED_RESTORE_ACTION
 from app.services.tenant_provisioning import migration_error_info, rollback_tenant
 from app.services.transcript_corrections import CorrectionClient, validate_result
 from app.services.voicesanj import VoiceSanjClient
+from app.services.tenant_backups import backup_error_info
 from worker_llm.client import available_prompt_versions
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -510,6 +511,16 @@ async def list_tenant_databases(
         }
         for tenant, registry, migration in rows
     ]
+            "backup_error_info": (
+                {
+                    **(backup_error_info(latest_backups[tenant.id].error_code) or {}),
+                    "detail": latest_backups[tenant.id].error_detail or "",
+                }
+                if tenant.id in latest_backups
+                and latest_backups[tenant.id].status == "failed"
+                and latest_backups[tenant.id].error_code
+                else None
+            ),
     return {
         "items": items,
         "total": total,
@@ -594,6 +605,45 @@ async def _requeue_migration(
 @router.post("/tenant-databases/retry-failed", status_code=202)
 async def retry_failed_tenant_database_migrations(
     request: Request,
+@router.post("/tenants/{tenant_id}/backup", status_code=202)
+async def request_tenant_backup(
+    tenant_id: UUID,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, str]:
+    """Queue an immediate backup; the backup worker takes requested rows before scheduled ones."""
+    registry = await session.get(TenantDatabaseRegistry, tenant_id, with_for_update=True)
+    if registry is None or registry.status != "ready":
+        raise ApiError(
+            "invalid_request",
+            "دیتابیس این سازمان آماده نیست؛ ابتدا انتقال دیتابیس را کامل کنید.",
+        )
+    pending = (
+        await session.execute(
+            select(TenantBackup.id)
+            .where(
+                TenantBackup.tenant_id == tenant_id,
+                TenantBackup.status.in_(("requested", "running")),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if pending is not None:
+        return {"status": "already_queued"}
+    session.add(TenantBackup(tenant_id=tenant_id, status="requested"))
+    await audit.record(
+        session,
+        actor_type="staff",
+        actor_id=staff.id,
+        tenant_id=tenant_id,
+        action="tenant_database.backup_requested",
+        payload={},
+        ip=client_ip(request),
+    )
+    return {"status": "requested"}
+
+
     staff: SuperAdminDep,
     session: StaffSession,
 ) -> dict[str, int]:

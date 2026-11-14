@@ -1,5 +1,11 @@
 ## 2026-11-14 — AMINAZADI
 
+- Fixed restored tenant databases failing every Apache AGE graph query (`graph with oid N does not exist`) by re-linking graph ids after pg_restore, in the staging restore tool and in `restore.sh` / `restore_tenant.sh`; restore now also verifies the graph.
+
+- Added on-demand tenant database backups (admin button, worker picks requested backups first) and stable `TENANT_BACKUP_*` error codes with the real pg_dump reason shown on the organization databases page (migration 0134).
+
+- Added a real-PostgreSQL backup round-trip test (dump, seal, unseal, restore, vectors and graph) that runs when `TENANT_BACKUP_TEST_URL` is set.
+
 - Fixed organization database migrations failing with `plans_code_key` by reconciling seeded plans with the control database before copying, in both the cutover copy and the global reference sync.
 
 - Added a preflight to organization database provisioning that checks the encryption key, worker/schema head match, database reachability and the vector and age extensions before touching any database.

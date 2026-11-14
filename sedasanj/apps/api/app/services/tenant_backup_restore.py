@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.db import control_session_scope, dispose_engine
 from app.models import TenantBackup
 from app.services import audit, tenant_backup_format
+from app.services.apache_age import assert_age_ready, repair_restored_graphs
 from app.services.storage import get_storage
 from app.services.tenant_backups import pg_connection_args, verify_dump
 from app.services.tenant_provisioning import _admin_url
@@ -68,6 +69,15 @@ async def download(backup_id: UUID, target: Path) -> tuple[UUID, str | None]:
     return tenant, revision
 
 
+async def _repair_age(database: str) -> None:
+    engine = create_async_engine(_admin_url(database))
+    try:
+        async with engine.begin() as connection:
+            await repair_restored_graphs(connection)
+    finally:
+        await engine.dispose()
+
+
 async def _verify_database(database: str, tenant: UUID, revision: str | None) -> None:
     storage = get_storage()
     engine = create_async_engine(_admin_url(database))
@@ -83,6 +93,12 @@ async def _verify_database(database: str, tenant: UUID, revision: str | None) ->
                 raise tenant_backup_format.InvalidBackup(
                     "restored database identity or revision differs"
                 )
+            try:
+                await assert_age_ready(connection)
+            except RuntimeError as exc:
+                raise tenant_backup_format.InvalidBackup(
+                    "restored database failed the Apache AGE graph check"
+                ) from exc
             rows = await connection.stream_scalars(
                 text("""
                     SELECT object_key FROM audio_objects
@@ -145,6 +161,7 @@ async def _stage_file(archive: Path, tenant: UUID, revision: str | None, databas
                 str(dump),
                 database=database,
             )
+            await _repair_age(database)
             await _verify_database(database, tenant, revision)
         except BaseException:
             await _run_pg("dropdb", database, database=database)

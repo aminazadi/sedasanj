@@ -3064,7 +3064,7 @@ class TenantBackup(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('running','succeeded','failed','expired')",
+            "status IN ('requested','running','succeeded','failed','expired')",
             name="tenant_backups_status_check",
         ),
         Index("idx_tenant_backups_tenant_started", "tenant_id", "started_at"),
@@ -3160,6 +3160,7 @@ class ScheduledReportRun(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(TSTZ)
     memory_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
+    error_code: Mapped[str | None] = mapped_column(String(48))
     )
     content: Mapped[str | None] = mapped_column(Text)
     charts: Mapped[list[dict[str, Any]]] = mapped_column(

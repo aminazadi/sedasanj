@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import os
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -15,6 +16,64 @@ from app.db import control_session_scope
 from app.models import TenantBackup, TenantDatabaseRegistry
 from app.services import tenant_backup_format
 from app.services.storage import get_storage
+from app.services.tenant_provisioning import sanitize_error_detail
+
+logger = logging.getLogger(__name__)
+
+# Stable codes for the admin page: code -> (Persian message, Persian next action).
+BACKUP_ERRORS: dict[str, tuple[str, str]] = {
+    "TENANT_BACKUP_KEY_MISSING": (
+        "کلید بازیابی بک‌آپ تنظیم نشده است.",
+        "TENANT_DATABASE_MASTER_KEY را در worker-tenant-backup تنظیم و سرویس را راه‌اندازی "
+        "مجدد کنید.",
+    ),
+    "TENANT_BACKUP_DUMP_FAILED": (
+        "pg_dump نتوانست از دیتابیس سازمان نسخه بگیرد.",
+        "دسترسی PROVISIONER_DATABASE_URL و سازگاری نسخهٔ pg_dump با سرور را بررسی کنید؛ "
+        "جزئیات فنی همین‌جا آمده است.",
+    ),
+    "TENANT_BACKUP_DUMP_INVALID": (
+        "فایل نسخهٔ پشتیبان ساخته شد ولی pg_restore آن را نپذیرفت.",
+        "دوباره پشتیبان‌گیری فوری بزنید؛ اگر تکرار شد نسخهٔ pg_dump و pg_restore را بررسی کنید.",
+    ),
+    "TENANT_BACKUP_TOO_LARGE": (
+        "حجم نسخهٔ پشتیبان از سقف مجاز بیشتر است.",
+        "TENANT_BACKUP_MAX_BYTES را متناسب با حجم دیتابیس افزایش دهید.",
+    ),
+    "TENANT_BACKUP_UPLOAD_FAILED": (
+        "ارسال نسخهٔ پشتیبان به استوریج یا تأیید آن ناموفق بود.",
+        "دسترسی و فضای استوریج (MinIO) را بررسی کنید و پشتیبان‌گیری فوری بزنید.",
+    ),
+    "TENANT_BACKUP_UNKNOWN": (
+        "پشتیبان‌گیری با خطای ناشناخته متوقف شد.",
+        "گزارش worker-tenant-backup را بررسی و پشتیبان‌گیری فوری بزنید.",
+    ),
+}
+
+
+def classify_backup_error(exc: BaseException, phase: str) -> tuple[str, str]:
+    """Return ``(code, sanitized detail)``; ``phase`` is ``dump`` or ``upload``."""
+    raw = str(exc)
+    detail = sanitize_error_detail(raw)
+    lowered = raw.lower()
+    if "recovery key" in lowered:
+        return "TENANT_BACKUP_KEY_MISSING", detail
+    if "size limit" in lowered:
+        return "TENANT_BACKUP_TOO_LARGE", detail
+    if "pg_dump failed" in lowered:
+        return "TENANT_BACKUP_DUMP_FAILED", detail
+    if "pg_restore rejected" in lowered:
+        return "TENANT_BACKUP_DUMP_INVALID", detail
+    if "checksum differs" in lowered or phase == "upload":
+        return "TENANT_BACKUP_UPLOAD_FAILED", detail
+    return "TENANT_BACKUP_UNKNOWN", detail
+
+
+def backup_error_info(code: str | None) -> dict[str, str] | None:
+    if not code:
+        return None
+    message, action = BACKUP_ERRORS.get(code, BACKUP_ERRORS["TENANT_BACKUP_UNKNOWN"])
+    return {"code": code, "message": message, "action": action}
 
 
 def _encrypt_file(source: Path, target: Path, secret: str) -> tuple[str, int]:
@@ -67,13 +126,14 @@ async def _dump(database_name: str, destination: Path, limit: int, *, modern: bo
     command = ["pg_dump", "--format=custom", "--no-owner", "--no-acl", *connection]
     if modern:
         command.append("--compress=0")
+    stderr_log = tempfile.TemporaryFile()  # noqa: SIM115 - closed in the finally block below
     process = await asyncio.create_subprocess_exec(
         *command,
         "--dbname",
         database_name,
         env=env,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
+        stderr=stderr_log,
     )
     assert process.stdout is not None
     try:
@@ -84,11 +144,16 @@ async def _dump(database_name: str, destination: Path, limit: int, *, modern: bo
                     raise tenant_backup_format.InvalidBackup("backup exceeds the size limit")
                 output.write(block)
         if await process.wait() or not destination.stat().st_size:
-            raise tenant_backup_format.InvalidBackup("pg_dump failed; check database access")
+            stderr_log.seek(0)
+            reason = stderr_log.read(4000).decode("utf-8", errors="replace")
+            raise tenant_backup_format.InvalidBackup(
+                f"pg_dump failed; check database access: {reason}"
+            )
     finally:
         if process.returncode is None:
             process.kill()
             await process.communicate()
+        stderr_log.close()
 
 
 async def verify_dump(path: Path) -> None:
@@ -133,30 +198,58 @@ async def backup_next_due() -> str:
         .subquery()
     )
     async with control_session_scope() as control:
-        registry = (
+        requested = (
             await control.execute(
-                select(TenantDatabaseRegistry)
-                .outerjoin(latest, latest.c.tenant_id == TenantDatabaseRegistry.tenant_id)
-                .where(
-                    TenantDatabaseRegistry.status == "ready",
-                    (latest.c.last_completed.is_(None) | (latest.c.last_completed < cutoff)),
-                    ~recent_attempt,
+                select(TenantBackup)
+                .join(
+                    TenantDatabaseRegistry,
+                    TenantDatabaseRegistry.tenant_id == TenantBackup.tenant_id,
                 )
-                .order_by(
-                    latest.c.last_completed.asc().nullsfirst(), TenantDatabaseRegistry.tenant_id
-                )
-                .with_for_update(of=TenantDatabaseRegistry, skip_locked=True)
+                .where(TenantBackup.status == "requested", TenantDatabaseRegistry.status == "ready")
+                .order_by(TenantBackup.started_at)
+                .with_for_update(of=TenantBackup, skip_locked=True)
                 .limit(1)
             )
         ).scalar_one_or_none()
+        registry = (
+            await control.get(TenantDatabaseRegistry, requested.tenant_id)
+            if requested is not None
+            else None
+        )
+        if registry is None:
+            registry = (
+                await control.execute(
+                    select(TenantDatabaseRegistry)
+                    .outerjoin(latest, latest.c.tenant_id == TenantDatabaseRegistry.tenant_id)
+                    .where(
+                        TenantDatabaseRegistry.status == "ready",
+                        (latest.c.last_completed.is_(None) | (latest.c.last_completed < cutoff)),
+                        ~recent_attempt,
+                    )
+                    .order_by(
+                        latest.c.last_completed.asc().nullsfirst(),
+                        TenantDatabaseRegistry.tenant_id,
+                    )
+                    .with_for_update(of=TenantDatabaseRegistry, skip_locked=True)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
         if registry is None:
             return "idle"
-        backup = TenantBackup(
-            tenant_id=registry.tenant_id,
-            status="running",
-            schema_revision=registry.schema_revision,
-        )
-        control.add(backup)
+        if requested is not None:
+            backup = requested
+            backup.status = "running"
+            backup.started_at = now
+            backup.schema_revision = registry.schema_revision
+            backup.error_code = None
+            backup.error_detail = None
+        else:
+            backup = TenantBackup(
+                tenant_id=registry.tenant_id,
+                status="running",
+                schema_revision=registry.schema_revision,
+            )
+            control.add(backup)
         await control.flush()
         backup_id = backup.id
         tenant_id = registry.tenant_id
@@ -165,6 +258,7 @@ async def backup_next_due() -> str:
         object_key = f"tenant-backups/{tenant_id}/{timestamp}-{backup_id}.{suffix}"
         backup.object_key = object_key
 
+    phase = "dump"
     try:
         with tempfile.TemporaryDirectory(prefix="cbi-tenant-backup-") as directory:
             dump_path = Path(directory) / "tenant.dump"
@@ -180,6 +274,7 @@ async def backup_next_due() -> str:
                 )
             else:
                 checksum, size = await asyncio.to_thread(_encrypt_file, *args)
+            phase = "upload"
             storage = get_storage()
             await storage.ensure_bucket()
             await storage.put_path(
@@ -196,12 +291,21 @@ async def backup_next_due() -> str:
                 actual.update(block)
             if stored_bytes != size or not hmac.compare_digest(actual.hexdigest(), checksum):
                 raise tenant_backup_format.InvalidBackup("uploaded backup checksum differs")
-    except (Exception, asyncio.CancelledError):
+    except (Exception, asyncio.CancelledError) as exc:
+        code, detail = classify_backup_error(exc, phase)
+        logger.error(
+            "tenant backup failed tenant_id=%s backup_id=%s code=%s detail=%s",
+            tenant_id,
+            backup_id,
+            code,
+            detail,
+        )
         async with control_session_scope() as control:
             row = await control.get(TenantBackup, backup_id, with_for_update=True)
             if row is not None:
                 row.status = "failed"
-                row.error_detail = "tenant_backup_failed"
+                row.error_code = code
+                row.error_detail = detail
                 row.completed_at = datetime.now(UTC)
         raise
 

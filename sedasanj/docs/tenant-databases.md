@@ -42,6 +42,22 @@ failed organization; the full sanitized detail is under «جزئیات فنی».
 with the API so it runs the same schema head. Retry-all requeues every failed organization; the
 worker still runs them one at a time.
 
+## Backups
+
+`worker-tenant-backup` dumps every `ready` tenant database (pgvector and the Apache AGE graph
+included) every `TENANT_BACKUP_INTERVAL_HOURS`, encrypts it, uploads it and re-reads the object to
+verify the checksum. Organizations that are still `Legacy` have no dedicated database yet and are
+covered by the control-database backup until their migration completes. «پشتیبان‌گیری فوری» on
+the admin page queues an immediate backup. A failed backup shows a `TENANT_BACKUP_*` code, the
+next action and the sanitized pg_dump reason.
+
+pg_restore keeps the source graph ids in `ag_catalog`, which AGE rejects. Every restore path
+(`tenant_backup_restore.py`, `backup_lib.sh`) therefore runs the AGE repair before the database is
+used; never restore a tenant dump with a bare `pg_restore`.
+
+Test the whole pipeline against a disposable PostgreSQL (pgvector + AGE, `age` preloaded):
+`TENANT_BACKUP_TEST_URL=postgresql+asyncpg://postgres:pw@127.0.0.1:55433/postgres pytest tests/test_tenant_backup_restore.py`.
+
 ## Operational checks
 
 - Confirm the target database identity equals the signed tenant ID.
