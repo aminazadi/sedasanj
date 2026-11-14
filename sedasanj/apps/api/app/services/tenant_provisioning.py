@@ -35,6 +35,7 @@ from app.models import (
     TenantProvisioningJob,
 )
 from app.services.apache_age import assert_age_ready
+from app.services.tenant_db_metrics import migration_failures
 from app.services.tenant_secrets import decrypt_dsn, encrypt_dsn
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
@@ -268,8 +269,6 @@ async def _verify_runtime_database(runtime_dsn: str, tenant_id: UUID) -> None:
         await engine.dispose()
 
 
-async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
-    settings = get_settings()
 async def grant_database_access(connection: AsyncConnection, database: str, role: str) -> None:
     """Database-level ACL; pg_dump --no-acl does not carry it, so restores must reapply it."""
     _checked_identifier(database)
@@ -311,6 +310,8 @@ async def grant_schema_access(connection: AsyncConnection, runtime_role: str) ->
     await connection.execute(text(f"GRANT SELECT ON tenant_identity TO {runtime_role}"))
 
 
+async def provision_database(tenant_id: UUID) -> TenantDatabaseRegistry:
+    settings = get_settings()
     if not settings.tenant_databases_enabled:
         raise RuntimeError("tenant databases are disabled")
     database_name, runtime_role = database_identifiers(tenant_id)
@@ -872,6 +873,7 @@ async def run_next_migration() -> str:
             ).scalar_one_or_none()
             exhausted = bool(job and job.attempt >= get_settings().tenant_migration_max_attempts)
             code, detail = classify_migration_error(exc)
+            migration_failures.labels(code=code).inc()
             logger.error(
                 "tenant database migration failed tenant_id=%s code=%s detail=%s",
                 tenant_id,

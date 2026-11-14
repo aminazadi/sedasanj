@@ -13,7 +13,7 @@ from app.db import control_session_scope, dispose_engine
 from app.logging import configure_logging
 from app.metrics import start_metrics_server
 from app.models import TenantBackup, TenantDatabaseRegistry
-from app.services import tenant_restores
+from app.services import tenant_db_metrics, tenant_restores
 from app.services.tenant_backups import backup_next_due, purge_expired
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,7 @@ async def main() -> None:
             started = time.monotonic()
             try:
                 await _update_overdue()
+                await tenant_db_metrics.refresh_restore_gauges()
                 async with asyncio.timeout(7200):
                     result = await backup_next_due()
                 if result == "backed_up":

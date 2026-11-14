@@ -201,3 +201,27 @@ uv run python scripts/retranscribe_calls.py --tenant TENANT_UUID --campaign sile
 ```
 
 پیوند ضبط‌ها در انتقال تماس و صف بر اساس `linkedid` باید جداگانه در آزمایشگاه پیگیری شود.
+
+<a id="tenant-db-failures"></a>
+
+## خطاهای دیتابیس سازمان (انتقال، بک‌آپ و بازیابی)
+
+هشدارهای `TenantMigrationFailed`، `TenantMigrationRetrying`، `TenantDatabaseUnavailable`،
+`TenantBackupFailing`، `TenantRestoreFailed` و `TenantRestoreStuck` از این بخش راهنمایی می‌گیرند.
+
+1. صفحهٔ «دیتابیس سازمان‌ها» در پنل ادمین را باز کنید. هر خطا یک کد `TENANT_DB_*`،
+   `TENANT_BACKUP_*` یا `TENANT_RESTORE_*`، پیام فارسی و اقدام بعدی دارد؛ همین کد در
+   مرکز راهنما با همان نام (`/help/errors/<کد>`) توضیح کامل دارد.
+2. جزئیات فنی پاک‌سازی‌شده را در همان ردیف باز کنید و گزارش سرویس را بخوانید:
+
+```bash
+docker compose logs --tail=200 worker-provision
+docker compose logs --tail=200 worker-tenant-backup
+```
+
+3. پس از هر استقرار، API و `worker-provision` را با هم ری‌استارت کنید (`TENANT_DB_WORKER_STALE`).
+4. `TenantRestoreStuck` یعنی سازمان در حالت فقط‌خواندنی مانده است. گزارش
+   `worker-tenant-backup` را ببینید؛ اگر worker متوقف است ری‌استارت کنید. در شروع مجدد،
+   بازیابی `applying` به‌صورت خودکار دوباره ادامه نمی‌یابد: وضعیت دیتابیس‌ها را با
+   `\l` در psql بررسی کنید (نام زنده و نسخهٔ `_pre`) و پیش از هر تغییر دستی بک‌آپ بگیرید.
+5. نسخه‌های `<db>_pre<زمان>` پس از اطمینان از بازیابی با `DROP DATABASE` دستی پاک شوند.

@@ -33,6 +33,7 @@ from app.models import Tenant, TenantDatabaseRegistry, TenantRestore
 from app.services import audit, tenant_backup_format
 from app.services.apache_age import assert_age_ready
 from app.services.tenant_backup_restore import _stage_file, download
+from app.services.tenant_db_metrics import restore_failures, restores_applied
 from app.services.tenant_provisioning import (
     _admin_url,
     _checked_identifier,
@@ -186,6 +187,7 @@ async def stage_next() -> str:
         summary = await _summarize(staging)
     except Exception as exc:
         code, detail = classify_restore_error(exc)
+        restore_failures.labels(code=code).inc()
         logger.error(
             "tenant restore staging failed restore_id=%s code=%s detail=%s",
             restore_id,
@@ -387,6 +389,7 @@ async def apply_next() -> str:
                     previous,
                 )
         code, detail = classify_restore_error(exc)
+        restore_failures.labels(code=code).inc()
         logger.error(
             "tenant restore apply failed restore_id=%s code=%s detail=%s", restore_id, code, detail
         )
@@ -431,6 +434,7 @@ async def apply_next() -> str:
             action="tenant_database.restore_applied",
             payload={"restore_id": str(restore_id), "previous_database": previous},
         )
+    restores_applied.inc()
     await invalidate_tenant_engine(tenant_id)
     return "applied"
 

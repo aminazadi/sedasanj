@@ -16,6 +16,7 @@ from app.db import control_session_scope
 from app.models import TenantBackup, TenantDatabaseRegistry
 from app.services import tenant_backup_format
 from app.services.storage import get_storage
+from app.services.tenant_db_metrics import backup_failures
 from app.services.tenant_provisioning import sanitize_error_detail
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,7 @@ async def backup_next_due() -> str:
                 raise tenant_backup_format.InvalidBackup("uploaded backup checksum differs")
     except (Exception, asyncio.CancelledError) as exc:
         code, detail = classify_backup_error(exc, phase)
+        backup_failures.labels(code=code).inc()
         logger.error(
             "tenant backup failed tenant_id=%s backup_id=%s code=%s detail=%s",
             tenant_id,

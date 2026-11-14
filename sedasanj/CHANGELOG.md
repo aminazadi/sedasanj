@@ -1,5 +1,7 @@
 ## 2026-11-14 — AMINAZADI
 
+- Added Persian help articles for all 22 `TENANT_DB_*`, `TENANT_BACKUP_*` and `TENANT_RESTORE_*` error codes (migration 0141), Prometheus metrics and six alerts for failed or stuck tenant database migrations, backups and restores, and a runbook section.
+
 - Added restoring an organization database from the admin panel: pick a verified backup, stage and verify it in a scratch database, then confirm to swap it in with automatic swap-back on failure (migration 0139, `TENANT_RESTORE_*` codes, password and two-factor confirmation).
 
 - Fixed restored tenant databases failing every Apache AGE graph query (`graph with oid N does not exist`) by re-linking graph ids after pg_restore, in the staging restore tool and in `restore.sh` / `restore_tenant.sh`; restore now also verifies the graph.

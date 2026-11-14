@@ -14,6 +14,7 @@ from app.services.identity_projection import dispatch_next as dispatch_identity_
 from app.services.knowledge import backfill_graph_next, backfill_next
 from app.services.org_knowledge import backfill_org_next
 from app.services.queue_serialization import job_deserializer, job_serializer
+from app.services.tenant_db_metrics import refresh_migration_gauges
 from app.services.tenant_provisioning import (
     run_next_fleet_migration,
     run_next_migration,
@@ -29,11 +30,16 @@ async def provision_tick(ctx: dict[str, Any]) -> str:
     try:
         result = await run_next_migration()
         if result == "idle":
-            return await run_next_fleet_migration()
+            result = await run_next_fleet_migration()
         return result
     except Exception:
         logger.exception("tenant database provisioning failed")
         return "failed"
+    finally:
+        try:
+            await refresh_migration_gauges()
+        except Exception:
+            logger.warning("tenant migration gauges could not be refreshed")
 
 
 async def identity_projection_tick(ctx: dict[str, Any]) -> str:
