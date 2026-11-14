@@ -22,7 +22,7 @@
 .contact-content { padding: 56px 0 88px; }
 .contact-layout { display: grid; grid-template-columns: .8fr 1.2fr; gap: 24px; align-items: stretch; }
 .contact-aside { display: flex; flex-direction: column; padding: 40px; background: #2f4a2d; color: #f2f0ef; background-image: radial-gradient(circle, rgb(207 224 201 / .14) 1.4px, transparent 1.8px); background-size: 16px 16px; }
-.contact-aside h2 { margin-top: 14px; font-size: 32px; text-align: start; color: #fff; }
+.contact-aside h2 { margin-top: 14px; font-size: 26px; text-align: start; color: #fff; }
 .contact-methods { display: grid; gap: 10px; margin-top: 32px; }
 .contact-methods > a, .contact-methods > div { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid rgb(207 224 201 / .22); background: rgb(255 255 255 / .05); color: inherit; transition: background-color .2s, border-color .2s; }
 .marketing-site .contact-methods > a:hover { background: rgb(255 255 255 / .12); border-color: #8fb58a; color: #fff; }
@@ -31,7 +31,7 @@
 .contact-methods small { color: #a9bfa4; font-size: 12px; }
 .contact-methods strong { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
 .contact-form-card { padding: 40px; border: 1px solid var(--site-border); background: #fff; }
-.contact-form-head h2 { margin-top: 12px; font-size: 30px; text-align: start; }
+.contact-form-head h2 { margin-top: 12px; font-size: 24px; text-align: start; }
 .contact-form-card form { margin-top: 28px; }
 .contact-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; }
 .contact-fields label { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
@@ -53,7 +53,7 @@
 .legal-text { max-width: 760px; }
 .legal-text section + section { margin-top: 40px; }
 .legal-text section { scroll-margin-top: 24px; }
-.legal-text h2 { margin-bottom: 14px; font-size: 26px; text-align: start; }
+.legal-text h2 { margin-bottom: 14px; font-size: 22px; text-align: start; }
 .legal-text p { color: #3f4a3c; font-size: 15px; line-height: 2.3; }
 .legal-text p + p { margin-top: 14px; }
 
@@ -61,7 +61,7 @@
 .public-site .help-page { padding: 56px 0 88px; max-width: 880px; }
 .public-site .help-hero .page-hero-art { max-width: 520px; margin: 0 auto 24px; }
 .public-site .help-hero { margin-bottom: 40px; padding: 32px 32px 48px; border: 1px solid var(--site-border); background-color: var(--site-canvas); background-image: radial-gradient(circle, rgb(160 155 124 / 24%) .8px, transparent .9px); background-size: 16px 16px; }
-.public-site .help-hero h1 { font-size: clamp(32px, 4vw, 46px); }
+.public-site .help-hero h1 { font-size: clamp(26px, 3.2vw, 36px); }
 .public-site .help-hero p { margin-top: 10px; color: var(--site-muted); }
 .public-site .help-hero form { margin-top: 24px; gap: 0; }
 .public-site .help-hero input { border: 1px solid var(--site-border); border-radius: 0; background: #fff; padding: 12px 16px; font: inherit; outline: none; }
@@ -70,7 +70,7 @@
 .public-site .help-hero button:hover { background: #3d593b; }
 .public-site .help-categories .help-category { border-color: var(--site-border); border-radius: 0; background: #fff; }
 .public-site .help-categories span { color: var(--site-muted); }
-.public-site .help-list h2 { margin-bottom: 8px; font-size: 26px; text-align: start; }
+.public-site .help-list h2 { margin-bottom: 8px; font-size: 22px; text-align: start; }
 .public-site .help-list li { border-color: var(--site-border); padding: 18px 0; }
 .public-site .help-list li a { color: var(--site-primary); font-size: 17px; }
 .public-site .help-list li a:hover { text-decoration: underline; text-underline-offset: 4px; }
@@ -81,7 +81,7 @@
 .public-site .help-empty span { display: none; }
 .public-site .help-empty button { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 24px; border: 1px solid var(--site-primary); border-radius: 0; background: transparent; color: var(--site-primary); font: inherit; font-weight: 700; cursor: pointer; }
 .public-site .help-empty button:hover { background: var(--site-primary); color: #fff; }
-.public-site .help-article h1 { font-size: clamp(30px, 3.6vw, 42px); line-height: 1.6; }
+.public-site .help-article h1 { font-size: clamp(24px, 3vw, 32px); line-height: 1.6; }
 .public-site .help-quick { border-radius: 0; border-color: #a9bfa4; background: #f1f5ee; }
 
 /* Sign in / sign up */

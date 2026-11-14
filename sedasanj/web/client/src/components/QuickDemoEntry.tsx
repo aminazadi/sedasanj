@@ -1,5 +1,4 @@
 import { cssImageSetFor } from "../lib/imageSources";
-import { Icon } from "./SiteIcon";
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
@@ -27,7 +26,7 @@ export default function QuickDemoEntry() {
   }
   return <>
     <section className="site-section demo-landing-section" id="quick-test"><div className="site-container demo-landing-grid">
-      <div className="demo-landing-copy"><h2>همین حالا امتحان کنید</h2><p>با موبایل وارد شوید، یک پیام صوتی ضبط کنید و نتیجه تحلیل را در پنل سازمان خود ببینید.</p><button className="site-button" onClick={start}><span>تست سریع صداسنج</span><Icon className="demo-landing-arrow" name="arrow" size={18}/></button></div>
+      <div className="demo-landing-copy"><h2>همین حالا امتحان کنید</h2><p>با موبایل وارد شوید، یک پیام صوتی ضبط کنید و نتیجه تحلیل را در پنل سازمان خود ببینید.</p><button className="site-button site-hero-demo" type="button" onClick={start}><svg className="hero-demo-border" aria-hidden="true" focusable="false"><rect className="hero-demo-border-track" pathLength="100"/><rect className="hero-demo-border-trail" pathLength="100"/></svg><span>تست صداسنج در کمتر از ۶۰ ثانیه</span></button></div>
     </div></section>
     <dialog className="demo-dialog" ref={dialog} aria-label="تست سریع صداسنج" onCancel={(e) => { e.preventDefault(); close(); }} onClick={(e) => { if (e.target === dialog.current) close(); }}>
       <button className="demo-dialog-close" aria-label="بستن" type="button" onClick={close}>×</button>

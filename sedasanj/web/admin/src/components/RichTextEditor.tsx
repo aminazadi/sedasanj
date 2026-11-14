@@ -22,7 +22,6 @@ import { Editor } from "@tinymce/tinymce-react";
 import editorReset from "@cbi/web-shared/styles/editor-content-reset.css?raw";
 import contentStyles from "@cbi/web-shared/styles/rich-content.css?raw";
 import fontUrl from "../fonts/Vazirmatn-Variable.woff2?url";
-import headingFontUrl from "@cbi/web-shared/assets/MarkaziText-Arabic.woff2?url";
 
 export const CHANGELOG_TEMPLATE = `<h2>✨ امکانات جدید</h2><ul><li></li></ul>
 <h2>🛠 بهبودها</h2><ul><li></li></ul>
@@ -111,7 +110,6 @@ export default function RichTextEditor({
           valid_elements: onPickMedia ? HELP_ELEMENTS : RELEASE_ELEMENTS,
           paste_data_images: false,
           content_style: `@font-face{font-family:Vazirmatn;src:url('${fontUrl}') format('woff2');font-weight:100 900;font-display:swap}
-            @font-face{font-family:"Markazi Text";src:url('${headingFontUrl}') format('woff2');font-weight:400 700;font-display:swap}
             ${editorReset}body{margin:16px;background:#f2f0ef}
             ${contentStyles}`,
           setup: (editor) => {

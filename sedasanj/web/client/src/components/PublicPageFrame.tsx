@@ -1,3 +1,4 @@
+import { useScrollHeader } from "./useScrollHeader";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import SiteFooter from "./SiteFooter";
@@ -13,6 +14,7 @@ function MenuIcon({ close }: { close: boolean }) {
 /** Header and footer shared by every public page except the landing page itself. */
 export default function PublicPageFrame({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { headerRef, hidden: headerHidden } = useScrollHeader(menuOpen);
   const location = useLocation();
 
   useEffect(() => {
@@ -28,12 +30,12 @@ export default function PublicPageFrame({ children }: { children: ReactNode }) {
 
   const current = (path: string) => location.pathname === path ? "page" : undefined;
   return <div className="marketing-site public-site" dir="rtl">
-    <header className="site-header"><div className="site-container site-nav">
+    <header ref={headerRef} className={`site-header${headerHidden ? " is-hidden" : ""}`}><div className="site-container site-nav">
       <Link to="/" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></Link>
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
-        <Link to="/#features">امکانات</Link><Link to="/#pricing">تعرفه‌ها</Link><Link to="/help" aria-current={current("/help")}>مقالات</Link><Link to="/about" aria-current={current("/about")}>درباره ما</Link><Link to="/contact" aria-current={current("/contact")}>تماس با ما</Link>
+        <Link to="/#features"><Icon name="layers" size={16}/><span>امکانات</span></Link><Link to="/#pricing"><Icon name="chart" size={16}/><span>تعرفه‌ها</span></Link><Link to="/help" aria-current={current("/help")}><Icon name="tasks" size={16}/><span>مقالات</span></Link><Link to="/about" aria-current={current("/about")}><Icon name="users" size={16}/><span>درباره ما</span></Link><Link to="/contact" aria-current={current("/contact")}><Icon name="phone" size={16}/><span>تماس با ما</span></Link>
       </nav>
-      <div className="site-nav-actions"><Link className="site-button site-button-outline" to="/login"><Icon name="login" size={18}/>ورود به پنل</Link><button className="site-menu" type="button" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><MenuIcon close={menuOpen}/></button></div>
+      <div className="site-nav-actions"><Link className="site-login-button" to="/login"><span>ورود به پنل</span><Icon name="arrow" size={16} className="site-login-arrow"/></Link><button className="site-menu" type="button" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><MenuIcon close={menuOpen}/></button></div>
     </div></header>
 
     {children}

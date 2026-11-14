@@ -1,5 +1,29 @@
 ## 2026-11-14 — AMINAZADI
 
+- Redesigned the landing use-cases section as an auto-rotating, typed, layout-stable panel (no height shift between industries) with a progress ring around the active node, a labelled hub with two-way signal pulses on the active branch, and a clearer active node; renamed it to «چرا به صداسنج نیاز دارید؟», removed the source lines, and retitled the satisfaction section.
+
+- Added a hand-drawn down arrow beside section headings, enlarged heading sizes, centered the mobile hero and footer credit, moved the mobile menu icon beside the logo, and restyled the quick-demo button like the hero button with the label «تست صداسنج در کمتر از ۶۰ ثانیه».
+
+- Removed the extra yellow line beneath the awareness rocket while preserving its flame.
+
+- Reduced the hero trial button size and pointed the features link arrow downward.
+
+- Updated the hero trial button label to a 60-second SedaSanj trial, removed its play icon and applied a red background with white text and a matching animated border, including on hover.
+
+- Restyled the hero features action as a simple link and enlarged the free trial button with a 3px SVG perimeter highlight moving at uniform speed once per second, a single soft highlight trail and reduced motion support.
+
+- Illustrated the awareness section edges with matching flowing smoke trails, a rocket above and a mirrored trail without a rocket below, with responsive spacing around its content.
+
+- Redesigned public pricing cards with compact artwork, inline annual pricing, readable feature lists, featured plan badges and a distinct free trial action.
+
+- Reduced the landing hero height to a bounded responsive section instead of filling the viewport, with content-driven height on mobile.
+
+- Added icons to public navigation links and redesigned the panel entry button with a solid green background and a directional arrow.
+
+- Added a sticky public navigation header that hides on downward scrolling and returns on upward scrolling, while keeping open menus and keyboard navigation visible.
+
+- Replaced Markazi Text with locally hosted Vazirmatn throughout public headings, help content and the admin editor; normalized responsive heading sizes and fixed hero title specificity.
+
 - Added help articles and error rows for `asr_provider_unreachable` and `llm_provider_unreachable` (migration `0126_provider_unreachable_help`).
 - Added `ASR_WORKER_MAX_JOBS` (`asr_worker_max_jobs`, default 4) so the number of concurrent ASR jobs per worker is configurable instead of fixed in code.
 - Added feature labels (`assistant`, `meeting`, `coach`, `scheduled_report`, `analysis`) to the AI token ledger entry points.
@@ -9,6 +33,11 @@
 - Changed the ASR client to reattach to an existing aiservice task after a lost poll: the idempotency key is now derived from the audio hash and options instead of a random value, polling survives transient errors (network, 429/5xx with `Retry-After`) for up to `VOICESANJ_POLL_OUTAGE_TOLERANCE_SECONDS` (default 300) before failing with the retryable `asr_provider_unreachable`, and time spent queued at aiservice (`VOICESANJ_QUEUE_WAIT_TIMEOUT_SECONDS`, default 21600) no longer counts against the processing timeout. A failed task left behind a reused key is replaced by a fresh submission.
 
 - Added an exact AI token ledger (`ai_usage_events`, migration `0125_ai_usage_events`, tenant RLS): input/output tokens reported by aiservice and 9Router are recorded for chat, tools, streaming, ASR, correction, decision and embedding calls; ASR also stores audio seconds. Missing provider usage is stored as `unavailable`, never estimated, and retries are deduplicated per provider task.
+
+## 2026-11-11 — AMINAZADI
+
+- Fixed the admin tenant list returning 500 (`tenant database is not ready`) when any one tenant database is not in the `ready` state; that tenant now shows the platform default price and a `tenant_list_database_not_ready` warning is logged.
+- Fixed tenant database provisioning failing with `duplicate key value violates unique constraint "plans_code_key"`: plans and plan versions seeded in the new tenant database under other ids are removed before the control-plane plans are copied in. Retry the migration from the admin panel for tenants stuck in `migration_failed`.
 
 ## 2026-11-08 — AMINAZADI
 

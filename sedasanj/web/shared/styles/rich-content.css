@@ -2,8 +2,8 @@
 :is(.prose-help, .public-site .prose-help), .release-notes { font-family: Vazirmatn, IRANSans, system-ui, sans-serif; direction: rtl; overflow-wrap: anywhere; font-weight: 400; }
 :is(.prose-help, .public-site .prose-help) *, .release-notes * { box-sizing: border-box; border-radius: 0 !important; box-shadow: none; }
 :is(.prose-help, .public-site .prose-help) { line-height: 2; font-size: 16px; color: #2d3a2b; }
-:is(.prose-help, .public-site .prose-help) h2 { font-family: "Markazi Text", Vazirmatn, sans-serif; font-synthesis: none; font-size: 26px; font-weight: 800; line-height: 1.4; text-align: start; margin: 2rem 0 .5rem; }
-:is(.prose-help, .public-site .prose-help) h3 { font-family: "Markazi Text", Vazirmatn, sans-serif; font-synthesis: none; font-size: 22px; font-weight: 700; line-height: 1.5; margin: 0; }
+:is(.prose-help, .public-site .prose-help) h2 { font-family: Vazirmatn, IRANSans, system-ui, sans-serif; font-synthesis: none; font-size: 22px; font-weight: 800; line-height: 1.8; text-align: start; margin: 2rem 0 .5rem; }
+:is(.prose-help, .public-site .prose-help) h3 { font-family: Vazirmatn, IRANSans, system-ui, sans-serif; font-synthesis: none; font-size: 18px; font-weight: 700; line-height: 1.8; margin: 0; }
 :is(.prose-help, .public-site .prose-help) h4 { font-size: inherit; font-weight: inherit; margin: 0; }
 :is(.prose-help, .public-site .prose-help) p { margin: .6rem 0; }
 :is(.prose-help, .public-site .prose-help) ul, :is(.prose-help, .public-site .prose-help) ol { margin: .6rem 1.5rem; padding: 0; }

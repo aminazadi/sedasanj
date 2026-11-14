@@ -22,7 +22,6 @@
     "./components/PaginatedTable": "./components/PaginatedTable.tsx",
     "./styles/rich-content.css": "./styles/rich-content.css",
     "./styles/editor-chrome.css": "./styles/editor-chrome.css",
-    "./assets/MarkaziText-Arabic.woff2": "./assets/MarkaziText-Arabic.woff2",
     "./styles/editor-content-reset.css": "./styles/editor-content-reset.css"
   },
   "peerDependencies": {

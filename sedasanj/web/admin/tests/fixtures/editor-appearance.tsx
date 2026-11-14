@@ -84,8 +84,13 @@ const timer = setInterval(async () => {
   for (const frame of frames) {
     if (!frame.contentDocument!.fonts.check("14px Vazirmatn")) failures.push("Local body font unavailable");
   }
-  if (!frames[1].contentDocument!.fonts.check('26px "Markazi Text"')) {
+  if (!frames[1].contentDocument!.fonts.check('22px Vazirmatn')) {
     failures.push("Local heading font unavailable");
+  }
+  const helpHeading = frames[1].contentDocument!.querySelector("h2")!;
+  const headingStyle = frames[1].contentWindow!.getComputedStyle(helpHeading);
+  if (!headingStyle.fontFamily.startsWith("Vazirmatn") || headingStyle.fontSize !== "22px") {
+    failures.push("Help heading must use normalized Vazirmatn typography");
   }
   for (const button of document.querySelectorAll(".tox-tbtn")) {
     if (getComputedStyle(button).color !== "rgb(75, 110, 72)") failures.push("Toolbar color mismatch");

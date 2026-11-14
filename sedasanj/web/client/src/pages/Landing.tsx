@@ -1,3 +1,4 @@
+import { useScrollHeader } from "../components/useScrollHeader";
 import SiteFooter from "../components/SiteFooter";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -42,6 +43,7 @@ const useCases: UseCase[] = [
   { id: "support", icon: "headset", label: "پشتیبانی و پس از فروش", title: "سومین تماس برای یک خرابی، فقط یک تماس نیست", body: "مشتری برای بار سوم دربارهٔ همان خرابی زنگ می‌زند و هر بار با کارشناسی تازه از صفر شروع می‌کند. صداسنج تماس‌های تکراری و بدترشدن لحن مشتری را کنار هم نشان می‌دهد تا مدیر پشتیبانی به‌جای پاسخ دوباره، علت ریشه‌ای را رفع کند." },
   { id: "commerce", icon: "message", label: "فروشگاه و خدمات آنلاین", title: "سفارش دیر می‌رسد؛ مشتری اول زنگ می‌زند", body: "مشتری دو بار وضعیت سفارش را پرسیده و هنوز پاسخ روشنی نگرفته است. پیش از آنکه سفارش مرجوع شود یا مشتری برود، صداسنج از دل همین تماس‌ها نشان می‌دهد ارسال یا مرجوعی در کدام مرحله گیر کرده است." },
 ];
+
 const steps = [
   { icon: "phone" as const, title: "دریافت امن تماس", body: "تماس‌های مرکز تلفن به‌صورت خودکار و همراه با اطلاعات لازم وارد جریان تحلیل می‌شوند." },
   { icon: "message" as const, title: "تبدیل گفتار به متن", body: "گفت‌وگوی مشتری و اپراتور تفکیک می‌شود تا محتوای تماس دقیق و قابل جست‌وجو باشد." },
@@ -104,13 +106,32 @@ const ucNodes = useCases.map((_, i) => {
   const y = 50 + 38 * Math.sin(angle);
   const mx = (50 + x) / 2 - Math.sin(angle) * 7;
   const my = (50 + y) / 2 + Math.cos(angle) * 7;
-  return { x, y, d: `M50 50 Q${mx.toFixed(2)} ${my.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}` };
+  return { x, y, d: `M50 50 Q${mx.toFixed(2)} ${my.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}`, r: `M${x.toFixed(2)} ${y.toFixed(2)} Q${mx.toFixed(2)} ${my.toFixed(2)} 50 50` };
 });
 
 function UseCases() {
   const [active, setActive] = useState(0);
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const current = useCases[active];
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
+  const [typedCount, setTypedCount] = useState(0);
+  const [autoplay] = useState(() => typeof window === "undefined" || !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const activeTotal = useCases[active].title.length + useCases[active].body.length;
+  useEffect(() => {
+    if (!autoplay) { setTypedCount(Number.MAX_SAFE_INTEGER); return; }
+    setTypedCount(0);
+    const timer = window.setInterval(() => {
+      if (pausedRef.current) return;
+      setTypedCount((n) => {
+        if (n >= activeTotal) { window.clearInterval(timer); return n; }
+        return n + 2;
+      });
+    }, 30);
+    return () => window.clearInterval(timer);
+  }, [active, autoplay, activeTotal]);
+  const typed = typedCount >= activeTotal;
   function onKey(event: ReactKeyboardEvent, index: number) {
     const last = useCases.length - 1;
     const forward = event.key === "ArrowDown" || event.key === "ArrowLeft";
@@ -123,24 +144,43 @@ function UseCases() {
   }
   return <section className="site-section site-usecases" id="usecases">
     <div className="site-container">
-      <h2>مشتری‌تان چیزی می‌گوید که فقط تلفن می‌شنود</h2>
-      <div className="uc-stage">
+      <h2>چرا به صداسنج نیاز دارید؟</h2>
+      <div className="uc-stage" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
         <div className="uc-orbit" role="tablist" aria-label="حوزه‌های کاربرد صداسنج" aria-orientation="vertical">
           <svg className="uc-branches" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
             {ucNodes.map((n, i) => <path key={useCases[i].id} d={n.d} pathLength={1} className="uc-branch"/>)}
             <path key={`on-${current.id}`} d={ucNodes[active].d} pathLength={1} className="uc-branch uc-branch-on"/>
-            <g key={`pulse-${current.id}`} className="uc-flow"><circle r="1.5" className="uc-flow-dot"/><circle r="1.5" className="uc-flow-ring"><animate attributeName="r" values="1.5;5" dur="1.1s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0" dur="1.1s" repeatCount="indefinite"/></circle><animateMotion dur="2.2s" repeatCount="indefinite" path={ucNodes[active].d}/></g>
+            <g key={`flow-${current.id}`} className="uc-flow" aria-hidden="true">
+              {[0, 1, 2, 3, 4].flatMap((k) => [
+                <circle key={`o-${k}`} r={0.9 + (k % 3) * 0.35} className="uc-flow-dot" opacity="0">
+                  <animateMotion dur="2.6s" begin={`${(k * 0.52).toFixed(2)}s`} repeatCount="indefinite" path={ucNodes[active].d} keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".45 0 .55 1"/>
+                  <animate attributeName="opacity" values="0;.9;.9;0" keyTimes="0;.2;.8;1" dur="2.6s" begin={`${(k * 0.52).toFixed(2)}s`} repeatCount="indefinite"/>
+                </circle>,
+                <circle key={`i-${k}`} r={0.9 + ((k + 1) % 3) * 0.35} className="uc-flow-dot uc-flow-back" opacity="0">
+                  <animateMotion dur="2.9s" begin={`${(k * 0.58 + 0.3).toFixed(2)}s`} repeatCount="indefinite" path={ucNodes[active].r} keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".45 0 .55 1"/>
+                  <animate attributeName="opacity" values="0;.9;.9;0" keyTimes="0;.2;.8;1" dur="2.9s" begin={`${(k * 0.58 + 0.3).toFixed(2)}s`} repeatCount="indefinite"/>
+                </circle>,
+              ])}
+            </g>
           </svg>
-          <div className="uc-core" aria-hidden="true"><span className="uc-ring"/><span className="uc-ring uc-ring-late"/><svg className="uc-pulse" viewBox="0 0 24 24" width="44" height="44" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path className="uc-pulse-base" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/><path className="uc-pulse-beat" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/></svg></div>
+          <div className="uc-core" aria-hidden="true"><span className="uc-ring"/><span className="uc-ring uc-ring-late"/><svg className="uc-pulse" viewBox="0 0 24 24" width="30" height="30" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path className="uc-pulse-base" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/><path className="uc-pulse-beat" d="M2 12h5l2-7 4 14 2-7h7" pathLength={1}/></svg><span className="uc-core-label">صداسنج</span></div>
           {useCases.map((item, index) => <button key={item.id} ref={(el) => { refs.current[index] = el; }} type="button" role="tab" id={`usecase-tab-${item.id}`} aria-selected={index === active} aria-controls="usecase-panel" tabIndex={index === active ? 0 : -1} className={`uc-node${ucNodes[index].y < 45 ? " is-above" : ""}${index === active ? " is-active" : ""}`} style={{ left: `${ucNodes[index].x}%`, top: `${ucNodes[index].y}%` }} onClick={() => setActive(index)} onMouseEnter={() => setActive(index)} onKeyDown={(event) => onKey(event, index)}>
-            <span className="uc-node-dot"><img src={ucPhotos[item.id].src} alt={ucPhotos[item.id].alt} width={120} height={120} loading="lazy" decoding="async"/></span><span className="uc-node-label">{ucShortLabels[item.id] ?? item.label}</span>
+            <span className="uc-node-dot"><img src={ucPhotos[item.id].src} alt={ucPhotos[item.id].alt} width={120} height={120} loading="lazy" decoding="async"/>{autoplay && typed && index === active ? <svg className={`uc-node-progress${paused ? " is-paused" : ""}`} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="0" width="100" height="100" pathLength={1} onAnimationEnd={() => setActive((v) => (v + 1) % useCases.length)}/></svg> : null}</span><span className="uc-node-label">{ucShortLabels[item.id] ?? item.label}</span>
           </button>)}
         </div>
-        <div className="uc-bubble" role="tabpanel" id="usecase-panel" aria-labelledby={`usecase-tab-${current.id}`} key={current.id}>
-          <img className="uc-bg" src={ucPhotos[current.id].src} alt="" aria-hidden="true" width={120} height={120} decoding="async"/>
-          <h3>{current.title}</h3>
-          <p>{current.body}</p>
-          {current.source ? <small className="uc-source">منبع: {current.source.url ? <a href={current.source.url} target="_blank" rel="noreferrer">{current.source.label}</a> : current.source.label}</small> : null}
+        <div className="uc-bubble" role="tabpanel" id="usecase-panel" aria-labelledby={`usecase-tab-${current.id}`}>
+          {useCases.map((item, index) => {
+            const on = index === active;
+            return <div key={item.id} className={`uc-panel${on ? " is-on" : ""}`} aria-hidden={!on} {...(on ? {} : { inert: "" as unknown as boolean })}>
+              {on && autoplay && !typed ? <>
+                <h3 aria-label={item.title}><span aria-hidden="true">{item.title.slice(0, typedCount)}{typedCount < item.title.length ? <i className="uc-caret"/> : null}</span></h3>
+                <p aria-label={item.body}><span aria-hidden="true">{item.body.slice(0, Math.max(0, typedCount - item.title.length))}{typedCount >= item.title.length ? <i className="uc-caret"/> : null}</span></p>
+              </> : <>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </>}
+            </div>;
+          })}
         </div>
       </div>
     </div>
@@ -311,7 +351,7 @@ function SatisfactionShowcase() {
   const top = counts.indexOf(Math.max(...counts));
   return <section className="site-section site-satisfaction" id="satisfaction" ref={ref}>
     <div className="site-container">
-      <h2>پیش‌نمایشی از رضایت مشتریان شما</h2>
+      <h2>حال مشتری‌هایتان را در یک نگاه ببینید</h2>
       <div className="sat-grid">
         {SAT_ORDER.map((key, i) => <div className="sat-item" key={key} style={{ "--sat-tone": SAT_TONES[key] } as CSSProperties}>
           <span className={`sat-emoji${i === top && visible ? " is-top" : ""}`} role="img" aria-label={SENTIMENT_LABELS[key]}>{SAT_EMOJI[key]}</span>
@@ -361,6 +401,7 @@ export default function Landing() {
   }, []);
   const [, setParams] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { headerRef, hidden: headerHidden } = useScrollHeader(menuOpen);
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [plansState, setPlansState] = useState<"loading" | "ready" | "error">("loading");
   function loadPlans() {
@@ -378,29 +419,53 @@ export default function Landing() {
     setParams((current) => { const next = new URLSearchParams(current); next.set("quickDemo", "1"); return next; });
   }
   return <div className="marketing-site" dir="rtl">
-    <header className="site-header"><div className="site-container site-nav">
+    <header ref={headerRef} className={`site-header${headerHidden ? " is-hidden" : ""}`}><div className="site-container site-nav">
       <a href="#top" aria-label="صداسنج، صفحه اصلی"><img className="site-logo" src={logo} alt="صداسنج"/></a>
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
-        <a href="#features" onClick={() => setMenuOpen(false)}>امکانات</a><a href="#usecases" onClick={() => setMenuOpen(false)}>کاربردها</a><a href="#app" onClick={() => setMenuOpen(false)}>اپلیکیشن</a><a href="#pricing" onClick={() => setMenuOpen(false)}>تعرفه‌ها</a><Link to="/help">مقالات</Link><Link to="/about">درباره ما</Link><Link to="/contact">تماس با ما</Link>
+        <a href="#features" onClick={() => setMenuOpen(false)}><Icon name="layers" size={16}/><span>امکانات</span></a><a href="#usecases" onClick={() => setMenuOpen(false)}><Icon name="target" size={16}/><span>کاربردها</span></a><a href="#app" onClick={() => setMenuOpen(false)}><Icon name="download" size={16}/><span>اپلیکیشن</span></a><a href="#pricing" onClick={() => setMenuOpen(false)}><Icon name="chart" size={16}/><span>تعرفه‌ها</span></a><Link to="/help"><Icon name="tasks" size={16}/><span>مقالات</span></Link><Link to="/about"><Icon name="users" size={16}/><span>درباره ما</span></Link><Link to="/contact"><Icon name="phone" size={16}/><span>تماس با ما</span></Link>
       </nav>
-      <div className="site-nav-actions"><Link className="site-button site-button-outline" to="/login"><Icon name="login" size={18}/>ورود به پنل</Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
+      <div className="site-nav-actions"><Link className="site-login-button" to="/login"><span>ورود به پنل</span><Icon name="arrow" size={16} className="site-login-arrow"/></Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
     <main id="top">
       <section className="site-hero" ref={heroRef}><img className="site-hero-backdrop" src={heroBackdrop} srcSet={srcSetFor(heroBackdrop)} sizes="max(100vw, 160svh)" alt="" aria-hidden="true" width={1774} height={887} fetchPriority="high" decoding="async"/><div className="site-container site-split">
-        <div><h1 className="site-hero-title site-hero-title-flow">هر آنچه از <span className="site-hero-title-accent">پردازش صوت</span> در سازمانتان نیاز دارید</h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button" type="button" onClick={openQuickDemo}><Icon name="play" size={18}/>تست رایگان</button><a className="site-button site-button-outline" href="#features"><Icon name="layers" size={18}/>مشاهده امکانات</a></div></div>
+        <div><h1 className="site-hero-title site-hero-title-flow">هر آنچه از <span className="site-hero-title-accent">پردازش صوت</span> در سازمانتان نیاز دارید</h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button site-hero-demo" type="button" onClick={openQuickDemo}><svg className="hero-demo-border" aria-hidden="true" focusable="false"><rect className="hero-demo-border-track" pathLength="100"/><rect className="hero-demo-border-trail" pathLength="100"/></svg><span>تست صداسنج در کمتر از ۶۰ ثانیه</span></button><a className="site-hero-features-link" href="#features"><span>مشاهده امکانات</span><Icon name="arrowDown" size={18}/></a></div></div>
         <div className="site-hero-play"><WhyVideoPlay video={whyVideo}/></div>
       </div>
         <button className="site-scroll-down" type="button" aria-label="رفتن به بخش بعدی" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}><span className="site-scroll-text" dir="ltr">Scroll Down</span><span className="site-scroll-icon" aria-hidden="true"/></button>
       </section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
-      <section className="site-awareness" id="awareness"><div className="site-container site-awareness-grid">
+      <section className="site-awareness" id="awareness">
+        <svg className="awareness-launch-edge" viewBox="0 0 1440 180" preserveAspectRatio="xMaxYMin slice" fill="none" aria-hidden="true" focusable="false">
+          <path fill="var(--site-canvas)" d="M0 0H1440V68C1360 98 1300 54 1236 68C1160 84 1134 136 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
+          <path stroke="#8fb58a" strokeWidth="2" opacity=".55" d="M0 112C180 68 260 138 408 150C552 162 590 86 732 78C864 70 920 146 1040 152C1134 156 1170 100 1220 88"/>
+          <path fill="#cfe0c9" d="M0 80C210 36 266 114 410 112C554 110 600 42 740 44C900 46 948 130 1050 114C1128 102 1168 66 1204 66C1160 90 1148 132 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
+          <g transform="translate(1204 64) rotate(38)">
+            <path fill="#f5c542" d="M-10 29Q-18 53 0 68Q18 53 10 29Z"/>
+            <path fill="#fff6cf" d="M-5 30Q-8 46 0 54Q8 46 5 30Z"/>
+            <path fill="#8fb58a" stroke="#203b25" strokeWidth="2" strokeLinejoin="round" d="M-15 4L-30 24L-28 43L-12 30M15 4L30 24L28 43L12 30"/>
+            <path fill="#f2f0ef" stroke="#203b25" strokeWidth="2.5" d="M0-49C-22-30-24 6-14 31H14C24 6 22-30 0-49Z"/>
+            <path fill="#8fb58a" d="M0-47C-9-39-14-30-17-20H17C14-30 9-39 0-47Z"/>
+            <circle cy="-3" r="10" fill="#2f4a2d" stroke="#f5c542" strokeWidth="3"/>
+            <path stroke="#fff" strokeWidth="2" strokeLinecap="round" d="M-4-6L0-10"/>
+            <path stroke="#203b25" strokeWidth="2.5" d="M-13 24H13"/>
+          </g>
+          <path stroke="#b2ac88" strokeWidth="2" strokeLinecap="round" d="M1300 24V36M1294 30H1306M1124 38V46M1120 42H1128"/>
+        </svg>
+        <div className="site-container site-awareness-grid">
         <div>
           <h2>وقتی بدانند شنیده می‌شوند، <span className="site-awareness-hl">بهتر عمل می‌کنند</span></h2>
           <p>در پژوهشی، وقتی عملکرد کارکنان پایش شد، فروش حدود <mark>۷ درصد</mark> بالاتر رفت.</p>
-          <small>Management Science، ۲۰۱۵؛ بررسی ۳۹۲ رستوران · <a href="https://econpapers.repec.org/RePEc:inm:ormnsc:v:61:y:2015:i:10:p:2299-2319" target="_blank" rel="noopener noreferrer">منبع پژوهش</a></small>
         </div>
         <img src={awarenessArt} alt="هدست در مرکز موج‌های صدا و نتیجه‌ی بررسی مکالمات" loading="lazy" width="794" height="749"/>
-      </div></section>
+      </div>
+        <svg className="awareness-bottom-edge" viewBox="0 0 1440 180" preserveAspectRatio="none" fill="none" aria-hidden="true" focusable="false">
+          <g transform="translate(1440 180) rotate(180)">
+            <path fill="var(--site-canvas)" d="M0 0H1440V68C1360 98 1300 54 1236 68C1160 84 1134 136 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
+            <path stroke="#8fb58a" strokeWidth="2" opacity=".55" d="M0 112C180 68 260 138 408 150C552 162 590 86 732 78C864 70 920 146 1040 152C1134 156 1170 100 1220 88"/>
+            <path fill="#cfe0c9" d="M0 80C210 36 266 114 410 112C554 110 600 42 740 44C900 46 948 130 1050 114C1128 102 1168 66 1204 66C1160 90 1148 132 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
+          </g>
+        </svg>
+      </section>
       <section className="site-section" id="workflow">
         <div className="site-container">
           <h2>از مکالمه تا اقدام همه زیر ذره‌بین</h2>
@@ -429,7 +494,32 @@ export default function Landing() {
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2>        {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}><Icon name="refresh" size={18}/>تلاش دوباره</button></div>}
         {plansState === "ready" && !plans.length && <p className="site-status">در حال حاضر پلنی برای نمایش وجود ندارد.</p>}
-        <div className="site-plans">{plans.map((plan) => { const trial = plan.is_trial; const price = plan.annual_price_toman; const extra = plan.extra_operator_annual_toman; const buyable = trial || price != null; return <article className={`site-plan${plan.featured ? " site-plan-featured" : ""}`} key={plan.code}><PlanArtwork code={plan.code} name={plan.name}/><h3>{plan.name}</h3><div className="site-price"><AnimatedPrice value={trial ? null : price} formatted={trial ? "رایگان" : price == null ? "تماس بگیرید" : fmt.int(price)}/>{!trial && price != null && <span>تومان / سال</span>}{trial && plan.trial_days ? <span>{fmt.int(plan.trial_days)} روز آزمایشی</span> : null}</div><ul><li>{fmt.int(plan.base_operators)} کاربر اپراتور</li><li>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</li><li>{fmt.int(plan.monthly_included_minutes)} دقیقه رایگان {trial ? "در دوره آزمایشی" : "در ماه"}</li><li>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</li>{plan.allows_extra_operators && extra != null && <li>اپراتور اضافه: {fmt.toman(extra)} / سال</li>}</ul>{buyable ? <Link className={`site-button${plan.featured ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>شروع با پلن {plan.name}<Icon name="arrow" size={18}/></Link> : <Link className="site-button site-button-outline" to="/contact">تماس با فروش<Icon name="arrow" size={18}/></Link>}</article>; })}</div>
+        <div className="site-plans">{plans.map((plan) => {
+          const trial = plan.is_trial;
+          const price = plan.annual_price_toman;
+          const extra = plan.extra_operator_annual_toman;
+          const buyable = trial || price != null;
+          return <article className={`site-plan${plan.featured ? " site-plan-featured" : ""}${trial ? " site-plan-trial" : ""}`} key={plan.code}>
+            <div className="site-plan-badge-row">{plan.featured ? <span className="site-plan-badge"><Icon name="spark" size={14}/>پیشنهاد صداسنج</span> : trial ? <span className="site-plan-badge site-plan-badge-trial">فرصتی برای آشنایی</span> : null}</div>
+            <PlanArtwork code={plan.code} name={plan.name}/>
+            <h3>{plan.name}</h3>
+            <div className="site-price">
+              <AnimatedPrice value={trial ? null : price} formatted={trial ? (plan.trial_days ? `${fmt.int(plan.trial_days)} روز رایگان` : "رایگان") : price == null ? "تماس بگیرید" : fmt.int(price)}/>
+              {!trial && price != null && <span>تومان <span className="site-price-period">/ سال</span></span>}
+              {trial && <span className="site-trial-caption">صداسنج را در عمل تجربه کنید</span>}
+            </div>
+            <ul>
+              <li><Icon name="check" size={15}/><span><b>{fmt.int(plan.base_operators)}</b> کاربر اپراتور</span></li>
+              <li><Icon name="check" size={15}/><span><b>{fmt.int(plan.assistant_monthly_messages)}</b> پیام دستیار در ماه</span></li>
+              <li><Icon name="check" size={15}/><span><b>{fmt.int(plan.monthly_included_minutes)}</b> دقیقه رایگان {trial ? "در دوره آزمایشی" : "در ماه"}</span></li>
+              <li><Icon name="check" size={15}/><span>هر دقیقه اضافه <b>{fmt.toman(plan.overage_price_per_minute_toman)}</b></span></li>
+              {plan.allows_extra_operators && extra != null && <li><Icon name="check" size={15}/><span>اپراتور اضافه: <b>{fmt.toman(extra)}</b> / سال</span></li>}
+            </ul>
+            <div className="site-plan-action">{buyable ? <Link className={`site-button${plan.featured ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>
+              {trial ? "شروع آزمایش رایگان" : `انتخاب پلن ${plan.name}`}<Icon name="arrow" size={18}/>
+            </Link> : <Link className="site-button site-button-outline" to="/contact">تماس با فروش<Icon name="arrow" size={18}/></Link>}</div>
+          </article>;
+        })}</div>
         <p className="site-pricing-note">نصب اولیه رایگان است. برای استقرار اختصاصی <Link to="/contact">با ما تماس بگیرید.</Link></p>
       </div></section>
       <LatestArticles/>

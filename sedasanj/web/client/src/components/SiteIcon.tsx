@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
-export type IconName = "arrow" | "back" | "brain" | "chart" | "check" | "chevron" | "clock" | "copy" | "download" | "headset" | "layers" | "lock" | "login" | "key" | "menu" | "message" | "phone" | "play" | "pulse" | "quote" | "refresh" | "search" | "send" | "shield" | "spark" | "target" | "tasks" | "trend" | "userPlus" | "users" | "x";
+export type IconName = "arrow" | "arrowDown" | "back" | "brain" | "chart" | "check" | "chevron" | "clock" | "copy" | "download" | "headset" | "layers" | "lock" | "login" | "key" | "menu" | "message" | "phone" | "play" | "pulse" | "quote" | "refresh" | "search" | "send" | "shield" | "spark" | "target" | "tasks" | "trend" | "userPlus" | "users" | "x";
 
 const paths: Record<IconName, ReactNode> = {
+  arrowDown: <><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></>,
   arrow: <><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></>,
   back: <><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>,
   brain: <><path d="M9.5 4A2.5 2.5 0 0 0 7 6.5v.2A3.5 3.5 0 0 0 5.5 13v.5A3.5 3.5 0 0 0 9 17h1V5.5A1.5 1.5 0 0 0 8.5 4Z"/><path d="M14.5 4A2.5 2.5 0 0 1 17 6.5v.2a3.5 3.5 0 0 1 1.5 6.3v.5A3.5 3.5 0 0 1 15 17h-1V5.5A1.5 1.5 0 0 1 15.5 4Z"/><path d="M7 9.5h3M14 9.5h3M7.5 14H10M14 14h2.5M10 20v-3M14 20v-3"/></>,
