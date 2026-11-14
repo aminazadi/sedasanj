@@ -1,11 +1,14 @@
 """Public health route and browser-based administration pages."""
 
-from fastapi import APIRouter
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+
+from ..dependencies import authorize_admin
 
 from asr_service.domain.catalog import CATALOG
 from asr_service.infrastructure.storage import MODEL_DIR
-from asr_service.services.task_queue import QUEUE_LIMIT, queue_depth
+from asr_service.services import gpu_runtime
+from asr_service.services.task_queue import QUEUE_LIMIT, is_draining, queue_depth, queue_stats
 from asr_service.services.ingress import UploadCapacityError, ensure_spool_capacity
 from asr_service.web.dashboard import render_admin_page
 
@@ -32,6 +35,8 @@ async def ready():
         reasons.append("no_model_installed")
     if depth >= QUEUE_LIMIT:
         reasons.append("task_queue_full")
+    if is_draining():
+        reasons.append("draining")
     try:
         ensure_spool_capacity(MODEL_DIR.parent / "tasks")
     except UploadCapacityError:
@@ -41,8 +46,36 @@ async def ready():
         "ready": not reasons,
         "reasons": reasons,
         "tasks": {"active": depth, "capacity": QUEUE_LIMIT},
+        "oldest_waiting_seconds": queue_stats()["oldest_waiting_seconds"],
+        "quarantined_gpus": sum(
+            1 for device in gpu_runtime.discover_gpus() if gpu_runtime.is_quarantined(device["uuid"])
+        ),
     }
     return JSONResponse(payload, status_code=200 if not reasons else 503)
+
+
+@router.get("/metrics", include_in_schema=False, dependencies=[Depends(authorize_admin)])
+async def metrics():
+    """Prometheus text metrics for queue depth, waiting age and GPU health (administrator only)."""
+    stats = queue_stats()
+    lines = [
+        "# TYPE aiservice_tasks gauge",
+        *(
+            f'aiservice_tasks{{kind="{item["kind"]}",status="{item["status"]}"}} {item["n"]}'
+            for item in stats["counts"]
+        ),
+        "# TYPE aiservice_oldest_waiting_seconds gauge",
+        f"aiservice_oldest_waiting_seconds {stats['oldest_waiting_seconds']}",
+        "# TYPE aiservice_draining gauge",
+        f"aiservice_draining {int(is_draining())}",
+        "# TYPE aiservice_gpu_quarantined gauge",
+        "# TYPE aiservice_gpu_active gauge",
+    ]
+    for device in gpu_runtime.snapshot().get("devices", []):
+        label = f'gpu="{device["uuid"]}"'
+        lines.append(f"aiservice_gpu_quarantined{{{label}}} {int(bool(device['quarantined']))}")
+        lines.append(f"aiservice_gpu_active{{{label}}} {device['active']}")
+    return PlainTextResponse("\n".join(lines) + "\n")
 
 
 @router.get(

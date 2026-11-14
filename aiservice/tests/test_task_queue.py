@@ -19,8 +19,11 @@ class TaskQueueTests(unittest.TestCase):
         self.queue = task_queue
         task_queue.TASK_DIR = root / "tasks"
         task_queue.POLL_SECONDS = 0.01
+        task_queue._draining.clear()
+        task_queue.DRAIN_SECONDS = 0.5
 
     def tearDown(self):
+        self.queue._draining.clear()
         self.temp.cleanup()
 
     def test_idempotency_and_successful_lifecycle(self):
@@ -188,10 +191,125 @@ class TaskQueueTests(unittest.TestCase):
         )
         self.assertEqual("retrying", self.queue.get_task(task["task_id"])["status"])
 
-    def test_gpu_only_task_fails_actionably_when_no_gpu_can_run_it(self):
+    def test_idle_poll_does_not_take_the_write_lock_when_nothing_is_ready(self):
+        self.assertFalse(self.queue._has_ready_work())
+        self.assertIsNone(self.queue.TaskManager()._claim("worker"))
+        self.queue.enqueue("chat", "local", input_data={"messages": []})
+        self.assertTrue(self.queue._has_ready_work())
+
+    def test_enqueue_wakes_an_idle_worker_before_the_poll_interval(self):
+        self.queue.POLL_SECONDS = 30
+        manager = self.queue.TaskManager()
+        woke = threading.Event()
+
+        def idle():
+            manager._idle()
+            woke.set()
+
+        thread = threading.Thread(target=idle, daemon=True)
+        thread.start()
+        time.sleep(0.2)
+        self.assertFalse(woke.is_set())
+        self.queue.enqueue("chat", "local", input_data={"messages": []})
+        self.assertTrue(woke.wait(2))
+
+    def test_per_key_queue_limit_protects_other_keys(self):
+        with patch.object(self.queue, "QUEUE_PER_KEY_LIMIT", 1):
+            self.queue.enqueue("chat", "local", input_data={"messages": []}, api_key_id=7)
+            with self.assertRaises(OverflowError):
+                self.queue.enqueue("chat", "local", input_data={"messages": []}, api_key_id=7)
+            other, created = self.queue.enqueue("chat", "local", input_data={"messages": []}, api_key_id=8)
+        self.assertTrue(created)
+
+    def test_default_queue_accepts_more_than_the_old_hundred_task_limit(self):
+        self.assertGreaterEqual(self.queue.QUEUE_LIMIT, 1000)
+
+    def test_draining_stops_new_claims_and_stop_waits_for_running_tasks(self):
+        self.queue.enqueue("chat", "local", input_data={"messages": []})
+        manager = self.queue.TaskManager()
+        self.queue._draining.set()
+        try:
+            self.assertIsNone(manager._claim("worker"))
+        finally:
+            self.queue._draining.clear()
+        claimed = manager._claim("worker")
+        self.assertIsNotNone(claimed)
+        with patch.object(self.queue, "DRAIN_SECONDS", 0.3):
+            started = time.monotonic()
+            manager.stop()
+            self.assertGreaterEqual(time.monotonic() - started, 0.25)
+        self.assertTrue(self.queue.is_draining())
+        self.queue._draining.clear()
+
+    def test_queue_stats_report_depth_and_oldest_waiting_age(self):
+        self.assertEqual(0.0, self.queue.queue_stats()["oldest_waiting_seconds"])
+        self.queue.enqueue("chat", "local", input_data={"messages": []})
+        stats = self.queue.queue_stats()
+        self.assertEqual([("chat", "queued", 1)], [(x["kind"], x["status"], x["n"]) for x in stats["counts"]])
+        self.assertGreaterEqual(stats["oldest_waiting_seconds"], 0.0)
+
+    def test_stop_releases_idle_workers(self):
+        self.queue.POLL_SECONDS = 30
+        manager = self.queue.TaskManager()
+        woke = threading.Event()
+        threading.Thread(target=lambda: (manager._idle(), woke.set()), daemon=True).start()
+        time.sleep(0.2)
+        manager.stop()
+        self.assertTrue(woke.wait(2))
+
+    def test_gpu_only_task_stays_queued_while_no_gpu_is_available(self):
+        task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})
+        with (
+            patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}),
+            patch.object(self.queue.gpu_runtime, "cuda_model_family", return_value=True),
+            patch.object(self.queue.gpu_runtime, "gpu_eligible", return_value=False),
+        ):
+            self.assertIsNone(self.queue.TaskManager()._claim("cpu-worker"))
+        self.assertEqual("queued", self.queue.get_task(task["task_id"])["status"])
+
+    def test_capacity_failure_requeues_without_consuming_an_attempt(self):
+        task, _ = self.queue.enqueue("chat", "local", input_data={"messages": [], "options": {}})
+        manager = self.queue.TaskManager()
+        claimed = manager._claim("worker")
+        storage.execute("UPDATE task_runs SET device_id='GPU-a',device_type='cuda' WHERE id=?", (claimed["run"]["id"],))
+        claimed["run"]["device_id"] = "GPU-a"
+        self.queue.chat_completion = lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("CUDA out of memory"))
+        with patch.object(self.queue.gpu_runtime, "record_error"):
+            manager._run(claimed, admitted_slot=object())
+        run = self.queue.get_runs(task["task_id"])[0]
+        self.assertEqual(("retrying", 0, 1), (run["status"], run["attempts"], run["requeues"]))
+        self.assertEqual("retrying", self.queue.get_task(task["task_id"])["status"])
+
+    def test_restart_recovery_gives_the_attempt_back_but_is_bounded(self):
+        task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})
+        manager = self.queue.TaskManager()
+        manager._claim("worker")
+        manager._recover()
+        run = self.queue.get_runs(task["task_id"])[0]
+        self.assertEqual(("retrying", 0, 1), (run["status"], run["attempts"], run["requeues"]))
+        storage.execute("UPDATE task_runs SET status='processing',attempts=2,requeues=?", (self.queue.MAX_INTERRUPTIONS,))
+        manager._recover()
+        self.assertEqual("failed", self.queue.get_runs(task["task_id"])[0]["status"])
+
+    def test_gpu_workers_are_started_when_a_gpu_appears_after_boot(self):
+        manager = self.queue.TaskManager()
+        spawned = []
+        manager._spawn = lambda name, *args: spawned.append(name)
+        with patch.object(self.queue.gpu_runtime, "discover_gpus", return_value=[]):
+            manager._ensure_gpu_workers()
+        self.assertEqual([], spawned)
+        gpus = [{"uuid": "GPU-aaaaaaaa", "index": 0}, {"uuid": "GPU-bbbbbbbb", "index": 1}]
+        with patch.object(self.queue.gpu_runtime, "discover_gpus", return_value=gpus):
+            manager._ensure_gpu_workers()
+            manager._ensure_gpu_workers()
+        self.assertEqual(17, len(spawned))
+        self.assertIn("gpu-split", spawned)
+
+    def test_gpu_only_task_fails_actionably_after_the_gpu_wait_expires(self):
         task, _ = self.queue.enqueue("chat", "local", input_data={"messages": []})
         manager = self.queue.TaskManager()
         with (
+            patch.object(self.queue, "GPU_UNAVAILABLE_TTL_SECONDS", 0),
             patch.object(self.queue.gpu_runtime, "get_settings", return_value={"mode": "gpu"}),
             patch.object(self.queue.gpu_runtime, "cuda_model_family", return_value=True),
             patch.object(self.queue.gpu_runtime, "gpu_eligible", return_value=False),

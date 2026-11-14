@@ -367,6 +367,19 @@ class RequestFailurePageResponse(ApiSchema):
     total: int = Field(ge=0)
 
 
+class TokenUsageResponse(ApiSchema):
+    """Token counts exactly as reported by the model that served the task."""
+
+    prompt_tokens: int | None = Field(default=None, ge=0, description="Input tokens reported by the model.")
+    completion_tokens: int | None = Field(default=None, ge=0, description="Output tokens reported by the model.")
+    total_tokens: int | None = Field(default=None, ge=0, description="Input plus output tokens.")
+    source: Literal["reported", "unavailable"] = Field(
+        description="`unavailable` means the model did not report counts; counts are never estimated."
+    )
+    origin: Literal["local", "9router"] | None = Field(default=None, description="Where inference ran.")
+    model: str | None = Field(default=None, description="Model that produced the counts.")
+
+
 class TaskResponse(ApiSchema):
     """Public state and resource links for an asynchronous task."""
 
@@ -389,6 +402,9 @@ class TaskResponse(ApiSchema):
     status_url: str
     result_url: str | None = None
     queue_position: int | None = Field(default=None, ge=1)
+    usage: TokenUsageResponse | None = Field(
+        default=None, description="Exact token usage of the succeeded run; null until it succeeds."
+    )
     models: list[str] = Field(default_factory=list)
     current_model: str | None = None
     completed_models: int = 0

@@ -48,6 +48,7 @@ from .resources import (
     admission_allowed,
     inference_slot,
 )
+from .token_usage import SOURCE_UNAVAILABLE, normalize_usage
 from .text_processing import chat_completion, process_messages, process_response
 from .text_processing import process as process_text
 
@@ -55,7 +56,12 @@ logger = logging.getLogger(__name__)
 
 TASK_DIR = DATA_DIR / "tasks"
 WORKERS = TASK_WORKERS
-QUEUE_LIMIT = max(WORKERS, int(os.getenv("ASR_QUEUE_LIMIT", "100")))
+# Tasks waiting or running. Large on purpose: work beyond live capacity is queued, not refused;
+# disk and audio-byte limits below are the real brakes.
+QUEUE_LIMIT = max(WORKERS, int(os.getenv("ASR_QUEUE_LIMIT", "1000")))
+# Optional fairness: queued+running tasks one API key may hold (0 = unlimited).
+QUEUE_PER_KEY_LIMIT = max(0, int(os.getenv("ASR_QUEUE_PER_KEY_LIMIT", "0")))
+REMOTE_WORKERS = max(1, int(os.getenv("ASR_REMOTE_WORKERS", "2")))
 DECISION_QUEUE_LIMIT = max(1, int(os.getenv("ASR_DECISION_QUEUE_LIMIT", "256")))
 QUEUE_MAX_AUDIO_BYTES = max(
     1, int(os.getenv("ASR_QUEUE_MAX_AUDIO_MB", "8192"))
@@ -71,11 +77,69 @@ CHAT_TASK_TIMEOUT_SECONDS = max(121, int(os.getenv("ASR_CHAT_TASK_TIMEOUT_SECOND
 POLL_SECONDS = max(0.1, float(os.getenv("ASR_TASK_POLL_SECONDS", ".5")))
 TERMINAL = {"succeeded", "partially_succeeded", "failed", "cancelled"}
 RUN_TERMINAL = {"succeeded", "failed", "cancelled", "skipped"}
+# A GPU-only task waits in the queue for a compatible GPU this long before it fails.
+GPU_UNAVAILABLE_TTL_SECONDS = max(0, int(os.getenv("ASR_GPU_UNAVAILABLE_TTL_SECONDS", "21600")))
+# Infrastructure interruptions (restart, expired heartbeat) are not the task's fault: they do not
+# consume attempts, but a task that keeps killing its worker is still stopped after this many.
+MAX_INTERRUPTIONS = max(1, int(os.getenv("ASR_TASK_MAX_INTERRUPTIONS", "5")))
+# Out-of-memory / device-busy failures requeue without consuming attempts for this long.
+CAPACITY_REQUEUE_MAX_SECONDS = max(60, int(os.getenv("ASR_CAPACITY_REQUEUE_MAX_SECONDS", "86400")))
+CAPACITY_MAX_REQUEUES = max(1, int(os.getenv("ASR_CAPACITY_MAX_REQUEUES", "30")))
+GPU_SUPERVISOR_SECONDS = max(1.0, float(os.getenv("ASR_GPU_SUPERVISOR_SECONDS", "15")))
+MAINTENANCE_SECONDS = max(1.0, float(os.getenv("ASR_MAINTENANCE_SECONDS", "10")))
 GPU_UNAVAILABLE_CODE = "gpu_unavailable"
 GPU_UNAVAILABLE_DETAIL = (
     "Enable a compatible GPU and install the model's CUDA artifacts, "
     "or change AISERVICE execution mode to Auto."
 )
+
+
+_work_signal = threading.Condition()
+_draining = threading.Event()
+# On shutdown, stop claiming and give running tasks this long to finish before workers are stopped.
+DRAIN_SECONDS = max(0.0, float(os.getenv("ASR_DRAIN_SECONDS", "25")))
+
+
+def is_draining():
+    return _draining.is_set()
+
+
+def queue_stats():
+    """Queue depth per kind/status and the age of the oldest task still waiting to start."""
+    counts = rows(
+        "SELECT kind,status,count(*) AS n FROM tasks WHERE status IN ('queued','retrying','running') GROUP BY kind,status"
+    )
+    oldest = row("SELECT min(created_at) AS at FROM tasks WHERE status IN ('queued','retrying')")
+    return {
+        "counts": counts,
+        "oldest_waiting_seconds": round(_age_seconds(oldest["at"]), 1) if oldest and oldest["at"] else 0.0,
+    }
+
+
+def notify_work():
+    """Wake idle workers now instead of letting them sleep out the poll interval."""
+    with _work_signal:
+        _work_signal.notify_all()
+
+
+def _has_ready_work():
+    """Cheap read-only check so an idle poll never takes the SQLite write lock."""
+    stamp = now()
+    return bool(
+        row(
+            """SELECT 1 AS ready FROM tasks t JOIN task_runs r ON r.task_id=t.task_id
+               WHERE t.status IN ('queued','retrying') AND t.available_at<=?
+               AND r.status IN ('pending','retrying') AND r.available_at<=? LIMIT 1""",
+            (stamp, stamp),
+        )
+    )
+
+
+def _age_seconds(created_at):
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(created_at)).total_seconds()
+    except (TypeError, ValueError):
+        return 0
 
 
 def uses_ninerouter(kind, model_id):
@@ -184,6 +248,47 @@ def cancel_all_active():
     for item in active:
         log_task(item["task_id"], "Interrupted by administrator; service is restarting", "warning", "cancelled")
     return active
+
+
+def request_cancel(task_id):
+    """Cancel a queued task now, or flag a running one for cancellation at its next checkpoint."""
+    task = get_task(task_id)
+    if not task:
+        return None
+    if task["status"] in {"queued", "retrying"}:
+        stamp = now()
+        with closing(connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                "UPDATE tasks SET status='cancelled',cancel_requested=1,finished_at=?,updated_at=? WHERE task_id=?",
+                (stamp, stamp, task_id),
+            )
+            db.execute(
+                "UPDATE usage SET status='failed',finished_at=?,error='Cancelled' WHERE id=?",
+                (stamp, task.get("usage_id")),
+            )
+            db.execute(
+                "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,error='Skipped after cancellation' WHERE task_id=? AND status IN ('pending','retrying')",
+                (stamp, stamp, task_id),
+            )
+        record_failure(
+            phase="processing",
+            reason="task_cancelled",
+            detail="Task was cancelled before processing completed",
+            task_id=task_id,
+            usage_id=task.get("usage_id"),
+            client_ip=task.get("client_ip"),
+            dedupe_key=f"task:{task_id}:cancelled",
+        )
+        log_task(task_id, "Task was cancelled before execution", "warning", "cancelled")
+        if task["input_path"]:
+            _delete_input(task["input_path"])
+    elif task["status"] == "running":
+        execute(
+            "UPDATE tasks SET cancel_requested=1,updated_at=? WHERE task_id=?",
+            (now(), task_id),
+        )
+    return get_task(task_id)
 
 
 def recover_interrupted_chat_completions():
@@ -373,6 +478,19 @@ def public_task(task, include_result=True):
     has_result = task["status"] in {"succeeded", "partially_succeeded"} or (
         len(runs) > 1 and task["status"] == "failed" and task.get("result_json")
     )
+    counted = next((x for x in runs if x["status"] == "succeeded" and x.get("usage_source")), None)
+    out["usage"] = (
+        {
+            "prompt_tokens": counted["prompt_tokens"],
+            "completion_tokens": counted["completion_tokens"],
+            "total_tokens": counted["total_tokens"],
+            "source": counted["usage_source"],
+            "origin": counted["usage_origin"],
+            "model": counted["model_id"],
+        }
+        if counted
+        else None
+    )
     out["status_url"] = f"/v1/tasks/{task['task_id']}"
     out["result_url"] = (f"/v1/tasks/{task['task_id']}/result"
                          if has_result or task["kind"] == "chat_async" else None)
@@ -446,6 +564,16 @@ def enqueue(
                 >= QUEUE_LIMIT
             ):
                 raise OverflowError("Task queue is full")
+            if (
+                QUEUE_PER_KEY_LIMIT
+                and api_key_id is not None
+                and db.execute(
+                    "SELECT count(*) n FROM tasks WHERE api_key_id=? AND status IN ('queued','retrying','running')",
+                    (api_key_id,),
+                ).fetchone()["n"]
+                >= QUEUE_PER_KEY_LIMIT
+            ):
+                raise OverflowError("Per-key task queue limit reached")
             if kind == "decision" and db.execute(
                 "SELECT count(*) n FROM tasks WHERE kind='decision' AND status IN ('queued','retrying','running')"
             ).fetchone()["n"] >= DECISION_QUEUE_LIMIT:
@@ -537,6 +665,7 @@ def enqueue(
                     raise IdempotencyConflict()
                 return existing, False
         raise
+    notify_work()
     return get_task(task_id), True
 
 
@@ -595,8 +724,9 @@ class TaskManager:
         self.stop_event = threading.Event()
         self.threads = []
         self.instance = uuid.uuid4().hex[:12]
-        self.next_chat_expiry = 0
-        self.next_stale_scan = 0
+        _draining.clear()  # a fresh manager is a fresh lifecycle
+        self._gpu_started = set()
+        self._split_started = False
 
     def _update_owned_run(self, run, values, arguments):
         with closing(connect()) as db, db:
@@ -623,6 +753,7 @@ class TaskManager:
             )
 
     def start(self):
+        _draining.clear()
         TASK_DIR.mkdir(parents=True, exist_ok=True)
         self._recover()
         for i in range(WORKERS):
@@ -631,32 +762,76 @@ class TaskManager:
             )
             thread.start()
             self.threads.append(thread)
-        for i in range(2):
+        for i in range(REMOTE_WORKERS):
             thread = threading.Thread(
                 target=self._loop, args=(f"{self.instance}-remote-{i}", None, True), daemon=True
             )
             thread.start()
             self.threads.append(thread)
-        for device in gpu_runtime.discover_gpus():
-            for slot in range(8):
-                thread = threading.Thread(
-                    target=self._loop,
-                    args=(f"{self.instance}-gpu-{device['uuid'][-8:]}-{slot}", device),
-                    daemon=True,
-                )
-                thread.start()
-                self.threads.append(thread)
-        if len(gpu_runtime.discover_gpus()) > 1:
-            thread = threading.Thread(
-                target=self._loop,
-                args=(f"{self.instance}-gpu-split", None, False, True),
-                daemon=True,
-            )
+        self._ensure_gpu_workers()
+        for name, target in (("maintenance", self._maintenance_loop), ("gpu-supervisor", self._gpu_supervisor_loop)):
+            thread = threading.Thread(target=target, name=f"{self.instance}-{name}", daemon=True)
             thread.start()
             self.threads.append(thread)
 
+    def _idle(self):
+        """Sleep until new work is announced, the poll interval passes, or the service stops."""
+        if self.stop_event.is_set():
+            return
+        with _work_signal:
+            _work_signal.wait(POLL_SECONDS)
+
+    def _spawn(self, name, *args):
+        thread = threading.Thread(target=self._loop, args=(f"{self.instance}-{name}", *args), daemon=True)
+        thread.start()
+        self.threads.append(thread)
+
+    def _ensure_gpu_workers(self):
+        """Start workers for every GPU seen so far; safe to call repeatedly (GPU appears late/returns)."""
+        devices = gpu_runtime.discover_gpus()
+        for device in devices:
+            if device["uuid"] in self._gpu_started:
+                continue
+            self._gpu_started.add(device["uuid"])
+            for slot in range(8):
+                self._spawn(f"gpu-{device['uuid'][-8:]}-{slot}", device)
+        if len(devices) > 1 and not self._split_started:
+            self._split_started = True
+            self._spawn("gpu-split", None, False, True)
+
+    def _gpu_supervisor_loop(self):
+        while not self.stop_event.wait(GPU_SUPERVISOR_SECONDS):
+            try:
+                self._ensure_gpu_workers()
+            except Exception:
+                logger.exception("GPU supervisor could not refresh the device list")
+
+    def _maintenance_loop(self):
+        """Stale-run recovery and expiry run on a dedicated thread, never behind a long job."""
+        next_expiry = 0.0
+        while not self.stop_event.wait(MAINTENANCE_SECONDS):
+            try:
+                self._reap_stale()
+            except Exception:
+                logger.exception("Unable to recover stale inference workers")
+            if time.monotonic() >= next_expiry:
+                next_expiry = time.monotonic() + 3600
+                try:
+                    self._expire_chat_tasks()
+                except Exception:
+                    logger.exception("Unable to expire completed chat tasks")
+
     def stop(self):
+        # Drain first: no new claims, running tasks get DRAIN_SECONDS to finish cleanly.
+        _draining.set()
+        deadline = time.monotonic() + DRAIN_SECONDS
+        while time.monotonic() < deadline:
+            running = row("SELECT count(*) AS n FROM tasks WHERE status='running'")
+            if not running or not running["n"]:
+                break
+            time.sleep(0.25)
         self.stop_event.set()
+        notify_work()
         for thread in self.threads:
             thread.join(timeout=5)
 
@@ -665,7 +840,7 @@ class TaskManager:
         recover_interrupted_chat_completions()
         self._expire_chat_tasks()
         for run in rows(
-            """SELECT r.id,r.task_id,r.attempts,r.max_attempts,t.cancel_requested
+            """SELECT r.id,r.task_id,r.attempts,r.max_attempts,r.requeues,t.cancel_requested
                FROM task_runs r JOIN tasks t ON t.task_id=r.task_id WHERE r.status='processing'"""
         ):
             if run["cancel_requested"]:
@@ -678,10 +853,14 @@ class TaskManager:
                     (now(), now(), run["task_id"]),
                 )
                 continue
-            if run["attempts"] < run["max_attempts"]:
+            free = run["requeues"] < MAX_INTERRUPTIONS
+            if free or run["attempts"] < run["max_attempts"]:
+                # A restart is not the task's fault: give the attempt back (bounded by MAX_INTERRUPTIONS).
                 execute(
-                    "UPDATE task_runs SET status='retrying',worker_id=NULL,available_at=?,updated_at=?,error='Worker interrupted; run recovered' WHERE id=?",
-                    (now(), now(), run["id"]),
+                    "UPDATE task_runs SET status='retrying',worker_id=NULL,available_at=?,updated_at=?,"
+                    "attempts=CASE WHEN ? THEN max(attempts-1,0) ELSE attempts END,requeues=requeues+?,"
+                    "error='Worker interrupted; run recovered' WHERE id=?",
+                    (now(), now(), int(free), int(free), run["id"]),
                 )
                 execute(
                     "UPDATE tasks SET status='retrying',worker_id=NULL,available_at=?,updated_at=? WHERE task_id=?",
@@ -775,7 +954,7 @@ class TaskManager:
         with closing(connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             stale = db.execute(
-                """SELECT r.id,r.task_id,r.attempts,r.max_attempts,t.cancel_requested
+                """SELECT r.id,r.task_id,r.attempts,r.max_attempts,r.requeues,t.cancel_requested
                    FROM task_runs r JOIN tasks t ON t.task_id=r.task_id
                    WHERE r.status='processing' AND coalesce(r.heartbeat_at,r.attempt_started_at,r.started_at)<?""",
                 (cutoff,),
@@ -796,12 +975,14 @@ class TaskManager:
                         )
                         exhausted.append((run["id"], run["task_id"], True))
                     continue
-                if run["attempts"] < run["max_attempts"]:
+                free = run["requeues"] < MAX_INTERRUPTIONS
+                if free or run["attempts"] < run["max_attempts"]:
                     changed = db.execute(
                         """UPDATE task_runs SET status='retrying',worker_id=NULL,heartbeat_at=NULL,
-                           available_at=?,updated_at=?,error='Worker heartbeat expired; run recovered'
+                           available_at=?,updated_at=?,error='Worker heartbeat expired; run recovered',
+                           attempts=CASE WHEN ? THEN max(attempts-1,0) ELSE attempts END,requeues=requeues+?
                            WHERE id=? AND status='processing'""",
-                        (stamp, stamp, run["id"]),
+                        (stamp, stamp, int(free), int(free), run["id"]),
                     ).rowcount
                     if changed:
                         db.execute(
@@ -833,6 +1014,8 @@ class TaskManager:
             waiting_group = self._next_gpu_group(min_age_seconds=30)
             if waiting_group and gpu_id in {device["uuid"] for device in waiting_group[0]}:
                 return None
+        if _draining.is_set() or not _has_ready_work():
+            return None
         stamp = now()
         with closing(connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
@@ -901,13 +1084,13 @@ class TaskManager:
                     if settings["mode"] == "gpu" and gpu_runtime.cuda_model_family(kind, model_id):
                         if gpu_runtime.gpu_eligible(kind, model_id):
                             continue
+                        # No compatible GPU right now (driver hiccup, GPU disabled, all quarantined):
+                        # keep the task queued and fail it only after the configured wait.
+                        if _age_seconds(candidate["created_at"]) < GPU_UNAVAILABLE_TTL_SECONDS:
+                            continue
                         device_reason = GPU_UNAVAILABLE_CODE
                     if settings["mode"] == "auto" and gpu_runtime.gpu_eligible(kind, model_id):
-                        try:
-                            age_seconds = (datetime.now(timezone.utc) - datetime.fromisoformat(candidate["created_at"])).total_seconds()
-                        except (TypeError, ValueError):
-                            age_seconds = 0
-                        if age_seconds < settings["cpu_fallback_seconds"]:
+                        if _age_seconds(candidate["created_at"]) < settings["cpu_fallback_seconds"]:
                             continue
                         device_reason = "gpu_wait_timeout"
                 task_id = candidate["task_id"]
@@ -962,18 +1145,6 @@ class TaskManager:
 
     def _loop(self, worker, gpu_device=None, remote_worker=False, gpu_group=None):
         while not self.stop_event.is_set():
-            if worker == f"{self.instance}-cpu-0" and time.monotonic() >= self.next_stale_scan:
-                self.next_stale_scan = time.monotonic() + 10
-                try:
-                    self._reap_stale()
-                except Exception:
-                    logger.exception("Unable to recover stale inference workers")
-            if worker == f"{self.instance}-cpu-0" and time.monotonic() >= self.next_chat_expiry:
-                self.next_chat_expiry = time.monotonic() + 3600
-                try:
-                    self._expire_chat_tasks()
-                except Exception:
-                    logger.exception("Unable to expire completed chat tasks")
             # Do not start a new job merely because a numerical slot is free:
             # preserve CPU/RAM headroom for the OS and already-running jobs.
             if gpu_device:
@@ -992,7 +1163,7 @@ class TaskManager:
                     logger.exception("GPU worker failed on %s", gpu_device["uuid"])
                     gpu_runtime.record_error(gpu_device["uuid"], "GPU worker failure")
                 if not task:
-                    self.stop_event.wait(POLL_SECONDS)
+                    self._idle()
                 continue
             if gpu_group:
                 task = None
@@ -1000,7 +1171,7 @@ class TaskManager:
                 try:
                     group_candidate = self._next_gpu_group()
                     if not group_candidate:
-                        self.stop_event.wait(POLL_SECONDS)
+                        self._idle()
                         continue
                     selected, model_id = group_candidate
                     group_id = ",".join(device["uuid"] for device in selected)
@@ -1018,7 +1189,7 @@ class TaskManager:
                     if selected:
                         gpu_runtime.record_error(group_id, "Multi-GPU worker failure")
                 if not task:
-                    self.stop_event.wait(POLL_SECONDS)
+                    self._idle()
                 continue
             if remote_worker:
                 try:
@@ -1029,20 +1200,20 @@ class TaskManager:
                 if task:
                     self._run(task, object())
                 else:
-                    self.stop_event.wait(POLL_SECONDS)
+                    self._idle()
                 continue
             try:
                 if not admission_allowed(queue_depth() > 0):
-                    self.stop_event.wait(POLL_SECONDS)
+                    self._idle()
                     continue
                 slot = inference_slot(timeout=0)
                 slot.__enter__()
             except InferenceCapacityError:
-                self.stop_event.wait(POLL_SECONDS)
+                self._idle()
                 continue
             except Exception:
                 logger.exception("Unable to check CPU inference admission")
-                self.stop_event.wait(POLL_SECONDS)
+                self._idle()
                 continue
             try:
                 task = self._claim(worker)
@@ -1051,7 +1222,7 @@ class TaskManager:
                 task = None
             if not task:
                 slot.__exit__(None, None, None)
-                self.stop_event.wait(POLL_SECONDS)
+                self._idle()
                 continue
             try:
                 self._run(task, slot)
@@ -1094,6 +1265,7 @@ class TaskManager:
             else "application/json"
         )
         total = sum(x.get("processing_seconds") or 0 for x in runs)
+        counted = next((x for x in runs if x["status"] == "succeeded" and x.get("usage_source")), None)
         duration = next(
             (
                 x.get("duration_seconds")
@@ -1132,7 +1304,8 @@ class TaskManager:
             # successful processing result impossible to open from that screen.
             db.execute(
                 """UPDATE usage SET status=?,finished_at=?,duration_seconds=?,
-                   processing_seconds=?,error=?,result_json=?,content_type=? WHERE id=?""",
+                   processing_seconds=?,error=?,result_json=?,content_type=?,
+                   prompt_tokens=?,completion_tokens=?,total_tokens=?,usage_origin=?,usage_source=? WHERE id=?""",
                 (
                     usage_status,
                     stamp,
@@ -1141,6 +1314,11 @@ class TaskManager:
                     error_text,
                     None if task["kind"] == "chat_async" else json.dumps(result, ensure_ascii=False),
                     content_type,
+                    counted and counted["prompt_tokens"],
+                    counted and counted["completion_tokens"],
+                    counted and counted["total_tokens"],
+                    counted and counted["usage_origin"],
+                    counted and counted["usage_source"],
                     task.get("usage_id"),
                 ),
             )
@@ -1194,16 +1372,21 @@ class TaskManager:
 
         def heartbeat():
             while not stop.wait(10):
-                stamp = now()
-                with closing(connect()) as db, db:
-                    db.execute(
-                        "UPDATE task_runs SET heartbeat_at=?,updated_at=? WHERE id=? AND status='processing'",
-                        (stamp, stamp, run["id"]),
-                    )
-                    db.execute(
-                        "UPDATE tasks SET heartbeat_at=?,updated_at=? WHERE task_id=? AND status='running'",
-                        (stamp, stamp, task_id),
-                    )
+                # A transient SQLite error must never end the heartbeat: a silent thread would let a
+                # healthy run be reaped as stale and executed a second time.
+                try:
+                    stamp = now()
+                    with closing(connect()) as db, db:
+                        db.execute(
+                            "UPDATE task_runs SET heartbeat_at=?,updated_at=? WHERE id=? AND status='processing'",
+                            (stamp, stamp, run["id"]),
+                        )
+                        db.execute(
+                            "UPDATE tasks SET heartbeat_at=?,updated_at=? WHERE task_id=? AND status='running'",
+                            (stamp, stamp, task_id),
+                        )
+                except Exception:
+                    logger.warning("Heartbeat write failed for run %s; will retry", run["id"], exc_info=True)
 
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
@@ -1360,9 +1543,13 @@ class TaskManager:
                         if child.returncode:
                             detail = (child_errors or "").strip()[-600:]
                             logger.warning("Chat subprocess for %s exited with %s: %s", run["model_id"], child.returncode, detail)
+                            failure = ChatTaskModelFailure()
                             if gpu_runtime.is_resource_failure(detail):
                                 gpu_runtime.note_model_oom(run["model_id"], detail)
-                            raise ChatTaskModelFailure()
+                            failure.capacity = bool(
+                                gpu_runtime.is_resource_failure(detail) or gpu_runtime.is_device_failure(detail)
+                            )
+                            raise failure
                     try:
                         result = json.loads(output)
                         if not isinstance(result, dict) or not isinstance(result.get("choices"), list):
@@ -1379,9 +1566,17 @@ class TaskManager:
             if (get_task(task_id) or {}).get("cancel_requested"):
                 raise CancelledError()
             elapsed = time.monotonic() - started
+            origin = "9router" if (
+                task["kind"] in {"chat", "chat_async", "text"} and uses_ninerouter("llm", run["model_id"])
+            ) or (task["kind"] == "asr" and uses_ninerouter("asr", run["model_id"])) else "local"
+            usage = normalize_usage(
+                result.get("usage") if task["kind"] in {"chat", "chat_async", "text"} and isinstance(result, dict) else None,
+                origin,
+            )
             if not self._update_owned_run(
                 run,
-                "status='succeeded',finished_at=?,updated_at=?,result_json=?,duration_seconds=?,duration_after_vad=?,processing_seconds=coalesce(processing_seconds,0)+?,worker_id=NULL,heartbeat_at=NULL,error=NULL",
+                "status='succeeded',finished_at=?,updated_at=?,result_json=?,duration_seconds=?,duration_after_vad=?,processing_seconds=coalesce(processing_seconds,0)+?,worker_id=NULL,heartbeat_at=NULL,error=NULL,"
+                "prompt_tokens=?,completion_tokens=?,total_tokens=?,usage_origin=?,usage_source=?",
                 (
                     now(),
                     now(),
@@ -1389,6 +1584,11 @@ class TaskManager:
                     duration,
                     duration_vad,
                     elapsed,
+                    usage["prompt_tokens"],
+                    usage["completion_tokens"],
+                    usage["total_tokens"],
+                    usage["origin"],
+                    usage["source"],
                 ),
             ):
                 return
@@ -1418,7 +1618,22 @@ class TaskManager:
                 if task["kind"] in {"chat", "chat_async", "text"}:
                     gpu_runtime.note_model_oom(run["model_id"], exc)
             current = row("SELECT * FROM task_runs WHERE id=?", (run["id"],))
-            retry = (
+            # Out-of-memory and device failures are the GPU's problem, not the task's: requeue without
+            # consuming an attempt (bounded by count and age so an input that can never fit still ends).
+            capacity = bool(
+                current
+                and run.get("device_id")
+                and not isinstance(exc, (GPUUnavailableError, NoSpeechDetectedError, AsrModelUnavailableError, CancelledError))
+                and (
+                    getattr(exc, "capacity", False)
+                    or gpu_runtime.is_resource_failure(exc)
+                    or gpu_runtime.is_device_failure(exc)
+                )
+                and current["requeues"] < CAPACITY_MAX_REQUEUES
+                and _age_seconds(task["created_at"]) < CAPACITY_REQUEUE_MAX_SECONDS
+                and not (get_task(task_id) or {}).get("cancel_requested")
+            )
+            retry = capacity or (
                 current
                 and current["attempts"] < current["max_attempts"]
                 and not (get_task(task_id) or {}).get("cancel_requested")
@@ -1442,20 +1657,24 @@ class TaskManager:
             log_run(run["id"], f"Attempt failed: {error}" if task["kind"] == "chat_async"
                     else f"Attempt failed: {error}\n{traceback.format_exc(limit=20)[:12000]}", "error", "failed")
             if retry:
-                available = (
-                    datetime.now(timezone.utc)
-                    + timedelta(
-                        seconds=min(60, 2 ** current["attempts"] + random.random())
-                    )
-                ).isoformat()
+                delay = (
+                    min(300, 5 * 2 ** min(current["requeues"], 6)) + random.random()
+                    if capacity
+                    else min(60, 2 ** current["attempts"] + random.random())
+                )
+                available = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+                give_back = ",attempts=max(attempts-1,0),requeues=requeues+1" if capacity else ""
                 if not self._update_owned_run(
                     run,
-                    "status='retrying',available_at=?,updated_at=?,processing_seconds=coalesce(processing_seconds,0)+?,error=?,worker_id=NULL,heartbeat_at=NULL",
+                    "status='retrying',available_at=?,updated_at=?,processing_seconds=coalesce(processing_seconds,0)+?,error=?,worker_id=NULL,heartbeat_at=NULL"
+                    + give_back,
                     (available, now(), elapsed, error),
                 ):
                     return
                 execute(
-                    "UPDATE tasks SET status='retrying',available_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL WHERE task_id=?",
+                    "UPDATE tasks SET status='retrying',available_at=?,updated_at=?,worker_id=NULL,heartbeat_at=NULL"
+                    + (",attempts=max(attempts-1,0)" if capacity else "")
+                    + " WHERE task_id=?",
                     (available, now(), task_id),
                 )
                 log_run(
@@ -1490,7 +1709,7 @@ class ChatTaskTimeout(Exception):
 
 
 class ChatTaskModelFailure(Exception):
-    pass
+    capacity = False
 
 
 class IdempotencyConflict(Exception):

@@ -44,6 +44,7 @@ from asr_service.services.task_queue import (
     IdempotencyConflict,
     _delete_input,
     enqueue,
+    request_cancel,
     fingerprint,
     get_runs,
     get_task,
@@ -884,37 +885,5 @@ def cancel_task(task_id: str, request: Request, principal: Principal = Depends(a
     task = owned_task(task, principal)
     if not task:
         raise HTTPException(404, "Task not found")
-    if task["status"] in {"queued", "retrying"}:
-        stamp = now()
-        with closing(connect()) as db, db:
-            db.execute("BEGIN IMMEDIATE")
-            db.execute(
-                "UPDATE tasks SET status='cancelled',cancel_requested=1,finished_at=?,updated_at=? WHERE task_id=?",
-                (stamp, stamp, task_id),
-            )
-            db.execute(
-                "UPDATE usage SET status='failed',finished_at=?,error='Cancelled' WHERE id=?",
-                (stamp, task.get("usage_id")),
-            )
-            db.execute(
-                "UPDATE task_runs SET status='skipped',finished_at=?,updated_at=?,error='Skipped after cancellation' WHERE task_id=? AND status IN ('pending','retrying')",
-                (stamp, stamp, task_id),
-            )
-        record_failure(
-            phase="processing",
-            reason="task_cancelled",
-            detail="Task was cancelled before processing completed",
-            task_id=task_id,
-            usage_id=task.get("usage_id"),
-            client_ip=task.get("client_ip"),
-            dedupe_key=f"task:{task_id}:cancelled",
-        )
-        log_task(task_id, "Task was cancelled before execution", "warning", "cancelled")
-        if task["input_path"]:
-            _delete_input(task["input_path"])
-    elif task["status"] == "running":
-        execute(
-            "UPDATE tasks SET cancel_requested=1,updated_at=? WHERE task_id=?",
-            (now(), task_id),
-        )
+    request_cancel(task_id)
     return public_task(get_task(task_id), False)

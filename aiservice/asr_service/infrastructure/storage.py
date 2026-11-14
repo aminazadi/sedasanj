@@ -121,6 +121,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied
         run_columns = {x[1] for x in db.execute("PRAGMA table_info(task_runs)")}
         if "attempt_started_at" not in run_columns:
             db.execute("ALTER TABLE task_runs ADD COLUMN attempt_started_at TEXT")
+        for column, ddl in (
+            ("prompt_tokens", "INTEGER"),
+            ("completion_tokens", "INTEGER"),
+            ("total_tokens", "INTEGER"),
+            ("usage_origin", "TEXT"),
+            ("usage_source", "TEXT"),
+        ):
+            if column not in run_columns:
+                db.execute(f"ALTER TABLE task_runs ADD COLUMN {column} {ddl}")
+            if column not in usage_columns:
+                db.execute(f"ALTER TABLE usage ADD COLUMN {column} {ddl}")
+        if "requeues" not in run_columns:
+            db.execute("ALTER TABLE task_runs ADD COLUMN requeues INTEGER NOT NULL DEFAULT 0")
         if "device_id" not in run_columns:
             db.execute("ALTER TABLE task_runs ADD COLUMN device_id TEXT")
         if "device_type" not in run_columns:

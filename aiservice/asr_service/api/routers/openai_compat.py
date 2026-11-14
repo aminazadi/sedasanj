@@ -27,6 +27,7 @@ from asr_service.services.task_queue import (
     get_by_key,
     get_task,
     public_task,
+    request_cancel,
 )
 
 from ..dependencies import Principal, authorize, require_access
@@ -359,6 +360,8 @@ async def create_completion(
                 headers={"Retry-After": "2", "Location": f"/v1/tasks/{task_id}"},
             )
         if await request.is_disconnected():
+            # Nobody will read this result: free the queue slot / GPU instead of generating it.
+            await run_in_threadpool(request_cancel, task_id)
             raise HTTPException(499, "Client disconnected while waiting for completion")
         await asyncio.sleep(.2)
         task = await run_in_threadpool(get_task, task_id)
@@ -377,6 +380,9 @@ async def create_completion(
         content = ((result.get("choices") or [{}])[0].get("message") or {}).get("content", "")
         chunk = {"id": result["id"], "object": "chat.completion.chunk", "created": result["created"], "model": body.model, "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]}
         yield "data: " + json.dumps(chunk, ensure_ascii=False) + "\n\n"
+        if isinstance(result.get("usage"), dict):
+            usage_chunk = {"id": result["id"], "object": "chat.completion.chunk", "created": result["created"], "model": body.model, "choices": [], "usage": result["usage"]}
+            yield "data: " + json.dumps(usage_chunk, ensure_ascii=False) + "\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

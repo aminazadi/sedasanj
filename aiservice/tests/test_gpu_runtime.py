@@ -34,6 +34,40 @@ class GpuRuntimeTests(unittest.TestCase):
             gpu_runtime._device_cache["at"] = 0
             self.assertEqual(gpu_runtime.discover_gpus(), [])
 
+    def test_transient_nvidia_smi_failure_keeps_last_good_devices(self):
+        good = SimpleNamespace(stdout="0, GPU-a, RTX 3060, 12288, 8192, 17\n")
+        with patch.object(gpu_runtime.subprocess, "run", return_value=good):
+            gpu_runtime._device_cache["at"] = 0
+            gpu_runtime.discover_gpus()
+        failure = gpu_runtime.subprocess.TimeoutExpired("nvidia-smi", 3)
+        with patch.object(gpu_runtime.subprocess, "run", side_effect=failure):
+            gpu_runtime._device_cache["at"] = 0
+            self.assertEqual(["GPU-a"], [item["uuid"] for item in gpu_runtime.discover_gpus()])
+
+    def test_repeated_device_failures_quarantine_a_gpu_until_it_succeeds(self):
+        device = {"index": 0, "uuid": "GPU-q", "memory_free": 8 * 1024**3}
+        settings = {"mode": "auto", "enabled_devices": ["GPU-q"], "max_concurrent_per_device": 1, "min_free_vram_mb": 1024}
+        with patch.object(gpu_runtime, "get_settings", return_value=settings), patch.object(
+            gpu_runtime, "discover_gpus", return_value=[device]
+        ):
+            for _ in range(gpu_runtime.QUARANTINE_THRESHOLD):
+                gpu_runtime.record_error("GPU-q", "CUDA error: illegal memory access")
+            self.assertTrue(gpu_runtime.is_quarantined("GPU-q"))
+            with self.assertRaises(TimeoutError):
+                with gpu_runtime.reserve(device):
+                    pass
+            gpu_runtime._quarantine_until["GPU-q"] = 0
+            with gpu_runtime.reserve(device):
+                pass
+            gpu_runtime.record_success("GPU-q")
+            self.assertEqual(0, gpu_runtime._quarantine_levels.get("GPU-q", 0))
+
+    def test_out_of_memory_and_task_errors_never_quarantine(self):
+        for _ in range(gpu_runtime.QUARANTINE_THRESHOLD + 1):
+            gpu_runtime.record_error("GPU-o", "CUDA out of memory")
+            gpu_runtime.record_error("GPU-o", "ValueError: bad audio")
+        self.assertFalse(gpu_runtime.is_quarantined("GPU-o"))
+
     def test_reservation_is_per_device_and_sets_model_device_context(self):
         device = {"index": 1, "uuid": "GPU-b", "memory_free": 8 * 1024**3}
         settings = {
@@ -214,3 +248,38 @@ class GpuRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GpuCapacityTests(unittest.TestCase):
+    def setUp(self):
+        gpu_runtime._effective_limits.clear()
+        gpu_runtime._oom_split_models.clear()
+        gpu_runtime._success_streaks.clear()
+
+    def tearDown(self):
+        self.setUp()
+
+    def test_effective_limit_starts_at_the_configured_capacity_and_backs_off_on_oom(self):
+        settings = {"max_concurrent_per_device": 4}
+        with patch.object(gpu_runtime, "get_settings", return_value=settings):
+            gpu_runtime.record_error("GPU-a", "CUDA out of memory")
+            self.assertEqual(gpu_runtime._effective_limits["GPU-a"], 3)
+            for _ in range(10):
+                gpu_runtime.record_success("GPU-a")
+            self.assertEqual(gpu_runtime._effective_limits["GPU-a"], 4)
+
+    def test_oom_forced_split_expires_instead_of_lasting_until_restart(self):
+        gpu_runtime.note_model_oom("m", "CUDA out of memory")
+        self.assertIn("m", gpu_runtime._oom_split_models)
+        gpu_runtime._oom_split_models["m"] -= gpu_runtime.OOM_SPLIT_TTL_SECONDS + 1
+        devices = [
+            {"uuid": f"GPU-{i}", "memory_total": 8 * 1024**3, "memory_free": 8 * 1024**3, "index": i}
+            for i in range(2)
+        ]
+        with (
+            patch.object(gpu_runtime, "enabled_devices", return_value=devices),
+            patch.object(gpu_runtime, "model_memory_estimate", return_value=1024**3),
+            patch.object(gpu_runtime, "get_settings", return_value={"min_free_vram_mb": 0}),
+        ):
+            self.assertEqual(gpu_runtime.split_devices("chat", "m"), [])
+        self.assertNotIn("m", gpu_runtime._oom_split_models)

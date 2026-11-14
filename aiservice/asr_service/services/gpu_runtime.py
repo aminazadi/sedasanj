@@ -23,12 +23,29 @@ _last_errors = {}
 _oom_counts = {}
 _effective_limits = {}
 _success_streaks = {}
-_oom_split_models = set()
-_device_cache = {"at": 0.0, "value": []}
+_oom_split_models = {}  # model_id -> monotonic time of the last out-of-memory
+_device_cache = {"at": 0.0, "value": [], "ok_at": 0.0}
 _capability_cache = {"at": 0.0, "value": {}}
+# Per-device circuit breaker: consecutive device-level failures take a GPU out of rotation with an
+# exponentially growing cool-down; the first job after the cool-down is the probe.
+_fail_streaks = {}
+_quarantine_until = {}
+_quarantine_levels = {}
+QUARANTINE_THRESHOLD = max(1, int(os.getenv("ASR_GPU_QUARANTINE_THRESHOLD", "3")))
+QUARANTINE_BASE_SECONDS = max(1.0, float(os.getenv("ASR_GPU_QUARANTINE_BASE_SECONDS", "30")))
+QUARANTINE_MAX_SECONDS = max(QUARANTINE_BASE_SECONDS, float(os.getenv("ASR_GPU_QUARANTINE_MAX_SECONDS", "900")))
+# A transient nvidia-smi failure (timeout, driver hiccup) must not look like "no GPUs".
+DISCOVERY_GRACE_SECONDS = max(0.0, float(os.getenv("ASR_GPU_DISCOVERY_GRACE_SECONDS", "30")))
+DEVICE_FAILURE_MARKERS = (
+    "cuda", "cudnn", "cublas", "nvidia", "nvml", "gpu uuid", "gpu architecture",
+    "illegal memory access", "device-side assert", "unspecified launch failure", "xid",
+)
 CPU_FALLBACK_SECONDS = max(0, int(os.getenv("ASR_GPU_CPU_FALLBACK_SECONDS", "30")))
 GPU_MIN_FREE_BYTES = max(0, int(os.getenv("ASR_GPU_MIN_FREE_MB", "1024"))) * 1024 * 1024
 GPU_MAX_CONCURRENT = max(1, int(os.getenv("ASR_GPU_MAX_CONCURRENT", "1")))
+# A model forced onto several GPUs by an out-of-memory is retried on one GPU after this long, so one
+# transient OOM does not shard it until the process restarts.
+OOM_SPLIT_TTL_SECONDS = max(0.0, float(os.getenv("ASR_OOM_SPLIT_TTL_SECONDS", "1800")))
 
 
 def discover_gpus():
@@ -41,6 +58,16 @@ def discover_gpus():
             ["nvidia-smi", "--query-gpu=index,uuid,name,memory.total,memory.free,utilization.gpu,temperature.gpu,power.draw,power.limit,fan.speed", "--format=csv,noheader,nounits"],
             check=True, capture_output=True, text=True, timeout=3,
         )
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        # Driver hiccup: keep serving the last good reading for a short grace period so a
+        # momentary failure is not mistaken for "no GPU" (which would fail or reroute work).
+        with _lock:
+            fresh = time.monotonic() - _device_cache["ok_at"] < DISCOVERY_GRACE_SECONDS
+            if fresh and _device_cache["value"]:
+                _device_cache["at"] = time.monotonic()
+                return [dict(item) for item in _device_cache["value"]]
+            _device_cache.update(at=time.monotonic(), value=[])
+        return []
     except (OSError, subprocess.SubprocessError):
         with _lock:
             _device_cache.update(at=time.monotonic(), value=[])
@@ -69,7 +96,8 @@ def discover_gpus():
             **telemetry,
         })
     with _lock:
-        _device_cache.update(at=time.monotonic(), value=[dict(item) for item in devices])
+        stamp = time.monotonic()
+        _device_cache.update(at=stamp, value=[dict(item) for item in devices], ok_at=stamp)
     return devices
 
 
@@ -330,7 +358,10 @@ def split_devices(kind, model_id):
         return []
     safety = int(get_settings()["min_free_vram_mb"]) * 1024 * 1024
     with _lock:
-        forced = model_id in _oom_split_models
+        marked = _oom_split_models.get(model_id)
+        forced = marked is not None and time.monotonic() - marked < OOM_SPLIT_TTL_SECONDS
+        if marked is not None and not forced:
+            _oom_split_models.pop(model_id, None)
     usable = [(max(0, device["memory_total"] - safety), device) for device in devices]
     if not forced and max(capacity for capacity, _ in usable) >= required:
         return []
@@ -352,25 +383,62 @@ def requires_multi_gpu(kind, model_id):
 def note_model_oom(model_id, message):
     if is_resource_failure(message):
         with _lock:
-            _oom_split_models.add(model_id)
+            _oom_split_models[model_id] = time.monotonic()
             _lock.notify_all()
 
 
 def forget_model(model_id):
     with _lock:
-        _oom_split_models.discard(model_id)
+        _oom_split_models.pop(model_id, None)
+
+
+def is_device_failure(message):
+    """Whether an error text points at the GPU/driver itself rather than at one task or at memory."""
+    if is_resource_failure(message):
+        return False
+    lowered = str(message).lower()
+    return any(marker in lowered for marker in DEVICE_FAILURE_MARKERS)
+
+
+def is_quarantined(device_id):
+    """True while the circuit breaker keeps a GPU (or any member of a group) out of rotation."""
+    identifiers = device_id.split(",") if isinstance(device_id, str) else [device_id]
+    stamp = time.monotonic()
+    with _lock:
+        return any(_quarantine_until.get(identifier, 0.0) > stamp for identifier in identifiers)
+
+
+def quarantine_remaining(device_id):
+    with _lock:
+        return max(0.0, _quarantine_until.get(device_id, 0.0) - time.monotonic())
 
 
 def record_error(device_id, message):
     identifiers = device_id.split(",") if isinstance(device_id, str) else [device_id]
+    try:
+        configured = int(get_settings()["max_concurrent_per_device"])
+    except Exception:  # settings storage unavailable: error accounting must still work
+        configured = GPU_MAX_CONCURRENT
     with _lock:
         resource_failure = is_resource_failure(message)
+        device_failure = is_device_failure(message)
         for identifier in identifiers:
             _last_errors[identifier] = {"message": str(message)[:300], "at": time.time()}
             if resource_failure:
                 _oom_counts[identifier] = _oom_counts.get(identifier, 0) + 1
-                _effective_limits[identifier] = max(1, _effective_limits.get(identifier, 1) - 1)
+                _effective_limits[identifier] = max(
+                    1, _effective_limits.get(identifier, configured) - 1
+                )
                 _success_streaks[identifier] = 0
+            if device_failure:
+                _fail_streaks[identifier] = _fail_streaks.get(identifier, 0) + 1
+                _success_streaks[identifier] = 0
+                if _fail_streaks[identifier] >= QUARANTINE_THRESHOLD:
+                    level = _quarantine_levels.get(identifier, 0)
+                    cooldown = min(QUARANTINE_MAX_SECONDS, QUARANTINE_BASE_SECONDS * (2 ** level))
+                    _quarantine_until[identifier] = time.monotonic() + cooldown
+                    _quarantine_levels[identifier] = level + 1
+                    _fail_streaks[identifier] = 0
         _lock.notify_all()
 
 
@@ -379,9 +447,14 @@ def record_success(device_id):
     identifiers = device_id.split(",") if isinstance(device_id, str) else [device_id]
     with _lock:
         for identifier in identifiers:
+            # A success proves the device works again: close the breaker completely.
+            _fail_streaks.pop(identifier, None)
+            _quarantine_levels.pop(identifier, None)
             _success_streaks[identifier] = _success_streaks.get(identifier, 0) + 1
             if _success_streaks[identifier] >= 10:
-                _effective_limits[identifier] = min(limit, _effective_limits.get(identifier, 1) + 1)
+                _effective_limits[identifier] = min(
+                    limit, _effective_limits.get(identifier, limit) + 1
+                )
                 _success_streaks[identifier] = 0
         _lock.notify_all()
 
@@ -416,6 +489,7 @@ def reserve_group(devices, timeout=0, required_bytes=0):
                 settings["mode"] != "cpu"
                 and set(identifiers) <= set(settings.get("enabled_devices") or ())
                 and all(item in current and current[item]["memory_free"] >= minimum for item in identifiers)
+                and all(_quarantine_until.get(item, 0.0) <= time.monotonic() for item in identifiers)
                 and all(_active.get(item, 0) == 0 for item in identifiers)
                 and sum(max(0, current[item]["memory_free"] - minimum) for item in identifiers if item in current) >= required_bytes
             )
@@ -453,7 +527,8 @@ def reserve(device, timeout=0):
     while True:
         settings = get_settings()
         current = next((item for item in discover_gpus() if item["uuid"] == device_id), None)
-        limit = min(int(settings["max_concurrent_per_device"]), _effective_limits.get(device_id, 1))
+        configured = int(settings["max_concurrent_per_device"])
+        limit = min(configured, _effective_limits.get(device_id, configured))
         floor = int(settings["min_free_vram_mb"]) * 1024 * 1024
         if current and not freed and current["memory_free"] < floor:
             # Idle resident models may be what is holding the VRAM; release them once.
@@ -463,7 +538,7 @@ def reserve(device, timeout=0):
                 continue
         with _lock:
             active = _active.get(device_id, 0)
-            if current and device_id in set(settings.get("enabled_devices") or ()) and settings["mode"] != "cpu" and current["memory_free"] >= floor and active < limit:
+            if current and _quarantine_until.get(device_id, 0.0) <= time.monotonic() and device_id in set(settings.get("enabled_devices") or ()) and settings["mode"] != "cpu" and current["memory_free"] >= floor and active < limit:
                 _active[device_id] = active + 1
                 token = _current_gpu.set(current)
                 gpu_memory.job_started()
@@ -512,9 +587,14 @@ def snapshot():
             "enabled": device["uuid"] in enabled and settings["mode"] != "cpu",
             "active": active.get(device["uuid"], 0),
             "max_concurrent": settings["max_concurrent_per_device"],
-            "effective_max_concurrent": min(settings["max_concurrent_per_device"], _effective_limits.get(device["uuid"], 1)),
+            "effective_max_concurrent": min(
+                settings["max_concurrent_per_device"],
+                _effective_limits.get(device["uuid"], settings["max_concurrent_per_device"]),
+            ),
             "last_error": errors.get(device["uuid"]),
             "oom_count": oom_counts.get(device["uuid"], 0),
+            "quarantined": is_quarantined(device["uuid"]),
+            "quarantine_seconds_remaining": round(quarantine_remaining(device["uuid"]), 1),
             "succeeded": outcomes.get("succeeded", 0),
             "failed": outcomes.get("failed", 0),
             "success_rate": round(outcomes.get("succeeded", 0) / completed, 4) if completed else None,

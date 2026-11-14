@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-14 — AMINAZADI
+
+- Added queue wake-ups and a read-only idle precheck: `enqueue` wakes idle workers immediately and an empty poll no longer takes the SQLite write lock.
+- Changed the default `ASR_QUEUE_LIMIT` from 100 to 1000 (compose included) and added `ASR_QUEUE_PER_KEY_LIMIT` (per-API-key fairness cap, default off) and `ASR_REMOTE_WORKERS` (default 2).
+- Changed the per-GPU concurrency to start at the configured `max_concurrent_per_device` and back off on out-of-memory, instead of starting at 1 after every restart; an out-of-memory forced multi-GPU split now expires after `ASR_OOM_SPLIT_TTL_SECONDS` (default 1800).
+- Added `ASR_CUDA_COMPUTE_TYPE` for faster-whisper on CUDA (defaults to `ASR_COMPUTE_TYPE`, so behaviour is unchanged until set; lab confirmation needed).
+- Added graceful drain on shutdown (`ASR_DRAIN_SECONDS`), `draining`, `oldest_waiting_seconds` and `quarantined_gpus` on `/ready`, and an administrator-only `GET /metrics` (queue depth, oldest waiting age, GPU quarantine/active).
+- Fixed GPU-only (`mode=gpu`) tasks failing instantly with `gpu_unavailable` when `nvidia-smi` hiccuped or no compatible GPU was free: they now stay queued and fail only after `ASR_GPU_UNAVAILABLE_TTL_SECONDS` (default 21600). A transient `nvidia-smi` timeout keeps the last good device list for `ASR_GPU_DISCOVERY_GRACE_SECONDS` (default 30) instead of reporting "no GPU".
+- Fixed capacity and infrastructure failures consuming task attempts: out-of-memory and GPU/driver failures requeue with backoff without using an attempt (bounded by `ASR_CAPACITY_MAX_REQUEUES`, default 30, and `ASR_CAPACITY_REQUEUE_MAX_SECONDS`, default 86400), and a restart or expired heartbeat returns the attempt (bounded by `ASR_TASK_MAX_INTERRUPTIONS`, default 5, so a task that keeps killing its worker still ends).
+- Added a per-GPU circuit breaker: `ASR_GPU_QUARANTINE_THRESHOLD` (default 3) consecutive device-level failures take a GPU out of rotation for an exponentially growing cool-down (`ASR_GPU_QUARANTINE_BASE_SECONDS` 30 up to `ASR_GPU_QUARANTINE_MAX_SECONDS` 900); one success closes it. A broken card no longer burns the attempts of the whole queue. Quarantine state is shown in the GPU snapshot.
+- Fixed stale-run recovery and result expiry running only on worker `cpu-0` (and so stalling behind a long job): they now run on a dedicated maintenance thread. The heartbeat thread survives transient SQLite errors instead of dying silently and letting a healthy run be executed twice.
+- Fixed GPU workers being created only at boot: a supervisor thread (`ASR_GPU_SUPERVISOR_SECONDS`, default 15) starts workers for a GPU that appears or returns later.
+- Fixed synchronous `/v1/chat/completions` keeping a queued/running task alive after the client disconnected: the task is now cancelled. (A 504 timeout still leaves the task running so it can be fetched from the `Location` header.)
+- Added exact token accounting: every chat, text and asynchronous chat task records the input/output/total tokens the model reported (local llama.cpp or 9Router; `input_tokens`/`output_tokens` accepted) on the run and history rows and returns them as `usage` on `GET /v1/tasks/{id}`. Counts are never estimated — `source` is `unavailable` when the model reported nothing. The fake SSE stream now ends with a usage chunk.
+
 ## 2026-11-11 — AMINAZADI
 
 - Released VRAM when the GPU is idle: every second the service checks, and after `ASR_GPU_IDLE_UNLOAD_SECONDS` (default 5, 0 disables) without GPU work all idle resident models (Whisper, GGUF, embedding, decision) are unloaded from every GPU. The next request reloads its model, which costs a few seconds.

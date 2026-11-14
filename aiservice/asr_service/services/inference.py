@@ -8,6 +8,8 @@ from .resources import ASR_CPU_THREADS,INFERENCE_SLOTS
 from . import gpu_memory, gpu_runtime
 THREADS = ASR_CPU_THREADS
 COMPUTE = os.getenv("ASR_COMPUTE_TYPE", "int8")
+# CUDA may want a different precision than CPU (e.g. float16 / int8_float16); defaults to COMPUTE.
+CUDA_COMPUTE = os.getenv("ASR_CUDA_COMPUTE_TYPE", "").strip() or COMPUTE
 DEVICE = os.getenv("ASR_DEVICE", "cpu")
 
 
@@ -80,7 +82,7 @@ def _build(mid, device_index):
  if spec.architecture=="fasterWhisper":
   from faster_whisper import WhisperModel
   device="cuda" if device_index is not None else DEVICE
-  options={"device":device,"compute_type":COMPUTE,"cpu_threads":THREADS,"num_workers":1}
+  options={"device":device,"compute_type":CUDA_COMPUTE if device_index is not None else COMPUTE,"cpu_threads":THREADS,"num_workers":1}
   if device_index is not None:options["device_index"]=device_index
   return WhisperModel(str(root),**options)
  import sherpa_onnx
