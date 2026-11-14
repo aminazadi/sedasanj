@@ -54,6 +54,12 @@ def _install(dependencies: list[str], *, allow_source: bool) -> None:
             return
 
     assert last_failure is not None
+    print(
+        "SS-DEP-0001: Dependency installation failed on all configured indexes. "
+        "Check package availability and connectivity; set PIP_INDEX_URL or "
+        "PIP_FALLBACK_INDEX_URLS to a reachable complete mirror, then rebuild.",
+        file=sys.stderr,
+    )
     raise subprocess.CalledProcessError(last_failure.returncode, last_failure.args)
 
 
@@ -89,9 +95,10 @@ def main() -> None:
     parser.add_argument("--exclude", action="append", default=[])
     parser.add_argument("--allow-source", action="store_true")
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--requirement", action="append", default=[])
     args = parser.parse_args()
 
-    dependencies = _dependencies(
+    dependencies = args.requirement or _dependencies(
         args.pyproject,
         extra=args.extra,
         extra_only=args.extra_only,

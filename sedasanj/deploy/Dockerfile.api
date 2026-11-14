@@ -42,8 +42,9 @@ RUN mkdir -p /tmp/torch-wheel \
     && python -m pip download --no-cache-dir --no-deps --only-binary=:all: \
         --retries 5 --timeout 120 --dest /tmp/torch-wheel \
         --index-url "${TORCH_INDEX_URL}" "torch==2.14.0" \
-    && python -m pip install --no-cache-dir --only-binary=:all: --retries 5 --timeout 120 \
-        "setuptools==77.0.3" "wheel==0.45.1" /tmp/torch-wheel/torch-*.whl \
+    && python scripts/install_project_dependencies.py \
+        --requirement "setuptools==77.0.3" --requirement "wheel==0.45.1" \
+    && python scripts/install_project_dependencies.py --requirement /tmp/torch-wheel/torch-*.whl \
     && rm -rf /tmp/torch-wheel \
     && python scripts/install_project_dependencies.py \
         --extra emotion --extra-only --exclude torch --allow-source

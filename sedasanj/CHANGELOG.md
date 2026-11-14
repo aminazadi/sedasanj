@@ -1,5 +1,7 @@
 ## 2026-11-14 — AMINAZADI
 
+- Fixed emotion image builds failing on incomplete package mirrors by applying ordered index fallback to pinned build tools and local PyTorch wheel dependencies, with actionable `SS-DEP-0001` diagnostics.
+
 - Added Persian help articles for all 22 `TENANT_DB_*`, `TENANT_BACKUP_*` and `TENANT_RESTORE_*` error codes (migration 0141), Prometheus metrics and six alerts for failed or stuck tenant database migrations, backups and restores, and a runbook section.
 
 - Added restoring an organization database from the admin panel: pick a verified backup, stage and verify it in a scratch database, then confirm to swap it in with automatic swap-back on failure (migration 0139, `TENANT_RESTORE_*` codes, password and two-factor confirmation).
