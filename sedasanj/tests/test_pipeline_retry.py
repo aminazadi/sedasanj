@@ -199,3 +199,99 @@ async def test_reanalysis_retry_preserves_previous_status(
     assert staged["analysis_run_id"] == run_id
     assert staged["reanalysis"] is True
     assert staged["previous_status"] == "failed_terminal"
+
+
+def test_provider_outages_are_parkable_for_a_bounded_time() -> None:
+    young = timedelta(hours=1)
+    assert pipeline.is_parkable("asr_provider_unreachable", young)
+    assert pipeline.is_parkable("llm_provider_rate", young)
+    assert not pipeline.is_parkable("asr_provider_unreachable", pipeline.PARK_MAX_AGE)
+    assert not pipeline.is_parkable("asr_provider_unreachable", None)
+    assert not pipeline.is_parkable("asr_provider_auth", young)
+
+
+async def _run_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    error_code: str,
+    attempt: int,
+    age: timedelta,
+    retryable: bool | None = None,
+) -> tuple[bool, Job]:
+    tenant_id, call_id = uuid4(), uuid4()
+    job = Job(
+        tenant_id=tenant_id,
+        call_id=call_id,
+        kind="asr",
+        status="running",
+        attempt=attempt,
+        run_after=datetime.now(UTC),
+        created_at=datetime.now(UTC) - age,
+    )
+    session = type("Session", (), {"execute": AsyncMock(return_value=_ScalarResult(job))})()
+
+    @asynccontextmanager
+    async def fake_scope(*args: object, **kwargs: object):
+        yield session
+
+    async def fake_mark_job(*args: object, **kwargs: object) -> Job:
+        job.status = str(kwargs["status"])
+        job.attempt = int(kwargs["attempt"])  # type: ignore[call-overload]
+        return job
+
+    monkeypatch.setattr(pipeline, "session_scope", fake_scope)
+    monkeypatch.setattr(pipeline, "mark_job", fake_mark_job)
+    monkeypatch.setattr(pipeline.outbox, "stage_job", AsyncMock(return_value=uuid4()))
+    monkeypatch.setattr(pipeline.outbox, "stage", AsyncMock(return_value=uuid4()))
+    monkeypatch.setattr(pipeline.outbox, "dispatch_one", AsyncMock(return_value=True))
+    monkeypatch.setattr(pipeline.billing, "release", AsyncMock())
+    retried = await pipeline.handle_failure(
+        tenant_id=tenant_id,
+        call_id=call_id,
+        kind="asr",
+        error_code=error_code,
+        error_detail="x",
+        retryable=retryable,
+    )
+    return retried, job
+
+
+@pytest.mark.asyncio
+async def test_provider_outage_parks_without_using_an_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    retried, job = await _run_failure(
+        monkeypatch,
+        error_code="asr_provider_unreachable",
+        attempt=4,
+        age=timedelta(minutes=10),
+        retryable=True,
+    )
+    assert retried is True
+    assert job.status == "failed_retryable"
+    assert job.attempt == 4  # unchanged: an outage does not burn the last attempt
+
+
+@pytest.mark.asyncio
+async def test_parking_ends_after_the_maximum_age(monkeypatch: pytest.MonkeyPatch) -> None:
+    retried, job = await _run_failure(
+        monkeypatch,
+        error_code="asr_provider_unreachable",
+        attempt=4,
+        age=pipeline.PARK_MAX_AGE + timedelta(minutes=1),
+        retryable=True,
+    )
+    assert retried is False
+    assert job.status == "failed_terminal"
+
+
+@pytest.mark.asyncio
+async def test_ordinary_failures_still_use_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    retried, job = await _run_failure(
+        monkeypatch,
+        error_code="asr_failed",
+        attempt=4,
+        age=timedelta(minutes=10),
+    )
+    assert retried is False
+    assert job.attempt == 5

@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings, normalize_api_key
+from app.services.ai_usage import record_usage, usage_dict
 from app.services.ninerouter import NineRouterClient, retry_json_chat
 from app.services.provider_errors import ProviderError, classify_http
 
@@ -142,6 +143,15 @@ class AiServiceDecisionClient:
                     raise ProviderError(
                         "decision_provider_response", "خروجی typed سرویس تصمیم‌گیری نامعتبر است."
                     )
+                hint = usage_dict(payload.get("usage"))
+                await record_usage(
+                    hint,
+                    provider="aiservice",
+                    model=str(parsed.get("model") or model),
+                    origin=hint.get("origin"),
+                    feature="decision",
+                    provider_task_id=str(task["task_id"]),
+                )
                 return parsed
             if payload.get("status") in {"failed", "cancelled"}:
                 raise ProviderError(

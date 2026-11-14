@@ -751,7 +751,7 @@ class WorkerSettings:
     queue_name = queue.QUEUE_ASR
     on_startup = startup
     on_shutdown = shutdown
-    max_jobs = 4
+    max_jobs = get_settings().asr_worker_max_jobs
     # VoiceSanj's own 30 minute poll deadline must fire before ARQ cancels the
     # coroutine, otherwise pipeline.handle_failure never records the outcome.
     job_timeout = 2100

@@ -31,6 +31,7 @@ from app.models import (
     User,
 )
 from app.services import assistant_agent, assistant_tools, knowledge, outbox, queue
+from app.services.ai_usage import set_ai_feature
 from app.services.platform import capability_model, effective_models, resolve_provider_settings
 from worker_llm.client import build_client
 
@@ -317,6 +318,7 @@ async def _tool(principal, name, arguments):
 
 
 async def generate_scheduled_report(ctx: dict, payload: dict) -> str:
+    set_ai_feature("scheduled_report")
     tenant_id, run_id = UUID(payload["tenant_id"]), UUID(payload["run_id"])
     usage_id = None
     client = None

@@ -7,7 +7,7 @@ import itertools
 import json
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -16,6 +16,7 @@ import httpx
 
 from app.config import Settings, normalize_api_key
 from app.metrics import llm_tokens_per_second
+from app.services.ai_usage import record_usage
 from app.services.ninerouter import response_json
 from app.services.provider_chat import ChatStream, chat_message, post_streamed_chat, stream_chat
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
@@ -305,11 +306,20 @@ class LlamaClient(LlmClient):
                 content = message.get("content")
                 if not isinstance(content, str) or not content.strip():
                     raise ProviderError("llm_provider_response", "مدل متن معتبری برنگرداند.")
+                await self._record(data, body["model"])
                 return content
 
         if last_error is not None:
             raise last_error
         raise RuntimeError("all llama-server endpoints failed without an error")
+
+    async def _record(self, payload: Any, model: object) -> None:
+        await record_usage(
+            payload.get("usage") if isinstance(payload, dict) else None,
+            provider="ninerouter_direct" if self._direct else "llama_server",
+            model=str(payload.get("model") or model) if isinstance(payload, dict) else str(model),
+            origin="9router" if self._direct else "local",
+        )
 
     async def stream(
         self, system: str, user: str, *, json_object: bool = True, model: str | None = None
@@ -344,11 +354,15 @@ class LlamaClient(LlmClient):
                         async with self._client.stream(
                             "POST", f"{base}/v1/chat/completions", json=retry_body
                         ) as retry_response:
-                            async for chunk in self._stream_response(retry_response):
+                            async for chunk in self._stream_response(
+                                retry_response, on_usage=self._record_stream(body["model"])
+                            ):
                                 emitted = True
                                 yield chunk
                         return
-                    async for chunk in self._stream_response(response):
+                    async for chunk in self._stream_response(
+                        response, on_usage=self._record_stream(body["model"])
+                    ):
                         emitted = True
                         yield chunk
                     return
@@ -412,6 +426,7 @@ class LlamaClient(LlmClient):
                     raise ProviderError(
                         "llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد."
                     )
+                await self._record(payload, body["model"])
                 return message
             except ProviderError as exc:
                 if not exc.retryable:
@@ -429,8 +444,17 @@ class LlamaClient(LlmClient):
             retryable=True,
         ) from last_error
 
+    def _record_stream(self, model: object) -> Callable[[dict[str, Any]], Awaitable[None]]:
+        async def record(usage: dict[str, Any]) -> None:
+            await self._record({"usage": usage}, model)
+
+        return record
+
     @staticmethod
-    async def _stream_response(response: httpx.Response) -> AsyncIterator[str]:
+    async def _stream_response(
+        response: httpx.Response,
+        on_usage: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> AsyncIterator[str]:
         if response.status_code != 200:
             if (
                 classified := classify_http(
@@ -446,6 +470,8 @@ class LlamaClient(LlmClient):
             raise ProviderError(
                 "llm_provider_response", "مدل پاسخ متنی برنگرداند.", retryable=False
             )
+        if on_usage is not None:
+            await on_usage(state.usage)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -485,6 +511,7 @@ class VoiceSanjChatClient(LlmClient):
         # A stable AnalysisRun ID makes a resubmission after an HTTP timeout
         # resolve to the same provider task, without sharing work across calls.
         self._request_namespace = request_namespace or str(uuid4())
+        self._usage_hints: dict[str, dict[str, Any]] = {}
         # The synchronous route holds the connection while a local model generates, so its
         # read timeout must cover generation. Durable task calls only submit and poll.
         read_timeout = (
@@ -576,6 +603,12 @@ class VoiceSanjChatClient(LlmClient):
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str) or not content.strip():
             raise ProviderError("llm_provider_empty", "سرویس هوش مصنوعی پاسخ متنی برنگرداند.")
+        await record_usage(
+            payload.get("usage"),
+            provider="aiservice",
+            model=str(payload.get("model") or body.get("model")),
+            origin="9router" if self._path.startswith("/v1/ninerouter/") else "local",
+        )
         return content
 
     async def complete_with_tools(
@@ -629,6 +662,12 @@ class VoiceSanjChatClient(LlmClient):
         message = choices[0].get("message") if isinstance(choices, list) and choices else None
         if not isinstance(message, dict):
             raise ProviderError("llm_provider_response", "سرویس هوش مصنوعی پاسخ نامعتبر داد.")
+        await record_usage(
+            payload.get("usage"),
+            provider="aiservice",
+            model=str(payload.get("model") or body.get("model")),
+            origin="9router" if self._path.startswith("/v1/ninerouter/") else "local",
+        )
         return message
 
     def _request_body(
@@ -695,6 +734,8 @@ class VoiceSanjChatClient(LlmClient):
             if not isinstance(payload, dict):
                 raise ProviderError("llm_provider_response", "وضعیت کار سرویس نامعتبر است.")
             inspect_payload(payload, kind="llm")
+            if isinstance(payload.get("usage"), dict):
+                self._usage_hints[task_id] = payload["usage"]
             return payload
         except ProviderError:
             raise
@@ -732,6 +773,16 @@ class VoiceSanjChatClient(LlmClient):
         inspect_payload(result, kind="llm")
         if not isinstance(result, dict):
             raise ProviderError("llm_provider_response", "نتیجه سرویس نامعتبر است.")
+        hint = self._usage_hints.pop(task_id, None) or {}
+        # The model's own `usage` in the result wins; aiservice's task-level object is the fallback
+        # (and carries where the work ran).
+        await record_usage(
+            result.get("usage") if isinstance(result.get("usage"), dict) else hint,
+            provider="aiservice",
+            model=str(result.get("model") or hint.get("model") or self._model),
+            origin=hint.get("origin"),
+            provider_task_id=task_id,
+        )
         return result
 
     @staticmethod

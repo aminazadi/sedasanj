@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings, normalize_api_key
+from app.services.ai_usage import record_usage
 from app.services.provider_chat import chat_message, post_streamed_chat
 from app.services.provider_errors import ProviderError, classify_http, inspect_payload
 
@@ -169,12 +170,28 @@ class NineRouterClient:
             )
         ):
             raise ProviderError("embedding_provider_response", "9Router بردار معتبری برنگرداند.")
+        await record_usage(
+            payload.get("usage"),
+            provider="ninerouter_direct",
+            model=str(payload.get("model") or model),
+            origin="9router",
+            feature="embedding",
+            output_optional=True,
+        )
         return [float(value) for value in vector]
 
     async def chat(self, body: dict[str, Any]) -> dict[str, Any]:
         response = await self._request("POST", "/v1/chat/completions", kind="llm", json=body)
         payload = response_json(response)
         chat_message(payload)
+        await record_usage(
+            payload.get("usage") if isinstance(payload, dict) else None,
+            provider="ninerouter_direct",
+            model=str(payload.get("model") or body.get("model"))
+            if isinstance(payload, dict)
+            else None,
+            origin="9router",
+        )
         return payload
 
     async def transcribe(
@@ -230,6 +247,15 @@ class NineRouterClient:
             payload = {"text": text}
         payload["text"] = text
         payload.setdefault("model", model)
+        duration = payload.get("duration")
+        await record_usage(
+            payload.get("usage"),
+            provider="ninerouter_direct",
+            model=str(payload["model"]),
+            origin="9router",
+            feature="asr",
+            audio_seconds=float(duration) if isinstance(duration, int | float) else None,
+        )
         return payload
 
 

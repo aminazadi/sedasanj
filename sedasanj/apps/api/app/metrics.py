@@ -121,3 +121,14 @@ def start_metrics_server(settings: Settings) -> None:
         start_http_server(settings.worker_metrics_port)
     except OSError as exc:
         logger.warning("could not start worker metrics server: %r", exc)
+
+ai_usage_events_total = Counter(
+    "cbi_ai_usage_events_total",
+    "AI token-usage events written to the ledger by provider and source",
+    ["provider", "source"],
+)
+ai_usage_record_failures_total = Counter(
+    "cbi_ai_usage_record_failures_total",
+    "AI token-usage events that could not be recorded",
+    ["reason"],
+)

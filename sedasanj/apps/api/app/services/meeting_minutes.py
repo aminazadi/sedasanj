@@ -29,6 +29,7 @@ from app.models import (
     MeetingSpeaker,
 )
 from app.services import meeting_ingest, meeting_progress, tenant_ai_instructions
+from app.services.ai_usage import set_ai_feature
 from app.services.platform import (
     effective_meeting_minutes_prompt,
     effective_models,
@@ -387,6 +388,7 @@ async def generate_minutes(
 
     Raises `MinutesRetryable` for a transient failure while attempts remain.
     """
+    set_ai_feature("meeting")
     try:
         ctx = await _load_context(tenant_id, meeting_id, version)
         if ctx is None:

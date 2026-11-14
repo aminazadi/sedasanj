@@ -231,17 +231,13 @@ async def test_voicesanj_chat_uses_configured_aiservice_ninerouter_path() -> Non
         )
 
     client = VoiceSanjChatClient(
-        _voicesanj_settings(
-            aiservice_chat_path="/v1/ninerouter/chat/completions"
-        ),
+        _voicesanj_settings(aiservice_chat_path="/v1/ninerouter/chat/completions"),
         purpose="chat",
     )
     await client._client.aclose()
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        content = await client.complete(
-            "system", "user", json_object=False, model="chat-model"
-        )
+        content = await client.complete("system", "user", json_object=False, model="chat-model")
     finally:
         await client.close()
 
@@ -281,17 +277,13 @@ async def test_voicesanj_analysis_uses_configured_aiservice_ninerouter_path() ->
         )
 
     client = VoiceSanjChatClient(
-        _voicesanj_settings(
-            aiservice_analysis_path="/v1/ninerouter/chat/completions"
-        ),
+        _voicesanj_settings(aiservice_analysis_path="/v1/ninerouter/chat/completions"),
         purpose="analysis",
     )
     await client._client.aclose()
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        content = await client.complete(
-            "system", "user", json_object=True, model="analysis-model"
-        )
+        content = await client.complete("system", "user", json_object=True, model="analysis-model")
     finally:
         await client.close()
 
@@ -717,3 +709,112 @@ async def test_native_tool_call_timeout_becomes_a_provider_error() -> None:
     assert raised.value.code == "llm_provider_timeout"
     assert raised.value.retryable is True
     await client.close()
+
+
+def _client_for_polling(**overrides: object) -> VoiceSanjClient:
+    client = VoiceSanjClient(_voicesanj_settings(**overrides))
+    client._poll_interval = 0.001
+    return client
+
+
+async def test_stable_asr_key_is_deterministic_and_option_sensitive() -> None:
+    from app.services.voicesanj import stable_asr_key
+
+    form: dict[str, str | list[str]] = {"model": "m", "beam_size": "5"}
+    assert stable_asr_key("abc", form, 0) == stable_asr_key("abc", dict(form), 0)
+    assert stable_asr_key("abc", form, 0) != stable_asr_key("abc", form, 1)
+    assert stable_asr_key("abc", form, 0) != stable_asr_key("abd", form, 0)
+    assert stable_asr_key("abc", form, 0) != stable_asr_key("abc", {**form, "beam_size": "1"}, 0)
+
+
+async def test_poll_survives_transient_errors_and_keeps_the_same_task() -> None:
+    calls = {"status": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/result"):
+            return httpx.Response(200, json={"text": "ok", "segments": []})
+        calls["status"] += 1
+        if calls["status"] == 1:
+            raise httpx.ConnectError("down")
+        if calls["status"] == 2:
+            return httpx.Response(503, headers={"Retry-After": "0"}, json={"error": "busy"})
+        return httpx.Response(200, json={"task_id": "t1", "status": "succeeded"})
+
+    client = _client_for_polling()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        result = await client._await_task(http, {"task_id": "t1", "status": "queued"}, kind="asr")
+    assert result["text"] == "ok"
+    assert calls["status"] == 3
+
+
+async def test_poll_gives_up_retryably_after_a_long_outage() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    client = _client_for_polling()
+    client._outage_tolerance = 0.0
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(ProviderError) as caught:
+            await client._await_task(http, {"task_id": "t1", "status": "queued"}, kind="asr")
+    assert caught.value.code == "asr_provider_unreachable"
+    assert caught.value.retryable is True
+
+
+async def test_long_queue_wait_is_not_a_processing_timeout() -> None:
+    states = iter(["queued", "queued", "queued", "running", "succeeded"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/result"):
+            return httpx.Response(200, json={"text": "ok", "segments": []})
+        return httpx.Response(200, json={"task_id": "t1", "status": next(states)})
+
+    client = _client_for_polling()
+    client._poll_timeout = 0.05  # processing budget is tiny; queued time must not consume it
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        result = await client._await_task(http, {"task_id": "t1", "status": "queued"}, kind="asr")
+    assert result["text"] == "ok"
+
+
+async def test_queue_wait_has_its_own_ceiling() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"task_id": "t1", "status": "queued"})
+
+    client = _client_for_polling()
+    client._queue_wait_timeout = 0.02
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(RuntimeError, match="waited too long"):
+            await client._await_task(http, {"task_id": "t1", "status": "queued"}, kind="asr")
+
+
+async def test_asr_resubmits_when_key_matches_a_stale_failed_task(wav_file) -> None:
+    path = wav_file(seconds=1.0)
+    keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            keys.append(request.headers["Idempotency-Key"])
+            if len(keys) == 1:
+                return httpx.Response(
+                    202, json={"task_id": "old", "status": "failed", "error": "boom"}
+                )
+            return httpx.Response(200, json={"text": "hello", "segments": []})
+        raise AssertionError(request.url)
+
+    client = _client_for_polling()
+    real = httpx.AsyncClient
+
+    def factory(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    import app.services.voicesanj as module
+
+    original = module.httpx.AsyncClient
+    module.httpx.AsyncClient = factory  # type: ignore[assignment,misc]
+    try:
+        result = await client.transcribe(path, model="buzzasr-persian")
+    finally:
+        module.httpx.AsyncClient = original  # type: ignore[misc]
+    assert result["text"] == "hello"
+    assert len(keys) == 2 and keys[0] != keys[1]
+    assert keys[0].endswith("-g0") and keys[1].endswith("-g1")

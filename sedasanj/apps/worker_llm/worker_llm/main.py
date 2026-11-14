@@ -50,6 +50,7 @@ from app.services import (
     queue,
     sales_insights,
 )
+from app.services.ai_usage import set_ai_feature
 from app.services.operator_coaching import coach_call, request_coaching
 from app.services.operator_scoring import score_call
 from app.services.organization_memory import append_untrusted_context
@@ -116,6 +117,7 @@ async def _report(tenant_id: UUID, call_id: UUID, pct: int, detail: str) -> None
 async def _map_reduce_text(
     client: LlmClient, chunks: list[str], extra_reduce: bool, model: str
 ) -> str:
+    set_ai_feature("analysis")
     summaries: list[str] = []
     for index, chunk in enumerate(chunks, start=1):
         summary = await client.complete(MAP_INSTRUCTION, chunk, json_object=False, model=model)
@@ -130,6 +132,7 @@ async def _map_reduce_text(
 async def _extract(
     client: LlmClient, system: str, body: str, model: str
 ) -> tuple[ExtractionResult, str]:
+    set_ai_feature("analysis")
     raw = await client.complete(system, body, model=model)
     try:
         return ExtractionResult.model_validate(extract_json(raw)), raw

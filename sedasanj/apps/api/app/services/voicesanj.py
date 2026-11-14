@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import hashlib
+import json
 import logging
+import random
 import re
 import shutil
 import tempfile
@@ -14,6 +17,7 @@ import httpx
 
 from app.config import Settings, normalize_api_key
 from app.logging import request_id_var
+from app.services.ai_usage import record_usage, usage_dict
 from app.services.provider_errors import (
     ASR_NO_SPEECH_DETAIL,
     ProviderError,
@@ -28,6 +32,10 @@ TEXT_PROCESS_MAX_CHARS = 12_000
 SPEAKER_MARKER = re.compile(r"\[(caller|agent|speaker_[0-9]+)\s+(\d+:\d{2})\]")
 
 VOICESANJ_USER_AGENT = "cbi-voice-analytics/httpx"
+# Transient provider answers while polling: keep polling the same task instead of resubmitting.
+TRANSIENT_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+# How many times a stale failed/cancelled task behind a stable key is replaced by a fresh one.
+MAX_STALE_RESUBMITS = 2
 
 
 def _compress_audio(source: Path, target: Path) -> None:
@@ -35,6 +43,29 @@ def _compress_audio(source: Path, target: Path) -> None:
         filename="", fileobj=output, mode="wb", compresslevel=6, mtime=0
     ) as zip_audio:
         shutil.copyfileobj(audio, zip_audio)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def stable_asr_key(audio_sha256: str, form: dict[str, str | list[str]], generation: int) -> str:
+    """Same audio + same options => same key, so a retry re-attaches to the running task."""
+    options = json.dumps(form, sort_keys=True, ensure_ascii=False)
+    digest = hashlib.sha256(f"{audio_sha256}:{options}".encode()).hexdigest()[:40]
+    return f"asr-{digest}-g{generation}"
+
+
+def _retry_after(response: httpx.Response, default: float) -> float:
+    try:
+        value = float(response.headers.get("Retry-After", ""))
+    except ValueError:
+        return default
+    return min(max(value, 0.0), 60.0)
 
 
 class VoiceSanjClient:
@@ -54,6 +85,8 @@ class VoiceSanjClient:
         }
         self._poll_interval = max(settings.voicesanj_poll_interval_seconds, 0.5)
         self._poll_timeout = max(settings.voicesanj_poll_timeout_seconds, 30.0)
+        self._queue_wait_timeout = max(settings.voicesanj_queue_wait_timeout_seconds, 60.0)
+        self._outage_tolerance = max(settings.voicesanj_poll_outage_tolerance_seconds, 10.0)
         self._http_timeout = httpx.Timeout(
             connect=30.0,
             read=max(settings.llm_timeout_seconds, 120.0),
@@ -181,37 +214,57 @@ class VoiceSanjClient:
             form["model"] = model_ids[0]
         if prompt:
             form["prompt"] = prompt
-        headers = {
-            **self._headers,
-            "Idempotency-Key": f"asr-{uuid4()}",
-        }
-        if request_id := request_id_var.get():
-            headers["X-Request-ID"] = request_id
+        audio_sha = await asyncio.to_thread(_file_sha256, path)
         async with httpx.AsyncClient(timeout=self._http_timeout, http2=False) as client:
-            with tempfile.TemporaryDirectory(prefix="cbi-asr-upload-") as scratch:
-                compressed = Path(scratch) / "audio.wav.gz"
-                await asyncio.to_thread(_compress_audio, path, compressed)
-                with compressed.open("rb") as audio:
-                    response = await client.post(
-                        f"{self._base}{self._settings.aiservice_asr_path}",
-                        headers=headers,
-                        files={"file": (f"{path.name}.gz", audio, "application/gzip")},
-                        data=form,
+            result: Any = None
+            for generation in range(MAX_STALE_RESUBMITS + 1):
+                headers = {
+                    **self._headers,
+                    "Idempotency-Key": stable_asr_key(audio_sha, form, generation),
+                }
+                if request_id := request_id_var.get():
+                    headers["X-Request-ID"] = request_id
+                with tempfile.TemporaryDirectory(prefix="cbi-asr-upload-") as scratch:
+                    compressed = Path(scratch) / "audio.wav.gz"
+                    await asyncio.to_thread(_compress_audio, path, compressed)
+                    with compressed.open("rb") as audio:
+                        response = await client.post(
+                            f"{self._base}{self._settings.aiservice_asr_path}",
+                            headers=headers,
+                            files={"file": (f"{path.name}.gz", audio, "application/gzip")},
+                            data=form,
+                        )
+                if response.status_code not in (200, 202):
+                    classified = classify_http(response.status_code, response.text, kind="asr")
+                    if classified is not None:
+                        raise classified
+                    raise RuntimeError(
+                        f"voicesanj transcription rejected: HTTP {response.status_code}"
                     )
-            if response.status_code not in (200, 202):
-                classified = classify_http(response.status_code, response.text, kind="asr")
-                if classified is not None:
-                    raise classified
-                raise RuntimeError(f"voicesanj transcription rejected: HTTP {response.status_code}")
-            task = response.json()
-            inspect_payload(task, kind="asr")
-            result = (
-                task
-                if response.status_code == 200
-                and isinstance(task, dict)
-                and ("text" in task or "segments" in task)
-                else await self._await_task(client, task, kind="asr")
-            )
+                task = response.json()
+                inspect_payload(task, kind="asr")
+                if (
+                    response.status_code == 202
+                    and isinstance(task, dict)
+                    and str(task.get("status") or "") in {"failed", "cancelled"}
+                    and task.get("error_code") != "asr_no_speech"
+                    and generation < MAX_STALE_RESUBMITS
+                ):
+                    # The key matched a task that already ended badly in an earlier attempt:
+                    # submit a fresh one instead of replaying the old failure.
+                    logger.warning(
+                        "voicesanj stale failed task behind idempotency key; resubmitting",
+                        extra={"extra_fields": {"task_id": task.get("task_id")}},
+                    )
+                    continue
+                result = (
+                    task
+                    if response.status_code == 200
+                    and isinstance(task, dict)
+                    and ("text" in task or "segments" in task)
+                    else await self._await_task(client, task, kind="asr", feature="asr")
+                )
+                break
         return _unwrap_model_result(result)
 
     async def correct_text(self, text: str, *, model: str | None = None) -> str:
@@ -252,7 +305,7 @@ class VoiceSanjClient:
                 raise RuntimeError(f"voicesanj text process rejected: HTTP {response.status_code}")
             task = response.json()
             inspect_payload(task, kind="llm")
-            result = await self._await_task(client, task, kind="llm")
+            result = await self._await_task(client, task, kind="llm", feature="correction")
         payload = _unwrap_model_result(result)
         corrected = str(payload.get("corrected_text") or "").strip()
         if not corrected:
@@ -260,7 +313,12 @@ class VoiceSanjClient:
         return corrected
 
     async def _await_task(
-        self, client: httpx.AsyncClient, task: dict[str, Any], *, kind: str
+        self,
+        client: httpx.AsyncClient,
+        task: dict[str, Any],
+        *,
+        kind: str,
+        feature: str | None = None,
     ) -> Any:
         task_id = str(task.get("task_id") or "")
         status_url = str(task.get("status_url") or "")
@@ -270,16 +328,37 @@ class VoiceSanjClient:
             raise RuntimeError("voicesanj task response missing status_url")
         status_url = _absolute(self._base, status_url)
 
-        deadline = asyncio.get_running_loop().time() + self._poll_timeout
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        processing_since: float | None = None
+        outage_since: float | None = None
         latest = task
         while True:
             status = str(latest.get("status") or "")
             if status in TERMINAL_STATUSES:
                 break
-            if asyncio.get_running_loop().time() >= deadline:
-                raise RuntimeError(f"voicesanj task timed out ({task_id or status_url})")
-            await asyncio.sleep(self._poll_interval)
-            response = await client.get(status_url, headers=self._headers)
+            now = loop.time()
+            if status == "queued":
+                # Waiting in the provider queue is allowed to be long; only processing is bounded.
+                if now - started >= self._queue_wait_timeout:
+                    raise RuntimeError(f"voicesanj task waited too long ({task_id or status_url})")
+            else:
+                processing_since = processing_since if processing_since is not None else now
+                if now - processing_since >= self._poll_timeout:
+                    raise RuntimeError(f"voicesanj task timed out ({task_id or status_url})")
+            await asyncio.sleep(self._poll_interval * random.uniform(0.8, 1.25))  # noqa: S311
+            try:
+                response = await client.get(status_url, headers=self._headers)
+            except httpx.HTTPError as exc:
+                outage_since = self._note_outage(outage_since, loop.time(), task_id, exc, kind)
+                continue
+            if response.status_code in TRANSIENT_STATUSES:
+                outage_since = self._note_outage(
+                    outage_since, loop.time(), task_id, f"HTTP {response.status_code}", kind
+                )
+                await asyncio.sleep(_retry_after(response, self._poll_interval))
+                continue
+            outage_since = None
             classified = classify_http(response.status_code, response.text, kind=kind)
             if classified is not None:
                 raise classified
@@ -309,7 +388,47 @@ class VoiceSanjClient:
         except ValueError as exc:
             raise RuntimeError("voicesanj result is not JSON") from exc
         inspect_payload(payload, kind=kind)
+        await self._record_task_usage(task_id, latest, payload, feature=feature)
         return payload
+
+    def _note_outage(
+        self, since: float | None, now: float, task_id: str, reason: object, kind: str
+    ) -> float:
+        """Track one transient poll failure; give up (retryably) once the outage lasts too long."""
+        since = since if since is not None else now
+        if now - since >= self._outage_tolerance:
+            raise ProviderError(
+                f"{kind}_provider_unreachable",
+                "سرویس هوش مصنوعی در دسترس نیست؛ کار دوباره تلاش می‌شود و به همان وظیفه متصل می‌شود.",
+                retryable=True,
+            )
+        logger.warning(
+            "voicesanj poll failed transiently; polling the same task again",
+            extra={"extra_fields": {"task_id": task_id, "reason": str(reason)[:200]}},
+        )
+        return since
+
+    async def _record_task_usage(
+        self, task_id: str, status: dict[str, Any], payload: Any, *, feature: str | None
+    ) -> None:
+        """Ledger row for one finished aiservice task: exact tokens, or audio seconds for ASR."""
+        hint = usage_dict(status.get("usage"))
+        try:
+            result = _unwrap_model_result(payload)
+        except RuntimeError:
+            result = payload if isinstance(payload, dict) else {}
+        duration = result.get("duration") if isinstance(result, dict) else None
+        await record_usage(
+            (result.get("usage") if isinstance(result, dict) else None) or hint,
+            provider="aiservice",
+            model=str(
+                hint.get("model") or (result.get("model") if isinstance(result, dict) else "") or ""
+            ),
+            origin=hint.get("origin"),
+            feature=feature,
+            provider_task_id=task_id or None,
+            audio_seconds=float(duration) if isinstance(duration, int | float) else None,
+        )
 
 
 async def correct_transcript(settings: Settings, text: str) -> str:

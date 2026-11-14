@@ -24,6 +24,21 @@ RETRY_POLICY: dict[str, tuple[int, int, int]] = {
 }
 
 
+# A provider that is down or shedding load says nothing about this call: park the job (retry
+# later without using an attempt) until it has waited this long, then fall back to the policy.
+PARKABLE_ERROR_SUFFIXES: tuple[str, ...] = ("_provider_unreachable", "_provider_rate")
+PARK_MAX_AGE = timedelta(hours=24)
+PARK_DELAY_SECONDS = 60
+
+
+def is_parkable(error_code: str, job_age: timedelta | None) -> bool:
+    return (
+        error_code.endswith(PARKABLE_ERROR_SUFFIXES)
+        and job_age is not None
+        and job_age < PARK_MAX_AGE
+    )
+
+
 # §11 reanalysis may start from any settled state; the call returns to it afterwards.
 REANALYSIS_STATES: tuple[str, ...] = (
     "transcribed",
@@ -230,13 +245,26 @@ async def handle_failure(
                 .with_for_update()
             )
         ).scalar_one_or_none()
-        attempt = (job.attempt if job else 0) + 1
-        retry = (
+        parked = retryable is not False and is_parkable(
+            error_code,
+            datetime.now(UTC) - job.created_at
+            if job is not None and job.created_at is not None
+            else None,
+        )
+        attempt = (job.attempt if job else 0) + (0 if parked else 1)
+        retry = parked or (
             attempt < max_attempts
             if retryable is None
             else (bool(retryable) and attempt < max_attempts)
         )
-        delay = backoff_for(kind, attempt)
+        delay = timedelta(seconds=PARK_DELAY_SECONDS) if parked else backoff_for(kind, attempt)
+        if parked:
+            logger.warning(
+                "provider unavailable; job parked without using an attempt",
+                extra={
+                    "extra_fields": {"kind": kind, "error_code": error_code, "attempt": attempt}
+                },
+            )
         job = await mark_job(
             session,
             tenant_id=tenant_id,

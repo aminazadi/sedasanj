@@ -1,3 +1,15 @@
+## 2026-11-14 — AMINAZADI
+
+- Added help articles and error rows for `asr_provider_unreachable` and `llm_provider_unreachable` (migration `0126_provider_unreachable_help`).
+- Added `ASR_WORKER_MAX_JOBS` (`asr_worker_max_jobs`, default 4) so the number of concurrent ASR jobs per worker is configurable instead of fixed in code.
+- Added feature labels (`assistant`, `meeting`, `coach`, `scheduled_report`, `analysis`) to the AI token ledger entry points.
+
+- Changed job retry so a provider outage or rate limit (`*_provider_unreachable`, `*_provider_rate`) parks the job and retries every 60 seconds without using an attempt, for up to 24 hours from the job's creation; after that the normal retry policy applies. A long aiservice outage no longer fails calls that are already in processing.
+
+- Changed the ASR client to reattach to an existing aiservice task after a lost poll: the idempotency key is now derived from the audio hash and options instead of a random value, polling survives transient errors (network, 429/5xx with `Retry-After`) for up to `VOICESANJ_POLL_OUTAGE_TOLERANCE_SECONDS` (default 300) before failing with the retryable `asr_provider_unreachable`, and time spent queued at aiservice (`VOICESANJ_QUEUE_WAIT_TIMEOUT_SECONDS`, default 21600) no longer counts against the processing timeout. A failed task left behind a reused key is replaced by a fresh submission.
+
+- Added an exact AI token ledger (`ai_usage_events`, migration `0125_ai_usage_events`, tenant RLS): input/output tokens reported by aiservice and 9Router are recorded for chat, tools, streaming, ASR, correction, decision and embedding calls; ASR also stores audio seconds. Missing provider usage is stored as `unavailable`, never estimated, and retries are deduplicated per provider task.
+
 ## 2026-11-08 — AMINAZADI
 
 - Fixed assistant answers from local AISERVICE models never reaching the panel: the synchronous chat route now waits up to `VOICESANJ_SYNC_READ_TIMEOUT_SECONDS` (default 120 s, was 30 s), native tool calls report `llm_provider_timeout` instead of a raw `ReadTimeout`, and a timeout is no longer retried through a second slow call.

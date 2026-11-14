@@ -66,6 +66,7 @@ from app.services import (
     ratelimit,
     tool_gateway,
 )
+from app.services.ai_usage import set_ai_feature
 from app.services.assistant_tool_runs import for_messages as tool_runs_for_messages
 from app.services.assistant_tool_runs import payload as tool_run_payload
 from app.services.platform import (
@@ -1159,6 +1160,7 @@ def _assistant_error(exc: Exception) -> str:
 async def _generate_conversation_title(
     client: Any, model: str, question: str, answer: str
 ) -> str | None:
+    set_ai_feature("assistant")
     try:
         # Optional metadata must not delay or invalidate the completed answer.
         async with asyncio.timeout(10):
@@ -1266,6 +1268,7 @@ async def send_message(
     principal: OperatorDep,
     session: TenantSession,
 ) -> ChatMessageOut:
+    set_ai_feature("assistant")
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"assistant:{principal.id}", 20)
     entitlement, usage = await _reserve_assistant_usage(session, principal.tenant_id, principal.id)
@@ -1626,6 +1629,7 @@ async def stream_ephemeral_message(
     principal: OperatorDep,
     session: TenantSession,
 ) -> StreamingResponse:
+    set_ai_feature("assistant")
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"assistant:{principal.id}", 20)
     entitlement, usage = await _reserve_assistant_usage(session, principal.tenant_id, principal.id)
@@ -1817,6 +1821,7 @@ async def stream_message(
     principal: OperatorDep,
     session: TenantSession,
 ) -> StreamingResponse:
+    set_ai_feature("assistant")
     assert principal.tenant_id is not None
     await ratelimit.enforce(f"assistant:{principal.id}", 20)
     entitlement, usage = await _reserve_assistant_usage(session, principal.tenant_id, principal.id)

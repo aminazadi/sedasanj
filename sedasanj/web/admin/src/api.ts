@@ -172,6 +172,10 @@ const ERROR_CODES: Record<string, string> = {
   llm_provider_rate: "سرویس تحلیل متن موقتاً شلوغ است.",
   asr_provider_model:
     "مدل پیاده‌سازی صوت نامعتبر است. یک مدل ASR نصب‌شده در VoiceSanj انتخاب کنید.",
+  asr_provider_unreachable:
+    "سرویس پیاده‌سازی گفتار موقتاً در دسترس نیست؛ کار دوباره تلاش می‌شود و به همان وظیفه متصل می‌شود.",
+  llm_provider_unreachable:
+    "سرویس تحلیل متن موقتاً در دسترس نیست؛ کار دوباره تلاش می‌شود و به همان وظیفه متصل می‌شود.",
   llm_provider_request:
     "پارامترهای درخواست تحلیل متن با قرارداد VoiceSanj سازگار نیستند.",
   llm_provider_timeout:

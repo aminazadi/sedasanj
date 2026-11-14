@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -2478,6 +2480,32 @@ class AssistantUsage(Base):
     completion_tokens: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
     __table_args__ = (Index("idx_assistant_usage_period", "tenant_id", "period_start", "status"),)
+
+
+class AiUsageEvent(Base):
+    """One provider-reported token count. Counts are never estimated (`usage_source`)."""
+
+    __tablename__ = "ai_usage_events"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    feature: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)
+    prompt_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    completion_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    total_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    usage_source: Mapped[str] = mapped_column(Text, nullable=False)
+    audio_seconds: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    provider_task_id: Mapped[str | None] = mapped_column(Text)
+    call_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    dedupe_key: Mapped[str | None] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
 class InstallationRequest(Base):

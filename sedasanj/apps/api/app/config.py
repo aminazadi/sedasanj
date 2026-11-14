@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     voicesanj_correction_timeout_seconds: float = 120.0
     voicesanj_poll_interval_seconds: float = 2.0
     voicesanj_poll_timeout_seconds: float = 1800.0
+    # Time a task may sit queued at aiservice before the client gives up (processing is bounded
+    # separately by voicesanj_poll_timeout_seconds).
+    voicesanj_queue_wait_timeout_seconds: float = 21600.0
+    # Continuous provider unreachability tolerated while polling one task.
+    voicesanj_poll_outage_tolerance_seconds: float = 300.0
     # Read timeout for the synchronous /v1/chat/completions route; aiservice itself waits 120 s.
     voicesanj_sync_read_timeout_seconds: float = Field(default=120.0, ge=30.0, le=600.0)
     correction_enabled: bool = True
@@ -175,6 +180,9 @@ class Settings(BaseSettings):
     # the normal retry/failure bookkeeping instead of leaving a running row.
     analysis_timeout_seconds: float = Field(default=1500.0, ge=60.0, le=1700.0)
     max_concurrent_asr_jobs: int = Field(default=10, ge=1, le=256)
+    # Jobs one worker-asr process runs at once; total = replicas x this. Keep it at or below what
+    # aiservice can queue (see its ASR_QUEUE_LIMIT) so a surge is not rejected with 503.
+    asr_worker_max_jobs: int = Field(default=4, ge=1, le=64)
     max_concurrent_llm_submissions: int = Field(default=16, ge=1, le=256)
     analysis_concurrency: int = Field(default=1, ge=1, le=3)
     llm_poll_interval_seconds: float = Field(default=2.0, ge=0.25, le=60.0)

@@ -36,6 +36,7 @@ from app.models import (
 )
 from app.schemas import COACH_DIMENSION_KEYS, CoachDimension, CoachResult
 from app.services import extensions, knowledge, queue, tenant_ai_instructions
+from app.services.ai_usage import set_ai_feature
 from app.services.call_speakers import INTERNAL_CALLEE_LABEL, INTERNAL_CALLER_LABEL
 from app.services.call_speakers import speaker_labels as speaker_labels
 from app.services.operator_scoring import default_score_criteria
@@ -671,6 +672,7 @@ async def coach_call(
 
 
 async def _generate(runtime: Any, system: str, user: str, namespace: str) -> CoachResult:
+    set_ai_feature("coach")
     client = build_client(runtime, request_namespace=f"coach:{namespace}", purpose="chat")
     try:
         raw = await client.complete(system, user, json_object=True)
