@@ -65,7 +65,7 @@ export default function BulkActions({ selected, setSelected, actions, onComplete
       <span className="flex-1" />
       {selected.length > 0 ? <button type="button" className="btn-ghost" disabled={busy} onClick={() => { setSelected([]); setResult(null); setFailures([]); }}>لغو انتخاب</button> : null}
       {selected.length === 0 && !busy ? <button type="button" className="btn-ghost" onClick={() => { setResult(null); setFailures([]); }}>بستن</button> : null}
-      <span role="status" className="w-full text-sm">{busy ? `در حال انجام… ${fmt.int(progress)} مورد` : result}</span>
+      {busy || result ? <span role="status" className="w-full text-sm">{busy ? `در حال انجام… ${fmt.int(progress)} مورد` : result}</span> : null}
       {failures.length > 0 ? <details className="w-full max-h-40 overflow-auto text-sm text-rose-700"><summary>جزئیات موارد ناموفق</summary><ul>{failures.map((failure) => <li key={failure.id}><bdi>{failure.id}</bdi>: {failure.message}</li>)}</ul></details> : null}
     </div> : null}
     <ConfirmDialog open={pending !== null} title="حذف گروهی" description={`${fmt.int(pending ? selected.filter(pending.eligible).length : 0)} مورد به همراه فایل صوتی، متن و تحلیل‌های مرتبط برای همیشه حذف می‌شوند. این عملیات قابل بازگشت نیست.`}

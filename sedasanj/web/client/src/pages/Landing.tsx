@@ -115,8 +115,6 @@ function UseCases() {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const current = useCases[active];
   const [paused, setPaused] = useState(false);
-  const pausedRef = useRef(false);
-  pausedRef.current = paused;
   const [typedCount, setTypedCount] = useState(0);
   const [autoplay] = useState(() => typeof window === "undefined" || !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const activeTotal = useCases[active].title.length + useCases[active].body.length;
@@ -124,7 +122,6 @@ function UseCases() {
     if (!autoplay) { setTypedCount(Number.MAX_SAFE_INTEGER); return; }
     setTypedCount(0);
     const timer = window.setInterval(() => {
-      if (pausedRef.current) return;
       setTypedCount((n) => {
         if (n >= activeTotal) { window.clearInterval(timer); return n; }
         return n + 2;
@@ -230,10 +227,10 @@ function LiveTyping() {
 }
 
 const ucShortLabels: Record<string, string> = {
-  gov: "دولتی",
+  gov: "سازمان‌های دولتی",
   finance: "بانک و بیمه",
-  health: "درمان",
-  sales: "فروش",
+  health: "مرکز درمانی",
+  sales: "تیم فروش",
   support: "پشتیبانی",
   commerce: "فروشگاه آنلاین",
 };

@@ -229,7 +229,7 @@ const CallsTableSection = memo(function CallsTableSection({
                     }
                   }}
                 >
-                  <td><SelectionCheckbox label={`انتخاب مورد ${call.id}`} checked={selected.includes(call.id)} disabled={bulkBusy} onChange={() => toggle(call.id)} /></td>
+                  <td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><SelectionCheckbox label={`انتخاب مورد ${call.id}`} checked={selected.includes(call.id)} disabled={bulkBusy} onChange={() => toggle(call.id)} /></td>
                   <td>{fmt.dateTime(call.started_at)}</td>
                   <PartyCell number={call.caller_number} name={call.caller_name} />
                   <PartyCell number={call.dialed_number} name={call.dialed_name} />

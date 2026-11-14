@@ -44,7 +44,7 @@
 .contact-message { grid-column: 1 / -1; }
 .contact-form-card form > .site-button { margin-top: 22px; min-width: 180px; }
 .contact-form-card form > .site-button:disabled { opacity: .6; cursor: progress; }
-.contact-honeypot { position: absolute !important; left: -10000px !important; width: 1px !important; height: 1px !important; opacity: 0 !important; }
+.contact-honeypot { position: absolute !important; inset-inline-start: 0 !important; width: 1px !important; height: 1px !important; opacity: 0 !important; overflow: hidden !important; clip-path: inset(50%) !important; pointer-events: none !important; }
 .contact-success { margin-top: 28px; padding: 22px; border: 1px solid #a9bfa4; background: #f1f5ee; color: #2f4a2d; font-size: 15px; line-height: 2; }
 .contact-error { margin-top: 18px; padding: 12px 14px; border: 1px solid #e0b4b4; background: #fbeeee; color: #8e2424; font-size: 13px; }
 

@@ -10,6 +10,8 @@ import dashboardIcon from "@iconify-icons/lucide/layout-dashboard";
 import extensionIcon from "@iconify-icons/lucide/phone-forwarded";
 import fileTextIcon from "@iconify-icons/lucide/file-text";
 import historyIcon from "@iconify-icons/lucide/history";
+import volumeOffIcon from "@iconify-icons/lucide/volume-x";
+import volumeOnIcon from "@iconify-icons/lucide/volume-2";
 import logOutIcon from "@iconify-icons/lucide/log-out";
 import menuIcon from "@iconify-icons/lucide/menu";
 import meetingsIcon from "@iconify-icons/lucide/notebook-pen";
@@ -24,8 +26,10 @@ import trophyIcon from "@iconify-icons/lucide/trophy";
 import userIcon from "@iconify-icons/lucide/user-round";
 import voicemailIcon from "@iconify-icons/lucide/voicemail";
 import walletIcon from "@iconify-icons/lucide/wallet";
+import chevronDownIcon from "@iconify-icons/lucide/chevron-down";
 import closeIcon from "@iconify-icons/lucide/x";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { getMenuSound, menuSoundLabel, nextMenuSound, playMenuTick, setMenuSound } from "../lib/menuSound";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { BrandLogo } from "./BrandLogo";
 import BillingBanner from "./BillingBanner";
@@ -50,7 +54,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
     items: [
       { to: "/calls", label: "تماس‌ها", icon: phoneIcon },
       { to: "/voicemails", label: "پیام‌های صوتی", icon: voicemailIcon },
-      { to: "/meetings", label: "جلسات", icon: meetingsIcon },
+      { to: "/meetings", label: "صورت‌جلسات", icon: meetingsIcon },
       { to: "/contacts", label: "دفترچه تلفن", icon: bookUserIcon },
       { to: "/extensions", label: "داخلی‌ها", icon: extensionIcon },
       { to: "/tasks", label: "کارها", icon: tasksIcon },
@@ -81,6 +85,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
 
 const PAGE_TITLES: Record<string, string> = {
   "/account-settings/data/history": "تاریخچهٔ بک‌آپ و بازیابی",
+  "/account/transactions": "تراکنش‌ها",
   "/checkout": "پرداخت و تمدید",
   "/payment-result": "نتیجه پرداخت",
   "/about": "درباره ما",
@@ -141,6 +146,7 @@ function MenuIcon({ close = false }: { close?: boolean }) {
 }
 
 type SidebarTooltip = { label: string; target: HTMLElement };
+type SidebarPill = { top: number; left: number; width: number; height: number; visible: boolean; snap: boolean };
 
 function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu?: () => void; collapsed?: boolean; onToggleCollapse?: () => void }) {
   const { session, logout } = useAuth();
@@ -148,6 +154,19 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
   const location = useLocation();
   const operator = isOperator(session?.role);
   const orgAdmin = isOrgAdmin(session?.role);
+  const groups = NAVIGATION.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin) && canVisitPanel(session, item.to)),
+  })).filter((group) => group.items.length > 0);
+  // A group with a single item (the dashboard) is shown as a plain link, outside the accordion.
+  const accordionGroups = groups.filter((group) => group.items.length > 1);
+  const activeGroup = accordionGroups.find((group) => group.items.some((item) => (item.to === "/" ? location.pathname === "/" : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`))))?.label ?? null;
+  // Call management is open by default; navigating also opens the group of the active route, and each group toggles on its own.
+  const DEFAULT_OPEN_GROUP = "مدیریت تماس‌ها";
+  const [openGroups, setOpenGroups] = useState<string[]>(() => Array.from(new Set([DEFAULT_OPEN_GROUP, ...(activeGroup ? [activeGroup] : [])])));
+  useEffect(() => {
+    if (activeGroup) setOpenGroups((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
+  }, [activeGroup]);
   const [tooltip, setTooltip] = useState<SidebarTooltip | null>(null);
   const showTooltip = (label: string | undefined, target: HTMLElement) => {
     if (!collapsed || !label) return;
@@ -163,8 +182,65 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
   };
   const tooltipRef = useRef<HTMLDivElement>(null);
   const hideTooltip = () => setTooltip(null);
+  // One shared highlight rectangle that glides between menu items on hover/focus.
+  const navRef = useRef<HTMLElement>(null);
+  const lastTickItem = useRef<HTMLElement | null>(null);
+  const [sound, setSound] = useState(getMenuSound);
+  const soundOn = sound !== "off";
+  const [pill, setPill] = useState<SidebarPill | null>(null);
+  const movePill = (target: EventTarget | null) => {
+    const nav = navRef.current;
+    const item = target instanceof Element ? target.closest<HTMLElement>(".sidebar-nav-item") : null;
+    if (!nav || !item || !nav.contains(item)) return;
+    const navRect = nav.getBoundingClientRect();
+    const rect = item.getBoundingClientRect();
+    if (lastTickItem.current !== item) {
+      lastTickItem.current = item;
+      playMenuTick(Array.from(nav.querySelectorAll(".sidebar-nav-item")).indexOf(item));
+    }
+    setPill((current) => ({
+      top: rect.top - navRect.top - nav.clientTop + nav.scrollTop,
+      left: rect.left - navRect.left - nav.clientLeft + nav.scrollLeft,
+      width: rect.width,
+      height: rect.height,
+      visible: true,
+      snap: !current?.visible,
+    }));
+  };
+  // A second pill marks the active route and glides to the new item on navigation.
+  const [activePill, setActivePill] = useState<SidebarPill | null>(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const measure = (snap = false) => {
+      const item = nav.querySelector<HTMLElement>('.sidebar-nav-item[aria-current="page"]');
+      if (!item || item.closest('[data-open="false"]')) {
+        setActivePill((current) => (current ? { ...current, visible: false } : current));
+        return;
+      }
+      const navRect = nav.getBoundingClientRect();
+      const rect = item.getBoundingClientRect();
+      const next = { top: rect.top - navRect.top - nav.clientTop + nav.scrollTop, left: rect.left - navRect.left - nav.clientLeft + nav.scrollLeft, width: rect.width, height: rect.height };
+      setActivePill((current) =>
+        current && current.visible && current.top === next.top && current.left === next.left && current.width === next.width && current.height === next.height
+          ? current
+          : { ...next, visible: true, snap: snap || !current?.visible },
+      );
+    };
+    measure();
+    // While the sidebar width or an accordion panel animates, follow the layout frame by frame.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure(true));
+    observer?.observe(nav);
+    nav.querySelectorAll(".sidebar-group-panel").forEach((panel) => observer?.observe(panel));
+    return () => observer?.disconnect();
+  }, [location.pathname, collapsed, openGroups]);
+  const hidePill = () => {
+    lastTickItem.current = null;
+    setPill((current) => (current ? { ...current, visible: false } : current));
+  };
   useEffect(() => {
     setTooltip(null);
+    setPill(null);
   }, [collapsed, location.key]);
   useEffect(() => {
     if (!tooltip) return;
@@ -226,6 +302,19 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
             <Icon icon={collapsed ? panelOpenIcon : panelCloseIcon} className="h-5 w-5" aria-hidden="true" />
           </button>
         )}
+        <button
+          type="button"
+          className={`sb-round p-2 text-[#F2F0EF] transition hover:bg-white/15 ${collapsed ? "order-first" : "absolute left-[3.5rem]"}`}
+          aria-label={`صدای منو: ${menuSoundLabel(sound)} (برای تغییر کلیک کنید)`}
+          title={`صدای منو: ${menuSoundLabel(sound)}`}
+          onClick={() => { const next = nextMenuSound(sound); setMenuSound(next); setSound(next); playMenuTick(); }}
+          onPointerEnter={showPointerTooltip(collapsed ? `صدا: ${menuSoundLabel(sound)}` : undefined)}
+          onFocus={showFocusTooltip(collapsed ? `صدا: ${menuSoundLabel(sound)}` : undefined)}
+          onPointerLeave={hideTooltip}
+          onBlur={hideTooltip}
+        >
+          <Icon icon={soundOn ? volumeOnIcon : volumeOffIcon} className="h-5 w-5" aria-hidden="true" />
+        </button>
         {closeMenu && (
           <button type="button" className="sb-round absolute left-4 p-2 text-[#F2F0EF] transition hover:bg-white/15" onClick={closeMenu} aria-label="بستن منو">
             <MenuIcon close />
@@ -233,14 +322,48 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
         )}
       </div>
 
-      <nav className={`sidebar-scroll flex-1 overflow-y-auto py-4 ${collapsed ? "px-2" : "px-3"}`} aria-label="منوی اصلی">
-        {NAVIGATION.map((group) => {
-          const items = group.items.filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin) && canVisitPanel(session, item.to));
-          if (!items.length) return null;
+      <nav
+        ref={navRef}
+        className={`sidebar-scroll relative flex-1 overflow-y-auto py-4 ${collapsed ? "px-2" : "px-3"}`}
+        aria-label="منوی اصلی"
+        onPointerOver={(event) => { if (event.pointerType !== "touch") movePill(event.target); }}
+        onPointerLeave={hidePill}
+        onFocus={(event) => { if ((event.target as HTMLElement).matches(":focus-visible")) movePill(event.target); }}
+        onBlur={hidePill}
+      >
+        <span
+          aria-hidden="true"
+          className={`sidebar-active-pill sb-round${activePill?.visible ? " is-visible" : ""}${activePill?.snap ? " is-snap" : ""}`}
+          style={activePill ? { top: activePill.top, left: activePill.left, width: activePill.width, height: activePill.height } : undefined}
+        />
+        <span
+          aria-hidden="true"
+          className={`sidebar-hover-pill sb-round${pill?.visible ? " is-visible" : ""}${pill?.snap ? " is-snap" : ""}`}
+          style={pill ? { top: pill.top, left: pill.left, width: pill.width, height: pill.height } : undefined}
+        />
+        {groups.map((group, index) => {
+          const items = group.items;
+          // Minimal (icon-only) mode has no headers, so every group stays visible.
+          const standalone = group.items.length === 1;
+          const isOpen = collapsed || standalone || openGroups.includes(group.label);
+          const panelId = `sidebar-group-${index}`;
           return (
-            <div className={collapsed ? "mb-4 border-b border-white/10 pb-4 last:border-b-0" : "mb-6"} key={group.label}>
-              {!collapsed && <p className="mb-2 px-3 text-[11px] font-medium tracking-wide text-[#D5D0AE]/80">{group.label}</p>}
-              <div className="space-y-0.5">
+            <div className={collapsed ? "mb-4 border-b border-white/10 pb-4 last:border-b-0" : standalone ? "mb-3 mt-1" : "mb-1"} key={group.label}>
+              {!collapsed && !standalone && (
+                <button
+                  type="button"
+                  className="sidebar-group-toggle flex w-full items-center justify-between px-3 py-2.5 text-[14px] font-semibold text-[#D5D0AE]/90 transition-colors hover:text-white"
+                  aria-expanded={isOpen}
+                  aria-controls={panelId}
+                  onClick={() => { hidePill(); setOpenGroups((current) => (current.includes(group.label) ? current.filter((name) => name !== group.label) : [...current, group.label])); }}
+                >
+                  <span>{group.label}</span>
+                  <Icon icon={chevronDownIcon} className="sidebar-group-chevron h-4 w-4" aria-hidden="true" />
+                </button>
+              )}
+              <div id={panelId} className="sidebar-group-panel" data-open={isOpen}>
+              <div className="sidebar-group-inner">
+              <div className="space-y-0.5 pb-1">
                 {items.map((item) => (
                   <NavLink
                     key={item.to}
@@ -252,17 +375,18 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
                     onBlur={hideTooltip}
                     onClick={() => { hideTooltip(); closeMenu?.(); }}
                     aria-label={collapsed ? item.label : undefined}
-                    className={({ isActive }) => `sidebar-nav-item sb-round group relative flex items-center ${collapsed ? "justify-center px-0" : "gap-3 px-3"} py-2.5 text-sm transition-colors duration-200 ${isActive ? "is-active bg-white/15 font-bold text-white" : "text-[#F2F0EF]/85"}`}
+                    className={({ isActive }) => `sidebar-nav-item sb-round group relative flex items-center ${collapsed ? "justify-center px-0" : "gap-3 px-3"} py-2.5 text-sm transition-colors duration-200 ${isActive ? "is-active font-bold text-white" : "text-[#F2F0EF]/85"}`}
                   >
                     {({ isActive }) => (
                       <>
                         <Icon icon={item.icon} className={`h-5 w-5 shrink-0 ${isActive ? "text-[#E3E8B9]" : "text-[#F2F0EF]/65 transition group-hover:text-white"}`} aria-hidden="true" />
                         {!collapsed && <span className="truncate">{item.label}</span>}
-                        {isActive && <span className="sb-round absolute inset-y-2 right-0 w-[3px] bg-[#E3E8B9]" />}
                       </>
                     )}
                   </NavLink>
                 ))}
+              </div>
+              </div>
               </div>
             </div>
           );

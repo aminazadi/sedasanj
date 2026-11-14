@@ -60,7 +60,8 @@ function contentSecurityPolicy(request) {
         "font-src": "'self' data:",
         "media-src": `'self' blob: ${media}`,
         "connect-src": `'self' ${socketOrigin} ${media}`,
-        "frame-src": EMBED_FRAMES,
+        // 'self' lets the API-docs page embed /v1/docs/customer (same origin).
+        "frame-src": `'self' ${EMBED_FRAMES}`,
         "object-src": "'none'",
         "base-uri": "'none'",
         // Bank gateways receive an auto-submitted POST form (see client/src/lib/payment.ts).

@@ -1,4 +1,5 @@
 import { hasPanelAccess } from "../lib/panelAccess";
+import { permissionsKey } from "../lib/sameSession";
 import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -222,11 +223,13 @@ export default function Overview() {
       hasPanelAccess(session, "calls") ? request<CallPage>(`/v1/calls${query({ limit: tableLimit, offset: recentOffset, ...filterQuery })}`, { signal }) : Promise.resolve({ items: [], total: 0, page: 1, page_size: tableLimit, pages: 0, next_cursor: null } as CallPage),
     ]);
     return { data, recent };
-  }, [session?.panelPermissions, tableLimit, recentOffset, campaign, campaignOffset, certainty, direction, fromInput, intent, operatorId, operatorOffset, range, selectedRange.from, selectedRange.to, source, team, toInput]);
+  }, [permissionsKey(session?.panelPermissions), tableLimit, recentOffset, campaign, campaignOffset, certainty, direction, fromInput, intent, operatorId, operatorOffset, range, selectedRange.from, selectedRange.to, source, team, toInput]);
 
   // The previous result stays available while a new one loads: filter options, widget set and row counts come from it.
   const previous = dashboard.data?.data;
-  const live = dashboard.loading ? null : dashboard.data;
+  // Keep showing the last result while refetching; skeletons only appear before the first result.
+  const live = dashboard.data ?? null;
+  const refreshing = dashboard.status === "refreshing";
   const ctx: ViewContext = { operator, operatorOffset, campaignOffset, recentOffset, setRecentOffset, tableLimit, selectedRange, navigate, updateAnalysisFilter };
   const details = live ? detailView(live.data, live.recent, ctx) : null;
   const widgets = new Set(previous?.dashboard_widgets ?? DEFAULT_WIDGETS);
@@ -254,7 +257,7 @@ export default function Overview() {
   const data = live?.data;
   const periodText = data ? `${fmt.date(data.from_date)} تا ${fmt.date(data.to_date)} · مقایسه با دورهٔ هم‌اندازهٔ قبل` : "مقایسه با دورهٔ هم‌اندازهٔ قبل";
 
-  return <div className="dashboard-overview space-y-4" dir="rtl">
+  return <div className={`dashboard-overview space-y-4 transition-opacity${refreshing ? " opacity-70" : ""}`} dir="rtl" aria-busy={refreshing}>
     <PageHeader title={operator ? "داشبورد عملکرد من" : "داشبورد سازمان"} description={periodText} actions={<div className="flex flex-wrap items-center justify-end gap-2">{analysisFilterBar.toolbar}<DateRangePicker range={range} from={fromInput} to={toInput} onChange={updateRange} compact /></div>} />
     {analysisFilterBar.fields ? <div className="card">{analysisFilterBar.fields}</div> : null}
     <ErrorBox message={dashboard.error} />

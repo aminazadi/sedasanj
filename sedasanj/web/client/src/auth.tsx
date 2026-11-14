@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { refreshSession, request, tokens } from "./api";
+import { sameSession } from "./lib/sameSession";
 import type { TokenPair, User } from "./types";
 
 interface Session {
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       inFlight = true;
       try {
         const next = await loadSession(access);
-        if (!cancelled && next) setSession(next);
+        if (!cancelled && next) setSession((prev) => (sameSession(prev, next) ? prev : next));
       } catch { /* The API still enforces access on every request. */ }
       finally { inFlight = false; }
     }

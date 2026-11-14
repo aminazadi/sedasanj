@@ -1,19 +1,22 @@
 import { useTablePageSize, useTableOffset } from "../lib/useTablePagination";
 import { Icon } from "@iconify/react";
 import walletIcon from "@iconify-icons/lucide/wallet";
+import webhookIcon from "@iconify-icons/lucide/webhook";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
 import { ROLE_LABELS, useAuth } from "../auth";
-import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
+import { ErrorBox, Loading, Pagination } from "../components/Widgets";
 import { PageHeader } from "../components/PageHeader";
 import ApiKeyManager from "../components/ApiKeyManager";
 import WebhookDeliveries from "../components/WebhookDeliveries";
 import CreditTopUp from "../components/CreditTopUp";
+import { usageShares } from "../lib/creditUsage.mjs";
 import OrderPaymentPanel from "../components/OrderPaymentPanel";
 import SubscriptionPanel from "../components/SubscriptionPanel";
 import TokenTopUp from "../components/TokenTopUp";
+import DocumentTabs from "../components/DocumentTabs";
 import EditOrganizationUser from "../components/EditOrganizationUser";
 import OperatorExtensionInput from "../components/OperatorExtensionInput";
 import PanelAccessEditor from "../components/PanelAccessEditor";
@@ -23,7 +26,6 @@ import type {
   AccountInfo,
   ApiKey,
   Balance,
-  LedgerEntry,
   Package,
   Page,
   SubscriptionInfo,
@@ -39,18 +41,6 @@ const EVENT_LABELS: Record<string, string> = {
   "call.failed": "تماس ناموفق",
   "balance.low": "اعتبار رو به پایان",
   "sales.insight": "بینش فروش",
-};
-
-const LEDGER_LABELS: Record<string, string> = {
-  reservation: "رزرو",
-  settlement: "تسویه",
-  release: "آزادسازی",
-  topup: "شارژ",
-  adjustment: "اصلاح",
-  subscription_credit: "هدیه اشتراک",
-  credit_purchase: "خرید اعتبار",
-  expiration: "انقضای اعتبار",
-  refund: "بازپرداخت",
 };
 
 const ORDER_KIND_LABELS: Record<string, string> = {
@@ -101,8 +91,8 @@ export default function Account({ section = "billing" }: { section?: AccountSect
   const { session } = useAuth();
   const isAdmin = session?.role === "org_admin";
 
+  const [kind, setKind] = useState<"asr" | "llm">("asr");
   const [balance, setBalance] = useState<Balance | null>(null);
-  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
   const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number } | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -125,11 +115,8 @@ export default function Account({ section = "billing" }: { section?: AccountSect
     setParams(next);
   }
 
-  const ledgerOffset = offsetParam(params, "ledger");
   const orderOffset = offsetParam(params, "orders");
-  const setLedgerOffset = (value: number) => setParams(withOffset(params, "ledger", value), { replace: true });
   const setOrderOffset = (value: number) => setParams(withOffset(params, "orders", value), { replace: true });
-  const [ledgerTotal, setLedgerTotal] = useState(0);
   const [orderTotal, setOrderTotal] = useState(0);
   const [userOffset, setUserOffset] = useTableOffset("user_offset");
   const [userTotal, setUserTotal] = useState(0);
@@ -148,14 +135,11 @@ export default function Account({ section = "billing" }: { section?: AccountSect
     setError(null);
     try {
       if (section === "billing") {
-        const [balanceData, ledgerData, packagesData] = await Promise.all([
+        const [balanceData, packagesData] = await Promise.all([
           request<Balance>("/v1/billing/balance"),
-          request<Page<LedgerEntry>>(`/v1/billing/ledger?limit=${limit}&offset=${ledgerOffset}`),
           request<Package[]>("/v1/billing/packages"),
         ]);
         setBalance(balanceData);
-        setLedger(ledgerData.items);
-        setLedgerTotal(ledgerData.total);
         setPackages(packagesData);
         if (isAdmin) {
           const [subscriptionData, orderData] = await Promise.all([
@@ -193,7 +177,7 @@ export default function Account({ section = "billing" }: { section?: AccountSect
 
   useEffect(() => {
     void reload();
-  }, [limit, hookOffset, isAdmin, keyOffset, ledgerOffset, orderOffset, section, userOffset]);
+  }, [limit, hookOffset, isAdmin, keyOffset, orderOffset, section, userOffset]);
 
   async function createUser() {
     setUserDialogBusy(true);
@@ -266,89 +250,83 @@ export default function Account({ section = "billing" }: { section?: AccountSect
 
   return (
     <div className="space-y-4">
-      {section === "billing" ? <PageHeader title="اعتبار و اشتراک" description="اعتبار، پلن فعال و صورتحساب‌های سازمان" /> : null}
+      {section === "billing" ? <PageHeader title="اعتبار و اشتراک" description="اعتبار، پلن فعال و صورتحساب‌های سازمان" actions={<Link className="btn-ghost" to="/account/transactions">مشاهدهٔ تراکنش‌ها</Link>} /> : null}
       <ErrorBox message={error} />
 
       {section === "billing" && balance ? <>
+      {isAdmin && subscription ? <SubscriptionPanel subscription={subscription} onChanged={reload} onError={setError} /> : null}
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="card">
-          <h2 className="font-bold">اعتبار</h2>
-          <div className="flex items-center gap-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center bg-[#4B6E48] text-[#F2F0EF]" aria-hidden="true"><Icon icon={walletIcon} className="h-7 w-7" /></span>
-            <div className="min-w-0">
-              <div className="text-xs text-slate-500">موجودی فعلی</div>
-              <div className="text-2xl font-extrabold tracking-tight text-[#4B6E48]">{fmt.toman(balance.toman)}</div>
-              <div className="text-sm text-slate-500">{fmt.int(balance.minutes)} دقیقه باقی‌مانده</div>
-            </div>
-          </div>
+        <div className="card credit-card credit-balance">
+          <h2 className="credit-title">اعتبار</h2>
           {(() => {
-            const total = balance.expiring_seconds + balance.purchased_seconds;
-            const planShare = total > 0 ? (balance.expiring_seconds / total) * 100 : 0;
-            return <div className="mt-5" role="img" aria-label="سهم دقیقه‌های رایگان پلن و اعتبار پیش‌خریدی">
-              <div className="flex h-2.5 w-full overflow-hidden bg-[color:var(--line)]">
-                <span className="h-full bg-[#B2AC88]" style={{ width: `${planShare}%` }} />
-                <span className="h-full bg-[#4B6E48]" style={{ width: `${total > 0 ? 100 - planShare : 0}%` }} />
+            const shares = usageShares(balance.expiring_seconds, balance.purchased_seconds);
+            return <>
+              <div className="credit-hero">
+                <span className="credit-hero-icon" aria-hidden="true"><Icon icon={walletIcon} className="h-7 w-7" /></span>
+                <div className="min-w-0">
+                  <div className="credit-hero-label">موجودی فعلی</div>
+                  <div className="credit-hero-amount">{fmt.toman(balance.toman)}</div>
+                  <div className="credit-hero-minutes">{fmt.int(balance.minutes)} دقیقه باقی‌مانده</div>
+                </div>
               </div>
-            </div>;
+              <div className={`credit-bar${shares.empty ? " is-empty" : ""}`} role="img" aria-label="سهم دقیقه‌های رایگان پلن و اعتبار پیش‌خریدی">
+                <span className="credit-bar-plan" style={{ width: `${shares.plan}%` }} />
+                <span className="credit-bar-paid" style={{ width: `${shares.purchased}%` }} />
+              </div>
+              {shares.empty ? <p className="credit-empty-hint">هنوز دقیقه‌ای ندارید؛ از کارت کناری شارژ کنید.</p> : null}
+              <dl className="credit-legend">
+                <div><dt><span className="credit-dot is-plan" aria-hidden="true" />دقیقه رایگان پلن</dt><dd>{fmt.minutes(balance.expiring_seconds)}{shares.empty ? null : <small>{fmt.digits(Math.round(shares.plan))}٪</small>}</dd></div>
+                <div><dt><span className="credit-dot is-paid" aria-hidden="true" />اعتبار پیش‌خریدی</dt><dd>{fmt.minutes(balance.purchased_seconds)}{shares.empty ? null : <small>{fmt.digits(Math.round(shares.purchased))}٪</small>}</dd></div>
+                <div className="credit-rate"><dt>نرخ هر دقیقه</dt><dd>{fmt.toman(balance.price_per_minute_toman)}</dd></div>
+                {isAdmin && subscription ? <div className="credit-rate credit-tokens"><dt>توکن هوش مصنوعی</dt><dd>{subscription.llm_tokens_unlimited ? "نامحدود" : <>{fmt.int(subscription.llm_tokens_remaining ?? 0)}<small>{subscription.llm_tokens_topup_remaining ? `شامل ${fmt.int(subscription.llm_tokens_topup_remaining)} از بسته` : "باقی‌مانده"}</small></>}</dd></div> : null}
+              </dl>
+            </>;
           })()}
-          <dl className="mt-4 space-y-2.5 text-sm">
-            <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2"><span className="h-2.5 w-2.5 bg-[#B2AC88]" aria-hidden="true" />دقیقه رایگان پلن</dt><dd className="font-medium">{fmt.minutes(balance.expiring_seconds)}</dd></div>
-            <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2"><span className="h-2.5 w-2.5 bg-[#4B6E48]" aria-hidden="true" />اعتبار پیش‌خریدی</dt><dd className="font-medium">{fmt.minutes(balance.purchased_seconds)}</dd></div>
-            <div className="flex items-center justify-between gap-3 border-t border-[color:var(--line)] pt-2.5"><dt className="text-slate-500">نرخ هر دقیقه</dt><dd className="font-medium">{fmt.toman(balance.price_per_minute_toman)}</dd></div>
-          </dl>
         </div>
-        <div className="card md:col-span-2">
-          <h2 className="mb-3 font-bold">شارژ اعتبار تحلیل</h2>
+        <div className="card credit-card md:col-span-2">
+          <h2 className="credit-title">شارژ اعتبار تحلیل</h2>
           {isAdmin ? (
-            <CreditTopUp packages={packages} pricePerMinute={balance.price_per_minute_toman} onError={setError} />
+            <>
+              {subscription ? (
+                <DocumentTabs
+                  value={kind}
+                  onChange={setKind}
+                  label="نوع اعتبار"
+                  align="start"
+                  options={[
+                    { value: "asr", label: "دقیقهٔ تحلیل گفتار" },
+                    { value: "llm", label: "توکن هوش مصنوعی" },
+                  ]}
+                />
+              ) : null}
+              {kind === "llm" && subscription ? (
+                subscription.llm_tokens_unlimited ? (
+                  <p className="credit-empty-hint">پلن شما توکن هوش مصنوعی نامحدود دارد و نیازی به خرید بسته نیست.</p>
+                ) : (
+                  <TokenTopUp embedded onError={setError} />
+                )
+              ) : (
+                <CreditTopUp packages={packages} pricePerMinute={balance.price_per_minute_toman} onError={setError} />
+              )}
+            </>
           ) : (
             <p className="text-sm text-slate-500">خرید اعتبار فقط برای مدیر سازمان در دسترس است.</p>
           )}
         </div>
       </div>
 
-      {isAdmin && subscription ? <SubscriptionPanel subscription={subscription} onChanged={reload} onError={setError} /> : null}
-      {isAdmin && subscription && !subscription.llm_tokens_unlimited ? <TokenTopUp onError={setError} /> : null}
 
       {isAdmin && orders.length ? (
         <>{payingOrder ? <OrderPaymentPanel orderId={payingOrder.id} amountToman={payingOrder.amount} onClose={() => setPayingOrder(null)} onError={setError} /> : null}<div className="card"><h2 className="mb-2 font-bold">سفارش‌ها و پرداخت‌ها</h2><table className="table"><thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>مبلغ</th><th>زمان</th><th /></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td dir="ltr">{order.number}</td><td>{ORDER_KIND_LABELS[order.kind] ?? order.kind}</td><td>{ORDER_STATUS_LABELS[order.status] ?? order.status}</td><td>{fmt.toman(order.amount_toman)}</td><td>{fmt.dateTime(order.created_at)}</td><td>{["draft", "pending_payment"].includes(order.status) ? <button className="btn-ghost text-xs" onClick={() => setPayingOrder({ id: order.id, amount: order.amount_toman })}>پرداخت</button> : null}</td></tr>)}</tbody></table><Pagination page={Math.floor(orderOffset/limit)+1} hasPrevious={orderOffset>0} hasNext={orderOffset+limit<orderTotal} total={orderTotal} onPrevious={()=>setOrderOffset(Math.max(0,orderOffset-limit))} onNext={()=>setOrderOffset(orderOffset+limit)}/></div></>
       ) : null}
 
-      <div className="card">
-        <h2 className="mb-2 font-bold">آخرین تراکنش‌ها</h2>
-        {ledger.length === 0 ? (
-          <Empty />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>زمان</th>
-                <th>نوع</th>
-                <th>ثانیه</th>
-                <th>تومان</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ledger.map((entry) => (
-                <tr key={entry.id}>
-                  <td>{fmt.dateTime(entry.created_at)}</td>
-                  <td>{LEDGER_LABELS[entry.kind] ?? entry.kind}</td>
-                  <td dir="ltr">{fmt.int(entry.seconds_delta)}</td>
-                  <td dir="ltr">{fmt.int(entry.toman_delta)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <Pagination page={Math.floor(ledgerOffset/limit)+1} hasPrevious={ledgerOffset>0} hasNext={ledgerOffset+limit<ledgerTotal} total={ledgerTotal} onPrevious={()=>setLedgerOffset(Math.max(0,ledgerOffset-limit))} onNext={()=>setLedgerOffset(ledgerOffset+limit)}/>
-      </div>
       </> : null}
 
       {isAdmin && section !== "billing" ? (
         <>
           {section === "integrations" ? <>
           <ApiKeyManager keys={keys} reload={reload} />
-          <Pagination page={Math.floor(keyOffset/limit)+1} hasPrevious={keyOffset>0} hasNext={keyOffset+limit<keyTotal} total={keyTotal} onPrevious={()=>setKeyOffset(Math.max(0,keyOffset-limit))} onNext={()=>setKeyOffset(keyOffset+limit)}/>
+          {keyTotal > limit || keyOffset > 0 ? <Pagination page={Math.floor(keyOffset/limit)+1} hasPrevious={keyOffset>0} hasNext={keyOffset+limit<keyTotal} total={keyTotal} onPrevious={()=>setKeyOffset(Math.max(0,keyOffset-limit))} onNext={()=>setKeyOffset(keyOffset+limit)}/> : null}
           </> : null}
 
           {section === "users" ? <>
@@ -412,10 +390,13 @@ export default function Account({ section = "billing" }: { section?: AccountSect
           </> : null}
 
           {section === "integrations" ? <>
-          <div className="card">
-            <h2 className="mb-2 font-bold">وب‌هوک‌ها</h2>
+          <div className="card integ-card space-y-4">
+            <div>
+              <h2 className="font-bold">وب‌هوک‌ها</h2>
+              <p className="section-hint">رویدادهای انتخاب‌شده با درخواست امضادار به آدرس‌های زیر ارسال می‌شود.</p>
+            </div>
             {hookSecret ? (
-              <div className="mb-3 border border-amber-200 bg-amber-50 p-3 text-sm">
+              <div className="integ-secret p-3 text-sm">
                 <div className="mb-1 font-medium">کلید امضا (فقط یک بار):</div>
                 <code dir="ltr" className="break-all">
                   {hookSecret}
@@ -425,7 +406,12 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                 </div>
               </div>
             ) : null}
-            <table className="table mb-3">
+            {hooks.length === 0 ? (
+              <div className="integ-empty">
+                <span className="integ-empty-icon" aria-hidden="true"><Icon icon={webhookIcon} className="h-5 w-5" /></span>
+                <div><strong>هنوز وب‌هوکی ثبت نشده است</strong><p>از فرم «افزودن وب‌هوک» پایین همین صفحه یک آدرس اضافه کنید.</p></div>
+              </div>
+            ) : <div className="overflow-x-auto"><table className="table">
               <thead>
                 <tr>
                   <th>آدرس</th>
@@ -460,41 +446,59 @@ export default function Account({ section = "billing" }: { section?: AccountSect
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>}
             {hookNote ? <div className="mb-2 text-sm text-slate-600">{hookNote}</div> : null}
             {logHookId ? <WebhookDeliveries webhookId={logHookId} onClose={() => setLogHookId(null)} /> : null}
-            <Pagination page={Math.floor(hookOffset/limit)+1} hasPrevious={hookOffset>0} hasNext={hookOffset+limit<hookTotal} total={hookTotal} onPrevious={()=>setHookOffset(Math.max(0,hookOffset-limit))} onNext={()=>setHookOffset(hookOffset+limit)}/>
-            <form className="grid gap-2 md:grid-cols-3" onSubmit={createHook}>
-              <input
-                className="input md:col-span-2"
-                dir="ltr"
-                aria-label="آدرس وب‌هوک"
-                placeholder="https://example.com/hook"
-                value={hookForm.url}
-                onChange={(event) => setHookForm({ ...hookForm, url: event.target.value })}
-                required
-              />
-              <button className="btn">افزودن</button>
-              <div className="md:col-span-3 flex flex-wrap gap-3 text-sm">
-                {EVENTS.map((event) => (
-                  <ToggleSwitch
-                      key={event}
-                      dir="ltr"
-                      checked={hookForm.events.includes(event)}
-                      onChange={(checked) =>
-                        setHookForm({
-                          ...hookForm,
-                          events: checked
-                            ? [...hookForm.events, event]
-                            : hookForm.events.filter((item) => item !== event),
-                        })
-                      }
-                      label={EVENT_LABELS[event] ?? event}
-                    />
-                ))}
-              </div>
-            </form>
+            {hookTotal > limit || hookOffset > 0 ? <Pagination page={Math.floor(hookOffset/limit)+1} hasPrevious={hookOffset>0} hasNext={hookOffset+limit<hookTotal} total={hookTotal} onPrevious={()=>setHookOffset(Math.max(0,hookOffset-limit))} onNext={()=>setHookOffset(hookOffset+limit)}/> : null}
           </div>
+          <form className="key-form" onSubmit={createHook}>
+            <h3 className="key-form-title">افزودن وب‌هوک</h3>
+            <section className="key-step">
+              <span className="key-step-n" aria-hidden="true">1</span>
+              <div className="key-step-body">
+                <h4>آدرس دریافت‌کننده</h4>
+                <input
+                  className="input"
+                  dir="ltr"
+                  aria-label="آدرس وب‌هوک"
+                  placeholder="https://example.com/hook"
+                  value={hookForm.url}
+                  onChange={(event) => setHookForm({ ...hookForm, url: event.target.value })}
+                  required
+                />
+              </div>
+            </section>
+            <section className="key-step">
+              <span className="key-step-n" aria-hidden="true">2</span>
+              <div className="key-step-body">
+                <h4>رویدادها</h4>
+                <div className="scope-grid">
+                  {EVENTS.map((event) => {
+                    const on = hookForm.events.includes(event);
+                    return (
+                      <div key={event} className={`scope-tile${on ? " is-on" : ""}`}>
+                        <ToggleSwitch
+                          dir="ltr"
+                          checked={on}
+                          onChange={(checked) =>
+                            setHookForm({
+                              ...hookForm,
+                              events: checked ? [...hookForm.events, event] : hookForm.events.filter((item) => item !== event),
+                            })
+                          }
+                          label={EVENT_LABELS[event] ?? event}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+            <div className="key-form-foot">
+              <p>{hookForm.events.length === 0 ? "حداقل یک رویداد انتخاب کنید." : `${hookForm.events.length} رویداد انتخاب شده است.`}</p>
+              <button className="btn" disabled={hookForm.events.length === 0}>افزودن وب‌هوک</button>
+            </div>
+          </form>
           </> : null}
 
         </>

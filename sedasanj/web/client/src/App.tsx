@@ -5,6 +5,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import { isOperator, isOrgAdmin, useAuth } from "./auth";
 import Account from "./pages/Account";
+import Transactions from "./pages/Transactions";
 import AccountSettings from "./pages/AccountSettings";
 import OrganizationDataHistory from "./pages/OrganizationDataHistory";
 import { ORGANIZATION_DATA_HISTORY_PATH } from "./pages/organizationDataShared";
@@ -99,6 +100,7 @@ export default function App() {
         <Route path="/operator-scores" element={<OperatorScores />} />
         <Route path="/profile" element={<Profile />} />
         {operator ? null : <Route path="/account" element={<Account />} />}
+        {operator ? null : <Route path="/account/transactions" element={<Transactions />} />}
         {orgAdmin ? <Route path="/checkout" element={<Checkout />} /> : null}
         {orgAdmin ? <Route path="/plans" element={<ChoosePlan />} /> : null}
         {orgAdmin ? <Route path="/billing/change-plan" element={<ChangePlan />} /> : null}

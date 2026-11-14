@@ -184,7 +184,7 @@ export default function JalaliDatePicker({
       <button
         ref={trigger}
         type="button"
-        className="input flex min-h-[42px] w-full items-center justify-between gap-2 bg-white text-right"
+        className="input flex min-h-[42px] w-full items-center justify-between gap-2 bg-[#f2f0ef] text-right"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}

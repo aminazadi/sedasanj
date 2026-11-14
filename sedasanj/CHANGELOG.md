@@ -1,5 +1,45 @@
 ## 2026-11-14 — AMINAZADI
 
+- Redesigned the account billing page: a flat red subscription alert banner, the subscription card with a status chip and a five-cell usage grid (icons and usage bars), the plan purchase moved into a dialog on the account page (plan cards with images, buyer details, payment method and order summary in one step; `/plans` now redirects to `/checkout`), and the credit ledger moved to its own page at `/account/transactions` (button in the page header).
+
+- Made the dotted background pattern lighter across the panel (sidebar, card headers, processing cards and loading backdrop); public pages are unchanged.
+
+- Fixed the API documentation page staying blank in production (the panel's CSP `frame-src` blocked the same-origin docs iframe) and limited the published customer API spec to an allowlist of integration routes (ingest, integration, CRM, webhooks, API keys, login/refresh, error help), so panel-only routes such as billing, signup, tasks and account data are no longer documented. The docs page now serves the ReDoc 2.5.1 bundle and favicon from the API itself (no jsDelivr or Google Fonts), so it works on networks that block third-party hosts.
+
+- Renamed the sidebar item "جلسات" to "صورت‌جلسات" and fixed its keyboard focus ring being clipped to two lines by the accordion panel (the ring is now drawn inside the item).
+
+- Changed the API key expiry field to the Jalali (Shamsi) date picker, blocked past dates, split the webhook list and the new-webhook form into separate cards (step form with event tiles, compact empty state), and hid pagination when everything fits on one page.
+
+- Redesigned the integrations settings page: a 3-step guide and device list for the Jalase-negar pairing, a compact empty state instead of the large illustration for API keys, and a step-by-step new-key form with access tiles, optional limits and a summary footer (behaviour unchanged).
+
+- Fixed the credit top-up slider flooding the API (rate limit exceeded while dragging): quote requests are now debounced and cached, the payment-method list follows the amount only after it settles, and the duplicate settings request was removed.
+
+- Changed ready credit packages to be priced only by the organization's plan per-minute price (minutes × plan rate, plus tax) instead of a separate stored package price, so packages and custom minutes always agree; the panel and the order API use the same calculation.
+
+- Changed the sidebar groups so "مدیریت تماس‌ها" is open by default and groups open and close independently (the group of the current page still opens on navigation).
+
+- Redesigned the credit section of "اعتبار و اشتراک": a balance hero with a segmented plan/prepaid usage bar and percentages, a stepper, logarithmic slider and chips for custom minutes, a live price summary, and a gateway-unavailable state with support and retry actions; added an "AI tokens" tab next to the speech-minutes top-up (token packs embedded in the same card, token balance in the balance card, a clear state when no pack is defined), fixed the slider being hidden by the global panel input background, and replaced the blue focus ring and accents on checkout fields with the panel green.
+
+- Fixed the sidebar hover/active highlight being shifted sideways in minimal mode when the menu list scrolls (right-to-left left-side scrollbar), and kept the single-item overview group outside the accordion.
+
+- Added musical hover sounds for the sidebar highlight: each menu item plays a soft note of a pentatonic scale (kalimba, marimba or celesta timbre, light reverb), selectable by clicking the sound button next to the collapse button, which also cycles to "silent"; the choice is stored in the browser and sound starts after the first click or key press on the page.
+
+- Changed the panel sidebar groups into an accordion: one group is open at a time, the group of the current page opens automatically, and in minimal (icon-only) mode all groups stay visible.
+
+- Added a sliding hover highlight to the panel sidebar: one rectangle now glides between menu items on hover and keyboard focus (instant first appearance, disabled for touch, shortened under reduced-motion), with a gradient fill, an edge marker, a slight overshoot and a small inward nudge of the hovered item; the active-route marker now glides to the new item on navigation.
+
+- Fixed extra empty space at the bottom of the bulk-selection bar: the status line is now rendered only while an action is running or has a result.
+
+- Fixed clicking the selection-checkbox cell (including the space around the checkbox) opening the call or meeting; clicks and key presses in that cell no longer trigger the row link.
+
+- Fixed horizontal scrolling on the contact page: the hidden spam-trap field was positioned 10000px off-screen to the left, which extends the scrollable area in right-to-left layouts; it is now clipped in place.
+
+- Changed the landing use-case node labels to "سازمان‌های دولتی", "تیم فروش" and "مرکز درمانی".
+
+- Fixed hover pausing the typing animation on the landing use-cases section and the login/signup aside: hovering now only prevents moving to the next slide or message, while text already being typed finishes.
+
+- Fixed the organization dashboard flashing skeletons every minute: the session refresh no longer replaces an unchanged session, the dashboard request depends on a stable permission key, and a refetch keeps the previous result on screen (dimmed) instead of showing skeletons again.
+
 - Fixed emotion image builds failing on incomplete package mirrors by applying ordered index fallback to pinned build tools and local PyTorch wheel dependencies, with actionable `SS-DEP-0001` diagnostics.
 
 - Added Persian help articles for all 22 `TENANT_DB_*`, `TENANT_BACKUP_*` and `TENANT_RESTORE_*` error codes (migration 0141), Prometheus metrics and six alerts for failed or stuck tenant database migrations, backups and restores, and a runbook section.

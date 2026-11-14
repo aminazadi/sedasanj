@@ -36,9 +36,19 @@ export default function BillingBanner() {
   }
   if (messages.length === 0) return null;
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-3 border-2 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
-      <span className="font-bold">{messages.join(" ")}</span>
-      <Link className="btn-ghost" to="/account">رفتن به حساب</Link>
+    <div className="billing-banner" role="alert">
+      <span className="billing-banner__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+          <path d="M12 9v4M12 17h.01" />
+        </svg>
+      </span>
+      <div className="billing-banner__body">
+        {messages.map((m) => (
+          <p key={m}>{m}</p>
+        ))}
+      </div>
+      <Link className="billing-banner__action" to="/account">رفتن به حساب</Link>
     </div>
   );
 }

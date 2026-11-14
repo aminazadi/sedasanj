@@ -1,5 +1,8 @@
+import { Icon } from "@iconify/react";
+import keyIcon from "@iconify-icons/lucide/key-round";
 import { useEffect, useMemo, useState } from "react";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
+import JalaliDatePicker from "@cbi/web-shared/components/JalaliDatePicker";
 import { request } from "../api";
 import { freePbxModuleConfig, issabelModuleConfig, pythonAgentConfig } from "../agentConfig";
 import type { ApiKey, ApiKeyCreated } from "../types";
@@ -80,7 +83,8 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
   const passwordValid = !protectedZip
     || keepingExistingPassword
     || (password.length >= 12 && password.length <= 128 && password === confirmation);
-  const maySubmit = passwordValid && (!generated || confirmedCopy);
+  const expiryValid = !expiresOn || expiresOn >= new Date().toISOString().slice(0, 10);
+  const maySubmit = passwordValid && expiryValid && (!generated || confirmedCopy);
   const configs = useMemo(
     () => created ? {
       python: pythonAgentConfig(window.location.origin, created.secret, created.archiveFormat, created.password),
@@ -201,19 +205,19 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
   }
 
   return (
-    <div className="card space-y-4">
+    <div className="card integ-card space-y-4">
       <div>
         <h2 className="font-bold">کلیدهای API و فرمت فایل</h2>
         <p className="mt-1 text-sm text-slate-500">هر کلید فرمت ورودی مستقل دارد. رمز ZIP پس از ثبت قابل بازیابی نیست.</p>
       </div>
       {error ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
       {created ? (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm">
+        <div className="integ-secret p-4 text-sm">
           <div className="font-bold text-amber-900">{created.title}</div>
           <p className="my-2 text-amber-800">این اطلاعات را اکنون کپی یا فایل تنظیمات را دانلود کنید.</p>
           <div className="space-y-2" dir="ltr">
-            <code className="block break-all rounded bg-white p-2">{created.secret}</code>
-            {created.password ? <code className="block break-all rounded bg-white p-2">{created.password}</code> : null}
+            <code className="block break-all bg-[#f2f0ef] p-2">{created.secret}</code>
+            {created.password ? <code className="block break-all bg-[#f2f0ef] p-2">{created.password}</code> : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button className="btn" onClick={() => configs && downloadText("sedasanj-freepbx-config.json", configs.freepbx)}>دانلود تنظیمات FreePBX</button>
@@ -224,7 +228,15 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
           </div>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      {keys.length === 0 ? (
+        <div className="integ-empty">
+          <span className="integ-empty-icon" aria-hidden="true"><Icon icon={keyIcon} className="h-5 w-5" /></span>
+          <div>
+            <strong>هنوز کلیدی نساخته‌اید</strong>
+            <p>برای اتصال مرکز تلفن، یک کلید بسازید؛ مقدار کلید فقط یک‌بار نمایش داده می‌شود.</p>
+          </div>
+        </div>
+      ) : <div className="overflow-x-auto">
         <table className="table min-w-[900px]">
           <thead><tr><th>پیشوند</th><th>برچسب</th><th>فرمت</th><th>رمز ZIP</th><th>دسترسی‌ها</th><th>انقضا</th><th>آخرین استفاده</th><th /></tr></thead>
           <tbody>
@@ -246,9 +258,9 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
       {exporting ? (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+        <div className="integ-panel p-4">
           <div className="mb-1 font-medium">ساخت فایل تنظیمات مرکز تلفن برای {exporting.key_prefix}…</div>
           <p className="mb-3 text-xs text-slate-600">secret فعلی فقط برای اعتبارسنجی مستقیم کلید استفاده می‌شود و در حساب شما ذخیره یا بازیابی نمی‌شود.</p>
           <div className="grid gap-2 md:grid-cols-2">
@@ -259,7 +271,7 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
         </div>
       ) : null}
       {editing ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="integ-panel p-4">
           <div className="mb-3 font-medium">ویرایش کلید</div>
           <label className="mb-3 block"><span className="label">برچسب کلید</span><input className="input" value={editLabel} onChange={(event) => setEditLabel(event.target.value)} placeholder="مثلاً مرکز تماس تهران" /></label>
           <AccessFields scopes={scopes} setScopes={setScopes} expiresOn={expiresOn} setExpiresOn={setExpiresOn} cidrText={cidrText} setCidrText={setCidrText} />
@@ -267,10 +279,23 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
           <div className="mt-3 flex gap-2"><button className="btn" disabled={!maySubmit || scopes.length === 0} onClick={() => void updateKey(keys.find((item) => item.id === editing)!, format)}>ذخیره تغییرات</button><button className="btn-ghost" onClick={() => { setEditing(null); resetSecretFields(); }}>انصراف</button></div>
         </div>
       ) : (
-        <form className="space-y-3 border-t border-slate-100 pt-4" onSubmit={submit}>
-          <div className="grid gap-3 md:grid-cols-2"><label><span className="label">برچسب کلید</span><input className="input" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="مثلاً مرکز تماس تهران" /></label><ArchiveFields format={format} setFormat={setFormat} protectedZip={protectedZip} setProtectedZip={setProtectedZip} password={password} setPassword={setPassword} confirmation={confirmation} setConfirmation={setConfirmation} showPassword={showPassword} setShowPassword={setShowPassword} generated={generated} confirmedCopy={confirmedCopy} generate={generate} copyPassword={copyPassword} /></div>
-          <AccessFields scopes={scopes} setScopes={setScopes} expiresOn={expiresOn} setExpiresOn={setExpiresOn} cidrText={cidrText} setCidrText={setCidrText} />
-          <button className="btn" disabled={!maySubmit || scopes.length === 0}>ایجاد کلید جدید</button>
+        <form className="key-form" onSubmit={submit}>
+          <h3 className="key-form-title">ایجاد کلید جدید</h3>
+          <section className="key-step">
+            <span className="key-step-n" aria-hidden="true">1</span>
+            <div className="key-step-body">
+              <h4>مشخصات و فرمت ارسال</h4>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label><span className="label">برچسب کلید</span><input className="input" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="مثلاً مرکز تماس تهران" /></label>
+                <ArchiveFields format={format} setFormat={setFormat} protectedZip={protectedZip} setProtectedZip={setProtectedZip} password={password} setPassword={setPassword} confirmation={confirmation} setConfirmation={setConfirmation} showPassword={showPassword} setShowPassword={setShowPassword} generated={generated} confirmedCopy={confirmedCopy} generate={generate} copyPassword={copyPassword} />
+              </div>
+            </div>
+          </section>
+          <AccessFields scopes={scopes} setScopes={setScopes} expiresOn={expiresOn} setExpiresOn={setExpiresOn} cidrText={cidrText} setCidrText={setCidrText} numbered />
+          <div className="key-form-foot">
+            <p>{scopes.length === 0 ? "حداقل یک دسترسی انتخاب کنید." : `${scopes.length} دسترسی انتخاب شده است.`}</p>
+            <button className="btn" disabled={!maySubmit || scopes.length === 0}>ایجاد کلید جدید</button>
+          </div>
         </form>
       )}
     </div>
@@ -296,23 +321,38 @@ type AccessFieldsProps = {
   cidrText: string; setCidrText: (value: string) => void;
 };
 
-function AccessFields(props: AccessFieldsProps) {
-  return <div className="space-y-3">
-    <div className="space-y-2">
-      <span className="label">دسترسی‌های کلید</span>
-      {SCOPE_OPTIONS.map((option) => (
-        <ToggleSwitch
-          key={option.value}
-          checked={props.scopes.includes(option.value)}
-          onChange={(on) => props.setScopes(on ? [...props.scopes, option.value] : props.scopes.filter((item) => item !== option.value))}
-          label={option.label}
-          labelClassName="text-sm"
-        />
-      ))}
-    </div>
-    <div className="grid gap-3 md:grid-cols-2">
-      <label><span className="label">تاریخ انقضا (اختیاری)</span><input className="input" type="date" dir="ltr" value={props.expiresOn} min={new Date().toISOString().slice(0, 10)} onChange={(event) => props.setExpiresOn(event.target.value)} /></label>
-      <label><span className="label">IPهای مجاز (اختیاری، هر خط یک آدرس یا CIDR)</span><textarea className="input" dir="ltr" rows={2} value={props.cidrText} onChange={(event) => props.setCidrText(event.target.value)} placeholder="203.0.113.10" /></label>
-    </div>
-  </div>;
+function AccessFields(props: AccessFieldsProps & { numbered?: boolean }) {
+  return <>
+    <section className="key-step">
+      {props.numbered ? <span className="key-step-n" aria-hidden="true">2</span> : null}
+      <div className="key-step-body">
+        <h4>دسترسی‌های کلید</h4>
+        <div className="scope-grid">
+          {SCOPE_OPTIONS.map((option) => {
+            const on = props.scopes.includes(option.value);
+            return (
+              <div key={option.value} className={`scope-tile${on ? " is-on" : ""}`}>
+                <ToggleSwitch
+                  checked={on}
+                  onChange={(next) => props.setScopes(next ? [...props.scopes, option.value] : props.scopes.filter((item) => item !== option.value))}
+                  label={option.label}
+                  labelClassName="text-sm"
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+    <section className="key-step">
+      {props.numbered ? <span className="key-step-n" aria-hidden="true">3</span> : null}
+      <div className="key-step-body">
+        <h4>محدودیت‌ها <small>(اختیاری)</small></h4>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div><span className="label">تاریخ انقضا (شمسی)</span><JalaliDatePicker square value={props.expiresOn} onChange={props.setExpiresOn} placeholder="بدون انقضا" />{props.expiresOn && props.expiresOn < new Date().toISOString().slice(0, 10) ? <p className="field-hint text-rose-700" role="alert">تاریخ انقضا نباید گذشته باشد.</p> : null}</div>
+          <label><span className="label">IPهای مجاز (هر خط یک آدرس یا CIDR)</span><textarea className="input" dir="ltr" rows={2} value={props.cidrText} onChange={(event) => props.setCidrText(event.target.value)} placeholder="203.0.113.10" /></label>
+        </div>
+      </div>
+    </section>
+  </>;
 }

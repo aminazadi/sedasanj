@@ -84,6 +84,8 @@ def test_client_csp_allows_audio_origin_and_microphone(client_port: int) -> None
     assert "media-src 'self' blob: https://audio.example.com" in csp
     assert "connect-src 'self'" in csp
     assert "frame-ancestors 'self'" in csp
+    # The API-docs page embeds /v1/docs/customer in an iframe; frame-src must allow same origin.
+    assert "frame-src 'self' " in csp
     assert "'unsafe-inline'" not in csp.split("script-src", 1)[1].split(";", 1)[0]
     assert "microphone=(self)" in headers["permissions-policy"]
 

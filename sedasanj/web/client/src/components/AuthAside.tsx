@@ -30,7 +30,9 @@ function useTypedMessages({ messages, type_speed_ms, hold_seconds }: AuthAsideCo
   useEffect(() => { setIndex(0); setLength(0); setPhase("typing"); }, [messages]);
 
   useEffect(() => {
-    if (paused) return;
+    // Hover/focus only blocks leaving the message (hold/erase/next); typing in progress finishes.
+    const typingInProgress = !reduced && phase === "typing" && length < chars.length;
+    if (paused && !typingInProgress) return;
     const advance = () => { setIndex((value) => (value + 1) % count); setLength(0); setPhase("typing"); };
     let timer: number | undefined;
     if (reduced) {

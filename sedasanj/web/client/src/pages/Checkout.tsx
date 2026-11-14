@@ -5,12 +5,24 @@ import { ApiError, fmt, request } from "../api";
 import PaymentMethodPicker from "../components/PaymentMethodPicker";
 import { billingErrorMessage } from "../lib/billingErrors.mjs";
 import { startPayment, type GatewayCode } from "../lib/payment";
+import planBronzeImage from "../assets/plan-bronze.webp";
+import planSilverImage from "../assets/plan-silver.webp";
+import planGoldImage from "../assets/plan-gold.webp";
 import type { PublicPlan } from "../types";
 
-const MAX_EXTRA_OPERATORS = 500;
+const PLAN_IMAGES: Record<string, string> = { bronze: planBronzeImage, silver: planSilverImage, gold: planGoldImage };
 
+export const MAX_EXTRA_OPERATORS = 500;
+export { PLAN_IMAGES };
+
+/** Standalone page kept for old links; the same flow is embedded in the account page. */
 export default function Checkout() {
   const [params] = useSearchParams();
+  return <CheckoutFlow initialPlan={params.get("plan")} />;
+}
+
+/** State and order submission shared by the checkout page and the checkout dialog. */
+export function useCheckout(initialPlan: string | null) {
   const [plans, setPlans] = useState<PublicPlan[] | null>(null);
   const [taxPercent, setTaxPercent] = useState(0);
   const [extra, setExtra] = useState(0);
@@ -22,8 +34,10 @@ export default function Checkout() {
   const [anyMethod, setAnyMethod] = useState(true);
   // One order per distinct purchase: retrying after an error reuses it instead of piling up drafts.
   const orderKey = useRef<{ signature: string; key: string } | null>(null);
-  const code = params.get("plan");
-  const plan = plans?.find((item) => item.code === code && item.sellable && !item.is_trial) ?? null;
+  const [picked, setPicked] = useState<string | null>(initialPlan);
+  const sellable = (plans ?? []).filter((item) => item.sellable && !item.is_trial);
+  // The requested plan when it can be bought, otherwise the first one on sale, so the page is never a dead end.
+  const plan = sellable.find((item) => item.code === picked) ?? sellable[0] ?? null;
 
   useEffect(() => {
     request<PublicPlan[]>("/v1/plans")
@@ -53,8 +67,8 @@ export default function Checkout() {
     return { base, extras, net, tax, total: net + tax };
   }, [plan, extra, taxPercent]);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(event?: React.FormEvent) {
+    event?.preventDefault();
     if (!plan) return;
     if (!termsAccepted) {
       setError("برای ادامه، قوانین، حریم خصوصی و سیاست لغو را بپذیرید.");
@@ -88,22 +102,50 @@ export default function Checkout() {
     }
   }
 
+  return {
+    plans, sellable, plan, picked, setPicked, taxPercent, extra, setExtra, form, setForm, error, busy,
+    termsAccepted, setTermsAccepted, gateway, setGateway, anyMethod, setAnyMethod, lines, submit,
+  };
+}
+
+/** Plan choice, buyer details and payment on one screen. `embedded` drops the page heading. */
+export function CheckoutFlow({ initialPlan, embedded = false }: { initialPlan: string | null; embedded?: boolean }) {
+  const {
+    plans, sellable, plan, setPicked, taxPercent, extra, setExtra, form, setForm, error, busy,
+    termsAccepted, setTermsAccepted, gateway, setGateway, anyMethod, setAnyMethod, lines, submit,
+  } = useCheckout(initialPlan);
   if (plans === null) return <div className="card">در حال دریافت اطلاعات پلن…</div>;
   if (!plan) {
     return (
       <div className="card">
-        <p className="commerce-error">{error || "پلن انتخاب‌شده پیدا نشد یا برای خرید در دسترس نیست."}</p>
-        <Link className="btn" to="/plans">انتخاب پلن</Link>
+        <p className="commerce-error">{error || "در حال حاضر هیچ پلنی برای خرید در دسترس نیست؛ با پشتیبانی تماس بگیرید."}</p>
+        <Link className="btn-ghost" to="/account">بازگشت به حساب</Link>
       </div>
     );
   }
   return (
-    <div className="commerce-page">
+    <div className={`commerce-page${embedded ? " is-embedded" : ""}`}>
       <div className="commerce-heading">
-        <h1>خرید اشتراک پلن {plan.name}</h1>
+        {embedded ? null : <h1>خرید اشتراک</h1>}
         <p>مبلغ نهایی در سرور محاسبه می‌شود.{taxPercent ? ` قیمت پلن بدون مالیات است و ${fmt.int(taxPercent)}٪ مالیات به مبلغ اضافه می‌شود.` : " قیمت نمایش‌داده‌شده شامل مالیات است."}</p>
       </div>
       {error ? <div className="commerce-error" role="alert">{error}</div> : null}
+      <div className="plan-picker" role="radiogroup" aria-label="انتخاب پلن">
+        {sellable.map((item) => (
+          <button
+            key={item.code}
+            type="button"
+            role="radio"
+            aria-checked={item.code === plan.code}
+            className={`plan-option${item.code === plan.code ? " is-selected" : ""}`}
+            onClick={() => setPicked(item.code)}
+          >
+            {PLAN_IMAGES[item.code] ? <img src={PLAN_IMAGES[item.code]} alt="" className="plan-option__image" /> : null}
+            <strong>{item.name}</strong>
+            <span>{fmt.toman(item.annual_price_toman ?? 0)} / سال</span>
+          </button>
+        ))}
+      </div>
       <div className="commerce-grid">
         <form className="card commerce-form" onSubmit={submit}>
           <p className="text-sm text-slate-500">دوره پرداخت اشتراک: سالانه</p>

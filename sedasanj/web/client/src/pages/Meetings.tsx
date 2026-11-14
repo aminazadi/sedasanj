@@ -166,7 +166,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
                     }
                   }}
                 >
-                  <td><SelectionCheckbox label={`انتخاب مورد ${meeting.id}`} checked={selected.includes(meeting.id)} disabled={bulkBusy} onChange={() => toggle(meeting.id)} /></td>
+                  <td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><SelectionCheckbox label={`انتخاب مورد ${meeting.id}`} checked={selected.includes(meeting.id)} disabled={bulkBusy} onChange={() => toggle(meeting.id)} /></td>
                   <td className="max-w-xs truncate font-bold">{meeting.title || "جلسه بدون عنوان"}</td>
                   <td>{fmt.dateTime(meeting.started_at)}</td>
                   <td>{meeting.duration_ms === null ? "—" : fmt.duration(meeting.duration_ms)}</td>

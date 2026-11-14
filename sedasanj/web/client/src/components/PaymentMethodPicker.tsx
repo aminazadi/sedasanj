@@ -15,6 +15,7 @@ interface Props {
 export default function PaymentMethodPicker({ amountToman, value, onChange, onAvailability }: Props) {
   const [methods, setMethods] = useState<PaymentMethod[] | null>(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const query = amountToman && amountToman > 0 ? `?amount_toman=${amountToman}` : "";
@@ -27,7 +28,7 @@ export default function PaymentMethodPicker({ amountToman, value, onChange, onAv
     return () => {
       alive = false;
     };
-  }, [amountToman]);
+  }, [amountToman, attempt]);
 
   useEffect(() => {
     if (!methods) return;
@@ -43,7 +44,14 @@ export default function PaymentMethodPicker({ amountToman, value, onChange, onAv
     return (
       <div className="pay-empty" role="alert">
         <img src={secureArt} alt="" width={96} height={60} />
-        <p>در حال حاضر هیچ درگاه پرداختی فعال نیست. لطفاً با پشتیبانی تماس بگیرید.</p>
+        <div className="pay-empty-body">
+          <strong>پرداخت آنلاین موقتاً در دسترس نیست</strong>
+          <p>در حال حاضر هیچ درگاه پرداختی فعال نیست. لطفاً با پشتیبانی تماس بگیرید.</p>
+          <div className="pay-empty-actions">
+            <a className="btn-ghost" href="/contact">تماس با پشتیبانی</a>
+            <button type="button" className="btn-ghost" onClick={() => { setMethods(null); setAttempt((n) => n + 1); }}>بررسی دوباره</button>
+          </div>
+        </div>
       </div>
     );
   }

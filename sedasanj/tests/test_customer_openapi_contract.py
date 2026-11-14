@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -89,3 +90,41 @@ async def test_rate_limit_error_carries_retry_after(monkeypatch) -> None:
     assert response.status_code == 429
     assert int(response.headers["retry-after"]) == limited.value.retry_after
     assert response.json()["error"]["retryable"] is True
+
+
+async def test_published_spec_is_limited_to_the_integration_contract() -> None:
+    from app.main import CUSTOMER_API_PREFIXES
+
+    paths = (await _spec())["paths"]
+    assert paths, "the customer spec must not be empty"
+    assert [p for p in paths if not p.startswith(CUSTOMER_API_PREFIXES)] == []
+    private_markers = (
+        "/v1/billing",
+        "/v1/orders",
+        "/v1/checkout",
+        "/v1/signup",
+        "/v1/quick-demo",
+        "/v1/jalase-negar",
+        "/v1/account",
+        "/v1/tasks",
+        "/v1/kpi",
+        "/v1/subscription",
+        "/v1/meetings",
+        "/v1/auth/totp",
+        "/v1/auth/users",
+        "/v1/site",
+    )
+    assert not [p for p in paths if p.startswith(private_markers)]
+
+
+async def test_customer_docs_load_redoc_from_this_api_not_a_cdn() -> None:
+    app = create_app()
+    page = next(r for r in app.routes if getattr(r, "path", None) == "/v1/docs/customer")
+    html = (await page.endpoint()).body.decode()
+    assert "/v1/docs/assets/redoc.standalone.js" in html
+    assert "cdn.jsdelivr" not in html and "googleapis" not in html
+    script = next(
+        r for r in app.routes if getattr(r, "path", None) == "/v1/docs/assets/redoc.standalone.js"
+    )
+    response = await script.endpoint()
+    assert Path(str(response.path)).stat().st_size > 100_000

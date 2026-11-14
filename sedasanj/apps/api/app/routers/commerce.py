@@ -1344,7 +1344,10 @@ async def create_credit_order(
         package = await session.get(Package, payload.package_id)
         if package is None or not package.active:
             raise ApiError("not_found", "credit package not found")
-        minutes, amount = package.minutes, package.price_toman
+        # Ready packages are only minute bundles: the price is always minutes x the per-minute
+        # price of the organization's plan, so packages and custom minutes can never disagree.
+        minutes = package.minutes
+        amount, _, _, _ = await _credit_amount(session, principal.tenant_id, minutes)
     else:
         minutes = int(payload.minutes or 0)
         amount, _, _, _ = await _credit_amount(session, principal.tenant_id, minutes)

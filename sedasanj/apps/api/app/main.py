@@ -6,13 +6,14 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 import socketio
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.config import get_settings
 from app.db import assert_database_runtime_ready, assert_rls_enforced, dispose_engine
@@ -133,11 +134,28 @@ PRIVATE_OPENAPI_TAGS = frozenset(
 )
 
 
+# The customer API contract is an allowlist: what an integrator needs to call the platform with an
+# API key, manage keys and webhooks, and read error help. Panel-only routes (billing, tasks,
+# account data, checkout, quick demo, Jalase-Negar push ...) are deliberately not published.
+REDOC_ASSETS = Path(__file__).parent / "assets" / "redoc"
+
+CUSTOMER_API_PREFIXES = (
+    "/v1/ingest/",
+    "/v1/integration/",
+    "/v1/crm/",
+    "/v1/webhooks",
+    "/v1/auth/api-keys",
+    "/v1/auth/login",
+    "/v1/auth/refresh",
+    "/v1/help/errors/",
+)
+
+
 def _public_paths(paths: dict[str, Any]) -> dict[str, Any]:
-    """Keep customer-facing operations; drop staff, internal and assistant ones."""
+    """Keep only the documented customer integration operations."""
     public: dict[str, Any] = {}
     for path, operations in paths.items():
-        if not path.startswith("/v1/") or path.startswith(("/v1/admin", "/v1/assistant")):
+        if not path.startswith(CUSTOMER_API_PREFIXES):
             continue
         kept = {
             method: operation
@@ -465,9 +483,30 @@ The extracted file must pass the PCM, sample-rate, channel, and duration checks.
 
     @app.get("/v1/docs/customer", include_in_schema=False, response_class=HTMLResponse)
     async def customer_docs() -> HTMLResponse:
+        # ReDoc is served from this API (no CDN, no Google Fonts) so the docs also work on
+        # networks that cannot reach third-party hosts.
         return get_redoc_html(
             openapi_url="/v1/openapi/customer.json",
             title=API_TITLE,
+            redoc_js_url="/v1/docs/assets/redoc.standalone.js",
+            redoc_favicon_url="/v1/docs/assets/favicon.svg",
+            with_google_fonts=False,
+        )
+
+    @app.get("/v1/docs/assets/redoc.standalone.js", include_in_schema=False)
+    async def customer_docs_script() -> FileResponse:
+        return FileResponse(
+            REDOC_ASSETS / "redoc.standalone.js",
+            media_type="text/javascript",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/v1/docs/assets/favicon.svg", include_in_schema=False)
+    async def customer_docs_favicon() -> FileResponse:
+        return FileResponse(
+            Path(__file__).parent / "assets" / "sedasanj-logo.svg",
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=86400"},
         )
 
     return app

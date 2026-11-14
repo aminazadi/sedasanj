@@ -93,6 +93,43 @@ async def test_subscription_order_carries_tax_and_invoice_breakdown(scratch: Non
         await drop_org(org)
 
 
+async def test_credit_package_is_priced_by_plan_minute_rate(scratch: None) -> None:
+    from app import db
+    from app.models import Order, Package
+    from app.routers.commerce import CreditOrderCreate, create_credit_order
+    from app.services import billing
+
+    org = await make_org("bronze")
+    package_id = None
+    try:
+        async with db.session_scope(staff=True) as session:
+            # A stale package price must be ignored: only the plan's per-minute price counts.
+            package = Package(name="100", minutes=100, price_toman=1, active=True)
+            session.add(package)
+            await session.flush()
+            package_id = package.id
+            rate = await billing.effective_price_per_minute(
+                session, org.tenant_id, include_pending=True
+            )
+            out = await create_credit_order(
+                CreditOrderCreate(package_id=package.id),
+                request(),
+                org.principal,
+                session,
+                uuid4().hex,
+            )
+            order = await session.get(Order, UUID(out["id"]))
+            assert order is not None
+            assert order.amount_toman == 100 * rate
+    finally:
+        if package_id is not None:
+            async with db.session_scope(staff=True) as session:
+                row = await session.get(Package, package_id)
+                if row is not None:
+                    await session.delete(row)
+        await drop_org(org)
+
+
 async def test_credit_balance_excludes_tax(scratch: None) -> None:
     from app import db
     from app.models import Order, TenantBalanceCache
