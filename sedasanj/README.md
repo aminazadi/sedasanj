@@ -87,3 +87,5 @@ pytest
 
 راهنمای کامل نصب روی Ubuntu 24.04 در <docs/deployment.md> و عملیات روز-دوم در
 <docs/runbook.md> آمده است. راه‌اندازی سمت Asterisk در <apps/agent/README.md>.
+
+دیپلوی با `scripts/deploy.sh` انجام می‌شود: هر ایمیج فقط یک‌بار ساخته می‌شود و تا وقتی کدش عوض نشده دوباره ساخته نمی‌شود (`--rebuild` برای ساخت اجباری، `--build-only` برای فقط ساخت).

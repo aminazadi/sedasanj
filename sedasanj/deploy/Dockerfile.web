@@ -1,4 +1,4 @@
-FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS client-build
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS client-build
 WORKDIR /build
 
 COPY web/shared ./shared
@@ -9,7 +9,7 @@ ARG SITE_URL=https://sedasanj.ir
 ENV SITE_URL=$SITE_URL
 RUN cd client && npm run build
 
-FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS admin-build
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS admin-build
 WORKDIR /build
 
 COPY web/shared ./shared

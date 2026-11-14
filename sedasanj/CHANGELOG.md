@@ -1,5 +1,7 @@
 ## 2026-11-14 — AMINAZADI
 
+- Changed production deploys to build each image once: compose services now carry content-hash image tags and the new `scripts/deploy.sh` builds only the images that are missing (unchanged code builds nothing, changed code gets a new tag), then starts with `--no-build`. The client and admin build stages now run on `node:24-alpine`; the API, workers, emotion worker and Postgres stay on Debian because torch, aapt2/apksigner and the existing database collation do not work on Alpine/musl.
+
 - Added super-admin settings for separate public-site and customer-panel head/body scripts, with password and two-factor verification, metadata-only auditing, validated script tags, CSP-compatible same-origin delivery for inline code, and document reloads when crossing scopes.
 
 - Changed the public quick-demo button to a transparent background with red text, only a moving red perimeter segment and a subtle hover tint.

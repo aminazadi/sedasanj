@@ -143,6 +143,7 @@ services:
 
   client:
     <<: *web-hardening
+    image: sedasanj/client:${CLIENT_TAG:-dev}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
@@ -172,6 +173,7 @@ services:
 
   admin:
     <<: *web-hardening
+    image: sedasanj/admin:${ADMIN_TAG:-dev}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
@@ -198,6 +200,7 @@ services:
     build:
       <<: *api-build
       target: api
+    image: sedasanj/api:${API_TAG:-dev}
     restart: unless-stopped
     ports: ["${PUBLISH_ADDRESS:?Set PUBLISH_ADDRESS}:${API_PORT:-8000}:8000"]
     environment:
@@ -233,6 +236,7 @@ services:
   migrate:
     <<: *hardening
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     environment:
       <<: *python-env
       DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/cbi
@@ -258,6 +262,7 @@ services:
   seed:
     <<: *hardening
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     environment:
       <<: *python-env
       DATABASE_URL: postgresql+asyncpg://cbi:${POSTGRES_PASSWORD}@postgres:5432/cbi
@@ -280,6 +285,7 @@ services:
 
   worker-asr:
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_asr.main.WorkerSettings"]
     environment: *python-env
@@ -303,6 +309,7 @@ services:
 
   worker-emotion:
     <<: *hardening
+    image: sedasanj/emotion:${API_TAG:-dev}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -340,6 +347,7 @@ services:
 
   worker-meeting:
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_meeting.main.WorkerSettings"]
     environment: *python-env
@@ -361,6 +369,7 @@ services:
 
   worker-llm:
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_llm.main.WorkerSettings"]
     environment: *python-env
@@ -383,6 +392,7 @@ services:
   worker-assistant:
     <<: *hardening
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_llm.main.AssistantWorkerSettings"]
     environment:
@@ -405,6 +415,7 @@ services:
 
   worker-notify:
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_notify.main.WorkerSettings"]
     environment: *python-env
@@ -425,6 +436,7 @@ services:
 
   worker-dispatch:
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_dispatch.main.WorkerSettings"]
     environment: *python-env
@@ -446,6 +458,7 @@ services:
   worker-organization-data:
     <<: *hardening
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["python", "-m", "app.services.organization_data.worker"]
     environment:
@@ -469,6 +482,7 @@ services:
   worker-tenant-backup:
     <<: *hardening
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["python", "-m", "app.services.tenant_backup_worker"]
     environment:
@@ -493,6 +507,7 @@ services:
   worker-provision:
     <<: *hardening
     build: *api-build
+    image: sedasanj/api-base:${API_TAG:-dev}
     restart: unless-stopped
     command: ["arq", "worker_provision.main.WorkerSettings"]
     environment:
@@ -543,6 +558,7 @@ services:
   llm2: *llm
 
   postgres:
+    image: sedasanj/postgres:${POSTGRES_TAG:-dev}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.postgres
