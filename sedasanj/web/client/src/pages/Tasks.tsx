@@ -9,7 +9,8 @@ import { Empty, ErrorBox, Loading, Pagination } from "../components/Widgets";
 import TaskDetails from "../components/TaskDetails";
 import TaskCreateDialog from "../components/TaskCreateDialog";
 import { useTablePageSize } from "../lib/useTablePagination";
-import type { TaskPage, TaskPerson } from "../types";
+import { taskErrorText } from "../lib/taskErrors";
+import type { FollowUpTask, TaskPage, TaskPerson } from "../types";
 
 const VIEWS = [{ id: "overdue", label: "عقب‌افتاده" }, { id: "today", label: "امروز" }, { id: "upcoming", label: "آینده" }, { id: "done", label: "انجام‌شده" }, { id: "all", label: "همه" }];
 const SORTS = [{ id: "due_date", label: "موعد" }, { id: "priority", label: "اولویت" }, { id: "created_at", label: "زمان ایجاد" }, { id: "updated_at", label: "آخرین تغییر" }];
@@ -76,6 +77,16 @@ export default function Tasks() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [query, revision]);
+  const [quickBusy, setQuickBusy] = useState<string | null>(null);
+  async function toggleDone(task: FollowUpTask) {
+    if (quickBusy) return;
+    setQuickBusy(task.id); setError(null);
+    try {
+      await request<FollowUpTask>(`/v1/tasks/${task.id}`, { method: "PATCH", body: { status: task.status === "done" ? "open" : "done", version: task.version } });
+      setRevision((v) => v + 1);
+    } catch (err) { setError(taskErrorText(err)); }
+    finally { setQuickBusy(null); }
+  }
   const filterKeys = ["q", "status", "priority", "assignee", "due_from", "due_to", "sort", "order"];
   const clearFilters = () => { setSearch(""); change(Object.fromEntries(filterKeys.map((key) => [key, ""]))); };
   const selectField = (id: string, label: string, options: { value: string; label: string }[]): FilterBarField => ({
@@ -97,29 +108,39 @@ export default function Tasks() {
   ];
   const filterBar = useFilterBar({ fields: filterFields, hasActive: filterKeys.some((key) => Boolean(params.get(key))), onClear: clearFilters });
   return <div className="space-y-4">
-    <PageHeader title="کارهای قابل پیگیری" description="مدیریت کارهای تماس، مسئول‌ها و روند پیگیری" actions={<div className="flex flex-wrap items-center justify-end gap-3">{filterBar.toolbar}<button type="button" className="btn-ghost" disabled={loading} onClick={() => setRevision((v) => v + 1)}>تازه‌سازی</button>{canEdit ? <button type="button" className="btn" onClick={() => setCreating(true)}>ثبت کار جدید</button> : null}</div>} />
+    <PageHeader title="کارهای قابل پیگیری" description="مدیریت کارهای تماس، مسئول‌ها و روند پیگیری" actions={<div className="flex flex-wrap items-center justify-end gap-3">{canEdit ? <button type="button" className="btn" onClick={() => setCreating(true)}>ثبت کار جدید</button> : null}</div>} />
     {creating ? <TaskCreateDialog onCancel={() => setCreating(false)} onCreated={(task) => { setCreating(false); change({ task: task.id, history_offset: "" }, false); setRevision((v) => v + 1); }} /> : null}
     <nav className="panel-tabs grid-cols-2 sm:grid-cols-5" aria-label="صف کارها">{VIEWS.map((item) => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} onClick={() => change({ view: item.id })} className="panel-tab"><span className="block text-lg font-light">{page ? fmt.int(page.counts[item.id] ?? 0) : "—"}</span><span className="text-sm">{item.label}</span></button>)}</nav>
-    <div className="card">
-      <label className="block max-w-lg"><span className="sr-only">جست‌وجو در کارها</span><input className="input" type="search" placeholder="جست‌وجوی عنوان، توضیحات یا شماره تماس" maxLength={200} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+    <div className="tasks-toolbar">
+      <label className="tasks-search"><span className="sr-only">جست‌وجو در کارها</span><input className="input" type="search" placeholder="جست‌وجوی عنوان، توضیحات یا شماره تماس" maxLength={200} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+      {filterBar.toolbar}
+      <button type="button" className="btn-ghost" disabled={loading} onClick={() => setRevision((v) => v + 1)}>تازه‌سازی</button>
     </div>
     {filterBar.fields}
     <ErrorBox message={error} />
     <div className={`grid items-start gap-4 ${selected ? "lg:grid-cols-[minmax(0,1fr)_minmax(340px,42%)]" : ""}`}>
       <section tabIndex={-1} className="card min-w-0" aria-label="فهرست کارها" aria-busy={loading}>
-        {loading ? <Loading /> : page?.items.length ? <div className="overflow-x-auto"><table className="table" dir="rtl"><thead><tr><th>عنوان کار</th><th>وضعیت</th>{!selected ? <><th>مسئول</th><th>اولویت</th><th>موعد</th><th>شماره تماس</th><th>آخرین تغییر</th></> : null}</tr></thead><tbody>{page.items.map((task) => {
+        {loading ? <Loading /> : page?.items.length ? <ul className="task-list">{page.items.map((task) => {
           const overdue = task.status !== "done" && task.due_date && task.due_date < page.today;
+          const done = task.status === "done";
           const open = () => change({ task: task.id, history_offset: "" }, false);
-          return <tr key={task.id} tabIndex={0} role="button" aria-label={task.title} aria-current={selected === task.id ? "true" : undefined} className={`table-row-link ${selected === task.id ? "bg-brand-50" : ""}`} onClick={open} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}>
-            <td><span className="block max-w-xs whitespace-normal leading-6">{task.title}</span>{selected ? <div className="mt-2 max-w-xs space-y-1 whitespace-normal text-xs text-slate-500"><p>مسئول: {task.assignee_name ?? "تعیین نشده"} · اولویت: {task.priority ? TASK_PRIORITY_LABELS[task.priority] : "—"}</p><p className={overdue ? "text-rose-700" : undefined}>موعد: {task.due_date ? fmt.calendarDate(task.due_date) : "بدون موعد"}{overdue ? " · عقب‌افتاده" : ""}</p><p><bdi dir="ltr">{task.source_phone ?? "—"}</bdi> · {fmt.dateTime(task.updated_at)}</p>{isAdmin && !task.assignee_access_valid ? <p className="text-rose-700">مسئول فاقد دسترسی به تماس</p> : null}</div> : null}</td>
-            <td><span className={`badge ${task.status === "done" ? "badge-success" : task.status === "in_progress" ? "badge-info" : "badge-neutral"}`}>{TASK_STATUS_LABELS[task.status]}</span></td>
-            {!selected ? <><td>{task.assignee_name ?? "تعیین نشده"}{isAdmin && !task.assignee_access_valid ? <span className="block text-xs text-rose-700">فاقد دسترسی به تماس</span> : null}</td>
-            <td>{task.priority ? TASK_PRIORITY_LABELS[task.priority] : "—"}</td>
-            <td className={overdue ? "text-rose-700" : undefined}>{task.due_date ? fmt.calendarDate(task.due_date) : "بدون موعد"}{overdue ? <span className="block text-xs">عقب‌افتاده</span> : null}</td>
-            <td><bdi dir="ltr">{task.source_phone ?? "—"}</bdi></td><td>{fmt.dateTime(task.updated_at)}</td></> : null}
-          </tr>;
-        })}</tbody></table></div> : !error ? <Empty>کاری در این نما نیست؛ فیلترها را تغییر دهید یا کار جدید ثبت کنید.</Empty> : null}
-        <Pagination page={Math.floor(offset / pageSize) + 1} total={page?.total} loading={loading} hasPrevious={offset > 0} hasNext={Boolean(page && offset + pageSize < page.total)} onPrevious={() => change({ offset: String(Math.max(0, offset - pageSize)) }, false)} onNext={() => change({ offset: String(offset + pageSize) }, false)} />
+          return <li key={task.id} className={`task-row${task.priority ? ` prio-${task.priority}` : ""}${done ? " is-done" : ""}${selected === task.id ? " is-selected" : ""}`}>
+            {canEdit ? <button type="button" className="task-check" role="checkbox" aria-checked={done} aria-label={done ? "بازگرداندن کار" : "انجام شد"} disabled={quickBusy === task.id} onClick={() => void toggleDone(task)}>{done ? "✓" : ""}</button> : null}
+            <button type="button" className="task-main" aria-current={selected === task.id ? "true" : undefined} onClick={open}>
+              <span className="task-title">{task.title}</span>
+              <span className="task-meta">
+                {task.status === "in_progress" ? <span className="badge badge-info">{TASK_STATUS_LABELS[task.status]}</span> : null}
+                {task.priority === "high" ? <span className="task-flag">اولویت بالا</span> : null}
+                {task.due_date ? <span className={overdue ? "text-rose-700" : undefined}>موعد {fmt.calendarDate(task.due_date)}{overdue ? " · عقب‌افتاده" : ""}</span> : null}
+                {task.assignee_name ? <span>{task.assignee_name}</span> : null}
+                {isAdmin && !task.assignee_access_valid ? <span className="text-rose-700">مسئول فاقد دسترسی به تماس</span> : null}
+                {task.source_phone ? <bdi dir="ltr">{task.source_phone}</bdi> : null}
+              </span>
+            </button>
+            <time className="task-time" dateTime={task.updated_at}>{fmt.dateTime(task.updated_at)}</time>
+          </li>;
+        })}</ul> : !error ? <Empty>کاری در این نما نیست؛ فیلترها را تغییر دهید یا کار جدید ثبت کنید.</Empty> : null}
+        {offset > 0 || (page && page.total > pageSize) ? <Pagination page={Math.floor(offset / pageSize) + 1} total={page?.total} loading={loading} hasPrevious={offset > 0} hasNext={Boolean(page && offset + pageSize < page.total)} onPrevious={() => change({ offset: String(Math.max(0, offset - pageSize)) }, false)} onNext={() => change({ offset: String(offset + pageSize) }, false)} /> : null}
       </section>
       {selected ? <TaskDetails key={selected} id={selected} canEdit={canEdit} isAdmin={isAdmin} historyOffset={numberParam(params.get("history_offset"))} onHistoryOffset={(offset) => change({ history_offset: offset ? String(offset) : "" }, false)} onUpdated={() => setRevision((v) => v + 1)} onClose={() => change({ task: "", history_offset: "" }, false)} /> : null}
     </div>

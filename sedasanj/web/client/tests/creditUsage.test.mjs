@@ -60,3 +60,13 @@ test("API key expiry uses the shared Jalali date picker instead of the native da
   assert.match(keys, /JalaliDatePicker/);
   assert.doesNotMatch(keys, /type="date"/);
 });
+
+test("tasks page uses compact rows with a quick complete action and a single toolbar", () => {
+  const tasks = fs.readFileSync(new URL("../src/pages/Tasks.tsx", import.meta.url), "utf8");
+  assert.match(tasks, /className="task-list"/);
+  assert.match(tasks, /task-check/);
+  assert.match(tasks, /status: task\.status === "done" \? "open" : "done", version: task\.version/);
+  assert.match(tasks, /tasks-toolbar/);
+  assert.doesNotMatch(tasks, /<table/);
+  assert.match(tasks, /offset > 0 \|\| \(page && page\.total > pageSize\)/);
+});

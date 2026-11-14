@@ -1880,3 +1880,29 @@ img.article-thumbnail-fallback { object-fit: cover; background: #f2f0ef; padding
 .checkout-lines dd { margin: 0; color: #1e293b; }
 .checkout-lines .is-total { padding-top: 8px; border-top: 1px solid #dae3d7; font-weight: 700; }
 .checkout-lines .is-total dd { color: #4b6e48; font-size: 15px; }
+
+/* ---- Tasks page: compact two-line rows, one toolbar ---- */
+.tasks-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tasks-search { flex: 1 1 280px; min-width: 0; }
+.task-list { margin: 0; padding: 0; list-style: none; }
+.task-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); border-inline-start: 4px solid transparent; transition: background .15s; }
+.task-row:last-child { border-bottom: 0; }
+.task-row:hover { background: #e9ede5; }
+.task-row.is-selected { background: #e1e9dd; }
+.task-row.prio-high { border-inline-start-color: #be123c; }
+.task-row.prio-normal { border-inline-start-color: #b2ac88; }
+.task-row.prio-low { border-inline-start-color: #4b6e48; }
+.task-main { flex: 1; min-width: 0; display: grid; gap: 3px; padding: 2px 0; border: 0; background: transparent; font: inherit; text-align: start; cursor: pointer; }
+.task-main:focus-visible, .task-check:focus-visible { outline: 2px solid #4b6e48; outline-offset: 2px; }
+.task-title { font-size: 14px; line-height: 1.7; color: #1f2a1e; white-space: normal; }
+.task-row.is-done .task-title { color: #8a8a7a; text-decoration: line-through; }
+.task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: #7a7a6a; }
+.task-flag { color: #be123c; font-weight: 700; }
+.task-time { flex: none; font-size: 11px; color: #9a9a8a; white-space: nowrap; }
+.task-check { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border: 2px solid #b2ac88; background: transparent; color: #f2f0ef; font-size: 14px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; }
+.task-check:hover:not(:disabled) { border-color: #4b6e48; background: rgb(75 110 72 / .12); }
+.task-check[aria-checked="true"] { border-color: #4b6e48; background: #4b6e48; }
+.task-check:active:not(:disabled) { transform: scale(.92); }
+.task-check:disabled { opacity: .5; cursor: wait; }
+@media (max-width: 640px) { .task-time { display: none; } }
+@media (prefers-reduced-motion: reduce) { .task-row, .task-check { transition: none; } }
