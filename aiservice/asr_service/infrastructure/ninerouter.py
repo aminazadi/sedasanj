@@ -307,7 +307,16 @@ class NineRouterClient:
         return list(unique.values())
 
     def chat(self, model, messages, options):
-        response, _ = self._request("POST", "/v1/chat/completions", json={"model": model, "messages": messages, **options})
+        try:
+            response, _ = self._request("POST", "/v1/chat/completions", json={"model": model, "messages": messages, **options})
+        except NineRouterError as error:
+            # A model/provider that rejects the strict json_schema must not fail the task:
+            # repeat once with plain json_object mode (the caller validates the result anyway).
+            fmt = options.get("response_format")
+            if error.status_code not in (400, 422) or not isinstance(fmt, dict) or fmt.get("type") != "json_schema":
+                raise
+            fallback = {**options, "response_format": {"type": "json_object"}}
+            response, _ = self._request("POST", "/v1/chat/completions", json={"model": model, "messages": messages, **fallback})
         payload = response.json()
         if not isinstance(payload.get("choices"), list):
             raise NineRouterError("9Router returned an invalid chat completion")

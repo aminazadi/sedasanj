@@ -281,17 +281,30 @@ async def retry_json_chat(
     model: str,
     messages: list[dict[str, str]],
     max_tokens: int,
+    response_format: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    body = {
+    """Ask for a JSON object, optionally constrained by a strict ``json_schema``.
+
+    A provider or model that does not support the schema must never break the flow: when the
+    schema request is rejected, the call is repeated once with plain ``json_object`` mode.
+    """
+    json_object: dict[str, Any] = {"type": "json_object"}
+    body: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": 0,
         "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
+        "response_format": response_format or json_object,
     }
     last_error: Exception | None = None
     for attempt in range(2):
-        payload = await client.chat(body)
+        try:
+            payload = await client.chat(body)
+        except ProviderError:
+            if body["response_format"] is json_object:
+                raise
+            body["response_format"] = json_object
+            payload = await client.chat(body)
         content = payload["choices"][0].get("message", {}).get("content")
         try:
             parsed = json.loads(str(content))

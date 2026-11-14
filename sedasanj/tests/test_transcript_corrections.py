@@ -183,16 +183,8 @@ def test_monolithic_correction_is_resegmented_and_accepted_as_uncertain() -> Non
             "segments": [{"id": "two", "corrected_text": "x", "uncertain": False}],
             "uncertain_items": [],
         },
-        {
-            "finish_reason": "stop",
-            "segments": [
-                {"id": "one", "corrected_text": "شماره سفارش ۹۹۹ است", "uncertain": False},
-                {"id": "two", "corrected_text": "بله ثبت شد", "uncertain": False},
-            ],
-            "uncertain_items": [],
-        },
     ],
 )
-def test_validation_rejects_incomplete_reordered_or_critical_changes(result: dict) -> None:
+def test_validation_rejects_incomplete_or_reordered_output(result: dict) -> None:
     with pytest.raises(ValueError):
         validate_result(SOURCE, result, max_uncertain_ratio=0.5)

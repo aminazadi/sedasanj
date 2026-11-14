@@ -206,6 +206,52 @@ def source_segments(utterances: list[Utterance]) -> list[dict[str, Any]]:
     ]
 
 
+def correction_response_format(segment_ids: list[str]) -> dict[str, Any]:
+    """Strict JSON schema fixing the segment count, ids and field names of the output."""
+    segment = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "id": {"type": "string", "enum": segment_ids},
+            "corrected_text": {"type": "string"},
+            "uncertain": {"type": "boolean"},
+        },
+        "required": ["id", "corrected_text", "uncertain"],
+    }
+    item = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "segment_id": {"type": "string", "enum": segment_ids},
+            "source": {"type": "string"},
+            "suggestion": {"type": "string"},
+            "reason": {"type": "string"},
+        },
+        "required": ["segment_id", "source", "suggestion", "reason"],
+    }
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "transcript_correction",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "segments": {
+                        "type": "array",
+                        "minItems": len(segment_ids),
+                        "maxItems": len(segment_ids),
+                        "items": segment,
+                    },
+                    "uncertain_items": {"type": "array", "items": item},
+                },
+                "required": ["segments", "uncertain_items"],
+            },
+        },
+    }
+
+
 class CorrectionClient:
     def __init__(self, runtime: Settings) -> None:
         self._runtime = runtime
@@ -267,6 +313,7 @@ class CorrectionClient:
             model=model,
             messages=messages,
             max_tokens=self._runtime.llm_max_tokens,
+            response_format=correction_response_format([str(row["id"]) for row in segments]),
         )
         result.setdefault("model", model)
         result.setdefault("finish_reason", "stop")
@@ -419,22 +466,40 @@ def validate_result(
         if isinstance(item, dict) and item.get("segment_id")
     }
     validated: list[dict[str, Any]] = []
+    fallback_items: list[dict[str, Any]] = []
     for original, corrected in zip(source, rows, strict=True):
         if not isinstance(corrected, dict) or str(corrected.get("id")) != original["id"]:
             raise ValueError("correction segment ids or order changed")
         text = str(corrected.get("corrected_text") or "").strip()
-        if not text:
-            raise ValueError("correction returned an empty segment")
         is_uncertain = bool(corrected.get("uncertain")) or original["id"] in uncertain_ids
-        if (
+        words = text.split()
+        reason: str | None = None
+        if not text:
+            reason = "empty segment"
+        elif (
             NUMBER_TOKEN.findall(original["text"]) != NUMBER_TOKEN.findall(text)
             and not is_uncertain
         ):
-            raise ValueError("critical number changed without an uncertain item")
-        words = text.split()
-        if len(words) >= 8 and len(set(words)) <= max(2, len(words) // 5):
-            raise ValueError("correction contains abnormal repetition")
+            reason = "critical number changed without an uncertain item"
+        elif len(words) >= 8 and len(set(words)) <= max(2, len(words) // 5):
+            reason = "abnormal repetition"
+        if reason is not None:
+            # Keep the original ASR text for this one segment instead of rejecting the whole
+            # correction: nothing unsafe is published and the segment is flagged for review.
+            fallback_items.append(
+                {
+                    "segment_id": original["id"],
+                    "source": original["text"],
+                    "suggestion": text,
+                    "reason": "تصحیح این بخش نامعتبر بود و متن اصلی حفظ شد.",
+                }
+            )
+            text = str(original["text"]).strip()
+            is_uncertain = True
         validated.append({**original, "corrected_text": text, "uncertain": is_uncertain})
+    if len(fallback_items) * 2 > len(validated):
+        raise ValueError("correction rejected for most segments")
+    uncertain_items = [*uncertain_items, *fallback_items]
     normalized_uncertain = [
         item if isinstance(item, dict) else {"reason": str(item)} for item in uncertain_items
     ]

@@ -191,6 +191,32 @@ async def test_json_chat_repairs_only_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_json_chat_falls_back_when_schema_is_unsupported() -> None:
+    formats: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        formats.append(body["response_format"]["type"])
+        if body["response_format"]["type"] == "json_schema":
+            return httpx.Response(400, json={"error": "response_format not supported"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": 1}'}}]})
+
+    client = _client(httpx.MockTransport(handler))
+    try:
+        result = await retry_json_chat(
+            client,
+            model="chat-model",
+            messages=[{"role": "user", "content": "return json"}],
+            max_tokens=100,
+            response_format={"type": "json_schema", "json_schema": {"name": "x"}},
+        )
+    finally:
+        await client.close()
+    assert result == {"ok": 1}
+    assert formats == ["json_schema", "json_object"]
+
+
+@pytest.mark.asyncio
 async def test_each_capability_routes_independently(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import platform as platform_service
 

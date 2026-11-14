@@ -102,6 +102,48 @@ async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision: Transcrip
         )
 
 
+async def _keep_source_text(
+    session: Any,
+    *,
+    transcript: Transcript,
+    revision: TranscriptRevision,
+    segments: list[dict[str, Any]],
+    runtime: Any,
+    reason: str,
+) -> None:
+    result: dict[str, Any] = {
+        "model": None,
+        "segments": [
+            {"id": row["id"], "corrected_text": row["text"], "uncertain": True} for row in segments
+        ],
+        "uncertain_items": [],
+        "finish_reason": "stop",
+    }
+    validated, uncertain = validate_result(
+        segments, result, max_uncertain_ratio=runtime.correction_max_uncertain_ratio
+    )
+    await activate_revision(
+        session,
+        transcript=transcript,
+        revision=revision,
+        segments=validated,
+        uncertain_items=uncertain,
+        result=result,
+    )
+    revision.metrics = {
+        **(revision.metrics or {}),
+        "correction_fallback": "source_text",
+        "correction_fallback_reason": reason[:500],
+    }
+    await pipeline.mark_job(
+        session,
+        tenant_id=revision.tenant_id,
+        call_id=transcript.call_id,
+        kind="correction",
+        status="succeeded",
+    )
+
+
 async def _fail(tenant_id: UUID, call_id: UUID, revision_id: UUID, exc: Exception) -> str:
     code, detail, retryable = classify_failure(exc, kind="llm")
     async with session_scope(tenant_id) as session:
@@ -307,6 +349,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
             )
             segments = source_segments(utterances)
             client = CorrectionClient(runtime)
+            return_value: tuple[str, UUID | None]
             try:
                 state = await client.status(revision.provider_task_id)
                 status = state.get("status")
@@ -339,40 +382,62 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                             max_uncertain_ratio=runtime.correction_max_uncertain_ratio,
                         )
                     except ValueError as exc:
+                        model: str | None
                         try:
                             model = advance_correction_model(revision, error=str(exc))
-                        except Exception as exhausted:
-                            raise ProviderError(
-                                "correction_validation_failed",
-                                "همه مدل‌های تصحیح متن خروجی نامعتبر ساختاری برگرداندند.",
-                                retryable=False,
-                            ) from exhausted
-                        revision.status = "running"
-                        revision.provider_task_id = await client.submit(
-                            revision,
-                            segments,
-                            _correction_prompt(runtime, revision),
-                            model=model,
-                        )
-                        revision.provider_submitted_at = datetime.now(UTC)
-                        job = (
-                            await session.execute(
-                                select(Job)
-                                .where(Job.call_id == call_id, Job.kind == "correction")
-                                .order_by(Job.created_at.desc())
-                                .limit(1)
+                        except Exception:  # noqa: BLE001
+                            model = None
+                        if model is None:
+                            # Every model returned invalid output. Do not block the whole call:
+                            # keep the original ASR text (all segments flagged uncertain) and
+                            # continue with analysis; the reasons stay in revision.metrics.
+                            logger.warning(
+                                "correction fell back to source text",
+                                extra={
+                                    "extra_fields": {
+                                        "error_code": "correction_validation_failed",
+                                        "reasons": (revision.metrics or {}).get(
+                                            "text_model_failures"
+                                        ),
+                                    }
+                                },
                             )
-                        ).scalar_one()
-                        outbox_id = await outbox.stage(
-                            session,
-                            tenant_id=tenant_id,
-                            job_id=job.id,
-                            queue_name="q:llm",
-                            function_name="poll_transcript_correction",
-                            payload={**payload, "tenant_id": str(tenant_id)},
-                            available_at=datetime.now(UTC) + timedelta(seconds=3),
-                        )
-                        return_value = ("polling", outbox_id)
+                            await _keep_source_text(
+                                session,
+                                transcript=transcript,
+                                revision=revision,
+                                segments=segments,
+                                runtime=runtime,
+                                reason=str(exc),
+                            )
+                            return_value = ("succeeded", None)
+                        else:
+                            revision.status = "running"
+                            revision.provider_task_id = await client.submit(
+                                revision,
+                                segments,
+                                _correction_prompt(runtime, revision),
+                                model=model,
+                            )
+                            revision.provider_submitted_at = datetime.now(UTC)
+                            job = (
+                                await session.execute(
+                                    select(Job)
+                                    .where(Job.call_id == call_id, Job.kind == "correction")
+                                    .order_by(Job.created_at.desc())
+                                    .limit(1)
+                                )
+                            ).scalar_one()
+                            outbox_id = await outbox.stage(
+                                session,
+                                tenant_id=tenant_id,
+                                job_id=job.id,
+                                queue_name="q:llm",
+                                function_name="poll_transcript_correction",
+                                payload={**payload, "tenant_id": str(tenant_id)},
+                                available_at=datetime.now(UTC) + timedelta(seconds=3),
+                            )
+                            return_value = ("polling", outbox_id)
                     else:
                         await activate_revision(
                             session,
@@ -424,7 +489,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                     raise RuntimeError(str(state.get("error") or state.get("error_code") or status))
             finally:
                 await client.close()
-        if return_value[0] == "polling":
+        if return_value[0] == "polling" and return_value[1] is not None:
             await outbox.dispatch_one(return_value[1])
             return "polling"
         outbox_id = await _stage_analysis(tenant_id=tenant_id, call_id=call_id, revision=revision)

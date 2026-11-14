@@ -1,3 +1,9 @@
+## 2026-11-15 — AMINAZADI
+
+- Fixed smart text correction failing the whole call with `correction_validation_failed`: a single invalid segment (changed number, empty text, repetition) now keeps its original text and is flagged uncertain; the call fails only when most segments are invalid, and the error now lists each model's reason.
+- Changed smart text correction so that when every model returns invalid output the call keeps the original ASR text (all segments flagged uncertain, reason stored in revision metrics `correction_fallback_reason`) and continues to analysis instead of stopping with `correction_validation_failed`.
+- Added a strict `json_schema` response format (fixed segment count, ids and field names) to direct 9Router text correction; if the model or provider rejects it, the request is repeated once with plain `json_object`. The AISERVICE 9Router client does the same fallback on HTTP 400/422.
+
 ## 2026-11-14 — AMINAZADI
 
 - Changed production deploys to build each image once: compose services now carry content-hash image tags and the new `scripts/deploy.sh` builds only the images that are missing (unchanged code builds nothing, changed code gets a new tag), then starts with `--no-build`. The client and admin build stages now run on `node:24-alpine`; the API, workers, emotion worker and Postgres stay on Debian because torch, aapt2/apksigner and the existing database collation do not work on Alpine/musl.
