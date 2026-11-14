@@ -1,3 +1,4 @@
+import SiteScripts from "./components/SiteScripts";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -12,6 +13,7 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <AuthProvider>
         <RouteSeo />
+        <SiteScripts />
         <App />
       </AuthProvider>
     </BrowserRouter>

@@ -1,5 +1,9 @@
 ## 2026-11-14 — AMINAZADI
 
+- Added super-admin settings for separate public-site and customer-panel head/body scripts, with password and two-factor verification, metadata-only auditing, validated script tags, CSP-compatible same-origin delivery for inline code, and document reloads when crossing scopes.
+
+- Changed the public quick-demo button to a transparent background with red text, only a moving red perimeter segment and a subtle hover tint.
+
 - Standardized public dialog close controls with 24px icons and 44px click targets, replacing font-dependent close characters.
 
 - Added a Jalase-Negar download dialog on the landing page: the button opens a dialog listing the Android APK, Windows and macOS installers and store links (Bazaar, Myket, Google Play, App Store, Anardoni, SibApp); when only the Android APK exists the button downloads it directly. New public `GET /v1/jalase-negar/downloads` and `GET /v1/jalase-negar/desktop/{id}/download`, super-admin `store-links` and `desktop-builds` endpoints, an admin page "دانلود جلسه‌نگار", migration 0143 (table `jalase_negar_desktop_builds`, help article `jalase-negar-download-dialog`).

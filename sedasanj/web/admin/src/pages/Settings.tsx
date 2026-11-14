@@ -1,3 +1,4 @@
+import SiteScriptsSettings from "../components/SiteScriptsSettings";
 import TwoFactorSettings from "../components/TwoFactorSettings";
 import QuickDemoSettings from "../components/QuickDemoSettings";
 import SiteContactSettings from "../components/SiteContactSettings";
@@ -550,7 +551,7 @@ export default function Settings() {
       ) : null}
     {activeTab === "quick-demo" ? <QuickDemoSettings /> : null}
     {activeTab === "sms-templates" ? <SmsTemplateSettings /> : null}
-    {activeTab === "site-contact" ? <SiteContactSettings /> : null}
+    {activeTab === "site-contact" ? <><SiteContactSettings /><SiteScriptsSettings /></> : null}
     <form
       id={activeTab === "security" ? undefined : `settings-panel-${activeTab}`}
       role="tabpanel"

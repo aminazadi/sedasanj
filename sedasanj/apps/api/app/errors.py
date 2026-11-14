@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 ERROR_STATUS: dict[str, int] = {
+    "site_scripts_invalid": 422,
     "primary_admin_protected": status.HTTP_403_FORBIDDEN,
     "panel_access_denied": status.HTTP_403_FORBIDDEN,
     "member_account_email_unavailable": 503,

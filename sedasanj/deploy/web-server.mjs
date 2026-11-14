@@ -59,9 +59,10 @@ function contentSecurityPolicy(request) {
         "img-src": "'self' data: blob: https:",
         "font-src": "'self' data:",
         "media-src": `'self' blob: ${media}`,
-        "connect-src": `'self' ${socketOrigin} ${media}`,
-        // 'self' lets the API-docs page embed /v1/docs/customer (same origin).
-        "frame-src": `'self' ${EMBED_FRAMES}`,
+        // Trusted customer/public widgets may use HTTPS APIs and secure WebSockets.
+        "connect-src": `'self' https: wss: ${socketOrigin} ${media}`,
+        // Keep customer API docs same-origin and permit HTTPS frames used by configured widgets.
+        "frame-src": `'self' https: ${EMBED_FRAMES}`,
         "object-src": "'none'",
         "base-uri": "'none'",
         // Bank gateways receive an auto-submitted POST form (see client/src/lib/payment.ts).

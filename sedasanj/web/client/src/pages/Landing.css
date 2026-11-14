@@ -84,14 +84,14 @@
 .site-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 36px; }
 .site-hero .site-actions { align-items: center; gap: 28px; }
 /* A normalized SVG perimeter keeps the highlight speed uniform along every edge. */
-.marketing-site .site-button.site-hero-demo { min-height: 56px; min-width: 180px; padding: 12px 26px; gap: 12px; border: 0; background: #c62828; color: #fff; font-size: 16px; font-weight: 750; box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 8px 22px -10px rgb(47 74 45 / .45); transition: transform .2s ease, box-shadow .2s ease; }
+.marketing-site .site-button.site-hero-demo { min-height: 56px; min-width: 180px; padding: 12px 26px; gap: 12px; border: 0; background: transparent; color: #c62828; font-size: 16px; font-weight: 750; box-shadow: none; transition: transform .2s ease, background-color .2s ease; }
 .marketing-site .site-button.site-hero-demo::after { content: none; }
-.marketing-site .site-button.site-hero-demo:hover { background: #ad2020; color: #fff; border-color: transparent; box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 12px 28px -10px rgb(47 74 45 / .55); transform: translateY(-2px); }
-.marketing-site .site-button.site-hero-demo:active { transform: translateY(0); box-shadow: inset 0 2px 6px rgb(0 0 0 / .15); }
+.marketing-site .site-button.site-hero-demo:hover { background: rgb(198 40 40 / .08); color: #ad2020; box-shadow: none; transform: translateY(-2px); }
+.marketing-site .site-button.site-hero-demo:active { transform: translateY(0); box-shadow: none; }
 .hero-demo-border { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .hero-demo-border rect { x: 3px; y: 3px; width: calc(100% - 6px); height: calc(100% - 6px); rx: 1px; fill: none; stroke-width: 3px; vector-effect: non-scaling-stroke; }
-.hero-demo-border-track { stroke: #ffaaa0; stroke-opacity: .35; }
-.hero-demo-border-trail { stroke: #ffd1ca; stroke-dasharray: 22 78; stroke-linecap: round; filter: drop-shadow(0 0 2px rgb(255 209 202 / .3)); animation: hero-border-orbit 1s linear infinite; }
+.hero-demo-border-track { display: none; }
+.hero-demo-border-trail { stroke: #c62828; stroke-dasharray: 22 78; stroke-linecap: round; filter: drop-shadow(0 0 2px rgb(198 40 40 / .3)); animation: hero-border-orbit 1s linear infinite; }
 .site-hero-features-link { display: inline-flex; align-items: center; gap: 10px; padding-block: 12px; color: var(--site-primary); font-size: 14px; font-weight: 600; }
 .site-hero-features-link span { text-decoration: underline; text-decoration-color: rgb(75 110 72 / .3); text-underline-offset: 6px; }
 .site-hero-features-link svg { transition: transform .2s ease; }
