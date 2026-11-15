@@ -182,7 +182,9 @@ class InstallationUpdate(BaseModel):
 
 class PlanVersionCreate(BaseModel):
     model_config = {"extra": "forbid"}
-    annual_price_toman: int = Field(ge=0)
+    annual_price_toman: int | None = Field(default=None, ge=0)
+    # Jalase-Negar plans are sold monthly; SedaSanj plans keep a zero here and sell annually.
+    monthly_price_toman: int = Field(default=0, ge=0, le=2_000_000_000)
     base_operators: int = Field(ge=0)
     intro_minutes: int = Field(ge=0)
     overage_price_per_minute_toman: int = Field(ge=0)
@@ -213,6 +215,7 @@ class PlanCreate(BaseModel):
     is_trial: bool = False
     sellable: bool = True
     sort_order: int = Field(default=0, ge=0, le=10000)
+    product: Literal["sedasanj", "jalase_negar"] = "sedasanj"
 
 
 class PlanUpdate(BaseModel):
@@ -285,6 +288,8 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
         "published_at": version.published_at,
         "retired_at": version.retired_at,
         "annual_price_toman": version.annual_price_toman,
+        "monthly_price_toman": version.monthly_price_toman,
+        "product": plan.product,
         "base_operators": version.base_operators,
         "intro_minutes": version.intro_minutes,
         "overage_price_per_minute_toman": version.overage_price_per_minute_toman,
@@ -312,6 +317,7 @@ def _plan_summary(plan: Plan) -> dict[str, Any]:
         "is_trial": plan.is_trial,
         "sellable": plan.sellable,
         "sort_order": plan.sort_order,
+        "product": plan.product,
     }
 
 
@@ -1857,9 +1863,12 @@ async def admin_plans(
     session: StaffSession,
     cursor: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=200),
+    product: Literal["sedasanj", "jalase_negar"] | None = None,
 ) -> dict[str, Any]:
     # Outer join: a plan that has no version yet must still be listed so its first one can be made.
     stmt = select(Plan, PlanVersion).outerjoin(PlanVersion, PlanVersion.plan_id == Plan.id)
+    if product is not None:
+        stmt = stmt.where(Plan.product == product)
     total = int(
         (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     )
@@ -2026,8 +2035,14 @@ async def publish_plan_version(
     effective_at = payload.effective_at or now
     if effective_at < now - timedelta(minutes=5):
         raise ApiError("invalid_request", "effective_at cannot be in the past")
-    if plan.sellable and not plan.is_trial and (version.annual_price_toman or 0) <= 0:
-        raise ApiError("invalid_request", "a sellable plan needs an annual price above zero")
+    if plan.sellable and not plan.is_trial:
+        if plan.product == "jalase_negar":
+            if version.monthly_price_toman <= 0:
+                raise ApiError(
+                    "invalid_request", "a sellable plan needs a monthly price above zero"
+                )
+        elif (version.annual_price_toman or 0) <= 0:
+            raise ApiError("invalid_request", "a sellable plan needs an annual price above zero")
     if plan.is_trial and not version.trial_days:
         raise ApiError("invalid_request", "a trial plan version needs trial_days")
     version.status = "published"

@@ -25,6 +25,7 @@ from app.models import (
     Order,
     OrderItem,
     PaymentAttempt,
+    Plan,
     PlanVersion,
     Refund,
     Subscription,
@@ -437,7 +438,15 @@ async def _is_stale_plan_switch(
     if current is None or current.period_end <= now or current.billing_period == "trial":
         return False
     current_version = await session.get(PlanVersion, current.plan_version_id)
-    return current_version is not None and current_version.plan_id != version.plan_id
+    if current_version is None or current_version.plan_id == version.plan_id:
+        return False
+    current_plan = await session.get(Plan, current_version.plan_id)
+    # The permanent free Jalase-Negar plan is replaced by the first paid one, not "switched".
+    return not (
+        current_plan is not None
+        and current_plan.product == "jalase_negar"
+        and current_version.monthly_price_toman == 0
+    )
 
 
 async def fulfill_order(session: AsyncSession, order: Order) -> None:
@@ -510,12 +519,13 @@ async def fulfill_order(session: AsyncSession, order: Order) -> None:
             and current_version.plan_id == version.plan_id
         )
         previous_period_end = current.period_end if extends_term and current else None
+        term_months = 1 if period == "monthly" else 12
         if extends_term and current is not None:
             start = current.period_start
-            end = add_months(current.period_end, 12)
+            end = add_months(current.period_end, term_months)
         else:
             start = now
-            end = add_months(now, 12)
+            end = add_months(now, term_months)
         # A bonus belongs only to the first paid activation.  In particular,
         # migrated legacy subscriptions have no historical bonus timestamp but
         # must never receive one on their first renewal.

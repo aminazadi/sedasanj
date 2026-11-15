@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, Request, Response, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,23 +22,28 @@ from app.models import (
     MeetingDocument,
     MeetingDocumentVersion,
     MeetingSegment,
+    Order,
     Plan,
     PlanVersion,
     Subscription,
     Tenant,
+    TokenPackage,
     User,
 )
-from app.routers import phone_auth
+from app.routers import phone_auth, token_packages
 from app.routers.meetings import _minutes_markdown, _minutes_out, _selected_minutes
 from app.security import hash_refresh_token
 from app.services import (
     audit,
     billing,
+    commerce,
     document_docx,
     document_pdf,
     jalase_accounts,
+    jalase_billing,
     jalase_output_types,
     meeting_documents,
+    payments,
     platform,
     ratelimit,
 )
@@ -198,6 +203,7 @@ async def me(principal: MeetingsKeyDep) -> dict[str, object]:
         # Grants this month's free allowance when the window has just rolled over.
         await ensure_monthly_plan_credit(session, tenant.id, datetime.now(UTC))
         balance = (await billing.get_balance(session, tenant.id)).seconds
+        usage = await jalase_billing.usage(session, tenant.id)
     return {
         "product": tenant.product,
         "user": {
@@ -206,6 +212,7 @@ async def me(principal: MeetingsKeyDep) -> dict[str, object]:
         },
         "plan": _plan_view(row[2], row[1], row[0]) if row else None,
         "remaining_seconds": balance,
+        "usage": usage,
     }
 
 
@@ -697,3 +704,175 @@ async def export_document(
         "jalase-document",
         document_id,
     )
+
+
+# ---- plans, usage and purchases (personal accounts) ---------------------------------------
+
+
+class OrderCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+    plan_code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
+
+
+class TokenOrderCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+    package_id: UUID
+
+
+class PayCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+    gateway: Literal["zarinpal", "zibal", "saman", "behpardakht"] | None = None
+
+
+@router.get("/plans")
+async def list_plans(principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, _ = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        paid = await jalase_billing.plans(session)
+        free = await jalase_billing.free_plan(session)
+    return {"free": free, "plans": paid}
+
+
+@router.get("/usage")
+async def get_usage(principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, _ = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        return await jalase_billing.usage(session, tenant_id)
+
+
+@router.get("/token-packages")
+async def list_token_packages(principal: MeetingsKeyDep) -> list[dict[str, object]]:
+    _personal(principal)
+    async with control_session_scope() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(TokenPackage)
+                    .where(TokenPackage.active.is_(True), TokenPackage.product == "jalase_negar")
+                    .order_by(TokenPackage.tokens)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        per_hour = await platform.jalase_tokens_per_hour(session)
+    return [
+        {
+            "id": str(row.id),
+            "name": row.name,
+            "hours": jalase_billing.to_hours(row.tokens, per_hour),
+            "price_toman": row.price_toman,
+        }
+        for row in rows
+    ]
+
+
+@router.post("/orders", status_code=status.HTTP_201_CREATED)
+async def create_plan_order(
+    payload: OrderCreate,
+    request: Request,
+    principal: MeetingsKeyDep,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
+) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-order:{user_id}", 20, 3600)
+    async with session_scope(tenant_id) as session:
+        tenant = await session.get(Tenant, tenant_id)
+        user = await session.get(User, user_id)
+        if tenant is None or user is None or tenant.product != jalase_accounts.PRODUCT:
+            raise ApiError("forbidden", "این بخش فقط برای حساب شخصی جلسه‌نگار است.")
+        order = await commerce.create_subscription_order(
+            session,
+            tenant=tenant,
+            plan_code=payload.plan_code,
+            period="monthly",
+            extra_operators=0,
+            customer_name=user.display_name or jalase_accounts.DEFAULT_NAME,
+            customer_email=user.email,
+            customer_mobile=user.mobile_number or "",
+            invoice_profile={},
+            idempotency_key=idempotency_key,
+            product=jalase_accounts.PRODUCT,
+        )
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=user_id,
+            tenant_id=tenant_id,
+            action="order.created",
+            payload={"order_id": str(order.id), "kind": order.kind},
+            ip=client_ip(request),
+        )
+        return {"id": str(order.id), "amount_toman": order.amount_toman, "status": order.status}
+
+
+@router.post("/token-orders", status_code=status.HTTP_201_CREATED)
+async def create_token_order(
+    payload: TokenOrderCreate,
+    request: Request,
+    principal: MeetingsKeyDep,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
+) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-order:{user_id}", 20, 3600)
+    async with session_scope(tenant_id) as session:
+        return await token_packages.create_pack_order(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            package_id=payload.package_id,
+            idempotency_key=idempotency_key,
+            product=jalase_accounts.PRODUCT,
+            ip=client_ip(request),
+        )
+
+
+@router.post("/orders/{order_id}/pay")
+async def pay_order(
+    order_id: UUID, request: Request, principal: MeetingsKeyDep, payload: PayCreate | None = None
+) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        order = (
+            await session.execute(
+                select(Order)
+                .where(Order.id == order_id, Order.tenant_id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise ApiError("not_found", "سفارش پیدا نشد؛ صفحه را تازه کنید.")
+        attempt, redirect = await payments.initiate(
+            session, order, payload.gateway if payload else None
+        )
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=user_id,
+            tenant_id=tenant_id,
+            action="payment.initiated",
+            payload={"order_id": str(order.id), "gateway": attempt.gateway},
+            ip=client_ip(request),
+        )
+        return {"payment_id": str(attempt.id), "redirect_url": redirect["url"]}
+
+
+@router.get("/orders/{order_id}")
+async def order_status(order_id: UUID, principal: MeetingsKeyDep) -> dict[str, object]:
+    """Poll after the payment page closes: the order is `paid` once the gateway confirms."""
+    tenant_id, _ = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        order = (
+            await session.execute(
+                select(Order).where(Order.id == order_id, Order.tenant_id == tenant_id)
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise ApiError("not_found", "سفارش پیدا نشد؛ صفحه را تازه کنید.")
+        return {
+            "id": str(order.id),
+            "kind": order.kind,
+            "status": order.status,
+            "amount_toman": order.amount_toman,
+            "paid_at": order.paid_at,
+        }

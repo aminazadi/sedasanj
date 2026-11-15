@@ -38,6 +38,7 @@ from app.services import (
     audio_lifecycle,
     billing,
     commerce,
+    jalase_accounts,
     outbox,
     pipeline,
     queue,
@@ -236,6 +237,8 @@ async def _expire_tenant_state(tenant_id: UUID, now: datetime) -> tuple[int, int
         expired_subscriptions = await subscription_state.expire_due(
             session, tenant_id, now, settings.grace_days
         )
+        if expired_subscriptions:
+            await jalase_accounts.restore_free_plan(session, tenant_id, now)
         await _cancel_stale_orders(session, tenant_id, now, settings.order_ttl_days)
 
         grants = (

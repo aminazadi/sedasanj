@@ -11,6 +11,7 @@ import type { Page, PlanVersion } from "../types";
 
 interface VersionForm {
   annual_price_toman: number;
+  monthly_price_toman: number;
   base_operators: number;
   intro_minutes: number;
   overage_price_per_minute_toman: number;
@@ -27,6 +28,7 @@ interface VersionForm {
 
 const EMPTY_VERSION: VersionForm = {
   annual_price_toman: 0,
+  monthly_price_toman: 0,
   base_operators: 1,
   intro_minutes: 0,
   overage_price_per_minute_toman: 7000,
@@ -42,6 +44,7 @@ const EMPTY_VERSION: VersionForm = {
 
 const NUMBER_FIELDS = [
   ["annual_price_toman", "قیمت سالانه"],
+  ["monthly_price_toman", "قیمت ماهانه"],
   ["base_operators", "اپراتور پایه"],
   ["intro_minutes", "دقیقه رایگان ماهانه"],
   ["overage_price_per_minute_toman", "تعرفه هر دقیقه"],
@@ -58,6 +61,7 @@ function formFrom(rows: PlanVersion[]): VersionForm {
   if (!latest) return EMPTY_VERSION;
   return {
     annual_price_toman: latest.annual_price_toman ?? 0,
+    monthly_price_toman: latest.monthly_price_toman ?? 0,
     base_operators: latest.base_operators ?? 1,
     intro_minutes: latest.intro_minutes ?? 0,
     overage_price_per_minute_toman: latest.overage_price_per_minute_toman ?? 7000,
@@ -72,30 +76,37 @@ function formFrom(rows: PlanVersion[]): VersionForm {
   };
 }
 
-function validate(form: VersionForm, trial: boolean, sellable: boolean): string | null {
+const PRODUCT_LABELS = { sedasanj: "صداسنج", jalase_negar: "جلسه‌نگار" } as const;
+
+/** Jalase-Negar plans are sold monthly; SedaSanj plans annually. */
+function priceKey(product: string | undefined): "annual_price_toman" | "monthly_price_toman" {
+  return product === "jalase_negar" ? "monthly_price_toman" : "annual_price_toman";
+}
+
+function validate(form: VersionForm, trial: boolean, sellable: boolean, product?: string): string | null {
   for (const [key, label] of NUMBER_FIELDS) {
     const value = form[key];
     if (!Number.isInteger(value) || value < 0) return `«${label}» باید عدد صحیح و نامنفی باشد.`;
   }
   if (form.base_operators < 1) return "حداقل یک اپراتور پایه لازم است.";
   if (form.assistant_source_limit < 1 || form.assistant_source_limit > 200) return "حد منابع باید بین ۱ و ۲۰۰ باشد.";
-  if (sellable && !trial && form.annual_price_toman <= 0) return "پلن قابل‌فروش به قیمت سالانه بیشتر از صفر نیاز دارد.";
+  if (sellable && !trial && form[priceKey(product)] <= 0) return product === "jalase_negar" ? "پلن قابل‌فروش به قیمت ماهانه بیشتر از صفر نیاز دارد." : "پلن قابل‌فروش به قیمت سالانه بیشتر از صفر نیاز دارد.";
   if (trial && (form.trial_days < 1 || form.trial_days > 90)) return "روز آزمایشی باید بین ۱ و ۹۰ باشد.";
   return null;
 }
 
 export default function Plans() {
   const [limit] = useTablePageSize();
-  const [filters, setFilters] = useUrlParams({ offset: "0", plan: "" });
+  const [filters, setFilters] = useUrlParams({ offset: "0", plan: "", product: "" });
   const offset = toOffset(filters.offset);
   const [form, setForm] = useState<VersionForm>(EMPTY_VERSION);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [planForm, setPlanForm] = useState({ code: "", name: "", public: true, sellable: true, is_trial: false, sort_order: 0 });
+  const [planForm, setPlanForm] = useState({ code: "", name: "", public: true, sellable: true, is_trial: false, sort_order: 0, product: "sedasanj" });
   const [ask, dialog] = useReasonDialog();
   const plans = useResource<Page<PlanVersion>>(
-    (signal) => request<Page<PlanVersion>>(`/v1/admin/commerce/plans?limit=${limit}&cursor=${offset}`, { signal }),
-    [limit, offset],
+    (signal) => request<Page<PlanVersion>>(`/v1/admin/commerce/plans?limit=${limit}&cursor=${offset}${filters.product ? `&product=${filters.product}` : ""}`, { signal }),
+    [limit, offset, filters.product],
   );
   const rows = plans.data?.items ?? [];
   const codes = useMemo(() => Array.from(new Set(rows.map((item) => item.code))), [rows]);
@@ -122,7 +133,7 @@ export default function Plans() {
 
   async function createVersion(event: React.FormEvent) {
     event.preventDefault();
-    const problem = validate(form, selectedPlan?.is_trial ?? false, selectedPlan?.sellable ?? true);
+    const problem = validate(form, selectedPlan?.is_trial ?? false, selectedPlan?.sellable ?? true, selectedPlan?.product);
     if (problem) {
       setError(problem);
       return;
@@ -133,6 +144,8 @@ export default function Plans() {
           method: "POST",
           body: {
             ...form,
+            annual_price_toman: selectedPlan?.product === "jalase_negar" ? null : form.annual_price_toman,
+            monthly_price_toman: selectedPlan?.product === "jalase_negar" ? form.monthly_price_toman : 0,
             assistant_model: form.assistant_model || null,
             llm_monthly_tokens: form.llm_monthly_tokens.trim() === "" ? null : Number(fmt.latinDigits(form.llm_monthly_tokens)),
             extra_operator_annual_toman: form.allows_extra_operators ? form.extra_operator_annual_toman : null,
@@ -147,7 +160,7 @@ export default function Plans() {
     event.preventDefault();
     await run(async () => {
       await request("/v1/admin/commerce/plans", { method: "POST", body: planForm });
-      setPlanForm({ code: "", name: "", public: true, sellable: true, is_trial: false, sort_order: 0 });
+      setPlanForm({ code: "", name: "", public: true, sellable: true, is_trial: false, sort_order: 0, product: planForm.product });
     }, "پلن ساخته شد؛ اکنون نسخه پیش‌نویس آن را بسازید.");
   }
 
@@ -187,12 +200,13 @@ export default function Plans() {
   if (!plans.data) return <Loading />;
   return <div className="space-y-5">
     {dialog}
-    <div><h1 className="text-2xl font-bold">پلن‌ها و نسخه‌ها</h1><p className="mt-1 text-sm text-slate-500">نسخه‌های منتشرشده تغییر نمی‌کنند؛ تغییرات ابتدا به‌صورت پیش‌نویس ساخته می‌شوند.</p></div>
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-bold">پلن‌ها و نسخه‌ها</h1><p className="mt-1 text-sm text-slate-500">نسخه‌های منتشرشده تغییر نمی‌کنند؛ تغییرات ابتدا به‌صورت پیش‌نویس ساخته می‌شوند. برای تغییر قیمت یا سهمیه، نسخهٔ جدید بسازید و منتشر کنید.</p></div><div><label className="label">محصول</label><select className="input min-w-36" value={filters.product} onChange={(event) => setFilters({ product: event.target.value, plan: "", offset: "0" })}><option value="">همه</option><option value="sedasanj">صداسنج</option><option value="jalase_negar">جلسه‌نگار</option></select></div></div>
     <ErrorBox message={error ?? plans.error} />
     {notice ? <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{notice}</div> : null}
     <form className="card grid gap-3 md:grid-cols-4" onSubmit={createPlan}>
       <input className="input" dir="ltr" placeholder="کد پلن" pattern="[a-z0-9_]{2,32}" value={planForm.code} onChange={(event) => setPlanForm({ ...planForm, code: event.target.value })} required />
       <input className="input" placeholder="نام پلن" value={planForm.name} onChange={(event) => setPlanForm({ ...planForm, name: event.target.value })} required />
+      <select className="input" aria-label="محصول" value={planForm.product} onChange={(event) => setPlanForm({ ...planForm, product: event.target.value })}><option value="sedasanj">صداسنج (سالانه)</option><option value="jalase_negar">جلسه‌نگار (ماهانه)</option></select>
       <input className="input" inputMode="numeric" placeholder="ترتیب نمایش" value={fmt.digits(planForm.sort_order)} onChange={(event) => setPlanForm({ ...planForm, sort_order: Number(fmt.latinDigits(event.target.value)) || 0 })} />
       <button className="btn">ایجاد پلن</button>
       <ToggleSwitch checked={planForm.public} onChange={(checked) => setPlanForm({ ...planForm, public: checked })} label="نمایش عمومی" labelClassName="text-sm" />
@@ -203,19 +217,19 @@ export default function Plans() {
       <div className="flex flex-wrap items-end gap-3"><div><label className="label">پلن</label><select className="input min-w-40" value={selected} onChange={(event) => setFilters({ plan: event.target.value })}>{codes.map((code) => <option key={code}>{code}</option>)}</select></div><button className="btn" disabled={!selected}>ساخت نسخه پیش‌نویس</button><p className="text-xs text-slate-500">مقادیر از آخرین نسخهٔ این پلن آمده‌اند.</p></div>
       <div className="grid gap-3 md:grid-cols-4">
         <div><label className="label">توکن هوش مصنوعی ماهانه (خالی = نامحدود)</label><input className="input" inputMode="numeric" dir="ltr" placeholder="نامحدود" value={form.llm_monthly_tokens} onChange={(event) => setForm({ ...form, llm_monthly_tokens: fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "") })} /></div>
-        {NUMBER_FIELDS.filter(([key]) => key !== "trial_days" || selectedPlan?.is_trial).map(([key, label]) => <div key={key}><label className="label">{label}</label><input className="input" inputMode="numeric" value={fmt.digits(form[key])} onChange={(event) => setForm({ ...form, [key]: Number(fmt.latinDigits(event.target.value)) })} /></div>)}
+        {NUMBER_FIELDS.filter(([key]) => (key !== "trial_days" || selectedPlan?.is_trial) && (key !== "annual_price_toman" && key !== "monthly_price_toman" || key === priceKey(selectedPlan?.product))).map(([key, label]) => <div key={key}><label className="label">{label}</label><input className="input" inputMode="numeric" value={fmt.digits(form[key])} onChange={(event) => setForm({ ...form, [key]: Number(fmt.latinDigits(event.target.value)) })} /></div>)}
         <div><label className="label">سطح دستیار</label><input className="input" dir="ltr" value={form.assistant_tier} onChange={(event) => setForm({ ...form, assistant_tier: event.target.value })} /></div>
         <div><label className="label">مدل اختصاصی دستیار</label><input className="input" dir="ltr" value={form.assistant_model} onChange={(event) => setForm({ ...form, assistant_model: event.target.value })} /></div>
         <ToggleSwitch checked={form.allows_extra_operators} onChange={(checked) => setForm({ ...form, allows_extra_operators: checked })} label="اپراتور اضافه مجاز است" labelClassName="text-sm" />
         {form.allows_extra_operators ? <div><label className="label">اپراتور اضافه سالانه</label><input className="input" inputMode="numeric" value={fmt.digits(form.extra_operator_annual_toman)} onChange={(event) => setForm({ ...form, extra_operator_annual_toman: Number(fmt.latinDigits(event.target.value)) })} /></div> : null}
       </div>
     </form>
-    <div className="card overflow-x-auto">{rows.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>پلن</th><th>نسخه</th><th>وضعیت</th><th>سالانه</th><th>دقیقه رایگان / ماه</th><th>تعرفه دقیقه</th><th>توکن هوش مصنوعی / ماه</th><th>پیام دستیار / ماه</th><th>اپراتور</th><th>آزمایشی</th><th>اشتراک</th><th>عملیات</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id ?? `plan-${item.plan_id}`}>
-      <td>{item.name}<small className="block text-slate-400" dir="ltr">{item.code}</small><small className="block text-slate-500">{item.is_trial ? "آزمایشی" : item.sellable ? "قابل خرید" : "غیرقابل خرید"}{item.public ? "" : " · خصوصی"}{item.active ? "" : " · غیرفعال"}</small></td>
+    <div className="card overflow-x-auto">{rows.length === 0 ? <Empty /> : <table className="table"><thead><tr><th>پلن</th><th>نسخه</th><th>وضعیت</th><th>قیمت</th><th>دقیقه رایگان / ماه</th><th>تعرفه دقیقه</th><th>توکن هوش مصنوعی / ماه</th><th>پیام دستیار / ماه</th><th>اپراتور</th><th>آزمایشی</th><th>اشتراک</th><th>عملیات</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id ?? `plan-${item.plan_id}`}>
+      <td>{item.name}<small className="block text-slate-400" dir="ltr">{item.code}</small><span className="badge bg-sky-50 text-sky-700">{PRODUCT_LABELS[item.product ?? "sedasanj"]}</span><small className="block text-slate-500">{item.is_trial ? "آزمایشی" : item.sellable ? "قابل خرید" : "غیرقابل خرید"}{item.public ? "" : " · خصوصی"}{item.active ? "" : " · غیرفعال"}</small></td>
       {item.id ? <>
         <td>{fmt.int(item.version ?? 0)}{item.effective_at ? <small className="block text-slate-400">از {fmt.date(item.effective_at)}</small> : null}</td>
         <td>{item.status ? STATUS_LABELS[item.status] : "—"}</td>
-        <td>{fmt.toman(item.annual_price_toman ?? 0)}{item.allows_extra_operators ? <small className="block text-slate-400">اپراتور اضافه {fmt.toman(item.extra_operator_annual_toman ?? 0)}</small> : null}</td>
+        <td>{item.product === "jalase_negar" ? <>{fmt.toman(item.monthly_price_toman ?? 0)}<small className="block text-slate-400">ماهانه</small></> : fmt.toman(item.annual_price_toman ?? 0)}{item.allows_extra_operators ? <small className="block text-slate-400">اپراتور اضافه {fmt.toman(item.extra_operator_annual_toman ?? 0)}</small> : null}</td>
         <td>{fmt.int(item.intro_minutes ?? 0)}</td><td>{fmt.toman(item.overage_price_per_minute_toman ?? 0)}</td><td>{item.llm_monthly_tokens == null ? "نامحدود" : fmt.int(item.llm_monthly_tokens)}</td><td>{fmt.int(item.assistant_monthly_messages ?? 0)}<small className="block text-slate-400" dir="ltr">{item.assistant_tier}{item.assistant_model ? ` / ${item.assistant_model}` : ""}</small></td><td>{fmt.int(item.base_operators ?? 0)}</td><td>{item.trial_days ? `${fmt.int(item.trial_days)} روز` : "—"}</td>
         <td><Link className="text-brand-600" to={`/subscriptions?plan=${encodeURIComponent(item.code)}`}>{fmt.int(item.subscription_count)}</Link></td>
       </> : <td colSpan={9} className="text-slate-500">این پلن هنوز نسخه‌ای ندارد؛ از بالا «ساخت نسخه پیش‌نویس» را بزنید.</td>}

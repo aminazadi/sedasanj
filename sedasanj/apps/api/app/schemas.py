@@ -1467,6 +1467,7 @@ class SettingsUpdate(BaseModel):
     ninerouter_coach_prompt: str | None = Field(default=None, max_length=20_000)
     ninerouter_direct_coach_prompt: str | None = Field(default=None, max_length=20_000)
     jalase_standalone_enabled: bool | None = None
+    jalase_tokens_per_hour: int | None = Field(default=None, ge=1_000, le=1_000_000)
     meeting_model: str | None = Field(default=None, max_length=200)
     meeting_block_chars: int | None = Field(default=None, ge=2000, le=60_000)
     ninerouter_meeting_model: str | None = Field(default=None, max_length=200)

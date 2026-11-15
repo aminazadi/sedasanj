@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import control_session_scope
 from app.deps import OrgAdminDep, StaffSession, SuperAdminDep, TenantSession, client_ip
@@ -31,6 +32,8 @@ class TokenPackageWrite(BaseModel):
     tokens: int = Field(ge=1_000, le=10_000_000_000)
     price_toman: int = Field(ge=1_000, le=2_000_000_000)
     active: bool = True
+    # Omitted on edit keeps the pack's product; a new pack defaults to SedaSanj.
+    product: Literal["sedasanj", "jalase_negar"] | None = None
 
 
 def _view(row: TokenPackage) -> dict[str, Any]:
@@ -40,6 +43,7 @@ def _view(row: TokenPackage) -> dict[str, Any]:
         "tokens": row.tokens,
         "price_toman": row.price_toman,
         "active": row.active,
+        "product": row.product,
     }
 
 
@@ -50,7 +54,7 @@ async def token_packages(principal: OrgAdminDep) -> list[dict[str, Any]]:
             (
                 await session.execute(
                     select(TokenPackage)
-                    .where(TokenPackage.active.is_(True))
+                    .where(TokenPackage.active.is_(True), TokenPackage.product == "sedasanj")
                     .order_by(TokenPackage.tokens)
                 )
             )
@@ -60,16 +64,17 @@ async def token_packages(principal: OrgAdminDep) -> list[dict[str, Any]]:
     return [_view(row) for row in rows]
 
 
-@router.post("/billing/token-orders", status_code=status.HTTP_201_CREATED)
-async def create_token_order(
-    payload: TokenOrderCreate,
-    request: Request,
-    principal: OrgAdminDep,
-    session: TenantSession,
-    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
+async def create_pack_order(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    package_id: UUID,
+    idempotency_key: str,
+    product: str,
+    ip: str | None,
 ) -> dict[str, Any]:
-    assert principal.tenant_id is not None
-    tenant_id = principal.tenant_id
+    """Create (or replay) the order for one token pack of ``product``."""
     existing = (
         await session.execute(
             select(Order).where(
@@ -80,11 +85,11 @@ async def create_token_order(
     if existing:
         return {"id": str(existing.id), "amount_toman": existing.amount_toman}
     async with control_session_scope() as control:
-        package = await control.get(TokenPackage, payload.package_id)
-        if package is None or not package.active:
+        package = await control.get(TokenPackage, package_id)
+        if package is None or not package.active or package.product != product:
             raise ApiError("not_found", "بسته توکن پیدا نشد؛ صفحه را تازه کنید.")
         tokens, amount, name = package.tokens, package.price_toman, package.name
-    admin = await session.get(User, principal.id)
+    admin = await session.get(User, user_id)
     assert admin is not None
     order = Order(
         tenant_id=tenant_id,
@@ -123,7 +128,7 @@ async def create_token_order(
             quantity=tokens,
             unit_price_toman=amount,
             total_toman=amount,
-            metadata_json={"package_id": str(payload.package_id)},
+            metadata_json={"package_id": str(package_id)},
         )
     )
     await commerce.apply_tax(
@@ -132,13 +137,33 @@ async def create_token_order(
     await audit.record(
         session,
         actor_type="user",
-        actor_id=principal.id,
+        actor_id=user_id,
         tenant_id=tenant_id,
         action="token_order.created",
         payload={"order_id": str(order.id), "tokens": tokens, "amount_toman": order.amount_toman},
-        ip=client_ip(request),
+        ip=ip,
     )
     return {"id": str(order.id), "amount_toman": order.amount_toman}
+
+
+@router.post("/billing/token-orders", status_code=status.HTTP_201_CREATED)
+async def create_token_order(
+    payload: TokenOrderCreate,
+    request: Request,
+    principal: OrgAdminDep,
+    session: TenantSession,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
+) -> dict[str, Any]:
+    assert principal.tenant_id is not None
+    return await create_pack_order(
+        session,
+        tenant_id=principal.tenant_id,
+        user_id=principal.id,
+        package_id=payload.package_id,
+        idempotency_key=idempotency_key,
+        product="sedasanj",
+        ip=client_ip(request),
+    )
 
 
 @router.get("/admin/token-packages")
@@ -153,7 +178,7 @@ async def admin_list_token_packages(
 async def admin_create_token_package(
     payload: TokenPackageWrite, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, Any]:
-    row = TokenPackage(**payload.model_dump())
+    row = TokenPackage(**{**payload.model_dump(), "product": payload.product or "sedasanj"})
     session.add(row)
     await session.flush()
     await audit.record(
@@ -175,6 +200,8 @@ async def admin_update_token_package(
         raise ApiError("not_found", "بسته توکن پیدا نشد.")
     row.name, row.tokens = payload.name, payload.tokens
     row.price_toman, row.active = payload.price_toman, payload.active
+    if payload.product is not None:
+        row.product = payload.product
     await audit.record(
         session,
         actor_type="staff",

@@ -113,6 +113,7 @@ OVERRIDE_KEYS = (
     "ninerouter_coach_prompt",
     "ninerouter_direct_coach_prompt",
     "jalase_standalone_enabled",
+    "jalase_tokens_per_hour",
     "meeting_provider",
     "meeting_route",
     "meeting_model",
@@ -264,6 +265,23 @@ async def jalase_standalone_enabled(session: AsyncSession) -> bool:
     else:
         row = await session.get(PlatformSetting, "jalase_standalone_enabled")
     return row is not None and _as_bool(row.value)
+
+
+DEFAULT_TOKENS_PER_HOUR = 40_000
+
+
+async def jalase_tokens_per_hour(session: AsyncSession) -> int:
+    """Tokens that count as one hour of meetings when the app shows what is left."""
+    if get_settings().tenant_databases_enabled:
+        async with get_sessionmaker()() as control:
+            row = await control.get(PlatformSetting, "jalase_tokens_per_hour")
+    else:
+        row = await session.get(PlatformSetting, "jalase_tokens_per_hour")
+    try:
+        value = int(row.value) if row is not None else DEFAULT_TOKENS_PER_HOUR
+    except ValueError:
+        return DEFAULT_TOKENS_PER_HOUR
+    return value if value >= 1_000 else DEFAULT_TOKENS_PER_HOUR
 
 
 async def effective_meeting_minutes_prompt(session: AsyncSession) -> str:
@@ -456,6 +474,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "ninerouter_coach_prompt": "",
         "ninerouter_direct_coach_prompt": "",
         "jalase_standalone_enabled": "false",
+        "jalase_tokens_per_hour": "40000",
         "meeting_provider": "aiservice",
         "meeting_route": "durable",
         "meeting_model": "",
@@ -630,6 +649,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "ninerouter_coach_prompt": values["ninerouter_coach_prompt"],
         "ninerouter_direct_coach_prompt": values["ninerouter_direct_coach_prompt"],
         "jalase_standalone_enabled": _as_bool(values["jalase_standalone_enabled"]),
+        "jalase_tokens_per_hour": int(values["jalase_tokens_per_hour"]),
         "meeting_provider": values["meeting_provider"],
         "meeting_route": values["meeting_route"],
         "meeting_model": values["meeting_model"],

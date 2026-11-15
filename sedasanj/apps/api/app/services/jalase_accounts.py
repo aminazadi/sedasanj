@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import ApiKey, Tenant, User
+from app.models import ApiKey, Plan, PlanVersion, Subscription, Tenant, User
 from app.security import generate_api_key
 from app.services import audit
 from app.services.api_scopes import MOBILE_KEY_SCOPES
@@ -100,3 +100,61 @@ async def issue_device_key(
         ip=ip,
     )
     return secret, prefix, api_key
+
+
+async def restore_free_plan(session: AsyncSession, tenant_id: UUID, now: datetime) -> bool:
+    """Put a personal account whose paid month lapsed back on the permanent free plan.
+
+    A Jalase-Negar account never ends up without a plan: it keeps its documents and gets the
+    free monthly allowance again, with an upgrade prompt in the app.  Returns True when the
+    subscription was reset.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None or tenant.product != PRODUCT:
+        return False
+    live = (
+        await session.execute(
+            select(Subscription.id)
+            .where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+            .limit(1)
+        )
+    ).first()
+    if live is not None:
+        return False
+    row = (
+        await session.execute(
+            select(Subscription)
+            .where(Subscription.tenant_id == tenant_id)
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    free = (
+        await session.execute(
+            select(PlanVersion)
+            .join(Plan, Plan.id == PlanVersion.plan_id)
+            .where(Plan.code == FREE_PLAN_CODE, PlanVersion.status == "published")
+            .order_by(PlanVersion.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None or free is None:
+        return False
+    row.plan_version_id = free.id
+    row.status = "active"
+    row.billing_period = "monthly"
+    row.period_start = now
+    row.period_end = datetime(9999, 12, 31, tzinfo=UTC)
+    row.cancel_at_period_end = False
+    row.next_plan_version_id = None
+    row.llm_monthly_tokens = free.llm_monthly_tokens
+    row.updated_at = now
+    await audit.record(
+        session,
+        actor_type="system",
+        tenant_id=tenant_id,
+        action="jalase.plan_lapsed_to_free",
+        payload={"subscription_id": str(row.id)},
+    )
+    return True

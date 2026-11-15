@@ -348,6 +348,7 @@ export default function Settings() {
           ninerouter_direct_coach_prompt: settings.ninerouter_direct_coach_prompt,
           meeting_route: settings.meeting_route,
           jalase_standalone_enabled: settings.jalase_standalone_enabled,
+          jalase_tokens_per_hour: settings.jalase_tokens_per_hour,
           meeting_provider: settings.meeting_provider,
           meeting_model: settings.meeting_model,
           meeting_block_chars: settings.meeting_block_chars,
@@ -1117,6 +1118,11 @@ export default function Settings() {
           <p className="mt-1 text-xs leading-6 text-slate-500">اپ جلسه‌نگار فقط متن جلسه را می‌فرستد و صورت‌جلسهٔ حرفه‌ای از روی همان متن ساخته می‌شود. مسیر و مدل آن را اینجا انتخاب کنید؛ پرامپت در برگهٔ «پرامپت‌ها» ویرایش می‌شود.</p>
         </div>
         <ToggleSwitch checked={settings.jalase_standalone_enabled} onChange={(jalase_standalone_enabled) => setSettings({ ...settings, jalase_standalone_enabled })} label="ثبت‌نام مستقل جلسه‌نگار با شماره موبایل" />
+        <div>
+          <label className="label">توکن معادل یک ساعت جلسه (برای نمایش «ساعت باقی‌مانده» در اپ)</label>
+          <input className="input" inputMode="numeric" dir="ltr" value={settings.jalase_tokens_per_hour} onChange={(event) => setSettings({ ...settings, jalase_tokens_per_hour: Number(fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "")) || 0 })} />
+          <p className="mt-1 text-xs text-slate-500">فقط نحوهٔ نمایش را عوض می‌کند، نه مصرف واقعی. پس از چند هفته مصرف واقعی، میانگین توکنِ یک ساعت جلسه را از گزارش مصرف بخوانید و اینجا بگذارید (حداقل ۱٬۰۰۰).</p>
+        </div>
         <div>
           <label className="label">مسیر صورت‌جلسه</label>
           <select className="input mb-2" value={settings.meeting_provider} onChange={(event) => setSettings({ ...settings, meeting_provider: event.target.value as PlatformSettings["meeting_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select>

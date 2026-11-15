@@ -185,6 +185,7 @@ export interface PlatformSettings {
   ninerouter_coach_prompt: string;
   ninerouter_direct_coach_prompt: string;
   jalase_standalone_enabled: boolean;
+  jalase_tokens_per_hour: number;
   meeting_provider: "aiservice" | "ninerouter_direct";
   meeting_model: string;
   meeting_block_chars: number;
@@ -282,6 +283,8 @@ export interface PlanVersion {
   status?: "draft" | "published" | "retired";
   effective_at?: string | null;
   annual_price_toman?: number | null;
+  monthly_price_toman?: number;
+  product?: "sedasanj" | "jalase_negar";
   base_operators?: number;
   intro_minutes?: number;
   overage_price_per_minute_toman?: number;

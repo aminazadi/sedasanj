@@ -109,7 +109,7 @@ async def plan_version_by_code(
 
 
 async def _reject_plan_switch_by_purchase(
-    session: AsyncSession, tenant_id: UUID, plan: Plan
+    session: AsyncSession, tenant_id: UUID, plan: Plan, *, allow_free: bool = False
 ) -> None:
     """A running paid plan changes through /subscription/change, never by buying another plan."""
     now = datetime.now(UTC)
@@ -123,6 +123,7 @@ async def _reject_plan_switch_by_purchase(
                 Subscription.status == "active",
                 Subscription.billing_period != "trial",
                 Subscription.period_end > now,
+                *([PlanVersion.monthly_price_toman > 0] if allow_free else []),
             )
             .order_by(Subscription.created_at.desc())
             .limit(1)
@@ -136,6 +137,11 @@ async def _reject_plan_switch_by_purchase(
 
 
 def subscription_amount(version: PlanVersion, period: str, extra_operators: int) -> tuple[int, int]:
+    if period == "monthly":
+        # Only Jalase-Negar sells monthly terms (checked by the caller); no extra operators.
+        if extra_operators or version.monthly_price_toman <= 0:
+            raise ApiError("invalid_request", "selected billing period is unavailable")
+        return version.monthly_price_toman, 0
     if period != "annual":
         raise ApiError("invalid_request", "billing period is invalid")
     if extra_operators < 0 or (extra_operators and not version.allows_extra_operators):
@@ -160,7 +166,10 @@ async def create_subscription_order(
     customer_mobile: str,
     invoice_profile: dict[str, object],
     idempotency_key: str,
+    product: str = "sedasanj",
 ) -> Order:
+    if (product == "jalase_negar") != (period == "monthly"):
+        raise ApiError("invalid_request", "billing period is invalid for this product")
     existing = (
         await session.execute(
             select(Order).where(
@@ -170,23 +179,29 @@ async def create_subscription_order(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    plan, version = await plan_version_by_code(session, plan_code)
+    plan, version = await plan_version_by_code(session, plan_code, product=product)
     if plan.is_trial:
         raise ApiError("invalid_request", "a trial plan does not require payment")
     if not plan.sellable:
         raise ApiError("plan_not_sellable", "this plan is not available for purchase")
-    await _reject_plan_switch_by_purchase(session, tenant.id, plan)
-    permanent = (
-        await session.execute(
-            select(Subscription.id)
-            .where(
-                Subscription.tenant_id == tenant.id,
-                Subscription.status == "active",
-                Subscription.period_end >= datetime(PERMANENT_YEAR, 1, 1, tzinfo=UTC),
+    if product == "jalase_negar":
+        # The permanent free plan is replaced in place by the first paid one; a running paid
+        # plan is only renewed (same plan) until its term ends.
+        await _reject_plan_switch_by_purchase(session, tenant.id, plan, allow_free=True)
+        permanent = None
+    else:
+        await _reject_plan_switch_by_purchase(session, tenant.id, plan)
+        permanent = (
+            await session.execute(
+                select(Subscription.id)
+                .where(
+                    Subscription.tenant_id == tenant.id,
+                    Subscription.status == "active",
+                    Subscription.period_end >= datetime(PERMANENT_YEAR, 1, 1, tzinfo=UTC),
+                )
+                .limit(1)
             )
-            .limit(1)
-        )
-    ).first()
+        ).first()
     if permanent is not None:
         raise ApiError(
             "invalid_request",
@@ -227,7 +242,7 @@ async def create_subscription_order(
             order_id=order.id,
             tenant_id=tenant.id,
             kind="subscription",
-            description=f"اشتراک {plan.name} - سالانه",
+            description=f"اشتراک {plan.name} - {'ماهانه' if period == 'monthly' else 'سالانه'}",
             quantity=1,
             unit_price_toman=total - extra_operators * extra_unit,
             total_toman=total - extra_operators * extra_unit,

@@ -2169,6 +2169,9 @@ class TokenPackage(Base):
     tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
     price_toman: Mapped[int] = mapped_column(Integer, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    product: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'sedasanj'")
+    )
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
