@@ -50,6 +50,22 @@ class _Sdk implements StoreBillingSdk {
 }
 
 void main() {
+  test('a plan is bought through the store product mapped to it', () async {
+    final api = _Api();
+    final sdk = _Sdk('tok-4');
+    await buyFromStore(
+      api: api,
+      sdk: sdk,
+      store: 'bazaar',
+      planCode: 'jn_plus',
+    );
+    expect(api.verified, ['bazaar:jn_plus_month:tok-4']);
+    await expectLater(
+      buyFromStore(api: api, sdk: sdk, store: 'bazaar', planCode: 'jn_gold'),
+      throwsStateError,
+    );
+  });
+
   test(
     'the server confirms first and the purchase is consumed only afterwards',
     () async {

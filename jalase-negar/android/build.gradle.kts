@@ -2,6 +2,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Store billing SDKs: Poolakey (Cafe Bazaar) is on JitPack, Myket has its own repository.
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://maven.myket.ir") }
         maven {
             url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
         }

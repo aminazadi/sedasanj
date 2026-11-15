@@ -44,6 +44,8 @@ dependencies:
   firebase_messaging: ^15.2.10
   flutter_local_notifications: ^19.5.0
   video_player: ^2.11.1
+  flutter_poolakey: ^2.2.0+1.0.0
+  myket_iap: ^2.0.1
 
 dev_dependencies:
   flutter_test:

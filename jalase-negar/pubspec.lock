@@ -355,6 +355,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.0.35"
+  flutter_poolakey:
+    dependency: "direct main"
+    description:
+      name: flutter_poolakey
+      sha256: "141415a62f0b88465dc1ec852c641a373de34afb193613c2583835457801f185"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.2.0+1.0.0"
   flutter_riverpod:
     dependency: "direct main"
     description:
@@ -653,6 +661,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "7.4.3"
+  myket_iap:
+    dependency: "direct main"
+    description:
+      name: myket_iap
+      sha256: "923eeb1cc2f672b7a2c04b219f55e47e0d8158e5fc8635d383efbc3f029ab7a8"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.0.1"
   native_toolchain_c:
     dependency: transitive
     description:

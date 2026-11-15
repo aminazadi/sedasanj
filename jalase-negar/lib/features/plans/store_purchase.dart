@@ -25,11 +25,22 @@ Future<StorePurchaseResult> buyFromStore({
   required ApiClient api,
   required StoreBillingSdk sdk,
   required String store,
-  required String sku,
+  String? sku,
+  String? planCode,
+  String? packageId,
 }) async {
   final skus = await api.storeSkus(store);
-  if (!skus.skuToPlan.containsKey(sku) && !skus.skuToPack.containsKey(sku)) {
-    throw StateError('محصول در این مارکت برای فروش فعال نیست.');
+  if (sku == null) {
+    // Find the store product that sells this plan or token pack.
+    final map = planCode != null ? skus.skuToPlan : skus.skuToPack;
+    final wanted = planCode ?? packageId;
+    for (final entry in map.entries) {
+      if (entry.value == wanted) sku = entry.key;
+    }
+  }
+  if (sku == null ||
+      (!skus.skuToPlan.containsKey(sku) && !skus.skuToPack.containsKey(sku))) {
+    throw StateError('این محصول در مارکت برای فروش فعال نیست.');
   }
   final token = await sdk.purchase(sku, skus.payload);
   if (token == null) return const StorePurchaseResult(activated: false);

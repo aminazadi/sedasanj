@@ -11,9 +11,14 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../../core/utils/format.dart';
 import '../../settings/application/connection_controller.dart';
+import '../../../core/platform/distribution.dart';
 import '../data/billing_models.dart';
+import '../store_purchase.dart';
+import '../store_sdk.dart';
 
 String _errorText(Object error) => error is ApiException
+    ? error.message
+    : error is StateError
     ? error.message
     : 'ارتباط با سرور برقرار نشد؛ اینترنت را بررسی کنید و دوباره تلاش کنید.';
 
@@ -43,8 +48,14 @@ Future<bool> _launch(Uri url) =>
 
 /// Hours left, the plans and token packs; buying opens the bank page in the browser.
 class PlansScreen extends ConsumerStatefulWidget {
-  PlansScreen({super.key, this.launcher = _launch, bool? canBuy})
-    : canBuy = canBuy ?? !Platform.isIOS;
+  PlansScreen({
+    super.key,
+    this.launcher = _launch,
+    bool? canBuy,
+    StoreBillingSdk? storeSdk,
+    this.storeChannel,
+  }) : canBuy = canBuy ?? !Platform.isIOS,
+       storeSdk = storeSdk ?? currentStoreSdk;
 
   final PaymentLauncher launcher;
 
@@ -52,6 +63,11 @@ class PlansScreen extends ConsumerStatefulWidget {
   /// goods, so the iOS app only shows the plan; buying happens on Android or
   /// the web. ⚠ Needs a decision before an App Store release.
   final bool canBuy;
+
+  /// Set in the Bazaar and Myket builds: purchases go through the store's own payment sheet
+  /// and the server verifies them, instead of the bank page.
+  final StoreBillingSdk? storeSdk;
+  final String? storeChannel;
 
   @override
   ConsumerState<PlansScreen> createState() => _PlansScreenState();
@@ -95,6 +111,23 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
     setState(() => _busy = true);
     try {
       final client = await ref.read(personalClientProvider.future);
+      final sdk = widget.storeSdk;
+      if (sdk != null) {
+        final result = await buyFromStore(
+          api: client,
+          sdk: sdk,
+          store: widget.storeChannel ?? kStoreChannel,
+          planCode: planCode,
+          packageId: packageId,
+        );
+        if (result.activated) {
+          _paidDone();
+          if (mounted) {
+            await SsToastHost.show(context, 'خرید تأیید شد؛ ساعت‌ها اضافه شد.');
+          }
+        }
+        return;
+      }
       final key = 'jn-${DateTime.now().microsecondsSinceEpoch}';
       final purchase = await client.startPurchase(
         planCode: planCode,
