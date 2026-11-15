@@ -24,6 +24,7 @@ from app.route_inspection import api_routes, auth_kind, scope_names
 from app.routers import (
     account,
     admin,
+    admin_jalase_output_types,
     admin_users,
     ai_instructions,
     assistant,
@@ -418,6 +419,7 @@ def create_app() -> FastAPI:
         ml_models,
         help,
         site_pages,
+        admin_jalase_output_types,
         admin_users,
         admin,
     ):

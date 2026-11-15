@@ -17,7 +17,7 @@ from app.models import ApiKey, Meeting, Plan, PlanVersion, Subscription, Tenant,
 from app.routers import phone_auth
 from app.routers.meetings import _minutes_markdown, _minutes_out, _selected_minutes
 from app.security import hash_refresh_token
-from app.services import audit, billing, jalase_accounts, platform, ratelimit
+from app.services import audit, billing, jalase_accounts, jalase_output_types, platform, ratelimit
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.phone_identity import mobile_accounts, normalize_mobile
 
@@ -264,3 +264,11 @@ async def my_meeting_minutes(meeting_id: UUID, principal: MeetingsKeyDep) -> dic
             "markdown": _minutes_markdown(out),
             "structured": out.structured,
         }
+
+
+@router.get("/output-types")
+async def output_types(principal: MeetingsKeyDep) -> dict[str, object]:
+    """Conversion categories the admin published, with thumbnails and the input fields to ask."""
+    assert principal.tenant_id is not None
+    async with control_session_scope() as session:
+        return {"items": await jalase_output_types.published_catalog(session)}

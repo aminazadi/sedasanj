@@ -2930,6 +2930,75 @@ class JalaseNegarRelease(Base):
     )
 
 
+class JalaseOutputType(Base):
+    """A conversion category (e.g. counseling session) the admin offers in the Jalase-Negar app."""
+
+    __tablename__ = "jalase_output_types"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    code: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    title_fa: Mapped[str] = mapped_column(String(120), nullable=False)
+    description_fa: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
+    menu_label_fa: Mapped[str] = mapped_column(String(60), nullable=False)
+    thumbnail_media_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("help_media.id", ondelete="SET NULL")
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="100")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft")
+    builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft','published','archived')", name="jalase_output_types_status_check"
+        ),
+    )
+
+
+class JalaseOutputTypeVersion(Base):
+    """One prompt version of an output type; a published version is never edited."""
+
+    __tablename__ = "jalase_output_type_versions"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    output_type_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("jalase_output_types.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft")
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, server_default="summarize")
+    map_instruction: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    input_fields: Mapped[Any] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    llm_provider: Mapped[str | None] = mapped_column(String(40))
+    llm_model: Mapped[str | None] = mapped_column(String(120))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="jalase_output_type_versions_number_check"),
+        CheckConstraint(
+            "state IN ('draft','published','superseded')",
+            name="jalase_output_type_versions_state_check",
+        ),
+        CheckConstraint(
+            "mode IN ('summarize','transform')", name="jalase_output_type_versions_mode_check"
+        ),
+    )
+
+
 class JalaseNegarDesktopBuild(Base):
     """A Windows or macOS installer offered on the public download dialog; global."""
 
