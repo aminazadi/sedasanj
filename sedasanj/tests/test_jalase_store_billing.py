@@ -231,3 +231,65 @@ async def test_a_verified_token_pack_adds_tokens(created: list[UUID]) -> None:  
             await session.execute(delete(StorePurchase))
             await session.execute(delete(StoreSku))
             await session.execute(delete(TokenPackage).where(TokenPackage.id == pack_id))
+
+
+async def test_admin_manages_store_products() -> None:
+    from types import SimpleNamespace as NS
+    from uuid import uuid4
+
+    from pydantic import ValidationError
+    from sqlalchemy import text
+
+    from app.models import StaffUser
+    from app.routers import admin_jalase_store as admin_router
+
+    request = NS(client=NS(host="127.0.0.1"), headers={})
+    async with db.session_scope(staff=True) as session:
+        staff = StaffUser(
+            email=f"jn-sku-{uuid4().hex[:8]}@example.com", password_hash="x", role="super_admin"
+        )
+        session.add(staff)
+        await session.flush()
+        made = await admin_router.create_store_sku(
+            admin_router.StoreSkuCreate(
+                store="bazaar", sku="jn_silver_month", plan_code="jn_silver"
+            ),
+            request,  # type: ignore[arg-type]
+            staff,  # type: ignore[arg-type]
+            session,
+        )
+        assert made["kind"] == "plan" and made["active"] is True
+        with pytest.raises(ApiError) as duplicate:
+            await admin_router.create_store_sku(
+                admin_router.StoreSkuCreate(
+                    store="bazaar", sku="jn_silver_month", plan_code="jn_silver"
+                ),
+                request,  # type: ignore[arg-type]
+                staff,  # type: ignore[arg-type]
+                session,
+            )
+        assert duplicate.value.code == "conflict_idempotency"
+        with pytest.raises(ApiError) as unknown:
+            await admin_router.create_store_sku(
+                admin_router.StoreSkuCreate(store="myket", sku="x1", plan_code="no_such_plan"),
+                request,  # type: ignore[arg-type]
+                staff,  # type: ignore[arg-type]
+                session,
+            )
+        assert unknown.value.code == "plan_not_found"
+        with pytest.raises(ValidationError):
+            admin_router.StoreSkuCreate(store="myket", sku="x2")
+        off = await admin_router.update_store_sku(
+            UUID(made["id"]),
+            admin_router.StoreSkuUpdate(active=False),
+            request,  # type: ignore[arg-type]
+            staff,  # type: ignore[arg-type]
+            session,
+        )
+        assert off["active"] is False
+        listing = await admin_router.list_store_skus(staff, session)  # type: ignore[arg-type]
+        assert any(item["sku"] == "jn_silver_month" for item in listing["items"])
+        assert any(plan["code"] == "jn_silver" for plan in listing["plans"])
+        await session.execute(text("DELETE FROM store_skus WHERE id = :i"), {"i": UUID(made["id"])})
+        await session.execute(text("DELETE FROM audit_events WHERE actor_id = :s"), {"s": staff.id})
+        await session.delete(staff)

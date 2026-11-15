@@ -66,6 +66,7 @@ const NAVIGATION: NavigationGroup[] = [
       { to: "/jalase-negar-downloads", label: "دانلود جلسه‌نگار", icon: icons.upload },
       { to: "/jalase-negar-categories", label: "دسته‌های تبدیل جلسه‌نگار", icon: icons.file },
       { to: "/jalase-negar-badges", label: "نشان‌های جلسه‌نگار", icon: icons.file },
+      { to: "/jalase-negar-store", label: "محصولات مارکت جلسه‌نگار", icon: icons.file },
       { to: "/model-releases", label: "مدل‌های یادگیری", icon: icons.upload },
     ],
   },
@@ -125,7 +126,7 @@ function Sidebar({ closeMenu }: { closeMenu?: () => void }) {
           <div className="mb-5" key={group.label}>
             <p className="mb-2 px-3 text-[11px] font-medium text-[#B2AC88]">{group.label}</p>
             <div className="space-y-1">
-              {group.items.filter((item) => (item.to !== "/jalase-negar-push" && item.to !== "/jalase-negar-intro" && item.to !== "/jalase-negar-downloads" && item.to !== "/jalase-negar-categories" && item.to !== "/jalase-negar-badges") || session?.role === "super_admin").map((item) => (
+              {group.items.filter((item) => (item.to !== "/jalase-negar-push" && item.to !== "/jalase-negar-intro" && item.to !== "/jalase-negar-downloads" && item.to !== "/jalase-negar-categories" && item.to !== "/jalase-negar-badges" && item.to !== "/jalase-negar-store") || session?.role === "super_admin").map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
