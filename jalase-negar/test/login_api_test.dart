@@ -98,4 +98,33 @@ void main() {
     expect(login.created, isTrue);
     expect(login.userName, 'علی');
   });
+
+  test('minutes, profile and logout use the personal routes', () async {
+    final paths = <String>[];
+    final dio = Dio(BaseOptions(baseUrl: 'https://example.test'));
+    dio.httpClientAdapter = _Adapter((o) {
+      paths.add('${o.method} ${o.path}');
+      if (o.path.endsWith('/minutes')) {
+        return _json('{"status":"complete","markdown":"# صورت‌جلسه"}');
+      }
+      if (o.path.endsWith('/me')) {
+        return _json(
+          '{"remaining_seconds":3600,"plan":{"name":"رایگان","monthly_minutes":60}}',
+        );
+      }
+      return ResponseBody.fromString('', 204);
+    });
+    final api = ApiClient(serverUrl: 'https://example.test', dio: dio);
+    final minutes = await api.minutes('m1');
+    expect(minutes.markdown, '# صورت‌جلسه');
+    final profile = await api.personalProfile();
+    expect(profile.remainingSeconds, 3600);
+    expect(profile.monthlyMinutes, 60);
+    await api.logout();
+    expect(paths, [
+      'GET /v1/jalase-negar/meetings/m1/minutes',
+      'GET /v1/jalase-negar/me',
+      'POST /v1/jalase-negar/auth/logout',
+    ]);
+  });
 }

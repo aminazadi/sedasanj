@@ -12,6 +12,7 @@ const _kUserName = 'platform_user_name';
 const _kTenantName = 'platform_tenant_name';
 const _kTokenPrefix = 'platform_token_prefix';
 const _kTokenKey = 'platform_token';
+const _kPersonal = 'platform_personal';
 const _kPushBinding = 'platform_push_binding';
 
 /// Persists the SedaSanj connection: metadata in the app DB, the token only
@@ -31,6 +32,7 @@ class ConnectionStore {
       userName: await _db.getSetting(_kUserName) ?? '',
       tenantName: await _db.getSetting(_kTenantName) ?? '',
       tokenPrefix: await _db.getSetting(_kTokenPrefix) ?? '',
+      personal: await _db.getSetting(_kPersonal) == '1',
     );
   }
 
@@ -70,6 +72,7 @@ class ConnectionStore {
     await _db.setSetting(_kUserName, connection.userName);
     await _db.setSetting(_kTenantName, connection.tenantName);
     await _db.setSetting(_kTokenPrefix, connection.tokenPrefix);
+    await _db.setSetting(_kPersonal, connection.personal ? '1' : '0');
     await _secure.write(
       key: _kPushBinding,
       value: _binding(connection.serverUrl, token),
@@ -81,8 +84,14 @@ class ConnectionStore {
     await _secure.delete(key: _kPushBinding);
     await _db.db.delete(
       'settings',
-      where: 'key IN (?, ?, ?, ?)',
-      whereArgs: [_kServerUrl, _kUserName, _kTenantName, _kTokenPrefix],
+      where: 'key IN (?, ?, ?, ?, ?)',
+      whereArgs: [
+        _kServerUrl,
+        _kUserName,
+        _kTenantName,
+        _kTokenPrefix,
+        _kPersonal,
+      ],
     );
   }
 }

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
+import '../../../core/platform/api_client.dart';
 import '../../../core/utils/format.dart';
 import '../../onboarding/intro/intro_art.dart';
+import '../../settings/application/connection_controller.dart';
 import '../application/meeting_providers.dart';
 import '../data/attendee.dart';
 import '../data/meeting.dart';
@@ -64,7 +67,19 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             ref.watch(meetingAttendeesProvider(meetingId)).value ??
             const <Attendee>[];
         final showAttendees = attendees.isNotEmpty;
-        final tabCount = 1 + (showSpeakers ? 1 : 0) + (showAttendees ? 1 : 0);
+        final showMinutes =
+            data.meeting.remoteMeetingId != null &&
+            (ref
+                    .watch(connectionControllerProvider)
+                    .value
+                    ?.connection
+                    ?.personal ??
+                false);
+        final tabCount =
+            1 +
+            (showSpeakers ? 1 : 0) +
+            (showAttendees ? 1 : 0) +
+            (showMinutes ? 1 : 0);
         final canSend = canSendMeetingText(
           data.meeting,
           hasText: transcript.isNotEmpty,
@@ -91,6 +106,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         const Tab(text: 'متن جلسه'),
                         if (showSpeakers) const Tab(text: 'گوینده‌ها'),
                         if (showAttendees) const Tab(text: 'حاضران'),
+                        if (showMinutes) const Tab(text: 'صورت‌جلسه'),
                       ],
                     )
                   : null,
@@ -135,6 +151,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         _AttendeesTab(
                           attendees: attendees,
                           segments: data.segments,
+                        ),
+                      if (showMinutes)
+                        _MinutesTab(
+                          remoteMeetingId: data.meeting.remoteMeetingId!,
                         ),
                     ],
                   )
@@ -567,4 +587,88 @@ class _AttendeesTab extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The minutes the server built, shown as selectable text with copy and refresh.
+class _MinutesTab extends ConsumerWidget {
+  const _MinutesTab({required this.remoteMeetingId});
+
+  final String remoteMeetingId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final minutes = ref.watch(meetingMinutesProvider(remoteMeetingId));
+    return minutes.when(
+      loading: () => const Center(child: SsProcessingMark(size: 30)),
+      error: (error, _) => _MinutesMessage(
+        message: error is ApiException
+            ? error.message
+            : 'دریافت صورت‌جلسه ناموفق بود؛ اینترنت را بررسی کنید و دوباره تلاش کنید.',
+        onRefresh: () =>
+            ref.invalidate(meetingMinutesProvider(remoteMeetingId)),
+      ),
+      data: (result) {
+        final markdown = result.markdown;
+        if (markdown == null || markdown.trim().isEmpty) {
+          return _MinutesMessage(
+            message:
+                'صورت‌جلسه هنوز آماده نیست؛ پس از ارسال کامل جلسه کمی صبر کنید و دوباره بررسی کنید.',
+            onRefresh: () =>
+                ref.invalidate(meetingMinutesProvider(remoteMeetingId)),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.copy),
+                  label: const Text('کپی'),
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: markdown));
+                    if (context.mounted) {
+                      SsToastHost.show(context, 'صورت‌جلسه کپی شد.');
+                    }
+                  },
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('به‌روزرسانی'),
+                  onPressed: () =>
+                      ref.invalidate(meetingMinutesProvider(remoteMeetingId)),
+                ),
+              ],
+            ),
+            SelectableText(markdown),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MinutesMessage extends StatelessWidget {
+  const _MinutesMessage({required this.message, required this.onRefresh});
+
+  final String message;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: onRefresh,
+            child: const Text('بررسی دوباره'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

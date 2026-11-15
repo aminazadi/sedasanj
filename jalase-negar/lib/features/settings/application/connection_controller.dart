@@ -119,6 +119,7 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
       userName: login.userName,
       tenantName: 'حساب شخصی',
       tokenPrefix: login.tokenPrefix,
+      personal: true,
     );
     final store = await ref.read(connectionStoreProvider.future);
     await store.save(connection, login.token);
@@ -157,6 +158,22 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
 
   Future<void> disconnect() async {
     final store = await ref.read(connectionStoreProvider.future);
+    final connection = state.value?.connection;
+    if (connection != null && connection.personal) {
+      // Best effort: a token that cannot be revoked now (offline) is still
+      // forgotten on this device and can be revoked later from the account.
+      final token = await store.token();
+      if (token != null) {
+        try {
+          await ApiClient(
+            serverUrl: connection.serverUrl,
+            token: token,
+          ).logout();
+        } on Object catch (e) {
+          debugPrint('JN-CONNECT: server logout failed: $e');
+        }
+      }
+    }
     await store.clear();
     state = const AsyncData(ConnectionState());
   }
@@ -173,3 +190,40 @@ final connectionControllerProvider =
 /// (`MeetingPairIn`), so desktop builds report `ios` until the server
 /// accepts more values.
 String _serverPlatform() => Platform.isAndroid ? 'android' : 'ios';
+
+/// Minutes the server built for a meeting of a personal account.
+final meetingMinutesProvider = FutureProvider.autoDispose
+    .family<MinutesResult, String>((ref, remoteMeetingId) async {
+      final connection = (await ref.watch(
+        connectionControllerProvider.future,
+      )).connection;
+      final store = await ref.watch(connectionStoreProvider.future);
+      final token = await store.token();
+      if (connection == null || token == null) {
+        throw const ApiException(
+          message: 'ابتدا با شماره موبایل وارد شوید.',
+          requiresReconnect: true,
+        );
+      }
+      return ApiClient(
+        serverUrl: connection.serverUrl,
+        token: token,
+      ).minutes(remoteMeetingId);
+    });
+
+/// Plan and remaining minutes of the signed-in personal account.
+final personalProfileProvider = FutureProvider.autoDispose<PersonalProfile>((
+  ref,
+) async {
+  final connection = (await ref.watch(
+    connectionControllerProvider.future,
+  )).connection;
+  final token = await (await ref.watch(connectionStoreProvider.future)).token();
+  if (connection == null || !connection.personal || token == null) {
+    throw const ApiException(message: 'حساب شخصی متصل نیست.');
+  }
+  return ApiClient(
+    serverUrl: connection.serverUrl,
+    token: token,
+  ).personalProfile();
+});

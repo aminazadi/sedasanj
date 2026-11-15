@@ -99,6 +99,27 @@ ApiException mapLoginError(DioException e) {
   return mapDioError(e);
 }
 
+/// The selected minutes of a meeting; `markdown` is null until they are ready.
+class MinutesResult {
+  const MinutesResult({required this.status, this.markdown});
+
+  final String status;
+  final String? markdown;
+}
+
+/// Plan and remaining allowance of a personal account.
+class PersonalProfile {
+  const PersonalProfile({
+    required this.remainingSeconds,
+    this.planName,
+    this.monthlyMinutes,
+  });
+
+  final int remainingSeconds;
+  final String? planName;
+  final int? monthlyMinutes;
+}
+
 class RemoteSession {
   const RemoteSession({
     required this.meetingId,
@@ -428,6 +449,46 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       );
     } on DioException catch (e) {
       throw mapLoginError(e);
+    }
+  }
+
+  /// Minutes of one of the signed-in user's meetings (personal accounts only).
+  Future<MinutesResult> minutes(String remoteMeetingId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/meetings/$remoteMeetingId/minutes',
+      );
+      final body = res.data!;
+      return MinutesResult(
+        status: (body['status'] ?? '') as String,
+        markdown: body['markdown'] as String?,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  Future<PersonalProfile> personalProfile() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>('/v1/jalase-negar/me');
+      final body = res.data!;
+      final plan = body['plan'] as Map?;
+      return PersonalProfile(
+        remainingSeconds: (body['remaining_seconds'] as num?)?.toInt() ?? 0,
+        planName: plan?['name'] as String?,
+        monthlyMinutes: (plan?['monthly_minutes'] as num?)?.toInt(),
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  /// Revokes the device token on the server.
+  Future<void> logout() async {
+    try {
+      await _dio.post<Object?>('/v1/jalase-negar/auth/logout');
+    } on DioException catch (e) {
+      throw mapDioError(e);
     }
   }
 

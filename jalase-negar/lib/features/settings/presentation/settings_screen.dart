@@ -60,7 +60,10 @@ class SettingsScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _Row('کاربر', connection.userName),
-                    _Row('سازمان', connection.tenantName),
+                    if (connection.personal)
+                      const _PersonalUsageRows()
+                    else
+                      _Row('سازمان', connection.tenantName),
                     _Row('سرور', connection.serverUrl, ltr: true),
                     if (connection.tokenPrefix.isNotEmpty)
                       _Row('توکن', '${connection.tokenPrefix}…', ltr: true),
@@ -315,6 +318,27 @@ class _SoundEventsCard extends ConsumerWidget {
         style: Theme.of(
           context,
         ).textTheme.bodySmall?.copyWith(color: SsColors.ink),
+      ),
+    );
+  }
+}
+
+/// Plan name and remaining minutes of a personal account.
+class _PersonalUsageRows extends ConsumerWidget {
+  const _PersonalUsageRows();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(personalProfileProvider);
+    return profile.when(
+      loading: () => const _Row('دقیقهٔ باقی‌مانده', '…'),
+      error: (_, _) => const _Row('دقیقهٔ باقی‌مانده', 'نامشخص'),
+      data: (p) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (p.planName != null) _Row('پلن', p.planName!),
+          _Row('دقیقهٔ باقی‌مانده', '${p.remainingSeconds ~/ 60}'),
+        ],
       ),
     );
   }
