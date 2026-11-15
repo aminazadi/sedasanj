@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/db/document_cache.dart';
 import '../../../core/platform/api_client.dart';
 import '../../../core/platform/connection_store.dart';
 import '../../../core/platform/platform_config.dart';
@@ -171,6 +172,15 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
       debugPrint('JN-LINK: saving the organization link failed: $e\n$st');
       return 'ذخیرهٔ اتصال سازمان روی این دستگاه ناموفق بود؛ دوباره امتحان کنید.';
     }
+  }
+
+  /// Forgets everything on this device after the server deleted the account.
+  Future<void> forgetAfterDeletion() async {
+    final store = await ref.read(connectionStoreProvider.future);
+    await store.clear();
+    ref.invalidate(orgLinkProvider);
+    ref.invalidate(meetingsProvider);
+    state = const AsyncData(ConnectionState());
   }
 
   /// Copies the chosen finished meetings into the linked organization.
@@ -366,15 +376,75 @@ final outputTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
 
 final meetingDocumentsProvider = FutureProvider.autoDispose
     .family<List<DocumentInfo>, String>((ref, remoteMeetingId) async {
-      final client = await ref.watch(personalClientProvider.future);
-      return client.listDocuments(remoteMeetingId);
+      final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
+      try {
+        final client = await ref.watch(personalClientProvider.future);
+        final docs = await client.listDocuments(remoteMeetingId);
+        for (final d in docs) {
+          final old = await db.cachedDocument(d.id);
+          await db.cacheDocument(
+            documentId: d.id,
+            remoteMeetingId: remoteMeetingId,
+            outputType: d.outputType,
+            status: d.status,
+            progressPct: d.progressPct,
+            selectedVersion: d.selectedVersion,
+            // Keep the text of a version already downloaded.
+            markdown: old?['selected_version'] == d.selectedVersion
+                ? (old?['markdown'] as String?)
+                : null,
+          );
+        }
+        return docs;
+      } on Object catch (e) {
+        final rows = await db.cachedDocuments(remoteMeetingId);
+        if (rows.isEmpty || !_isOffline(e)) rethrow;
+        return [for (final r in rows) _cachedInfo(r)];
+      }
     });
+
+/// An error that only means "no connection right now" (not a refusal by the
+/// server), so a cached copy may be shown instead.
+bool _isOffline(Object e) =>
+    e is! ApiException ||
+    (!e.requiresReconnect && (e.statusCode == null || e.statusCode! >= 500));
 
 final documentDetailProvider = FutureProvider.autoDispose
     .family<DocumentDetail, String>((ref, documentId) async {
-      final client = await ref.watch(personalClientProvider.future);
-      return client.getDocument(documentId);
+      final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
+      try {
+        final client = await ref.watch(personalClientProvider.future);
+        final detail = await client.getDocument(documentId);
+        final old = await db.cachedDocument(documentId);
+        await db.cacheDocument(
+          documentId: documentId,
+          remoteMeetingId: old?['remote_meeting_id'] as String?,
+          outputType: detail.info.outputType,
+          status: detail.info.status,
+          progressPct: detail.info.progressPct,
+          selectedVersion: detail.info.selectedVersion,
+          markdown: detail.markdown,
+        );
+        return detail;
+      } on Object catch (e) {
+        final cached = await db.cachedDocument(documentId);
+        if (cached == null || !_isOffline(e)) rethrow;
+        return _cachedDetail(cached);
+      }
     });
+
+DocumentDetail _cachedDetail(Map<String, Object?> row) => DocumentDetail(
+  info: _cachedInfo(row),
+  markdown: row['markdown'] as String?,
+);
+
+DocumentInfo _cachedInfo(Map<String, Object?> row) => DocumentInfo(
+  id: row['document_id'] as String,
+  outputType: row['output_type'] as String,
+  status: row['status'] as String,
+  progressPct: (row['progress_pct'] as int?) ?? 0,
+  selectedVersion: row['selected_version'] as int?,
+);
 
 /// Hours left, plans and token packs of the personal account.
 final usageProvider = FutureProvider.autoDispose<UsageInfo>((ref) async {

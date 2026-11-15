@@ -71,6 +71,8 @@ _CONTROL_ONLY = {
     "jalase_output_type_versions",
     "jalase_achievements",
     "jalase_account_links",
+    "store_skus",
+    "store_purchases",
     "jalase_invite_codes",
     "jalase_invite_redemptions",
     "jalase_push_settings",

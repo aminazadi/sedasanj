@@ -23,9 +23,9 @@ const COLUMNS: SkeletonColumn[] = [
 const PRODUCTS: Record<string, string> = { jalase_negar: "جلسه‌نگار", sedasanj: "صداسنج" };
 const CHANNELS: Record<string, string> = { jalase_app: "اپ جلسه‌نگار", web: "وب", admin: "ادمین", quick_demo: "دموی سریع" };
 const STATUSES: Record<string, string> = { active: "فعال", trialing: "آزمایشی", pending_payment: "در انتظار پرداخت", expired: "منقضی", canceled: "لغوشده" };
-const ACTIONS: Record<string, string> = { suspend: "تعلیق حساب", unsuspend: "فعال‌سازی حساب", grant_credit: "اعطای اعتبار (دقیقه)", sms: "پیامک گروهی" };
+const ACTIONS: Record<string, string> = { suspend: "تعلیق حساب", unsuspend: "فعال‌سازی حساب", grant_credit: "اعطای اعتبار (دقیقه)", sms: "پیامک گروهی", change_plan: "تغییر پلن", push: "اعلان اپ" };
 
-type BulkAction = "suspend" | "unsuspend" | "grant_credit" | "sms";
+type BulkAction = "suspend" | "unsuspend" | "grant_credit" | "sms" | "change_plan" | "push";
 
 export default function Users() {
   const [limit] = useTablePageSize();
@@ -38,6 +38,10 @@ export default function Users() {
   const [action, setAction] = useState<BulkAction>("grant_credit");
   const [minutes, setMinutes] = useState("30");
   const [message, setMessage] = useState("");
+  const [planCode, setPlanCode] = useState("jn_bronze");
+  const [periodDays, setPeriodDays] = useState("30");
+  const [pushTitle, setPushTitle] = useState("");
+  const [pushBody, setPushBody] = useState("");
   const [ask, dialog] = useReasonDialog();
 
   const query = () => {
@@ -104,6 +108,8 @@ export default function Users() {
       note,
       ...(action === "grant_credit" ? { minutes: Number(fmt.latinDigits(minutes)) } : {}),
       ...(action === "sms" ? { message } : {}),
+      ...(action === "change_plan" ? { plan_code: planCode.trim(), period_days: Number(fmt.latinDigits(periodDays)) } : {}),
+      ...(action === "push" ? { push_title: pushTitle, push_body: pushBody } : {}),
     };
   }
 
@@ -157,6 +163,18 @@ export default function Users() {
           ) : null}
           {action === "sms" ? (
             <div className="grow"><label className="label">متن پیام (حداکثر ۳۰۰ نویسه)</label><input className="input" maxLength={300} value={message} onChange={(event) => setMessage(event.target.value)} /></div>
+          ) : null}
+          {action === "change_plan" ? (
+            <>
+              <div><label className="label">کد پلن جلسه‌نگار</label><input className="input w-36" dir="ltr" value={planCode} onChange={(event) => setPlanCode(event.target.value)} /></div>
+              <div><label className="label">مدت (روز، پلن پولی)</label><input className="input w-24" inputMode="numeric" dir="ltr" value={periodDays} onChange={(event) => setPeriodDays(event.target.value)} /></div>
+            </>
+          ) : null}
+          {action === "push" ? (
+            <>
+              <div><label className="label">عنوان اعلان</label><input className="input" maxLength={80} value={pushTitle} onChange={(event) => setPushTitle(event.target.value)} /></div>
+              <div className="grow"><label className="label">متن اعلان</label><input className="input" maxLength={300} value={pushBody} onChange={(event) => setPushBody(event.target.value)} /></div>
+            </>
           ) : null}
           <button className="btn" onClick={() => void runBulk()}>پیش‌نمایش و اجرا</button>
         </div>

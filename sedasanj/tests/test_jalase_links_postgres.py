@@ -22,6 +22,7 @@ from app.models import (
     MeetingDocumentVersion,
     MeetingPairingCode,
     MeetingSegment,
+    Tenant,
     User,
 )
 from app.routers import jalase_org_menu as menu
@@ -30,6 +31,7 @@ from app.routers.admin_users import UserFilters, users_query
 from app.schemas import MeetingPairIn
 from app.security import hash_api_key
 from app.services import jalase_accounts, jalase_links, ratelimit
+from app.services.phone_identity import mobile_accounts
 
 pytestmark = requires_postgres
 
@@ -393,3 +395,46 @@ async def test_import_copies_finished_meetings_once_and_refuses_purged(
         ).scalar_one()
         original = await session.get(Meeting, good_id)
     assert texts == ["سلام"] and markdown == "# متن" and original is not None
+    admin = SimpleNamespace(tenant_id=org_ids[0], id=org_ids[1], kind="user", role="org_admin")
+    async with db.session_scope(org_ids[0]) as session:
+        shown = await menu.meeting_documents(copy.id, admin, session)  # type: ignore[arg-type]
+    assert [d["markdown"] for d in shown["items"]] == ["# متن"]
+    async with db.session_scope(org_ids[0]) as session:
+        with pytest.raises(ApiError):
+            await menu.meeting_documents(uuid4(), admin, session)  # type: ignore[arg-type]
+
+
+async def test_deleting_an_account_closes_everything_and_frees_the_number(
+    created: list[UUID],
+) -> None:
+    me = await personal(created)
+    org_ids = await org(created)
+    await do_link(me, await code_for(*org_ids))
+    async with db.session_scope(staff=True) as session:
+        mobile = (await session.get(User, me[1])).mobile_number  # type: ignore[union-attr]
+        session.add(
+            Meeting(
+                tenant_id=me[0],
+                owner_user_id=me[1],
+                client_meeting_id=uuid4(),
+                status="complete",
+                started_at=datetime.now(UTC),
+            )
+        )
+    async with db.session_scope(staff=True) as session:
+        await jalase_accounts.delete_account(session, tenant_id=me[0], user_id=me[1])
+    async with db.session_scope(staff=True) as session:
+        keys = (
+            (await session.execute(select(ApiKey).where(ApiKey.tenant_id == me[0]))).scalars().all()
+        )
+        assert all(k.revoked_at is not None for k in keys)
+        org_key = (
+            await session.execute(select(ApiKey).where(ApiKey.tenant_id == org_ids[0]))
+        ).scalar_one()
+        assert org_key.revoked_at is not None
+        assert (await session.get(Tenant, me[0])).status == "deleted"  # type: ignore[union-attr]
+        assert (
+            await session.execute(select(Meeting).where(Meeting.tenant_id == me[0]))
+        ).first() is None
+        assert (await jalase_links.list_links(session, me[0])) == []
+        assert await mobile_accounts(session, str(mobile), product="jalase_negar") == []

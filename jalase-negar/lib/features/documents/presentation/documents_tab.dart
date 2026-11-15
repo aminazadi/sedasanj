@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../app/widgets/markdown_view.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
@@ -624,7 +625,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              SelectableText(d.markdown!),
+              MarkdownView(markdown: d.markdown!),
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 icon: const Icon(Icons.refresh),

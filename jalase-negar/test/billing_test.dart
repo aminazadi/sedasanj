@@ -243,6 +243,69 @@ void main() {
       await tester.pump(const Duration(seconds: 6));
     },
   );
+  testWidgets('coming back from the bank page confirms the payment by itself', (
+    tester,
+  ) async {
+    final fake = _FakeClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          usageProvider.overrideWith((ref) async => UsageInfo.fromJson(_usage)),
+          plansProvider.overrideWith(
+            (ref) async => PlansResult.fromJson(_plans),
+          ),
+          tokenPackagesProvider.overrideWith((ref) async => const []),
+          personalClientProvider.overrideWith((ref) async => fake),
+        ],
+        child: MaterialApp(
+          home: SsToastHost(child: PlansScreen(launcher: (url) async => true)),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.widgetWithText(FilledButton, 'خرید'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('پرداخت انجام شد؟'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(fake.checked, ['o1']);
+    expect(find.text('پرداخت انجام شد؟'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the iOS screen shows plans without a buy button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          usageProvider.overrideWith((ref) async => UsageInfo.fromJson(_usage)),
+          plansProvider.overrideWith(
+            (ref) async => PlansResult.fromJson(_plans),
+          ),
+          tokenPackagesProvider.overrideWith(
+            (ref) async => const [
+              PackInfo(id: 'pk1', name: 'بسته', hours: 4, priceToman: 160000),
+            ],
+          ),
+          personalClientProvider.overrideWith((ref) async => _FakeClient()),
+        ],
+        child: MaterialApp(
+          home: SsToastHost(child: PlansScreen(canBuy: false)),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.widgetWithText(FilledButton, 'خرید'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pump();
+    expect(find.textContaining('نسخهٔ iOS'), findsOneWidget);
+  });
   testWidgets('the progress screen lists badges and sends a friend code', (
     tester,
   ) async {

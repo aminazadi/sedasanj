@@ -676,6 +676,58 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     }
   }
 
+  /// Products this store build sells, and the developer payload the server expects back
+  /// (the account id; the stores echo it so the server can match the purchase to the account).
+  Future<
+    ({
+      Map<String, String> skuToPlan,
+      Map<String, String> skuToPack,
+      String payload,
+    })
+  >
+  storeSkus(String store) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/store/skus',
+        queryParameters: {'store': store},
+      );
+      final plans = <String, String>{};
+      final packs = <String, String>{};
+      for (final raw in (res.data!['skus'] as List<dynamic>)) {
+        final row = raw as Map<String, dynamic>;
+        if (row['kind'] == 'plan') {
+          plans[row['sku'] as String] = row['plan_code'] as String;
+        } else {
+          packs[row['sku'] as String] = row['package_id'] as String;
+        }
+      }
+      return (
+        skuToPlan: plans,
+        skuToPack: packs,
+        payload: res.data!['developer_payload'] as String,
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Hands a store purchase token to the server, which checks it with the store and activates
+  /// the plan or token pack. Safe to repeat for the same token.
+  Future<void> verifyStorePurchase({
+    required String store,
+    required String sku,
+    required String purchaseToken,
+  }) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/store/verify',
+        data: {'store': store, 'sku': sku, 'purchase_token': purchaseToken},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
   Future<OrderStatus> orderStatus(String orderId) async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(
@@ -775,6 +827,19 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
   Future<void> unlinkOrganization(String linkId) async {
     try {
       await _dio.delete<Object?>('/v1/jalase-negar/link/$linkId');
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  /// Deletes the account for good; [verifiedToken] comes from a fresh SMS check
+  /// of the account's own number.
+  Future<void> deleteAccount(String verifiedToken) async {
+    try {
+      await _dio.delete<Object?>(
+        '/v1/jalase-negar/me',
+        data: {'verified_token': verifiedToken},
+      );
     } on DioException catch (e) {
       throw mapDioError(e);
     }

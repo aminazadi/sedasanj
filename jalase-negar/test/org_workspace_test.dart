@@ -169,4 +169,20 @@ void main() {
     await db.setSetting('org_link_id', 'l1');
     expect(await store.defaultWorkspace(), kWorkspaceOrg);
   });
+
+  test('deleting the account sends the verified token to DELETE /me', () async {
+    final seen = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'https://example.test'));
+    dio.httpClientAdapter = _Adapter((o) {
+      seen.add(o);
+      return ResponseBody.fromString('', 204);
+    });
+    await ApiClient(
+      serverUrl: 'https://example.test',
+      dio: dio,
+    ).deleteAccount('v' * 40);
+    expect(seen.single.method, 'DELETE');
+    expect(seen.single.path, '/v1/jalase-negar/me');
+    expect(seen.single.data, {'verified_token': 'v' * 40});
+  });
 }

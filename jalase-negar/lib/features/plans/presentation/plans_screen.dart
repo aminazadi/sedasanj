@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,16 +43,52 @@ Future<bool> _launch(Uri url) =>
 
 /// Hours left, the plans and token packs; buying opens the bank page in the browser.
 class PlansScreen extends ConsumerStatefulWidget {
-  const PlansScreen({super.key, this.launcher = _launch});
+  PlansScreen({super.key, this.launcher = _launch, bool? canBuy})
+    : canBuy = canBuy ?? !Platform.isIOS;
 
   final PaymentLauncher launcher;
+
+  /// Buying is hidden on iOS: Apple restricts paying outside the app for digital
+  /// goods, so the iOS app only shows the plan; buying happens on Android or
+  /// the web. ⚠ Needs a decision before an App Store release.
+  final bool canBuy;
 
   @override
   ConsumerState<PlansScreen> createState() => _PlansScreenState();
 }
 
-class _PlansScreenState extends ConsumerState<PlansScreen> {
+class _PlansScreenState extends ConsumerState<PlansScreen>
+    with WidgetsBindingObserver {
   bool _busy = false;
+
+  /// While the "پرداخت انجام شد؟" dialog is open: asks the server whether the
+  /// order is paid when the user comes back from the bank page.
+  Future<void> Function()? _autoCheck;
+  bool _autoPaid = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _autoCheck?.call();
+  }
+
+  void _paidDone() {
+    ref
+      ..invalidate(usageProvider)
+      ..invalidate(plansProvider)
+      ..invalidate(personalProfileProvider);
+  }
 
   Future<void> _buy({String? planCode, String? packageId}) async {
     if (_busy) return;
@@ -87,6 +124,18 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
     var message = 'پرداخت هنوز تأیید نشده است.';
     while (true) {
       if (!mounted) return;
+      _autoPaid = false;
+      _autoCheck = () async {
+        try {
+          final status = await client.orderStatus(orderId);
+          if (status.paid && mounted && !_autoPaid) {
+            _autoPaid = true;
+            Navigator.of(context, rootNavigator: true).pop(false);
+          }
+        } on Object {
+          // The button below still lets the user check by hand.
+        }
+      };
       final done = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -107,14 +156,20 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
           ],
         ),
       );
+      _autoCheck = null;
+      if (_autoPaid) {
+        _autoPaid = false;
+        _paidDone();
+        if (mounted) {
+          await SsToastHost.show(context, 'پرداخت تأیید شد؛ ساعت‌ها اضافه شد.');
+        }
+        return;
+      }
       if (done != true) return;
       try {
         final status = await client.orderStatus(orderId);
         if (status.paid) {
-          ref
-            ..invalidate(usageProvider)
-            ..invalidate(plansProvider)
-            ..invalidate(personalProfileProvider);
+          _paidDone();
           if (mounted) {
             await SsToastHost.show(
               context,
@@ -159,7 +214,10 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                 for (final plan in p.plans)
                   _PlanCard(
                     plan: plan,
-                    onBuy: _busy ? null : () => _buy(planCode: plan.code),
+                    onBuy: !widget.canBuy || _busy
+                        ? null
+                        : () => _buy(planCode: plan.code),
+                    showBuy: widget.canBuy,
                   ),
               ],
             ),
@@ -179,7 +237,7 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                         SsCard(
                           title: '${hoursText(pack.hours)} ساعت',
                           trailing: FilledButton(
-                            onPressed: _busy
+                            onPressed: !widget.canBuy || _busy
                                 ? null
                                 : () => _buy(packageId: pack.id),
                             child: Text(tomanText(pack.priceToman)),
@@ -192,6 +250,13 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                   ),
           ),
           const SizedBox(height: 8),
+          if (!widget.canBuy)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'خرید پلن و ساعت اضافه در نسخهٔ iOS فعال نیست؛ از نسخهٔ اندروید یا وب خرید کنید. حساب شما همه‌جا یکی است.',
+              ),
+            ),
           Text(
             'ساعت‌ها تقریبی‌اند و از روی مصرف واقعی هوش مصنوعی حساب می‌شوند.',
             style: Theme.of(context).textTheme.bodySmall,
@@ -258,8 +323,13 @@ class _UsageCard extends StatelessWidget {
 }
 
 class _PlanCard extends StatelessWidget {
-  const _PlanCard({required this.plan, required this.onBuy});
+  const _PlanCard({
+    required this.plan,
+    required this.onBuy,
+    this.showBuy = true,
+  });
 
+  final bool showBuy;
   final PlanInfo plan;
   final VoidCallback? onBuy;
 
@@ -268,7 +338,7 @@ class _PlanCard extends StatelessWidget {
     final hours = plan.monthlyHours;
     return SsCard(
       title: plan.name,
-      trailing: plan.buyable
+      trailing: plan.buyable && showBuy
           ? FilledButton(onPressed: onBuy, child: const Text('خرید'))
           : null,
       child: Text(

@@ -59,6 +59,7 @@ export default function MeetingDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = meetingTabFromSearch(searchParams);
   const meeting = useResource<MeetingDetail>((signal) => request<MeetingDetail>(`/v1/meetings/${meetingId}`, { signal }), [meetingId]);
+  const jalaseDocs = useResource<{ items: Array<{ code: string; title: string; markdown: string }> }>((signal) => request(`/v1/jalase/org-menu/meetings/${meetingId}/documents`, { signal }), [meetingId]);
   const detail = meeting.data;
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -288,6 +289,18 @@ export default function MeetingDetailPage() {
         />
       ) : null}
       {detail.status !== "complete" ? <ProcessingTimeline events={detail.processing_events ?? []} /> : null}
+
+      {jalaseDocs.data && jalaseDocs.data.items.length > 0 ? (
+        <section className="card space-y-3" aria-label="اسناد جلسه‌نگار">
+          <h2 className="text-base font-bold">اسناد جلسه‌نگار</h2>
+          {jalaseDocs.data.items.map((doc) => (
+            <details key={doc.code} className="border border-[color:var(--line)] p-3">
+              <summary className="cursor-pointer font-semibold">{doc.title}</summary>
+              <div className="document-body mt-3"><MarkdownMessage content={doc.markdown} /></div>
+            </details>
+          ))}
+        </section>
+      ) : null}
 
       <section className="card">
         <DocumentTabs align="start" value={tab} options={MEETING_TABS.map(value => ({ value, label: TAB_LABELS[value] }))} onChange={selectTab} label="بخش‌های جلسه" />

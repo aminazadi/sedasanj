@@ -50,6 +50,7 @@ EVENTS: dict[str, SmsEvent] = {
         SmsEvent("tokens_80", "مصرف ۸۰٪ توکن هوش مصنوعی", ("ORG", "PERCENT", "REMAINING")),
         SmsEvent("tokens_95", "مصرف ۹۵٪ توکن هوش مصنوعی", ("ORG", "PERCENT", "REMAINING")),
         SmsEvent("tokens_exhausted", "اتمام توکن هوش مصنوعی", ("ORG",)),
+        SmsEvent("jalase_welcome", "خوش‌آمدگویی پس از ثبت‌نام جلسه‌نگار", ("NAME",)),
         SmsEvent("jalase_broadcast", "پیام گروهی به کاربران جلسه‌نگار", ("NAME", "MESSAGE")),
     )
 }

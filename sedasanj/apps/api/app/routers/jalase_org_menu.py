@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, status
 from pydantic import BaseModel
@@ -11,7 +12,14 @@ from sqlalchemy import select
 from app.db import control_session_scope
 from app.deps import OrgAdminDep, TenantSession, UserDep
 from app.errors import ApiError
-from app.models import JalaseMenuHidden, JalaseOutputType, MeetingDocument
+from app.models import (
+    JalaseMenuHidden,
+    JalaseOutputType,
+    Meeting,
+    MeetingDocument,
+    MeetingDocumentVersion,
+)
+from app.services.meeting_scope import apply_meeting_scope
 
 router = APIRouter(prefix="/v1/jalase/org-menu", tags=["jalase-menu"])
 
@@ -79,6 +87,53 @@ async def menu(principal: UserDep, session: TenantSession) -> dict[str, Any]:
     return {
         "items": [i for i in items if not i["hidden"]],
         "hidden": [i["code"] for i in items if i["hidden"]],
+    }
+
+
+@router.get("/meetings/{meeting_id}/documents")
+async def meeting_documents(
+    meeting_id: UUID, principal: UserDep, session: TenantSession
+) -> dict[str, Any]:
+    """Finished documents of a meeting (other than the minutes) with their selected text."""
+    visible = (
+        await session.execute(
+            apply_meeting_scope(select(Meeting.id), principal).where(Meeting.id == meeting_id)
+        )
+    ).first()
+    if visible is None:
+        raise ApiError("not_found", "جلسه پیدا نشد.")
+    rows = (
+        await session.execute(
+            select(MeetingDocument.output_type_code, MeetingDocumentVersion.markdown)
+            .join(
+                MeetingDocumentVersion,
+                (MeetingDocumentVersion.document_id == MeetingDocument.id)
+                & MeetingDocumentVersion.is_selected.is_(True),
+            )
+            .where(
+                MeetingDocument.meeting_id == meeting_id,
+                MeetingDocument.status == "done",
+                MeetingDocument.output_type_code != "minutes",
+            )
+            .order_by(MeetingDocument.created_at)
+        )
+    ).all()
+    if not rows:
+        return {"items": []}
+    async with control_session_scope() as control:
+        title_rows = (
+            await control.execute(
+                select(JalaseOutputType.code, JalaseOutputType.title_fa).where(
+                    JalaseOutputType.code.in_([r[0] for r in rows])
+                )
+            )
+        ).all()
+        titles = {row[0]: row[1] for row in title_rows}  # noqa: C416
+    return {
+        "items": [
+            {"code": code, "title": titles.get(code, code), "markdown": markdown}
+            for code, markdown in rows
+        ]
     }
 
 

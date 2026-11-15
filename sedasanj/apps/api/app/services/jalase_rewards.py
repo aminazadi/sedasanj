@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import control_session_scope, session_scope
 from app.errors import ApiError
 from app.models import (
+    AuditEvent,
     JalaseAchievement,
     JalaseEarnedAchievement,
     JalaseInviteCode,
@@ -38,6 +39,7 @@ PRODUCT = "jalase_negar"
 REWARD_TTL_DAYS = 60
 XP_PER_MEETING = 10
 XP_PER_DOCUMENT = 5
+INVITES_PER_IP_PER_MONTH = 3  # rewarded invitees that may sign up from one network address
 INVITES_PER_MONTH = 10  # rewarded invites an inviter can collect per month
 INVITEE_WINDOW_DAYS = 7  # a code can only be used by an account this new
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -337,6 +339,12 @@ async def redeem(invitee_tenant_id: UUID, code: str, now: datetime | None = None
             raise ApiError(
                 "invite_not_allowed", "این کد در این ماه به سقف دعوت رسیده است؛ بعداً امتحان کنید."
             )
+        if await _signup_ip_is_crowded(control, invitee_tenant_id, month_start):
+            raise ApiError(
+                "invite_not_allowed",
+                "از این شبکه پیش‌تر چند حساب با کد دعوت ساخته شده است؛ "
+                "برای دریافت هدیه با پشتیبانی تماس بگیرید.",
+            )
         try:
             async with control.begin_nested():
                 control.add(
@@ -356,6 +364,45 @@ async def redeem(invitee_tenant_id: UUID, code: str, now: datetime | None = None
     await settle_invites(invitee_tenant_id, now)
     await audit_redeem(invitee_tenant_id, inviter_id, tokens)
     return {"reward_hours": 0.0, "tokens": tokens}
+
+
+async def _signup_ip_is_crowded(
+    control: AsyncSession, invitee_tenant_id: UUID, since: datetime
+) -> bool:
+    """True when this sign-up address already produced too many rewarded invitees.
+
+    Limits farming one reward with many phones from the same connection. A shared network
+    (a family, an office) can reach the limit too, so the refusal names support as the next step.
+    """
+    ip = (
+        await control.execute(
+            select(AuditEvent.ip)
+            .where(
+                AuditEvent.tenant_id == invitee_tenant_id,
+                AuditEvent.action == "jalase.signup",
+                AuditEvent.ip.is_not(None),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if ip is None:
+        return False
+    signed_up_here = (
+        select(AuditEvent.tenant_id)
+        .where(AuditEvent.action == "jalase.signup", AuditEvent.ip == ip)
+        .scalar_subquery()
+    )
+    count = (
+        await control.execute(
+            select(func.count())
+            .select_from(JalaseInviteRedemption)
+            .where(
+                JalaseInviteRedemption.redeemed_at >= since,
+                JalaseInviteRedemption.invitee_tenant_id.in_(signed_up_here),
+            )
+        )
+    ).scalar_one()
+    return int(count) >= INVITES_PER_IP_PER_MONTH
 
 
 async def audit_redeem(invitee: UUID, inviter: UUID, tokens: int) -> None:

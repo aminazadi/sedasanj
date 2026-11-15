@@ -4,12 +4,12 @@ import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Header, Query, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -771,13 +771,58 @@ async def order_payment_status(
     }
 
 
-def _result_redirect(order_id: UUID | None, result: str, gateway: str) -> RedirectResponse:
+def _result_redirect(
+    order_id: UUID | None, result: str, gateway: str, *, jalase: bool = False
+) -> RedirectResponse:
     query = f"status={result}&gateway={gateway}"
     if order_id is not None:
         query = f"order={order_id}&{query}"
+    # Buyers from the Jalase-Negar app land on a small page that sends them back to the app.
+    page = "v1/payments/jalase-return" if jalase else "payment-result"
     return RedirectResponse(
-        f"{get_settings().public_app_url.rstrip('/')}/payment-result?{query}", status_code=303
+        f"{get_settings().public_app_url.rstrip('/')}/{page}?{query}", status_code=303
     )
+
+
+async def _is_jalase_tenant(tenant_id: UUID | None) -> bool:
+    if tenant_id is None:
+        return False
+    try:
+        async with control_session_scope() as session:
+            product = await session.scalar(select(Tenant.product).where(Tenant.id == tenant_id))
+    except Exception:  # noqa: BLE001 - the redirect must still happen
+        return False
+    return product == "jalase_negar"
+
+
+@router.get("/payments/jalase-return", include_in_schema=False)
+async def jalase_return(
+    order: UUID | None = None,
+    outcome: Annotated[str, Query(alias="status", max_length=16)] = "pending",
+) -> HTMLResponse:
+    """Landing page after the bank for Jalase-Negar buyers: a button that reopens the app."""
+    result = (
+        outcome if outcome in {"paid", "failed", "pending", "canceled", "superseded"} else "pending"
+    )
+    link = (
+        "jalasenegar://payment/result?" + (f"order={order}&" if order else "") + f"status={result}"
+    )
+    text = {
+        "paid": "پرداخت انجام شد. به اپ جلسه‌نگار برگردید؛ ساعت‌های شما اضافه می‌شود.",
+        "failed": "پرداخت انجام نشد. به اپ برگردید و دوباره تلاش کنید.",
+    }.get(result, "نتیجهٔ پرداخت در حال بررسی است. به اپ برگردید و «بررسی پرداخت» را بزنید.")
+    html = (
+        '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>نتیجهٔ پرداخت</title></head>"
+        '<body style="font-family:sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">'
+        f"<h1>نتیجهٔ پرداخت</h1><p>{text}</p>"
+        f'<p><a href="{link}" style="display:inline-block;padding:.75rem 1.5rem;'
+        'background:#1a5e63;color:#fff;border-radius:.5rem;text-decoration:none">'
+        "بازگشت به جلسه‌نگار</a></p>"
+        "<p>اگر دکمه کار نکرد، خودتان اپ جلسه‌نگار را باز کنید.</p></body></html>"
+    )
+    return HTMLResponse(html)
 
 
 @router.api_route("/payments/{gateway}/callback", methods=["GET", "POST"], include_in_schema=False)
@@ -797,18 +842,20 @@ async def gateway_callback(gateway: str, request: Request) -> RedirectResponse:
         tenant_hint = UUID(raw_tenant) if raw_tenant else None
     except ValueError:
         return _result_redirect(None, "failed", gateway)
+    jalase = await _is_jalase_tenant(tenant_hint)
     if gateway not in GATEWAYS or not token:
-        return _result_redirect(None, "failed", gateway)
+        return _result_redirect(None, "failed", gateway, jalase=jalase)
     try:
         outcome = await payments.handle_callback(
             gateway, params, token=token, attempt_id=attempt_id, tenant_hint=tenant_hint
         )
     except ApiError:
-        return _result_redirect(None, "failed", gateway)
+        return _result_redirect(None, "failed", gateway, jalase=jalase)
     except Exception:  # noqa: BLE001 - never show an error page to a buyer who may have paid
         logger.exception("payment callback failed", extra={"extra_fields": {"gateway": gateway}})
-        return _result_redirect(None, "pending", gateway)
-    return _result_redirect(outcome.order_id, outcome.result, gateway)
+        return _result_redirect(None, "pending", gateway, jalase=jalase)
+    jalase = jalase or await _is_jalase_tenant(outcome.tenant_id)
+    return _result_redirect(outcome.order_id, outcome.result, gateway, jalase=jalase)
 
 
 @router.get("/subscription")

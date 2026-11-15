@@ -49,6 +49,8 @@ from app.services import (
     payments,
     platform,
     ratelimit,
+    sms_notify,
+    store_billing,
 )
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.phone_identity import mobile_accounts, normalize_mobile
@@ -163,7 +165,8 @@ async def auth_complete(payload: AuthComplete, request: Request) -> dict[str, ob
             action="jalase.signup" if created else "jalase.login",
             ip=ip,
         )
-        return {
+        welcome = (row.mobile, user.display_name or "", tenant.id) if created else None
+        result = {
             "token": secret,
             "token_prefix": prefix,
             "created": created,
@@ -172,6 +175,16 @@ async def auth_complete(payload: AuthComplete, request: Request) -> dict[str, ob
                 "mobile": jalase_accounts.mask_mobile(row.mobile),
             },
         }
+    if welcome is not None:
+        # After the commit, so the tenant row exists; a missing or disabled template skips it.
+        await sms_notify.enqueue(
+            "jalase_welcome",
+            welcome[0],
+            {"NAME": welcome[1]},
+            f"jalase-welcome:{welcome[2]}",
+            tenant_id=welcome[2],
+        )
+    return result
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -228,6 +241,39 @@ async def update_me(payload: ProfileUpdate, principal: MeetingsKeyDep) -> dict[s
             raise ApiError("unauthorized", "user no longer exists")
         user.display_name = payload.display_name.strip()
         return {"display_name": user.display_name}
+
+
+class AccountDelete(BaseModel):
+    model_config = {"extra": "forbid"}
+    verified_token: str = Field(min_length=40, max_length=256)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    payload: AccountDelete, request: Request, principal: MeetingsKeyDep
+) -> Response:
+    """Delete the account for good; needs a fresh SMS verification of the account's own number."""
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-delete:{user_id}", 5, 3600)
+    async with control_session_scope() as session:
+        row = await phone_auth.lock_verified_phone(
+            session, payload.verified_token, error_code="unauthorized"
+        )
+        user = await session.get(User, user_id)
+        if user is None or _digits(user.mobile_number or "") != _digits(row.mobile):
+            raise ApiError(
+                "account_delete_mismatch",
+                "شمارهٔ تأییدشده با شمارهٔ این حساب یکی نیست؛ با همان شماره کد بگیرید.",
+            )
+        row.consumed_at = datetime.now(UTC)
+        await jalase_accounts.delete_account(session, tenant_id=tenant_id, user_id=user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _digits(mobile: str) -> str:
+    """Last ten digits of a number, in Latin digits, so 0912…, 98912… and Persian digits match."""
+    latin = mobile.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+    return "".join(c for c in latin if c.isdigit())[-10:]
 
 
 @router.get("/meetings")
@@ -722,6 +768,13 @@ class TokenOrderCreate(BaseModel):
     package_id: UUID
 
 
+class StoreVerifyIn(BaseModel):
+    model_config = {"extra": "forbid"}
+    store: Literal["bazaar", "myket"]
+    sku: str = Field(min_length=1, max_length=64)
+    purchase_token: str = Field(min_length=8, max_length=2048)
+
+
 class PayCreate(BaseModel):
     model_config = {"extra": "forbid"}
     gateway: Literal["zarinpal", "zibal", "saman", "behpardakht"] | None = None
@@ -828,6 +881,41 @@ async def create_token_order(
             product=jalase_accounts.PRODUCT,
             ip=client_ip(request),
         )
+
+
+@router.get("/store/skus")
+async def store_skus(
+    principal: MeetingsKeyDep, store: Literal["bazaar", "myket"]
+) -> dict[str, object]:
+    """Products to sell in the store build; the app sends the account id as developer payload."""
+    tenant_id, _ = _personal(principal)
+    return {"skus": await store_billing.skus(store), "developer_payload": str(tenant_id)}
+
+
+@router.post("/store/verify")
+async def store_verify(
+    payload: StoreVerifyIn, request: Request, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-store:{user_id}", 30, 3600)
+    result = await store_billing.verify_and_grant(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        store=payload.store,
+        sku=payload.sku,
+        purchase_token=payload.purchase_token,
+    )
+    async with session_scope(tenant_id) as session:
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=user_id,
+            tenant_id=tenant_id,
+            action="store_purchase.granted",
+            payload={"store": payload.store, "sku": payload.sku, "kind": result["kind"]},
+            ip=client_ip(request),
+        )
+    return result
 
 
 @router.post("/orders/{order_id}/pay")

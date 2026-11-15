@@ -73,3 +73,25 @@ def test_import_code_has_a_status_and_a_safe_help_paragraph() -> None:
     assert module.CODE in ERROR_STATUS
     cleaned, plain = sanitize_help_html(module.EXTRA)
     assert module.CODE in plain and "<script" not in cleaned
+
+
+def test_delete_account_help_names_the_code_and_a_next_step() -> None:
+    from app.errors import ERROR_STATUS
+
+    module = _load("0157_jalase_delete_help")
+    assert module.down_revision == "0156_jalase_import_help"
+    assert module.CODE in ERROR_STATUS
+    cleaned, plain = sanitize_help_html(module.BODY)
+    assert module.CODE in plain and "<ol>" in cleaned
+
+
+def test_store_purchase_help_names_every_code_and_a_next_step() -> None:
+    from app.errors import ERROR_STATUS
+
+    module = _load("0158_jalase_store_billing")
+    assert module.down_revision == "0157_jalase_delete_help"
+    cleaned, plain = sanitize_help_html(module.BODY)
+    assert "<ol>" in cleaned
+    for code in module.CODES:
+        assert code in ERROR_STATUS
+        assert code in plain

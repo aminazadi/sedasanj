@@ -25,6 +25,12 @@ import 'shell_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    // The bank page reopens the app with jalasenegar://payment/result; show the
+    // plans screen, which re-checks the pending order by itself.
+    redirect: (context, state) =>
+        state.uri.path == '/result' || state.uri.path == '/payment/result'
+        ? '/plans'
+        : null,
     routes: [
       ShellRoute(
         builder: (context, state, child) =>
@@ -62,7 +68,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             IntroScreen(replay: state.uri.queryParameters['replay'] == '1'),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-      GoRoute(path: '/plans', builder: (context, state) => const PlansScreen()),
+      GoRoute(path: '/plans', builder: (context, state) => PlansScreen()),
       GoRoute(
         path: '/progress',
         builder: (context, state) => const ProgressScreen(),

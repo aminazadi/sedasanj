@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import ApiKey, Plan, PlanVersion, Subscription, Tenant, User
+from app.errors import ApiError
+from app.models import (
+    ApiKey,
+    AudioObject,
+    JalaseAccountLink,
+    Meeting,
+    Plan,
+    PlanVersion,
+    Subscription,
+    Tenant,
+    User,
+)
 from app.security import generate_api_key
 from app.services import audit
 from app.services.api_scopes import MOBILE_KEY_SCOPES
@@ -156,5 +167,134 @@ async def restore_free_plan(session: AsyncSession, tenant_id: UUID, now: datetim
         tenant_id=tenant_id,
         action="jalase.plan_lapsed_to_free",
         payload={"subscription_id": str(row.id)},
+    )
+    return True
+
+
+async def delete_account(session: AsyncSession, *, tenant_id: UUID, user_id: UUID) -> None:
+    """Close a personal account for good.
+
+    Every key and organization link stops working, the active subscription is cancelled (a paid
+    month is not refunded), all meetings with their text, segments and documents are deleted and
+    audio is marked for removal.  The tenant row stays as `deleted` so payments and audit history
+    keep their references; the mobile number and name are cleared so the number can sign up again.
+    """
+    tenant = await session.get(Tenant, tenant_id, with_for_update=True)
+    user = await session.get(User, user_id, with_for_update=True)
+    if tenant is None or user is None or tenant.product != PRODUCT or user.tenant_id != tenant_id:
+        raise ApiError("unauthorized", "حساب پیدا نشد.")
+    now = datetime.now(UTC)
+    link_key_ids = (
+        (
+            await session.execute(
+                select(JalaseAccountLink.org_api_key_id).where(
+                    JalaseAccountLink.personal_tenant_id == tenant_id,
+                    JalaseAccountLink.status == "active",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    await session.execute(
+        update(ApiKey)
+        .where(
+            (ApiKey.tenant_id == tenant_id) | (ApiKey.id.in_(link_key_ids)),
+            ApiKey.revoked_at.is_(None),
+        )
+        .values(revoked_at=now)
+    )
+    await session.execute(
+        update(JalaseAccountLink)
+        .where(
+            JalaseAccountLink.personal_tenant_id == tenant_id, JalaseAccountLink.status == "active"
+        )
+        .values(status="revoked", revoked_at=now)
+    )
+    await session.execute(
+        update(Subscription)
+        .where(
+            Subscription.tenant_id == tenant_id,
+            Subscription.status.in_(("active", "trialing", "pending_payment")),
+        )
+        .values(status="canceled")
+    )
+    await session.execute(
+        update(AudioObject)
+        .where(AudioObject.tenant_id == tenant_id, AudioObject.deleted_at.is_(None))
+        .values(deleted_at=now)
+    )
+    await session.execute(delete(Meeting).where(Meeting.tenant_id == tenant_id))
+    user.mobile_number = None
+    user.display_name = "حساب حذف‌شده"
+    user.email = f"deleted-{user.id}@accounts.sedasanj.ir"
+    tenant.status = "deleted"
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=user_id,
+        tenant_id=tenant_id,
+        action="jalase.account.deleted",
+    )
+
+
+async def admin_set_plan(
+    session: AsyncSession, *, tenant_id: UUID, plan_code: str, period_days: int, now: datetime
+) -> bool:
+    """Move a personal account to another Jalase-Negar plan (staff action).
+
+    A paid plan runs for `period_days` from now; the free plan has no end.  Returns False when the
+    account was already on that plan version.  Only plans of this product are accepted.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None or tenant.product != PRODUCT:
+        return False
+    version = (
+        await session.execute(
+            select(PlanVersion)
+            .join(Plan, Plan.id == PlanVersion.plan_id)
+            .where(
+                Plan.code == plan_code,
+                Plan.product == PRODUCT,
+                PlanVersion.status == "published",
+            )
+            .order_by(PlanVersion.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if version is None:
+        raise ApiError("plan_not_found", "این پلن برای جلسه‌نگار پیدا نشد؛ کد پلن را بررسی کنید.")
+    row = (
+        await session.execute(
+            select(Subscription)
+            .where(Subscription.tenant_id == tenant_id)
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return False
+    if row.plan_version_id == version.id and row.status == "active":
+        return False
+    row.plan_version_id = version.id
+    row.status = "active"
+    row.billing_period = "monthly"
+    row.period_start = now
+    row.period_end = (
+        datetime(9999, 12, 31, tzinfo=UTC)
+        if plan_code == FREE_PLAN_CODE
+        else now + timedelta(days=period_days)
+    )
+    row.cancel_at_period_end = False
+    row.next_plan_version_id = None
+    row.llm_monthly_tokens = version.llm_monthly_tokens
+    row.updated_at = now
+    await audit.record(
+        session,
+        actor_type="system",
+        tenant_id=tenant_id,
+        action="jalase.plan_set_by_staff",
+        payload={"subscription_id": str(row.id), "plan_code": plan_code},
     )
     return True

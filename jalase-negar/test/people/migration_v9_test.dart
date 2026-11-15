@@ -87,7 +87,7 @@ void main() {
     addTearDown(() => dir.deleteSync(recursive: true));
     final version = await db.db.getVersion();
     expect(version, AppDatabase.schemaVersion);
-    expect(AppDatabase.schemaVersion, 12);
+    expect(AppDatabase.schemaVersion, 13);
     final columns = [
       for (final r in await db.db.rawQuery('PRAGMA table_info(segments)'))
         r['name'] as String,

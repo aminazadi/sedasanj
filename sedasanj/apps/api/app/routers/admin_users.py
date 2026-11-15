@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -244,12 +244,16 @@ def _filter_summary(filters: UserFilters) -> dict[str, Any]:
 
 class BulkRequest(BaseModel):
     model_config = {"extra": "forbid"}
-    action: Literal["suspend", "unsuspend", "grant_credit", "sms"]
+    action: Literal["suspend", "unsuspend", "grant_credit", "sms", "change_plan", "push"]
     user_ids: list[UUID] | None = Field(default=None, max_length=BULK_MAX)
     filters: UserFilters = Field(default_factory=UserFilters)
     dry_run: bool = True
     minutes: int | None = Field(default=None, ge=1, le=100_000)
     message: str | None = Field(default=None, min_length=1, max_length=300)
+    plan_code: str | None = Field(default=None, min_length=1, max_length=32)
+    period_days: int = Field(default=30, ge=1, le=366)
+    push_title: str | None = Field(default=None, min_length=1, max_length=80)
+    push_body: str | None = Field(default=None, min_length=1, max_length=300)
     note: str = Field(default="", max_length=300)
 
 
@@ -268,6 +272,48 @@ async def _bulk_targets(session: AsyncSession, payload: BulkRequest) -> list[Any
     return list(rows)
 
 
+async def _push_to_users(
+    session: AsyncSession, staff: Any, user_ids: list[UUID], payload: BulkRequest
+) -> int:
+    """One push campaign per 200 devices of the chosen users; returns how many devices."""
+    from app.models import ApiKey, JalasePushInstallation
+    from app.routers import jalase_push as push_router
+    from app.services import jalase_push as push
+
+    devices = list(
+        (
+            await session.execute(
+                select(JalasePushInstallation.id)
+                .join(ApiKey, ApiKey.id == JalasePushInstallation.mobile_key_id)
+                .where(
+                    ApiKey.user_id.in_(user_ids),
+                    ApiKey.kind == "mobile",
+                    ApiKey.revoked_at.is_(None),
+                    JalasePushInstallation.enabled.is_(True),
+                    JalasePushInstallation.invalidated.is_(False),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for start in range(0, len(devices), 200):
+        await push_router.enqueue(
+            push.Send(
+                id=uuid4(),
+                audience=push.Audience(kind="devices", device_ids=devices[start : start + 200]),
+                message=push.Message(
+                    kind="notification",
+                    title=payload.push_title or "",
+                    body=payload.push_body or "",
+                ),
+            ),
+            session,
+            staff,
+        )
+    return len(devices)
+
+
 @router.post("/bulk")
 async def bulk_action(
     payload: BulkRequest, request: Request, staff: SuperAdminDep, session: StaffSession
@@ -275,6 +321,10 @@ async def bulk_action(
     """Preview (`dry_run`, the default) or run an action on up to 500 Jalase-Negar users."""
     if payload.action == "grant_credit" and payload.minutes is None:
         raise ApiError("invalid_request", "تعداد دقیقه را وارد کنید.")
+    if payload.action == "change_plan" and not payload.plan_code:
+        raise ApiError("invalid_request", "کد پلن را وارد کنید.")
+    if payload.action == "push" and not (payload.push_title and payload.push_body):
+        raise ApiError("invalid_request", "عنوان و متن اعلان را وارد کنید.")
     if payload.action == "sms":
         if not payload.message:
             raise ApiError("invalid_request", "متن پیام را وارد کنید.")
@@ -309,6 +359,17 @@ async def bulk_action(
                     idempotency_key=f"bulk-credit:{run_id}:{tenant.id}",
                 )
             done += 1
+        elif payload.action == "change_plan":
+            assert payload.plan_code is not None
+            async with session_scope(tenant.id) as tenant_session:
+                changed = await jalase_accounts.admin_set_plan(
+                    tenant_session,
+                    tenant_id=tenant.id,
+                    plan_code=payload.plan_code,
+                    period_days=payload.period_days,
+                    now=datetime.now(UTC),
+                )
+            done += int(changed)
         elif payload.action == "sms" and user.mobile_number:
             queued = await sms_notify.enqueue(
                 "jalase_broadcast",
@@ -318,6 +379,8 @@ async def bulk_action(
                 tenant_id=tenant.id,
             )
             done += int(queued)
+    if payload.action == "push":
+        done = await _push_to_users(session, staff, [row.User.id for row in rows], payload)
     await audit.record(
         session,
         actor_type="staff",

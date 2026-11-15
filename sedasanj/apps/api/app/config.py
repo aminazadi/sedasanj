@@ -212,6 +212,14 @@ class Settings(BaseSettings):
     smsir_api_key: str | None = None
     smsir_verify_template_id: int | None = None
     smsir_base_url: str = "https://api.sms.ir/v1"
+    # Jalase-Negar store billing (server-side purchase verification).  Bazaar: OAuth2 client of the
+    # Developer API plus the refresh token from the one-time authorization; Myket: the
+    # X-Access-Token from the developer console settings.  Never logged.
+    jalase_android_package: str = "app.jalasenegar.jalase_negar"
+    bazaar_client_id: str | None = None
+    bazaar_client_secret: str | None = None
+    bazaar_refresh_token: str | None = None
+    myket_access_token: str | None = None
     zarinpal_merchant_id: str | None = None
     zarinpal_sandbox: bool = False
     public_app_url: str = "http://localhost:5173"

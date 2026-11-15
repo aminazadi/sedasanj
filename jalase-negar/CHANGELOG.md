@@ -1,4 +1,7 @@
-# Changelog — Jalase Negar
+## 2026-11-15 — AMINAZADI
+
+- Added store purchase flow for the Bazaar and Myket builds (`lib/features/plans/store_purchase.dart`): the store sheet runs through a `StoreBillingSdk`, the server confirms the token (`/v1/jalase-negar/store/verify`) and only then is the purchase consumed, so an interrupted call can be retried. Unit tests pass. NOT done: the real bindings to Poolakey (Bazaar) and `myket_iap` (Myket) and the plans-screen buttons for the store builds, so nothing is purchasable in a store build yet; nothing tried in a store.
+- Added: «حذف حساب» (SMS code of the own number), a workspace question when sending a meeting while linked to an organization, automatic payment check when returning to the app plus the `jalasenegar://payment/result` deep link (database version 13), the buy buttons hidden on iOS (⚠ App Store policy decision pending), offline copies of documents (`document_cache`) and a Markdown renderer for documents. `flutter test` 481 passed before the store flow was added; `flutter analyze` shows only two older notes; NOT run on a phone.
 
 ## 2026-11-15 — AMINAZADI
 

@@ -36,6 +36,7 @@ class AppDatabase {
         await _migrateToV10(db);
         await _migrateToV11(db);
         await _migrateToV12(db);
+        await _migrateToV13(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
@@ -47,6 +48,7 @@ class AppDatabase {
         if (oldVersion < 10) await _migrateToV10(db);
         if (oldVersion < 11) await _migrateToV11(db);
         if (oldVersion < 12) await _migrateToV12(db);
+        if (oldVersion < 13) await _migrateToV13(db);
       },
       onOpen: _ensureUploadChunksTable,
     );
@@ -63,7 +65,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const int schemaVersion = 12;
+  static const int schemaVersion = 13;
 
   /// Creates the schema as the last app version before people existed (v8).
   /// Only for migration tests.
@@ -296,6 +298,26 @@ class AppDatabase {
       // A database built from the full schema already has the column.
       if (!e.toString().contains('duplicate column name')) rethrow;
     }
+  }
+
+  /// Documents fetched from the server are kept here so they open offline.
+  static Future<void> _migrateToV13(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS document_cache (
+        document_id TEXT PRIMARY KEY,
+        remote_meeting_id TEXT,
+        output_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress_pct INTEGER NOT NULL DEFAULT 0,
+        selected_version INTEGER,
+        markdown TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_document_cache_meeting '
+      'ON document_cache(remote_meeting_id)',
+    );
   }
 
   Future<String?> getSetting(String key) async {

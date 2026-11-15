@@ -14,6 +14,7 @@ from tests.plan_helpers import requires_postgres, scratch  # noqa: F401
 from app import db
 from app.errors import ApiError
 from app.models import (
+    AuditEvent,
     JalaseAchievement,
     Meeting,
     MeetingDocument,
@@ -90,12 +91,21 @@ async def created(scratch: None) -> AsyncIterator[list[UUID]]:  # noqa: F811
         )
 
 
-async def account(created: list[UUID]) -> UUID:
+async def account(created: list[UUID], *, signup_ip: str | None = None) -> UUID:
     async with db.session_scope(staff=True) as session:
         tenant, _ = await jalase_accounts.create_personal_account(
             session, mobile="09" + str(uuid4().int)[:9], display_name="سارا", ip="127.0.0.1"
         )
         created.append(tenant.id)
+        if signup_ip:
+            session.add(
+                AuditEvent(
+                    tenant_id=tenant.id,
+                    actor_type="user",
+                    action="jalase.signup",
+                    ip=signup_ip,
+                )
+            )
         return tenant.id
 
 
@@ -257,6 +267,18 @@ async def test_an_inviter_is_limited_per_month(created: list[UUID]) -> None:
     with pytest.raises(ApiError) as capped:
         await jalase_rewards.redeem(await account(created), code)
     assert capped.value.code == "invite_not_allowed"
+
+
+async def test_many_invitees_from_one_network_stop_at_the_limit(created: list[UUID]) -> None:
+    inviter = await account(created)
+    code = (await jalase_rewards.invite_info(inviter))["code"]
+    for _ in range(jalase_rewards.INVITES_PER_IP_PER_MONTH):
+        await jalase_rewards.redeem(await account(created, signup_ip="203.0.113.9"), code)
+    with pytest.raises(ApiError) as crowded:
+        await jalase_rewards.redeem(await account(created, signup_ip="203.0.113.9"), code)
+    assert crowded.value.code == "invite_not_allowed" and "پشتیبانی" in crowded.value.message
+    # A different network is not affected.
+    await jalase_rewards.redeem(await account(created, signup_ip="198.51.100.4"), code)
 
 
 async def test_admin_edits_badges_and_gifts(created: list[UUID]) -> None:

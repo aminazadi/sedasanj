@@ -3909,6 +3909,43 @@ class JalaseAccountLink(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
 
 
+class StoreSku(Base):
+    """A Cafe Bazaar / Myket product id sold as a Jalase-Negar plan month or token pack."""
+
+    __tablename__ = "store_skus"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    store: Mapped[str] = mapped_column(String(12), nullable=False)
+    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    plan_code: Mapped[str | None] = mapped_column(String(32))
+    package_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("token_packages.id")
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class StorePurchase(Base):
+    """One verified store purchase; the unique token hash stops a purchase being used twice."""
+
+    __tablename__ = "store_purchases"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    store: Mapped[str] = mapped_column(String(12), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    order_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    state: Mapped[str] = mapped_column(String(12), nullable=False, server_default=text("'pending'"))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
 class JalaseMenuHidden(Base):
     __tablename__ = "jalase_menu_hidden"
 

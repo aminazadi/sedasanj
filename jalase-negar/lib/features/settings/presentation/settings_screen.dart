@@ -16,6 +16,7 @@ import '../../meetings/data/meeting.dart'
     show Meeting, MeetingStatus, kWorkspaceOrg, kWorkspacePrimary;
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
+import '../../auth/presentation/delete_account_screen.dart';
 import '../../plans/presentation/plans_screen.dart' show hoursText;
 import '../../push/push_host.dart';
 import '../../recording/application/live_engine_provider.dart';
@@ -71,6 +72,20 @@ class SettingsScreen extends ConsumerWidget {
                     _Row('سرور', connection.serverUrl, ltr: true),
                     if (connection.tokenPrefix.isNotEmpty)
                       _Row('توکن', '${connection.tokenPrefix}…', ltr: true),
+                    if (connection.personal)
+                      TextButton(
+                        onPressed: busy
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const DeleteAccountScreen(),
+                                ),
+                              ),
+                        child: const Text(
+                          'حذف حساب',
+                          style: TextStyle(color: SsColors.danger),
+                        ),
+                      ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
