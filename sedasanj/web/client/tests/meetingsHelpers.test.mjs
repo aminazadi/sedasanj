@@ -20,7 +20,7 @@ import {
 test("filters round-trip through the URL and drop empty values", () => {
   const params = searchFromMeetingFilters({ q: " بودجه ", status: "complete", owner_id: "", from: "2026-01-01", to: "" }, 3, "25");
   assert.equal(params.toString(), new URLSearchParams({ q: "بودجه", status: "complete", from: "2026-01-01", page: "3", page_size: "25" }).toString());
-  assert.deepEqual(meetingFiltersFromSearch(params), { q: "بودجه", status: "complete", owner_id: "", from: "2026-01-01", to: "" });
+  assert.deepEqual(meetingFiltersFromSearch(params), { q: "بودجه", status: "complete", owner_id: "", from: "2026-01-01", to: "", output_type: "" });
   assert.equal(meetingPageFromSearch(params), 3);
   assert.equal(searchFromMeetingFilters({}, 1).toString(), "");
 });

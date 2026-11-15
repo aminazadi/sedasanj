@@ -1,7 +1,7 @@
 import type { MeetingActionItem, MeetingSegment, MeetingSpeaker, MeetingStatus } from "../types";
 
 export type MeetingTab = "minutes" | "transcript" | "speakers";
-export interface MeetingFilters { q: string; status: string; owner_id: string; from: string; to: string }
+export interface MeetingFilters { q: string; status: string; owner_id: string; from: string; to: string; output_type: string }
 export interface SpeakerTurn {
   id: string;
   speaker_idx: number;

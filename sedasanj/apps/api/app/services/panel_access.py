@@ -145,6 +145,7 @@ def request_sections(path: str, method: str) -> tuple[str, ...] | None:
         ("/v1/scheduled-reports", "reports"),
         ("/v1/kpi", "kpi_settings"),
         ("/v1/meetings", "meetings"),
+        ("/v1/jalase/org-menu", "meetings"),
         ("/v1/org/ai-instructions", "ai_settings"),
         ("/v1/module/releases", "releases"),
     )

@@ -10,6 +10,7 @@ import '../../../core/platform/connection_store.dart';
 import '../../../core/platform/platform_config.dart';
 import '../../../core/providers.dart';
 import '../../meetings/application/meeting_providers.dart';
+import '../../meetings/data/meeting.dart';
 import '../../plans/data/billing_models.dart';
 import '../../recording/application/live_engine_provider.dart';
 import '../../upload/upload_controller.dart';
@@ -133,6 +134,76 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
     ref.read(uploadQueueProvider.notifier).kick();
   }
 
+  /// Links the signed-in personal account to a SedaSanj organization with the
+  /// organization's pairing code. Returns a Persian error that names the next
+  /// step, or null on success.
+  Future<String?> linkOrganization(String pairingCode) async {
+    final connection = state.value?.connection;
+    final store = await ref.read(connectionStoreProvider.future);
+    final token = await store.token();
+    if (connection == null || !connection.personal || token == null) {
+      return 'اتصال به سازمان فقط با حساب شخصی ممکن است؛ ابتدا با شمارهٔ موبایل وارد شوید.';
+    }
+    try {
+      final result =
+          await ApiClient(
+            serverUrl: connection.serverUrl,
+            token: token,
+          ).linkOrganization(
+            pairingCode: pairingCode.trim(),
+            deviceLabel: _deviceLabel(),
+            appVersion: await ref.read(appVersionProvider.future),
+            platform: _serverPlatform(),
+          );
+      await store.saveOrg(
+        OrgLink(
+          linkId: result.linkId,
+          organization: result.organization,
+          userName: result.userName,
+        ),
+        result.token,
+      );
+      ref.invalidate(orgLinkProvider);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } on Object catch (e, st) {
+      debugPrint('JN-LINK: saving the organization link failed: $e\n$st');
+      return 'ذخیرهٔ اتصال سازمان روی این دستگاه ناموفق بود؛ دوباره امتحان کنید.';
+    }
+  }
+
+  /// Revokes the organization key (best effort) and forgets it on this device.
+  /// Meetings already sent stay in the organization; unsent ones go back to
+  /// the own account.
+  Future<void> unlinkOrganization() async {
+    final store = await ref.read(connectionStoreProvider.future);
+    final link = await store.loadOrg();
+    final connection = state.value?.connection;
+    final token = await store.token();
+    if (link != null && connection != null && token != null) {
+      try {
+        await ApiClient(
+          serverUrl: connection.serverUrl,
+          token: token,
+        ).unlinkOrganization(link.linkId);
+      } on Object catch (e) {
+        debugPrint('JN-LINK: server unlink failed: $e');
+      }
+    }
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    await repo.moveUnsentToWorkspace(kWorkspacePrimary);
+    await store.clearOrg();
+    ref.invalidate(orgLinkProvider);
+    ref.invalidate(meetingsProvider);
+  }
+
+  Future<void> setDefaultWorkspace(String workspace) async {
+    final store = await ref.read(connectionStoreProvider.future);
+    await store.setDefaultWorkspace(workspace);
+    ref.invalidate(orgLinkProvider);
+  }
+
   /// The stand-alone sign-in knows every desktop platform (the pairing API does not).
   String loginPlatform() => Platform.operatingSystem;
 
@@ -159,6 +230,7 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
 
   Future<void> disconnect() async {
     final store = await ref.read(connectionStoreProvider.future);
+    if (await store.loadOrg() != null) await unlinkOrganization();
     final connection = state.value?.connection;
     if (connection != null && connection.personal) {
       // Best effort: a token that cannot be revoked now (offline) is still
@@ -181,6 +253,17 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
 
   String _deviceLabel() => 'Jalase-Negar (${Platform.operatingSystem})';
 }
+
+/// The linked organization and the workspace new meetings go to.
+final orgLinkProvider = FutureProvider<({OrgLink? link, String workspace})>((
+  ref,
+) async {
+  final store = await ref.watch(connectionStoreProvider.future);
+  return (
+    link: await store.loadOrg(),
+    workspace: await store.defaultWorkspace(),
+  );
+});
 
 final connectionControllerProvider =
     AsyncNotifierProvider<ConnectionController, ConnectionState>(

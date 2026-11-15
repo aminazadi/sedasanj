@@ -31,6 +31,7 @@ import closeIcon from "@iconify-icons/lucide/x";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { getMenuSound, menuSoundLabel, nextMenuSound, playMenuTick, setMenuSound } from "../lib/menuSound";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
+import { request } from "../api";
 import { BrandLogo } from "./BrandLogo";
 import BillingBanner from "./BillingBanner";
 import ModuleUpdateBanner from "./ModuleUpdateBanner";
@@ -76,12 +77,22 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/account-settings", label: "تنظیمات حساب", icon: settingsIcon },
       { to: "/install", label: "راه‌اندازی", icon: rocketIcon, hideForOperator: true },
       { to: "/freepbx-servers", label: "سرورهای تلفنی", icon: serverIcon, orgAdminOnly: true },
+      { to: "/jalase-menu", label: "منوی جلسه‌نگار", icon: meetingsIcon, orgAdminOnly: true },
       { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: historyIcon, hideForOperator: true },
       { to: "/help", label: "مقالات و آموزش‌ها", icon: bookOpenIcon },
       { to: "/api-docs", label: "مستندات API", icon: fileTextIcon },
     ],
   },
 ];
+
+// Category items share the /meetings path with the plain list, so they are told apart by the query string.
+function navItemActive(to: string, pathActive: boolean, search: string) {
+  const [path, query] = to.split("?");
+  const typeNow = new URLSearchParams(search).get("output_type");
+  if (query) return pathActive && typeNow === new URLSearchParams(query).get("output_type");
+  if (path === "/meetings") return pathActive && !typeNow;
+  return pathActive;
+}
 
 const PAGE_TITLES: Record<string, string> = {
   "/account-settings/data/history": "تاریخچهٔ بک‌آپ و بازیابی",
@@ -154,13 +165,27 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
   const location = useLocation();
   const operator = isOperator(session?.role);
   const orgAdmin = isOrgAdmin(session?.role);
+  // Jalase-Negar categories the organization has documents in; each gets a menu item next to the meetings.
+  const [jalaseItems, setJalaseItems] = useState<NavigationItem[]>([]);
+  useEffect(() => {
+    if (!hasPanelAccess(session, "meetings")) return;
+    let cancelled = false;
+    request<{ items: Array<{ code: string; label: string }> }>("/v1/jalase/org-menu")
+      .then((menu) => {
+        if (cancelled) return;
+        setJalaseItems(menu.items.filter((entry) => entry.code !== "minutes").map((entry) => ({ to: `/meetings?output_type=${encodeURIComponent(entry.code)}`, label: entry.label, icon: meetingsIcon })));
+      })
+      .catch(() => { if (!cancelled) setJalaseItems([]); });
+    return () => { cancelled = true; };
+  }, [session]);
   const groups = NAVIGATION.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin) && canVisitPanel(session, item.to)),
+    items: group.items.flatMap((item) => (item.to === "/meetings" ? [item, ...jalaseItems] : [item]))
+      .filter((item) => !(operator && item.hideForOperator) && (!item.orgAdminOnly || orgAdmin) && canVisitPanel(session, item.to.split("?")[0])),
   })).filter((group) => group.items.length > 0);
   // A group with a single item (the dashboard) is shown as a plain link, outside the accordion.
   const accordionGroups = groups.filter((group) => group.items.length > 1);
-  const activeGroup = accordionGroups.find((group) => group.items.some((item) => (item.to === "/" ? location.pathname === "/" : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`))))?.label ?? null;
+  const activeGroup = accordionGroups.find((group) => group.items.some((item) => { const path = item.to.split("?")[0]; return path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`); }))?.label ?? null;
   // Call management is open by default; navigating also opens the group of the active route, and each group toggles on its own.
   const DEFAULT_OPEN_GROUP = "مدیریت تماس‌ها";
   const [openGroups, setOpenGroups] = useState<string[]>(() => Array.from(new Set([DEFAULT_OPEN_GROUP, ...(activeGroup ? [activeGroup] : [])])));
@@ -375,14 +400,14 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
                     onBlur={hideTooltip}
                     onClick={() => { hideTooltip(); closeMenu?.(); }}
                     aria-label={collapsed ? item.label : undefined}
-                    className={({ isActive }) => `sidebar-nav-item sb-round group relative flex items-center ${collapsed ? "justify-center px-0" : "gap-3 px-3"} py-2.5 text-sm transition-colors duration-200 ${isActive ? "is-active font-bold text-white" : "text-[#F2F0EF]/85"}`}
+                    className={({ isActive: pathActive }) => { const isActive = navItemActive(item.to, pathActive, location.search); return `sidebar-nav-item sb-round group relative flex items-center ${collapsed ? "justify-center px-0" : "gap-3 px-3"} py-2.5 text-sm transition-colors duration-200 ${isActive ? "is-active font-bold text-white" : "text-[#F2F0EF]/85"}`; }}
                   >
-                    {({ isActive }) => (
+                    {({ isActive: pathActive }) => { const isActive = navItemActive(item.to, pathActive, location.search); return (
                       <>
                         <Icon icon={item.icon} className={`h-5 w-5 shrink-0 ${isActive ? "text-[#E3E8B9]" : "text-[#F2F0EF]/65 transition group-hover:text-white"}`} aria-hidden="true" />
                         {!collapsed && <span className="truncate">{item.label}</span>}
                       </>
-                    )}
+                    ); }}
                   </NavLink>
                 ))}
               </div>

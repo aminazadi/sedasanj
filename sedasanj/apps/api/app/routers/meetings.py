@@ -42,6 +42,7 @@ from app.models import (
     Meeting,
     MeetingAttendee,
     MeetingChunk,
+    MeetingDocument,
     MeetingEvent,
     MeetingMinutes,
     MeetingPairingCode,
@@ -194,8 +195,17 @@ async def pair_device(
     payload: MeetingPairIn, request: Request, session: PublicSession
 ) -> MeetingPairOut:
     """Swap a pairing code for a personal token; the token is returned exactly once."""
+    out, _key_id, _tenant_id, _user_id = await redeem_pairing_code(
+        session, payload, client_ip(request)
+    )
+    return out
+
+
+async def redeem_pairing_code(
+    session: AsyncSession, payload: MeetingPairIn, ip: str | None
+) -> tuple[MeetingPairOut, UUID, UUID, UUID]:
+    """Consume a pairing code; returns the token plus the new key, tenant and user ids."""
     settings = get_settings()
-    ip = client_ip(request)
     await ratelimit.enforce(
         f"meeting-pair:{ip or 'unknown'}", settings.rate_limit_meeting_pairing_per_minute
     )
@@ -266,13 +276,14 @@ async def pair_device(
         },
         ip=ip,
     )
-    return MeetingPairOut(
+    out = MeetingPairOut(
         token=secret,
         token_prefix=prefix,
         user=MeetingPairedUser(display_name=user.display_name),
         tenant=MeetingPairedTenant(name=tenant.name),
         limits=_limits(),
     )
+    return out, api_key.id, code.tenant_id, user.id
 
 
 @router.get("/devices")
@@ -798,10 +809,21 @@ async def list_meetings(
     owner_id: UUID | None = None,
     date_from: Annotated[datetime | None, Query(alias="from")] = None,
     date_to: Annotated[datetime | None, Query(alias="to")] = None,
+    output_type: Annotated[str | None, Query(max_length=40, pattern=r"^[a-z0-9_]+$")] = None,
     page: Annotated[int, Query(ge=1, le=100000)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> MeetingPage:
     stmt = apply_meeting_scope(select(Meeting), principal)
+    if output_type:
+        # Only meetings that have a finished document of this Jalase-Negar category.
+        stmt = stmt.where(
+            Meeting.id.in_(
+                select(MeetingDocument.meeting_id).where(
+                    MeetingDocument.output_type_code == output_type,
+                    MeetingDocument.status == "done",
+                )
+            )
+        )
     if owner_id is not None:
         if not sees_all(principal) and owner_id != principal.id:
             raise ApiError("forbidden", "فقط مدیر سازمان می‌تواند جلسه‌های دیگران را فیلتر کند")

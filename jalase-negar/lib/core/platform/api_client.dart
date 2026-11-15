@@ -68,6 +68,20 @@ class OtpRequestResult {
 }
 
 /// A signed-in stand-alone (personal) account.
+class OrgLinkResult {
+  const OrgLinkResult({
+    required this.linkId,
+    required this.token,
+    required this.organization,
+    required this.userName,
+  });
+
+  final String linkId;
+  final String token;
+  final String organization;
+  final String userName;
+}
+
 class PersonalLoginResult {
   const PersonalLoginResult({
     required this.token,
@@ -708,6 +722,43 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
   }
 
   /// Revokes the device token on the server.
+  /// Swaps an organization's pairing code for an organization device key.
+  Future<OrgLinkResult> linkOrganization({
+    required String pairingCode,
+    required String deviceLabel,
+    required String appVersion,
+    required String platform,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/link',
+        data: {
+          'pairing_code': pairingCode,
+          'device_label': deviceLabel,
+          'app_version': appVersion,
+          'platform': platform,
+        },
+      );
+      final body = res.data!;
+      return OrgLinkResult(
+        linkId: body['link_id'] as String,
+        token: body['token'] as String,
+        organization: (body['organization'] ?? '') as String,
+        userName: (body['user'] ?? '') as String,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  Future<void> unlinkOrganization(String linkId) async {
+    try {
+      await _dio.delete<Object?>('/v1/jalase-negar/link/$linkId');
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
   Future<void> logout() async {
     try {
       await _dio.post<Object?>('/v1/jalase-negar/auth/logout');

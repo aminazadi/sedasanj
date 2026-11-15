@@ -32,6 +32,7 @@ from app.models import (
 )
 from app.routers import phone_auth, token_packages
 from app.routers.meetings import _minutes_markdown, _minutes_out, _selected_minutes
+from app.schemas import MeetingPairIn
 from app.security import hash_refresh_token
 from app.services import (
     audit,
@@ -41,6 +42,7 @@ from app.services import (
     document_pdf,
     jalase_accounts,
     jalase_billing,
+    jalase_links,
     jalase_output_types,
     jalase_rewards,
     meeting_documents,
@@ -906,3 +908,46 @@ async def redeem_invite(payload: InviteRedeem, principal: MeetingsKeyDep) -> dic
     await ratelimit.enforce(f"jn-invite:{user_id}", 10, 3600)
     result = await jalase_rewards.redeem(tenant_id, payload.code)
     return {"ok": True, "tokens": result["tokens"]}
+
+
+# ---- link to a SedaSanj organization ------------------------------------------------------
+
+
+class LinkCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+    pairing_code: str = Field(min_length=6, max_length=32)
+    device_label: str = Field(min_length=1, max_length=80)
+    app_version: str = Field(min_length=1, max_length=40)
+    platform: Literal["android", "ios"]
+
+
+@router.get("/link")
+async def get_links(principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, _ = _personal(principal)
+    async with control_session_scope() as session:
+        return {"items": await jalase_links.list_links(session, tenant_id)}
+
+
+@router.post("/link", status_code=status.HTTP_201_CREATED)
+async def create_link(
+    payload: LinkCreate, request: Request, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    """Swap an organization's pairing code for an organization device key (returned once)."""
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-link:{user_id}", 10, 3600)
+    async with control_session_scope() as session:
+        return await jalase_links.link(
+            session,
+            personal_tenant_id=tenant_id,
+            personal_user_id=user_id,
+            payload=MeetingPairIn(**payload.model_dump()),
+            ip=client_ip(request),
+        )
+
+
+@router.delete("/link/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_link(link_id: UUID, principal: MeetingsKeyDep) -> Response:
+    tenant_id, user_id = _personal(principal)
+    async with control_session_scope() as session:
+        await jalase_links.revoke(session, tenant_id, user_id, link_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

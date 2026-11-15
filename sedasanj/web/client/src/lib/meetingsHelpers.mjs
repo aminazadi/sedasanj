@@ -3,7 +3,7 @@
 export const MEETING_TABS = ["minutes", "transcript", "speakers"];
 export const MEETING_ACTIVE_STATUSES = ["receiving", "processing"];
 export const MEETING_FAILED_STATUSES = ["failed_retryable", "failed_terminal"];
-export const MEETING_FILTER_KEYS = ["q", "status", "owner_id", "from", "to"];
+export const MEETING_FILTER_KEYS = ["q", "status", "owner_id", "from", "to", "output_type"];
 // Consecutive segments of one speaker closer than this are shown as a single turn.
 export const TURN_MERGE_GAP_MS = 4000;
 

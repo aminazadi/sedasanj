@@ -44,6 +44,7 @@ from app.routers import (
     jalase_negar_app,
     jalase_negar_downloads,
     jalase_negar_releases,
+    jalase_org_menu,
     jalase_push,
     jalase_sedasanj_intro,
     kpi,
@@ -423,6 +424,7 @@ def create_app() -> FastAPI:
         admin_jalase_achievements,
         admin_jalase_output_types,
         admin_users,
+        jalase_org_menu,
         admin,
     ):
         app.include_router(module.router)

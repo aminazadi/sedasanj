@@ -50,3 +50,16 @@ def test_gamification_codes_have_statuses_and_a_safe_article() -> None:
     cleaned, plain = sanitize_help_html(module.BODY)
     assert "<ol>" in cleaned and all(code in plain for code in codes)
     assert all(action for _code, _summary, action in module.CODES)
+
+
+def test_link_codes_have_statuses_and_a_safe_article() -> None:
+    from app.errors import ERROR_STATUS
+
+    module = _load("0155_jalase_links_help")
+    assert _load("0154_jalase_account_links").down_revision == "0153_jalase_gamification_help"
+    assert module.down_revision == "0154_jalase_account_links"
+    codes = {row[0] for row in module.CODES}
+    assert codes == {"link_invalid_target", "link_already_exists", "link_not_found"}
+    assert set(ERROR_STATUS) >= codes
+    cleaned, plain = sanitize_help_html(module.BODY)
+    assert "<ol>" in cleaned and all(code in plain for code in codes)

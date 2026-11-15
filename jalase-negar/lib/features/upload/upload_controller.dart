@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/platform/api_client.dart';
 import '../../core/providers.dart';
 import '../meetings/application/meeting_providers.dart';
+import '../meetings/data/meeting.dart';
 import '../meetings/data/meeting_repository.dart';
 import '../recording/application/recorder_controller.dart';
 import '../settings/application/connection_controller.dart';
@@ -88,6 +89,29 @@ class UploadController extends Notifier<UploadState> {
     }
   }
 
+  Future<UploadOutcome> _runQueue(
+    MeetingRepository repo,
+    ApiClient api,
+    String workspace,
+  ) async {
+    try {
+      return await UploadQueue(
+        store: repo,
+        api: api,
+        workspace: workspace,
+      ).processOnce();
+    } catch (e) {
+      return UploadOutcome(
+        nextWake: const Duration(seconds: 30),
+        lastError:
+            'ارسال به صداسنج با خطا روبه‌رو شد؛ بعداً دوباره تلاش می‌شود.',
+      );
+    }
+  }
+
+  static Duration? _earlier(Duration? a, Duration? b) =>
+      a == null ? b : (b == null || a < b ? a : b);
+
   Future<void> _pass() async {
     _wake?.cancel();
     final connectionStore = await ref.read(connectionStoreProvider.future);
@@ -99,19 +123,26 @@ class UploadController extends Notifier<UploadState> {
     }
     final repo = await ref.read(meetingRepositoryProvider.future);
     await _closeAbandonedRecordings(repo);
-    final queue = UploadQueue(
-      store: repo,
-      api: ApiClient(serverUrl: connection.serverUrl, token: token),
-    );
     state = UploadState(running: true, connected: true, tick: state.tick);
-    UploadOutcome outcome;
-    try {
-      outcome = await queue.processOnce();
-    } catch (e) {
+    var outcome = await _runQueue(
+      repo,
+      ApiClient(serverUrl: connection.serverUrl, token: token),
+      kWorkspacePrimary,
+    );
+    // A personal account may also be linked to an organization; the meetings
+    // chosen for it go out with the organization's own key.
+    final orgToken = await connectionStore.orgToken();
+    if (orgToken != null && await connectionStore.loadOrg() != null) {
+      final orgOutcome = await _runQueue(
+        repo,
+        ApiClient(serverUrl: connection.serverUrl, token: orgToken),
+        kWorkspaceOrg,
+      );
       outcome = UploadOutcome(
-        nextWake: const Duration(seconds: 30),
-        lastError:
-            'ارسال به صداسنج با خطا روبه‌رو شد؛ بعداً دوباره تلاش می‌شود.',
+        nextWake: _earlier(outcome.nextWake, orgOutcome.nextWake),
+        needsReconnect: outcome.needsReconnect,
+        creditExhausted: outcome.creditExhausted || orgOutcome.creditExhausted,
+        lastError: outcome.lastError ?? orgOutcome.lastError,
       );
     }
     state = UploadState(

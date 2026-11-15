@@ -1,3 +1,9 @@
+/// The account the app is signed in to (personal phone account or a paired organization).
+const String kWorkspacePrimary = 'primary';
+
+/// The SedaSanj organization linked to a personal account.
+const String kWorkspaceOrg = 'org';
+
 enum MeetingStatus {
   recording,
   recorded,
@@ -40,6 +46,7 @@ class Meeting {
     this.sendText = true,
     this.textSyncPending = false,
     this.speakersState = 'done',
+    this.workspace = kWorkspacePrimary,
   });
 
   final String id;
@@ -75,6 +82,10 @@ class Meeting {
   /// identified (nothing is sent meanwhile), 'done' otherwise.
   final String speakersState;
 
+  /// Where this meeting is sent: [kWorkspacePrimary] (the signed-in account) or
+  /// [kWorkspaceOrg] (the SedaSanj organization linked to a personal account).
+  final String workspace;
+
   bool get analyzingSpeakers => speakersState != 'done';
 
   /// Value equality lets the list skip rebuilding tiles whose meeting did not
@@ -96,7 +107,8 @@ class Meeting {
       other.asrIdentity == asrIdentity &&
       other.sendText == sendText &&
       other.textSyncPending == textSyncPending &&
-      other.speakersState == speakersState;
+      other.speakersState == speakersState &&
+      other.workspace == workspace;
 
   @override
   int get hashCode => Object.hash(
@@ -115,6 +127,7 @@ class Meeting {
     sendText,
     textSyncPending,
     speakersState,
+    workspace,
   );
 
   /// The meeting as the list should show it when no recorder is open: a row
@@ -137,6 +150,7 @@ class Meeting {
     bool? sendText,
     bool? textSyncPending,
     String? speakersState,
+    String? workspace,
   }) => Meeting(
     id: id,
     title: title ?? this.title,
@@ -153,6 +167,7 @@ class Meeting {
     sendText: sendText ?? this.sendText,
     textSyncPending: textSyncPending ?? this.textSyncPending,
     speakersState: speakersState ?? this.speakersState,
+    workspace: workspace ?? this.workspace,
   );
 
   factory Meeting.fromRow(Map<String, Object?> row) => Meeting(
@@ -171,6 +186,7 @@ class Meeting {
     sendText: ((row['send_text'] as int?) ?? 1) != 0,
     textSyncPending: ((row['text_sync_pending'] as int?) ?? 0) != 0,
     speakersState: (row['speakers_state'] as String?) ?? 'done',
+    workspace: (row['workspace'] as String?) ?? kWorkspacePrimary,
   );
 
   Map<String, Object?> toRow() => {
@@ -189,6 +205,7 @@ class Meeting {
     'send_text': sendText ? 1 : 0,
     'text_sync_pending': textSyncPending ? 1 : 0,
     'speakers_state': speakersState,
+    'workspace': workspace,
   };
 }
 

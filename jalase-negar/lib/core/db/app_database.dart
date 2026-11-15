@@ -35,6 +35,7 @@ class AppDatabase {
         await _migrateToV9(db);
         await _migrateToV10(db);
         await _migrateToV11(db);
+        await _migrateToV12(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
@@ -45,6 +46,7 @@ class AppDatabase {
         if (oldVersion < 9) await _migrateToV9(db);
         if (oldVersion < 10) await _migrateToV10(db);
         if (oldVersion < 11) await _migrateToV11(db);
+        if (oldVersion < 12) await _migrateToV12(db);
       },
       onOpen: _ensureUploadChunksTable,
     );
@@ -61,7 +63,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const int schemaVersion = 11;
+  static const int schemaVersion = 12;
 
   /// Creates the schema as the last app version before people existed (v8).
   /// Only for migration tests.
@@ -281,6 +283,19 @@ class AppDatabase {
         PRIMARY KEY (meeting_id, person_id)
       )
     ''');
+  }
+
+  /// Each meeting remembers which workspace it is sent to (own account or the
+  /// linked organization); older meetings keep going to the own account.
+  static Future<void> _migrateToV12(Database db) async {
+    try {
+      await db.execute(
+        "ALTER TABLE meetings ADD COLUMN workspace TEXT NOT NULL DEFAULT 'primary'",
+      );
+    } on DatabaseException catch (e) {
+      // A database built from the full schema already has the column.
+      if (!e.toString().contains('duplicate column name')) rethrow;
+    }
   }
 
   Future<String?> getSetting(String key) async {

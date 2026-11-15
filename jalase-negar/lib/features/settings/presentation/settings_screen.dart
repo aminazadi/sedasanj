@@ -12,6 +12,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
 import '../../meetings/application/meeting_providers.dart';
+import '../../meetings/data/meeting.dart' show kWorkspaceOrg, kWorkspacePrimary;
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
 import '../../plans/presentation/plans_screen.dart' show hoursText;
@@ -93,6 +94,10 @@ class SettingsScreen extends ConsumerWidget {
                 ),
         ),
         const SizedBox(height: 12),
+        if (connection != null && connection.personal) ...[
+          const _OrgLinkCard(),
+          const SizedBox(height: 12),
+        ],
         const _SendTranscriptCard(),
         const SizedBox(height: 12),
         const _SpeakerNameCard(),
@@ -242,6 +247,108 @@ class _Row extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Links the personal account to a SedaSanj organization and chooses where new
+/// meetings go ("حساب شخصی" or the organization).
+class _OrgLinkCard extends ConsumerStatefulWidget {
+  const _OrgLinkCard();
+
+  @override
+  ConsumerState<_OrgLinkCard> createState() => _OrgLinkCardState();
+}
+
+class _OrgLinkCardState extends ConsumerState<_OrgLinkCard> {
+  final _code = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _link() async {
+    final code = _code.text.trim();
+    if (code.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    final error = await ref
+        .read(connectionControllerProvider.notifier)
+        .linkOrganization(code);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      _code.clear();
+      await SsToastHost.show(context, 'به سازمان متصل شد.');
+    } else {
+      await SsToastHost.show(context, error);
+    }
+  }
+
+  Future<void> _unlink() async {
+    setState(() => _busy = true);
+    await ref.read(connectionControllerProvider.notifier).unlinkOrganization();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await SsToastHost.show(
+      context,
+      'اتصال به سازمان قطع شد؛ جلسه‌های ارسال‌نشده به حساب شخصی برگشتند.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(orgLinkProvider).value;
+    final link = state?.link;
+    final controller = ref.read(connectionControllerProvider.notifier);
+    return SsCard(
+      title: 'اتصال به سازمان صداسنج',
+      child: link == null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'کد اتصال را مدیر سازمان در پنل صداسنج می‌سازد. پس از اتصال '
+                  'می‌توانید جلسه‌ها را به‌جای حساب شخصی به سازمان بفرستید.',
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _code,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(labelText: 'کد اتصال'),
+                  onSubmitted: (_) => _link(),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: _busy ? null : _link,
+                  child: const Text('اتصال به سازمان'),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Row('سازمان', link.organization),
+                SsSwitchTile(
+                  title: const Text('ارسال جلسه‌های جدید به سازمان'),
+                  subtitle: const Text(
+                    'روشن: از اشتراک سازمان کم می‌شود و مدیر سازمان آن را در '
+                    'پنل می‌بیند. خاموش: در حساب شخصی شما می‌ماند.',
+                  ),
+                  value: state?.workspace == kWorkspaceOrg,
+                  onChanged: (value) => controller.setDefaultWorkspace(
+                    value ? kWorkspaceOrg : kWorkspacePrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _busy ? null : _unlink,
+                  child: const Text('قطع اتصال از سازمان'),
+                ),
+              ],
+            ),
     );
   }
 }

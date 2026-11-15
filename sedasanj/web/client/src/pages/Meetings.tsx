@@ -17,7 +17,7 @@ import { isMeetingActive, meetingFiltersFromSearch, meetingPageFromSearch, meeti
 import type { MeetingFilters } from "../lib/meetingsHelpers.mjs";
 import type { MeetingListItem, MeetingPage, Page, User } from "../types";
 
-const EMPTY: MeetingFilters = { q: "", status: "", owner_id: "", from: "", to: "" };
+const EMPTY: MeetingFilters = { q: "", status: "", owner_id: "", from: "", to: "", output_type: "" };
 const FIRST_LOAD_ROWS = 10;
 const EMPTY_PREVIOUS_ROWS = 5;
 const POLL_INTERVAL_MS = 3000;

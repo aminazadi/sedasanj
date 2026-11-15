@@ -70,6 +70,7 @@ _CONTROL_ONLY = {
     "jalase_output_types",
     "jalase_output_type_versions",
     "jalase_achievements",
+    "jalase_account_links",
     "jalase_invite_codes",
     "jalase_invite_redemptions",
     "jalase_push_settings",

@@ -3879,3 +3879,40 @@ class JalaseInviteRedemption(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     redeemed_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class JalaseAccountLink(Base):
+    """A personal account's key into a SedaSanj organization (control database only)."""
+
+    __tablename__ = "jalase_account_links"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    personal_tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    personal_user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    org_tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    org_user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    org_api_key_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("api_keys.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(12), nullable=False, server_default=text("'active'"))
+    linked_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class JalaseMenuHidden(Base):
+    __tablename__ = "jalase_menu_hidden"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    output_type_code: Mapped[str] = mapped_column(String(40), primary_key=True)

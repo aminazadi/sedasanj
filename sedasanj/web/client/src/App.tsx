@@ -27,6 +27,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Legal from "./pages/Legal";
 import FreepbxServers from "./pages/FreepbxServers";
+import JalaseMenu from "./pages/JalaseMenu";
 import ModuleChangelog from "./pages/ModuleChangelog";
 import Overview from "./pages/Overview";
 import Tasks from "./pages/Tasks";
@@ -111,6 +112,7 @@ export default function App() {
         {operator ? null : <Route path="/install" element={<Install />} />}
         {operator ? null : <Route path="/module-changelog" element={<ModuleChangelog />} />}
         {orgAdmin ? <Route path="/freepbx-servers" element={<FreepbxServers />} /> : null}
+        {orgAdmin ? <Route path="/jalase-menu" element={<JalaseMenu />} /> : null}
         <Route path="/help" element={<HelpHome framed={false} />} />
         <Route path="/help/errors/:code" element={<HelpErrorPage framed={false} />} />
         <Route path="/help/:slug" element={<HelpArticlePage framed={false} />} />

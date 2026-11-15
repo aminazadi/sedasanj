@@ -14,6 +14,24 @@ const _kTokenPrefix = 'platform_token_prefix';
 const _kTokenKey = 'platform_token';
 const _kPersonal = 'platform_personal';
 const _kPushBinding = 'platform_push_binding';
+const _kOrgLinkId = 'org_link_id';
+const _kOrgName = 'org_name';
+const _kOrgUser = 'org_user';
+const _kOrgTokenKey = 'platform_org_token';
+const _kWorkspaceDefault = 'workspace_default';
+
+/// A SedaSanj organization linked to a personal account (its own device key).
+class OrgLink {
+  const OrgLink({
+    required this.linkId,
+    required this.organization,
+    required this.userName,
+  });
+
+  final String linkId;
+  final String organization;
+  final String userName;
+}
 
 /// Persists the SedaSanj connection: metadata in the app DB, the token only
 /// in the platform secure storage (Keystore / Keychain).
@@ -79,7 +97,48 @@ class ConnectionStore {
     );
   }
 
+  Future<OrgLink?> loadOrg() async {
+    final id = await _db.getSetting(_kOrgLinkId);
+    if (id == null) return null;
+    return OrgLink(
+      linkId: id,
+      organization: await _db.getSetting(_kOrgName) ?? '',
+      userName: await _db.getSetting(_kOrgUser) ?? '',
+    );
+  }
+
+  Future<String?> orgToken() => _secure.read(key: _kOrgTokenKey);
+
+  Future<void> saveOrg(OrgLink link, String token) async {
+    await _secure.write(key: _kOrgTokenKey, value: token);
+    await _db.setSetting(_kOrgLinkId, link.linkId);
+    await _db.setSetting(_kOrgName, link.organization);
+    await _db.setSetting(_kOrgUser, link.userName);
+  }
+
+  Future<void> clearOrg() async {
+    await _secure.delete(key: _kOrgTokenKey);
+    await _db.db.delete(
+      'settings',
+      where: 'key IN (?, ?, ?, ?)',
+      whereArgs: [_kOrgLinkId, _kOrgName, _kOrgUser, _kWorkspaceDefault],
+    );
+  }
+
+  /// Workspace new meetings are sent to: [kWorkspaceOrg] only while an
+  /// organization is linked, otherwise always the own account.
+  Future<String> defaultWorkspace() async {
+    if (await _db.getSetting(_kOrgLinkId) == null) return 'primary';
+    return await _db.getSetting(_kWorkspaceDefault) == 'org'
+        ? 'org'
+        : 'primary';
+  }
+
+  Future<void> setDefaultWorkspace(String workspace) =>
+      _db.setSetting(_kWorkspaceDefault, workspace);
+
   Future<void> clear() async {
+    await clearOrg();
     await _secure.delete(key: _kTokenKey);
     await _secure.delete(key: _kPushBinding);
     await _db.db.delete(
