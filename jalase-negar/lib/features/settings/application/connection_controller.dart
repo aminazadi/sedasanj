@@ -227,3 +227,43 @@ final personalProfileProvider = FutureProvider.autoDispose<PersonalProfile>((
     token: token,
   ).personalProfile();
 });
+
+/// An API client signed in as the personal account, for the documents features.
+final personalClientProvider = FutureProvider.autoDispose<ApiClient>((
+  ref,
+) async {
+  final connection = (await ref.watch(
+    connectionControllerProvider.future,
+  )).connection;
+  final token = await (await ref.watch(connectionStoreProvider.future)).token();
+  if (connection == null || !connection.personal || token == null) {
+    throw const ApiException(
+      message: 'ابتدا با شماره موبایل وارد شوید.',
+      requiresReconnect: true,
+    );
+  }
+  return ApiClient(serverUrl: connection.serverUrl, token: token);
+});
+
+/// The categories the admin published (minutes excluded: it is automatic).
+final outputTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
+  ref,
+) async {
+  final client = await ref.watch(personalClientProvider.future);
+  return [
+    for (final type in await client.outputTypes())
+      if (!type.automatic) type,
+  ];
+});
+
+final meetingDocumentsProvider = FutureProvider.autoDispose
+    .family<List<DocumentInfo>, String>((ref, remoteMeetingId) async {
+      final client = await ref.watch(personalClientProvider.future);
+      return client.listDocuments(remoteMeetingId);
+    });
+
+final documentDetailProvider = FutureProvider.autoDispose
+    .family<DocumentDetail, String>((ref, documentId) async {
+      final client = await ref.watch(personalClientProvider.future);
+      return client.getDocument(documentId);
+    });

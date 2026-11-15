@@ -9,6 +9,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../../core/utils/format.dart';
 import '../../onboarding/intro/intro_art.dart';
+import '../../documents/presentation/documents_tab.dart';
 import '../../settings/application/connection_controller.dart';
 import '../application/meeting_providers.dart';
 import '../data/attendee.dart';
@@ -79,7 +80,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             1 +
             (showSpeakers ? 1 : 0) +
             (showAttendees ? 1 : 0) +
-            (showMinutes ? 1 : 0);
+            (showMinutes ? 2 : 0);
         final canSend = canSendMeetingText(
           data.meeting,
           hasText: transcript.isNotEmpty,
@@ -107,6 +108,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         if (showSpeakers) const Tab(text: 'گوینده‌ها'),
                         if (showAttendees) const Tab(text: 'حاضران'),
                         if (showMinutes) const Tab(text: 'صورت‌جلسه'),
+                        if (showMinutes) const Tab(text: 'اسناد'),
                       ],
                     )
                   : null,
@@ -154,6 +156,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         ),
                       if (showMinutes)
                         _MinutesTab(
+                          remoteMeetingId: data.meeting.remoteMeetingId!,
+                        ),
+                      if (showMinutes)
+                        DocumentsTab(
                           remoteMeetingId: data.meeting.remoteMeetingId!,
                         ),
                     ],

@@ -120,6 +120,89 @@ class PersonalProfile {
   final int? monthlyMinutes;
 }
 
+/// One input the admin asked for in a category (shown as a form field).
+class OutputField {
+  const OutputField({
+    required this.key,
+    required this.label,
+    required this.type,
+    required this.required,
+    this.options = const [],
+  });
+
+  final String key;
+  final String label;
+
+  /// `text`, `select` or `number`.
+  final String type;
+  final bool required;
+  final List<String> options;
+}
+
+/// A conversion category the admin published (counseling, lecture notes, ...).
+class OutputTypeInfo {
+  const OutputTypeInfo({
+    required this.code,
+    required this.title,
+    required this.description,
+    required this.automatic,
+    required this.fields,
+    this.thumbnailUrl,
+  });
+
+  final String code;
+  final String title;
+  final String description;
+
+  /// Made automatically for every meeting (the minutes); not offered in the picker.
+  final bool automatic;
+  final List<OutputField> fields;
+  final String? thumbnailUrl;
+}
+
+class DocumentInfo {
+  const DocumentInfo({
+    required this.id,
+    required this.outputType,
+    required this.status,
+    required this.progressPct,
+    this.errorCode,
+    this.selectedVersion,
+  });
+
+  final String id;
+  final String outputType;
+
+  /// `queued`, `running`, `done` or `failed`.
+  final String status;
+  final int progressPct;
+  final String? errorCode;
+  final int? selectedVersion;
+
+  bool get inProgress => status == 'queued' || status == 'running';
+}
+
+class DocumentDetail {
+  const DocumentDetail({required this.info, this.markdown});
+
+  final DocumentInfo info;
+  final String? markdown;
+}
+
+/// Server messages of these calls already name the next action; keep them, except for a
+/// revoked token (401), which must trigger the reconnect flow.
+ApiException mapMessageError(DioException e) =>
+    e.response?.statusCode == 401 ? mapDioError(e) : mapLoginError(e);
+
+DocumentInfo parseDocumentInfo(Map<String, dynamic> body) => DocumentInfo(
+  id: body['id'] as String,
+  outputType: body['output_type'] as String,
+  status: body['status'] as String,
+  progressPct: (body['progress_pct'] as num?)?.toInt() ?? 0,
+  errorCode: body['error_code'] as String?,
+  selectedVersion: (body['selected_version'] as num?)?.toInt(),
+);
+
 class RemoteSession {
   const RemoteSession({
     required this.meetingId,
@@ -489,6 +572,118 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       await _dio.post<Object?>('/v1/jalase-negar/auth/logout');
     } on DioException catch (e) {
       throw mapDioError(e);
+    }
+  }
+
+  Future<List<OutputTypeInfo>> outputTypes() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/output-types',
+      );
+      final base = _dio.options.baseUrl.replaceAll(RegExp(r'/+$'), '');
+      return [
+        for (final raw in (res.data!['items'] as List))
+          () {
+            final item = raw as Map<String, dynamic>;
+            final thumb = item['thumbnail_url'] as String?;
+            return OutputTypeInfo(
+              code: item['code'] as String,
+              title: item['title'] as String,
+              description: (item['description'] ?? '') as String,
+              automatic: item['automatic'] == true,
+              thumbnailUrl: thumb == null ? null : '$base$thumb',
+              fields: [
+                for (final f in (item['input_fields'] as List? ?? const []))
+                  OutputField(
+                    key: (f as Map)['key'] as String,
+                    label: f['label_fa'] as String,
+                    type: (f['type'] ?? 'text') as String,
+                    required: f['required'] == true,
+                    options: [
+                      for (final o in (f['options'] as List? ?? const []))
+                        o as String,
+                    ],
+                  ),
+              ],
+            );
+          }(),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<List<DocumentInfo>> createDocuments(
+    String remoteMeetingId,
+    List<({String code, Map<String, String> values})> items,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/meetings/$remoteMeetingId/documents',
+        data: {
+          'items': [
+            for (final i in items)
+              {'output_type': i.code, 'input_values': i.values},
+          ],
+        },
+      );
+      return [
+        for (final d in (res.data!['items'] as List))
+          parseDocumentInfo(d as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<List<DocumentInfo>> listDocuments(String remoteMeetingId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/meetings/$remoteMeetingId/documents',
+      );
+      return [
+        for (final d in (res.data!['items'] as List))
+          parseDocumentInfo(d as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<DocumentDetail> getDocument(String documentId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/documents/$documentId',
+      );
+      final body = res.data!;
+      return DocumentDetail(
+        info: parseDocumentInfo(body),
+        markdown: body['markdown'] as String?,
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<void> editDocument(String documentId, String markdown) async {
+    try {
+      await _dio.patch<Object?>(
+        '/v1/jalase-negar/documents/$documentId',
+        data: {'markdown': markdown},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<void> regenerateDocument(String documentId) async {
+    try {
+      await _dio.post<Object?>(
+        '/v1/jalase-negar/documents/$documentId/regenerate',
+        data: <String, Object?>{},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
     }
   }
 
