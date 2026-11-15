@@ -36,3 +36,17 @@ def test_migration_chain_is_linear() -> None:
 def test_seeded_plans_match_the_agreed_prices() -> None:
     plans = {row[0]: row[3] for row in _load("0150_jalase_plans_tokens").PLANS}
     assert plans == {"jn_bronze": 280_000, "jn_silver": 480_000, "jn_gold": 680_000}
+
+
+def test_gamification_codes_have_statuses_and_a_safe_article() -> None:
+    from app.errors import ERROR_STATUS
+
+    module = _load("0153_jalase_gamification_help")
+    assert _load("0152_jalase_gamification").down_revision == "0151_jalase_plans_help"
+    assert module.down_revision == "0152_jalase_gamification"
+    codes = {row[0] for row in module.CODES}
+    assert codes == {"invite_invalid", "invite_not_allowed", "invite_disabled"}
+    assert set(ERROR_STATUS) >= codes
+    cleaned, plain = sanitize_help_html(module.BODY)
+    assert "<ol>" in cleaned and all(code in plain for code in codes)
+    assert all(action for _code, _summary, action in module.CODES)

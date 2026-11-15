@@ -78,6 +78,12 @@ function formFrom(rows: PlanVersion[]): VersionForm {
 
 const PRODUCT_LABELS = { sedasanj: "صداسنج", jalase_negar: "جلسه‌نگار" } as const;
 
+/** The form without the price field of the other product: the API rejects unknown fields. */
+function priceFields(form: VersionForm, product: string | undefined): Record<string, string | number | boolean> {
+  const { annual_price_toman, monthly_price_toman, ...rest } = form;
+  return product === "jalase_negar" ? { ...rest, monthly_price_toman } : { ...rest, annual_price_toman };
+}
+
 /** Jalase-Negar plans are sold monthly; SedaSanj plans annually. */
 function priceKey(product: string | undefined): "annual_price_toman" | "monthly_price_toman" {
   return product === "jalase_negar" ? "monthly_price_toman" : "annual_price_toman";
@@ -140,12 +146,10 @@ export default function Plans() {
     }
     await run(
       () =>
-        request(`/v1/admin/commerce/plans/${selected}/versions`, {
+        request(`/v1/admin/commerce/plans/${selected}/${selectedPlan?.product === "jalase_negar" ? "jalase-versions" : "versions"}`, {
           method: "POST",
           body: {
-            ...form,
-            annual_price_toman: selectedPlan?.product === "jalase_negar" ? null : form.annual_price_toman,
-            monthly_price_toman: selectedPlan?.product === "jalase_negar" ? form.monthly_price_toman : 0,
+            ...priceFields(form, selectedPlan?.product),
             assistant_model: form.assistant_model || null,
             llm_monthly_tokens: form.llm_monthly_tokens.trim() === "" ? null : Number(fmt.latinDigits(form.llm_monthly_tokens)),
             extra_operator_annual_toman: form.allows_extra_operators ? form.extra_operator_annual_toman : null,

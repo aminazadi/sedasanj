@@ -3813,3 +3813,69 @@ class JalasePushDelivery(Base):
     error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (Index("ix_jalase_push_deliveries_ready", "state", "next_at"),)
+
+
+class JalaseAchievement(Base):
+    """An admin-managed badge: reaching `threshold` of `metric` earns it and some gift tokens."""
+
+    __tablename__ = "jalase_achievements"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    code: Mapped[str] = mapped_column(String(48), unique=True, nullable=False)
+    title_fa: Mapped[str] = mapped_column(Text, nullable=False)
+    description_fa: Mapped[str] = mapped_column(Text, nullable=False)
+    metric: Mapped[str] = mapped_column(String(24), nullable=False)
+    threshold: Mapped[int] = mapped_column(Integer, nullable=False)
+    reward_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class JalaseEarnedAchievement(Base):
+    __tablename__ = "jalase_earned_achievements"
+    __table_args__ = (UniqueConstraint("tenant_id", "achievement_code"),)
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    achievement_code: Mapped[str] = mapped_column(String(48), nullable=False)
+    reward_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    earned_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class JalaseInviteCode(Base):
+    __tablename__ = "jalase_invite_codes"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+
+
+class JalaseInviteRedemption(Base):
+    """One friend invite: each invitee can be invited once, and both sides get gift tokens."""
+
+    __tablename__ = "jalase_invite_redemptions"
+
+    invitee_tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    inviter_tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    reward_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    invitee_granted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    inviter_granted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    redeemed_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)

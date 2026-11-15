@@ -314,3 +314,93 @@ async def test_a_lapsed_paid_month_returns_to_the_free_plan(created: list[UUID])
     assert sub.period_end.year == 9999 and version.monthly_price_toman == 0
     async with db.session_scope(staff=True) as session:
         assert await jalase_accounts.restore_free_plan(session, tenant_id, later) is False
+
+
+async def test_admin_prices_a_jalase_plan_monthly_and_publishes_it(scratch: None) -> None:  # noqa: F811
+    from types import SimpleNamespace
+
+    from pydantic import ValidationError
+
+    from app.models import Plan, StaffUser
+    from app.routers import commerce as router
+
+    payload = {
+        "annual_price_toman": None,
+        "monthly_price_toman": 150_000,
+        "base_operators": 1,
+        "intro_minutes": 600,
+        "overage_price_per_minute_toman": 2000,
+        "assistant_tier": "demo",
+        "assistant_monthly_messages": 0,
+        "assistant_source_limit": 1,
+        "llm_monthly_tokens": 400_000,
+    }
+    with pytest.raises(ValidationError):  # a monthly price is required
+        router.JalasePlanVersionCreate(**{**payload, "monthly_price_toman": 0})
+    code = f"jn_t{uuid4().hex[:6]}"
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"), headers={})
+    async with db.session_scope(staff=True) as session:
+        staff = StaffUser(
+            email=f"jn-plan-{uuid4().hex[:8]}@example.com", password_hash="x", role="super_admin"
+        )
+        session.add(staff)
+        await session.flush()
+        try:
+            await router.create_plan(
+                router.PlanCreate(code=code, name="آزمون", product="jalase_negar"),
+                request,  # type: ignore[arg-type]
+                staff,  # type: ignore[arg-type]
+                session,
+            )
+            with pytest.raises(ApiError):  # the SedaSanj form refuses a Jalase plan
+                await router.create_plan_version(
+                    code,
+                    router.PlanVersionCreate(
+                        **{k: v for k, v in payload.items() if k != "monthly_price_toman"}
+                        | {"annual_price_toman": 1}
+                    ),
+                    request,  # type: ignore[arg-type]
+                    staff,  # type: ignore[arg-type]
+                    session,
+                )
+            made = await router.create_jalase_plan_version(
+                code,
+                router.JalasePlanVersionCreate(**payload),
+                request,  # type: ignore[arg-type]
+                staff,  # type: ignore[arg-type]
+                session,
+            )
+            published = await router.publish_plan_version(
+                UUID(made["id"]),
+                router.PlanPublish(reason="آزمون"),
+                request,  # type: ignore[arg-type]
+                staff,  # type: ignore[arg-type]
+                session,
+            )
+            assert published["status"] == "published"
+            listed = await router.admin_plans(
+                staff, session, cursor=0, limit=200, product="jalase_negar"
+            )  # type: ignore[arg-type]
+            mine = next(i for i in listed["items"] if i["code"] == code)
+            assert (mine["monthly_price_toman"], mine["product"]) == (150_000, "jalase_negar")
+            assert all(i["product"] == "jalase_negar" for i in listed["items"])
+            catalogue = await jalase_billing.plans(session)
+            assert code in {p["code"] for p in catalogue}
+        finally:
+            await session.execute(text("SET LOCAL session_replication_role = replica"))
+            await session.execute(
+                text(
+                    "DELETE FROM plan_versions "
+                    "WHERE plan_id IN (SELECT id FROM plans WHERE code = :c)"
+                ),
+                {"c": code},
+            )
+            plan = (
+                await session.execute(select(Plan).where(Plan.code == code))
+            ).scalar_one_or_none()
+            if plan is not None:
+                await session.delete(plan)
+            await session.execute(
+                text("DELETE FROM audit_events WHERE actor_id = :s"), {"s": staff.id}
+            )
+            await session.delete(staff)

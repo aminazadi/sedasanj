@@ -186,6 +186,8 @@ export interface PlatformSettings {
   ninerouter_direct_coach_prompt: string;
   jalase_standalone_enabled: boolean;
   jalase_tokens_per_hour: number;
+  jalase_reward_cap_percent: number;
+  jalase_invite_tokens: number;
   meeting_provider: "aiservice" | "ninerouter_direct";
   meeting_model: string;
   meeting_block_chars: number;

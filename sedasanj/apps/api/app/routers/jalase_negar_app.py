@@ -42,6 +42,7 @@ from app.services import (
     jalase_accounts,
     jalase_billing,
     jalase_output_types,
+    jalase_rewards,
     meeting_documents,
     payments,
     platform,
@@ -876,3 +877,32 @@ async def order_status(order_id: UUID, principal: MeetingsKeyDep) -> dict[str, o
             "amount_toman": order.amount_toman,
             "paid_at": order.paid_at,
         }
+
+
+# ---- progress, badges and friend invites --------------------------------------------------
+
+
+class InviteRedeem(BaseModel):
+    model_config = {"extra": "forbid"}
+    code: str = Field(min_length=6, max_length=12, pattern=r"^[A-Za-z0-9]+$")
+
+
+@router.get("/progress")
+async def get_progress(principal: MeetingsKeyDep) -> dict[str, object]:
+    """Level, badges and the month's gift allowance; also awards any badge just reached."""
+    tenant_id, _ = _personal(principal)
+    return await jalase_rewards.progress(tenant_id)
+
+
+@router.get("/invite")
+async def get_invite(principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, _ = _personal(principal)
+    return await jalase_rewards.invite_info(tenant_id)
+
+
+@router.post("/invite/redeem")
+async def redeem_invite(payload: InviteRedeem, principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-invite:{user_id}", 10, 3600)
+    result = await jalase_rewards.redeem(tenant_id, payload.code)
+    return {"ok": True, "tokens": result["tokens"]}

@@ -182,9 +182,7 @@ class InstallationUpdate(BaseModel):
 
 class PlanVersionCreate(BaseModel):
     model_config = {"extra": "forbid"}
-    annual_price_toman: int | None = Field(default=None, ge=0)
-    # Jalase-Negar plans are sold monthly; SedaSanj plans keep a zero here and sell annually.
-    monthly_price_toman: int = Field(default=0, ge=0, le=2_000_000_000)
+    annual_price_toman: int = Field(ge=0)
     base_operators: int = Field(ge=0)
     intro_minutes: int = Field(ge=0)
     overage_price_per_minute_toman: int = Field(ge=0)
@@ -206,6 +204,13 @@ class PlanVersionCreate(BaseModel):
         elif self.extra_operator_annual_toman is not None:
             raise ValueError("extra-operator prices require allows_extra_operators")
         return self
+
+
+class JalasePlanVersionCreate(PlanVersionCreate):
+    """A Jalase-Negar plan version: sold monthly, so it has a monthly price and no annual one."""
+
+    annual_price_toman: int | None = Field(default=None, ge=0)  # type: ignore[assignment]
+    monthly_price_toman: int = Field(ge=1, le=2_000_000_000)
 
 
 class PlanCreate(BaseModel):
@@ -288,8 +293,6 @@ def _plan_out(plan: Plan, version: PlanVersion) -> dict[str, Any]:
         "published_at": version.published_at,
         "retired_at": version.retired_at,
         "annual_price_toman": version.annual_price_toman,
-        "monthly_price_toman": version.monthly_price_toman,
-        "product": plan.product,
         "base_operators": version.base_operators,
         "intro_minutes": version.intro_minutes,
         "overage_price_per_minute_toman": version.overage_price_per_minute_toman,
@@ -1884,6 +1887,7 @@ async def admin_plans(
         {
             **_plan_summary(plan),
             "subscription_count": int(counts.get(version.id, 0)) if version else 0,
+            "monthly_price_toman": version.monthly_price_toman if version else None,
             **(_plan_out(plan, version) if version else {"id": None, "plan_id": str(plan.id)}),
         }
         for plan, version in rows
@@ -1969,19 +1973,22 @@ async def update_plan(
     return {**_plan_summary(row), "live_subscriptions": subscribers}
 
 
-@router.post("/admin/commerce/plans/{plan_code}/versions", status_code=status.HTTP_201_CREATED)
-async def create_plan_version(
+async def _make_version(
     plan_code: str,
     payload: PlanVersionCreate,
     request: Request,
-    staff: SuperAdminDep,
-    session: StaffSession,
+    staff: Any,
+    session: AsyncSession,
+    *,
+    product: str,
 ) -> dict[str, Any]:
     plan = (
         await session.execute(select(Plan).where(Plan.code == plan_code).with_for_update())
     ).scalar_one_or_none()
     if plan is None:
         raise ApiError("not_found", "plan not found")
+    if plan.product != product:
+        raise ApiError("invalid_request", "this plan belongs to the other product's price form")
     next_version = (
         int(
             (
@@ -2012,6 +2019,30 @@ async def create_plan_version(
         ip=client_ip(request),
     )
     return _plan_out(plan, row)
+
+
+@router.post("/admin/commerce/plans/{plan_code}/versions", status_code=status.HTTP_201_CREATED)
+async def create_plan_version(
+    plan_code: str,
+    payload: PlanVersionCreate,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, Any]:
+    return await _make_version(plan_code, payload, request, staff, session, product="sedasanj")
+
+
+@router.post(
+    "/admin/commerce/plans/{plan_code}/jalase-versions", status_code=status.HTTP_201_CREATED
+)
+async def create_jalase_plan_version(
+    plan_code: str,
+    payload: JalasePlanVersionCreate,
+    request: Request,
+    staff: SuperAdminDep,
+    session: StaffSession,
+) -> dict[str, Any]:
+    return await _make_version(plan_code, payload, request, staff, session, product="jalase_negar")
 
 
 @router.post("/admin/commerce/plan-versions/{version_id}/publish")

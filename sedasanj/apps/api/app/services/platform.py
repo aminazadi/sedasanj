@@ -114,6 +114,8 @@ OVERRIDE_KEYS = (
     "ninerouter_direct_coach_prompt",
     "jalase_standalone_enabled",
     "jalase_tokens_per_hour",
+    "jalase_reward_cap_percent",
+    "jalase_invite_tokens",
     "meeting_provider",
     "meeting_route",
     "meeting_model",
@@ -282,6 +284,29 @@ async def jalase_tokens_per_hour(session: AsyncSession) -> int:
     except ValueError:
         return DEFAULT_TOKENS_PER_HOUR
     return value if value >= 1_000 else DEFAULT_TOKENS_PER_HOUR
+
+
+async def _int_setting(session: AsyncSession, key: str, default: int, low: int, high: int) -> int:
+    if get_settings().tenant_databases_enabled:
+        async with get_sessionmaker()() as control:
+            row = await control.get(PlatformSetting, key)
+    else:
+        row = await session.get(PlatformSetting, key)
+    try:
+        value = int(row.value) if row is not None else default
+    except ValueError:
+        return default
+    return value if low <= value <= high else default
+
+
+async def jalase_reward_cap_percent(session: AsyncSession) -> int:
+    """Most gift tokens (share of the plan's monthly allowance) a user can earn per month."""
+    return await _int_setting(session, "jalase_reward_cap_percent", 20, 0, 100)
+
+
+async def jalase_invite_tokens(session: AsyncSession) -> int:
+    """Gift tokens each side of a friend invite receives; 0 turns invites off."""
+    return await _int_setting(session, "jalase_invite_tokens", 20_000, 0, 1_000_000)
 
 
 async def effective_meeting_minutes_prompt(session: AsyncSession) -> str:
@@ -475,6 +500,8 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "ninerouter_direct_coach_prompt": "",
         "jalase_standalone_enabled": "false",
         "jalase_tokens_per_hour": "40000",
+        "jalase_reward_cap_percent": "20",
+        "jalase_invite_tokens": "20000",
         "meeting_provider": "aiservice",
         "meeting_route": "durable",
         "meeting_model": "",
@@ -650,6 +677,8 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "ninerouter_direct_coach_prompt": values["ninerouter_direct_coach_prompt"],
         "jalase_standalone_enabled": _as_bool(values["jalase_standalone_enabled"]),
         "jalase_tokens_per_hour": int(values["jalase_tokens_per_hour"]),
+        "jalase_reward_cap_percent": int(values["jalase_reward_cap_percent"]),
+        "jalase_invite_tokens": int(values["jalase_invite_tokens"]),
         "meeting_provider": values["meeting_provider"],
         "meeting_route": values["meeting_route"],
         "meeting_model": values["meeting_model"],

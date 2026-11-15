@@ -349,6 +349,8 @@ export default function Settings() {
           meeting_route: settings.meeting_route,
           jalase_standalone_enabled: settings.jalase_standalone_enabled,
           jalase_tokens_per_hour: settings.jalase_tokens_per_hour,
+          jalase_reward_cap_percent: settings.jalase_reward_cap_percent,
+          jalase_invite_tokens: settings.jalase_invite_tokens,
           meeting_provider: settings.meeting_provider,
           meeting_model: settings.meeting_model,
           meeting_block_chars: settings.meeting_block_chars,
@@ -1122,6 +1124,18 @@ export default function Settings() {
           <label className="label">توکن معادل یک ساعت جلسه (برای نمایش «ساعت باقی‌مانده» در اپ)</label>
           <input className="input" inputMode="numeric" dir="ltr" value={settings.jalase_tokens_per_hour} onChange={(event) => setSettings({ ...settings, jalase_tokens_per_hour: Number(fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "")) || 0 })} />
           <p className="mt-1 text-xs text-slate-500">فقط نحوهٔ نمایش را عوض می‌کند، نه مصرف واقعی. پس از چند هفته مصرف واقعی، میانگین توکنِ یک ساعت جلسه را از گزارش مصرف بخوانید و اینجا بگذارید (حداقل ۱٬۰۰۰).</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label">سقف ماهانهٔ توکن هدیهٔ نشان‌ها (درصد سهمیهٔ پلن، ۰ تا ۱۰۰)</label>
+            <input className="input" inputMode="numeric" dir="ltr" value={settings.jalase_reward_cap_percent} onChange={(event) => setSettings({ ...settings, jalase_reward_cap_percent: Math.min(100, Number(fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "")) || 0) })} />
+            <p className="mt-1 text-xs text-slate-500">۰ یعنی نشان‌ها هدیه نمی‌دهند ولی داده می‌شوند. پیش‌فرض ۲۰ تخمینی است.</p>
+          </div>
+          <div>
+            <label className="label">توکن هدیهٔ دعوت دوستان برای هر طرف (۰ = خاموش)</label>
+            <input className="input" inputMode="numeric" dir="ltr" value={settings.jalase_invite_tokens} onChange={(event) => setSettings({ ...settings, jalase_invite_tokens: Number(fmt.latinDigits(event.target.value).replace(/[^0-9]/g, "")) || 0 })} />
+            <p className="mt-1 text-xs text-slate-500">هر کد در ماه حداکثر ۱۰ دعوت پاداش‌دار دارد. پیش‌فرض ۲۰٬۰۰۰ تخمینی است.</p>
+          </div>
         </div>
         <div>
           <label className="label">مسیر صورت‌جلسه</label>
