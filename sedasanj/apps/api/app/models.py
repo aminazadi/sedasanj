@@ -95,9 +95,15 @@ class Tenant(Base):
     operator_ranking_visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Which product the customer signed up for; plans and listings are kept apart by it.
+    product: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'sedasanj'")
+    )
+    signup_channel: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
+        CheckConstraint("product IN ('sedasanj','jalase_negar')", name="tenants_product_check"),
         CheckConstraint(
             "status IN ('pending','provisioning','active','maintenance_readonly',"
             "'migration_failed','suspended','deleted')",
@@ -129,6 +135,7 @@ class User(Base):
     is_primary_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    signup_channel: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
     __table_args__ = (
@@ -2130,6 +2137,9 @@ class Plan(Base):
     public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_trial: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     sellable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    product: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'sedasanj'")
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 

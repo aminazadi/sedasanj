@@ -34,6 +34,7 @@ const NAVIGATION: NavigationGroup[] = [
     label: "مدیریت سازمان‌ها",
     items: [
       { to: "/tenants", label: "سازمان‌ها", icon: icons.users },
+      { to: "/users", label: "کاربران", icon: icons.users },
       { to: "/tenant-databases", label: "دیتابیس سازمان‌ها", icon: icons.database },
       { to: "/staff", label: "کاربران ادمین", icon: icons.staff },
     ],

@@ -23,6 +23,8 @@ SAMPLE_VALUES = {
     "DATE": "2026-01-01",
     "PERCENT": "80",
     "REMAINING": "120",
+    "NAME": "کاربر نمونه",
+    "MESSAGE": "پیام نمونه",
 }
 
 

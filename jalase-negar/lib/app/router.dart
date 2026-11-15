@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/auth/presentation/login_screen.dart';
 import '../features/guide/presentation/guide_screen.dart';
 import '../features/meetings/presentation/meeting_detail_screen.dart';
 import '../features/meetings/presentation/meetings_screen.dart';
@@ -58,6 +59,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             IntroScreen(replay: state.uri.queryParameters['replay'] == '1'),
       ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/permissions',
         builder: (context, state) => const PermissionsScreen(),

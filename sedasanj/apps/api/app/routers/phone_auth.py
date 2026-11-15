@@ -88,7 +88,7 @@ async def issue_tokens(session: AsyncSession, user: User) -> TokenPair:
 async def request_phone_otp(
     payload: PhoneRequest, request: Request, session: PublicSession
 ) -> dict[str, object]:
-    return await _request_otp(session, normalize_mobile(payload.mobile), request)
+    return await request_otp(session, normalize_mobile(payload.mobile), request)
 
 
 @router.post("/password/request", status_code=201)
@@ -98,11 +98,11 @@ async def request_password_change(
     user = await session.get(User, principal.id)
     if user is None or user.tenant_id != principal.tenant_id:
         raise ApiError("unauthorized", "دوباره وارد حساب شوید.")
-    result = await _request_otp(session, _password_change_mobile(user), request)
+    result = await request_otp(session, _password_change_mobile(user), request)
     return {**result, "requires_totp": bool(user.totp_secret)}
 
 
-async def _request_otp(session: AsyncSession, mobile: str, request: Request) -> dict[str, object]:
+async def request_otp(session: AsyncSession, mobile: str, request: Request) -> dict[str, object]:
     await ratelimit.enforce(f"phone-otp-ip:{client_ip(request)}", 10, 3600)
     await ratelimit.enforce(f"phone-otp-mobile:{mobile}", 5, 3600)
     settings = await demo_settings.load(session)
@@ -152,6 +152,13 @@ async def _request_otp(session: AsyncSession, mobile: str, request: Request) -> 
 
 @router.post("/verify")
 async def verify_phone_otp(payload: PhoneVerify, request: Request) -> dict[str, object]:
+    return await verify_otp_grant(payload, request, product="sedasanj")
+
+
+async def verify_otp_grant(
+    payload: PhoneVerify, request: Request, *, product: str
+) -> dict[str, object]:
+    """Check an OTP and return a one-time grant plus the caller's accounts for `product`."""
     await ratelimit.enforce(f"phone-verify:{client_ip(request)}", 30, 600)
     failure: ApiError | None = None
     result: dict[str, object] = {}
@@ -176,7 +183,7 @@ async def verify_phone_otp(payload: PhoneVerify, request: Request) -> dict[str, 
             row.verified_at = now
             row.grant_hash = hash_refresh_token(grant)
             row.grant_expires_at = now + timedelta(minutes=10)
-            accounts = await mobile_accounts(session, row.mobile)
+            accounts = await mobile_accounts(session, row.mobile, product=product)
             result = {
                 "verified_token": grant,
                 "accounts": [
@@ -201,7 +208,7 @@ async def verify_phone_otp(payload: PhoneVerify, request: Request) -> dict[str, 
     return result
 
 
-async def _lock_verified_phone(
+async def lock_verified_phone(
     session: AsyncSession, verified_token: str, *, error_code: str
 ) -> PhoneOtp:
     failure = ApiError(error_code, "تأیید شماره منقضی شده است؛ دوباره کد بگیرید.")
@@ -235,7 +242,7 @@ async def change_password(
     principal: UserDep,
 ) -> TokenPair:
     await ratelimit.enforce(f"password-change:{principal.id}", 10, 600)
-    row = await _lock_verified_phone(
+    row = await lock_verified_phone(
         session, payload.verified_token, error_code="password_change_verification_required"
     )
     user = await session.get(User, principal.id, with_for_update=True)
@@ -276,7 +283,7 @@ async def change_password(
 
 async def consume_verified_mobile(session: AsyncSession, verified_token: str, mobile: str) -> None:
     """Spend a /phone/verify grant, proving the caller controls exactly `mobile`."""
-    row = await _lock_verified_phone(
+    row = await lock_verified_phone(
         session, verified_token, error_code="mobile_change_verification_required"
     )
     if row.mobile != mobile:
@@ -293,7 +300,7 @@ async def complete_phone_login(
 ) -> TokenPair:
     await ratelimit.enforce(f"phone-complete:{hash_refresh_token(payload.verified_token)}", 10, 600)
     async with control_session_scope() as session:
-        row = await _lock_verified_phone(session, payload.verified_token, error_code="unauthorized")
+        row = await lock_verified_phone(session, payload.verified_token, error_code="unauthorized")
         accounts = await mobile_accounts(session, row.mobile)
         if accounts:
             chosen = next(

@@ -112,6 +112,7 @@ OVERRIDE_KEYS = (
     "ninerouter_coach_model",
     "ninerouter_coach_prompt",
     "ninerouter_direct_coach_prompt",
+    "jalase_standalone_enabled",
     "meeting_provider",
     "meeting_route",
     "meeting_model",
@@ -253,6 +254,16 @@ async def effective_coach_prompt(session: AsyncSession) -> str:
     if row is not None and row.value.strip():
         return row.value.strip()
     return load_prompt(COACH_PROMPT_VERSION)
+
+
+async def jalase_standalone_enabled(session: AsyncSession) -> bool:
+    """Return whether stand-alone Jalase-Negar sign-up is open (off by default)."""
+    if get_settings().tenant_databases_enabled:
+        async with get_sessionmaker()() as control:
+            row = await control.get(PlatformSetting, "jalase_standalone_enabled")
+    else:
+        row = await session.get(PlatformSetting, "jalase_standalone_enabled")
+    return row is not None and _as_bool(row.value)
 
 
 async def effective_meeting_minutes_prompt(session: AsyncSession) -> str:
@@ -444,6 +455,7 @@ async def effective_models(session: AsyncSession) -> dict[str, str]:
         "ninerouter_coach_model": "",
         "ninerouter_coach_prompt": "",
         "ninerouter_direct_coach_prompt": "",
+        "jalase_standalone_enabled": "false",
         "meeting_provider": "aiservice",
         "meeting_route": "durable",
         "meeting_model": "",
@@ -617,6 +629,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "ninerouter_coach_model": values["ninerouter_coach_model"],
         "ninerouter_coach_prompt": values["ninerouter_coach_prompt"],
         "ninerouter_direct_coach_prompt": values["ninerouter_direct_coach_prompt"],
+        "jalase_standalone_enabled": _as_bool(values["jalase_standalone_enabled"]),
         "meeting_provider": values["meeting_provider"],
         "meeting_route": values["meeting_route"],
         "meeting_model": values["meeting_model"],

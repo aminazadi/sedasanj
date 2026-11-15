@@ -108,6 +108,34 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
     }
   }
 
+  /// Stores the device token of a phone-number (personal) sign-in. The upload
+  /// queue then sends meetings with it exactly like a paired organization.
+  Future<void> savePersonal({
+    required String serverUrl,
+    required PersonalLoginResult login,
+  }) async {
+    final connection = PlatformConnection(
+      serverUrl: serverUrl,
+      userName: login.userName,
+      tenantName: 'حساب شخصی',
+      tokenPrefix: login.tokenPrefix,
+    );
+    final store = await ref.read(connectionStoreProvider.future);
+    await store.save(connection, login.token);
+    state = AsyncData(ConnectionState(connection: connection));
+    if (await ref.read(sendTranscriptEnabledProvider.future)) {
+      final repo = await ref.read(meetingRepositoryProvider.future);
+      await repo.enableSendForUnsent();
+      ref.invalidate(meetingsProvider);
+    }
+    ref.read(uploadQueueProvider.notifier).kick();
+  }
+
+  /// The stand-alone sign-in knows every desktop platform (the pairing API does not).
+  String loginPlatform() => Platform.operatingSystem;
+
+  String deviceLabel() => _deviceLabel();
+
   /// Re-checks the stored token against the server.
   Future<void> recheck() async {
     final current = state.value;

@@ -34,6 +34,7 @@ import Settings from "./pages/Settings";
 import SitePages from "./pages/SitePages";
 import TenantDetailPage from "./pages/TenantDetail";
 import Tenants from "./pages/Tenants";
+import Users from "./pages/Users";
 import TenantDatabases from "./pages/TenantDatabases";
 
 export default function App() {
@@ -54,6 +55,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/tenants" element={<Tenants />} />
+        <Route path="/users" element={<Users />} />
         <Route path="/tenants/:tenantId" element={<TenantDetailPage />} />
         <Route path="/tenant-databases" element={<TenantDatabases />} />
         <Route path="/jobs" element={<Jobs />} />

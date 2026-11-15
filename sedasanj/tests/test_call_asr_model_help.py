@@ -24,7 +24,8 @@ def test_chain_has_one_head() -> None:
     root = VERSIONS.parents[1]
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "alembic"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["0142_call_asr_model_help"]
+    # Later migrations move the head; the chain must stay linear with exactly one head.
+    assert len(ScriptDirectory.from_config(config).get_heads()) == 1
     assert _load("0142_call_asr_model_help.py").down_revision == "0141_tenant_database_help"
 
 

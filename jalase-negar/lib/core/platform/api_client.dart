@@ -56,6 +56,49 @@ class PairResult {
   final String tenantName;
 }
 
+/// Result of the first sign-in step: where to enter the code and how long to wait.
+class OtpRequestResult {
+  const OtpRequestResult({required this.otpId, required this.resendAfter});
+
+  final String otpId;
+  final Duration resendAfter;
+}
+
+/// A signed-in stand-alone (personal) account.
+class PersonalLoginResult {
+  const PersonalLoginResult({
+    required this.token,
+    required this.tokenPrefix,
+    required this.userName,
+    required this.created,
+  });
+
+  final String token;
+  final String tokenPrefix;
+  final String userName;
+  final bool created;
+}
+
+/// Sign-in errors carry a Persian message that already names the next action;
+/// show it as is. 401/403 here mean a wrong code or a closed sign-up, never a
+/// revoked token, so they must not trigger the reconnect flow.
+ApiException mapLoginError(DioException e) {
+  final data = e.response?.data;
+  final status = e.response?.statusCode;
+  if (status != null && data is Map && data['error'] is Map) {
+    final error = data['error'] as Map;
+    final message = error['message']?.toString();
+    if (message != null && message.trim().isNotEmpty) {
+      return ApiException(
+        message: message,
+        code: error['code']?.toString(),
+        statusCode: status,
+      );
+    }
+  }
+  return mapDioError(e);
+}
+
 class RemoteSession {
   const RemoteSession({
     required this.meetingId,
@@ -314,6 +357,77 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       );
     } on DioException catch (e) {
       throw mapDioError(e);
+    }
+  }
+
+  /// Step 1 of phone sign-in: sends the SMS code.
+  Future<OtpRequestResult> requestOtp(String mobile) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/auth/request',
+        data: {'mobile': mobile},
+      );
+      final body = res.data!;
+      return OtpRequestResult(
+        otpId: body['otp_id'] as String,
+        resendAfter: Duration(
+          seconds: (body['resend_after'] as num?)?.toInt() ?? 60,
+        ),
+      );
+    } on DioException catch (e) {
+      throw mapLoginError(e);
+    }
+  }
+
+  /// Step 2: checks the code; returns the short-lived token for step 3.
+  Future<({String token, bool hasAccount})> verifyOtp({
+    required String otpId,
+    required String code,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/auth/verify',
+        data: {'otp_id': otpId, 'code': code},
+      );
+      final body = res.data!;
+      return (
+        token: body['verified_token'] as String,
+        hasAccount: body['has_account'] == true,
+      );
+    } on DioException catch (e) {
+      throw mapLoginError(e);
+    }
+  }
+
+  /// Step 3: signs in (or signs up) and returns the device token.
+  Future<PersonalLoginResult> completeLogin({
+    required String verifiedToken,
+    required String deviceName,
+    required String platform,
+    required String appVersion,
+    String? displayName,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/auth/complete',
+        data: {
+          'verified_token': verifiedToken,
+          if (displayName != null && displayName.trim().isNotEmpty)
+            'display_name': displayName.trim(),
+          'device_name': deviceName,
+          'platform': platform,
+          'app_version': appVersion,
+        },
+      );
+      final body = res.data!;
+      return PersonalLoginResult(
+        token: body['token'] as String,
+        tokenPrefix: (body['token_prefix'] ?? '') as String,
+        userName: ((body['user'] as Map?)?['display_name'] ?? '') as String,
+        created: body['created'] == true,
+      );
+    } on DioException catch (e) {
+      throw mapLoginError(e);
     }
   }
 

@@ -24,7 +24,10 @@ async def mobile_lock(session: AsyncSession, mobile: str) -> None:
     )
 
 
-async def mobile_accounts(session: AsyncSession, mobile: str) -> list[tuple[User, Tenant]]:
+async def mobile_accounts(
+    session: AsyncSession, mobile: str, *, product: str | None = "sedasanj"
+) -> list[tuple[User, Tenant]]:
+    """Accounts of one mobile number; `product=None` returns every product's accounts."""
     digits = func.regexp_replace(
         func.translate(User.mobile_number, "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"),
         "[^0-9]",
@@ -38,6 +41,7 @@ async def mobile_accounts(session: AsyncSession, mobile: str) -> list[tuple[User
             .where(
                 digits.in_([mobile, mobile[1:], "98" + mobile[1:], "0098" + mobile[1:]]),
                 Tenant.status != "deleted",
+                *([Tenant.product == product] if product is not None else []),
             )
             .order_by(User.created_at)
         )

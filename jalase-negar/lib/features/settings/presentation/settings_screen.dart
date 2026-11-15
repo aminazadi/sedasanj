@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
@@ -115,8 +116,14 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                FilledButton.icon(
+                  icon: const Icon(Icons.phone_android),
+                  label: const Text('ورود با شماره موبایل'),
+                  onPressed: () => context.push('/login'),
+                ),
+                const SizedBox(height: 8),
                 if (qrScanSupported) ...[
-                  FilledButton.icon(
+                  OutlinedButton.icon(
                     icon: const Icon(Icons.qr_code_scanner),
                     label: const Text('اسکن QR'),
                     onPressed: () async {

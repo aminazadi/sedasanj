@@ -24,6 +24,7 @@ from app.route_inspection import api_routes, auth_kind, scope_names
 from app.routers import (
     account,
     admin,
+    admin_users,
     ai_instructions,
     assistant,
     assistant_exports,
@@ -38,6 +39,7 @@ from app.routers import (
     ingest,
     integration_api,
     internal_tools,
+    jalase_negar_app,
     jalase_negar_downloads,
     jalase_negar_releases,
     jalase_push,
@@ -408,6 +410,7 @@ def create_app() -> FastAPI:
         meetings,
         ai_instructions,
         module_updates,
+        jalase_negar_app,
         jalase_negar_downloads,
         jalase_negar_releases,
         jalase_push,
@@ -415,6 +418,7 @@ def create_app() -> FastAPI:
         ml_models,
         help,
         site_pages,
+        admin_users,
         admin,
     ):
         app.include_router(module.router)

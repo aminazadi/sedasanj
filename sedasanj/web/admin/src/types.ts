@@ -184,6 +184,7 @@ export interface PlatformSettings {
   ninerouter_coach_model: string;
   ninerouter_coach_prompt: string;
   ninerouter_direct_coach_prompt: string;
+  jalase_standalone_enabled: boolean;
   meeting_provider: "aiservice" | "ninerouter_direct";
   meeting_model: string;
   meeting_block_chars: number;
@@ -241,6 +242,23 @@ export interface ProviderModel {
   model_id: string | null;
   architecture: string | null;
   license: string | null;
+}
+
+export interface UserAdmin {
+  id: string;
+  tenant_id: string;
+  name: string | null;
+  mobile: string | null;
+  email: string;
+  role: string;
+  product: "sedasanj" | "jalase_negar";
+  signup_channel: string | null;
+  tenant_name: string;
+  tenant_status: string;
+  plan_code: string | null;
+  plan_name: string | null;
+  subscription_status: string | null;
+  created_at: string;
 }
 
 export interface Page<T> {

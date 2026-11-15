@@ -56,7 +56,9 @@ async def apply_tax(session: AsyncSession, order: Order, net: int, percent: int)
     return tax
 
 
-async def public_plans(session: AsyncSession) -> list[tuple[Plan, PlanVersion]]:
+async def public_plans(
+    session: AsyncSession, product: str = "sedasanj"
+) -> list[tuple[Plan, PlanVersion]]:
     now = datetime.now(UTC)
     rows = await session.execute(
         select(Plan, PlanVersion)
@@ -64,6 +66,7 @@ async def public_plans(session: AsyncSession) -> list[tuple[Plan, PlanVersion]]:
         .where(
             Plan.active.is_(True),
             Plan.public.is_(True),
+            Plan.product == product,
             PlanVersion.status == "published",
             PlanVersion.effective_at.is_not(None),
             PlanVersion.effective_at <= now,
@@ -79,7 +82,10 @@ async def public_plans(session: AsyncSession) -> list[tuple[Plan, PlanVersion]]:
     return list(versions.values())
 
 
-async def plan_version_by_code(session: AsyncSession, code: str) -> tuple[Plan, PlanVersion]:
+async def plan_version_by_code(
+    session: AsyncSession, code: str, *, product: str | None = "sedasanj"
+) -> tuple[Plan, PlanVersion]:
+    """Current published version of a plan; defaults to SedaSanj plans only."""
     now = datetime.now(UTC)
     row = (
         await session.execute(
@@ -88,6 +94,7 @@ async def plan_version_by_code(session: AsyncSession, code: str) -> tuple[Plan, 
             .where(
                 Plan.code == code,
                 Plan.active.is_(True),
+                *([Plan.product == product] if product is not None else []),
                 PlanVersion.status == "published",
                 PlanVersion.effective_at.is_not(None),
                 PlanVersion.effective_at <= now,

@@ -347,6 +347,7 @@ export default function Settings() {
           ninerouter_coach_model: settings.ninerouter_coach_model,
           ninerouter_direct_coach_prompt: settings.ninerouter_direct_coach_prompt,
           meeting_route: settings.meeting_route,
+          jalase_standalone_enabled: settings.jalase_standalone_enabled,
           meeting_provider: settings.meeting_provider,
           meeting_model: settings.meeting_model,
           meeting_block_chars: settings.meeting_block_chars,
@@ -1115,6 +1116,7 @@ export default function Settings() {
           <h2 className="font-bold text-slate-900">صورت‌جلسهٔ جلسات</h2>
           <p className="mt-1 text-xs leading-6 text-slate-500">اپ جلسه‌نگار فقط متن جلسه را می‌فرستد و صورت‌جلسهٔ حرفه‌ای از روی همان متن ساخته می‌شود. مسیر و مدل آن را اینجا انتخاب کنید؛ پرامپت در برگهٔ «پرامپت‌ها» ویرایش می‌شود.</p>
         </div>
+        <ToggleSwitch checked={settings.jalase_standalone_enabled} onChange={(jalase_standalone_enabled) => setSettings({ ...settings, jalase_standalone_enabled })} label="ثبت‌نام مستقل جلسه‌نگار با شماره موبایل" />
         <div>
           <label className="label">مسیر صورت‌جلسه</label>
           <select className="input mb-2" value={settings.meeting_provider} onChange={(event) => setSettings({ ...settings, meeting_provider: event.target.value as PlatformSettings["meeting_provider"] })}><option value="aiservice">AISERVICE</option><option value="ninerouter_direct">9Router مستقیم</option></select>
