@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../../features/meetings/data/attendee.dart';
@@ -193,6 +195,29 @@ class DocumentDetail {
 /// revoked token (401), which must trigger the reconnect flow.
 ApiException mapMessageError(DioException e) =>
     e.response?.statusCode == 401 ? mapDioError(e) : mapLoginError(e);
+
+/// A failed download has a byte body; decode the JSON error inside it when there is one.
+ApiException _bytesError(DioException e) {
+  final raw = e.response?.data;
+  if (raw is List<int>) {
+    try {
+      final decoded = jsonDecode(utf8.decode(raw));
+      return mapMessageError(
+        DioException(
+          requestOptions: e.requestOptions,
+          response: Response(
+            requestOptions: e.requestOptions,
+            statusCode: e.response?.statusCode,
+            data: decoded,
+          ),
+        ),
+      );
+    } on Object {
+      // Not JSON: fall through to the generic mapping.
+    }
+  }
+  return mapMessageError(e);
+}
 
 DocumentInfo parseDocumentInfo(Map<String, dynamic> body) => DocumentInfo(
   id: body['id'] as String,
@@ -673,6 +698,23 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       );
     } on DioException catch (e) {
       throw mapMessageError(e);
+    }
+  }
+
+  /// The selected version as a `pdf` or `docx` file's bytes.
+  Future<List<int>> exportDocument(String documentId, String format) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        '/v1/jalase-negar/documents/$documentId/export',
+        queryParameters: {'format': format},
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(minutes: 2),
+        ),
+      );
+      return res.data!;
+    } on DioException catch (e) {
+      throw _bytesError(e);
     }
   }
 

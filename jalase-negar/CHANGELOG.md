@@ -2,6 +2,7 @@
 
 ## 2026-11-15 — AMINAZADI
 
+- Added «PDF» and «Word» in the document screen (download icon): the file is fetched from the server and opened in the system share sheet. Unit test passes; NOT tried on a phone, and the files were not opened in a PDF or Word reader.
 - Added sign-in with a phone number (settings → «ورود با شماره موبایل»): mobile → SMS code → name (new numbers only), against `/v1/jalase-negar/auth/*`; the device token is stored like a paired organization's and marked as a personal account. The default server is `https://sedasanj.ir` (override with `--dart-define=SERVER_URL=...`; ⚠ the default is a guess to confirm). Personal accounts show plan and remaining minutes in settings, a «صورت‌جلسه» tab (fetched from the server, not stored offline) and an «اسناد» tab on a sent meeting; disconnecting revokes the token on the server when online.
 - Added documents of admin-defined categories: «ساخت سند در دستهٔ دیگر» opens a picker with thumbnails (several categories at once, the category's input fields, required ones checked before sending); each document shows its progress, can be read, copied, shared, edited (a new version) and made again. The automatic minutes category is not offered in the picker. `flutter test` passes (463) and `flutter analyze` shows only the two older notes; NOT run on a phone or against a real server, and PDF/Word export is not built.
 

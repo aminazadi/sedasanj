@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from app.deps import MeetingsKeyDep, PublicSession, client_ip
 from app.errors import ApiError
 from app.models import (
     ApiKey,
+    JalaseOutputType,
     Meeting,
     MeetingDocument,
     MeetingDocumentVersion,
@@ -33,6 +34,8 @@ from app.security import hash_refresh_token
 from app.services import (
     audit,
     billing,
+    document_docx,
+    document_pdf,
     jalase_accounts,
     jalase_output_types,
     meeting_documents,
@@ -644,3 +647,53 @@ async def delete_document(document_id: UUID, principal: MeetingsKeyDep) -> None:
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
         await session.delete(document)
+
+
+DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+@router.get("/documents/{document_id}/export")
+async def export_document(
+    document_id: UUID,
+    principal: MeetingsKeyDep,
+    export_format: Annotated[Literal["pdf", "docx"], Query(alias="format")] = "pdf",
+) -> Response:
+    """The selected version as a PDF or Word file (private, never cached)."""
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-export:{user_id}", 60, 3600)
+    async with session_scope(tenant_id) as session:
+        document = await _owned_document(session, tenant_id, user_id, document_id)
+        chosen = await _selected_version(session, document_id)
+        if document.status != "done" or chosen is None:
+            raise ApiError(
+                "document_not_found", "سند هنوز آماده نیست؛ پس از ساخت آن را دریافت کنید."
+            )
+        markdown, code, meeting_id = chosen.markdown, document.output_type_code, document.meeting_id
+        meeting = await session.get(Meeting, meeting_id)
+        meeting_title = (meeting.title if meeting else None) or "جلسه"
+    async with control_session_scope() as control:
+        row = (
+            await control.execute(
+                select(JalaseOutputType.title_fa).where(JalaseOutputType.code == code)
+            )
+        ).scalar_one_or_none()
+    kind = row or code
+    first = markdown.strip().splitlines()[0] if markdown.strip() else ""
+    title = first.lstrip("# ").strip() if first.startswith("#") else kind
+    if export_format == "docx":
+        content = document_docx.render(markdown)
+        headers = {
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'attachment; filename="jalase-document-{document_id}.docx"',
+        }
+        return Response(content, media_type=DOCX_TYPE, headers=headers)
+    return await document_pdf.download(
+        document_pdf.Document(
+            title=title,
+            kind=kind,
+            metadata=[("جلسه", meeting_title), ("دسته", kind)],
+            markdown=markdown,
+        ),
+        "jalase-document",
+        document_id,
+    )

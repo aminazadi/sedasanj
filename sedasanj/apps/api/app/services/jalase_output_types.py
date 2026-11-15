@@ -63,6 +63,17 @@ def normalize_input_fields(raw: Any) -> list[dict[str, Any]]:
     return cleaned
 
 
+PROVIDERS = ("aiservice", "ninerouter_direct")
+
+
+def check_model_override(provider: str | None, model: str | None) -> None:
+    """Provider must be one the platform knows; both empty means the platform default."""
+    if provider and provider not in PROVIDERS:
+        raise ApiError("output_type_invalid", "ارائه‌دهندهٔ مدل معتبر نیست.")
+    if model and len(model.strip()) > 120:
+        raise ApiError("output_type_invalid", "نام مدل بیش از حد بلند است.")
+
+
 def check_prompt(mode: str, map_instruction: str, system_prompt: str) -> None:
     if len(system_prompt) > 8000 or len(map_instruction) > 4000:
         raise ApiError("output_type_invalid", "متن پرامپت بیش از حد بلند است.")
@@ -125,6 +136,9 @@ async def save_draft(
             setattr(draft, field, values[field])
     if "input_fields" in values:
         draft.input_fields = normalize_input_fields(values["input_fields"])
+    draft.llm_provider = (draft.llm_provider or "").strip() or None
+    draft.llm_model = (draft.llm_model or "").strip() or None
+    check_model_override(draft.llm_provider, draft.llm_model)
     check_prompt(draft.mode, draft.map_instruction, draft.system_prompt)
     output_type.updated_at = datetime.now(UTC)
     await session.flush()

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/widgets/ss_toast.dart';
@@ -443,6 +445,35 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
     }
   }
 
+  /// Downloads the PDF or Word file and opens the system share sheet with it.
+  Future<void> _export(String format) async {
+    setState(() => _busy = true);
+    try {
+      final client = await ref.read(personalClientProvider.future);
+      final bytes = await client.exportDocument(widget.documentId, format);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/jalase-${widget.documentId}.$format');
+      await file.writeAsBytes(bytes, flush: true);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile(
+              file.path,
+              mimeType: format == 'pdf'
+                  ? 'application/pdf'
+                  : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            ),
+          ],
+          title: widget.title,
+        ),
+      );
+    } on Object catch (e) {
+      if (mounted) SsToastHost.show(context, _errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(documentDetailProvider(widget.documentId));
@@ -476,6 +507,16 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
               icon: const Icon(Icons.ios_share),
               onPressed: () =>
                   SharePlus.instance.share(ShareParams(text: markdown)),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'دریافت فایل',
+              icon: const Icon(Icons.download),
+              enabled: !_busy,
+              onSelected: _export,
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'pdf', child: Text('PDF')),
+                PopupMenuItem(value: 'docx', child: Text('Word')),
+              ],
             ),
             IconButton(
               tooltip: 'ویرایش',

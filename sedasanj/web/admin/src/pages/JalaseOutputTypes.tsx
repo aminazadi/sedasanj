@@ -10,6 +10,7 @@ type Field = { key: string; label_fa: string; type: "text" | "select" | "number"
 type Version = {
   id: string; version: number; state: "draft" | "published" | "superseded"; mode: "summarize" | "transform";
   map_instruction: string; system_prompt: string; input_fields: Field[];
+  llm_provider: string | null; llm_model: string | null;
 };
 type OutputType = {
   id: string; code: string; title_fa: string; description_fa: string; menu_label_fa: string;
@@ -119,6 +120,8 @@ function Editor({ item, media, busy, run, onMediaChange, setError }: {
   const [mapInstruction, setMapInstruction] = useState(base?.map_instruction ?? "");
   const [systemPrompt, setSystemPrompt] = useState(base?.system_prompt ?? "");
   const [fields, setFields] = useState<Field[]>(base?.input_fields ?? []);
+  const [provider, setProvider] = useState(base?.llm_provider ?? "");
+  const [model, setModel] = useState(base?.llm_model ?? "");
   const [progress, setProgress] = useState<number | null>(null);
   const url = `${BASE}/${item.id}`;
 
@@ -141,7 +144,7 @@ function Editor({ item, media, busy, run, onMediaChange, setError }: {
     }
   }
 
-  const draftBody = { mode, map_instruction: mapInstruction, system_prompt: systemPrompt, input_fields: fields };
+  const draftBody = { mode, map_instruction: mapInstruction, system_prompt: systemPrompt, input_fields: fields, llm_provider: provider, llm_model: model };
 
   return <div className="card space-y-5">
     <h2 className="text-lg font-bold">{item.title_fa} <span className="text-sm font-normal text-slate-500" dir="ltr">({item.code})</span></h2>
@@ -185,6 +188,15 @@ function Editor({ item, media, busy, run, onMediaChange, setError }: {
           <textarea className="input min-h-24" maxLength={4000} value={mapInstruction} onChange={(e) => setMapInstruction(e.target.value)}/></label>}
         <label className="block text-sm"><span className="mb-1 block">پرامپت اصلی (نقش و بخش‌های سند؛ قالب JSON را سیستم ثابت اضافه می‌کند)</span>
           <textarea className="input min-h-40" maxLength={8000} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)}/></label>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm"><span className="mb-1 block">ارائه‌دهندهٔ مدل این دسته (خالی = پیش‌فرض جلسات)</span>
+            <select className="input" value={provider} onChange={(e) => setProvider(e.target.value)}>
+              <option value="">پیش‌فرض</option><option value="aiservice">aiservice</option><option value="ninerouter_direct">ninerouter_direct</option>
+            </select></label>
+          <label className="block text-sm"><span className="mb-1 block">نام مدل این دسته (خالی = پیش‌فرض)</span>
+            <input className="input" dir="ltr" maxLength={120} value={model} onChange={(e) => setModel(e.target.value)}/></label>
+        </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between"><h4 className="text-sm font-medium">فیلدهای ورودی (اختیاری، حداکثر ۸)</h4>

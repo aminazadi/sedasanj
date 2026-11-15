@@ -91,6 +91,7 @@ class _Context:
     block_chars: int
     runtime: Any
     provider: str
+    model_override: str | None = None
 
 
 def render_markdown(result: DocumentResult, *, fallback_title: str | None = None) -> str:
@@ -278,6 +279,20 @@ async def _load_context(tenant_id: UUID, document_id: UUID) -> _Context | None:
             document.user_note,
         )
     type_version, field_labels = await _load_type_version(code, version)
+    if type_version.llm_provider:
+        # The type names its own provider: resolve the runtime again for that provider.
+        async with session_scope(tenant_id) as session:
+            runtime = await resolve_provider_settings(
+                session, capability="meeting", provider_override=type_version.llm_provider
+            )
+    if type_version.llm_model:
+        # Same fields the direct-provider route sets for the meeting model.
+        runtime = runtime.model_copy(
+            update={
+                "llm_model": type_version.llm_model,
+                "voicesanj_llm_model": type_version.llm_model,
+            }
+        )
     return _Context(
         document_id=document_id,
         meeting_id=snapshot[0],
@@ -295,7 +310,8 @@ async def _load_context(tenant_id: UUID, document_id: UUID) -> _Context | None:
         org_instructions=org_instructions,
         block_chars=int(models["meeting_block_chars"]),
         runtime=runtime,
-        provider=models["meeting_provider"],
+        provider=type_version.llm_provider or models["meeting_provider"],
+        model_override=type_version.llm_model,
     )
 
 

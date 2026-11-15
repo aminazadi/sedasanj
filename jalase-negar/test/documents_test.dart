@@ -89,6 +89,44 @@ ApiClient _client(List<RequestOptions> seen) {
 }
 
 void main() {
+  test(
+    'export returns the file bytes and decodes a JSON error sent as bytes',
+    () async {
+      final dio = Dio(BaseOptions(baseUrl: 'https://example.test'));
+      dio.httpClientAdapter = _Adapter((o) {
+        if (o.queryParameters['format'] == 'pdf') {
+          return ResponseBody.fromBytes([0x25, 0x50, 0x44, 0x46], 200);
+        }
+        return ResponseBody.fromBytes(
+          utf8.encode(
+            jsonEncode({
+              'error': {
+                'code': 'document_not_found',
+                'message': 'سند هنوز آماده نیست.',
+              },
+            }),
+          ),
+          404,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        );
+      });
+      final api = ApiClient(serverUrl: 'https://example.test', dio: dio);
+      expect(await api.exportDocument('d1', 'pdf'), [0x25, 0x50, 0x44, 0x46]);
+      await expectLater(
+        api.exportDocument('d1', 'docx'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'سند هنوز آماده نیست.',
+          ),
+        ),
+      );
+    },
+  );
+
   test('the catalog keeps thumbnails absolute and fields typed', () async {
     final types = await _client([]).outputTypes();
     expect(types.first.automatic, isTrue);

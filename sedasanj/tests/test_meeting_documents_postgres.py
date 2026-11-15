@@ -118,6 +118,7 @@ async def publish_type(
     mode: str = "summarize",
     map_instruction: str = "خلاصه کن",
     fields: list[dict[str, Any]] | None = None,
+    model: str | None = None,
 ) -> str:
     code = "d_" + uuid4().hex[:8]
     world.codes.append(code)
@@ -135,6 +136,7 @@ async def publish_type(
                 map_instruction=map_instruction if mode == "summarize" else "",
                 system_prompt="تو دستیار آزمایشی هستی.",
                 input_fields=fields or [],
+                llm_model=model,
             ),
             REQUEST,
             world.staff,
@@ -410,3 +412,84 @@ async def test_document_is_pinned_to_its_version_and_cascade_delete(
     await router.delete_document(document_id, who)
     async with db.session_scope(who.tenant_id) as session:
         assert await session.get(MeetingDocument, document_id) is None
+
+
+async def test_a_types_own_model_reaches_the_client_and_bad_providers_are_refused(
+    world: SimpleNamespace, queued: list[UUID], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtimes: list[Any] = []
+    client = FakeClient()
+
+    def capture(runtime: Any, **kwargs: Any) -> FakeClient:
+        runtimes.append(runtime)
+        return client
+
+    monkeypatch.setattr(engine, "build_client", capture)
+    own = await publish_type(world, model="model-for-this-type")
+    plain = await publish_type(world)
+    who, meeting_id = await setup_user(world, ["متن"])
+    out = await router.create_documents(
+        meeting_id,
+        router.DocumentsCreate(
+            items=[router.DocumentItem(output_type=own), router.DocumentItem(output_type=plain)]
+        ),
+        who,
+    )
+    for item in out["items"]:
+        await engine.generate_document(who.tenant_id, UUID(item["id"]))
+    assert runtimes[0].llm_model == "model-for-this-type"
+    assert runtimes[1].llm_model != "model-for-this-type"
+
+    async with db.session_scope(staff=True) as session:
+        row = (
+            await session.execute(
+                text("SELECT id FROM jalase_output_types WHERE code = :c"), {"c": own}
+            )
+        ).scalar_one()
+        with pytest.raises(ApiError) as caught:
+            await admin.save_draft(
+                str(row),
+                admin.DraftUpdate(llm_provider="not-a-provider"),
+                REQUEST,
+                world.staff,
+                session,
+            )
+    assert caught.value.code == "output_type_invalid"
+
+
+async def test_export_gives_a_pdf_and_a_valid_rtl_docx_of_the_selected_version(
+    world: SimpleNamespace, queued: list[UUID], fake: FakeClient
+) -> None:
+    import io
+    import zipfile
+    from xml.etree import ElementTree
+
+    code = await publish_type(world)
+    who, meeting_id = await setup_user(world, ["متن"])
+    out = await router.create_documents(
+        meeting_id, router.DocumentsCreate(items=[router.DocumentItem(output_type=code)]), who
+    )
+    document_id = UUID(out["items"][0]["id"])
+    with pytest.raises(ApiError) as early:  # still queued
+        await router.export_document(document_id, who, "pdf")
+    assert early.value.code == "document_not_found"
+
+    await engine.generate_document(who.tenant_id, document_id)
+    await router.edit_document(
+        document_id, router.DocumentEdit(markdown="# عنوان <b>&\n- مورد ۱\n1. اول"), who
+    )
+    pdf = await router.export_document(document_id, who, "pdf")
+    assert pdf.body.startswith(b"%PDF") and pdf.headers["cache-control"] == "private, no-store"
+
+    word = await router.export_document(document_id, who, "docx")
+    assert word.media_type == router.DOCX_TYPE
+    with zipfile.ZipFile(io.BytesIO(word.body)) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+        ElementTree.fromstring(xml)  # well-formed, so the markup in the text was escaped
+        for name in ("[Content_Types].xml", "word/styles.xml", "_rels/.rels"):
+            ElementTree.fromstring(archive.read(name))
+    assert "<w:bidi/>" in xml and "عنوان &lt;b&gt;&amp;" in xml and "• مورد ۱" in xml
+    with pytest.raises(ApiError) as stranger:
+        other, _ = await setup_user(world, ["متن دیگر"])
+        await router.export_document(document_id, other, "pdf")
+    assert stranger.value.code == "document_not_found"
