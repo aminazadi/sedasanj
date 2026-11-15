@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import session_scope
 from app.deps import StaffDep, StaffSession, SuperAdminDep, client_ip
 from app.errors import ApiError
-from app.models import Plan, PlanVersion, SmsTemplate, Subscription, Tenant, User
+from app.models import JalaseAccountLink, Plan, PlanVersion, SmsTemplate, Subscription, Tenant, User
 from app.routers import admin
 from app.services import assistant_export_renderers, audit, billing, jalase_accounts, sms_notify
 from app.services.call_export import to_jalali
@@ -48,6 +48,7 @@ class UserFilters(BaseModel):
     subscription_status: str | None = Field(default=None, max_length=32)
     created_from: datetime | None = None
     created_to: datetime | None = None
+    linked: bool | None = None
     q: str | None = Field(default=None, max_length=100)
 
 
@@ -58,6 +59,7 @@ def filters_from_query(
     subscription_status: Annotated[str | None, Query(max_length=32)] = None,
     created_from: Annotated[datetime | None, Query()] = None,
     created_to: Annotated[datetime | None, Query()] = None,
+    linked: Annotated[bool | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
 ) -> UserFilters:
     return UserFilters(
@@ -67,6 +69,7 @@ def filters_from_query(
         subscription_status=subscription_status,
         created_from=created_from,
         created_to=created_to,
+        linked=linked,
         q=q,
     )
 
@@ -105,6 +108,16 @@ def users_query(filters: UserFilters) -> Select[Any]:
         stmt = stmt.where(Tenant.product == filters.product)
     if filters.signup_channel:
         stmt = stmt.where(User.signup_channel == filters.signup_channel)
+    if filters.linked is not None:
+        has_link = (
+            select(JalaseAccountLink.id)
+            .where(
+                JalaseAccountLink.personal_user_id == User.id,
+                JalaseAccountLink.status == "active",
+            )
+            .exists()
+        )
+        stmt = stmt.where(has_link if filters.linked else ~has_link)
     if filters.plan_code:
         stmt = stmt.where(Plan.code == filters.plan_code)
     if filters.subscription_status:

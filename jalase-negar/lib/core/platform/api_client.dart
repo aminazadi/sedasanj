@@ -751,6 +751,27 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     }
   }
 
+  /// Copies finished personal meetings (by their server ids) into the
+  /// organization; returns how many were copied now and how many were there.
+  Future<({int imported, int existing})> importToOrganization(
+    String linkId,
+    List<String> remoteMeetingIds,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/link/$linkId/import',
+        data: {'meeting_ids': remoteMeetingIds},
+      );
+      final body = res.data!;
+      return (
+        imported: (body['imported'] as List).length,
+        existing: (body['already_imported'] as List).length,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
   Future<void> unlinkOrganization(String linkId) async {
     try {
       await _dio.delete<Object?>('/v1/jalase-negar/link/$linkId');

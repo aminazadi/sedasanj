@@ -13,6 +13,7 @@ ERROR_STATUS: dict[str, int] = {
     "link_invalid_target": 422,
     "link_already_exists": status.HTTP_409_CONFLICT,
     "link_not_found": status.HTTP_404_NOT_FOUND,
+    "import_document_purged": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "invite_invalid": 422,
     "invite_not_allowed": status.HTTP_409_CONFLICT,
     "site_scripts_invalid": 422,

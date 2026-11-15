@@ -173,6 +173,30 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
     }
   }
 
+  /// Copies the chosen finished meetings into the linked organization.
+  /// Returns a Persian message (success or the next step).
+  Future<String> importMeetings(List<String> remoteMeetingIds) async {
+    final connection = state.value?.connection;
+    final store = await ref.read(connectionStoreProvider.future);
+    final token = await store.token();
+    final link = await store.loadOrg();
+    if (connection == null || token == null || link == null) {
+      return 'ابتدا به یک سازمان وصل شوید.';
+    }
+    try {
+      final result = await ApiClient(
+        serverUrl: connection.serverUrl,
+        token: token,
+      ).importToOrganization(link.linkId, remoteMeetingIds);
+      return '${result.imported} جلسه به سازمان کپی شد'
+          '${result.existing > 0 ? ' (${result.existing} جلسه از قبل آنجا بود)' : ''}.';
+    } on ApiException catch (e) {
+      return e.message;
+    } on Object {
+      return 'کپی انجام نشد؛ اینترنت را بررسی کنید و دوباره تلاش کنید.';
+    }
+  }
+
   /// Revokes the organization key (best effort) and forgets it on this device.
   /// Meetings already sent stay in the organization; unsent ones go back to
   /// the own account.

@@ -78,6 +78,18 @@ void main() {
       if (o.method == 'DELETE') {
         return ResponseBody.fromString('', 204);
       }
+      if (o.path.endsWith('/import')) {
+        return ResponseBody.fromString(
+          jsonEncode({
+            'imported': [],
+            'already_imported': ['r1'],
+          }),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        );
+      }
       return ResponseBody.fromString(
         jsonEncode({
           'link_id': 'l1',
@@ -103,6 +115,13 @@ void main() {
     expect(result.organization, 'سازمان نمونه');
     expect(seen.single.path, '/v1/jalase-negar/link');
     expect(seen.single.data['pairing_code'], 'ABCD1234');
+    final copied = await api.importToOrganization('l1', ['r1']);
+    expect(seen.last.path, '/v1/jalase-negar/link/l1/import');
+    expect(seen.last.data, {
+      'meeting_ids': ['r1'],
+    });
+    expect(copied.imported, 0);
+    expect(copied.existing, 1);
     await api.unlinkOrganization('l1');
     expect(seen.last.path, '/v1/jalase-negar/link/l1');
   });

@@ -29,7 +29,7 @@ type BulkAction = "suspend" | "unsuspend" | "grant_credit" | "sms";
 
 export default function Users() {
   const [limit] = useTablePageSize();
-  const [filters, setFilters] = useUrlParams({ offset: "0", q: "", product: "", channel: "", plan: "", status: "" });
+  const [filters, setFilters] = useUrlParams({ offset: "0", q: "", product: "", channel: "", plan: "", status: "", linked: "" });
   const offset = toOffset(filters.offset);
   const setOffset = (value: number) => setFilters({ offset: String(value) });
   const patch = (value: Partial<typeof filters>) => setFilters({ ...value, offset: "0" });
@@ -47,6 +47,7 @@ export default function Users() {
     if (filters.channel) params.set("signup_channel", filters.channel);
     if (filters.plan) params.set("plan_code", filters.plan);
     if (filters.status) params.set("subscription_status", filters.status);
+    if (filters.linked) params.set("linked", filters.linked);
     return params;
   };
   const users = useResource<Page<UserAdmin>>((signal) => {
@@ -54,19 +55,20 @@ export default function Users() {
     params.set("limit", String(limit));
     params.set("offset", String(offset));
     return request<Page<UserAdmin>>(`/v1/admin/users?${params}`, { signal });
-  }, [offset, limit, filters.q, filters.product, filters.channel, filters.plan, filters.status]);
+  }, [offset, limit, filters.q, filters.product, filters.channel, filters.plan, filters.status, filters.linked]);
   const page = users.data;
-  const hasFilter = Boolean(filters.q || filters.product || filters.channel || filters.plan || filters.status);
+  const hasFilter = Boolean(filters.q || filters.product || filters.channel || filters.plan || filters.status || filters.linked);
 
   const filterBar = useFilterBar({
     hasActive: hasFilter,
-    onClear: () => setFilters({ q: "", product: "", channel: "", plan: "", status: "", offset: "0" }),
+    onClear: () => setFilters({ q: "", product: "", channel: "", plan: "", status: "", linked: "", offset: "0" }),
     fields: [
       { id: "q", label: "جست‌وجوی نام، موبایل یا ایمیل", active: Boolean(filters.q), onRemove: () => patch({ q: "" }), className: "sm:w-64", control: <input className="input" value={filters.q} onChange={(event) => patch({ q: event.target.value })} /> },
       { id: "product", label: "محصول", active: Boolean(filters.product), onRemove: () => patch({ product: "" }), control: <FilterSelect value={filters.product} onChange={(value) => patch({ product: value })} options={Object.entries(PRODUCTS).map(([value, label]) => ({ value, label }))} /> },
       { id: "channel", label: "کانال ثبت‌نام", active: Boolean(filters.channel), onRemove: () => patch({ channel: "" }), control: <FilterSelect value={filters.channel} onChange={(value) => patch({ channel: value })} options={Object.entries(CHANNELS).map(([value, label]) => ({ value, label }))} /> },
       { id: "plan", label: "کد پلن", active: Boolean(filters.plan), onRemove: () => patch({ plan: "" }), className: "sm:w-40", control: <input className="input" dir="ltr" value={filters.plan} onChange={(event) => patch({ plan: event.target.value.trim() })} /> },
       { id: "status", label: "وضعیت اشتراک", active: Boolean(filters.status), onRemove: () => patch({ status: "" }), control: <FilterSelect value={filters.status} onChange={(value) => patch({ status: value })} options={Object.entries(STATUSES).map(([value, label]) => ({ value, label }))} /> },
+      { id: "linked", label: "اتصال به سازمان", active: Boolean(filters.linked), onRemove: () => patch({ linked: "" }), control: <FilterSelect value={filters.linked} onChange={(value) => patch({ linked: value })} options={[{ value: "true", label: "متصل به سازمان" }, { value: "false", label: "بدون اتصال" }]} /> },
     ],
   });
 
@@ -94,6 +96,7 @@ export default function Users() {
     if (filters.channel) filtersBody.signup_channel = filters.channel;
     if (filters.plan) filtersBody.plan_code = filters.plan;
     if (filters.status) filtersBody.subscription_status = filters.status;
+    if (filters.linked) filtersBody.linked = filters.linked;
     return {
       action,
       filters: filtersBody,

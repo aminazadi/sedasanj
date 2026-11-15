@@ -945,6 +945,27 @@ async def create_link(
         )
 
 
+class LinkImport(BaseModel):
+    model_config = {"extra": "forbid"}
+    meeting_ids: list[UUID] = Field(min_length=1, max_length=jalase_links.IMPORT_MAX)
+
+
+@router.post("/link/{link_id}/import")
+async def import_into_link(
+    link_id: UUID, payload: LinkImport, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    """Copy chosen finished personal meetings into the linked organization (originals stay)."""
+    tenant_id, user_id = _personal(principal)
+    async with control_session_scope() as session:
+        return await jalase_links.import_meetings(
+            session,
+            personal_tenant_id=tenant_id,
+            personal_user_id=user_id,
+            link_id=link_id,
+            meeting_ids=payload.meeting_ids,
+        )
+
+
 @router.delete("/link/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_link(link_id: UUID, principal: MeetingsKeyDep) -> Response:
     tenant_id, user_id = _personal(principal)

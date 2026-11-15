@@ -9,19 +9,28 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ApiError
-from app.models import ApiKey, JalaseAccountLink, Tenant
+from app.models import (
+    ApiKey,
+    JalaseAccountLink,
+    Meeting,
+    MeetingDocument,
+    MeetingDocumentVersion,
+    MeetingSegment,
+    Tenant,
+)
 from app.routers.meetings import redeem_pairing_code
 from app.schemas import MeetingPairIn
 from app.services import audit
 
 PRODUCT = "jalase_negar"
+IMPORT_MAX = 50
 
 
 async def link(
@@ -127,3 +136,164 @@ async def revoke(
         action="jalase.link.revoked",
         payload={"link_id": str(link_id)},
     )
+
+
+async def import_meetings(
+    session: AsyncSession,
+    *,
+    personal_tenant_id: UUID,
+    personal_user_id: UUID,
+    link_id: UUID,
+    meeting_ids: list[UUID],
+) -> dict[str, Any]:
+    """Copy finished personal meetings (text, segments, finished documents) into the organization.
+
+    The originals stay.  Importing a meeting twice is harmless: the copy gets a client id derived
+    from the link and the source meeting, so the second attempt is reported as already imported.
+    A meeting with no stored text and no finished document (kept off the server) is refused as a
+    whole, before anything is written.
+    """
+    row = (
+        await session.execute(
+            select(JalaseAccountLink).where(
+                JalaseAccountLink.id == link_id,
+                JalaseAccountLink.personal_tenant_id == personal_tenant_id,
+                JalaseAccountLink.status == "active",
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise ApiError("link_not_found", "این اتصال پیدا نشد یا قبلاً قطع شده است.")
+    ids = list(dict.fromkeys(meeting_ids))[:IMPORT_MAX]
+    meetings = (
+        (
+            await session.execute(
+                select(Meeting).where(
+                    Meeting.tenant_id == personal_tenant_id,
+                    Meeting.owner_user_id == personal_user_id,
+                    Meeting.id.in_(ids),
+                    Meeting.status == "complete",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(meetings) != len(ids):
+        raise ApiError("not_found", "یکی از جلسه‌ها پیدا نشد یا هنوز تمام نشده است.")
+    plan: list[tuple[Meeting, list[MeetingSegment], list[MeetingDocument]]] = []
+    for meeting in meetings:
+        segments = list(
+            (
+                await session.execute(
+                    select(MeetingSegment)
+                    .where(MeetingSegment.meeting_id == meeting.id)
+                    .order_by(MeetingSegment.t_start_ms)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        documents = list(
+            (
+                await session.execute(
+                    select(MeetingDocument).where(
+                        MeetingDocument.meeting_id == meeting.id, MeetingDocument.status == "done"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not segments and not documents:
+            raise ApiError(
+                "import_document_purged",
+                "این جلسه روی سرور متنی ندارد (پاک شده است)؛ آن را از انتخاب خارج کنید.",
+            )
+        plan.append((meeting, segments, documents))
+    imported: list[str] = []
+    existing: list[str] = []
+    for meeting, segments, documents in plan:
+        copy_id = uuid5(link_id, str(meeting.id))
+        try:
+            async with session.begin_nested():
+                copy = Meeting(
+                    tenant_id=row.org_tenant_id,
+                    owner_user_id=row.org_user_id,
+                    client_meeting_id=copy_id,
+                    title=meeting.title,
+                    status="complete",
+                    started_at=meeting.started_at,
+                    ended_at=meeting.ended_at,
+                    duration_ms=meeting.duration_ms,
+                    input_kind="text",
+                    asr_identity=meeting.asr_identity,
+                    progress_pct=100,
+                )
+                session.add(copy)
+                await session.flush()
+                for seg in segments:
+                    session.add(
+                        MeetingSegment(
+                            tenant_id=row.org_tenant_id,
+                            meeting_id=copy.id,
+                            t_start_ms=seg.t_start_ms,
+                            t_end_ms=seg.t_end_ms,
+                            speaker_idx=seg.speaker_idx,
+                            overlap=seg.overlap,
+                            speaker_confidence=seg.speaker_confidence,
+                            source=seg.source,
+                            text=seg.text,
+                        )
+                    )
+                for doc in documents:
+                    new_doc = MeetingDocument(
+                        tenant_id=row.org_tenant_id,
+                        meeting_id=copy.id,
+                        output_type_code=doc.output_type_code,
+                        output_type_version=doc.output_type_version,
+                        input_values=doc.input_values,
+                        user_note=doc.user_note,
+                        status="done",
+                        progress_pct=100,
+                    )
+                    session.add(new_doc)
+                    await session.flush()
+                    versions = (
+                        (
+                            await session.execute(
+                                select(MeetingDocumentVersion).where(
+                                    MeetingDocumentVersion.document_id == doc.id
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    for ver in versions:
+                        session.add(
+                            MeetingDocumentVersion(
+                                tenant_id=row.org_tenant_id,
+                                document_id=new_doc.id,
+                                version=ver.version,
+                                markdown=ver.markdown,
+                                structured=ver.structured,
+                                source=ver.source,
+                                model=ver.model,
+                                provider=ver.provider,
+                                prompt_sha256=ver.prompt_sha256,
+                                is_selected=ver.is_selected,
+                            )
+                        )
+            imported.append(str(meeting.id))
+        except IntegrityError:
+            existing.append(str(meeting.id))
+    await audit.record(
+        session,
+        actor_type="user",
+        actor_id=personal_user_id,
+        tenant_id=personal_tenant_id,
+        action="jalase.link.import",
+        payload={"link_id": str(link_id), "imported": len(imported), "existing": len(existing)},
+    )
+    return {"imported": imported, "already_imported": existing}

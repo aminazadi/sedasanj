@@ -19,11 +19,14 @@ from app.models import (
     JalaseAccountLink,
     Meeting,
     MeetingDocument,
+    MeetingDocumentVersion,
     MeetingPairingCode,
+    MeetingSegment,
     User,
 )
 from app.routers import jalase_org_menu as menu
 from app.routers import meetings as meetings_router
+from app.routers.admin_users import UserFilters, users_query
 from app.schemas import MeetingPairIn
 from app.security import hash_api_key
 from app.services import jalase_accounts, jalase_links, ratelimit
@@ -31,6 +34,8 @@ from app.services import jalase_accounts, jalase_links, ratelimit
 pytestmark = requires_postgres
 
 TABLES = (
+    "meeting_document_versions",
+    "meeting_segments",
     "jalase_menu_hidden",
     "meeting_documents",
     "meetings",
@@ -134,6 +139,20 @@ async def test_linking_gives_an_organization_key_and_is_listed(created: list[UUI
         assert key.kind == "mobile" and key.revoked_at is None
         items = await jalase_links.list_links(session, me[0])
     assert [i["id"] for i in items] == [result["link_id"]]
+    for wanted, expected in ((True, True), (False, False)):
+        async with db.session_scope(staff=True) as session:
+            ids = (
+                (
+                    await session.execute(
+                        users_query(
+                            UserFilters(product="jalase_negar", linked=wanted)
+                        ).with_only_columns(User.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert (me[1] in ids) is expected
 
 
 async def test_a_code_works_once_and_a_second_link_keeps_its_code(created: list[UUID]) -> None:
@@ -269,3 +288,108 @@ async def test_panel_menu_shows_categories_with_documents_and_honours_hiding(
             )  # type: ignore[arg-type]
     async with db.session_scope(org_ids[0]) as session:
         assert [i["code"] for i in (await menu.menu(principal, session))["items"]] == [code]  # type: ignore[arg-type]
+
+
+async def test_import_copies_finished_meetings_once_and_refuses_purged(
+    created: list[UUID],
+) -> None:
+    me = await personal(created)
+    org_ids = await org(created)
+    result = await do_link(me, await code_for(*org_ids))
+    link_id = UUID(str(result["link_id"]))
+    async with db.session_scope(staff=True) as session:
+        code = (
+            await session.execute(
+                text("SELECT code FROM jalase_output_types WHERE code <> 'minutes' LIMIT 1")
+            )
+        ).scalar_one()
+        good = Meeting(
+            tenant_id=me[0],
+            owner_user_id=me[1],
+            client_meeting_id=uuid4(),
+            title="مشاوره",
+            status="complete",
+            started_at=datetime.now(UTC),
+        )
+        purged = Meeting(
+            tenant_id=me[0],
+            owner_user_id=me[1],
+            client_meeting_id=uuid4(),
+            status="complete",
+            started_at=datetime.now(UTC),
+        )
+        session.add_all([good, purged])
+        await session.flush()
+        session.add(
+            MeetingSegment(
+                tenant_id=me[0], meeting_id=good.id, t_start_ms=0, t_end_ms=900, text="سلام"
+            )
+        )
+        doc = MeetingDocument(
+            tenant_id=me[0],
+            meeting_id=good.id,
+            output_type_code=code,
+            output_type_version=1,
+            status="done",
+        )
+        session.add(doc)
+        await session.flush()
+        session.add(
+            MeetingDocumentVersion(
+                tenant_id=me[0],
+                document_id=doc.id,
+                version=1,
+                markdown="# متن",
+                source="model",
+                is_selected=True,
+            )
+        )
+        good_id, purged_id = good.id, purged.id
+
+    async def run(ids: list[UUID]) -> dict[str, object]:
+        async with db.session_scope(staff=True) as session:
+            return await jalase_links.import_meetings(
+                session,
+                personal_tenant_id=me[0],
+                personal_user_id=me[1],
+                link_id=link_id,
+                meeting_ids=ids,
+            )
+
+    with pytest.raises(ApiError) as refused:
+        await run([good_id, purged_id])
+    assert refused.value.code == "import_document_purged"
+    async with db.session_scope(staff=True) as session:
+        copies = (
+            (await session.execute(select(Meeting).where(Meeting.tenant_id == org_ids[0])))
+            .scalars()
+            .all()
+        )
+    assert copies == []  # nothing is written when one meeting is refused
+
+    first = await run([good_id])
+    assert first["imported"] == [str(good_id)]
+    second = await run([good_id])
+    assert second["already_imported"] == [str(good_id)] and second["imported"] == []
+    async with db.session_scope(staff=True) as session:
+        copy = (
+            await session.execute(select(Meeting).where(Meeting.tenant_id == org_ids[0]))
+        ).scalar_one()
+        texts = (
+            (
+                await session.execute(
+                    select(MeetingSegment.text).where(MeetingSegment.meeting_id == copy.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        markdown = (
+            await session.execute(
+                select(MeetingDocumentVersion.markdown).where(
+                    MeetingDocumentVersion.tenant_id == org_ids[0]
+                )
+            )
+        ).scalar_one()
+        original = await session.get(Meeting, good_id)
+    assert texts == ["سلام"] and markdown == "# متن" and original is not None

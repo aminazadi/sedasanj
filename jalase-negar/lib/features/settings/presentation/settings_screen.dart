@@ -12,7 +12,8 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
 import '../../meetings/application/meeting_providers.dart';
-import '../../meetings/data/meeting.dart' show kWorkspaceOrg, kWorkspacePrimary;
+import '../../meetings/data/meeting.dart'
+    show Meeting, MeetingStatus, kWorkspaceOrg, kWorkspacePrimary;
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
 import '../../plans/presentation/plans_screen.dart' show hoursText;
@@ -287,6 +288,37 @@ class _OrgLinkCardState extends ConsumerState<_OrgLinkCard> {
     }
   }
 
+  Future<void> _import() async {
+    final all = await ref.read(meetingsProvider.future);
+    final candidates = [
+      for (final m in all)
+        if (m.status == MeetingStatus.complete &&
+            m.remoteMeetingId != null &&
+            m.workspace == kWorkspacePrimary)
+          m,
+    ];
+    if (!mounted) return;
+    if (candidates.isEmpty) {
+      await SsToastHost.show(
+        context,
+        'جلسهٔ تمام‌شدهٔ شخصی برای کپی وجود ندارد.',
+      );
+      return;
+    }
+    final chosen = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _ImportDialog(meetings: candidates),
+    );
+    if (chosen == null || chosen.isEmpty || !mounted) return;
+    setState(() => _busy = true);
+    final message = await ref
+        .read(connectionControllerProvider.notifier)
+        .importMeetings(chosen);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await SsToastHost.show(context, message);
+  }
+
   Future<void> _unlink() async {
     setState(() => _busy = true);
     await ref.read(connectionControllerProvider.notifier).unlinkOrganization();
@@ -344,11 +376,68 @@ class _OrgLinkCardState extends ConsumerState<_OrgLinkCard> {
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton(
+                  onPressed: _busy ? null : _import,
+                  child: const Text('کپی جلسه‌های شخصی به سازمان'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
                   onPressed: _busy ? null : _unlink,
                   child: const Text('قطع اتصال از سازمان'),
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _ImportDialog extends StatefulWidget {
+  const _ImportDialog({required this.meetings});
+
+  final List<Meeting> meetings;
+
+  @override
+  State<_ImportDialog> createState() => _ImportDialogState();
+}
+
+class _ImportDialogState extends State<_ImportDialog> {
+  final _picked = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('کپی جلسه‌ها به سازمان'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Text(
+              'اصل جلسه در حساب شخصی می‌ماند. جلسه‌ای که روی سرور پاک شده کپی نمی‌شود.',
+            ),
+            for (final m in widget.meetings)
+              CheckboxListTile(
+                value: _picked.contains(m.remoteMeetingId),
+                title: Text(m.title),
+                onChanged: (on) => setState(() {
+                  final id = m.remoteMeetingId!;
+                  on == true ? _picked.add(id) : _picked.remove(id);
+                }),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('انصراف'),
+        ),
+        FilledButton(
+          onPressed: _picked.isEmpty
+              ? null
+              : () => Navigator.pop(context, _picked.toList()),
+          child: const Text('کپی'),
+        ),
+      ],
     );
   }
 }

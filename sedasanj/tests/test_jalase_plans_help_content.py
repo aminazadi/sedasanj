@@ -63,3 +63,13 @@ def test_link_codes_have_statuses_and_a_safe_article() -> None:
     assert set(ERROR_STATUS) >= codes
     cleaned, plain = sanitize_help_html(module.BODY)
     assert "<ol>" in cleaned and all(code in plain for code in codes)
+
+
+def test_import_code_has_a_status_and_a_safe_help_paragraph() -> None:
+    from app.errors import ERROR_STATUS
+
+    module = _load("0156_jalase_import_help")
+    assert module.down_revision == "0155_jalase_links_help"
+    assert module.CODE in ERROR_STATUS
+    cleaned, plain = sanitize_help_html(module.EXTRA)
+    assert module.CODE in plain and "<script" not in cleaned
