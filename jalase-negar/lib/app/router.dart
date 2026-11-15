@@ -16,6 +16,8 @@ import '../features/onboarding/tour_step.dart';
 import '../features/people/presentation/enroll_screen.dart';
 import '../features/people/presentation/new_person_screen.dart';
 import '../features/people/presentation/people_screen.dart';
+import '../features/plans/presentation/plans_screen.dart';
+import '../features/plans/presentation/progress_screen.dart';
 import '../features/people/presentation/person_screen.dart';
 import '../features/recording/presentation/recording_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -60,6 +62,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             IntroScreen(replay: state.uri.queryParameters['replay'] == '1'),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(path: '/plans', builder: (context, state) => const PlansScreen()),
+      GoRoute(
+        path: '/progress',
+        builder: (context, state) => const ProgressScreen(),
+      ),
       GoRoute(
         path: '/permissions',
         builder: (context, state) => const PermissionsScreen(),

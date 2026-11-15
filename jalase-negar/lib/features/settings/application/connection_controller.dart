@@ -10,6 +10,7 @@ import '../../../core/platform/connection_store.dart';
 import '../../../core/platform/platform_config.dart';
 import '../../../core/providers.dart';
 import '../../meetings/application/meeting_providers.dart';
+import '../../plans/data/billing_models.dart';
 import '../../recording/application/live_engine_provider.dart';
 import '../../upload/upload_controller.dart';
 
@@ -267,3 +268,26 @@ final documentDetailProvider = FutureProvider.autoDispose
       final client = await ref.watch(personalClientProvider.future);
       return client.getDocument(documentId);
     });
+
+/// Hours left, plans and token packs of the personal account.
+final usageProvider = FutureProvider.autoDispose<UsageInfo>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).usage();
+});
+
+final plansProvider = FutureProvider.autoDispose<PlansResult>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).plans();
+});
+
+final tokenPackagesProvider = FutureProvider.autoDispose<List<PackInfo>>((
+  ref,
+) async {
+  return (await ref.watch(personalClientProvider.future)).tokenPackages();
+});
+
+final progressProvider = FutureProvider.autoDispose<ProgressInfo>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).progress();
+});
+
+final inviteProvider = FutureProvider.autoDispose<InviteInfo>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).invite();
+});

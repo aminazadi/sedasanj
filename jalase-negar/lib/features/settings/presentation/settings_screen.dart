@@ -10,9 +10,11 @@ import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
+import '../../../core/utils/format.dart';
 import '../../meetings/application/meeting_providers.dart';
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
+import '../../plans/presentation/plans_screen.dart' show hoursText;
 import '../../push/push_host.dart';
 import '../../recording/application/live_engine_provider.dart';
 import '../../updates/presentation/update_check_card.dart';
@@ -331,15 +333,43 @@ class _PersonalUsageRows extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(personalProfileProvider);
     return profile.when(
-      loading: () => const _Row('دقیقهٔ باقی‌مانده', '…'),
-      error: (_, _) => const _Row('دقیقهٔ باقی‌مانده', 'نامشخص'),
-      data: (p) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (p.planName != null) _Row('پلن', p.planName!),
-          _Row('دقیقهٔ باقی‌مانده', '${p.remainingSeconds ~/ 60}'),
-        ],
-      ),
+      loading: () => const _Row('ساعت باقی‌مانده', '…'),
+      error: (_, _) => const _Row('ساعت باقی‌مانده', 'نامشخص'),
+      data: (p) {
+        final usage = p.usage;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (p.planName != null) _Row('پلن', p.planName!),
+            _Row(
+              'ساعت باقی‌مانده',
+              usage == null
+                  ? '${toPersianDigits('${p.remainingSeconds ~/ 60}')} دقیقه'
+                  : usage.unlimited
+                  ? 'نامحدود'
+                  : 'حدود ${hoursText(usage.remainingHours)} ساعت',
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => context.push('/plans'),
+                    child: const Text('پلن و مصرف'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => context.push('/progress'),
+                    child: const Text('پیشرفت و دعوت'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

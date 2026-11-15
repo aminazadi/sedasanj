@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../../features/meetings/data/attendee.dart';
 import '../../features/meetings/data/meeting.dart';
+import '../../features/plans/data/billing_models.dart';
 import '../../features/people/data/speaker_payload.dart';
 import 'speaker_api.dart';
 
@@ -115,8 +116,10 @@ class PersonalProfile {
     required this.remainingSeconds,
     this.planName,
     this.monthlyMinutes,
+    this.usage,
   });
 
+  final UsageInfo? usage;
   final int remainingSeconds;
   final String? planName;
   final int? monthlyMinutes;
@@ -581,13 +584,126 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       final res = await _dio.get<Map<String, dynamic>>('/v1/jalase-negar/me');
       final body = res.data!;
       final plan = body['plan'] as Map?;
+      final usage = body['usage'];
       return PersonalProfile(
         remainingSeconds: (body['remaining_seconds'] as num?)?.toInt() ?? 0,
         planName: plan?['name'] as String?,
         monthlyMinutes: (plan?['monthly_minutes'] as num?)?.toInt(),
+        usage: usage is Map<String, dynamic> ? UsageInfo.fromJson(usage) : null,
       );
     } on DioException catch (e) {
       throw mapDioError(e);
+    }
+  }
+
+  /// Hours left this month and bought or gift hours (personal accounts).
+  Future<UsageInfo> usage() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/usage',
+      );
+      return UsageInfo.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<PlansResult> plans() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/plans',
+      );
+      return PlansResult.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<List<PackInfo>> tokenPackages() async {
+    try {
+      final res = await _dio.get<List<dynamic>>(
+        '/v1/jalase-negar/token-packages',
+      );
+      return [
+        for (final raw in res.data!)
+          PackInfo.fromJson(raw as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Creates the order for a plan (`planCode`) or a token pack (`packageId`), then returns the
+  /// payment page address and the order id. `idempotencyKey` makes a retry reuse the order.
+  Future<({String orderId, String payUrl})> startPurchase({
+    String? planCode,
+    String? packageId,
+    required String idempotencyKey,
+  }) async {
+    assert((planCode == null) != (packageId == null));
+    try {
+      final created = await _dio.post<Map<String, dynamic>>(
+        planCode != null
+            ? '/v1/jalase-negar/orders'
+            : '/v1/jalase-negar/token-orders',
+        data: planCode != null
+            ? {'plan_code': planCode}
+            : {'package_id': packageId},
+        options: Options(headers: {'Idempotency-Key': idempotencyKey}),
+      );
+      final orderId = created.data!['id'] as String;
+      final paid = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/orders/$orderId/pay',
+        data: const <String, Object?>{},
+      );
+      return (orderId: orderId, payUrl: paid.data!['redirect_url'] as String);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<OrderStatus> orderStatus(String orderId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/orders/$orderId',
+      );
+      return OrderStatus(status: (res.data!['status'] ?? '') as String);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Level, badges and gift allowance; the server also awards any badge just reached.
+  Future<ProgressInfo> progress() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/progress',
+      );
+      return ProgressInfo.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<InviteInfo> invite() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/invite',
+      );
+      return InviteInfo.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<void> redeemInvite(String code) async {
+    try {
+      await _dio.post<Object?>(
+        '/v1/jalase-negar/invite/redeem',
+        data: {'code': code.trim()},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
     }
   }
 
