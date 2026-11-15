@@ -2,25 +2,48 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import control_session_scope, session_scope
 from app.deps import MeetingsKeyDep, PublicSession, client_ip
 from app.errors import ApiError
-from app.models import ApiKey, Meeting, Plan, PlanVersion, Subscription, Tenant, User
+from app.models import (
+    ApiKey,
+    Meeting,
+    MeetingDocument,
+    MeetingDocumentVersion,
+    MeetingSegment,
+    Plan,
+    PlanVersion,
+    Subscription,
+    Tenant,
+    User,
+)
 from app.routers import phone_auth
 from app.routers.meetings import _minutes_markdown, _minutes_out, _selected_minutes
 from app.security import hash_refresh_token
-from app.services import audit, billing, jalase_accounts, jalase_output_types, platform, ratelimit
+from app.services import (
+    audit,
+    billing,
+    jalase_accounts,
+    jalase_output_types,
+    meeting_documents,
+    platform,
+    ratelimit,
+)
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.phone_identity import mobile_accounts, normalize_mobile
+from app.services.queue import JOB_MEETING_DOCUMENT, QUEUE_MEETING, get_queue
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/jalase-negar", tags=["jalase-negar-app"])
 
 Platform = Literal["android", "ios", "windows", "macos", "linux", "web"]
@@ -272,3 +295,352 @@ async def output_types(principal: MeetingsKeyDep) -> dict[str, object]:
     assert principal.tenant_id is not None
     async with control_session_scope() as session:
         return {"items": await jalase_output_types.published_catalog(session)}
+
+
+class DocumentItem(BaseModel):
+    output_type: str = Field(min_length=2, max_length=40)
+    input_values: dict[str, str] = Field(default_factory=dict)
+    note: str = Field(default="", max_length=500)
+
+
+class DocumentsCreate(BaseModel):
+    items: list[DocumentItem] = Field(min_length=1, max_length=5)
+
+
+class DocumentRegenerate(BaseModel):
+    input_values: dict[str, str] | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+class DocumentEdit(BaseModel):
+    markdown: str = Field(min_length=1, max_length=200_000)
+
+
+MAX_DOCUMENT_VERSIONS = 50
+
+
+def _personal(principal: MeetingsKeyDep) -> tuple[UUID, UUID]:
+    if principal.tenant_id is None or principal.user_id is None:
+        raise ApiError(
+            "forbidden",
+            "این بخش فقط برای حساب شخصی جلسه‌نگار است؛ با شمارهٔ موبایل وارد شوید.",
+        )
+    return principal.tenant_id, principal.user_id
+
+
+def _document_out(document: MeetingDocument, selected: int | None = None) -> dict[str, object]:
+    return {
+        "id": str(document.id),
+        "meeting_id": str(document.meeting_id),
+        "output_type": document.output_type_code,
+        "output_type_version": document.output_type_version,
+        "status": document.status,
+        "progress_pct": document.progress_pct,
+        "error_code": document.error_code,
+        "input_values": document.input_values,
+        "note": document.user_note,
+        "selected_version": selected,
+        "updated_at": document.updated_at,
+    }
+
+
+async def _enqueue_document(tenant_id: UUID, document_id: UUID) -> None:
+    # A lost job is picked up by the worker's reconciler a few minutes later.
+    try:
+        await get_queue().enqueue(
+            QUEUE_MEETING,
+            JOB_MEETING_DOCUMENT,
+            {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+            job_id=f"meeting-doc:{document_id}:{uuid4().hex[:8]}",
+        )
+    except Exception:  # noqa: BLE001 - never fail the request over the queue
+        logger.warning("meeting document enqueue failed", exc_info=True)
+
+
+async def _owned_meeting(
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, meeting_id: UUID
+) -> Meeting:
+    meeting = (
+        await session.execute(
+            select(Meeting).where(
+                Meeting.id == meeting_id,
+                Meeting.tenant_id == tenant_id,
+                Meeting.owner_user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if meeting is None:
+        raise ApiError("meeting_not_found", "جلسه پیدا نشد.")
+    return meeting
+
+
+async def _owned_document(
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, document_id: UUID, *, lock: bool = False
+) -> MeetingDocument:
+    statement = (
+        select(MeetingDocument)
+        .join(Meeting, Meeting.id == MeetingDocument.meeting_id)
+        .where(
+            MeetingDocument.id == document_id,
+            MeetingDocument.tenant_id == tenant_id,
+            Meeting.owner_user_id == user_id,
+        )
+    )
+    if lock:
+        statement = statement.with_for_update(of=MeetingDocument)
+    document = (await session.execute(statement)).scalar_one_or_none()
+    if document is None:
+        raise ApiError("document_not_found", "سند پیدا نشد.")
+    return document
+
+
+async def _selected_version(
+    session: AsyncSession, document_id: UUID
+) -> MeetingDocumentVersion | None:
+    return (
+        await session.execute(
+            select(MeetingDocumentVersion).where(
+                MeetingDocumentVersion.document_id == document_id,
+                MeetingDocumentVersion.is_selected.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+@router.post("/meetings/{meeting_id}/documents", status_code=status.HTTP_201_CREATED)
+async def create_documents(
+    meeting_id: UUID, payload: DocumentsCreate, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    """Start one document per chosen output type; asking again for a type returns its document."""
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-doc:{user_id}", 30, 3600)
+    codes = [item.output_type for item in payload.items]
+    if len(set(codes)) != len(codes):
+        raise ApiError("document_input_invalid", "یک دسته را فقط یک بار انتخاب کنید.")
+    prepared: list[tuple[DocumentItem, int, dict[str, str]]] = []
+    async with control_session_scope() as control:
+        for item in payload.items:
+            output_type, version = await jalase_output_types.published_version(
+                control, item.output_type
+            )
+            if output_type.builtin:
+                raise ApiError(
+                    "document_input_invalid",
+                    "صورت‌جلسه به‌صورت خودکار ساخته می‌شود؛ آن را در فهرست انتخاب نکنید.",
+                )
+            values = jalase_output_types.validate_input_values(
+                version.input_fields, item.input_values
+            )
+            prepared.append((item, version.version, values))
+    queued: list[UUID] = []
+    async with session_scope(tenant_id) as session:
+        await _owned_meeting(session, tenant_id, user_id, meeting_id)
+        has_text = (
+            await session.execute(
+                select(MeetingSegment.id).where(MeetingSegment.meeting_id == meeting_id).limit(1)
+            )
+        ).first()
+        if has_text is None:
+            raise ApiError(
+                "meeting_transcript_missing",
+                "متنی برای این جلسه به سرور نرسیده است؛ در اپ «ارسال متن این جلسه» را بزنید.",
+            )
+        out: list[dict[str, object]] = []
+        for item, version_number, values in prepared:
+            document = (
+                await session.execute(
+                    select(MeetingDocument)
+                    .where(
+                        MeetingDocument.meeting_id == meeting_id,
+                        MeetingDocument.output_type_code == item.output_type,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if document is None:
+                document = MeetingDocument(
+                    tenant_id=tenant_id,
+                    meeting_id=meeting_id,
+                    output_type_code=item.output_type,
+                    output_type_version=version_number,
+                    input_values=values,
+                    user_note=item.note.strip(),
+                )
+                session.add(document)
+                await session.flush()
+                queued.append(document.id)
+            elif document.status == "failed":
+                document.output_type_version = version_number
+                document.input_values = values
+                document.user_note = item.note.strip()
+                await meeting_documents.reopen(session, document)
+                queued.append(document.id)
+            selected = await _selected_version(session, document.id)
+            out.append(_document_out(document, selected.version if selected else None))
+    for document_id in queued:
+        await _enqueue_document(tenant_id, document_id)
+    return {"items": out}
+
+
+@router.get("/meetings/{meeting_id}/documents")
+async def list_documents(meeting_id: UUID, principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        await _owned_meeting(session, tenant_id, user_id, meeting_id)
+        rows = (
+            (
+                await session.execute(
+                    select(MeetingDocument)
+                    .where(MeetingDocument.meeting_id == meeting_id)
+                    .order_by(MeetingDocument.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        items = []
+        for document in rows:
+            selected = await _selected_version(session, document.id)
+            items.append(_document_out(document, selected.version if selected else None))
+        return {"items": items}
+
+
+@router.get("/documents/{document_id}")
+async def get_document(document_id: UUID, principal: MeetingsKeyDep) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        document = await _owned_document(session, tenant_id, user_id, document_id)
+        versions = (
+            (
+                await session.execute(
+                    select(MeetingDocumentVersion)
+                    .where(MeetingDocumentVersion.document_id == document_id)
+                    .order_by(MeetingDocumentVersion.version.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        chosen = next((v for v in versions if v.is_selected), None)
+        return {
+            **_document_out(document, chosen.version if chosen else None),
+            "markdown": chosen.markdown if chosen else None,
+            "versions": [
+                {
+                    "version": v.version,
+                    "source": v.source,
+                    "selected": v.is_selected,
+                    "created_at": v.created_at,
+                }
+                for v in versions
+            ],
+        }
+
+
+async def _new_version_count(session: AsyncSession, document_id: UUID) -> int:
+    return int(
+        (
+            await session.execute(
+                select(func.coalesce(func.max(MeetingDocumentVersion.version), 0)).where(
+                    MeetingDocumentVersion.document_id == document_id
+                )
+            )
+        ).scalar_one()
+    )
+
+
+@router.patch("/documents/{document_id}")
+async def edit_document(
+    document_id: UUID, payload: DocumentEdit, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    """Save the user's edit as a new selected version; earlier versions stay."""
+    tenant_id, user_id = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
+        if document.status != "done":
+            raise ApiError(
+                "document_input_invalid", "سند هنوز آماده نیست؛ پس از ساخت آن را ویرایش کنید."
+            )
+        latest = await _new_version_count(session, document_id)
+        if latest >= MAX_DOCUMENT_VERSIONS:
+            raise ApiError(
+                "document_input_invalid",
+                "تعداد نسخه‌های این سند به سقف رسیده است؛ سند را دوباره بسازید.",
+            )
+        await session.execute(
+            update(MeetingDocumentVersion)
+            .where(MeetingDocumentVersion.document_id == document_id)
+            .values(is_selected=False)
+        )
+        session.add(
+            MeetingDocumentVersion(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                version=latest + 1,
+                markdown=payload.markdown.strip() + "\n",
+                source="user_edit",
+                is_selected=True,
+            )
+        )
+        document.updated_at = datetime.now(UTC)
+        return {"version": latest + 1}
+
+
+@router.post("/documents/{document_id}/versions/{version}/select")
+async def select_document_version(
+    document_id: UUID, version: int, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    tenant_id, user_id = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        await _owned_document(session, tenant_id, user_id, document_id, lock=True)
+        target = await session.get(MeetingDocumentVersion, (document_id, version))
+        if target is None:
+            raise ApiError("document_not_found", "این نسخه پیدا نشد.")
+        await session.execute(
+            update(MeetingDocumentVersion)
+            .where(MeetingDocumentVersion.document_id == document_id)
+            .values(is_selected=False)
+        )
+        target.is_selected = True
+        return {"version": version}
+
+
+@router.post("/documents/{document_id}/regenerate")
+async def regenerate_document(
+    document_id: UUID, payload: DocumentRegenerate, principal: MeetingsKeyDep
+) -> dict[str, object]:
+    """Make a new model version with the type's current published prompt."""
+    tenant_id, user_id = _personal(principal)
+    await ratelimit.enforce(f"jn-doc:{user_id}", 30, 3600)
+    async with session_scope(tenant_id) as session:
+        document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
+        if document.status in ("queued", "running"):
+            raise ApiError("document_input_invalid", "این سند در حال ساخت است؛ کمی صبر کنید.")
+        code = document.output_type_code
+    async with control_session_scope() as control:
+        _type, version = await jalase_output_types.published_version(control, code)
+        values = (
+            jalase_output_types.validate_input_values(version.input_fields, payload.input_values)
+            if payload.input_values is not None
+            else None
+        )
+        version_number = version.version
+    async with session_scope(tenant_id) as session:
+        document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
+        document.output_type_version = version_number
+        if values is not None:
+            document.input_values = values
+        if payload.note is not None:
+            document.user_note = payload.note.strip()
+        await meeting_documents.reopen(session, document)
+        out = _document_out(document)
+    await _enqueue_document(tenant_id, document_id)
+    return out
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(document_id: UUID, principal: MeetingsKeyDep) -> None:
+    tenant_id, user_id = _personal(principal)
+    async with session_scope(tenant_id) as session:
+        document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
+        await session.delete(document)

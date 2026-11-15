@@ -17,9 +17,10 @@ from app.db import dispose_engine, session_scope
 from app.errors import ApiError
 from app.logging import configure_logging, log_context
 from app.metrics import meeting_failures_total, start_metrics_server
-from app.models import Meeting, MeetingChunk, MeetingMinutes, Tenant
+from app.models import Meeting, MeetingChunk, MeetingDocument, MeetingMinutes, Tenant
 from app.services import queue
 from app.services.meeting_audio import assemble_meeting_audio
+from app.services.meeting_documents import DocumentRetryable, generate_document
 from app.services.meeting_minutes import MinutesRetryable, generate_minutes
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,18 @@ async def reanalyze_meeting_minutes(ctx: dict[str, Any], payload: dict[str, Any]
             tenant_id, meeting_id, version, final_attempt=attempt >= MAX_TRIES
         )
     except MinutesRetryable as exc:
+        raise Retry(defer=RETRY_DELAY_SECONDS * attempt) from exc
+
+
+async def generate_meeting_document_job(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
+    """Build one version of a document (an output type applied to a meeting's text)."""
+    tenant_id = UUID(str(payload["tenant_id"]))
+    document_id = UUID(str(payload["document_id"]))
+    attempt = int(ctx.get("job_try", 1))
+    log_context(tenant_id=str(tenant_id))
+    try:
+        return await generate_document(tenant_id, document_id, final_attempt=attempt >= MAX_TRIES)
+    except DocumentRetryable as exc:
         raise Retry(defer=RETRY_DELAY_SECONDS * attempt) from exc
 
 
@@ -98,6 +111,37 @@ async def requeue_stale_minutes() -> int:
     return queued
 
 
+async def requeue_stale_documents() -> int:
+    """Queue documents that are waiting or running without a live job; returns the count."""
+    cutoff = datetime.now(UTC) - STALE_AFTER
+    async with session_scope(None, staff=True) as session:
+        tenant_ids = list((await session.execute(select(Tenant.id))).scalars().all())
+    queued = 0
+    for tenant_id in tenant_ids:
+        async with session_scope(tenant_id) as session:
+            document_ids = list(
+                (
+                    await session.execute(
+                        select(MeetingDocument.id).where(
+                            MeetingDocument.status.in_(("queued", "running")),
+                            MeetingDocument.updated_at < cutoff,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        for document_id in document_ids:
+            await queue.get_queue().enqueue(
+                queue.QUEUE_MEETING,
+                queue.JOB_MEETING_DOCUMENT,
+                {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+                job_id=f"meeting-doc:{document_id}:reconcile:{int(cutoff.timestamp()) // 300}",
+            )
+            queued += 1
+    return queued
+
+
 async def requeue_unassembled_audio() -> int:
     """Queue the audio join for text meetings whose chunks were never joined."""
     cutoff = datetime.now(UTC) - STALE_AFTER
@@ -138,7 +182,11 @@ async def requeue_unassembled_audio() -> int:
 
 async def reconciler_cron(ctx: dict[str, Any]) -> str:
     try:
-        queued = await requeue_stale_minutes() + await requeue_unassembled_audio()
+        queued = (
+            await requeue_stale_minutes()
+            + await requeue_unassembled_audio()
+            + await requeue_stale_documents()
+        )
     except Exception:  # noqa: BLE001 - the next tick retries
         logger.warning("meeting reconciler failed", exc_info=True)
         return "failed"
@@ -166,6 +214,7 @@ class WorkerSettings:
     # Handler names must match the JOB_* constants the API enqueues.
     functions = [
         func(reanalyze_meeting_minutes, name=queue.JOB_MEETING_MINUTES),
+        func(generate_meeting_document_job, name=queue.JOB_MEETING_DOCUMENT),
         func(assemble_meeting_audio_job, name=queue.JOB_MEETING_AUDIO),
         func(transcribe_meeting_chunk, name=queue.JOB_MEETING_CHUNK),
     ]

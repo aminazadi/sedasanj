@@ -373,6 +373,7 @@ def test_worker_handlers_match_the_names_the_api_enqueues() -> None:
         queue.JOB_MEETING_MINUTES,
         queue.JOB_MEETING_AUDIO,
         queue.JOB_MEETING_CHUNK,
+        queue.JOB_MEETING_DOCUMENT,
     }
 
 
@@ -527,3 +528,34 @@ def test_wav_helpers_join_chunks_into_one_canonical_wav() -> None:
     assert struct.unpack_from("<I", header, 40)[0] == len(first) + len(second)
     with __import__("pytest").raises(ValueError):
         wav_data(b"not a wav")
+
+
+@pytest.mark.asyncio
+async def test_document_job_retries_transient_failures_and_passes_the_final_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import uuid4
+
+    from arq import Retry
+
+    from app.services.meeting_documents import DocumentRetryable
+    from worker_meeting import main as worker
+
+    seen: list[bool] = []
+
+    async def fake(tenant_id: object, document_id: object, *, final_attempt: bool) -> str:
+        seen.append(final_attempt)
+        if not final_attempt:
+            raise DocumentRetryable("provider_timeout")
+        return "complete"
+
+    monkeypatch.setattr(worker, "generate_document", fake)
+    payload = {"tenant_id": str(uuid4()), "document_id": str(uuid4())}
+    with pytest.raises(Retry) as caught:
+        await worker.generate_meeting_document_job({"job_try": 1}, payload)
+    assert caught.value.defer_score == worker.RETRY_DELAY_SECONDS * 1000
+    assert (
+        await worker.generate_meeting_document_job({"job_try": worker.MAX_TRIES}, payload)
+        == "complete"
+    )
+    assert seen == [False, True]

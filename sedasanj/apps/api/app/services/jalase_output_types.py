@@ -184,6 +184,7 @@ async def published_catalog(session: AsyncSession) -> list[dict[str, Any]]:
             "menu_label": output_type.menu_label_fa,
             "thumbnail_url": thumbnail_url(output_type.thumbnail_media_id),
             "mode": version.mode,
+            "automatic": output_type.builtin,
             "version": version.version,
             "input_fields": version.input_fields,
         }
@@ -200,3 +201,56 @@ async def next_sort_order(session: AsyncSession) -> int:
         await session.execute(select(func.coalesce(func.max(JalaseOutputType.sort_order), 0)))
     ).scalar_one()
     return int(top) + 10
+
+
+def validate_input_values(fields: list[dict[str, Any]], raw: Any) -> dict[str, str]:
+    """Check what the user typed against the type's fields; returns the cleaned values.
+
+    Unknown keys are rejected so nothing the form does not define reaches the prompt.
+    """
+    values = raw if isinstance(raw, dict) else {}
+    known = {field["key"]: field for field in fields}
+    extra = set(values) - set(known)
+    if extra:
+        raise ApiError("document_input_invalid", "فیلد ناشناخته در ورودی سند فرستاده شده است.")
+    cleaned: dict[str, str] = {}
+    for key, field in known.items():
+        value = values.get(key)
+        text_value = "" if value is None else str(value).strip()
+        if not text_value:
+            if field.get("required"):
+                raise ApiError("document_input_invalid", f"«{field['label_fa']}» را وارد کنید.")
+            continue
+        if len(text_value) > int(field.get("max_len", 200)):
+            raise ApiError("document_input_invalid", f"«{field['label_fa']}» بیش از حد بلند است.")
+        if field["type"] == "select" and text_value not in field.get("options", []):
+            raise ApiError("document_input_invalid", f"«{field['label_fa']}» یکی از گزینه‌ها نیست.")
+        if field["type"] == "number":
+            try:
+                float(text_value)
+            except ValueError as exc:
+                raise ApiError(
+                    "document_input_invalid", f"«{field['label_fa']}» باید عدد باشد."
+                ) from exc
+        cleaned[key] = text_value
+    return cleaned
+
+
+async def published_version(
+    session: AsyncSession, code: str
+) -> tuple[JalaseOutputType, JalaseOutputTypeVersion]:
+    """The type and its published version, or `output_type_not_found` (drafts are invisible)."""
+    row = (
+        await session.execute(
+            select(JalaseOutputType, JalaseOutputTypeVersion)
+            .join(
+                JalaseOutputTypeVersion,
+                (JalaseOutputTypeVersion.output_type_id == JalaseOutputType.id)
+                & (JalaseOutputTypeVersion.state == "published"),
+            )
+            .where(JalaseOutputType.code == code, JalaseOutputType.status == "published")
+        )
+    ).first()
+    if row is None:
+        raise ApiError("output_type_not_found", "این دسته وجود ندارد یا منتشر نشده است.")
+    return row[0], row[1]

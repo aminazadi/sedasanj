@@ -27,6 +27,7 @@ JOB_NOTIFY = "deliver_event"
 JOB_MEETING_CHUNK = "transcribe_meeting_chunk"
 JOB_MEETING_MINUTES = "reanalyze_meeting_minutes"
 JOB_MEETING_AUDIO = "assemble_meeting_audio"
+JOB_MEETING_DOCUMENT = "generate_meeting_document"
 
 
 class Queue(abc.ABC):

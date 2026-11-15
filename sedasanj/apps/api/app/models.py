@@ -1842,6 +1842,53 @@ class MeetingMinutes(Base):
     __table_args__ = (CheckConstraint("version >= 1", name="meeting_minutes_version_check"),)
 
 
+class MeetingDocument(Base):
+    """A document an output type made from a meeting's transcript; one per meeting and type."""
+
+    __tablename__ = "meeting_documents"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    meeting_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("meetings.id", ondelete="CASCADE")
+    )
+    output_type_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    output_type_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_values: Mapped[Any] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    user_note: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="queued")
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    progress_pct: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("meeting_id", "output_type_code"),)
+
+
+class MeetingDocumentVersion(Base):
+    __tablename__ = "meeting_document_versions"
+
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("tenants.id"))
+    document_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("meeting_documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    structured: Mapped[Any | None] = mapped_column(JSONB)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str | None] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(Text)
+    prompt_sha256: Mapped[str | None] = mapped_column(Text)
+    is_selected: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now())
+
+
 class TenantAiInstruction(Base):
     """Organization-written text appended to the coach or meeting-minutes prompt."""
 

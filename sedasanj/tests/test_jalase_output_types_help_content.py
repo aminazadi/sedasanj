@@ -35,3 +35,17 @@ def test_every_documented_code_is_a_real_api_error() -> None:
 
 def test_chain_links_to_the_types_migration() -> None:
     assert _load().down_revision == "0147_jalase_output_types"
+
+
+def test_documents_migration_documents_its_error_codes() -> None:
+    path = VERSIONS / "0149_meeting_documents.py"
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.down_revision == "0148_jalase_output_types_help"
+    cleaned, plain = sanitize_help_html(module.BODY)
+    assert "<ol>" in cleaned
+    for code, _summary, action in module.CODES:
+        assert code in ERROR_STATUS and action
+        assert code in plain or code == "document_not_found"
