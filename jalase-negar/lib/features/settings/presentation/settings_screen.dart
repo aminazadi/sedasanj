@@ -41,171 +41,191 @@ class SettingsScreen extends ConsumerWidget {
     final connection = state?.connection;
     final busy = state?.busy ?? async.isLoading;
 
-    return ListView(
+    final account = <Widget>[
+      SsCard(
+        title: 'وضعیت اتصال',
+        trailing: TourTarget(
+          step: TourStep.connection,
+          child: SsBadge(connection == null ? 'متصل نیست' : 'متصل'),
+        ),
+        child: connection == null
+            ? const Text(
+                'در پنل صداسنج از «تنظیمات حساب ← اتصال‌ها»، '
+                'بخش «اتصال اپ جلسه‌نگار» را باز کنید '
+                'و QR یا فایل کانفیگ را اینجا وارد کنید.',
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Row('کاربر', connection.userName),
+                  if (connection.personal)
+                    const _PersonalUsageRows()
+                  else
+                    _Row('سازمان', connection.tenantName),
+                  _Row('سرور', connection.serverUrl, ltr: true),
+                  if (connection.tokenPrefix.isNotEmpty)
+                    _Row('توکن', '${connection.tokenPrefix}…', ltr: true),
+                  if (connection.personal)
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const DeleteAccountScreen(),
+                              ),
+                            ),
+                      child: const Text(
+                        'حذف حساب',
+                        style: TextStyle(color: SsColors.danger),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: busy ? null : controller.recheck,
+                          child: const Text('بررسی اتصال'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: busy
+                              ? null
+                              : () => _confirmDisconnect(context, controller),
+                          child: const Text('قطع اتصال'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+      ),
+      const SizedBox(height: 12),
+      if (connection != null && connection.personal) ...[
+        const _OrgLinkCard(),
+        const SizedBox(height: 12),
+      ],
+      if (state?.error != null) ...[
+        const SizedBox(height: 12),
+        SsCard(
+          child: Text(
+            state!.error!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      ],
+      const SizedBox(height: 12),
+      if (busy)
+        const Center(child: SsProcessingMark(size: 30))
+      else if (connection == null)
+        SsCard(
+          title: 'اتصال',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                icon: const Icon(Icons.phone_android),
+                label: const Text('ورود با شماره موبایل'),
+                onPressed: () => context.push('/login'),
+              ),
+              const SizedBox(height: 8),
+              if (qrScanSupported) ...[
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('اسکن QR'),
+                  onPressed: () async {
+                    final text =
+                        await Navigator.of(
+                          context,
+                          rootNavigator: true,
+                        ).push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => const QrScanScreen(),
+                          ),
+                        );
+                    if (text != null) controller.connectFromText(text);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+              OutlinedButton.icon(
+                icon: const Icon(Icons.file_open_outlined),
+                label: const Text('انتخاب فایل کانفیگ'),
+                onPressed: () async {
+                  final res = await FilePicker.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: const ['json'],
+                  );
+                  final path = res?.files.single.path;
+                  if (path != null) {
+                    controller.connectFromText(await File(path).readAsString());
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.content_paste),
+                label: const Text('چسباندن کانفیگ'),
+                onPressed: () async {
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  final text = data?.text;
+                  if (text == null || text.trim().isEmpty) {
+                    if (context.mounted) {
+                      SsToastHost.show(
+                        context,
+                        'کلیپ‌بورد خالی است؛ متن کانفیگ را کپی کنید و دوباره بزنید.',
+                      );
+                    }
+                    return;
+                  }
+                  controller.connectFromText(text);
+                },
+              ),
+            ],
+          ),
+        ),
+    ];
+    final recording = <Widget>[
+      const _SendTranscriptCard(),
+      const SizedBox(height: 12),
+      const _SpeakerNameCard(),
+      const SizedBox(height: 12),
+      const CpuLimitCard(),
+      const SizedBox(height: 12),
+      const _SoundEventsCard(),
+    ];
+    final app = <Widget>[const UpdateCheckCard(), const PushSettingsCard()];
+
+    Widget tab(List<Widget> children) => ListView(
       padding: EdgeInsets.fromLTRB(
         16,
         16,
         16,
         16 + MediaQuery.paddingOf(context).bottom,
       ),
-      children: [
-        SsCard(
-          title: 'وضعیت اتصال',
-          trailing: TourTarget(
-            step: TourStep.connection,
-            child: SsBadge(connection == null ? 'متصل نیست' : 'متصل'),
+      children: children,
+    );
+
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          const TabBar(
+            tabs: [
+              Tab(text: 'حساب'),
+              Tab(text: 'ضبط و ارسال'),
+              Tab(text: 'برنامه'),
+            ],
           ),
-          child: connection == null
-              ? const Text(
-                  'در پنل صداسنج از «تنظیمات حساب ← اتصال‌ها»، '
-                  'بخش «اتصال اپ جلسه‌نگار» را باز کنید '
-                  'و QR یا فایل کانفیگ را اینجا وارد کنید.',
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _Row('کاربر', connection.userName),
-                    if (connection.personal)
-                      const _PersonalUsageRows()
-                    else
-                      _Row('سازمان', connection.tenantName),
-                    _Row('سرور', connection.serverUrl, ltr: true),
-                    if (connection.tokenPrefix.isNotEmpty)
-                      _Row('توکن', '${connection.tokenPrefix}…', ltr: true),
-                    if (connection.personal)
-                      TextButton(
-                        onPressed: busy
-                            ? null
-                            : () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const DeleteAccountScreen(),
-                                ),
-                              ),
-                        child: const Text(
-                          'حذف حساب',
-                          style: TextStyle(color: SsColors.danger),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: busy ? null : controller.recheck,
-                            child: const Text('بررسی اتصال'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: busy
-                                ? null
-                                : () => _confirmDisconnect(context, controller),
-                            child: const Text('قطع اتصال'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 12),
-        if (connection != null && connection.personal) ...[
-          const _OrgLinkCard(),
-          const SizedBox(height: 12),
-        ],
-        const _SendTranscriptCard(),
-        const SizedBox(height: 12),
-        const _SpeakerNameCard(),
-        const SizedBox(height: 12),
-        const CpuLimitCard(),
-        const SizedBox(height: 12),
-        const _SoundEventsCard(),
-        const SizedBox(height: 12),
-        const UpdateCheckCard(),
-        const PushSettingsCard(),
-        if (state?.error != null) ...[
-          const SizedBox(height: 12),
-          SsCard(
-            child: Text(
-              state!.error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+          Expanded(
+            child: TabBarView(
+              children: [tab(account), tab(recording), tab(app)],
             ),
           ),
         ],
-        const SizedBox(height: 12),
-        if (busy)
-          const Center(child: SsProcessingMark(size: 30))
-        else if (connection == null)
-          SsCard(
-            title: 'اتصال',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FilledButton.icon(
-                  icon: const Icon(Icons.phone_android),
-                  label: const Text('ورود با شماره موبایل'),
-                  onPressed: () => context.push('/login'),
-                ),
-                const SizedBox(height: 8),
-                if (qrScanSupported) ...[
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('اسکن QR'),
-                    onPressed: () async {
-                      final text =
-                          await Navigator.of(
-                            context,
-                            rootNavigator: true,
-                          ).push<String>(
-                            MaterialPageRoute(
-                              builder: (_) => const QrScanScreen(),
-                            ),
-                          );
-                      if (text != null) controller.connectFromText(text);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.file_open_outlined),
-                  label: const Text('انتخاب فایل کانفیگ'),
-                  onPressed: () async {
-                    final res = await FilePicker.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: const ['json'],
-                    );
-                    final path = res?.files.single.path;
-                    if (path != null) {
-                      controller.connectFromText(
-                        await File(path).readAsString(),
-                      );
-                    }
-                  },
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.content_paste),
-                  label: const Text('چسباندن کانفیگ'),
-                  onPressed: () async {
-                    final data = await Clipboard.getData(Clipboard.kTextPlain);
-                    final text = data?.text;
-                    if (text == null || text.trim().isEmpty) {
-                      if (context.mounted) {
-                        SsToastHost.show(
-                          context,
-                          'کلیپ‌بورد خالی است؛ متن کانفیگ را کپی کنید و دوباره بزنید.',
-                        );
-                      }
-                      return;
-                    }
-                    controller.connectFromText(text);
-                  },
-                ),
-              ],
-            ),
-          ),
-      ],
+      ),
     );
   }
 
