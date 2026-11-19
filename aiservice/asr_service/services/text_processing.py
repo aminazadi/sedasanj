@@ -340,8 +340,20 @@ def process_response(output,operation,style,segments=None):
   return parsed
  return {"minutes":output,"style":style}
 
+def _local_grammar_options(options):
+ # llama-cpp-python's default chat handler only turns response_format into a
+ # constraining grammar for type "json_object"; a "json_schema" response_format
+ # is otherwise silently unenforced, so the local model can "correct" a
+ # segment by just echoing it back unconstrained. Build the grammar explicitly.
+ response_format=options.get("response_format")
+ if not response_format or response_format.get("type")!="json_schema":return options
+ from llama_cpp import LlamaGrammar
+ schema=response_format["json_schema"]["schema"]
+ return {**options,"grammar":LlamaGrammar.from_json_schema(json.dumps(schema))}
+
 def process(mid,text,operation,style,segments=None,prompt=None):
  messages,options=process_messages(text,operation,style,segments,prompt)
+ options=_local_grammar_options(options)
  with _pool(mid).lease() as model:result=model.create_chat_completion(messages=messages,**options)
  output=result["choices"][0]["message"]["content"].strip()
  parsed=process_response(output,operation,style,segments)

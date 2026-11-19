@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import session_scope
+from app.db import control_session_scope, session_scope
 from app.deps import (
     ApiKeySession,
     ControlSession,
@@ -87,6 +87,8 @@ from app.services import (
     billing,
     document_pdf,
     entitlements,
+    jalase_output_types,
+    meeting_documents,
     meeting_ingest,
     meeting_progress,
     ratelimit,
@@ -465,6 +467,18 @@ async def create_session(
             "لازم است؛ حساب را شارژ کنید",
         )
 
+    output_type_code: str | None = None
+    output_type_input_values: dict[str, str] = {}
+    if payload.output_type is not None:
+        async with control_session_scope() as control:
+            output_type, version = await jalase_output_types.published_version(
+                control, payload.output_type
+            )
+            output_type_input_values = jalase_output_types.validate_input_values(
+                version.input_fields, payload.output_type_input_values
+            )
+        output_type_code = output_type.code
+
     meeting = Meeting(
         tenant_id=tenant_id,
         owner_user_id=user_id,
@@ -476,6 +490,8 @@ async def create_session(
         channels=payload.channels,
         app_version=payload.app_version,
         input_kind=payload.input_kind,
+        output_type_code=output_type_code,
+        output_type_input_values=output_type_input_values,
     )
     try:
         async with session.begin_nested():
@@ -688,6 +704,8 @@ async def finish_meeting(
         if meeting.status != "receiving":
             raise ApiError("meeting_closed", "این جلسه بسته شده است؛ جلسه‌ی جدید شروع کنید")
         text_mode = meeting.input_kind == "text"
+        output_type_code = meeting.output_type_code
+        output_type_input_values = meeting.output_type_input_values
         have = set(await meeting_ingest.received_seqs(session, meeting.id))
         # A text meeting may carry audio for playback; when it does, every chunk must be in.
         missing = [seq for seq in range(payload.total_chunks) if seq not in have]
@@ -727,7 +745,12 @@ async def finish_meeting(
         result = MeetingFinishOut(meeting_id=meeting.id, status=meeting.status)
     if text_mode:
         # After the commit, so the worker always finds the processing meeting.
-        await _enqueue_minutes(principal.tenant_id, meeting_id, 1)
+        if output_type_code in (None, "minutes"):
+            await _enqueue_minutes(principal.tenant_id, meeting_id, 1)
+        else:
+            await _enqueue_selected_document(
+                principal.tenant_id, meeting_id, output_type_code, output_type_input_values
+            )
         if payload.total_chunks > 0:
             await _enqueue_audio(principal.tenant_id, meeting_id)
     return result
@@ -1352,6 +1375,33 @@ async def _enqueue_minutes(tenant_id: UUID, meeting_id: UUID, version: int) -> N
         logger.warning(
             "meeting minutes enqueue failed",
             extra={"extra_fields": {"meeting_id": str(meeting_id)}},
+            exc_info=True,
+        )
+
+
+async def _enqueue_selected_document(
+    tenant_id: UUID, meeting_id: UUID, code: str, input_values: dict[str, str]
+) -> None:
+    """A text meeting whose chosen category is not the builtin minutes: generate it through
+    the generic output-types engine instead of the dedicated minutes pipeline."""
+    try:
+        async with control_session_scope() as control:
+            output_type, version = await jalase_output_types.published_version(control, code)
+        async with session_scope(tenant_id) as session:
+            document, should_enqueue = await meeting_documents.create_and_enqueue(
+                session,
+                tenant_id=tenant_id,
+                meeting_id=meeting_id,
+                code=output_type.code,
+                version_number=version.version,
+                input_values=input_values,
+            )
+        if should_enqueue:
+            await meeting_documents.enqueue_document(tenant_id, document.id)
+    except Exception:
+        logger.warning(
+            "meeting document auto-enqueue failed",
+            extra={"extra_fields": {"meeting_id": str(meeting_id), "output_type": code}},
             exc_info=True,
         )
 

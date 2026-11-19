@@ -105,6 +105,12 @@ ThemeData buildAppTheme() {
     scaffoldBackgroundColor: SsColors.canvas,
     canvasColor: SsColors.canvas,
     splashFactory: NoSplash.splashFactory,
+    // Pin one back-arrow glyph everywhere instead of Flutter's per-platform
+    // default, which swaps in a bulkier iOS/macOS chevron.
+    actionIconTheme: ActionIconThemeData(
+      // Icons.arrow_back already mirrors for RTL (IconData.matchTextDirection).
+      backButtonIconBuilder: (context) => const Icon(Icons.arrow_back),
+    ),
     dividerTheme: const DividerThemeData(
       color: SsColors.line,
       thickness: 1,

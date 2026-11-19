@@ -409,7 +409,14 @@ class RecorderController extends Notifier<RecorderState> {
 
   /// Starts recording. [attendees] are the people chosen as present; they are
   /// saved with the meeting before audio starts so a crash keeps them.
-  Future<void> start({List<Attendee> attendees = const []}) async {
+  /// [outputTypeCode] is the category chosen before recording (builtin
+  /// "صورت جلسه عمومی" by default), with its field values in
+  /// [outputTypeInputValues].
+  Future<void> start({
+    List<Attendee> attendees = const [],
+    String outputTypeCode = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
+  }) async {
     if (state.status != RecorderStatus.idle) return;
     final recorder = AudioRecorder();
     try {
@@ -527,6 +534,8 @@ class RecorderController extends Notifier<RecorderState> {
           sendText: sendText,
           speakersState: 'pending',
           workspace: workspace,
+          outputTypeCode: outputTypeCode,
+          outputTypeInputValues: outputTypeInputValues,
         ),
       );
       ref.invalidate(meetingsProvider);

@@ -108,6 +108,8 @@ class FakeStore implements UploadStore {
 class FakeApi implements MeetingUploadApi {
   int createCalls = 0;
   List<Attendee> lastAttendees = const [];
+  String lastOutputType = kBuiltinOutputType;
+  Map<String, String> lastOutputTypeInputValues = const {};
   int transcriptCalls = 0;
   int finishCalls = 0;
   final List<int> chunkSeqs = [];
@@ -127,9 +129,13 @@ class FakeApi implements MeetingUploadApi {
     required DateTime startedAt,
     required String appVersion,
     List<Attendee> attendees = const [],
+    String outputType = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
   }) async {
     createCalls += 1;
     lastAttendees = attendees;
+    lastOutputType = outputType;
+    lastOutputTypeInputValues = outputTypeInputValues;
     return RemoteSession(
       meetingId: 'remote-1',
       status: 'receiving',
@@ -193,6 +199,8 @@ void main() {
     bool sendText = true,
     String? identity = 'live-model',
     String? remoteId,
+    String outputTypeCode = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
   }) => Meeting(
     id: 'm1',
     title: 'جلسه',
@@ -205,6 +213,8 @@ void main() {
     sendText: sendText,
     asrIdentity: identity,
     remoteMeetingId: remoteId,
+    outputTypeCode: outputTypeCode,
+    outputTypeInputValues: outputTypeInputValues,
   );
 
   const lines = [
@@ -310,6 +320,25 @@ void main() {
     store.attendeeMap['m1'] = const [Attendee(personId: 'p1', name: 'علی')];
     await queue().processOnce();
     expect(api.lastAttendees, const [Attendee(personId: 'p1', name: 'علی')]);
+  });
+
+  test('a meeting left on the default type sends the builtin code', () async {
+    setUpStore(meeting());
+    await queue().processOnce();
+    expect(api.lastOutputType, kBuiltinOutputType);
+    expect(api.lastOutputTypeInputValues, const <String, String>{});
+  });
+
+  test('the chosen meeting type goes with the new session', () async {
+    setUpStore(
+      meeting(
+        outputTypeCode: 'counseling',
+        outputTypeInputValues: const {'client': 'شرکت نمونه'},
+      ),
+    );
+    await queue().processOnce();
+    expect(api.lastOutputType, 'counseling');
+    expect(api.lastOutputTypeInputValues, const {'client': 'شرکت نمونه'});
   });
 
   test('a meeting with the switch off is never touched', () async {

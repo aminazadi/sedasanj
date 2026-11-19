@@ -887,7 +887,7 @@ async def test_audio_assembly_is_verified_and_retry_safe(world, monkeypatch) -> 
 async def test_text_meeting_takes_a_transcript_and_queues_the_minutes(world) -> None:
     from app import db
     from app.models import MeetingSegment
-    from app.services.queue import JOB_MEETING_MINUTES
+    from app.services.queue import JOB_MEETING_DOCUMENT, JOB_MEETING_MINUTES
 
     client, workspace, queue, _storage = world
     headers = await pair_token(client, workspace.admin)
@@ -939,6 +939,8 @@ async def test_text_meeting_takes_a_transcript_and_queues_the_minutes(world) -> 
     minutes_jobs = [job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES]
     assert len(minutes_jobs) == 1 and minutes_jobs[0][2]["version"] == 1
     assert len([job for job in queue.jobs if job[1] == "assemble_meeting_audio"]) == 1
+    # No output_type was chosen: the builtin minutes pipeline runs, not the generic engine.
+    assert not [job for job in queue.jobs if job[1] == JOB_MEETING_DOCUMENT]
 
     again = await client.post(f"/v1/meetings/{meeting_id}/finish", json=finish, headers=headers)
     assert again.status_code == 202
@@ -947,6 +949,119 @@ async def test_text_meeting_takes_a_transcript_and_queues_the_minutes(world) -> 
     async with db.session_scope(workspace.tenant_id) as session:
         meeting = await session.get(Meeting, UUID(meeting_id))
     assert meeting is not None and meeting.duration_ms == 90_000 and meeting.received_ms == 90_000
+
+
+@pytest.fixture()
+async def custom_output_type() -> AsyncIterator[str]:
+    """A published, non-builtin category with one required input field."""
+    from app.db import control_session_scope
+    from app.models import JalaseOutputType, JalaseOutputTypeVersion
+
+    code = "jn_" + uuid4().hex[:8]
+    async with control_session_scope() as session:
+        output_type = JalaseOutputType(
+            code=code, title_fa="دستهٔ تست", menu_label_fa="تست", status="published"
+        )
+        session.add(output_type)
+        await session.flush()
+        session.add(
+            JalaseOutputTypeVersion(
+                output_type_id=output_type.id,
+                version=1,
+                state="published",
+                mode="summarize",
+                map_instruction="خلاصه کن",
+                system_prompt="تو دستیار آزمایشی هستی.",
+                input_fields=[
+                    {"key": "topic", "label_fa": "موضوع", "type": "text", "required": True}
+                ],
+            )
+        )
+    try:
+        yield code
+    finally:
+        async with control_session_scope() as session:
+            await session.execute(
+                text("DELETE FROM jalase_output_types WHERE code = :c"), {"c": code}
+            )
+
+
+@requires_postgres
+async def test_session_rejects_an_unknown_or_incomplete_output_type(world) -> None:
+    client, workspace, _queue, _storage = world
+    headers = await pair_token(client, workspace.admin)
+
+    unknown = await client.post(
+        "/v1/meetings/sessions", json=_session_body(output_type="no-such-code"), headers=headers
+    )
+    assert unknown.status_code == 404
+    assert unknown.json()["error"]["code"] == "output_type_not_found"
+
+
+@requires_postgres
+async def test_session_with_a_required_field_missing_is_refused(
+    world, custom_output_type: str
+) -> None:
+    client, workspace, _queue, _storage = world
+    headers = await pair_token(client, workspace.admin)
+
+    incomplete = await client.post(
+        "/v1/meetings/sessions", json=_session_body(output_type=custom_output_type), headers=headers
+    )
+    assert incomplete.status_code == 422
+    assert incomplete.json()["error"]["code"] == "document_input_invalid"
+
+
+@requires_postgres
+async def test_finish_of_a_custom_category_generates_a_document_not_minutes(
+    world, custom_output_type: str
+) -> None:
+    from app import db
+    from app.models import MeetingDocument
+    from app.services.queue import JOB_MEETING_DOCUMENT, JOB_MEETING_MINUTES
+
+    client, workspace, queue, _storage = world
+    headers = await pair_token(client, workspace.admin)
+    created = await client.post(
+        "/v1/meetings/sessions",
+        json=_session_body(
+            input_kind="text",
+            output_type=custom_output_type,
+            output_type_input_values={"topic": "بودجه"},
+        ),
+        headers=headers,
+    )
+    assert created.status_code == 201
+    meeting_id = created.json()["meeting_id"]
+
+    async with db.session_scope(workspace.tenant_id) as session:
+        meeting = await session.get(Meeting, UUID(meeting_id))
+        assert meeting is not None
+        assert meeting.output_type_code == custom_output_type
+        assert meeting.output_type_input_values == {"topic": "بودجه"}
+
+    body = _transcript("سلام به همه")
+    await client.put(f"/v1/meetings/{meeting_id}/transcript", json=body, headers=headers)
+    finish = {"ended_at": datetime.now(UTC).isoformat(), "total_chunks": 0, "duration_ms": 5000}
+    done = await client.post(f"/v1/meetings/{meeting_id}/finish", json=finish, headers=headers)
+    assert done.status_code == 202
+
+    assert not [job for job in queue.jobs if job[1] == JOB_MEETING_MINUTES]
+    document_jobs = [job for job in queue.jobs if job[1] == JOB_MEETING_DOCUMENT]
+    assert len(document_jobs) == 1
+    async with db.session_scope(workspace.tenant_id) as session:
+        docs = (
+            (
+                await session.execute(
+                    select(MeetingDocument).where(MeetingDocument.meeting_id == UUID(meeting_id))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(docs) == 1
+    assert docs[0].output_type_code == custom_output_type
+    assert docs[0].input_values == {"topic": "بودجه"}
 
 
 @requires_postgres

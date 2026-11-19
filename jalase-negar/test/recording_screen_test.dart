@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/features/meetings/data/attendee.dart';
+import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
@@ -429,6 +430,7 @@ Future<(_Recorder, _StartSound)> _openScreen(
 class _Recorder extends RecorderController {
   int startCount = 0;
   List<Attendee> lastAttendees = const [];
+  String lastOutputTypeCode = kBuiltinOutputType;
 
   void update({bool interrupted = false}) {
     state = RecorderState(
@@ -439,9 +441,14 @@ class _Recorder extends RecorderController {
   }
 
   @override
-  Future<void> start({List<Attendee> attendees = const []}) async {
+  Future<void> start({
+    List<Attendee> attendees = const [],
+    String outputTypeCode = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
+  }) async {
     startCount++;
     lastAttendees = attendees;
+    lastOutputTypeCode = outputTypeCode;
     update();
   }
 

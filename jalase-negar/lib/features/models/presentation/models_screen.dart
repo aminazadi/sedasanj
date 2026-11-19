@@ -8,12 +8,11 @@ import '../../onboarding/tour_step.dart';
 import '../application/models_controller.dart';
 import '../../../app/widgets/ss_widgets.dart';
 
-class ModelsScreen extends ConsumerWidget {
+class ModelsScreen extends StatelessWidget {
   const ModelsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(modelsControllerProvider);
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: SsAppBar(
         title: Padding(
@@ -26,10 +25,22 @@ class ModelsScreen extends ConsumerWidget {
           ),
         ),
       ),
-      body: state.loading
-          ? const Center(child: SsProcessingMark(size: 30))
-          : const _InstallAllCard(),
+      body: const ModelsBody(),
     );
+  }
+}
+
+/// The models screen's content on its own, without a Scaffold/AppBar, so it
+/// can also be embedded as a settings tab.
+class ModelsBody extends ConsumerWidget {
+  const ModelsBody({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(modelsControllerProvider);
+    return state.loading
+        ? const Center(child: SsProcessingMark(size: 30))
+        : const _InstallAllCard();
   }
 }
 

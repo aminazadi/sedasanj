@@ -363,7 +363,9 @@ final personalClientProvider = FutureProvider.autoDispose<ApiClient>((
   return ApiClient(serverUrl: connection.serverUrl, token: token);
 });
 
-/// The categories the admin published (minutes excluded: it is automatic).
+/// The categories the admin published, minutes excluded: used for the
+/// after-the-fact "add another category" picker, where minutes (already made
+/// automatically) is not offered again.
 final outputTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
   ref,
 ) async {
@@ -372,6 +374,15 @@ final outputTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
     for (final type in await client.outputTypes())
       if (!type.automatic) type,
   ];
+});
+
+/// Every published category, minutes included — for the pre-recording picker,
+/// where "صورت جلسه عمومی" is a normal, always-available choice.
+final meetingTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
+  ref,
+) async {
+  final client = await ref.watch(personalClientProvider.future);
+  return client.outputTypes();
 });
 
 final meetingDocumentsProvider = FutureProvider.autoDispose

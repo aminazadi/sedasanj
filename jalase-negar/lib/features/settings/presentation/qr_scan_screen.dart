@@ -166,9 +166,12 @@ class _RoundButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: active ? SsColors.accent : const Color(0x66000000),
-        shape: const CircleBorder(),
+        shape: RoundedRectangleBorder(
+          side: BorderSide(
+            color: active ? SsColors.accent : const Color(0x99FFFFFF),
+          ),
+        ),
         child: InkWell(
-          customBorder: const CircleBorder(),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(12),

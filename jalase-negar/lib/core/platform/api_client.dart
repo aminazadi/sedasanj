@@ -173,7 +173,8 @@ class OutputTypeInfo {
   final String title;
   final String description;
 
-  /// Made automatically for every meeting (the minutes); not offered in the picker.
+  /// The builtin "صورت جلسه عمومی" category; shown first in the pre-recording
+  /// picker but left out of the after-the-fact "add another category" list.
   final bool automatic;
   final List<OutputField> fields;
   final String? thumbnailUrl;
@@ -289,6 +290,8 @@ abstract class MeetingUploadApi {
     required DateTime startedAt,
     required String appVersion,
     List<Attendee> attendees = const [],
+    String outputType = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
   });
 
   Future<void> putChunk({
@@ -1008,6 +1011,8 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     required DateTime startedAt,
     required String appVersion,
     List<Attendee> attendees = const [],
+    String outputType = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
   }) async {
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -1020,6 +1025,8 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
           'channels': 1,
           'app_version': appVersion,
           'input_kind': 'text',
+          'output_type': outputType,
+          'output_type_input_values': outputTypeInputValues,
           if (attendees.isNotEmpty)
             'attendees': [
               for (final a in attendees)

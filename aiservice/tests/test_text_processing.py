@@ -173,3 +173,62 @@ class SegmentCorrectionTests(unittest.TestCase):
 
         self.assertEqual([item["id"] for item in parsed["segments"]], ["a", "b"])
         self.assertTrue(all(item["uncertain"] for item in parsed["segments"]))
+
+
+class LocalGrammarEnforcementTests(unittest.TestCase):
+    """llama-cpp-python only turns response_format into a grammar for type
+    "json_object"; a "json_schema" response_format must be converted into an
+    explicit grammar for the local model, or segment correction decodes
+    unconstrained and the strict schema is silently ignored."""
+
+    def test_json_schema_response_format_is_converted_to_an_explicit_grammar(self):
+        schema = {"type": "object", "properties": {"segments": {"type": "array"}}}
+        options = {
+            "max_tokens": 4096,
+            "response_format": {"type": "json_schema", "json_schema": {"schema": schema}},
+        }
+        grammar_module = MagicMock()
+        grammar_module.LlamaGrammar.from_json_schema = MagicMock(return_value="compiled-grammar")
+
+        with patch.dict("sys.modules", {"llama_cpp": grammar_module}):
+            result = text_processing._local_grammar_options(options)
+
+        self.assertEqual("compiled-grammar", result["grammar"])
+        grammar_module.LlamaGrammar.from_json_schema.assert_called_once()
+        (called_schema_json,), _ = grammar_module.LlamaGrammar.from_json_schema.call_args
+        self.assertEqual(schema, __import__("json").loads(called_schema_json))
+        # The original options (minus the added grammar) are preserved untouched.
+        self.assertEqual(options["max_tokens"], result["max_tokens"])
+
+    def test_non_json_schema_response_formats_pass_through_unchanged(self):
+        for options in (
+            {"max_tokens": 10},
+            {"max_tokens": 10, "response_format": {"type": "json_object"}},
+        ):
+            self.assertEqual(options, text_processing._local_grammar_options(options))
+
+    def test_process_passes_the_compiled_grammar_to_the_local_model(self):
+        segments = [{"id": "a", "channel": 0, "t_start_ms": 0, "t_end_ms": 1000, "text": "سلام"}]
+        fake_model = MagicMock()
+        fake_model.create_chat_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"segments":[{"id":"a","corrected_text":"سلام.","uncertain":false}],'
+                        '"uncertain_items":[]}'
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"total_tokens": 1},
+        }
+        grammar_module = MagicMock()
+        grammar_module.LlamaGrammar.from_json_schema = MagicMock(return_value="compiled-grammar")
+
+        with patch.dict("sys.modules", {"llama_cpp": grammar_module}), patch.object(
+            text_processing, "_pool"
+        ) as pool:
+            pool.return_value.lease.return_value.__enter__.return_value = fake_model
+            text_processing.process("m", None, "correction", "formal", segments, "Correct conservatively")
+
+        self.assertEqual("compiled-grammar", fake_model.create_chat_completion.call_args.kwargs["grammar"])

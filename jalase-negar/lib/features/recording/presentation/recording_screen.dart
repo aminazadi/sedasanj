@@ -12,12 +12,15 @@ import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../meetings/data/attendee.dart';
+import '../../meetings/presentation/meeting_type_picker_sheet.dart';
 import '../../onboarding/tour_overlay.dart';
 import '../../people/application/people_providers.dart';
 import '../../people/presentation/attendee_picker_sheet.dart';
 import '../../onboarding/tour_step.dart';
+import '../../settings/application/connection_controller.dart';
 import '../application/live_audio_waveform.dart';
 import '../application/pending_attendees.dart';
+import '../application/pending_meeting_type.dart';
 import '../application/recorder_controller.dart';
 import 'live_transcript_panel.dart';
 import 'live_waveform.dart';
@@ -116,10 +119,16 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
           if (chosen.contains(p.clientId))
             Attendee(personId: p.clientId, name: p.name),
       ];
+      final meetingType = ref.read(pendingMeetingTypeProvider);
       await ref
           .read(recorderControllerProvider.notifier)
-          .start(attendees: attendees);
+          .start(
+            attendees: attendees,
+            outputTypeCode: meetingType.code,
+            outputTypeInputValues: meetingType.values,
+          );
       ref.read(pendingAttendeesProvider.notifier).clear();
+      ref.read(pendingMeetingTypeProvider.notifier).clear();
     } finally {
       if (mounted) setState(() => _openingMicrophone = false);
     }
@@ -341,8 +350,12 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                             children: [
                               _ControlColumn(
                                 label: isRecording ? 'توقف موقت' : 'ادامه',
+                                // Same half as "شروع ضبط" and the bottom
+                                // bar's record diamond: the gap between the
+                                // two buttons closes the space instead of
+                                // shrinking either one below that size.
                                 child: _DiamondButton(
-                                  half: 34,
+                                  half: 38,
                                   icon: isRecording
                                       ? Icons.pause
                                       : Icons.play_arrow,
@@ -352,11 +365,11 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                                       : controller.resume,
                                 ),
                               ),
-                              const SizedBox(width: 44),
+                              const SizedBox(width: 28),
                               _ControlColumn(
                                 label: 'پایان و ذخیره',
                                 child: _DiamondButton(
-                                  half: 34,
+                                  half: 38,
                                   icon: Icons.stop,
                                   danger: true,
                                   onTap: controller.stop,
@@ -446,6 +459,8 @@ class _RecordingPreview extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _AttendeesSelector(),
+              const SizedBox(height: 8),
+              const _MeetingTypeSelector(),
             ],
           ),
         ),
@@ -775,6 +790,9 @@ class _DiamondButton extends StatefulWidget {
 
 class _DiamondButtonState extends State<_DiamondButton>
     with SingleTickerProviderStateMixin {
+  // Same radius as the bottom bar's own record diamond.
+  static const _diamondRadius = 12.0;
+
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2400),
@@ -877,6 +895,9 @@ class _DiamondButtonState extends State<_DiamondButton>
                           angle: math.pi / 4,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                _diamondRadius,
+                              ),
                               border: Border.all(
                                 color: main.withValues(alpha: 0.35 * (1 - t)),
                               ),
@@ -905,6 +926,7 @@ class _DiamondButtonState extends State<_DiamondButton>
                       width: side,
                       height: side,
                       decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(_diamondRadius),
                         color: widget.outlined ? SsColors.canvas : null,
                         gradient: widget.outlined
                             ? null
@@ -926,7 +948,10 @@ class _DiamondButtonState extends State<_DiamondButton>
                               ],
                       ),
                       child: widget.pulse
-                          ? ClipRect(
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                _diamondRadius,
+                              ),
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
@@ -1009,6 +1034,34 @@ class _AttendeesSelector extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Inline meeting-type selection below the attendees row; defaults to the
+/// builtin "صورت جلسه عمومی".
+class _MeetingTypeSelector extends ConsumerWidget {
+  const _MeetingTypeSelector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chosen = ref.watch(pendingMeetingTypeProvider);
+    final types = ref.watch(meetingTypesProvider).value ?? const [];
+    final title = [
+      for (final t in types)
+        if (t.code == chosen.code) t.title,
+    ].firstOrNull;
+    Future<void> pick() async {
+      final result = await showMeetingTypePicker(context, initial: chosen);
+      if (result != null) {
+        ref.read(pendingMeetingTypeProvider.notifier).set(result);
+      }
+    }
+
+    return OutlinedButton.icon(
+      onPressed: pick,
+      icon: const Icon(Icons.category_outlined),
+      label: Text('نوع جلسه: ${title ?? 'صورت جلسه عمومی'}'),
     );
   }
 }

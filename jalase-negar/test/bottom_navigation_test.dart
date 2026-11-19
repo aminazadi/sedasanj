@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/app/shell_screen.dart';
 import 'package:jalase_negar/app/theme.dart';
+import 'package:jalase_negar/app/widgets/app_menu_drawer.dart';
 import 'package:jalase_negar/app/widgets/brand_logo.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 import 'package:jalase_negar/features/meetings/application/meeting_providers.dart';
+import 'package:jalase_negar/features/meetings/presentation/meetings_header.dart';
 import 'package:jalase_negar/features/people/application/people_providers.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
 
@@ -32,11 +34,10 @@ void main() {
                 ),
             ],
           ),
-          for (final path in ['/models', '/people/new'])
-            GoRoute(
-              path: path,
-              builder: (context, state) => Text('Action $path'),
-            ),
+          GoRoute(
+            path: '/people/new',
+            builder: (context, state) => const Text('Action /people/new'),
+          ),
           GoRoute(
             path: '/record',
             builder: (context, state) => const Text('Recording page'),
@@ -61,21 +62,37 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byType(SsAppBarAction), findsOneWidget);
-      expect(tester.getRect(find.byType(SsBrandLogo)).right, width - 16);
+      // The hamburger keeps the app's standard (default) icon-button size,
+      // flush against the edge; only the dead space before the title (the
+      // AppBar's titleSpacing) is trimmed.
+      final menuButtonRect = tester.getRect(find.byType(DrawerButton));
+      expect(menuButtonRect.right, width);
+      // The meetings tab no longer carries the models shortcut; its header
+      // now has a search and a filter icon button instead (no label, so no
+      // SsAppBarAction).
+      expect(find.byType(SsAppBarAction), findsNothing);
+      expect(find.byType(MeetingsSearchButton), findsOneWidget);
+      expect(find.byType(MeetingsFilterButton), findsOneWidget);
       expect(
-        tester
-            .getRect(find.byWidgetPredicate((widget) => widget is TextButton))
-            .left,
-        16,
+        tester.getRect(find.byType(SsBrandLogo)).right,
+        menuButtonRect.left,
       );
-      await tester.tap(find.text('دانلود مدل‌ها'));
+      // Opening search turns the whole header into the search field, then
+      // closing it returns the header to normal.
+      await tester.tap(find.byTooltip('جست‌وجو'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('Action /models'), findsOneWidget);
-      router.pop();
+      expect(find.byType(DrawerButton), findsNothing);
+      expect(find.byType(SsBrandLogo), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.tap(find.byTooltip('بستن جست‌وجو'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        tester.getRect(find.byType(DrawerButton)).right,
+        menuButtonRect.right,
+      );
       for (final entry in {
         'افراد': '/people',
         'راهنما': '/guide',
@@ -104,7 +121,7 @@ void main() {
                   ),
                 )
                 .right,
-            width - 16,
+            menuButtonRect.left,
           );
         }
         if (entry.value == '/people') {
@@ -133,6 +150,65 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  testWidgets('the side menu opens from the hamburger button or an edge '
+      'swipe, and offers to share the app', (tester) async {
+    const width = 390.0;
+    tester.view.physicalSize = const Size(width, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final router = GoRouter(
+      routes: [
+        ShellRoute(
+          builder: (context, state, child) => ShellScreen(child: child),
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => const Center(child: Text('Page /')),
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          uploadQueueProvider.overrideWith(_IdleUpload.new),
+          speakerSyncProvider.overrideWith(_IdleSpeakerSync.new),
+          speakerAnalysisProvider.overrideWith(_IdleAnalysis.new),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          theme: buildAppTheme(),
+          locale: const Locale('fa'),
+          supportedLocales: const [Locale('fa')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Not pumpAndSettle: the record button's pulse animation repeats
+    // forever, so it never settles while ShellScreen is mounted.
+    expect(find.byType(AppMenuDrawer), findsNothing);
+    await tester.tap(find.byType(DrawerButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(AppMenuDrawer), findsOneWidget);
+    expect(find.text('اشتراک‌گذاری اپ'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 400));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(AppMenuDrawer), findsNothing);
+
+    // The drawer's start edge is the screen's right edge in this RTL app, so
+    // dragging leftward from near the right edge should also open it.
+    await tester.dragFrom(const Offset(width - 2, 400), const Offset(-250, 0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(AppMenuDrawer), findsOneWidget);
+  });
 }
 
 class _IdleAnalysis extends SpeakerAnalysisController {

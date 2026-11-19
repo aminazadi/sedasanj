@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jalase_negar/core/models/model_catalog.dart';
 import 'package:jalase_negar/features/meetings/application/meeting_providers.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/meetings/presentation/audio_waveform_player.dart';
 import 'package:jalase_negar/features/meetings/presentation/meeting_detail_screen.dart';
 import 'package:jalase_negar/features/meetings/presentation/meetings_screen.dart';
+import 'package:jalase_negar/features/models/application/models_controller.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
 import 'package:jalase_negar/features/recording/application/recorder_controller.dart';
 
@@ -214,6 +216,7 @@ void main() {
           ),
         ),
         uploadQueueProvider.overrideWith(_IdleUploadController.new),
+        modelsControllerProvider.overrideWith(_ReadyModels.new),
       ],
     );
     addTearDown(container.dispose);
@@ -253,6 +256,7 @@ void main() {
           meetingsProvider.overrideWith((ref) async => [meeting]),
           meetingPreviewProvider(meeting.id).overrideWith((ref) async => ''),
           uploadQueueProvider.overrideWith(_IdleUploadController.new),
+          modelsControllerProvider.overrideWith(_ReadyModels.new),
         ],
         child: const MaterialApp(home: Scaffold(body: MeetingsScreen())),
       ),
@@ -267,6 +271,17 @@ void main() {
 class _IdleUploadController extends UploadController {
   @override
   UploadState build() => const UploadState();
+}
+
+class _ReadyModels extends ModelsController {
+  @override
+  ModelsState build() => ModelsState(
+    loading: false,
+    items: [
+      for (final spec in ModelCatalog.all)
+        ModelItemState(spec: spec, installed: true, selected: true),
+    ],
+  );
 }
 
 Future<void> _openDetail(

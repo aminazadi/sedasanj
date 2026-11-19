@@ -423,7 +423,6 @@ export default function Settings() {
           correction_mode: settings.correction_mode,
           correction_audio_models: settings.correction_audio_models,
           correction_text_models: settings.correction_text_models,
-          correction_prompt: settings.correction_prompt,
           correction_strictness: settings.correction_strictness,
           correction_max_uncertain_ratio: settings.correction_max_uncertain_ratio,
           correction_timeout_seconds: settings.correction_timeout_seconds,
@@ -435,6 +434,7 @@ export default function Settings() {
         });
       } else if (activeTab === "prompts") {
         body.extract_prompt = settings.extract_prompt;
+        body.correction_prompt = settings.correction_prompt;
         body.assistant_instructions = settings.assistant_instructions;
         body.coach_prompt = settings.coach_prompt;
         body.meeting_prompt = settings.meeting_prompt;
@@ -972,10 +972,6 @@ export default function Settings() {
           <ModelPriorityList id="correction-text-models" label="مدل‌های متنی به‌ترتیب اولویت" value={settings.correction_text_models} models={llmModels} onChange={(correction_text_models) => setSettings({ ...settings, correction_text_models })} />
         </div>
         )}
-        <div>
-          <label className="label" htmlFor="correction-prompt">پرامپت تصحیح</label>
-          <textarea id="correction-prompt" className="input min-h-48 resize-y" value={settings.correction_prompt} onChange={(event) => setSettings({ ...settings, correction_prompt: event.target.value })} required />
-        </div>
         <div className="grid gap-4 md:grid-cols-3">
           <div><label className="label">آستانه هشدار موارد مشکوک</label><input className="input" type="number" min="0" max="1" step="0.01" value={settings.correction_max_uncertain_ratio} onChange={(event) => setSettings({ ...settings, correction_max_uncertain_ratio: Number(event.target.value) })} /></div>
           <div><label className="label">مهلت کل پردازش (ثانیه)</label><input className="input" type="number" min="60" max="3600" value={settings.correction_timeout_seconds} onChange={(event) => setSettings({ ...settings, correction_timeout_seconds: Number(event.target.value) })} /></div>
@@ -1223,6 +1219,23 @@ export default function Settings() {
           spellCheck={false}
           value={settings.extract_prompt}
           onChange={(event) => setSettings({ ...settings, extract_prompt: event.target.value })}
+          required
+        />
+      </section>
+      <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div>
+          <h2 className="font-bold text-slate-900">پرامپت تصحیح متن</h2>
+          <p className="mt-1 text-xs leading-6 text-slate-500">
+            دستور تصحیح رونویسی که همراه segmentها برای مدل ارسال می‌شود. قالب خروجی JSON و شناسه segmentها توسط سیستم ثابت اضافه می‌شود و با ویرایش این متن خراب نمی‌شود.
+          </p>
+        </div>
+        <textarea
+          id="correction-prompt"
+          className="input min-h-48 resize-y font-mono text-sm leading-6"
+          dir="rtl"
+          spellCheck={false}
+          value={settings.correction_prompt}
+          onChange={(event) => setSettings({ ...settings, correction_prompt: event.target.value })}
           required
         />
       </section>

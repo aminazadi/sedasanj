@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../app/theme.dart';
 import '../application/live_transcript_session.dart';
@@ -418,24 +419,79 @@ class _EmptyHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text =
-        live.note ??
-        switch (live.phase) {
-          LivePhase.preparing =>
-            'مدل در حال آماده‌سازی است؛ ضبط از همین حالا انجام می‌شود.',
-          LivePhase.failed => 'متن زنده در دسترس نیست.',
-          _ =>
-            'شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.',
-        };
+    // live.note is always a "no live text" reason (missing/incomplete
+    // models); its own copy already names the fix, so it keeps that text
+    // but reads as an audio-only state, not an error, with its own
+    // illustration and a short headline above it.
+    final (Widget visual, String? title, String body) = switch (live.note) {
+      final note? => (const _AudioOnlyArt(), 'فقط ضبط صدا', note),
+      null => switch (live.phase) {
+        LivePhase.preparing => (
+          const Icon(
+            Icons.hourglass_top_outlined,
+            size: 34,
+            color: SsColors.neutral,
+          ),
+          null,
+          'مدل در حال آماده‌سازی است؛ ضبط از همین حالا انجام می‌شود.',
+        ),
+        LivePhase.failed => (
+          const Icon(Icons.error_outline, size: 34, color: SsColors.neutral),
+          null,
+          'متن زنده در دسترس نیست.',
+        ),
+        _ => (
+          const Icon(Icons.mic_none, size: 34, color: SsColors.neutral),
+          null,
+          'شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.',
+        ),
+      },
+    };
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            visual,
+            const SizedBox(height: 10),
+            if (title != null) ...[
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: SsColors.ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// A waveform card with a crossed-out captions badge: audio is still being
+/// recorded, there's just no live text for it right now.
+class _AudioOnlyArt extends StatelessWidget {
+  const _AudioOnlyArt();
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: SizedBox(
+      width: 148,
+      child: AspectRatio(
+        aspectRatio: 300 / 330,
+        child: SvgPicture.asset(
+          'assets/images/brand/audio-only-recording.svg',
+          fit: BoxFit.contain,
+        ),
+      ),
+    ),
+  );
 }

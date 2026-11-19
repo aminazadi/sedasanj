@@ -1575,6 +1575,11 @@ class Meeting(Base):
         PgUUID(as_uuid=True), ForeignKey("audio_objects.id", ondelete="SET NULL")
     )
     input_kind: Mapped[str] = mapped_column(Text, server_default=text("'audio'"))
+    # The output type chosen before recording; null means the builtin minutes pipeline.
+    output_type_code: Mapped[str | None] = mapped_column(Text)
+    output_type_input_values: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
     transcript_sha256: Mapped[str | None] = mapped_column(Text)
     transcript_received_at: Mapped[datetime | None] = mapped_column(TSTZ)
     asr_identity: Mapped[str | None] = mapped_column(Text)

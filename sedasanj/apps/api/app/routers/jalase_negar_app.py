@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import Annotated, Literal
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, Response, status
 from pydantic import BaseModel, Field
@@ -54,7 +54,6 @@ from app.services import (
 )
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.phone_identity import mobile_accounts, normalize_mobile
-from app.services.queue import JOB_MEETING_DOCUMENT, QUEUE_MEETING, get_queue
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/jalase-negar", tags=["jalase-negar-app"])
@@ -403,19 +402,6 @@ def _document_out(document: MeetingDocument, selected: int | None = None) -> dic
     }
 
 
-async def _enqueue_document(tenant_id: UUID, document_id: UUID) -> None:
-    # A lost job is picked up by the worker's reconciler a few minutes later.
-    try:
-        await get_queue().enqueue(
-            QUEUE_MEETING,
-            JOB_MEETING_DOCUMENT,
-            {"tenant_id": str(tenant_id), "document_id": str(document_id)},
-            job_id=f"meeting-doc:{document_id}:{uuid4().hex[:8]}",
-        )
-    except Exception:  # noqa: BLE001 - never fail the request over the queue
-        logger.warning("meeting document enqueue failed", exc_info=True)
-
-
 async def _owned_meeting(
     session: AsyncSession, tenant_id: UUID, user_id: UUID, meeting_id: UUID
 ) -> Meeting:
@@ -506,38 +492,21 @@ async def create_documents(
             )
         out: list[dict[str, object]] = []
         for item, version_number, values in prepared:
-            document = (
-                await session.execute(
-                    select(MeetingDocument)
-                    .where(
-                        MeetingDocument.meeting_id == meeting_id,
-                        MeetingDocument.output_type_code == item.output_type,
-                    )
-                    .with_for_update()
-                )
-            ).scalar_one_or_none()
-            if document is None:
-                document = MeetingDocument(
-                    tenant_id=tenant_id,
-                    meeting_id=meeting_id,
-                    output_type_code=item.output_type,
-                    output_type_version=version_number,
-                    input_values=values,
-                    user_note=item.note.strip(),
-                )
-                session.add(document)
-                await session.flush()
-                queued.append(document.id)
-            elif document.status == "failed":
-                document.output_type_version = version_number
-                document.input_values = values
-                document.user_note = item.note.strip()
-                await meeting_documents.reopen(session, document)
+            document, should_enqueue = await meeting_documents.create_and_enqueue(
+                session,
+                tenant_id=tenant_id,
+                meeting_id=meeting_id,
+                code=item.output_type,
+                version_number=version_number,
+                input_values=values,
+                note=item.note.strip(),
+            )
+            if should_enqueue:
                 queued.append(document.id)
             selected = await _selected_version(session, document.id)
             out.append(_document_out(document, selected.version if selected else None))
     for document_id in queued:
-        await _enqueue_document(tenant_id, document_id)
+        await meeting_documents.enqueue_document(tenant_id, document_id)
     return {"items": out}
 
 
@@ -693,7 +662,7 @@ async def regenerate_document(
             document.user_note = payload.note.strip()
         await meeting_documents.reopen(session, document)
         out = _document_out(document)
-    await _enqueue_document(tenant_id, document_id)
+    await meeting_documents.enqueue_document(tenant_id, document_id)
     return out
 
 

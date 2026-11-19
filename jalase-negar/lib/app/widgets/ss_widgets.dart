@@ -78,16 +78,26 @@ class SsAppBar extends AppBar {
     super.title,
     super.actions,
     super.leading,
+    super.leadingWidth,
     super.bottom,
     super.centerTitle,
     super.automaticallyImplyLeading,
     super.titleSpacing,
     super.actionsPadding,
   }) : super(
+         // Same bottom border and drop shadow as the bottom nav bar's own
+         // painted edge, so the two bars read as a matching pair.
          flexibleSpace: const DecoratedBox(
            decoration: BoxDecoration(
              color: SsColors.canvas,
              border: Border(bottom: BorderSide(color: SsColors.line)),
+             boxShadow: [
+               BoxShadow(
+                 color: Color(0x403E5C3B),
+                 blurRadius: 10,
+                 offset: Offset(0, 4),
+               ),
+             ],
            ),
            child: Stack(
              fit: StackFit.expand,

@@ -67,7 +67,7 @@ def queued(monkeypatch: pytest.MonkeyPatch) -> list[UUID]:
     async def capture(tenant_id: UUID, document_id: UUID) -> None:
         ids.append(document_id)
 
-    monkeypatch.setattr(router, "_enqueue_document", capture)
+    monkeypatch.setattr(engine, "enqueue_document", capture)
     return ids
 
 

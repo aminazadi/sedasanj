@@ -1,3 +1,8 @@
+## 2026-11-19 — AMINAZADI
+
+- Changed the correction-prompt textarea (`correction_prompt`) in admin Settings from the "تصحیح متن" tab to the "پرامپت‌ها" tab, alongside the other configurable prompts; the per-tab save handler now PATCHes `correction_prompt` from the Prompts tab instead of silently dropping it there.
+- Meetings now carry the output-type category chosen before recording (migration 0159, `meetings.output_type_code`/`output_type_input_values`; also renames the builtin `minutes` type's title to "صورت جلسه عمومی"). `POST /v1/meetings/sessions` validates and stores it (`output_type`/`output_type_input_values`, reusing `output_type_not_found`/`document_input_invalid`); `finish_meeting` still runs the dedicated minutes pipeline when the meeting is on the builtin category (or left unset, for backward compatibility), but for any other category it now auto-generates a `MeetingDocument` through the existing output-types engine (`meeting_documents.create_and_enqueue`/`enqueue_document`, shared with the manual `POST /meetings/{id}/documents` and `regenerate` endpoints, which no longer duplicate that logic). Tests: `tests/test_meetings_api.py`.
+
 ## 2026-11-15 — AMINAZADI
 
 - Added the super-admin page «محصولات مارکت جلسه‌نگار» and API `/v1/admin/jalase/store-skus` (list, create, activate/deactivate; audited): maps a Bazaar or Myket product id to a Jalase-Negar plan or token pack, so no SQL is needed any more. Errors reuse `plan_not_found` and the existing codes. Test in `tests/test_jalase_store_billing.py` (1864 backend tests pass); admin build passes; NOT tried in a browser.

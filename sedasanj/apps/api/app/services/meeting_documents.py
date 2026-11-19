@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select, update
@@ -36,6 +36,7 @@ from app.services.ai_usage import set_ai_feature
 from app.services.meeting_minutes import _digest, format_clock, format_transcript, plan_blocks
 from app.services.platform import effective_models, resolve_provider_settings
 from app.services.provider_errors import classify_failure
+from app.services.queue import JOB_MEETING_DOCUMENT, QUEUE_MEETING, get_queue
 from worker_llm.client import build_client, extract_json
 
 logger = logging.getLogger(__name__)
@@ -492,3 +493,62 @@ async def reopen(session: AsyncSession, document: MeetingDocument) -> None:
     document.progress_pct = 0
     document.updated_at = datetime.now(UTC)
     await session.flush()
+
+
+async def enqueue_document(tenant_id: UUID, document_id: UUID) -> None:
+    """Queue generation; a lost job is picked up by the worker's reconciler a few minutes later."""
+    try:
+        await get_queue().enqueue(
+            QUEUE_MEETING,
+            JOB_MEETING_DOCUMENT,
+            {"tenant_id": str(tenant_id), "document_id": str(document_id)},
+            job_id=f"meeting-doc:{document_id}:{uuid4().hex[:8]}",
+        )
+    except Exception:  # noqa: BLE001 - never fail the caller over the queue
+        logger.warning("meeting document enqueue failed", exc_info=True)
+
+
+async def create_and_enqueue(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    meeting_id: UUID,
+    code: str,
+    version_number: int,
+    input_values: dict[str, str],
+    note: str = "",
+) -> tuple[MeetingDocument, bool]:
+    """Create (or reopen a failed) document for one output type; the caller enqueues it.
+
+    Returns the document and whether it needs generating now (`False` when an
+    existing document is already queued/running/done and nothing new has to run).
+    """
+    document = (
+        await session.execute(
+            select(MeetingDocument)
+            .where(
+                MeetingDocument.meeting_id == meeting_id,
+                MeetingDocument.output_type_code == code,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if document is None:
+        document = MeetingDocument(
+            tenant_id=tenant_id,
+            meeting_id=meeting_id,
+            output_type_code=code,
+            output_type_version=version_number,
+            input_values=input_values,
+            user_note=note,
+        )
+        session.add(document)
+        await session.flush()
+        return document, True
+    if document.status == "failed":
+        document.output_type_version = version_number
+        document.input_values = input_values
+        document.user_note = note
+        await reopen(session, document)
+        return document, True
+    return document, False

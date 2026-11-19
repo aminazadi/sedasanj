@@ -14,6 +14,7 @@ import '../../../core/utils/format.dart';
 import '../../meetings/application/meeting_providers.dart';
 import '../../meetings/data/meeting.dart'
     show Meeting, MeetingStatus, kWorkspaceOrg, kWorkspacePrimary;
+import '../../models/presentation/models_screen.dart' show ModelsBody;
 import '../../onboarding/tour_overlay.dart';
 import '../../onboarding/tour_step.dart';
 import '../../auth/presentation/delete_account_screen.dart';
@@ -196,6 +197,7 @@ class SettingsScreen extends ConsumerWidget {
       const SizedBox(height: 12),
       const _SoundEventsCard(),
     ];
+    final models = <Widget>[const ModelsBody()];
     final app = <Widget>[const UpdateCheckCard(), const PushSettingsCard()];
 
     Widget tab(List<Widget> children) => ListView(
@@ -209,19 +211,30 @@ class SettingsScreen extends ConsumerWidget {
     );
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           const TabBar(
+            // Four tabs no longer fit equally divided on a narrow phone
+            // (the longest label, "ضبط و ارسال", got clipped); scrolling
+            // gives every label its natural width instead.
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: 'حساب'),
               Tab(text: 'ضبط و ارسال'),
+              Tab(text: 'مدل‌ها'),
               Tab(text: 'برنامه'),
             ],
           ),
           Expanded(
             child: TabBarView(
-              children: [tab(account), tab(recording), tab(app)],
+              children: [
+                tab(account),
+                tab(recording),
+                tab(models),
+                tab(app),
+              ],
             ),
           ),
         ],

@@ -2009,6 +2009,9 @@ class MeetingSessionIn(BaseModel):
     # "text": the app sends the on-device transcript and never uploads audio.
     input_kind: Literal["audio", "text"] = "audio"
     attendees: list[MeetingAttendeeIn] = Field(default_factory=list, max_length=64)
+    # The output type chosen before recording; null keeps today's default (minutes).
+    output_type: str | None = Field(default=None, max_length=40)
+    output_type_input_values: dict[str, str] = Field(default_factory=dict)
 
 
 class MeetingTranscriptSegmentIn(BaseModel):

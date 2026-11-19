@@ -246,6 +246,8 @@ class UploadQueue {
         startedAt: current.createdAt,
         appVersion: appVersion,
         attendees: await store.attendees(current.id),
+        outputType: current.outputTypeCode,
+        outputTypeInputValues: current.outputTypeInputValues,
       );
       if (session.inputKind != 'text') {
         await store.setStatus(
