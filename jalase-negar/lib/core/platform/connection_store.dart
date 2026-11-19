@@ -117,7 +117,7 @@ class ConnectionStore {
   }
 
   Future<void> clearOrg() async {
-    await _secure.delete(key: _kOrgTokenKey);
+    await _deleteSecret(_kOrgTokenKey);
     await _db.db.delete(
       'settings',
       where: 'key IN (?, ?, ?, ?)',
@@ -137,10 +137,21 @@ class ConnectionStore {
   Future<void> setDefaultWorkspace(String workspace) =>
       _db.setSetting(_kWorkspaceDefault, workspace);
 
+  /// Removing a token must never block disconnecting: when the platform keychain refuses
+  /// (for example macOS error -34018 on an unsigned debug build), the connection data in the
+  /// app database is still cleared, and the orphaned token is unreachable without it.
+  Future<void> _deleteSecret(String key) async {
+    try {
+      await _secure.delete(key: key);
+    } on Object {
+      // Ignored on purpose, see above.
+    }
+  }
+
   Future<void> clear() async {
     await clearOrg();
-    await _secure.delete(key: _kTokenKey);
-    await _secure.delete(key: _kPushBinding);
+    await _deleteSecret(_kTokenKey);
+    await _deleteSecret(_kPushBinding);
     await _db.db.delete(
       'settings',
       where: 'key IN (?, ?, ?, ?, ?)',
