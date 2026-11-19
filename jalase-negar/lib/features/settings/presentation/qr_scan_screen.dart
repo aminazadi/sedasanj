@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../app/theme.dart';
+import '../../../app/widgets/ss_widgets.dart';
 
 /// Full-screen camera that scans the pairing QR from the panel and pops with
 /// its raw text. A square frame in the centre guides where to place the code.
@@ -86,10 +87,14 @@ class _QrScanScreenState extends State<QrScanScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
                   children: [
-                    _RoundButton(
-                      icon: Icons.close,
-                      tooltip: 'بستن',
-                      onTap: () => Navigator.of(context).maybePop(),
+                    Tooltip(
+                      message: 'بستن',
+                      child: SsDiamondButton(
+                        half: 38,
+                        icon: Icons.close,
+                        danger: true,
+                        onTap: () => Navigator.of(context).maybePop(),
+                      ),
                     ),
                     const Spacer(),
                     ValueListenableBuilder<MobileScannerState>(
@@ -99,11 +104,14 @@ class _QrScanScreenState extends State<QrScanScreen>
                           return const SizedBox.shrink();
                         }
                         final on = state.torchState == TorchState.on;
-                        return _RoundButton(
-                          icon: on ? Icons.flash_on : Icons.flash_off,
-                          tooltip: on ? 'خاموش کردن چراغ' : 'روشن کردن چراغ',
-                          active: on,
-                          onTap: _controller.toggleTorch,
+                        return Tooltip(
+                          message: on ? 'خاموش کردن چراغ' : 'روشن کردن چراغ',
+                          child: SsDiamondButton(
+                            half: 38,
+                            icon: on ? Icons.flash_on : Icons.flash_off,
+                            outlined: !on,
+                            onTap: _controller.toggleTorch,
+                          ),
                         );
                       },
                     ),
@@ -141,46 +149,6 @@ class _QrScanScreenState extends State<QrScanScreen>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoundButton extends StatelessWidget {
-  const _RoundButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-    this.active = false,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: active ? SsColors.accent : const Color(0x66000000),
-        shape: RoundedRectangleBorder(
-          side: BorderSide(
-            color: active ? SsColors.accent : const Color(0x99FFFFFF),
-          ),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Icon(
-              icon,
-              color: active ? SsColors.primaryDark : Colors.white,
-              size: 24,
-            ),
-          ),
         ),
       ),
     );

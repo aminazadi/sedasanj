@@ -177,19 +177,25 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
               ),
             )
           else
-            for (final (label, groupIds) in groups)
+            for (final (index, (label, groupIds)) in groups.indexed)
               SliverMainAxisGroup(
                 slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _GroupHeaderDelegate(
-                      label,
-                      groupIds.length,
-                      onTap: () => _pickDate(context),
+                  // The first group's date is obvious from context, so its
+                  // header is skipped; later groups still show one.
+                  if (index != 0)
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _GroupHeaderDelegate(
+                        label,
+                        groupIds.length,
+                        onTap: () => _pickDate(context),
+                      ),
                     ),
-                  ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+                    // Without its own header above, the first group needs
+                    // the same standard top gap other sections use instead
+                    // of the header's left-over 2px.
+                    padding: EdgeInsets.fromLTRB(12, index == 0 ? 12 : 2, 12, 4),
                     sliver: SliverList.builder(
                       itemCount: groupIds.length,
                       findChildIndexCallback: (key) {

@@ -1,7 +1,6 @@
 import 'dart:async';
 import '../../../core/speaker/speaker_matcher.dart';
 import 'channel_owner_sheet.dart';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -333,7 +332,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                             label: 'شروع ضبط',
                             child: TourTarget(
                               step: TourStep.recording,
-                              child: _DiamondButton(
+                              child: SsDiamondButton(
                                 pulse: true,
                                 half: 38,
                                 icon: Icons.mic,
@@ -354,7 +353,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                                 // bar's record diamond: the gap between the
                                 // two buttons closes the space instead of
                                 // shrinking either one below that size.
-                                child: _DiamondButton(
+                                child: SsDiamondButton(
                                   half: 38,
                                   icon: isRecording
                                       ? Icons.pause
@@ -368,7 +367,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                               const SizedBox(width: 28),
                               _ControlColumn(
                                 label: 'پایان و ذخیره',
-                                child: _DiamondButton(
+                                child: SsDiamondButton(
                                   half: 38,
                                   icon: Icons.stop,
                                   danger: true,
@@ -457,10 +456,8 @@ class _RecordingPreview extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 12),
-              const _AttendeesSelector(),
-              const SizedBox(height: 8),
-              const _MeetingTypeSelector(),
+              const SizedBox(height: 14),
+              const SizedBox(width: double.infinity, child: _SetupSteps()),
             ],
           ),
         ),
@@ -494,6 +491,7 @@ class _CountdownNumber extends StatelessWidget {
         ),
         child: Text(
           digit,
+          key: const Key('countdown-digit'),
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
             color: SsColors.primary,
             fontSize: 96,
@@ -765,303 +763,175 @@ class _ControlColumn extends StatelessWidget {
   }
 }
 
-/// Diamond (45° square) button, the same shape as the record button in the
-/// bottom bar. [half] is the diamond's half-diagonal.
-class _DiamondButton extends StatefulWidget {
-  const _DiamondButton({
-    required this.half,
-    required this.icon,
-    required this.onTap,
-    this.outlined = false,
-    this.danger = false,
-    this.pulse = false,
-  });
-
-  final double half;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool outlined;
-  final bool danger;
-  final bool pulse;
-
-  @override
-  State<_DiamondButton> createState() => _DiamondButtonState();
-}
-
-class _DiamondButtonState extends State<_DiamondButton>
-    with SingleTickerProviderStateMixin {
-  // Same radius as the bottom bar's own record diamond.
-  static const _diamondRadius = 12.0;
-
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
-  bool _down = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.pulse) _pulse.repeat();
-  }
-
-  @override
-  void didUpdateWidget(covariant _DiamondButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.pulse != oldWidget.pulse) {
-      if (widget.pulse) {
-        _pulse.repeat();
-      } else {
-        _pulse.stop();
-        _pulse.value = 0;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = widget.half;
-    final side = d * math.sqrt2;
-    // The pulsing start button is the record button: red, like the bar's.
-    final red = widget.danger || widget.pulse;
-    final main = red ? SsColors.danger : SsColors.primary;
-    final colors = red
-        ? const [Color(0xFFE5484D), SsColors.danger, Color(0xFF8F0E2E)]
-        : const [SsColors.primaryLight, SsColors.primary, SsColors.primaryDark];
-    return Semantics(
-      button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _down = true),
-        onTapCancel: () => setState(() => _down = false),
-        onTapUp: (_) => setState(() => _down = false),
-        onTap: widget.onTap,
-        child: AnimatedBuilder(
-          animation: _pulse,
-          builder: (context, child) {
-            final animate =
-                widget.pulse && !MediaQuery.disableAnimationsOf(context);
-            return Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                if (animate)
-                  Container(
-                    width: side * 0.9,
-                    height: side * 0.9,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: main.withValues(
-                            alpha:
-                                0.25 +
-                                0.3 *
-                                    (0.5 +
-                                        0.5 *
-                                            math.sin(
-                                              _pulse.value * 2 * math.pi,
-                                            )),
-                          ),
-                          blurRadius:
-                              18 +
-                              12 *
-                                  (0.5 +
-                                      0.5 *
-                                          math.sin(_pulse.value * 2 * math.pi)),
-                          spreadRadius: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                if (animate)
-                  Builder(
-                    builder: (context) {
-                      // Same single ring as the bottom bar's record diamond.
-                      final t = Curves.easeOut.transform(_pulse.value);
-                      final ringSize = side + 12 * t;
-                      return Positioned(
-                        left: (2 * d + 8 - ringSize) / 2,
-                        top: (2 * d + 8 - ringSize) / 2,
-                        width: ringSize,
-                        height: ringSize,
-                        child: Transform.rotate(
-                          angle: math.pi / 4,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(
-                                _diamondRadius,
-                              ),
-                              border: Border.all(
-                                color: main.withValues(alpha: 0.35 * (1 - t)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                child!,
-              ],
-            );
-          },
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 120),
-            scale: _down ? 0.93 : 1,
-            child: SizedBox(
-              width: 2 * d + 8,
-              height: 2 * d + 8,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Transform.rotate(
-                    angle: math.pi / 4,
-                    child: Container(
-                      width: side,
-                      height: side,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(_diamondRadius),
-                        color: widget.outlined ? SsColors.canvas : null,
-                        gradient: widget.outlined
-                            ? null
-                            : LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: colors,
-                                stops: const [0, 0.55, 1],
-                              ),
-                        border: Border.all(color: main, width: 1.5),
-                        boxShadow: widget.outlined
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: main.withValues(alpha: 0.4),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                      ),
-                      child: widget.pulse
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                _diamondRadius,
-                              ),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  const SsDots.onPrimary(
-                                    child: SizedBox.expand(),
-                                  ),
-                                  FractionallySizedBox(
-                                    alignment: Alignment(
-                                      -2 + 4 * _pulse.value,
-                                      0,
-                                    ),
-                                    widthFactor: 0.35,
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Colors.white.withValues(alpha: 0),
-                                            Colors.white.withValues(
-                                              alpha: 0.35,
-                                            ),
-                                            Colors.white.withValues(alpha: 0),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : null,
-                    ),
-                  ),
-                  Icon(
-                    widget.icon,
-                    size: d * 0.8,
-                    color: widget.outlined ? main : SsColors.canvas,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Inline attendee selection below the ready-to-record instructions.
-class _AttendeesSelector extends ConsumerWidget {
-  const _AttendeesSelector();
+/// Two steps between the ready-to-record instructions and the mic button:
+/// who's in the meeting, and which category it will be converted into.
+class _SetupSteps extends ConsumerWidget {
+  const _SetupSteps();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chosen = ref.watch(pendingAttendeesProvider);
     final people = ref.watch(peopleProvider).value ?? const [];
     final names = {for (final p in people) p.clientId: p.name};
-    Future<void> pick() async {
+
+    final meetingType = ref.watch(pendingMeetingTypeProvider);
+    final types = ref.watch(meetingTypesProvider).value ?? const [];
+    final typeTitle =
+        [
+          for (final t in types)
+            if (t.code == meetingType.code) t.title,
+        ].firstOrNull ??
+        'صورت جلسه عمومی';
+
+    Future<void> pickAttendees() async {
       final result = await showAttendeePicker(context, selected: chosen);
       if (result != null) {
         ref.read(pendingAttendeesProvider.notifier).set(result);
       }
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
+    Future<void> pickType() async {
+      final result = await showMeetingTypePicker(
+        context,
+        initial: meetingType,
+      );
+      if (result != null) {
+        ref.read(pendingMeetingTypeProvider.notifier).set(result);
+      }
+    }
+
+    return SsCard(
+      padding: EdgeInsets.zero,
+      elevated: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          OutlinedButton.icon(
-            onPressed: pick,
-            icon: const Icon(Icons.group_add_outlined),
-            label: Text(chosen.isEmpty ? 'انتخاب حاضران' : 'ویرایش حاضران'),
+          _StepTile(
+            number: 1,
+            doneIcon: Icons.check_rounded,
+            title: 'حاضران جلسه',
+            subtitle: chosen.isEmpty
+                ? 'برای افزودن حاضران ضربه بزنید'
+                : '${toPersianDigits('${chosen.length}')} نفر: '
+                      '${chosen.map((id) => names[id] ?? 'فرد حذف‌شده').join('، ')}',
+            done: chosen.isNotEmpty,
+            onTap: pickAttendees,
           ),
-          for (final id in chosen) ...[
-            const SizedBox(width: 8),
-            InputChip(
-              label: Text(names[id] ?? 'فرد حذف‌شده'),
-              onDeleted: () =>
-                  ref.read(pendingAttendeesProvider.notifier).remove(id),
-            ),
-          ],
+          const Padding(
+            padding: EdgeInsetsDirectional.only(start: 32, end: 16),
+            child: Divider(height: 1, color: SsColors.line),
+          ),
+          _StepTile(
+            number: 2,
+            doneIcon: Icons.bookmark_rounded,
+            title: 'نوع خروجی درخواستی',
+            subtitle: typeTitle,
+            done: true,
+            onTap: pickType,
+          ),
         ],
       ),
     );
   }
 }
 
-/// Inline meeting-type selection below the attendees row; defaults to the
-/// builtin "صورت جلسه عمومی".
-class _MeetingTypeSelector extends ConsumerWidget {
-  const _MeetingTypeSelector();
+class _StepTile extends StatelessWidget {
+  const _StepTile({
+    required this.number,
+    required this.doneIcon,
+    required this.title,
+    required this.subtitle,
+    required this.done,
+    required this.onTap,
+  });
+
+  final int number;
+  final IconData doneIcon;
+  final String title;
+  final String subtitle;
+  final bool done;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final chosen = ref.watch(pendingMeetingTypeProvider);
-    final types = ref.watch(meetingTypesProvider).value ?? const [];
-    final title = [
-      for (final t in types)
-        if (t.code == chosen.code) t.title,
-    ].firstOrNull;
-    Future<void> pick() async {
-      final result = await showMeetingTypePicker(context, initial: chosen);
-      if (result != null) {
-        ref.read(pendingMeetingTypeProvider.notifier).set(result);
-      }
-    }
-
-    return OutlinedButton.icon(
-      onPressed: pick,
-      icon: const Icon(Icons.category_outlined),
-      label: Text('نوع جلسه: ${title ?? 'صورت جلسه عمومی'}'),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            _StepBadge(number: number, done: done, icon: doneIcon),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: SsColors.neutral,
+              size: 22,
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
+
+/// The step's number while pending, a filled circle with [icon] once [done].
+class _StepBadge extends StatelessWidget {
+  const _StepBadge({
+    required this.number,
+    required this.done,
+    required this.icon,
+  });
+
+  final int number;
+  final bool done;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => AnimatedContainer(
+    duration: const Duration(milliseconds: 220),
+    curve: Curves.easeOutCubic,
+    width: 32,
+    height: 32,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: done ? SsColors.primary : SsColors.selected,
+      border: done ? null : Border.all(color: SsColors.primary, width: 1.4),
+    ),
+    child: Center(
+      child: done
+          ? Icon(icon, size: 16, color: SsColors.canvas)
+          : Text(
+              toPersianDigits('$number'),
+              style: const TextStyle(
+                fontFamily: 'Vazirmatn',
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: SsColors.primary,
+              ),
+            ),
+    ),
+  );
 }

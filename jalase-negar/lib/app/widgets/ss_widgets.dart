@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -559,6 +561,242 @@ class SsSwitchTile extends StatelessWidget {
       subtitle: subtitle,
       trailing: SsSwitch(value: value, onChanged: onChanged),
       onTap: onChanged == null ? null : () => onChanged!(!value),
+    );
+  }
+}
+
+/// Diamond (45° square) button, the same shape as the recording screen's
+/// record/pause/stop controls and the bottom bar's record diamond. [half] is
+/// the diamond's half-diagonal.
+class SsDiamondButton extends StatefulWidget {
+  const SsDiamondButton({
+    super.key,
+    required this.half,
+    required this.icon,
+    required this.onTap,
+    this.outlined = false,
+    this.danger = false,
+    this.pulse = false,
+  });
+
+  final double half;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool outlined;
+  final bool danger;
+  final bool pulse;
+
+  @override
+  State<SsDiamondButton> createState() => _SsDiamondButtonState();
+}
+
+class _SsDiamondButtonState extends State<SsDiamondButton>
+    with SingleTickerProviderStateMixin {
+  // Same radius as the bottom bar's own record diamond.
+  static const _diamondRadius = 12.0;
+
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+  bool _down = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.pulse) _pulse.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant SsDiamondButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pulse != oldWidget.pulse) {
+      if (widget.pulse) {
+        _pulse.repeat();
+      } else {
+        _pulse.stop();
+        _pulse.value = 0;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.half;
+    final side = d * math.sqrt2;
+    // The pulsing start button is the record button: red, like the bar's.
+    final red = widget.danger || widget.pulse;
+    final main = red ? SsColors.danger : SsColors.primary;
+    final colors = red
+        ? const [Color(0xFFE5484D), SsColors.danger, Color(0xFF8F0E2E)]
+        : const [SsColors.primaryLight, SsColors.primary, SsColors.primaryDark];
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapCancel: () => setState(() => _down = false),
+        onTapUp: (_) => setState(() => _down = false),
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _pulse,
+          builder: (context, child) {
+            final animate =
+                widget.pulse && !MediaQuery.disableAnimationsOf(context);
+            return Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                if (animate)
+                  Container(
+                    width: side * 0.9,
+                    height: side * 0.9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: main.withValues(
+                            alpha:
+                                0.25 +
+                                0.3 *
+                                    (0.5 +
+                                        0.5 *
+                                            math.sin(
+                                              _pulse.value * 2 * math.pi,
+                                            )),
+                          ),
+                          blurRadius:
+                              18 +
+                              12 *
+                                  (0.5 +
+                                      0.5 *
+                                          math.sin(_pulse.value * 2 * math.pi)),
+                          spreadRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                if (animate)
+                  Builder(
+                    builder: (context) {
+                      // Same single ring as the bottom bar's record diamond.
+                      final t = Curves.easeOut.transform(_pulse.value);
+                      final ringSize = side + 12 * t;
+                      return Positioned(
+                        left: (2 * d + 8 - ringSize) / 2,
+                        top: (2 * d + 8 - ringSize) / 2,
+                        width: ringSize,
+                        height: ringSize,
+                        child: Transform.rotate(
+                          angle: math.pi / 4,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                _diamondRadius,
+                              ),
+                              border: Border.all(
+                                color: main.withValues(alpha: 0.35 * (1 - t)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                child!,
+              ],
+            );
+          },
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 120),
+            scale: _down ? 0.93 : 1,
+            child: SizedBox(
+              width: 2 * d + 8,
+              height: 2 * d + 8,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.rotate(
+                    angle: math.pi / 4,
+                    child: Container(
+                      width: side,
+                      height: side,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(_diamondRadius),
+                        color: widget.outlined ? SsColors.canvas : null,
+                        gradient: widget.outlined
+                            ? null
+                            : LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: colors,
+                                stops: const [0, 0.55, 1],
+                              ),
+                        border: Border.all(color: main, width: 1.5),
+                        boxShadow: widget.outlined
+                            ? null
+                            : [
+                                BoxShadow(
+                                  color: main.withValues(alpha: 0.4),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                      ),
+                      child: widget.pulse
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                _diamondRadius,
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  const SsDots.onPrimary(
+                                    child: SizedBox.expand(),
+                                  ),
+                                  FractionallySizedBox(
+                                    alignment: Alignment(
+                                      -2 + 4 * _pulse.value,
+                                      0,
+                                    ),
+                                    widthFactor: 0.35,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.white.withValues(alpha: 0),
+                                            Colors.white.withValues(
+                                              alpha: 0.35,
+                                            ),
+                                            Colors.white.withValues(alpha: 0),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                  Icon(
+                    widget.icon,
+                    size: d * 0.8,
+                    color: widget.outlined ? main : SsColors.canvas,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
