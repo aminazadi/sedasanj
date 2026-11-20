@@ -195,7 +195,12 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                     // Without its own header above, the first group needs
                     // the same standard top gap other sections use instead
                     // of the header's left-over 2px.
-                    padding: EdgeInsets.fromLTRB(12, index == 0 ? 12 : 2, 12, 4),
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      index == 0 ? 12 : 2,
+                      12,
+                      4,
+                    ),
                     sliver: SliverList.builder(
                       itemCount: groupIds.length,
                       findChildIndexCallback: (key) {
@@ -244,11 +249,10 @@ class _ModelsPromptCard extends ConsumerWidget {
       child: SsCard(
         ripple: true,
         elevated: true,
-        color: Colors.white,
         onTap: () => context.push('/models'),
         child: Row(
           children: [
-            const Icon(Icons.download_outlined, color: SsColors.primary),
+            Icon(Icons.download_outlined, color: SsColors.of(context).primary),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -269,7 +273,7 @@ class _ModelsPromptCard extends ConsumerWidget {
                         : 'برای رونویسی فارسی و تشخیص گوینده روی گوشی و '
                               'بدون اینترنت، مدل‌ها را دانلود و نصب کنید.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: SsColors.ink.withValues(alpha: 0.8),
+                      color: SsColors.of(context).ink.withValues(alpha: 0.8),
                     ),
                   ),
                   if (downloading) ...[
@@ -279,7 +283,7 @@ class _ModelsPromptCard extends ConsumerWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: SsColors.neutral),
+            Icon(Icons.chevron_right, color: SsColors.of(context).neutral),
           ],
         ),
       ),
@@ -318,16 +322,16 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: SsColors.canvas,
+              color: SsColors.of(context).canvas,
               border: Border.all(
-                color: SsColors.neutral.withValues(alpha: 0.5),
+                color: SsColors.of(context).neutral.withValues(alpha: 0.5),
               ),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               label,
               style: theme.textTheme.labelLarge?.copyWith(
-                color: SsColors.primaryDark,
+                color: SsColors.of(context).primaryDark,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -355,7 +359,7 @@ class _NoResults extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.search_off, size: 44, color: SsColors.accent),
+          Icon(Icons.search_off, size: 44, color: SsColors.of(context).accent),
           const SizedBox(height: 12),
           Text('جلسه‌ای پیدا نشد', style: theme.textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -421,18 +425,22 @@ class _DateFilterChip extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: SsColors.selected,
+          color: SsColors.of(context).selected,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.event, size: 14, color: SsColors.primaryDark),
+            Icon(
+              Icons.event,
+              size: 14,
+              color: SsColors.of(context).primaryDark,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: SsColors.primaryDark,
+                color: SsColors.of(context).primaryDark,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -441,9 +449,13 @@ class _DateFilterChip extends ConsumerWidget {
               onTap: () =>
                   ref.read(meetingsSearchProvider.notifier).clearDate(),
               customBorder: const CircleBorder(),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(2),
-                child: Icon(Icons.close, size: 14, color: SsColors.primaryDark),
+                child: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: SsColors.of(context).primaryDark,
+                ),
               ),
             ),
           ],
@@ -513,7 +525,6 @@ class _MeetingTile extends ConsumerWidget {
     final card = SsCard(
       ripple: true,
       elevated: true,
-      color: Colors.white,
       padding: EdgeInsets.zero,
       onTap: () => context.push('/meeting/${meeting.id}'),
       child: Padding(
@@ -567,7 +578,7 @@ class _MeetingTile extends ConsumerWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontSize: 13,
                     height: 1.65,
-                    color: SsColors.ink.withValues(alpha: 0.8),
+                    color: SsColors.of(context).ink.withValues(alpha: 0.8),
                   ),
                 ),
               ),
@@ -656,7 +667,7 @@ class _MeetingTile extends ConsumerWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: color ?? SsColors.ink),
+          Icon(icon, size: 18, color: color ?? SsColors.of(context).ink),
           const SizedBox(width: 10),
           Flexible(child: Text(label, style: style(color))),
         ],
@@ -669,11 +680,10 @@ class _MeetingTile extends ConsumerWidget {
       child: PopupMenuButton<String>(
         padding: EdgeInsets.zero,
         iconSize: 20,
-        icon: const Icon(Icons.more_vert, color: SsColors.neutral),
+        icon: Icon(Icons.more_vert, color: SsColors.of(context).neutral),
         tooltip: 'گزینه‌ها',
-        color: Colors.white,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: SsColors.line),
+          side: BorderSide(color: SsColors.of(context).line),
         ),
         constraints: const BoxConstraints(minWidth: 0),
         position: PopupMenuPosition.under,
@@ -696,7 +706,7 @@ class _MeetingTile extends ConsumerWidget {
             'delete',
             Icons.delete_outline,
             'حذف جلسه',
-            color: SsColors.danger,
+            color: SsColors.of(context).danger,
           ),
         ],
       ),
@@ -794,24 +804,27 @@ class _RenameDialogState extends State<_RenameDialog> {
 
 class _SwipeBackground extends StatelessWidget {
   const _SwipeBackground.rename()
-    : color = SsColors.primary,
+    : _rename = true,
       icon = Icons.edit_outlined,
       label = 'تغییر نام',
       alignment = AlignmentDirectional.centerStart;
 
   const _SwipeBackground.delete()
-    : color = SsColors.danger,
+    : _rename = false,
       icon = Icons.delete_outline,
       label = 'حذف',
       alignment = AlignmentDirectional.centerEnd;
 
-  final Color color;
+  final bool _rename;
   final IconData icon;
   final String label;
   final AlignmentDirectional alignment;
 
   @override
   Widget build(BuildContext context) {
+    final color = _rename
+        ? SsColors.of(context).primary
+        : SsColors.of(context).danger;
     return Container(
       color: color,
       padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -867,8 +880,8 @@ class _StatusArea extends ConsumerWidget {
       child: SsBadge(
         _statusLabel(status),
         color: status == MeetingStatus.recording
-            ? SsColors.danger
-            : SsColors.neutral,
+            ? SsColors.of(context).danger
+            : SsColors.of(context).neutral,
         icon: _statusIcon(status),
       ),
     );
@@ -906,9 +919,9 @@ class _BusyLine extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: SsColors.primaryDark),
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: SsColors.of(context).primaryDark,
+            ),
           ),
         ),
       ],
@@ -935,16 +948,20 @@ class _FailedPanel extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, size: 18, color: SsColors.danger),
+          Icon(
+            Icons.error_outline,
+            size: 18,
+            color: SsColors.of(context).danger,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: SsColors.danger),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: SsColors.of(context).danger,
+              ),
             ),
           ),
         ],
@@ -965,7 +982,7 @@ class _Meta extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: SsColors.neutral),
+        Icon(icon, size: 14, color: SsColors.of(context).neutral),
         const SizedBox(width: 5),
         Flexible(
           child: Text(
@@ -988,16 +1005,20 @@ class _DurationChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-      decoration: BoxDecoration(color: SsColors.selected),
+      decoration: BoxDecoration(color: SsColors.of(context).selected),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer_outlined, size: 13, color: SsColors.primary),
+          Icon(
+            Icons.timer_outlined,
+            size: 13,
+            color: SsColors.of(context).primary,
+          ),
           const SizedBox(width: 4),
           Text(
             text,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: SsColors.primaryDark,
+              color: SsColors.of(context).primaryDark,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1054,8 +1075,8 @@ class _SkeletonListState extends State<_SkeletonList>
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: SsColors.line),
+                color: SsColors.of(context).canvas,
+                border: Border.all(color: SsColors.of(context).line),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1077,6 +1098,6 @@ class _SkeletonListState extends State<_SkeletonList>
   Widget _bar(double width, double height) => Container(
     width: width,
     height: height,
-    decoration: BoxDecoration(color: SsColors.selected),
+    decoration: BoxDecoration(color: SsColors.of(context).selected),
   );
 }

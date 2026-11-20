@@ -39,13 +39,13 @@ export default function OverflowMenu({ label, actions, details }: { label: strin
   }, [open]);
   return (
     <>
-      <button ref={triggerRef} type="button" className={`flex h-9 w-9 items-center justify-center border border-[#898989] text-[#4B6E48] hover:bg-[#F2F0EF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${open ? "bg-[#F2F0EF]" : "bg-white"}`} aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
+      <button ref={triggerRef} type="button" className={`flex h-9 w-9 items-center justify-center border border-[var(--color-neutral)] text-[var(--color-primary)] hover:bg-[var(--color-canvas)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${open ? "bg-[var(--color-canvas)]" : "bg-canvas"}`} aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((current) => !current)}>
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
       </button>
       {open ? createPortal(
-        <div ref={menuRef} role="menu" dir="rtl" className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] border border-[color:var(--line)] bg-[#F2F0EF] py-1 shadow-lg" style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}>
+        <div ref={menuRef} role="menu" dir="rtl" className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] border border-[color:var(--line)] bg-[var(--color-canvas)] py-1 shadow-lg" style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}>
           {actions.map((action) => (
-            <button key={action.label} type="button" role="menuitem" className="block w-full px-3 py-2 text-start text-sm text-slate-700 hover:bg-white hover:text-[#4B6E48] focus-visible:bg-white focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[#898989] disabled:hover:bg-transparent" disabled={action.disabled} onClick={() => { setOpen(false); action.onClick(); }}>
+            <button key={action.label} type="button" role="menuitem" className="block w-full px-3 py-2 text-start text-sm text-slate-700 hover:bg-canvas hover:text-[var(--color-primary)] focus-visible:bg-canvas focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[var(--color-neutral)] disabled:hover:bg-transparent" disabled={action.disabled} onClick={() => { setOpen(false); action.onClick(); }}>
               {action.label}
             </button>
           ))}

@@ -46,7 +46,7 @@ const SKIP_MESSAGES: Record<string, string> = {
 };
 
 function scoreTone(score: number): string {
-  if (score >= 75) return "bg-[#4B6E48]";
+  if (score >= 75) return "bg-[var(--color-primary)]";
   if (score >= 50) return "bg-amber-500";
   return "bg-rose-600";
 }
@@ -56,7 +56,7 @@ function CoachState({ kind, message, children }: { kind: CallStateKind; message:
     <div className="flex flex-col items-center justify-center gap-2 bg-slate-50 px-5 py-6 text-center">
       <CallStateArt section="coach" kind={kind} compact />
       <p
-        className={`max-w-md text-sm leading-6 ${kind === "failed" ? "text-[#B5543F]" : "text-slate-500"}`}
+        className={`max-w-md text-sm leading-6 ${kind === "failed" ? "text-[color:var(--color-rust)]" : "text-slate-500"}`}
         role={kind === "empty" ? undefined : "status"}
       >
         {message}
@@ -73,14 +73,14 @@ function Chip({ className, children }: { className: string; children: string }) 
 function DimensionBar({ item }: { item: CoachDimension }) {
   const label = DIMENSION_LABELS[item.key] ?? item.label_fa ?? item.key;
   return (
-    <li className="border border-[color:var(--line)] bg-white p-3">
+    <li className="border border-[color:var(--line)] bg-canvas p-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium text-slate-800">{label}</span>
         <span className="text-sm font-bold text-slate-700" dir="ltr">
           {item.score === null ? "—" : fmt.int(item.score)}
         </span>
       </div>
-      <div className="mt-2 h-2 bg-[#F2F0EF]" role="img" aria-label={`${label}: ${item.score ?? "نامشخص"}`}>
+      <div className="mt-2 h-2 bg-[var(--color-canvas)]" role="img" aria-label={`${label}: ${item.score ?? "نامشخص"}`}>
         {item.score === null ? null : <div className={`h-2 ${scoreTone(item.score)}`} style={{ width: `${item.score}%` }} />}
       </div>
       {item.verdict ? <p className="mt-2 text-xs leading-6 text-slate-500">{item.verdict}</p> : null}
@@ -100,7 +100,7 @@ function IssueCard({ issue, index }: { issue: CoachIssue; index: number }) {
     }
   }
   return (
-    <li className="flex border border-[color:var(--line)] bg-white">
+    <li className="flex border border-[color:var(--line)] bg-canvas">
       <span className={`w-1 shrink-0 ${SEVERITY_BAR[issue.severity]}`} aria-hidden="true" />
       <div className="min-w-0 flex-1 space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -110,19 +110,19 @@ function IssueCard({ issue, index }: { issue: CoachIssue; index: number }) {
           <Chip className={SEVERITY_TONE[issue.severity]}>{SEVERITY_LABELS[issue.severity]}</Chip>
           <Chip className={PATTERN_TONE[issue.pattern]}>{PATTERN_LABELS[issue.pattern]}</Chip>
           {issue.dimension && DIMENSION_LABELS[issue.dimension] ? (
-            <Chip className="bg-[#F2F0EF] text-slate-600">{DIMENSION_LABELS[issue.dimension]}</Chip>
+            <Chip className="bg-[var(--color-canvas)] text-slate-600">{DIMENSION_LABELS[issue.dimension]}</Chip>
           ) : null}
         </div>
         {issue.pattern_note ? <p className="text-xs leading-6 text-slate-500">{issue.pattern_note}</p> : null}
-        <blockquote className="border-r-4 border-[#B2AC88] bg-[#F2F0EF] px-3 py-2 text-sm leading-7 text-slate-700">
+        <blockquote className="border-r-4 border-[var(--color-accent)] bg-[var(--color-canvas)] px-3 py-2 text-sm leading-7 text-slate-700">
           «{issue.evidence_quote}»
           {issue.turn_ref ? <span className="mr-2 text-xs text-slate-400">{issue.turn_ref}</span> : null}
         </blockquote>
         {issue.why_it_hurts ? <p className="text-sm leading-7 text-slate-600">{issue.why_it_hurts}</p> : null}
         {issue.better_phrase ? (
-          <div className="border border-[#4B6E48]/40 bg-[#4B6E48]/5 p-3">
+          <div className="border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5 p-3">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-medium leading-7 text-[#37533a]">{issue.better_phrase}</p>
+              <p className="text-sm font-medium leading-7 text-[color:var(--color-primary-dark)]">{issue.better_phrase}</p>
               <button type="button" className="btn-ghost h-8 shrink-0 px-2 py-0 text-xs" onClick={copy}>
                 {copied ? "کپی شد" : "کپی جمله"}
               </button>
@@ -137,12 +137,12 @@ function IssueCard({ issue, index }: { issue: CoachIssue; index: number }) {
 function BulletList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="border border-[color:var(--line)] bg-white p-4">
+    <div className="border border-[color:var(--line)] bg-canvas p-4">
       <h3 className="mb-2 font-bold text-slate-800">{title}</h3>
       <ul className="space-y-2 text-sm leading-7 text-slate-600">
         {items.map((item) => (
           <li key={item} className="flex gap-2">
-            <span className="mt-2 h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" aria-hidden="true" />
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 bg-[var(--color-primary)]" aria-hidden="true" />
             <span>{item}</span>
           </li>
         ))}
@@ -161,19 +161,19 @@ function averageScore(dimensions: CoachDimension[]): number | null {
 function ScoreRing({ score }: { score: number | null }) {
   const radius = 52;
   const circumference = 2 * Math.PI * radius;
-  const color = score === null ? "#B2AC88" : score >= 75 ? "#4B6E48" : score >= 50 ? "#F59E0B" : "#E11D48";
+  const color = score === null ? "var(--color-accent)" : score >= 75 ? "var(--color-primary)" : score >= 50 ? "#F59E0B" : "#E11D48";
   return (
     <svg viewBox="0 0 128 128" className="h-32 w-32 shrink-0" role="img" aria-label={`امتیاز کلی ارتباط: ${score ?? "نامشخص"}`}>
-      <circle cx="64" cy="64" r={radius} fill="none" stroke="#F2F0EF" strokeWidth="12" />
-      <circle cx="64" cy="64" r="40" fill="none" stroke="#B2AC88" strokeOpacity="0.5" strokeDasharray="2 5" />
+      <circle cx="64" cy="64" r={radius} fill="none" stroke="var(--color-canvas)" strokeWidth="12" />
+      <circle cx="64" cy="64" r="40" fill="none" stroke="var(--color-accent)" strokeOpacity="0.5" strokeDasharray="2 5" />
       {score === null ? null : (
         <circle
           cx="64" cy="64" r={radius} fill="none" stroke={color} strokeWidth="12" strokeLinecap="butt"
           strokeDasharray={`${(circumference * score) / 100} ${circumference}`} transform="rotate(-90 64 64)"
         />
       )}
-      <text x="64" y="68" textAnchor="middle" fontSize="30" fontWeight="700" fill="#1e293b">{score === null ? "—" : fmt.int(score)}</text>
-      <text x="64" y="88" textAnchor="middle" fontSize="10" fill="#64748b">امتیاز کلی</text>
+      <text x="64" y="68" textAnchor="middle" fontSize="30" fontWeight="700" fill="var(--ink)">{score === null ? "—" : fmt.int(score)}</text>
+      <text x="64" y="88" textAnchor="middle" fontSize="10" fill="var(--ink-soft)">امتیاز کلی</text>
     </svg>
   );
 }
@@ -194,7 +194,7 @@ function DimensionRadar({ items }: { items: CoachDimension[] }) {
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-64 w-full max-w-[22rem]" role="img" aria-label="نمودار رادار ابعاد ارتباط">
       {[0.25, 0.5, 0.75, 1].map((ratio) => (
-        <polygon key={ratio} points={ring(ratio)} fill={ratio === 1 ? "#F2F0EF" : "none"} stroke="#B2AC88" strokeOpacity="0.6" />
+        <polygon key={ratio} points={ring(ratio)} fill={ratio === 1 ? "var(--color-canvas)" : "none"} stroke="var(--color-accent)" strokeOpacity="0.6" />
       ))}
       {axes.map((item, index) => {
         const [x, y] = point(index, 1);
@@ -202,15 +202,15 @@ function DimensionRadar({ items }: { items: CoachDimension[] }) {
         const label = DIMENSION_LABELS[item.key] ?? item.label_fa ?? item.key;
         return (
           <g key={item.key}>
-            <line x1={center} y1={center} x2={x} y2={y} stroke="#B2AC88" strokeOpacity="0.5" />
-            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="#475569">{label}</text>
+            <line x1={center} y1={center} x2={x} y2={y} stroke="var(--color-accent)" strokeOpacity="0.5" />
+            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="var(--ink-soft)">{label}</text>
           </g>
         );
       })}
-      <polygon points={shape} fill="#4B6E48" fillOpacity="0.28" stroke="#4B6E48" strokeWidth="2" />
+      <polygon points={shape} fill="var(--color-primary)" fillOpacity="0.28" stroke="var(--color-primary)" strokeWidth="2" />
       {axes.map((item, index) => {
         const [x, y] = point(index, (item.score ?? 0) / 100);
-        return <rect key={item.key} x={x - 3} y={y - 3} width="6" height="6" fill="#4B6E48" />;
+        return <rect key={item.key} x={x - 3} y={y - 3} width="6" height="6" fill="var(--color-primary)" />;
       })}
     </svg>
   );
@@ -218,7 +218,7 @@ function DimensionRadar({ items }: { items: CoachDimension[] }) {
 
 function StatTile({ value, label, tone }: { value: number; label: string; tone: string }) {
   return (
-    <div className="border border-[color:var(--line)] bg-white px-3 py-3 text-center">
+    <div className="border border-[color:var(--line)] bg-canvas px-3 py-3 text-center">
       <p className={`text-2xl font-bold ${tone}`}>{fmt.int(value)}</p>
       <p className="mt-1 text-xs text-slate-500">{label}</p>
     </div>
@@ -273,7 +273,7 @@ function CoachDetailDialog({ coach, open, onClose }: { coach: OperatorCoach; ope
                 ))}
               </ul>
             ) : (
-              <p className="bg-[#F2F0EF] px-4 py-4 text-sm text-slate-600">مشکل قابل‌اتکایی با شاهد در این تماس پیدا نشد.</p>
+              <p className="bg-[var(--color-canvas)] px-4 py-4 text-sm text-slate-600">مشکل قابل‌اتکایی با شاهد در این تماس پیدا نشد.</p>
             )}
             <div className="grid gap-3 lg:grid-cols-2">
               <BulletList title="نقاط قوت" items={result.strengths.map((item) => (item.evidence_quote ? `${item.title} — «${item.evidence_quote}»` : item.title))} />
@@ -330,7 +330,7 @@ function CoachBody({ coach }: { coach: OperatorCoach }) {
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile value={result.issues.length} label="نکتهٔ قابل‌بهبود" tone="text-rose-700" />
-        <StatTile value={result.strengths.length} label="نقطهٔ قوت" tone="text-[#4B6E48]" />
+        <StatTile value={result.strengths.length} label="نقطهٔ قوت" tone="text-[var(--color-primary)]" />
         <StatTile value={result.missed_opportunities.length} label="فرصت از دست‌رفته" tone="text-amber-600" />
         <StatTile value={result.next_call_drills.length} label="تمرین پیشنهادی" tone="text-slate-700" />
       </div>

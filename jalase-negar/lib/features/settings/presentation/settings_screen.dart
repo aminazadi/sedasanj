@@ -28,6 +28,7 @@ import 'cpu_limit_card.dart';
 import 'meeting_upload_card.dart';
 import '../../../core/platform/distribution.dart';
 import 'qr_scan_screen.dart';
+import 'theme_mode_card.dart';
 
 /// SedaSanj connection screen: pair with a QR code, a config file or pasted
 /// config text; shows who the app is connected as.
@@ -75,9 +76,9 @@ class SettingsScreen extends ConsumerWidget {
                                 builder: (_) => const DeleteAccountScreen(),
                               ),
                             ),
-                      child: const Text(
+                      child: Text(
                         'حذف حساب',
-                        style: TextStyle(color: SsColors.danger),
+                        style: TextStyle(color: SsColors.of(context).danger),
                       ),
                     ),
                   const SizedBox(height: 12),
@@ -187,6 +188,8 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+      const SizedBox(height: 12),
+      const ThemeModeCard(),
     ];
     final recording = <Widget>[
       const _SendTranscriptCard(),
@@ -198,7 +201,11 @@ class SettingsScreen extends ConsumerWidget {
       const _SoundEventsCard(),
     ];
     final models = <Widget>[const ModelsBody()];
-    final app = <Widget>[const UpdateCheckCard(), const PushSettingsCard()];
+    final app = <Widget>[
+      const UpdateCheckCard(),
+      const SizedBox(height: 12),
+      const PushSettingsCard(),
+    ];
 
     Widget tab(List<Widget> children) => ListView(
       padding: EdgeInsets.fromLTRB(
@@ -224,17 +231,12 @@ class SettingsScreen extends ConsumerWidget {
               Tab(text: 'حساب'),
               Tab(text: 'ضبط و ارسال'),
               Tab(text: 'مدل‌ها'),
-              Tab(text: 'برنامه'),
+              Tab(text: 'نسخه اپ'),
             ],
           ),
           Expanded(
             child: TabBarView(
-              children: [
-                tab(account),
-                tab(recording),
-                tab(models),
-                tab(app),
-              ],
+              children: [tab(account), tab(recording), tab(models), tab(app)],
             ),
           ),
         ],
@@ -533,7 +535,7 @@ class _SpeakerNameCard extends ConsumerWidget {
         'می‌توانید خاموشش کنید.',
         style: Theme.of(
           context,
-        ).textTheme.bodySmall?.copyWith(color: SsColors.ink),
+        ).textTheme.bodySmall?.copyWith(color: SsColors.of(context).ink),
       ),
     );
   }
@@ -563,7 +565,7 @@ class _SoundEventsCard extends ConsumerWidget {
         'در بخش «مدل‌ها» نیاز دارد و روی گوشی‌های ضعیف می‌توانید خاموشش کنید.',
         style: Theme.of(
           context,
-        ).textTheme.bodySmall?.copyWith(color: SsColors.ink),
+        ).textTheme.bodySmall?.copyWith(color: SsColors.of(context).ink),
       ),
     );
   }

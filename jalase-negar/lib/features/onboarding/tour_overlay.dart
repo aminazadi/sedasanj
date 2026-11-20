@@ -132,9 +132,9 @@ class _TourOverlayState extends ConsumerState<TourOverlay> {
                         : constraints.maxHeight * 0.62,
                   ),
                   child: Material(
-                    color: SsColors.canvas,
-                    shape: const RoundedRectangleBorder(
-                      side: BorderSide(color: SsColors.primary),
+                    color: SsColors.of(context).canvas,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: SsColors.of(context).primary),
                     ),
                     child: SingleChildScrollView(
                       key: ValueKey(step),
@@ -166,8 +166,10 @@ class _TourOverlayState extends ConsumerState<TourOverlay> {
                                                   ),
                                               child: ColoredBox(
                                                 color: item.index <= step.index
-                                                    ? SsColors.primary
-                                                    : SsColors.line,
+                                                    ? SsColors.of(
+                                                        context,
+                                                      ).primary
+                                                    : SsColors.of(context).line,
                                                 child: const SizedBox(
                                                   height: 3,
                                                 ),
@@ -259,7 +261,7 @@ class _TourHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: SsColors.selected,
+      color: SsColors.of(context).selected,
       child: SsDots(
         color: const Color(0x334B6E48),
         fadeToEnd: true,
@@ -270,12 +272,18 @@ class _TourHeading extends StatelessWidget {
               Transform.rotate(
                 angle: math.pi / 4,
                 child: DecoratedBox(
-                  decoration: const BoxDecoration(color: SsColors.primary),
+                  decoration: BoxDecoration(
+                    color: SsColors.of(context).primary,
+                  ),
                   child: SizedBox.square(
                     dimension: 28,
                     child: Transform.rotate(
                       angle: -math.pi / 4,
-                      child: Icon(step.icon, color: SsColors.canvas, size: 18),
+                      child: Icon(
+                        step.icon,
+                        color: SsColors.of(context).canvas,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ),
@@ -335,20 +343,22 @@ class _TourBackdrop extends SingleChildRenderObjectWidget {
 
   @override
   _TourBackdropBox createRenderObject(BuildContext context) =>
-      _TourBackdropBox(anchor);
+      _TourBackdropBox(anchor, SsColors.of(context).primary);
 
   @override
   void updateRenderObject(BuildContext context, _TourBackdropBox renderObject) {
     renderObject
       ..anchor = anchor
+      ..spotlightColor = SsColors.of(context).primary
       ..markNeedsPaint();
   }
 }
 
 class _TourBackdropBox extends RenderProxyBox {
-  _TourBackdropBox(this.anchor);
+  _TourBackdropBox(this.anchor, this.spotlightColor);
 
   GlobalKey anchor;
+  Color spotlightColor;
 
   @override
   void paint(PaintingContext context, Offset offset) {
@@ -368,7 +378,7 @@ class _TourBackdropBox extends RenderProxyBox {
         context.canvas.drawRect(
           spotlight.deflate(1),
           Paint()
-            ..color = SsColors.primary
+            ..color = spotlightColor
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2,
         );

@@ -16,7 +16,7 @@ Future<bool> showSedasanjIntroSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Colors.white,
+    backgroundColor: SsColors.of(context).canvas,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
     builder: (_) => SedasanjIntroSheet(content: content),
   );
@@ -139,7 +139,11 @@ class _SedasanjIntroSheetState extends State<SedasanjIntroSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Center(
-                child: Container(width: 40, height: 4, color: SsColors.line),
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  color: SsColors.of(context).line,
+                ),
               ),
               const SizedBox(height: 16),
               Text(c.title, style: theme.textTheme.titleLarge),

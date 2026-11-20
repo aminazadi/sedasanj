@@ -33,9 +33,9 @@ class _PermissionDialog extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.zero,
-          side: BorderSide(color: SsColors.lineStrong),
+          side: BorderSide(color: SsColors.of(context).lineStrong),
         ),
         title: const Text('به‌روزرسانی بی‌صدا'),
         content: const SingleChildScrollView(

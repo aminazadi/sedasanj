@@ -24,7 +24,7 @@ function ConversationAvatar({ side, ariaLabel, accentColor }: Pick<ConversationB
 
   return (
     <span
-      className={`assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center border ${user ? "border-[#B2AC88] bg-[#F2F0EF] text-[#4B6E48]" : "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"}`}
+      className={`assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center border ${user ? "border-[var(--color-accent)] bg-[var(--color-canvas)] text-[var(--color-primary)]" : "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)]"}`}
       aria-label={label}
       title={label}
       style={accentColor ? { backgroundColor: accentColor, borderColor: accentColor, color: readableOn(accentColor) } : undefined}
@@ -47,7 +47,7 @@ export default function ConversationBubble({ side, children, header, ariaLabel, 
         <div
           dir="rtl"
           style={accentColor && !user ? { borderColor: accentColor } : undefined}
-          className={`assistant-message-bubble relative w-full break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]" : "assistant-message-bubble-ai border-[#B2AC88] bg-white text-black"}`}
+          className={`assistant-message-bubble relative w-full break-words rounded-2xl border px-4 py-3 leading-8 shadow-sm ${user ? "assistant-message-bubble-user border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)]" : "assistant-message-bubble-ai border-[var(--color-accent)] bg-canvas text-[color:var(--ink)]"}`}
         >
           {header}
           {children}

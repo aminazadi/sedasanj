@@ -5,11 +5,20 @@ export const palette: {
   accent: string;
   neutral: string;
   primary: string;
+  primaryDark: string;
+  primaryLight: string;
+  selected: string;
+  ink: string;
+  inkSoft: string;
+  danger: string;
+  success: string;
+  warning: string;
 };
 export const brand: ColorScale;
 export const neutral: ColorScale;
 export const accent: ColorScale;
-export const chart: {
+
+export type ChartColors = {
   primary: string;
   secondary: string;
   success: string;
@@ -22,4 +31,9 @@ export const chart: {
   dark: string;
   categorical: string[];
 };
+export const chartLight: ChartColors;
+export const chartDark: ChartColors;
+/** @deprecated use `chartLight`/`chartDark`. */
+export const chart: ChartColors;
+
 export const tailwindColors: Record<string, ColorScale | string>;

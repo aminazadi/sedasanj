@@ -185,7 +185,7 @@ export default function ModuleFleet() {
       </div>
       {diag ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-3xl rounded-xl bg-canvas p-5 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-bold" dir="ltr">{diag.item.hostname ?? diag.item.host_uuid}</h2>
               <button type="button" className="btn btn-ghost" onClick={() => setDiag(null)}>بستن</button>

@@ -7,6 +7,17 @@
     <link rel="icon" type="image/webp" href="/favicon.webp" />
     <meta name="application-name" content="صداسنج" />
     <meta name="format-detection" content="telephone=no" />
+    <script>
+      // Applies a saved light/dark choice before first paint so there is no
+      // flash of the wrong theme; "system" needs no script, theme-vars.css
+      // already follows prefers-color-scheme when data-theme is unset.
+      (function () {
+        try {
+          var mode = localStorage.getItem("sedasanj:theme-mode");
+          if (mode === "dark" || mode === "light") document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {}
+      })();
+    </script>
     <!--seo:head-->
   </head>
   <body class="bg-slate-50 text-slate-900">

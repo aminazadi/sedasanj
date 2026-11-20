@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { chart } from "@cbi/web-shared/theme";
+import { useChartColors } from "@cbi/web-shared/lib/theme";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 import { fetchAuthorizedBlob, fmt, request } from "../api";
 import { CAN_MANAGE_MEETINGS, isOrgAdmin, useAuth } from "../auth";
@@ -53,6 +53,7 @@ const MEETING_PIPELINE_STEPS: PipelineStep[] = [
 type SpeakerEdit = { speakerIdx: number; label: string };
 
 export default function MeetingDetailPage() {
+  const chart = useChartColors();
   const { meetingId } = useParams<{ meetingId: string }>();
   const navigate = useNavigate();
   const { session } = useAuth();
@@ -339,7 +340,7 @@ export default function MeetingDetailPage() {
                   <span className="font-semibold" style={{ color: speakerColor(turn.speaker_idx, chart.categorical) }}>{turn.label}</span>
                   <button type="button" dir="ltr" className="tabular-nums hover:underline" disabled={!detail.audio_available} onClick={() => seekTo(turn.t_start_ms)} aria-label={`پخش از ${formatClock(turn.t_start_ms)}`}>{formatClock(turn.t_start_ms)} — {formatClock(turn.t_end_ms)}</button>
                 </div>
-                <p className={`whitespace-pre-wrap text-sm leading-8 ${currentTurnId === turn.id ? "border-s-2 border-[#4B6E48] ps-3" : ""}`} dir="auto">{turn.text}</p>
+                <p className={`whitespace-pre-wrap text-sm leading-8 ${currentTurnId === turn.id ? "border-s-2 border-[var(--color-primary)] ps-3" : ""}`} dir="auto">{turn.text}</p>
               </article>)}
             </div>
           )

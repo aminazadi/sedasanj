@@ -84,7 +84,7 @@ export default function JalaseNegarPairing() {
       </ol>
       {pairing && !expired ? (
         <div className="pair-code flex flex-wrap items-start gap-6 p-4">
-          <div className="border border-[color:var(--line)] bg-white p-3">
+          <div className="border border-[color:var(--line)] bg-canvas p-3">
             <QRCodeSVG value={config} size={200} level="M" marginSize={2} fgColor="#294c2b" bgColor="#ffffff" title="کد اتصال اپ جلسه‌نگار" />
           </div>
           <div className="min-w-0 flex-1 space-y-3">

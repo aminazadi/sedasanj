@@ -43,7 +43,7 @@ export default function TwoFactorSettings() {
     <input id={id} className="input" dir="ltr" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" value={fmt.digits(code)} onChange={(e) => setCode(fmt.latinDigits(e.target.value).replace(/\D/g, "").slice(0, 6))} required />
   </div>;
   const step = (index: number, title: string, children?: React.ReactNode) => <li className="flex gap-3">
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[#4B6E48] text-sm font-bold text-[#F2F0EF]" aria-hidden="true">{index}</span>
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--color-primary)] text-sm font-bold text-[var(--color-canvas)]" aria-hidden="true">{index}</span>
     <div className="min-w-0 flex-1 space-y-2"><p className="text-sm font-medium leading-7">{title}</p>{children}</div>
   </li>;
 
@@ -70,7 +70,7 @@ export default function TwoFactorSettings() {
         </form> : secret ? <ol className="space-y-5">
           {step(1, "برنامهٔ Google Authenticator را روی گوشی باز کنید و گزینهٔ افزودن حساب با کلید تنظیم را بزنید.")}
           {step(2, "این کلید را در برنامه وارد کنید:", <>
-            <code className="block break-all border border-[color:var(--line)] bg-white p-3 text-sm" dir="ltr">{secret}</code>
+            <code className="block break-all border border-[color:var(--line)] bg-canvas p-3 text-sm" dir="ltr">{secret}</code>
             <a href={uri} className="inline-block text-sm text-brand-600 underline">باز کردن در برنامه آتنتیکیتور</a>
           </>)}
           {step(3, "کد شش‌رقمی نمایش‌داده‌شده را وارد و تأیید کنید.", <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
@@ -79,8 +79,8 @@ export default function TwoFactorSettings() {
           </form>)}
         </ol> : <div className="space-y-4">
           <ul className="space-y-2 text-sm leading-7">
-            <li className="flex gap-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" aria-hidden="true" />حساب مدیر سازمان در برابر لو رفتن گذرواژه محافظت می‌شود.</li>
-            <li className="flex gap-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 bg-[#4B6E48]" aria-hidden="true" />راه‌اندازی کمتر از یک دقیقه طول می‌کشد.</li>
+            <li className="flex gap-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 bg-[var(--color-primary)]" aria-hidden="true" />حساب مدیر سازمان در برابر لو رفتن گذرواژه محافظت می‌شود.</li>
+            <li className="flex gap-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 bg-[var(--color-primary)]" aria-hidden="true" />راه‌اندازی کمتر از یک دقیقه طول می‌کشد.</li>
           </ul>
           <button className="btn" disabled={busy} onClick={start}>فعال‌سازی ورود دومرحله‌ای</button>
         </div>}

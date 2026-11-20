@@ -122,8 +122,8 @@ class _LevelCard extends StatelessWidget {
           LinearProgressIndicator(
             value: p.levelFraction,
             minHeight: 10,
-            color: SsColors.primary,
-            backgroundColor: SsColors.selected,
+            color: SsColors.of(context).primary,
+            backgroundColor: SsColors.of(context).selected,
           ),
           const SizedBox(height: 8),
           Text(
@@ -160,7 +160,9 @@ class _BadgeTile extends StatelessWidget {
       title: badge.title,
       trailing: Icon(
         badge.earned ? Icons.emoji_events : Icons.lock_outline,
-        color: badge.earned ? SsColors.primary : SsColors.neutral,
+        color: badge.earned
+            ? SsColors.of(context).primary
+            : SsColors.of(context).neutral,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

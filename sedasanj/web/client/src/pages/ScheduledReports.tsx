@@ -135,7 +135,7 @@ export default function ScheduledReports() {
         <label><span>روش زمان‌بندی</span><select value={form.schedule_mode} onChange={event => setForm({...form, schedule_mode: event.target.value as ReportInput["schedule_mode"], interval_hours: event.target.value === "interval" ? 24 : null, fixed_hours: event.target.value === "fixed" ? [9] : []})}><option value="interval">هر چند ساعت از زمان فعال‌سازی</option><option value="fixed">ساعت‌های ثابت در منطقهٔ زمانی سازمان</option></select></label>
         {form.schedule_mode === "interval"
           ? <label><span>فاصلهٔ اجرا (ساعت)</span><input type="number" min={1} max={8760} required value={form.interval_hours ?? 24} onChange={event => setForm({...form, interval_hours: Number(event.target.value)})}/></label>
-          : <fieldset className="demo-field"><legend>ساعت‌های اجرا</legend><div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">{Array.from({length: 24}, (_, hour) => { const on = form.fixed_hours.includes(hour); return <button key={hour} type="button" aria-pressed={on} className={`h-10 border text-sm ${on ? "border-[#4B6E48] bg-[#4B6E48] text-white" : "border-[#cbd5e1] bg-[#f8fafc] text-slate-600 hover:bg-white"}`} onClick={() => setForm({...form, fixed_hours: on ? form.fixed_hours.filter(value => value !== hour) : [...form.fixed_hours, hour].sort((a, b) => a - b)})}>{fmt.int(hour)}:۰۰</button>; })}</div></fieldset>}
+          : <fieldset className="demo-field"><legend>ساعت‌های اجرا</legend><div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">{Array.from({length: 24}, (_, hour) => { const on = form.fixed_hours.includes(hour); return <button key={hour} type="button" aria-pressed={on} className={`h-10 border text-sm ${on ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white" : "border-[var(--color-accent)] bg-canvas text-slate-600 hover:bg-[var(--color-selected)]"}`} onClick={() => setForm({...form, fixed_hours: on ? form.fixed_hours.filter(value => value !== hour) : [...form.fixed_hours, hour].sort((a, b) => a - b)})}>{fmt.int(hour)}:۰۰</button>; })}</div></fieldset>}
         <div className="grid gap-[18px] sm:grid-cols-2">
           <label><span>تعداد تلاش مجدد خودکار</span><input type="number" min={0} max={3} value={form.max_retries} onChange={event => setForm({...form, max_retries: Number(event.target.value)})}/></label>
           <label><span>فاصلهٔ پایهٔ تلاش مجدد (دقیقه)</span><input type="number" min={1} max={60} value={form.retry_base_minutes} onChange={event => setForm({...form, retry_base_minutes: Number(event.target.value)})}/></label>
@@ -143,9 +143,9 @@ export default function ScheduledReports() {
         <ToggleSwitch checked={form.enabled} onChange={enabled => setForm({...form, enabled})} label="زمان‌بندی فعال باشد" />
         <p>فاصلهٔ تلاش‌ها با ضریب سه افزایش می‌یابد. خطای سهمیه یا دسترسی دوباره اجرا نمی‌شود. هر گزارش از اجرای زمان‌بندی‌شدهٔ قبلی تا زمان اجرا را بررسی می‌کند؛ اجرای دستی، زمان‌بندی را جابه‌جا نمی‌کند و تولید موفق گزارش از سهمیهٔ دستیار سازمان استفاده می‌کند.</p>
       </FormDialog>
-      <section className="grid items-center gap-6 border border-[#B2AC88] px-6 py-6 sm:grid-cols-[minmax(0,1fr)_auto]" style={{ background: "#f2f0ef radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px" }}>
+      <section className="grid items-center gap-6 border border-[var(--color-accent)] px-6 py-6 sm:grid-cols-[minmax(0,1fr)_auto]" style={{ background: "var(--color-canvas) radial-gradient(circle, rgb(var(--color-neutral-rgb) / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px" }}>
         <div className="min-w-0 max-w-xl">
-          <h2 className="text-base font-bold text-[#4B6E48]">ساخت گزارش جدید</h2>
+          <h2 className="text-base font-bold text-[var(--color-primary)]">ساخت گزارش جدید</h2>
           <p className="mt-2 text-sm leading-7 text-slate-500">معیارهای گزارش را بنویسید و زمان اجرای خودکار را تعیین کنید؛ نتیجهٔ هر اجرا در آرشیو گزارش‌ها نگهداری می‌شود.</p>
           <button type="button" className="btn mt-4 inline-flex min-h-[42px] items-center gap-2 px-5" onClick={openNew}>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
@@ -159,7 +159,7 @@ export default function ScheduledReports() {
         <ToggleSwitch checked={archived} onChange={value => change({archived: value ? "true" : null})} label="آرشیوشده‌ها" />
       </div>
       {loading && !reports.length ? <SkeletonTable columns={[{ label: "گزارش", width: "10rem" }, { label: "زمان‌بندی", width: "8rem" }, { label: "اجرای بعدی", width: "8.5rem" }, { label: "وضعیت", kind: "badge" }]} rows={3} /> : reports.length ? <div className="grid gap-4 lg:grid-cols-2">{reports.map(report => <section className="card flex flex-col" key={report.id}>
-        <div className="mb-3 flex items-start justify-between gap-3"><h3 className="font-bold">{report.name}</h3><span className="badge border border-[#B2AC88] bg-[#F2F0EF] text-slate-600">{report.archived_at ? "آرشیوشده" : report.enabled ? "فعال" : "متوقف"}</span></div>
+        <div className="mb-3 flex items-start justify-between gap-3"><h3 className="font-bold">{report.name}</h3><span className="badge border border-[var(--color-accent)] bg-[var(--color-canvas)] text-slate-600">{report.archived_at ? "آرشیوشده" : report.enabled ? "فعال" : "متوقف"}</span></div>
         <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{report.instructions}</p>
         <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
           <div className="flex justify-between gap-2"><dt className="text-slate-500">زمان‌بندی</dt><dd>{scheduleText(report)}</dd></div>
@@ -167,7 +167,7 @@ export default function ScheduledReports() {
           <div className="flex justify-between gap-2"><dt className="text-slate-500">تلاش مجدد</dt><dd>{fmt.int(report.max_retries)} بار</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-slate-500">فاصلهٔ پایه</dt><dd>{fmt.int(report.retry_base_minutes)} دقیقه</dd></div>
         </dl>
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-[#B2AC88] pt-3">
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-accent)] pt-3">
           {!report.archived_at ? <button className="btn h-9 px-3 py-0 text-xs" disabled={busy} onClick={() => void mutate(async () => { const run = await request<Run>(`/v1/scheduled-reports/${report.id}/run`, {method: "POST", body: {idempotency_key: crypto.randomUUID()}}); navigate(reportDetailUrl(run.id, params)); })}>اجرای همین حالا</button> : null}
           <button className="btn-ghost h-9 px-3 py-0 text-xs" onClick={() => change({tab: "archive", report: report.id, offset: null, run: null})}>مشاهده آرشیو</button>
           {!report.archived_at ? <>

@@ -79,43 +79,62 @@ class _QrScanScreenState extends State<QrScanScreen>
             CustomPaint(painter: _ScrimPainter(window)),
             AnimatedBuilder(
               animation: _line,
-              builder: (context, _) =>
-                  CustomPaint(painter: _FramePainter(window, _line.value)),
+              builder: (context, _) => CustomPaint(
+                painter: _FramePainter(
+                  window,
+                  _line.value,
+                  SsColors.of(context).accent,
+                ),
+              ),
             ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  children: [
-                    Tooltip(
-                      message: 'بستن',
-                      child: SsDiamondButton(
-                        half: 38,
-                        icon: Icons.close,
-                        danger: true,
-                        onTap: () => Navigator.of(context).maybePop(),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                minimum: const EdgeInsets.only(bottom: 20),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Tooltip(
+                        message: 'بستن',
+                        child: SsDiamondButton(
+                          half: 38,
+                          icon: Icons.close,
+                          danger: true,
+                          onTap: () => Navigator.of(context).maybePop(),
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    ValueListenableBuilder<MobileScannerState>(
-                      valueListenable: _controller,
-                      builder: (context, state, _) {
-                        if (state.torchState == TorchState.unavailable) {
-                          return const SizedBox.shrink();
-                        }
-                        final on = state.torchState == TorchState.on;
-                        return Tooltip(
-                          message: on ? 'خاموش کردن چراغ' : 'روشن کردن چراغ',
-                          child: SsDiamondButton(
-                            half: 38,
-                            icon: on ? Icons.flash_on : Icons.flash_off,
-                            outlined: !on,
-                            onTap: _controller.toggleTorch,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                      ValueListenableBuilder<MobileScannerState>(
+                        valueListenable: _controller,
+                        builder: (context, state, _) {
+                          if (state.torchState == TorchState.unavailable) {
+                            return const SizedBox.shrink();
+                          }
+                          final on = state.torchState == TorchState.on;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(width: 28),
+                              Tooltip(
+                                message: on
+                                    ? 'خاموش کردن چراغ'
+                                    : 'روشن کردن چراغ',
+                                child: SsDiamondButton(
+                                  half: 38,
+                                  icon: on ? Icons.flash_on : Icons.flash_off,
+                                  outlined: !on,
+                                  onTap: _controller.toggleTorch,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -202,17 +221,18 @@ class _ScrimPainter extends CustomPainter {
 
 /// Corner brackets plus a sweeping scan line inside the window.
 class _FramePainter extends CustomPainter {
-  _FramePainter(this.window, this.t);
+  _FramePainter(this.window, this.t, this.accentColor);
 
   final Rect window;
   final double t;
+  final Color accentColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     const radius = 24.0;
     const arm = 36.0;
     final corner = Paint()
-      ..color = SsColors.accent
+      ..color = accentColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
@@ -252,13 +272,18 @@ class _FramePainter extends CustomPainter {
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(2)),
       Paint()
-        ..shader = const LinearGradient(
-          colors: [Color(0x00B2AC88), SsColors.accent, Color(0x00B2AC88)],
+        ..shader = LinearGradient(
+          colors: [
+            accentColor.withValues(alpha: 0),
+            accentColor,
+            accentColor.withValues(alpha: 0),
+          ],
         ).createShader(rect)
         ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2),
     );
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => old.t != t || old.window != window;
+  bool shouldRepaint(_FramePainter old) =>
+      old.t != t || old.window != window || old.accentColor != accentColor;
 }

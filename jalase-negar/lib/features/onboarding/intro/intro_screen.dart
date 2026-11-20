@@ -295,10 +295,10 @@ class _Segments extends StatelessWidget {
               width: i == index ? 28 : 10,
               height: 4,
               color: i == index
-                  ? SsColors.primary
+                  ? SsColors.of(context).primary
                   : i < index
-                  ? SsColors.accent
-                  : SsColors.line,
+                  ? SsColors.of(context).accent
+                  : SsColors.of(context).line,
             ),
         ],
       ),

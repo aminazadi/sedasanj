@@ -56,7 +56,7 @@ export default function Login() {
   return (
     <main
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-8"
-      style={{ backgroundImage: "radial-gradient(circle, rgb(75 110 72 / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}
+      style={{ backgroundImage: "radial-gradient(circle, rgb(var(--color-primary-rgb) / 0.18) 0 1px, transparent 1.15px)", backgroundPosition: "0 0", backgroundSize: "8px 8px" }}
     >
       <div className="relative w-full max-w-md">
         <div className="mb-5 flex w-full justify-center">
@@ -64,7 +64,7 @@ export default function Login() {
         </div>
         <form
           onSubmit={submit}
-          className="relative w-full overflow-hidden border border-brand-200 bg-white/90 p-6 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-8"
+          className="relative w-full overflow-hidden border border-brand-200 bg-canvas/90 p-6 shadow-2xl shadow-brand-950/10 backdrop-blur-sm sm:p-8"
         >
         <div className="mb-6 border-r-4 border-brand-500 pr-3">
           <h1 className="text-2xl font-bold text-slate-900">ورود به پنل مدیریت</h1>
@@ -75,7 +75,7 @@ export default function Login() {
         </label>
         <input
           id="email"
-          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-canvas"
           type="text"
           autoComplete="username"
           dir="ltr"
@@ -88,7 +88,7 @@ export default function Login() {
         </label>
         <input
           id="password"
-          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-canvas"
           type="password"
           dir="ltr"
           value={password}
@@ -99,7 +99,7 @@ export default function Login() {
         <label className="label font-medium text-slate-700" htmlFor="totp">کد گوگل آتنتیکیتور</label>
         <input
           id="totp"
-          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+          className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-canvas"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"

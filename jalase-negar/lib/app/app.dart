@@ -10,6 +10,7 @@ import '../features/updates/presentation/update_prompt_host.dart';
 import 'router.dart';
 import 'splash_screen.dart';
 import 'theme.dart';
+import 'theme_mode_controller.dart';
 import 'widgets/ss_toast.dart';
 
 class JalaseNegarApp extends ConsumerStatefulWidget {
@@ -41,6 +42,7 @@ class _JalaseNegarAppState extends ConsumerState<JalaseNegarApp> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
+        darkTheme: buildAppTheme(Brightness.dark),
         home: SplashScreen(
           onComplete: () =>
               Future<void>.delayed(const Duration(milliseconds: 300), () {
@@ -54,6 +56,7 @@ class _JalaseNegarAppState extends ConsumerState<JalaseNegarApp> {
       loading: () => const SizedBox.shrink(),
       error: (e, _) => MaterialApp(
         theme: buildAppTheme(),
+        darkTheme: buildAppTheme(Brightness.dark),
         home: Scaffold(body: Center(child: Text('خطا در راه‌اندازی: $e'))),
       ),
       data: (_) => const _RouterApp(),
@@ -82,6 +85,7 @@ class _RouterAppState extends ConsumerState<_RouterApp> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider).value ?? ThemeMode.system;
     return MaterialApp.router(
       title: 'جلسه‌نگار',
       debugShowCheckedModeBanner: false,
@@ -93,6 +97,8 @@ class _RouterAppState extends ConsumerState<_RouterApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: buildAppTheme(),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: themeMode,
       builder: (context, child) => SsToastHost(
         child: PushHost(
           child: UpdatePromptHost(child: SedasanjIntroHost(child: child!)),

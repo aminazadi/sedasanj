@@ -45,7 +45,7 @@ export default function StaffRoleEditor({ target, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4"
       onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="staff-role-title"
-        className="my-auto w-full max-w-lg border border-slate-200 bg-white p-6 shadow-xl">
+        className="my-auto w-full max-w-lg border border-slate-200 bg-canvas p-6 shadow-xl">
         <h2 id="staff-role-title" className="text-xl font-bold">ویرایش سطح دسترسی</h2>
         <p className="my-3" dir="ltr">{target.email}</p>
         <form className="space-y-4" onSubmit={event => void save(event)}>

@@ -7,6 +7,7 @@ import PasswordChange from "../components/PasswordChange";
 import TwoFactorSettings from "../components/TwoFactorSettings";
 import { ErrorBox, Loading } from "../components/Widgets";
 import { PageHeader } from "../components/PageHeader";
+import ThemeSwitch from "@cbi/web-shared/components/ThemeSwitch";
 import type { AccountInfo, User } from "../types";
 
 type ProfileForm = {
@@ -140,11 +141,18 @@ export default function Profile() {
     <div className="space-y-4">
       <PageHeader title="پروفایل من" description="مشخصات فردی، راه‌های تماس و امنیت ورود شما" />
       <ErrorBox message={error} />
+      <section className="card flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="font-bold">ظاهر برنامه</h2>
+          <p className="section-hint">روشن، تاریک یا پیروی از تنظیمات مرورگر؛ فقط برای همین دستگاه.</p>
+        </div>
+        <ThemeSwitch />
+      </section>
       {account ? (
         <>
         <section className="card flex flex-wrap items-center justify-between gap-x-8 gap-y-5">
           <div className="flex min-w-0 items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center bg-[#4B6E48] text-2xl font-bold text-[#F2F0EF]" aria-hidden="true">{(account.user.display_name || account.user.email).slice(0, 1)}</div>
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center bg-[var(--color-primary)] text-2xl font-bold text-[var(--color-canvas)]" aria-hidden="true">{(account.user.display_name || account.user.email).slice(0, 1)}</div>
             <div className="min-w-0">
               <h2 className="truncate text-lg font-bold">{account.user.display_name || account.user.email}</h2>
               <p className="mt-0.5 break-all text-sm text-slate-500 [unicode-bidi:plaintext]" dir="ltr" style={{ textAlign: "right" }}>{account.user.email}</p>

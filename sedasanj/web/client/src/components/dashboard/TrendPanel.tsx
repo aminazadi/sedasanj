@@ -24,8 +24,8 @@ const HINTS: Record<TrendMetric, string> = {
 /** Series plotted for each metric; a line needs at least two days with a value to be a trend. */
 const SERIES: Record<TrendMetric, string[]> = { calls: ["calls", "answered_calls"], sales: ["opportunities", "wins"], quality: ["quality_score"], satisfaction: ["satisfaction"] };
 
-const AXIS = { fill: "#6f716b", fontSize: 12 };
-const TOOLTIP = { border: "1px solid #b2ac88", borderRadius: 0, background: "#f2f0ef", direction: "rtl" as const, fontSize: 12 };
+const AXIS = { fill: "var(--ink-soft)", fontSize: 12 };
+const TOOLTIP = { border: "1px solid var(--color-accent)", borderRadius: 0, background: "var(--color-canvas)", direction: "rtl" as const, fontSize: 12 };
 
 function Key({ color, label, bar = false }: { color: string; label: string; bar?: boolean }) {
   return <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><i className={bar ? "h-2.5 w-2.5" : "h-0.5 w-4"} style={{ background: color }} aria-hidden="true" />{label}</span>;
@@ -41,10 +41,10 @@ export function TrendPanel({ trend, metric, onMetric }: { trend: KpiDashboard["t
   const populatedDays = rows.filter((row) => SERIES[metric].some((key) => Number((row as Record<string, unknown>)[key] ?? 0) > 0)).length;
   const percent = metric === "satisfaction";
   const keys = {
-    calls: [<Key key="c" color="#b2ac88" label="کل تماس‌ها" bar />, <Key key="a" color="#4b6e48" label="پاسخ‌داده‌شده" />],
-    sales: [<Key key="o" color="#b2ac88" label="فرصت فروش" bar />, <Key key="w" color="#4b6e48" label="فروش" />],
-    quality: [<Key key="q" color="#4b6e48" label="میانگین کیفیت" />],
-    satisfaction: [<Key key="s" color="#4b6e48" label="سهم مشتریان راضی" />],
+    calls: [<Key key="c" color="var(--color-accent)" label="کل تماس‌ها" bar />, <Key key="a" color="var(--color-primary)" label="پاسخ‌داده‌شده" />],
+    sales: [<Key key="o" color="var(--color-accent)" label="فرصت فروش" bar />, <Key key="w" color="var(--color-primary)" label="فروش" />],
+    quality: [<Key key="q" color="var(--color-primary)" label="میانگین کیفیت" />],
+    satisfaction: [<Key key="s" color="var(--color-primary)" label="سهم مشتریان راضی" />],
   }[metric];
   return <DashboardCard title="روند روزانه" hint={HINTS[metric]} action={<Segmented label="شاخص نمودار روند" value={metric} options={TREND_METRICS} onChange={onMetric} />}>
     {populatedDays >= 2 ? <>
@@ -52,20 +52,20 @@ export function TrendPanel({ trend, metric, onMetric }: { trend: KpiDashboard["t
       <div className="h-64 min-w-0 sm:h-72" dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
-            <CartesianGrid stroke="#d8d4c2" strokeDasharray="3 5" vertical={false} />
+            <CartesianGrid stroke="var(--color-chart-grid)" strokeDasharray="3 5" vertical={false} />
             <XAxis dataKey="label" interval="preserveStartEnd" minTickGap={40} tick={AXIS} tickLine={false} axisLine={false} tickMargin={10} />
             <YAxis orientation="right" width={44} allowDecimals={false} domain={metric === "quality" || percent ? [0, 100] : [0, "auto"]} tickFormatter={(value: number) => (percent ? `${fmt.int(value)}٪` : fmt.int(value))} tick={AXIS} tickLine={false} axisLine={false} />
-            <Tooltip cursor={{ stroke: "#898989", strokeDasharray: "3 3" }} contentStyle={TOOLTIP} labelStyle={{ color: "#23281f", marginBottom: 6 }} formatter={(value: number, name: string) => [percent ? `${fmt.decimal(value)}٪` : fmt.decimal(value), name]} />
+            <Tooltip cursor={{ stroke: "var(--color-neutral)", strokeDasharray: "3 3" }} contentStyle={TOOLTIP} labelStyle={{ color: "var(--ink)", marginBottom: 6 }} formatter={(value: number, name: string) => [percent ? `${fmt.decimal(value)}٪` : fmt.decimal(value), name]} />
             {metric === "calls" ? [
-              <Area key="calls" type="monotone" dataKey="calls" name="کل تماس‌ها" stroke="#b2ac88" fill="#b2ac88" fillOpacity={0.22} strokeWidth={1.5} />,
-              <Line key="answered" type="monotone" dataKey="answered_calls" name="پاسخ‌داده‌شده" stroke="#4b6e48" strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />,
+              <Area key="calls" type="monotone" dataKey="calls" name="کل تماس‌ها" stroke="var(--color-accent)" fill="var(--color-accent)" fillOpacity={0.22} strokeWidth={1.5} />,
+              <Line key="answered" type="monotone" dataKey="answered_calls" name="پاسخ‌داده‌شده" stroke="var(--color-primary)" strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />,
             ] : null}
             {metric === "sales" ? [
-              <Bar key="opportunities" dataKey="opportunities" name="فرصت فروش" fill="#b2ac88" maxBarSize={18} />,
-              <Line key="wins" type="monotone" dataKey="wins" name="فروش" stroke="#4b6e48" strokeWidth={2.2} dot={{ r: 2.5, fill: "#4b6e48" }} activeDot={{ r: 4 }} />,
+              <Bar key="opportunities" dataKey="opportunities" name="فرصت فروش" fill="var(--color-accent)" maxBarSize={18} />,
+              <Line key="wins" type="monotone" dataKey="wins" name="فروش" stroke="var(--color-primary)" strokeWidth={2.2} dot={{ r: 2.5, fill: "var(--color-primary)" }} activeDot={{ r: 4 }} />,
             ] : null}
-            {metric === "quality" ? <Line type="monotone" dataKey="quality_score" name="میانگین کیفیت" stroke="#4b6e48" strokeWidth={2.2} connectNulls dot={{ r: 2.5, fill: "#4b6e48" }} activeDot={{ r: 4 }} /> : null}
-            {metric === "satisfaction" ? <Line type="monotone" dataKey="satisfaction" name="سهم مشتریان راضی" stroke="#4b6e48" strokeWidth={2.2} connectNulls dot={{ r: 2.5, fill: "#4b6e48" }} activeDot={{ r: 4 }} /> : null}
+            {metric === "quality" ? <Line type="monotone" dataKey="quality_score" name="میانگین کیفیت" stroke="var(--color-primary)" strokeWidth={2.2} connectNulls dot={{ r: 2.5, fill: "var(--color-primary)" }} activeDot={{ r: 4 }} /> : null}
+            {metric === "satisfaction" ? <Line type="monotone" dataKey="satisfaction" name="سهم مشتریان راضی" stroke="var(--color-primary)" strokeWidth={2.2} connectNulls dot={{ r: 2.5, fill: "var(--color-primary)" }} activeDot={{ r: 4 }} /> : null}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

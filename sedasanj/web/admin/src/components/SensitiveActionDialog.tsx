@@ -35,7 +35,7 @@ export function useSensitiveAction(): [(message: string) => Promise<SensitivePro
     message === null ? null : (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true">
         <form
-          className="w-full max-w-sm space-y-3 rounded-xl bg-white p-5 shadow-xl"
+          className="w-full max-w-sm space-y-3 rounded-xl bg-canvas p-5 shadow-xl"
           onSubmit={(e) => {
             e.preventDefault();
             finish({ current_password: password, totp_code: code.trim() || null });

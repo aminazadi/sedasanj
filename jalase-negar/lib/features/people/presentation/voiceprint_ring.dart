@@ -60,6 +60,8 @@ class VoiceprintRing extends StatelessWidget {
                   fill: fill,
                   isCurrent: i == current,
                   isRequired: required[i],
+                  primaryColor: SsColors.of(context).primary,
+                  lineColor: SsColors.of(context).line,
                 ),
               ),
             ),
@@ -69,9 +71,9 @@ class VoiceprintRing extends StatelessWidget {
             height: size * (0.46 + 0.14 * pulse),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: SsColors.primary.withValues(
-                alpha: complete ? 1 : 0.08 + 0.2 * pulse,
-              ),
+              color: SsColors.of(
+                context,
+              ).primary.withValues(alpha: complete ? 1 : 0.08 + 0.2 * pulse),
             ),
             child: Icon(
               complete
@@ -80,7 +82,9 @@ class VoiceprintRing extends StatelessWidget {
                   ? Icons.graphic_eq
                   : Icons.mic_none,
               size: size * 0.24,
-              color: complete ? SsColors.canvas : SsColors.primary,
+              color: complete
+                  ? SsColors.of(context).canvas
+                  : SsColors.of(context).primary,
             ),
           ),
         ],
@@ -96,6 +100,8 @@ class _ArcPainter extends CustomPainter {
     required this.fill,
     required this.isCurrent,
     required this.isRequired,
+    required this.primaryColor,
+    required this.lineColor,
   });
 
   final int index;
@@ -103,6 +109,8 @@ class _ArcPainter extends CustomPainter {
   final double fill;
   final bool isCurrent;
   final bool isRequired;
+  final Color primaryColor;
+  final Color lineColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -118,7 +126,7 @@ class _ArcPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.butt
-      ..color = (isCurrent ? SsColors.primary : SsColors.line).withValues(
+      ..color = (isCurrent ? primaryColor : lineColor).withValues(
         alpha: isCurrent ? 0.35 : (isRequired ? 1 : 0.55),
       );
     canvas.drawArc(rect, start, span, false, base);
@@ -127,7 +135,7 @@ class _ArcPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..strokeCap = StrokeCap.butt
-        ..color = SsColors.primary;
+        ..color = primaryColor;
       canvas.drawArc(rect, start, span * fill, false, done);
     }
   }
@@ -137,5 +145,7 @@ class _ArcPainter extends CustomPainter {
       old.fill != fill ||
       old.isCurrent != isCurrent ||
       old.index != index ||
-      old.count != count;
+      old.count != count ||
+      old.primaryColor != primaryColor ||
+      old.lineColor != lineColor;
 }

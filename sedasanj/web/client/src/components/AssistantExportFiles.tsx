@@ -40,7 +40,7 @@ export function ExportFileLink({ file, children }: { file: AssistantExportFile; 
       onClick={(event) => { event.preventDefault(); void download(); }}
       aria-disabled={busy}
       aria-busy={busy}
-      className={`inline-flex max-w-full items-baseline gap-1 align-baseline text-[#4B6E48] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current ${busy ? "cursor-not-allowed opacity-50" : "hover:text-[#365033]"}`}
+      className={`inline-flex max-w-full items-baseline gap-1 align-baseline text-[var(--color-primary)] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current ${busy ? "cursor-not-allowed opacity-50" : "hover:text-[color:var(--color-primary-dark)]"}`}
     >
       <span className="self-center"><FileTypeIcon name={file.name} format={file.format} size={16} /></span>
       <span className="min-w-0 break-words">{children || <>دریافت <bdi dir="ltr">{file.name}</bdi></>}</span>

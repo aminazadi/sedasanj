@@ -151,15 +151,15 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
             decoration: widget.bare
                 ? const BoxDecoration()
                 : BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.6),
-                    border: Border.all(color: SsColors.line),
+                    color: SsColors.of(context).canvas.withValues(alpha: 0.6),
+                    border: Border.all(color: SsColors.of(context).line),
                   ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (!widget.bare) ...[
                   _Header(live: live),
-                  const Divider(height: 1, color: SsColors.line),
+                  Divider(height: 1, color: SsColors.of(context).line),
                 ],
                 Expanded(
                   child: live.lines.isEmpty
@@ -238,8 +238,8 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
                       live.note!,
                       style: textTheme.bodySmall?.copyWith(
                         color: live.phase == LivePhase.failed
-                            ? SsColors.danger
-                            : SsColors.warning,
+                            ? SsColors.of(context).danger
+                            : SsColors.of(context).warning,
                       ),
                     ),
                   ),
@@ -330,7 +330,7 @@ class _FadingLineState extends State<_FadingLine>
   @override
   Widget build(BuildContext context) {
     final base = widget.style ?? const TextStyle();
-    final color = base.color ?? SsColors.ink;
+    final color = base.color ?? SsColors.of(context).ink;
     final spans = <InlineSpan>[];
     if (widget.typing) {
       final words = widget.text.split(' ');
@@ -356,7 +356,7 @@ class _FadingLineState extends State<_FadingLine>
               width: 2,
               height: 16,
               margin: const EdgeInsetsDirectional.only(start: 3),
-              color: SsColors.primary,
+              color: SsColors.of(context).primary,
             ),
           ),
         ),
@@ -376,21 +376,28 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (live.phase) {
-      LivePhase.preparing => ('در حال آماده‌سازی…', SsColors.warning),
+      LivePhase.preparing => (
+        'در حال آماده‌سازی…',
+        SsColors.of(context).warning,
+      ),
       LivePhase.listening when live.speaking => (
         'در حال شنیدن…',
-        SsColors.primary,
+        SsColors.of(context).primary,
       ),
-      LivePhase.listening => ('زنده', SsColors.success),
-      LivePhase.lagging => ('کمی عقب است', SsColors.warning),
-      LivePhase.failed => ('متوقف شد', SsColors.danger),
-      LivePhase.off => ('خاموش', SsColors.neutral),
+      LivePhase.listening => ('زنده', SsColors.of(context).success),
+      LivePhase.lagging => ('کمی عقب است', SsColors.of(context).warning),
+      LivePhase.failed => ('متوقف شد', SsColors.of(context).danger),
+      LivePhase.off => ('خاموش', SsColors.of(context).neutral),
     };
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.subtitles_outlined, size: 18, color: SsColors.ink),
+          Icon(
+            Icons.subtitles_outlined,
+            size: 18,
+            color: SsColors.of(context).ink,
+          ),
           const SizedBox(width: 8),
           Text('متن زنده', style: Theme.of(context).textTheme.titleSmall),
           const Spacer(),
@@ -427,21 +434,25 @@ class _EmptyHint extends StatelessWidget {
       final note? => (const _AudioOnlyArt(), 'فقط ضبط صدا', note),
       null => switch (live.phase) {
         LivePhase.preparing => (
-          const Icon(
+          Icon(
             Icons.hourglass_top_outlined,
             size: 34,
-            color: SsColors.neutral,
+            color: SsColors.of(context).neutral,
           ),
           null,
           'مدل در حال آماده‌سازی است؛ ضبط از همین حالا انجام می‌شود.',
         ),
         LivePhase.failed => (
-          const Icon(Icons.error_outline, size: 34, color: SsColors.neutral),
+          Icon(
+            Icons.error_outline,
+            size: 34,
+            color: SsColors.of(context).neutral,
+          ),
           null,
           'متن زنده در دسترس نیست.',
         ),
         _ => (
-          const Icon(Icons.mic_none, size: 34, color: SsColors.neutral),
+          Icon(Icons.mic_none, size: 34, color: SsColors.of(context).neutral),
           null,
           'شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.',
         ),
@@ -459,7 +470,7 @@ class _EmptyHint extends StatelessWidget {
               Text(
                 title,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: SsColors.ink,
+                  color: SsColors.of(context).ink,
                 ),
               ),
               const SizedBox(height: 4),

@@ -10,10 +10,12 @@
     "./components/FilterBar": "./components/FilterBar.tsx",
     "./components/Skeleton": "./components/Skeleton.tsx",
     "./components/ToggleSwitch": "./components/ToggleSwitch.tsx",
+    "./components/ThemeSwitch": "./components/ThemeSwitch.tsx",
     "./components/AiInstructionsEditor": "./components/AiInstructionsEditor.tsx",
     "./lib/otp": "./lib/otp.ts",
     "./lib/resourceState": "./lib/resourceState.ts",
     "./lib/useResource": "./lib/useResource.ts",
+    "./lib/theme": "./lib/theme.tsx",
     "./styles/skeleton.css": "./styles/skeleton.css",
     "./theme": "./theme.js",
     "./lib/tablePagination": "./lib/tablePagination.mjs",
@@ -22,7 +24,8 @@
     "./components/PaginatedTable": "./components/PaginatedTable.tsx",
     "./styles/rich-content.css": "./styles/rich-content.css",
     "./styles/editor-chrome.css": "./styles/editor-chrome.css",
-    "./styles/editor-content-reset.css": "./styles/editor-content-reset.css"
+    "./styles/editor-content-reset.css": "./styles/editor-content-reset.css",
+    "./styles/theme-vars.css": "./styles/theme-vars.css"
   },
   "peerDependencies": {
     "react": "18.3.1",

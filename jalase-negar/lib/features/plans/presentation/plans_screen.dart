@@ -325,8 +325,10 @@ class _UsageCard extends StatelessWidget {
           LinearProgressIndicator(
             value: fraction,
             minHeight: 10,
-            color: usage.exhausted ? SsColors.danger : SsColors.primary,
-            backgroundColor: SsColors.selected,
+            color: usage.exhausted
+                ? SsColors.of(context).danger
+                : SsColors.of(context).primary,
+            backgroundColor: SsColors.of(context).selected,
           ),
           const SizedBox(height: 8),
           Text(
@@ -342,11 +344,11 @@ class _UsageCard extends StatelessWidget {
               'شارژ ماهانه بعدی: ${toPersianDigits('${resets.toLocal().year}/${resets.toLocal().month}/${resets.toLocal().day}')} (میلادی)',
             ),
           if (usage.exhausted)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
               child: Text(
                 'ساعت‌هایتان تمام شده است؛ پلن را ارتقا دهید یا ساعت اضافه بخرید.',
-                style: TextStyle(color: SsColors.danger),
+                style: TextStyle(color: SsColors.of(context).danger),
               ),
             ),
         ],

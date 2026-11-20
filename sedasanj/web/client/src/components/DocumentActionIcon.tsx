@@ -1,4 +1,4 @@
-export const DOCUMENT_ACTION_CLASS = "flex h-9 w-9 shrink-0 items-center justify-center border border-[#898989] bg-white text-[#000000] transition hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-40";
+export const DOCUMENT_ACTION_CLASS = "flex h-9 w-9 shrink-0 items-center justify-center border border-[var(--color-neutral)] bg-canvas text-[color:var(--ink)] transition hover:bg-[var(--color-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-40";
 const paths = {
   back: "m9 18 6-6-6-6",
   audio: "M5 9v6h4l5 4V5L9 9H5Z M18 9a4 4 0 0 1 0 6 M20.5 6.5a8 8 0 0 1 0 11",

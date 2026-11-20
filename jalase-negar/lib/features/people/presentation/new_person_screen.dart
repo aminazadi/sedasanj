@@ -126,7 +126,7 @@ class _NewPersonScreenState extends ConsumerState<NewPersonScreen> {
             Text(
               _message!,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: SsColors.danger,
+                color: SsColors.of(context).danger,
               ),
             ),
           ],

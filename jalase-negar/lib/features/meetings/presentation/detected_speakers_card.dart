@@ -209,8 +209,8 @@ class _DetectedTileState extends State<_DetectedTile> {
                 tooltip: playing ? 'توقف' : 'پخش نمونه',
                 padding: EdgeInsets.zero,
                 style: IconButton.styleFrom(
-                  backgroundColor: SsColors.primary,
-                  foregroundColor: SsColors.canvas,
+                  backgroundColor: SsColors.of(context).primary,
+                  foregroundColor: SsColors.of(context).canvas,
                   shape: const RoundedRectangleBorder(),
                 ),
                 icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 22),
@@ -237,8 +237,8 @@ class _DetectedTileState extends State<_DetectedTile> {
                       child: playing
                           ? LinearProgressIndicator(
                               value: progress ?? 0,
-                              color: SsColors.primary,
-                              backgroundColor: SsColors.line,
+                              color: SsColors.of(context).primary,
+                              backgroundColor: SsColors.of(context).line,
                             )
                           : null,
                     ),
@@ -305,9 +305,11 @@ class _NumberChip extends StatelessWidget {
           height: 26,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? SsColors.primary : Colors.transparent,
+            color: selected ? SsColors.of(context).primary : Colors.transparent,
             border: Border.all(
-              color: selected ? SsColors.primary : SsColors.line,
+              color: selected
+                  ? SsColors.of(context).primary
+                  : SsColors.of(context).line,
             ),
           ),
           child: Text(
@@ -315,7 +317,9 @@ class _NumberChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: selected ? SsColors.canvas : SsColors.ink,
+              color: selected
+                  ? SsColors.of(context).canvas
+                  : SsColors.of(context).ink,
             ),
           ),
         ),

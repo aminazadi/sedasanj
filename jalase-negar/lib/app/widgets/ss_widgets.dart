@@ -87,23 +87,22 @@ class SsAppBar extends AppBar {
     super.titleSpacing,
     super.actionsPadding,
   }) : super(
-         // Same bottom border and drop shadow as the bottom nav bar's own
-         // painted edge, so the two bars read as a matching pair.
-         flexibleSpace: const DecoratedBox(
-           decoration: BoxDecoration(
-             color: SsColors.canvas,
-             border: Border(bottom: BorderSide(color: SsColors.line)),
-             boxShadow: [
-               BoxShadow(
-                 color: Color(0x403E5C3B),
-                 blurRadius: 10,
-                 offset: Offset(0, 4),
+         // Same bottom border as the bottom nav bar's own painted edge, so
+         // the two bars read as a matching pair. Wrapped in a Builder since
+         // this runs in a constructor initializer, before there's a
+         // BuildContext to resolve the theme's colors from.
+         flexibleSpace: Builder(
+           builder: (context) => DecoratedBox(
+             decoration: BoxDecoration(
+               color: SsColors.of(context).canvas,
+               border: Border(
+                 bottom: BorderSide(color: SsColors.of(context).line),
                ),
-             ],
-           ),
-           child: Stack(
-             fit: StackFit.expand,
-             children: [SsDots(), _AppBarArt()],
+             ),
+             child: Stack(
+               fit: StackFit.expand,
+               children: [SsDots(), _AppBarArt()],
+             ),
            ),
          ),
        );
@@ -128,9 +127,11 @@ class SsAppBarAction extends StatelessWidget {
       child: TextButton.icon(
         onPressed: onPressed,
         style: TextButton.styleFrom(
-          foregroundColor: SsColors.ink,
-          backgroundColor: SsColors.ink.withValues(alpha: 0.06),
-          side: BorderSide(color: SsColors.ink.withValues(alpha: 0.25)),
+          foregroundColor: SsColors.of(context).ink,
+          backgroundColor: SsColors.of(context).ink.withValues(alpha: 0.06),
+          side: BorderSide(
+            color: SsColors.of(context).ink.withValues(alpha: 0.25),
+          ),
           shape: const RoundedRectangleBorder(),
           minimumSize: const Size(0, 34),
           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -165,7 +166,7 @@ class _AppBarArt extends StatelessWidget {
               fit: BoxFit.cover,
               alignment: const AlignmentDirectional(-1, 0.45),
               colorBlendMode: BlendMode.multiply,
-              color: SsColors.canvas,
+              color: SsColors.of(context).canvas,
             ),
           ),
         ),
@@ -175,9 +176,9 @@ class _AppBarArt extends StatelessWidget {
               begin: AlignmentDirectional.centerStart,
               end: AlignmentDirectional.centerEnd,
               colors: [
-                SsColors.canvas,
-                SsColors.canvas.withValues(alpha: 0.85),
-                SsColors.canvas.withValues(alpha: 0.1),
+                SsColors.of(context).canvas,
+                SsColors.of(context).canvas.withValues(alpha: 0.85),
+                SsColors.of(context).canvas.withValues(alpha: 0.1),
               ],
               stops: const [0, 0.4, 1],
             ),
@@ -228,9 +229,17 @@ class SsCard extends StatelessWidget {
       ],
     );
     final card = Material(
-      color: color ?? (selected ? SsColors.selected : SsColors.canvas),
+      color:
+          color ??
+          (selected
+              ? SsColors.of(context).selected
+              : SsColors.of(context).canvas),
       shape: Border.fromBorderSide(
-        BorderSide(color: selected ? SsColors.primary : SsColors.line),
+        BorderSide(
+          color: selected
+              ? SsColors.of(context).primary
+              : SsColors.of(context).line,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: onTap == null
@@ -239,10 +248,10 @@ class SsCard extends StatelessWidget {
               onTap: onTap,
               splashFactory: ripple ? InkRipple.splashFactory : null,
               splashColor: ripple
-                  ? SsColors.primary.withValues(alpha: 0.08)
+                  ? SsColors.of(context).primary.withValues(alpha: 0.08)
                   : null,
               highlightColor: ripple
-                  ? SsColors.primary.withValues(alpha: 0.04)
+                  ? SsColors.of(context).primary.withValues(alpha: 0.04)
                   : null,
               child: body,
             ),
@@ -252,7 +261,7 @@ class SsCard extends StatelessWidget {
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: SsColors.ink.withValues(alpha: 0.06),
+            color: SsColors.of(context).ink.withValues(alpha: 0.06),
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -273,8 +282,8 @@ class SsSectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: SsColors.line)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: SsColors.of(context).line)),
       ),
       child: Stack(
         children: [
@@ -339,16 +348,12 @@ class SsEmptyState extends StatelessWidget {
 
 /// Square status badge replacing rounded pills / gradient chips.
 class SsBadge extends StatelessWidget {
-  const SsBadge(
-    this.label, {
-    super.key,
-    this.color = SsColors.primary,
-    this.icon,
-    this.leading,
-  });
+  const SsBadge(this.label, {super.key, this.color, this.icon, this.leading});
 
   final String label;
-  final Color color;
+
+  /// Defaults to the theme's primary color.
+  final Color? color;
   final IconData? icon;
 
   /// Replaces [icon], e.g. the animated [SsProcessingMark].
@@ -356,11 +361,12 @@ class SsBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolved = color ?? SsColors.of(context).primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        color: resolved.withValues(alpha: 0.1),
+        border: Border.all(color: resolved.withValues(alpha: 0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -369,7 +375,7 @@ class SsBadge extends StatelessWidget {
             leading!,
             const SizedBox(width: 5),
           ] else if (icon != null) ...[
-            Icon(icon, size: 13, color: color),
+            Icon(icon, size: 13, color: resolved),
             const SizedBox(width: 4),
           ],
           Text(
@@ -379,7 +385,7 @@ class SsBadge extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.w500,
               height: 1.4,
-              color: color,
+              color: resolved,
             ),
           ),
         ],
@@ -502,8 +508,12 @@ class SsSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onChanged != null;
-    final on = SsColors.primary.withValues(alpha: enabled ? 1 : 0.4);
-    final off = SsColors.neutral.withValues(alpha: enabled ? 1 : 0.5);
+    final on = SsColors.of(
+      context,
+    ).primary.withValues(alpha: enabled ? 1 : 0.4);
+    final off = SsColors.of(
+      context,
+    ).neutral.withValues(alpha: enabled ? 1 : 0.5);
     return Semantics(
       toggled: value,
       enabled: enabled,
@@ -518,7 +528,7 @@ class SsSwitch extends StatelessWidget {
               height: 22,
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                color: value ? on : SsColors.canvas,
+                color: value ? on : SsColors.of(context).canvas,
                 border: Border.all(color: value ? on : off),
               ),
               child: Align(
@@ -526,7 +536,7 @@ class SsSwitch extends StatelessWidget {
                     ? AlignmentDirectional.centerEnd
                     : AlignmentDirectional.centerStart,
                 child: ColoredBox(
-                  color: value ? SsColors.canvas : off,
+                  color: value ? SsColors.of(context).canvas : off,
                   child: const SizedBox.square(dimension: 14),
                 ),
               ),
@@ -565,6 +575,57 @@ class SsSwitchTile extends StatelessWidget {
   }
 }
 
+/// Hand-drawn microphone glyph, the same artwork as the bottom nav bar's
+/// floating record button, for reuse wherever a "start recording" control
+/// needs to match it instead of a stock Material icon.
+class SsMicGlyph extends StatelessWidget {
+  const SsMicGlyph({super.key, required this.color, this.size = 27});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size.square(size), painter: _SsMicGlyphPainter(color));
+}
+
+class _SsMicGlyphPainter extends CustomPainter {
+  _SsMicGlyphPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 24);
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final strokes = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(8.8, 2.8, 6.4, 11.4),
+          const Radius.circular(3.2),
+        ),
+      )
+      ..addArc(
+        Rect.fromCircle(center: const Offset(12, 11), radius: 6.8),
+        0.12,
+        math.pi - 0.24,
+      )
+      ..moveTo(12, 17.8)
+      ..lineTo(12, 21)
+      ..moveTo(8.6, 21)
+      ..lineTo(15.4, 21);
+    canvas.drawPath(strokes, line);
+  }
+
+  @override
+  bool shouldRepaint(_SsMicGlyphPainter old) => old.color != color;
+}
+
 /// Diamond (45° square) button, the same shape as the recording screen's
 /// record/pause/stop controls and the bottom bar's record diamond. [half] is
 /// the diamond's half-diagonal.
@@ -572,15 +633,23 @@ class SsDiamondButton extends StatefulWidget {
   const SsDiamondButton({
     super.key,
     required this.half,
-    required this.icon,
+    this.icon,
+    this.glyphBuilder,
     required this.onTap,
     this.outlined = false,
     this.danger = false,
     this.pulse = false,
-  });
+  }) : assert(
+         (icon == null) != (glyphBuilder == null),
+         'Pass exactly one of icon or glyphBuilder',
+       );
 
   final double half;
-  final IconData icon;
+  final IconData? icon;
+  // Builds the control's glyph given the icon color this button has already
+  // worked out (fixed white, or [main] when outlined) and its target size,
+  // for a hand-drawn glyph (e.g. SsMicGlyph) in place of a stock Icon.
+  final Widget Function(Color color, double size)? glyphBuilder;
   final VoidCallback onTap;
   final bool outlined;
   final bool danger;
@@ -632,10 +701,15 @@ class _SsDiamondButtonState extends State<SsDiamondButton>
     final side = d * math.sqrt2;
     // The pulsing start button is the record button: red, like the bar's.
     final red = widget.danger || widget.pulse;
-    final main = red ? SsColors.danger : SsColors.primary;
+    final main = red
+        ? SsColors.of(context).danger
+        : SsColors.of(context).primary;
+    // Fixed brand gradients (not theme-dependent): the record button reads
+    // the same red or green sheen in light and dark mode, like an iconic
+    // control.
     final colors = red
-        ? const [Color(0xFFE5484D), SsColors.danger, Color(0xFF8F0E2E)]
-        : const [SsColors.primaryLight, SsColors.primary, SsColors.primaryDark];
+        ? const [Color(0xFFE5484D), Color(0xFFBE123C), Color(0xFF8F0E2E)]
+        : kRecordGreenGradient;
     return Semantics(
       button: true,
       child: GestureDetector(
@@ -729,7 +803,9 @@ class _SsDiamondButtonState extends State<SsDiamondButton>
                       height: side,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(_diamondRadius),
-                        color: widget.outlined ? SsColors.canvas : null,
+                        color: widget.outlined
+                            ? SsColors.of(context).canvas
+                            : null,
                         gradient: widget.outlined
                             ? null
                             : LinearGradient(
@@ -786,10 +862,16 @@ class _SsDiamondButtonState extends State<SsDiamondButton>
                           : null,
                     ),
                   ),
-                  Icon(
-                    widget.icon,
-                    size: d * 0.8,
-                    color: widget.outlined ? main : SsColors.canvas,
+                  Builder(
+                    builder: (context) {
+                      // Filled: a fixed-brand (red/green) gradient
+                      // regardless of theme, so the icon on top stays fixed
+                      // white too.
+                      final color = widget.outlined ? main : Colors.white;
+                      return widget.glyphBuilder != null
+                          ? widget.glyphBuilder!(color, d * 0.8)
+                          : Icon(widget.icon, size: d * 0.8, color: color);
+                    },
                   ),
                 ],
               ),

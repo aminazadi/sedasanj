@@ -175,7 +175,9 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                 child: const Text('ادامه ضبط'),
               ),
               TextButton(
-                style: TextButton.styleFrom(foregroundColor: SsColors.danger),
+                style: TextButton.styleFrom(
+                  foregroundColor: SsColors.of(context).danger,
+                ),
                 onPressed: () => Navigator.pop(context, 'discard'),
                 child: const Text('حذف'),
               ),
@@ -203,7 +205,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                 ),
                 FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: SsColors.danger,
+                    backgroundColor: SsColors.of(context).danger,
                   ),
                   onPressed: () => Navigator.pop(context, true),
                   child: const Text('حذف'),
@@ -335,7 +337,12 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                               child: SsDiamondButton(
                                 pulse: true,
                                 half: 38,
-                                icon: Icons.mic,
+                                // Same hand-drawn glyph as the bottom nav
+                                // bar's floating record button, since both
+                                // represent the same "start recording"
+                                // action.
+                                glyphBuilder: (color, size) =>
+                                    SsMicGlyph(color: color, size: size),
                                 onTap: _prepare,
                               ),
                             ),
@@ -493,7 +500,7 @@ class _CountdownNumber extends StatelessWidget {
           digit,
           key: const Key('countdown-digit'),
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
-            color: SsColors.primary,
+            color: SsColors.of(context).primary,
             fontSize: 96,
             fontWeight: FontWeight.w700,
           ),
@@ -527,11 +534,13 @@ class _RecordingMonitor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? SsColors.danger : SsColors.ink;
+    final color = active
+        ? SsColors.of(context).danger
+        : SsColors.of(context).ink;
     final many = waveforms.length > 1;
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: SsColors.line)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: SsColors.of(context).line)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -616,7 +625,9 @@ class _OwnerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final assigned = name != null;
-    final color = assigned ? SsColors.primary : SsColors.ink;
+    final color = assigned
+        ? SsColors.of(context).primary
+        : SsColors.of(context).ink;
     return Tooltip(
       message: assigned
           ? 'صاحب میکروفون: $name؛ برای تغییر بزنید'
@@ -625,10 +636,12 @@ class _OwnerButton extends StatelessWidget {
         button: true,
         label: assigned ? 'صاحب میکروفون $name' : 'انتساب میکروفون',
         child: Material(
-          color: assigned ? SsColors.primary : Colors.transparent,
+          color: assigned ? SsColors.of(context).primary : Colors.transparent,
           shape: RoundedRectangleBorder(
             side: BorderSide(
-              color: assigned ? SsColors.primary : SsColors.line,
+              color: assigned
+                  ? SsColors.of(context).primary
+                  : SsColors.of(context).line,
             ),
           ),
           child: InkWell(
@@ -643,7 +656,7 @@ class _OwnerButton extends StatelessWidget {
                     Icon(
                       Icons.person_outline,
                       size: 16,
-                      color: assigned ? SsColors.canvas : color,
+                      color: assigned ? SsColors.of(context).canvas : color,
                     ),
                     const SizedBox(width: 4),
                     Flexible(
@@ -653,7 +666,7 @@ class _OwnerButton extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
-                          color: assigned ? SsColors.canvas : color,
+                          color: assigned ? SsColors.of(context).canvas : color,
                         ),
                       ),
                     ),
@@ -686,7 +699,9 @@ class _MuteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = muted ? SsColors.danger : SsColors.primary;
+    final color = muted
+        ? SsColors.of(context).danger
+        : SsColors.of(context).primary;
     return Tooltip(
       message: muted
           ? '$label بی‌صدا است؛ برای باز کردن بزنید'
@@ -696,7 +711,7 @@ class _MuteButton extends StatelessWidget {
         toggled: muted,
         label: label,
         child: Material(
-          color: muted ? SsColors.danger : Colors.transparent,
+          color: muted ? SsColors.of(context).danger : Colors.transparent,
           shape: RoundedRectangleBorder(side: BorderSide(color: color)),
           child: InkWell(
             onTap: onTap,
@@ -708,7 +723,7 @@ class _MuteButton extends StatelessWidget {
                     ? Icon(
                         muted ? Icons.mic_off : Icons.mic_none,
                         size: 18,
-                        color: muted ? SsColors.canvas : color,
+                        color: muted ? SsColors.of(context).canvas : color,
                       )
                     : Row(
                         mainAxisSize: MainAxisSize.min,
@@ -716,13 +731,15 @@ class _MuteButton extends StatelessWidget {
                           Icon(
                             muted ? Icons.mic_off : Icons.mic_none,
                             size: 15,
-                            color: muted ? SsColors.canvas : color,
+                            color: muted ? SsColors.of(context).canvas : color,
                           ),
                           Text(
                             number!,
                             style: TextStyle(
                               fontSize: 11,
-                              color: muted ? SsColors.canvas : color,
+                              color: muted
+                                  ? SsColors.of(context).canvas
+                                  : color,
                             ),
                           ),
                         ],
@@ -751,11 +768,11 @@ class _ControlColumn extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Vazirmatn',
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: SsColors.ink,
+            color: SsColors.of(context).ink,
           ),
         ),
       ],
@@ -791,10 +808,7 @@ class _SetupSteps extends ConsumerWidget {
     }
 
     Future<void> pickType() async {
-      final result = await showMeetingTypePicker(
-        context,
-        initial: meetingType,
-      );
+      final result = await showMeetingTypePicker(context, initial: meetingType);
       if (result != null) {
         ref.read(pendingMeetingTypeProvider.notifier).set(result);
       }
@@ -817,9 +831,9 @@ class _SetupSteps extends ConsumerWidget {
             done: chosen.isNotEmpty,
             onTap: pickAttendees,
           ),
-          const Padding(
-            padding: EdgeInsetsDirectional.only(start: 32, end: 16),
-            child: Divider(height: 1, color: SsColors.line),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 32, end: 16),
+            child: Divider(height: 1, color: SsColors.of(context).line),
           ),
           _StepTile(
             number: 2,
@@ -885,9 +899,9 @@ class _StepTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: SsColors.neutral,
+              color: SsColors.of(context).neutral,
               size: 22,
             ),
           ],
@@ -917,19 +931,23 @@ class _StepBadge extends StatelessWidget {
     height: 32,
     decoration: BoxDecoration(
       shape: BoxShape.circle,
-      color: done ? SsColors.primary : SsColors.selected,
-      border: done ? null : Border.all(color: SsColors.primary, width: 1.4),
+      color: done
+          ? SsColors.of(context).primary
+          : SsColors.of(context).selected,
+      border: done
+          ? null
+          : Border.all(color: SsColors.of(context).primary, width: 1.4),
     ),
     child: Center(
       child: done
-          ? Icon(icon, size: 16, color: SsColors.canvas)
+          ? Icon(icon, size: 16, color: SsColors.of(context).canvas)
           : Text(
               toPersianDigits('$number'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Vazirmatn',
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: SsColors.primary,
+                color: SsColors.of(context).primary,
               ),
             ),
     ),

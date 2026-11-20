@@ -48,23 +48,23 @@ export default function ConfirmDialog({
       }}
     >
       <div
-        className="w-full max-w-sm border border-[color:var(--line)] bg-white p-5 shadow-2xl"
+        className="w-full max-w-sm border border-[color:var(--line)] bg-canvas p-5 shadow-2xl"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         dir="rtl"
       >
-        <h2 id={titleId} className="text-base font-bold text-[#4B6E48]">
+        <h2 id={titleId} className="text-base font-bold text-[var(--color-primary)]">
           {title}
         </h2>
-        <p id={descriptionId} className="mt-3 text-sm leading-7 text-[#898989]">
+        <p id={descriptionId} className="mt-3 text-sm leading-7 text-[var(--color-neutral)]">
           {description}
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            className="min-h-10 border border-[color:var(--line)] px-4 text-sm font-bold text-black transition hover:bg-[#F2F0EF] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-10 border border-[color:var(--line)] px-4 text-sm font-bold text-[color:var(--ink)] transition hover:bg-[var(--color-canvas)] disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
             onClick={onCancel}
           >
@@ -74,7 +74,7 @@ export default function ConfirmDialog({
             ref={confirmRef}
             type="button"
             className={`min-h-10 px-4 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-              destructive ? "bg-[#DC2626] hover:bg-[#B91C1C]" : "bg-[#4B6E48] hover:bg-[#3F5D3D]"
+              destructive ? "bg-[#DC2626] hover:bg-[#B91C1C]" : "bg-[var(--color-primary)] hover:bg-[#3F5D3D]"
             }`}
             disabled={busy}
             onClick={onConfirm}

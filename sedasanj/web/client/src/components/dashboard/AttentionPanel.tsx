@@ -55,8 +55,8 @@ function GroupRow({ group, expanded, onToggle, range }: { group: ActionGroup; ex
   const first = group.items[0];
   const single = group.count === 1 && first.call_id;
   const head = <>
-    <i className="exec-attn__sev" style={{ background: urgent ? "#8a4b3f" : "#b2ac88" }} aria-hidden="true" />
-    <span className="exec-attn__icon" style={{ color: urgent ? "#8a4b3f" : "#6f6a4f" }} aria-hidden="true"><Icon icon={meta.icon} className="h-[18px] w-[18px]" /></span>
+    <i className="exec-attn__sev" style={{ background: urgent ? "var(--color-rust)" : "var(--color-accent)" }} aria-hidden="true" />
+    <span className="exec-attn__icon" style={{ color: urgent ? "var(--color-rust)" : "var(--ink-soft)" }} aria-hidden="true"><Icon icon={meta.icon} className="h-[18px] w-[18px]" /></span>
     <span className="min-w-0 flex-1"><strong className="block truncate text-sm font-bold text-slate-800">{meta.label}</strong><span className="mt-0.5 block truncate text-xs text-slate-500">{meta.describe(first)}</span></span>
     <span className="exec-attn__count">{fmt.int(group.count)}</span>
     <Icon icon={chevronLeftIcon} className={`h-4 w-4 shrink-0 text-slate-400 transition ${expanded ? "-rotate-90" : ""}`} aria-hidden="true" />

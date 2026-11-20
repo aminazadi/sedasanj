@@ -41,7 +41,7 @@ export function Stat({ title, value, tone }: { title: string; value: string; ton
       <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
         <div className="text-sm font-medium text-slate-600">{title}</div>
         <span className="flex h-14 w-14 shrink-0 items-center justify-center" aria-hidden="true">
-          <Icon icon={icon} className="h-9 w-9 text-[#4B6E48]" />
+          <Icon icon={icon} className="h-9 w-9 text-brand-500" />
         </span>
       </div>
       <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>

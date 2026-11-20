@@ -162,7 +162,7 @@ export default function Staff() {
 
       {resetTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) closeReset(); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="reset-password-title" className="my-auto w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/25">
+          <section role="dialog" aria-modal="true" aria-labelledby="reset-password-title" className="my-auto w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-canvas shadow-2xl shadow-slate-950/25">
             <div className="border-b border-slate-100 bg-gradient-to-l from-emerald-50 to-white px-6 py-5">
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-xl text-emerald-800" aria-hidden="true">♧</div>
               <h2 id="reset-password-title" className="text-xl font-bold text-slate-900">بازنشانی رمز عبور</h2>

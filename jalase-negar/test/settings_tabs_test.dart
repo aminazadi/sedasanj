@@ -43,7 +43,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (final label in ['حساب', 'ضبط و ارسال', 'مدل‌ها', 'برنامه']) {
+    for (final label in ['حساب', 'ضبط و ارسال', 'مدل‌ها', 'نسخه اپ']) {
       expect(find.widgetWithText(Tab, label), findsOneWidget);
     }
     // The account tab opens first and holds the connection status and sign-in.

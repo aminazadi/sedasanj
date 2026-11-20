@@ -93,7 +93,7 @@ export default function TaskDetails({ id, canEdit, isAdmin, historyOffset, onHis
     if (field === "assignee_id") return people.find((p) => p.id === input)?.name ?? (task?.assignee_id === input ? task?.assignee_name : null) ?? "کاربر پیشین";
     return String(input);
   }
-  return <aside ref={panel} role={mobile ? "dialog" : "complementary"} aria-modal={mobile ? true : undefined} tabIndex={-1} aria-label="جزئیات و پیگیری کار" className="fixed inset-0 z-[80] overflow-y-auto bg-[#F2F0EF] p-4 outline-none lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:max-h-[calc(100vh-2rem)] lg:card" onKeyDown={(event) => {
+  return <aside ref={panel} role={mobile ? "dialog" : "complementary"} aria-modal={mobile ? true : undefined} tabIndex={-1} aria-label="جزئیات و پیگیری کار" className="fixed inset-0 z-[80] overflow-y-auto bg-[var(--color-canvas)] p-4 outline-none lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:max-h-[calc(100vh-2rem)] lg:card" onKeyDown={(event) => {
     if (event.key === "Escape" && !saving) onClose();
     if (event.key === "Tab" && window.matchMedia("(max-width: 1023px)").matches) {
       const controls = panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a, input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]');

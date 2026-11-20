@@ -224,7 +224,7 @@ class _EnrollBodyState extends ConsumerState<_EnrollBody> {
                 Text(
                   state.message!,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: SsColors.danger,
+                    color: SsColors.of(context).danger,
                   ),
                 ),
               ],

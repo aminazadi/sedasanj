@@ -306,7 +306,7 @@ class _MeetingMenu extends ConsumerWidget {
       enabled: enabled,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: color ?? SsColors.ink),
+          Icon(icon, size: 18, color: color ?? SsColors.of(context).ink),
           const SizedBox(width: 10),
           Flexible(
             child: Text(label, style: TextStyle(color: color)),
@@ -318,9 +318,8 @@ class _MeetingMenu extends ConsumerWidget {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
       tooltip: 'گزینه‌ها',
-      color: Colors.white,
       shape: RoundedRectangleBorder(
-        side: const BorderSide(color: SsColors.line),
+        side: BorderSide(color: SsColors.of(context).line),
       ),
       position: PopupMenuPosition.under,
       onSelected: (value) => switch (value) {
@@ -342,7 +341,7 @@ class _MeetingMenu extends ConsumerWidget {
           'delete',
           Icons.delete_outline,
           'حذف جلسه',
-          color: SsColors.danger,
+          color: SsColors.of(context).danger,
         ),
       ],
     );
@@ -575,14 +574,17 @@ class _AttendeesTab extends StatelessWidget {
                     if (lines > 0) ...[
                       SsBadge(
                         '${toPersianDigits('$lines')} خط',
-                        color: SsColors.primary,
+                        color: SsColors.of(context).primary,
                       ),
                       SsBadge(
                         'مدت صحبت ${formatDuration(Duration(milliseconds: spokenMs))}',
-                        color: SsColors.neutral,
+                        color: SsColors.of(context).neutral,
                       ),
                     ] else
-                      const SsBadge('صحبتی ثبت نشده', color: SsColors.neutral),
+                      SsBadge(
+                        'صحبتی ثبت نشده',
+                        color: SsColors.of(context).neutral,
+                      ),
                   ],
                 ),
               ],

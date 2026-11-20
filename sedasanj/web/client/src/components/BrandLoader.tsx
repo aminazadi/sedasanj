@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useTheme } from "@cbi/web-shared/lib/theme";
 import { BrandLogo } from "./BrandLogo";
 import { LOGO_MOTION_DURATION } from "./logo-motion";
 
@@ -10,9 +11,12 @@ type BrandLoaderProps = {
 };
 
 export function BrandLoader({ compact = false, label = "در حال بارگذاری", onComplete }: BrandLoaderProps) {
+  // The default near-black ink reads fine on the light canvas behind this
+  // overlay, but disappears against the dark one; flip to white there.
+  const { resolved } = useTheme();
   return (
     <div className={`brand-loader ${compact ? "brand-loader--compact" : ""}`} role="status" aria-live="polite">
-      <BrandLogo animated className="brand-loader__logo" onComplete={onComplete} />
+      <BrandLogo animated className="brand-loader__logo" color={resolved === "dark" ? "#ffffff" : undefined} onComplete={onComplete} />
       <span className="sr-only">{label}</span>
     </div>
   );

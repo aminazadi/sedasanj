@@ -22,7 +22,7 @@ export function FunnelStrip({ views, view, onView }: { views: KpiDashboard["funn
         <span className="text-xs text-slate-500">{LABELS[row.key] ?? row.key}</span>
         <strong className="exec-funnel__value">{fmt.int(row.count)}</strong>
         <span className="exec-funnel__bar" style={{ width: `${Math.max(4, (row.count * 100) / first)}%`, opacity: 1 - index * (0.5 / Math.max(rows.length - 1, 1)) }} aria-hidden="true" />
-        <span className="mt-2 text-[11px] text-slate-500">{index === 0 ? "مبدأ" : `${row.pass_rate == null ? "—" : `${fmt.decimal(row.pass_rate)}٪`} عبور`}{index === worst ? <b className="ms-1 font-bold text-[#8a4b3f]">· بیشترین ریزش</b> : null}</span>
+        <span className="mt-2 text-[11px] text-slate-500">{index === 0 ? "مبدأ" : `${row.pass_rate == null ? "—" : `${fmt.decimal(row.pass_rate)}٪`} عبور`}{index === worst ? <b className="ms-1 font-bold text-[color:var(--color-rust)]">· بیشترین ریزش</b> : null}</span>
       </li>)}
     </ol> : <Empty />}
   </DashboardCard>;

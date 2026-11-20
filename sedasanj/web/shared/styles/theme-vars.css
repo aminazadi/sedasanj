@@ -1,0 +1,170 @@
+/*
+ * Brand color tokens for the SedaSanj admin and client panels, as CSS custom
+ * properties: a plain hex value for direct `var(--color-x)` use, and a
+ * "-rgb" sibling (space-separated channels) for Tailwind's
+ * `rgb(var(--x-rgb) / <alpha-value>)` pattern, which is how shared/theme.js
+ * wires these into every `bg-*`/`text-*`/etc. utility class.
+ *
+ * Three states: light (default), dark (explicit, `data-theme="dark"` on
+ * <html>) and system (the `prefers-color-scheme` block, active whenever
+ * `data-theme` is not explicitly set to "light").
+ */
+:root {
+  --color-canvas: #f2f0ef;
+  --color-canvas-rgb: 242 240 239;
+  --color-accent: #b2ac88;
+  --color-accent-rgb: 178 172 136;
+  --color-neutral: #898989;
+  --color-neutral-rgb: 137 137 137;
+  --color-primary: #4b6e48;
+  --color-primary-rgb: 75 110 72;
+  --color-primary-dark: #3e5c3b;
+  --color-primary-dark-rgb: 62 92 59;
+  --color-primary-light: #4f7a4c;
+  --color-primary-light-rgb: 79 122 76;
+  --color-selected: #e7ecdd;
+  --color-selected-rgb: 231 236 221;
+  --color-danger: #be123c;
+  --color-danger-rgb: 190 18 60;
+  --color-success: #5f805b;
+  --color-success-rgb: 95 128 91;
+  --color-warning: #9c9678;
+  --color-warning-rgb: 156 150 120;
+  --ink: #111111;
+  --ink-rgb: 17 17 17;
+  --ink-soft: #3a3a3a;
+  --ink-soft-rgb: 58 58 58;
+  --badge-success-text: #176b34;
+  --badge-success-bg: #e4f4e9;
+  --badge-success-border: #9fd2ae;
+  --badge-danger-text: #b42318;
+  --badge-danger-bg: #fdebea;
+  --badge-danger-border: #f0aca6;
+  --badge-warning-text: #8a5a00;
+  --badge-warning-bg: #fff3d1;
+  --badge-warning-border: #ecd083;
+  --badge-info-text: #1c5aa3;
+  --badge-info-bg: #e4effb;
+  --badge-info-border: #a3c4ea;
+  --badge-neutral-text: #4a5059;
+  --badge-neutral-bg: #eceef0;
+  --badge-neutral-border: #c9cdd3;
+  --badge-violet-text: #6a3bb0;
+  --badge-violet-bg: #f0e9fb;
+  --badge-violet-border: #c8b3ea;
+  --badge-orange-text: #b04a07;
+  --badge-orange-bg: #ffeddc;
+  --badge-orange-border: #f2bf94;
+  --color-rust: #8a4b3f;
+  --color-tan: #a78a6c;
+  --color-chart-grid: #d8d4c2;
+  --line: rgb(var(--color-accent-rgb) / 0.5);
+  --line-strong: rgb(var(--color-neutral-rgb) / 0.5);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-canvas: #1a1917;
+    --color-canvas-rgb: 26 25 23;
+    --color-accent: #c9c29a;
+    --color-accent-rgb: 201 194 154;
+    --color-neutral: #a6a6a6;
+    --color-neutral-rgb: 166 166 166;
+    --color-primary: #5fa05a;
+    --color-primary-rgb: 95 160 90;
+    --color-primary-dark: #bfe2b9;
+    --color-primary-dark-rgb: 191 226 185;
+    --color-primary-light: #7bbf76;
+    --color-primary-light-rgb: 123 191 118;
+    --color-selected: #223027;
+    --color-selected-rgb: 34 48 39;
+    --color-danger: #ff6b85;
+    --color-danger-rgb: 255 107 133;
+    --color-success: #7fbf78;
+    --color-success-rgb: 127 191 120;
+    --color-warning: #d8c98b;
+    --color-warning-rgb: 216 201 139;
+    --ink: #edebe6;
+    --ink-rgb: 237 235 230;
+    --badge-success-text: #6fd999;
+    --badge-success-bg: #163322;
+    --badge-success-border: #2f6b45;
+    --badge-danger-text: #ff8a80;
+    --badge-danger-bg: #3a1512;
+    --badge-danger-border: #7a3530;
+    --badge-warning-text: #ffcf5c;
+    --badge-warning-bg: #3a2c08;
+    --badge-warning-border: #8a6a1c;
+    --badge-info-text: #7fb3f0;
+    --badge-info-bg: #122a42;
+    --badge-info-border: #2f5a86;
+    --badge-neutral-text: #c4c8ce;
+    --badge-neutral-bg: #2a2c2f;
+    --badge-neutral-border: #565a60;
+    --badge-violet-text: #c3a0f0;
+    --badge-violet-bg: #2a1f42;
+    --badge-violet-border: #6a4f94;
+    --badge-orange-text: #ffab66;
+    --badge-orange-bg: #3a2412;
+    --badge-orange-border: #8a5a2e;
+    --color-rust: #d99478;
+    --color-tan: #cfae86;
+    --color-chart-grid: #3c3a34;
+    --ink-soft: #b9b6ae;
+    --ink-soft-rgb: 185 182 174;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: #1a1917;
+  --color-canvas-rgb: 26 25 23;
+  --color-accent: #c9c29a;
+  --color-accent-rgb: 201 194 154;
+  --color-neutral: #a6a6a6;
+  --color-neutral-rgb: 166 166 166;
+  --color-primary: #5fa05a;
+  --color-primary-rgb: 95 160 90;
+  --color-primary-dark: #bfe2b9;
+  --color-primary-dark-rgb: 191 226 185;
+  --color-primary-light: #7bbf76;
+  --color-primary-light-rgb: 123 191 118;
+  --color-selected: #223027;
+  --color-selected-rgb: 34 48 39;
+  --color-danger: #ff6b85;
+  --color-danger-rgb: 255 107 133;
+  --color-success: #7fbf78;
+  --color-success-rgb: 127 191 120;
+  --color-warning: #d8c98b;
+  --color-warning-rgb: 216 201 139;
+  --ink: #edebe6;
+  --ink-rgb: 237 235 230;
+  --badge-success-text: #6fd999;
+  --badge-success-bg: #163322;
+  --badge-success-border: #2f6b45;
+  --badge-danger-text: #ff8a80;
+  --badge-danger-bg: #3a1512;
+  --badge-danger-border: #7a3530;
+  --badge-warning-text: #ffcf5c;
+  --badge-warning-bg: #3a2c08;
+  --badge-warning-border: #8a6a1c;
+  --badge-info-text: #7fb3f0;
+  --badge-info-bg: #122a42;
+  --badge-info-border: #2f5a86;
+  --badge-neutral-text: #c4c8ce;
+  --badge-neutral-bg: #2a2c2f;
+  --badge-neutral-border: #565a60;
+  --badge-violet-text: #c3a0f0;
+  --badge-violet-bg: #2a1f42;
+  --badge-violet-border: #6a4f94;
+  --badge-orange-text: #ffab66;
+  --badge-orange-bg: #3a2412;
+  --badge-orange-border: #8a5a2e;
+  --color-rust: #d99478;
+  --color-tan: #cfae86;
+  --color-chart-grid: #3c3a34;
+  --ink-soft: #b9b6ae;
+  --ink-soft-rgb: 185 182 174;
+  color-scheme: dark;
+}

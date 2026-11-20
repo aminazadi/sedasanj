@@ -57,7 +57,7 @@ export function Stat({ title, value, hint, tone }: { title: string; value: strin
       <div className="relative z-10 mb-1 flex items-start justify-between gap-3">
         <div className="text-sm font-medium text-slate-600">{title}</div>
         <span className="flex h-10 w-10 shrink-0 items-center justify-center" aria-hidden="true">
-          <Icon icon={icon} className="h-7 w-7 text-[#4B6E48]" />
+          <Icon icon={icon} className="h-7 w-7 text-[var(--color-primary)]" />
         </span>
       </div>
       <div className={`relative z-10 text-2xl font-extrabold tracking-tight ${tone ?? "text-slate-900"}`}>{value}</div>
@@ -156,7 +156,7 @@ export function ProcessingCard({
                   ? "bg-rose-500"
                   : complete
                     ? "bg-emerald-500"
-                    : "animate-pulse bg-[#4B6E48]"
+                    : "animate-pulse bg-[var(--color-primary)]"
               }`}
             />
             <h2 className="font-bold text-slate-800">{title}</h2>
@@ -172,7 +172,7 @@ export function ProcessingCard({
                 ? "bg-rose-50 text-rose-700"
                 : complete
                   ? "bg-emerald-50 text-emerald-700"
-                  : "bg-[#F2F0EF] text-[#4B6E48]"
+                  : "bg-[var(--color-canvas)] text-[var(--color-primary)]"
             }`}
           >
             {failed ? "نیازمند بررسی" : complete ? "تحلیل کامل شد" : "در حال پردازش"}
@@ -185,7 +185,7 @@ export function ProcessingCard({
       <div className="h-1 bg-slate-100" aria-hidden="true">
         <div
           className={`h-full transition-[width] duration-700 ${
-            failed ? "bg-rose-500" : complete ? "bg-emerald-500" : "bg-[#4B6E48]"
+            failed ? "bg-rose-500" : complete ? "bg-emerald-500" : "bg-[var(--color-primary)]"
           }`}
           style={{ width: `${safeProgress}%` }}
         />
@@ -214,8 +214,8 @@ export function ProcessingCard({
                     : active
                       ? failed
                         ? "border-rose-500 bg-rose-50 text-rose-600"
-                        : "border-[#4B6E48] bg-[#4B6E48] text-white"
-                      : "border-slate-200 bg-white text-slate-400"
+                        : "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                      : "border-slate-200 bg-canvas text-slate-400"
                 }`}
               >
                 {done ? "✓" : fmt.int(index + 1)}
@@ -228,7 +228,7 @@ export function ProcessingCard({
                       : active
                         ? failed
                           ? "text-rose-700"
-                          : "text-[#4B6E48]"
+                          : "text-[var(--color-primary)]"
                         : "text-slate-400"
                   }`}
                 >

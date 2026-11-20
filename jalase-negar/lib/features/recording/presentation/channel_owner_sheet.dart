@@ -97,7 +97,7 @@ class _OwnerSheetState extends ConsumerState<_OwnerSheet> {
                           p.clientId == widget.currentPersonId
                               ? Icons.check
                               : Icons.person_outline,
-                          color: SsColors.primary,
+                          color: SsColors.of(context).primary,
                         ),
                         title: Text(p.name),
                         onTap: () => Navigator.of(context).pop(OwnerChoice(p)),

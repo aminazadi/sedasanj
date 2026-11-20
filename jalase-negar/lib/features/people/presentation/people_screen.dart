@@ -70,7 +70,7 @@ class PeopleScreen extends ConsumerWidget {
                     children: [
                       for (final p in list) ...[
                         _PersonTile(person: p),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                       ],
                     ],
                   ),
@@ -92,48 +92,71 @@ class _PersonTile extends ConsumerWidget {
     final installed = ref.watch(speakerModelInstalledProvider).value ?? true;
     return SsCard(
       ripple: true,
+      elevated: true,
+      padding: EdgeInsets.zero,
       onTap: () => context.push('/people/${person.clientId}'),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 4, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                Text(person.name, style: theme.textTheme.titleSmall),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    SsBadge(
-                      person.voiceprintCount == 0
-                          ? 'بدون ردصدا'
-                          : '${toPersianDigits('${person.voiceprintCount}')} نمونه صدا',
-                      color: person.voiceprintCount == 0
-                          ? SsColors.warning
-                          : SsColors.primary,
+                Expanded(
+                  child: Text(
+                    person.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
-                    if (!person.mine)
-                      const SsBadge(
-                        'همکار (فقط‌خواندنی)',
-                        color: SsColors.neutral,
-                      )
-                    else if (person.shared)
-                      const SsBadge(
-                        'اشتراکی با سازمان',
-                        color: SsColors.neutral,
-                      ),
-                    if (person.pendingSync)
-                      const SsBadge('منتظر ارسال', color: SsColors.warning),
-                    if (!installed && person.voiceprintCount > 0)
-                      const SsBadge('مدل نصب نیست', color: SsColors.warning),
-                  ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(
+                    Icons.chevron_right /* mirrors to point left in RTL */,
+                    color: SsColors.of(context).neutral,
+                  ),
                 ),
               ],
             ),
-          ),
-          const Icon(Icons.chevron_right) /* mirrors to point left in RTL */,
-        ],
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 12, top: 10),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  SsBadge(
+                    person.voiceprintCount == 0
+                        ? 'بدون ردصدا'
+                        : '${toPersianDigits('${person.voiceprintCount}')} نمونه صدا',
+                    color: person.voiceprintCount == 0
+                        ? SsColors.of(context).warning
+                        : SsColors.of(context).primary,
+                  ),
+                  if (!person.mine)
+                    SsBadge(
+                      'همکار (فقط‌خواندنی)',
+                      color: SsColors.of(context).neutral,
+                    )
+                  else if (person.shared)
+                    SsBadge(
+                      'اشتراکی با سازمان',
+                      color: SsColors.of(context).neutral,
+                    ),
+                  if (person.pendingSync)
+                    SsBadge('منتظر ارسال', color: SsColors.of(context).warning),
+                  if (!installed && person.voiceprintCount > 0)
+                    SsBadge(
+                      'مدل نصب نیست',
+                      color: SsColors.of(context).warning,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

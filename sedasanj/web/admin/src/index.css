@@ -1,3 +1,4 @@
+@import "@cbi/web-shared/styles/theme-vars.css";
 @import "@cbi/web-shared/styles/rich-content.css";
 @import "@cbi/web-shared/styles/editor-chrome.css";
 @font-face {
@@ -35,16 +36,6 @@
   box-shadow: none !important;
 }
 
-:root {
-  --line: rgb(178 172 136 / 0.5);
-  --line-strong: rgb(137 137 137 / 0.5);
-  color-scheme: light;
-  --color-canvas: #f2f0ef;
-  --color-accent: #b2ac88;
-  --color-neutral: #898989;
-  --color-primary: #4b6e48;
-}
-
 body {
   font-family: Vazirmatn, IRANSans, system-ui, sans-serif;
   @apply bg-slate-50 text-slate-900 antialiased;
@@ -60,10 +51,13 @@ select {
 }
 
 .panel-shell {
-  background: #f2f0ef;
-  color: #898989;
+  background: var(--color-canvas);
+  color: var(--color-neutral);
 }
 
+/* Fixed brand-green rail regardless of theme, like an app's own colored nav
+   rail: its hover/contrast pairing (below) is tuned for this exact green,
+   not for the page's current light/dark canvas. */
 .panel-sidebar {
   background: #4b6e48 radial-gradient(circle, rgb(242 240 239 / 0.1) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
 }
@@ -83,17 +77,17 @@ select {
 .panel-shell select,
 .panel-shell textarea {
   border-color: var(--line);
-  background: #f2f0ef;
+  background: var(--color-canvas);
 }
 
 .panel-shell .btn {
-  background: #4b6e48;
-  color: #f2f0ef;
+  background: var(--color-primary);
+  color: var(--color-canvas);
 }
 
 .panel-shell .btn-ghost {
   border-color: var(--line-strong);
-  color: #4b6e48;
+  color: var(--color-primary);
 }
 
 .panel-shell main,
@@ -118,9 +112,9 @@ select {
   overflow: hidden;
   border: 1px solid var(--line);
   background:
-    radial-gradient(circle at 2.75rem 2.75rem, #f2f0ef 0 2.5rem, rgb(242 240 239 / 0.94) 3rem, rgb(242 240 239 / 0.78) 4rem, rgb(242 240 239 / 0.52) 5rem, rgb(242 240 239 / 0.24) 6rem, transparent 7rem),
-    radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
-    #f2f0ef;
+    radial-gradient(circle at 2.75rem 2.75rem, var(--color-canvas) 0 2.5rem, rgb(var(--color-canvas-rgb) / 0.94) 3rem, rgb(var(--color-canvas-rgb) / 0.78) 4rem, rgb(var(--color-canvas-rgb) / 0.52) 5rem, rgb(var(--color-canvas-rgb) / 0.24) 6rem, transparent 7rem),
+    radial-gradient(circle, rgb(var(--color-neutral-rgb) / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
+    var(--color-canvas);
   box-shadow: none;
 }
 
@@ -175,25 +169,25 @@ select {
     transition: background-color 150ms ease;
   }
   .table tbody tr:nth-child(odd) {
-    --table-row-surface: rgb(242 240 239 / 0.38);
+    --table-row-surface: rgb(var(--color-canvas-rgb) / 0.38);
   }
   .table tbody tr:nth-child(even) {
-    --table-row-surface: rgb(178 172 136 / 0.13);
+    --table-row-surface: rgb(var(--color-accent-rgb) / 0.13);
   }
   .table tbody tr:hover {
-    --table-row-surface: rgb(178 172 136 / 0.25);
+    --table-row-surface: rgb(var(--color-accent-rgb) / 0.25);
   }
   .table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child,
   .table tbody > tr > td:last-child:has(button, select) {
     position: sticky;
     inset-inline-end: 0;
     z-index: 2;
-    background: linear-gradient(var(--table-row-surface, transparent), var(--table-row-surface, transparent)), #f2f0ef;
-    box-shadow: 1px 0 0 rgb(178 172 136 / 0.55);
+    background: linear-gradient(var(--table-row-surface, transparent), var(--table-row-surface, transparent)), var(--color-canvas);
+    box-shadow: 1px 0 0 rgb(var(--color-accent-rgb) / 0.55);
   }
   .table:has(tbody > tr > td:last-child button, tbody > tr > td:last-child select) th:last-child {
     z-index: 3;
-    background: #f2f0ef;
+    background: var(--color-canvas);
   }
   .badge {
     @apply rounded-full px-2 py-0.5 text-xs;
@@ -212,9 +206,9 @@ select {
   padding: 0.875rem 1.25rem;
   border: 1px solid var(--line);
   background:
-    linear-gradient(to left, #f2f0ef 0%, rgb(242 240 239 / 0.9) 40%, rgb(242 240 239 / 0.3) 100%),
+    linear-gradient(to left, var(--color-canvas) 0%, rgb(var(--color-canvas-rgb) / 0.9) 40%, rgb(var(--color-canvas-rgb) / 0.3) 100%),
     var(--page-art) center / cover no-repeat,
-    #f2f0ef;
+    var(--color-canvas);
 }
 
 .admin-main > * > :first-child:has(> h1, > div > h1) > :is(h1, div) {
@@ -225,9 +219,9 @@ select {
   .admin-main > * > :first-child:has(> h1, > div > h1) {
     padding: 0.75rem 1rem;
     background:
-      linear-gradient(to left, rgb(242 240 239 / 0.96), rgb(242 240 239 / 0.82)),
+      linear-gradient(to left, rgb(var(--color-canvas-rgb) / 0.96), rgb(var(--color-canvas-rgb) / 0.82)),
       var(--page-art) center / cover no-repeat,
-      #f2f0ef;
+      var(--color-canvas);
   }
 }
 
@@ -257,7 +251,7 @@ select {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
   background: transparent;
-  color: #4b6e48;
+  color: var(--color-primary);
 }
 
 .panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child::before {
@@ -266,7 +260,7 @@ select {
   z-index: -1;
   content: "";
   pointer-events: none;
-  background: radial-gradient(circle, rgb(137 137 137 / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+  background: radial-gradient(circle, rgb(var(--color-neutral-rgb) / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
   -webkit-mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
   mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
 }
@@ -311,14 +305,14 @@ select {
   z-index: -1;
   content: "";
   pointer-events: none;
-  background: radial-gradient(circle, rgb(137 137 137 / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
+  background: radial-gradient(circle, rgb(var(--color-neutral-rgb) / 0.28) 0 1px, transparent 1.15px) 0 0 / 7px 7px;
   -webkit-mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
   mask-image: linear-gradient(to right, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 100%);
 }
 
 .panel-shell .card > div:first-child > h2:first-child,
 .panel-shell .card > div:first-child > div:first-child > h2:first-child {
-  color: #4b6e48;
+  color: var(--color-primary);
 }
 
 /* Every data table without rows shows the shared empty state instead of a bare header */
@@ -337,7 +331,7 @@ select {
   margin-top: 1.5rem;
   padding-top: 9.9rem;
   background: url("./assets/empty-state.webp") center top / 15rem auto no-repeat;
-  color: #4b6e48;
+  color: var(--color-primary);
   content: "موردی یافت نشد.";
   font-size: 0.875rem;
   font-weight: 700;
@@ -349,7 +343,7 @@ select {
   max-width: 20rem;
   margin-inline: auto;
   padding: 0.25rem 1rem 1.5rem;
-  color: #898989;
+  color: var(--color-neutral);
   content: "با ثبت داده‌های بیشتر، جزئیات این بخش نمایش داده می‌شود.";
   font-size: 0.75rem;
   line-height: 1.5rem;
@@ -383,10 +377,10 @@ select {
   inset-inline-end: -1rem;
 }
 
-/* Text: near-black for body and headings, dark grey for secondary copy (no washed-out greys) */
+/* Text: near-black (near-white in dark mode) for body and headings, a
+   softer tone for secondary copy (no washed-out greys); --ink/--ink-soft
+   themselves come from theme-vars.css. */
 .panel-shell {
-  --ink: #111111;
-  --ink-soft: #3a3a3a;
   color: var(--ink);
 }
 
@@ -408,5 +402,5 @@ select {
 }
 
 .panel-shell ::placeholder {
-  color: #7a7a7a;
+  color: var(--color-neutral);
 }

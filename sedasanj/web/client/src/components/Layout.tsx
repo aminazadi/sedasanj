@@ -509,9 +509,9 @@ export default function Layout({ children }: { children: ReactNode }) {
         </aside>
       </div>
 
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl lg:hidden">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-canvas/90 backdrop-blur-xl lg:hidden">
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-          <button type="button" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-600" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-controls="client-mobile-menu" aria-label="نمایش منو">
+          <button type="button" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-canvas text-slate-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-600" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-controls="client-mobile-menu" aria-label="نمایش منو">
             <MenuIcon />
           </button>
           <h1 className="truncate text-base font-bold text-slate-900">{pageTitle}</h1>

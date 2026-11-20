@@ -54,9 +54,9 @@ class UpdateDialog extends ConsumerWidget {
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          shape: const RoundedRectangleBorder(
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.zero,
-            side: BorderSide(color: SsColors.lineStrong),
+            side: BorderSide(color: SsColors.of(context).lineStrong),
           ),
           title: const Text('نسخه‌ی جدید جلسه‌نگار'),
           content: ConstrainedBox(
@@ -78,12 +78,12 @@ class UpdateDialog extends ConsumerWidget {
                   ),
                   if (offer.notes.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       'تغییرات',
                       style: TextStyle(
                         fontFamily: 'Vazirmatn',
                         fontWeight: FontWeight.w600,
-                        color: SsColors.primaryDark,
+                        color: SsColors.of(context).primaryDark,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -91,9 +91,12 @@ class UpdateDialog extends ConsumerWidget {
                     Text(offer.notes),
                   ],
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     'جلسه‌ها، فایل‌های صدا و مدل‌های دانلودشده با به‌روزرسانی پاک نمی‌شوند.',
-                    style: TextStyle(fontSize: 12.5, color: SsColors.neutral),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: SsColors.of(context).neutral,
+                    ),
                   ),
                 ],
               ),
@@ -143,7 +146,9 @@ class _VersionRow extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'Vazirmatn',
               fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
-              color: strong ? SsColors.primary : SsColors.ink,
+              color: strong
+                  ? SsColors.of(context).primary
+                  : SsColors.of(context).ink,
             ),
           ),
         ),

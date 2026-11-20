@@ -45,7 +45,7 @@ class _JalaliDatePickerDialogState extends State<_JalaliDatePickerDialog> {
     final leading = _month.weekDay - 1;
 
     return Dialog(
-      backgroundColor: Colors.white,
+      backgroundColor: SsColors.of(context).canvas,
       shape: const RoundedRectangleBorder(),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
@@ -88,7 +88,7 @@ class _JalaliDatePickerDialogState extends State<_JalaliDatePickerDialog> {
                         child: Text(
                           l,
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: SsColors.neutral,
+                            color: SsColors.of(context).neutral,
                           ),
                         ),
                       ),
@@ -114,7 +114,7 @@ class _JalaliDatePickerDialogState extends State<_JalaliDatePickerDialog> {
                     padding: const EdgeInsets.all(2),
                     child: Material(
                       color: isSelected
-                          ? SsColors.primary
+                          ? SsColors.of(context).primary
                           : Colors.transparent,
                       shape: const CircleBorder(),
                       child: InkWell(
@@ -125,10 +125,10 @@ class _JalaliDatePickerDialogState extends State<_JalaliDatePickerDialog> {
                             toPersianDigits('$day'),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: isSelected
-                                  ? Colors.white
+                                  ? theme.colorScheme.onPrimary
                                   : isToday
-                                  ? SsColors.primary
-                                  : SsColors.ink,
+                                  ? SsColors.of(context).primary
+                                  : SsColors.of(context).ink,
                               fontWeight: isToday || isSelected
                                   ? FontWeight.w700
                                   : FontWeight.w400,

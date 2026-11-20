@@ -267,12 +267,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       _Step.name => _saveName,
                                     },
                               child: _busy
-                                  ? const SizedBox(
+                                  ? SizedBox(
                                       height: 20,
                                       width: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2.4,
-                                        color: SsColors.canvas,
+                                        color: SsColors.of(context).canvas,
                                       ),
                                     )
                                   : Text(switch (_step) {
@@ -421,20 +421,26 @@ class _ErrorBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: SsColors.danger.withValues(alpha: 0.06),
-        border: Border.all(color: SsColors.danger.withValues(alpha: 0.4)),
+        color: SsColors.of(context).danger.withValues(alpha: 0.06),
+        border: Border.all(
+          color: SsColors.of(context).danger.withValues(alpha: 0.4),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline, color: SsColors.danger, size: 18),
+          Icon(
+            Icons.error_outline,
+            color: SsColors.of(context).danger,
+            size: 18,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: SsColors.danger),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: SsColors.of(context).danger,
+              ),
             ),
           ),
         ],
@@ -465,7 +471,7 @@ class _LegalFooter extends StatelessWidget {
         spacing: 8,
         children: [
           link('شرایط استفاده', '/terms'),
-          const Text('·', style: TextStyle(color: SsColors.neutral)),
+          Text('·', style: TextStyle(color: SsColors.of(context).neutral)),
           link('حریم خصوصی', '/privacy'),
         ],
       ),
@@ -598,25 +604,25 @@ class _OtpBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final filled = char.isNotEmpty;
     final borderColor = error
-        ? SsColors.danger
+        ? SsColors.of(context).danger
         : active || filled
-        ? SsColors.primary
-        : SsColors.line;
+        ? SsColors.of(context).primary
+        : SsColors.of(context).line;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       width: width,
       height: 52,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: SsColors.canvas,
+        color: SsColors.of(context).canvas,
         border: Border.all(color: borderColor, width: active ? 2 : 1),
       ),
       child: Text(
         char,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w600,
-          color: SsColors.ink,
+          color: SsColors.of(context).ink,
         ),
       ),
     );

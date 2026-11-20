@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { fmt } from "../../api";
 
-const GOOD = "#4b6e48";
-const BAD = "#8a4b3f";
+const GOOD = "var(--color-primary)";
+const BAD = "var(--color-rust)";
 
 /** Small trend line; time runs left to right like the full charts. Null points are skipped. */
 export function Sparkline({ values, tone = "good" }: { values: Array<number | null>; tone?: "good" | "bad" }) {

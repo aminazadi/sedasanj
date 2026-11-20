@@ -216,8 +216,8 @@ export default function ApiKeyManager({ keys, reload }: { keys: ApiKey[]; reload
           <div className="font-bold text-amber-900">{created.title}</div>
           <p className="my-2 text-amber-800">این اطلاعات را اکنون کپی یا فایل تنظیمات را دانلود کنید.</p>
           <div className="space-y-2" dir="ltr">
-            <code className="block break-all bg-[#f2f0ef] p-2">{created.secret}</code>
-            {created.password ? <code className="block break-all bg-[#f2f0ef] p-2">{created.password}</code> : null}
+            <code className="block break-all bg-[var(--color-canvas)] p-2">{created.secret}</code>
+            {created.password ? <code className="block break-all bg-[var(--color-canvas)] p-2">{created.password}</code> : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button className="btn" onClick={() => configs && downloadText("sedasanj-freepbx-config.json", configs.freepbx)}>دانلود تنظیمات FreePBX</button>

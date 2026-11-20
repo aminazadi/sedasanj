@@ -105,8 +105,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
     // The meetings tab's search box lives in this header, not its body, so
     // it can take over the whole bar while active.
     final searching =
-        index == 0 &&
-        ref.watch(meetingsSearchProvider.select((s) => s.active));
+        index == 0 && ref.watch(meetingsSearchProvider.select((s) => s.active));
     // Tabs other than the sessions list show their own title in the header
     // instead of the brand logo.
     final pageTitle = switch (index) {
@@ -146,7 +145,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
               ? const MeetingsSearchField()
               : pageTitle != null
               ? Text(pageTitle)
-              : const SsBrandLogo(width: 104),
+              : SsBrandLogo(width: 104, color: ssBrandLogoColor(context)),
           actions: [
             if (searching) const MeetingsSearchCloseButton(),
             if (index == 0 && !searching) ...[
@@ -398,15 +397,19 @@ class _HeaderAvatar extends StatelessWidget {
             // Same diameter as the standard header action's height so the
             // avatar reads as the same size control, not a smaller one.
             radius: 17,
-            backgroundColor: SsColors.primary,
+            backgroundColor: SsColors.of(context).primary,
             child: initial == null
-                ? const Icon(Icons.person, size: 18, color: SsColors.canvas)
+                ? Icon(
+                    Icons.person,
+                    size: 18,
+                    color: SsColors.of(context).canvas,
+                  )
                 : Text(
                     initial,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Vazirmatn',
                       fontWeight: FontWeight.w700,
-                      color: SsColors.canvas,
+                      color: SsColors.of(context).canvas,
                     ),
                   ),
           ),
@@ -416,7 +419,7 @@ class _HeaderAvatar extends StatelessWidget {
   }
 }
 
-enum _Glyph { sessions, people, guide, settings, mic }
+enum _Glyph { sessions, people, guide, settings }
 
 /// Hand-drawn 24-grid line icons so the bar does not depend on stock Material
 /// glyphs (the old mic tab duplicated the record button). [progress] (0-1)
@@ -497,26 +500,14 @@ class _GlyphPainter extends CustomPainter {
             ..lineTo(20, y);
           strokes.addOval(Rect.fromCircle(center: Offset(kx, y), radius: 2.2));
         }
-      case _Glyph.mic:
-        strokes.addRRect(
-          RRect.fromRectAndRadius(
-            const Rect.fromLTWH(8.8, 2.8, 6.4, 11.4),
-            const Radius.circular(3.2),
-          ),
-        );
-        strokes.addArc(
-          Rect.fromCircle(center: const Offset(12, 11), radius: 6.8),
-          0.12,
-          math.pi - 0.24,
-        );
-        strokes
-          ..moveTo(12, 17.8)
-          ..lineTo(12, 21)
-          ..moveTo(8.6, 21)
-          ..lineTo(15.4, 21);
     }
 
-    _drawPartial(canvas, strokes, glyph == _Glyph.sessions ? bar : line, progress);
+    _drawPartial(
+      canvas,
+      strokes,
+      glyph == _Glyph.sessions ? bar : line,
+      progress,
+    );
     // The dot only appears once the strokes are nearly done drawing.
     final dotT = ((progress - 0.75) / 0.25).clamp(0.0, 1.0);
     if (dotT > 0) {
@@ -568,9 +559,19 @@ class _GlyphIcon extends StatelessWidget {
 /// Bar silhouette: a straight top edge that drops along a 45° V under the
 /// diamond record button, with the V's corners softened by [cornerRadius].
 class _BarPainter extends CustomPainter {
-  _BarPainter({required this.lift, required this.half, this.cornerRadius = 12});
+  _BarPainter({
+    required this.lift,
+    required this.half,
+    required this.shadowColor,
+    required this.fillColor,
+    required this.lineColor,
+    this.cornerRadius = 12,
+  });
 
   final double lift;
+  final Color shadowColor;
+  final Color fillColor;
+  final Color lineColor;
 
   /// Half the width of the V; equal to the diamond's half-diagonal so the V
   /// runs parallel to the diamond's lower edges.
@@ -583,31 +584,23 @@ class _BarPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
-    final edge = _roundedPolyline(
-      [
-        Offset(0, lift),
-        Offset(cx - half, lift),
-        Offset(cx, lift + half),
-        Offset(cx + half, lift),
-        Offset(size.width, lift),
-      ],
-      cornerRadius,
-    );
+    final edge = _roundedPolyline([
+      Offset(0, lift),
+      Offset(cx - half, lift),
+      Offset(cx, lift + half),
+      Offset(cx + half, lift),
+      Offset(size.width, lift),
+    ], cornerRadius);
     final body = Path.from(edge)
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
-    canvas.drawShadow(
-      body,
-      SsColors.primaryDark.withValues(alpha: 0.55),
-      10,
-      false,
-    );
-    canvas.drawPath(body, Paint()..color = SsColors.canvas);
+    canvas.drawShadow(body, shadowColor.withValues(alpha: 0.55), 10, false);
+    canvas.drawPath(body, Paint()..color = fillColor);
     canvas.drawPath(
       edge,
       Paint()
-        ..color = SsColors.line
+        ..color = lineColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
         ..strokeJoin = StrokeJoin.round,
@@ -624,7 +617,10 @@ class _BarPainter extends CustomPainter {
       final next = points[i + 1];
       final toPrev = prev - corner;
       final toNext = next - corner;
-      final r = math.min(radius, math.min(toPrev.distance, toNext.distance) / 2);
+      final r = math.min(
+        radius,
+        math.min(toPrev.distance, toNext.distance) / 2,
+      );
       final start = corner + toPrev / toPrev.distance * r;
       final end = corner + toNext / toNext.distance * r;
       path.lineTo(start.dx, start.dy);
@@ -636,7 +632,12 @@ class _BarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BarPainter old) =>
-      old.lift != lift || old.half != half || old.cornerRadius != cornerRadius;
+      old.lift != lift ||
+      old.half != half ||
+      old.cornerRadius != cornerRadius ||
+      old.shadowColor != shadowColor ||
+      old.fillColor != fillColor ||
+      old.lineColor != lineColor;
 }
 
 /// Brand bottom bar: canvas surface whose top edge dips into a V under a
@@ -671,6 +672,9 @@ class _SsBottomBar extends StatelessWidget {
                 lift: _lift,
                 half: _half + _drop,
                 cornerRadius: 12,
+                shadowColor: SsColors.of(context).primaryDark,
+                fillColor: SsColors.of(context).canvas,
+                lineColor: SsColors.of(context).line,
               ),
             ),
           ),
@@ -780,7 +784,9 @@ class _NavTabState extends State<_NavTab> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final selected = widget.selected;
-    final color = selected ? SsColors.primary : SsColors.neutral;
+    final color = selected
+        ? SsColors.of(context).primary
+        : SsColors.of(context).neutral;
     return Semantics(
       button: true,
       selected: selected,
@@ -804,7 +810,7 @@ class _NavTabState extends State<_NavTab> with SingleTickerProviderStateMixin {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: selected
-                  ? SsColors.primary.withValues(alpha: 0.12)
+                  ? SsColors.of(context).primary.withValues(alpha: 0.12)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
             ),
@@ -943,9 +949,9 @@ class _RecordSlotState extends State<_RecordSlot>
                                   _diamondRadius,
                                 ),
                                 border: Border.all(
-                                  color: SsColors.danger.withValues(
-                                    alpha: 0.35 * (1 - t),
-                                  ),
+                                  color: SsColors.of(
+                                    context,
+                                  ).danger.withValues(alpha: 0.35 * (1 - t)),
                                 ),
                               ),
                             ),
@@ -964,9 +970,9 @@ class _RecordSlotState extends State<_RecordSlot>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: SsColors.danger.withValues(
-                                    alpha: 0.25 + 0.3 * glow,
-                                  ),
+                                  color: SsColors.of(
+                                    context,
+                                  ).danger.withValues(alpha: 0.25 + 0.3 * glow),
                                   blurRadius: 18 + 12 * glow,
                                   spreadRadius: 2 + 4 * glow,
                                 ),
@@ -981,21 +987,19 @@ class _RecordSlotState extends State<_RecordSlot>
                           width: side,
                           height: side,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(
-                              _diamondRadius,
-                            ),
-                            gradient: const LinearGradient(
+                            borderRadius: BorderRadius.circular(_diamondRadius),
+                            gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Color(0xFFE5484D),
-                                SsColors.danger,
-                                Color(0xFF8F0E2E),
+                                const Color(0xFFE5484D),
+                                SsColors.of(context).danger,
+                                const Color(0xFF8F0E2E),
                               ],
-                              stops: [0, 0.55, 1],
+                              stops: const [0, 0.55, 1],
                             ),
                             border: Border.all(
-                              color: SsColors.danger,
+                              color: SsColors.of(context).danger,
                               width: 1.5,
                             ),
                             boxShadow: const [
@@ -1007,9 +1011,7 @@ class _RecordSlotState extends State<_RecordSlot>
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(
-                              _diamondRadius,
-                            ),
+                            borderRadius: BorderRadius.circular(_diamondRadius),
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
@@ -1048,8 +1050,11 @@ class _RecordSlotState extends State<_RecordSlot>
                       ),
                       // The mic glyph matches the "ضبط جلسه" (record) action
                       // and the nav bar's hand-drawn icon set, instead of a
-                      // generic "+".
-                      _GlyphIcon(_Glyph.mic, SsColors.canvas, size: 36),
+                      // generic "+". Fixed white: it sits on the red diamond
+                      // fill, not on the page's own canvas. Shared with the
+                      // recording screen's own start button (SsMicGlyph) so
+                      // both read as the same control.
+                      const SsMicGlyph(color: Colors.white, size: 36),
                     ],
                   ),
                 ),

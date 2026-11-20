@@ -1,7 +1,7 @@
 import TaskCreateDialog from "../components/TaskCreateDialog";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { chart, palette } from "@cbi/web-shared/theme";
+import { useChartColors } from "@cbi/web-shared/lib/theme";
 import { Icon } from "@iconify/react";
 import alarmClockIcon from "@iconify-icons/lucide/alarm-clock";
 import barChartIcon from "@iconify-icons/lucide/chart-no-axes-column";
@@ -59,7 +59,6 @@ const DIRECTION_LABELS: Record<string, string> = {
 };
 
 const TURN_MERGE_GAP_MS = 1200;
-const SPEAKER_COLORS = [chart.primary, chart.secondary];
 
 /** Phone number with the phonebook title (when there is one) above it. */
 function CallParty({ number, name }: { number: string | null; name?: string | null }) {
@@ -201,7 +200,7 @@ function EmptyState({
   return (
     <div className={`flex flex-col items-center justify-center gap-2 bg-slate-50 px-5 py-6 text-center ${className}`}>
       <CallStateArt section={icon} kind={state} compact={compact} />
-      <p className={`max-w-md text-sm leading-6 ${state === "failed" ? "text-[#B5543F]" : "text-slate-400"}`} role={state === "empty" ? undefined : "status"}>{message}</p>
+      <p className={`max-w-md text-sm leading-6 ${state === "failed" ? "text-[color:var(--color-rust)]" : "text-slate-400"}`} role={state === "empty" ? undefined : "status"}>{message}</p>
     </div>
   );
 }
@@ -211,7 +210,7 @@ function ActionTooltip({ label, children }: { label: string; children: ReactNode
     <span className="group relative inline-flex">
       {children}
       <span
-        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-max max-w-52 -translate-x-1/2 border border-[color:var(--line)] bg-[#F2F0EF] px-2.5 py-1.5 text-[11px] font-normal leading-5 text-[#000000] shadow-lg group-hover:block group-focus-within:block"
+        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-max max-w-52 -translate-x-1/2 border border-[color:var(--line)] bg-[var(--color-canvas)] px-2.5 py-1.5 text-[11px] font-normal leading-5 text-ink shadow-lg group-hover:block group-focus-within:block"
         role="tooltip"
       >
         {label}
@@ -220,7 +219,7 @@ function ActionTooltip({ label, children }: { label: string; children: ReactNode
   );
 }
 
-const CALL_ACTION_CLASS = "flex h-10 w-10 items-center justify-center border border-[#898989] bg-white text-[#000000] transition hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-40";
+const CALL_ACTION_CLASS = "flex h-10 w-10 items-center justify-center border border-[var(--color-neutral)] bg-canvas text-[color:var(--ink)] transition hover:bg-[var(--color-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-40";
 
 function CircularAudioProgress({ progress }: { progress: number | null }) {
   const radius = 8;
@@ -312,7 +311,7 @@ function CallDetailSkeleton() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((item) => (
-          <div key={item} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={item} className="rounded-xl border border-slate-200 bg-canvas p-4 shadow-sm">
             <div className="mb-3 flex items-start justify-between">
               <SkeletonLine className="h-3 w-24" />
               <span className="h-9 w-9 animate-pulse rounded-xl bg-slate-200" />
@@ -377,7 +376,7 @@ function CallDetailSkeleton() {
           </div>
           <div className="space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
             {["ml-auto w-4/5", "mr-auto w-3/4", "ml-auto w-2/3", "mr-auto w-5/6"].map((width, index) => (
-              <div key={index} className={`rounded-2xl border border-slate-100 bg-white p-4 ${width}`}>
+              <div key={index} className={`rounded-2xl border border-slate-100 bg-canvas p-4 ${width}`}>
                 <SkeletonLine className="mb-3 h-2.5 w-20" />
                 <SkeletonLine className="mb-2 h-3 w-full" />
                 <SkeletonLine className="h-3 w-4/5" />
@@ -452,6 +451,8 @@ function sentimentChartData(profile: DualPartySentiment | null | undefined) {
 }
 
 export default function CallDetailPage() {
+  const chart = useChartColors();
+  const SPEAKER_COLORS = [chart.primary, chart.secondary];
   const { callId } = useParams<{ callId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -818,17 +819,17 @@ export default function CallDetailPage() {
       ) : null}
 
       <section className="call-detail-hero card relative overflow-visible !p-0">
-        <div className="absolute inset-x-0 top-0 h-1 bg-[#4B6E48]" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-[var(--color-primary)]" />
         <div className="relative p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs text-[#000000]">
-              <Link className="transition hover:text-[#000000]" to="/calls">تماس‌ها</Link>
+            <div className="flex items-center gap-2 text-xs text-ink">
+              <Link className="transition hover:text-ink" to="/calls">تماس‌ها</Link>
               <span>/</span>
-              <span className="font-medium text-[#000000]">جزئیات و تحلیل تماس</span>
+              <span className="font-medium text-ink">جزئیات و تحلیل تماس</span>
             </div>
             <div className="call-header-status flex flex-wrap items-center gap-2">
               <StatusBadge status={hasAudioAnalysis ? call.status : call.call_type} />
-              <span className="bg-[#B2AC88] px-2.5 py-1 text-[11px] text-[#000000]">
+              <span className="bg-[var(--color-accent)] px-2.5 py-1 text-[11px] text-[#000000]">
                 شناسه {fmt.digits(call.id.slice(0, 8))}
               </span>
             </div>
@@ -837,14 +838,14 @@ export default function CallDetailPage() {
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
             <div>
               <div className="mb-2 flex items-center gap-3">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-[#F2F0EF] text-[#000000]" aria-hidden="true">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-[var(--color-canvas)] text-ink" aria-hidden="true">
                   <Icon icon={telephoneIcon} className="h-8 w-8" />
                 </span>
                 <div>
-                  <p className="text-xs text-[#000000]">{isQuickDemo ? "تست سریع صداسنج" : isVoicemail ? "پیام‌گیر صوتی" : isMissedCall ? "تماس ناموفق" : "مکالمه تلفنی"}</p>
-                  <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-[#000000] sm:text-2xl" dir="rtl">
+                  <p className="text-xs text-ink">{isQuickDemo ? "تست سریع صداسنج" : isVoicemail ? "پیام‌گیر صوتی" : isMissedCall ? "تماس ناموفق" : "مکالمه تلفنی"}</p>
+                  <h1 className="mt-0.5 inline-flex items-center gap-1 text-xl font-extrabold text-ink sm:text-2xl" dir="rtl">
                     <CallParty number={call.caller_number} name={call.caller_name} />
-                    <span className="px-1 text-[#B2AC88]">
+                    <span className="px-1 text-[var(--color-accent)]">
                       <span aria-hidden="true">←</span>
                       <span className="sr-only">به</span>
                     </span>
@@ -852,7 +853,7 @@ export default function CallDetailPage() {
                   </h1>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[#000000]">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-ink">
                 <span>تاریخ تماس: {fmt.dateTime(call.started_at)}</span>
                 <span>مدت: {fmt.duration(call.duration_ms)}</span>
                 {call.direction ? <span>جهت: {DIRECTION_LABELS[call.direction] ?? call.direction}</span> : null}
@@ -983,29 +984,29 @@ export default function CallDetailPage() {
       {showProcessingDetails ? <ProcessingTimeline events={call.processing_events ?? []} /> : null}
 
       {isAnsweredCall ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+        <MetricCard label="مدت کل تماس" value={fmt.duration(call.duration_ms)} hint="از شروع تا پایان مکالمه" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[var(--color-primary)]" />} />
         <MetricCard
           label="نوبت‌های گفت‌وگو"
           value={fmt.int(conversationTurns.length)}
           hint={`میانگین هر نوبت ${fmt.duration(averageTurnDuration)}`}
-          icon={<Icon icon={repeatButtonIcon} className="h-9 w-9 text-[#4B6E48]" />}
+          icon={<Icon icon={repeatButtonIcon} className="h-9 w-9 text-[var(--color-primary)]" />}
         />
         <MetricCard
           label="پوشش گفتار"
           value={fmt.percent(speechCoverage)}
           hint="نسبت گفتار تشخیص‌داده‌شده به تماس"
-          icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />}
+          icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[var(--color-primary)]" />}
         />
         <MetricCard
           label="امتیاز احساس"
           value={sentimentScore == null ? "—" : fmt.percent(sentimentScore * 100)}
           hint={insights?.intent ? (INTENT_LABELS[insights.intent] ?? insights.intent) : "قصد تماس نامشخص"}
-          icon={<Icon icon={bullseyeIcon} className="h-9 w-9 text-[#4B6E48]" />}
+          icon={<Icon icon={bullseyeIcon} className="h-9 w-9 text-[var(--color-primary)]" />}
         />
-        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+        <MetricCard label="امتیاز عملکرد" value={operatorScore?.total_score == null ? "—" : fmt.decimal(operatorScore.total_score)} hint={operatorScore?.status === "succeeded" ? operatorScore.operator_label : "در حال ارزیابی"} icon={<Icon icon={starIcon} className="h-9 w-9 text-[var(--color-primary)]" />} />
       </section> : isVoicemail ? <section className="grid gap-3 sm:grid-cols-2">
-        <MetricCard label="مدت پیام" value={fmt.duration(call.duration_ms)} hint="مدت فایل پیام‌گیر صوتی" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[#4B6E48]" />} />
-        <MetricCard label="بخش‌های پیاده‌سازی‌شده" value={fmt.int(conversationTurns.length)} hint="تعداد بخش‌های متن پیام" icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[#4B6E48]" />} />
+        <MetricCard label="مدت پیام" value={fmt.duration(call.duration_ms)} hint="مدت فایل پیام‌گیر صوتی" icon={<Icon icon={alarmClockIcon} className="h-9 w-9 text-[var(--color-primary)]" />} />
+        <MetricCard label="بخش‌های پیاده‌سازی‌شده" value={fmt.int(conversationTurns.length)} hint="تعداد بخش‌های متن پیام" icon={<Icon icon={barChartIcon} className="h-9 w-9 text-[var(--color-primary)]" />} />
       </section> : null}
 
       <div className={call.direction !== "internal" && hasAudioAnalysis ? "grid items-stretch gap-4 xl:grid-cols-2" : "grid gap-4"}>
@@ -1087,13 +1088,13 @@ export default function CallDetailPage() {
               insights?.sentiment_profile?.voice ? (
                 <div className="flex rounded-lg bg-slate-100 p-1 text-xs">
                   <button
-                    className={`rounded-md px-3 py-1.5 transition ${sentimentSource === "text" ? "bg-white font-semibold text-brand-700 shadow-sm" : "text-slate-500"}`}
+                    className={`rounded-md px-3 py-1.5 transition ${sentimentSource === "text" ? "bg-canvas font-semibold text-brand-700 shadow-sm" : "text-slate-500"}`}
                     onClick={() => setSentimentSource("text")}
                   >
                     تحلیل متن
                   </button>
                   <button
-                    className={`rounded-md px-3 py-1.5 transition ${sentimentSource === "voice" ? "bg-white font-semibold text-brand-700 shadow-sm" : "text-slate-500"}`}
+                    className={`rounded-md px-3 py-1.5 transition ${sentimentSource === "voice" ? "bg-canvas font-semibold text-brand-700 shadow-sm" : "text-slate-500"}`}
                     onClick={() => setSentimentSource("voice")}
                   >
                     تحلیل صدا
@@ -1127,8 +1128,8 @@ export default function CallDetailPage() {
                       contentStyle={{ borderRadius: 0, borderColor: chart.light, direction: "rtl", fontFamily: "Vazirmatn" }}
                     />
                     <Legend wrapperStyle={{ direction: "rtl", fontSize: 12 }} />
-                    <Line type="monotone" dataKey="مشتری" stroke="url(#callerLine)" strokeWidth={3} dot={{ r: 5, fill: chart.primary, strokeWidth: 3, stroke: palette.canvas }} activeDot={{ r: 7 }} connectNulls />
-                    <Line type="monotone" dataKey="اپراتور" stroke={chart.secondary} strokeWidth={3} dot={{ r: 5, fill: chart.secondary, strokeWidth: 3, stroke: palette.canvas }} activeDot={{ r: 7 }} connectNulls />
+                    <Line type="monotone" dataKey="مشتری" stroke="url(#callerLine)" strokeWidth={3} dot={{ r: 5, fill: chart.primary, strokeWidth: 3, stroke: "var(--color-canvas)" }} activeDot={{ r: 7 }} connectNulls />
+                    <Line type="monotone" dataKey="اپراتور" stroke={chart.secondary} strokeWidth={3} dot={{ r: 5, fill: chart.secondary, strokeWidth: 3, stroke: "var(--color-canvas)" }} activeDot={{ r: 7 }} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -1228,9 +1229,9 @@ export default function CallDetailPage() {
                 {selectedRevision && !selectedRevision.active && selectedRevision.status === "succeeded" ? (
                   <button type="button" className="btn h-9 px-3 py-0 text-xs" disabled={processingActionLoading} onClick={() => void activateTranscriptVersion(selectedRevision.id)}>فعال‌سازی نسخه</button>
                 ) : null}
-                <div className="flex h-9 border border-[color:var(--line)] bg-white p-0.5" role="group" aria-label="نسخه متن">
+                <div className="flex h-9 border border-[color:var(--line)] bg-canvas p-0.5" role="group" aria-label="نسخه متن">
                   {(["final", "raw"] as const).map((view) => (
-                    <button key={view} type="button" aria-pressed={transcriptView === view} className={`whitespace-nowrap px-3 text-xs ${transcriptView === view ? "bg-[#4B6E48] text-white" : "text-slate-600 hover:bg-[#F2F0EF]"}`} onClick={() => { const next = new URLSearchParams(searchParams); next.set("transcript", view); setSearchParams(next, { replace: true }); }}>
+                    <button key={view} type="button" aria-pressed={transcriptView === view} className={`whitespace-nowrap px-3 text-xs ${transcriptView === view ? "bg-[var(--color-primary)] text-white" : "text-slate-600 hover:bg-[var(--color-canvas)]"}`} onClick={() => { const next = new URLSearchParams(searchParams); next.set("transcript", view); setSearchParams(next, { replace: true }); }}>
                       {view === "final" ? "نسخه نهایی" : "متن خام"}
                     </button>
                   ))}
@@ -1256,11 +1257,11 @@ export default function CallDetailPage() {
           />
           <div id="correction-action-status" className={`text-xs ${correctionFeedback || correctionActive || (call.correction?.status === "succeeded" && call.correction.uncertain_count > 0) ? "mb-3" : ""}`} role="status" aria-live="polite">
             {correctionFeedback ? (
-              <span className={correctionFeedback.tone === "error" ? "text-rose-700" : "text-[#4B6E48]"}>
+              <span className={correctionFeedback.tone === "error" ? "text-rose-700" : "text-[var(--color-primary)]"}>
                 {correctionFeedback.message}
               </span>
             ) : correctionActive ? (
-              <span className="text-[#4B6E48]">درخواست تصحیح فعال است؛ وضعیت به‌صورت خودکار به‌روز می‌شود.</span>
+              <span className="text-[var(--color-primary)]">درخواست تصحیح فعال است؛ وضعیت به‌صورت خودکار به‌روز می‌شود.</span>
             ) : call.correction?.status === "succeeded" && call.correction.uncertain_count > 0 ? (
               <span className="text-amber-700">{fmt.int(call.correction.uncertain_count)} بخش نیازمند بررسی است ({fmt.percent(Math.round(call.correction.uncertain_ratio * 100))}).</span>
             ) : null}
@@ -1287,20 +1288,20 @@ export default function CallDetailPage() {
                     actions={<>
                       <button
                         type="button"
-                        className="inline-flex h-7 w-7 items-center justify-center text-[#898989] transition hover:bg-white hover:text-[#4B6E48] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4B6E48]"
+                        className="inline-flex h-7 w-7 items-center justify-center text-[var(--color-neutral)] transition hover:bg-canvas hover:text-[var(--color-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
                         onClick={() => void copyTranscriptTurn(turnId, utterance.text)}
                         aria-label={copiedTurnId === turnId ? "پیام کپی شد" : "کپی پیام"}
                         title={copiedTurnId === turnId ? "کپی شد" : "کپی پیام"}
                       >
                         <CopyIcon checked={copiedTurnId === turnId} />
                       </button>
-                      <time className="px-1 text-[10px] leading-none text-[#898989]" dateTime={messageDate} title={fmt.dateTime(messageDate)}>
+                      <time className="px-1 text-[10px] leading-none text-[var(--color-neutral)]" dateTime={messageDate} title={fmt.dateTime(messageDate)}>
                         {fmt.dateTime(messageDate)}
                       </time>
                     </>}
                     header={
-                      <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-[#F2F0EF]/75" : "text-[#898989]"}`}>
-                        <span className={`font-bold ${caller ? "text-[#F2F0EF]" : "text-[#4B6E48]"}`}>{speaker}{utterance.uncertain ? " — نیازمند بررسی" : ""}</span>
+                      <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-[var(--color-canvas)]/75" : "text-[var(--color-neutral)]"}`}>
+                        <span className={`font-bold ${caller ? "text-[var(--color-canvas)]" : "text-[var(--color-primary)]"}`}>{speaker}{utterance.uncertain ? " — نیازمند بررسی" : ""}</span>
                         <span className="tabular-nums" dir="ltr">{fmt.duration(utterance.t_start_ms)} — {fmt.duration(utterance.t_end_ms)}</span>
                       </div>
                     }

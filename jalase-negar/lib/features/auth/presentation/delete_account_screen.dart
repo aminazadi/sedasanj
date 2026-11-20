@@ -129,7 +129,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 _error!,
-                style: const TextStyle(color: SsColors.danger),
+                style: TextStyle(color: SsColors.of(context).danger),
               ),
             ),
           const SizedBox(height: 16),
@@ -140,7 +140,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             )
           else
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: SsColors.danger),
+              style: FilledButton.styleFrom(
+                backgroundColor: SsColors.of(context).danger,
+              ),
               onPressed: _busy ? null : _delete,
               child: const Text('حذف همیشگی حساب'),
             ),

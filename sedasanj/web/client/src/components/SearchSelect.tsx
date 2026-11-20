@@ -130,7 +130,7 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "Ø
         <div
           ref={menuRef}
           dir="rtl"
-          className="fixed z-[10000] flex flex-col border border-[color:var(--line)] bg-[#F2F0EF] text-start shadow-lg"
+          className="fixed z-[10000] flex flex-col border border-[color:var(--line)] bg-[var(--color-canvas)] text-start shadow-lg"
           style={{ ...position, visibility: position ? "visible" : "hidden" }}
           onKeyDown={(event) => {
             event.stopPropagation();
@@ -140,7 +140,7 @@ export default function SearchSelect({ options, value, onChange, emptyLabel = "Ø
         >
           <input
             ref={searchRef}
-            className="input shrink-0 border-0 border-b border-[color:var(--line)] bg-[#F2F0EF]"
+            className="input shrink-0 border-0 border-b border-[color:var(--line)] bg-[var(--color-canvas)]"
             type="search"
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}

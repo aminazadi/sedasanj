@@ -128,7 +128,7 @@ export default function FollowUpTaskCard({
   return (
     <li
       className={`border px-3 py-2.5 ${
-        done ? "border-[color:var(--line)] bg-[#B2AC88]/20" : "border-[color:var(--line)] bg-[#F2F0EF]"
+        done ? "border-[color:var(--line)] bg-[var(--color-accent)]/20" : "border-[color:var(--line)] bg-[var(--color-canvas)]"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -137,10 +137,10 @@ export default function FollowUpTaskCard({
           role="checkbox"
           aria-checked={done}
           aria-label={done ? "بازگرداندن به انجام‌نشده" : "علامت انجام‌شده"}
-          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50 ${
             done
-              ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-              : "border-[color:var(--line)] bg-[#F2F0EF] text-transparent"
+              ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)]"
+              : "border-[color:var(--line)] bg-[var(--color-canvas)] text-transparent"
           }`}
           disabled={!canEdit || saving}
           onClick={() => void toggleDone()}
@@ -157,7 +157,7 @@ export default function FollowUpTaskCard({
               </p>
               <span
                 className={`badge px-1.5 py-0.5 text-[10px] ${
-                  done ? "bg-[#4B6E48] text-[#F2F0EF]" : "bg-[#B2AC88] text-black"
+                  done ? "bg-[var(--color-primary)] text-[var(--color-canvas)]" : "bg-[var(--color-accent)] text-black"
                 }`}
               >
                 {TASK_STATUS_LABELS[task.status]}
@@ -176,10 +176,10 @@ export default function FollowUpTaskCard({
               {canEdit && !done ? (
                 <button
                   type="button"
-                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48] ${
+                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${
                     open
-                      ? "border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF]"
-                      : "border-[color:var(--line)] text-[#4B6E48] hover:bg-[#B2AC88]/40"
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)]"
+                      : "border-[color:var(--line)] text-[var(--color-primary)] hover:bg-[var(--color-accent)]/40"
                   }`}
                   aria-label={open ? "بستن ویرایش" : "ویرایش کار"}
                   title={open ? "بستن ویرایش" : "ویرایش"}

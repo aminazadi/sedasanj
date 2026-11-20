@@ -4,6 +4,7 @@ import QuickDemoSettings from "../components/QuickDemoSettings";
 import SiteContactSettings from "../components/SiteContactSettings";
 import SmsTemplateSettings from "../components/SmsTemplateSettings";
 import ToggleSwitch from "@cbi/web-shared/components/ToggleSwitch";
+import ThemeSwitch from "@cbi/web-shared/components/ThemeSwitch";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fmt, request } from "../api";
@@ -145,7 +146,7 @@ function ModelPriorityList({
       <label className="label" htmlFor={id}>{label}</label>
       <ol className="space-y-2">
         {value.map((modelId, index) => (
-          <li key={modelId} className="flex items-center gap-2 border border-slate-200 bg-white p-2">
+          <li key={modelId} className="flex items-center gap-2 border border-slate-200 bg-canvas p-2">
             <span className="w-6 text-center text-xs text-slate-500">{fmt.int(index + 1)}</span>
             <span className="min-w-0 flex-1 truncate text-sm" dir="ltr">{modelId}</span>
             <button type="button" className="btn-ghost px-2" disabled={index === 0} onClick={() => move(index, -1)} aria-label="انتقال به بالا">↑</button>
@@ -515,6 +516,13 @@ export default function Settings() {
 
   return (
     <div className="max-w-6xl space-y-5">
+      <div className="card flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="font-bold text-slate-900">ظاهر برنامه</h2>
+          <p className="mt-1 text-sm text-slate-500">روشن، تاریک یا پیروی از تنظیمات مرورگر؛ فقط برای همین دستگاه.</p>
+        </div>
+        <ThemeSwitch />
+      </div>
       <div className="card space-y-4">
         <div>
           <h1 className="text-lg font-bold text-slate-900">تنظیمات سامانه</h1>
@@ -764,7 +772,7 @@ export default function Settings() {
       {(activeTab === "connection" || activeTab === "models") && models.length ? (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {Object.entries(KIND_LABELS).map(([kind, label]) => (
-            <div key={kind} className="border border-slate-200 bg-white p-3">
+            <div key={kind} className="border border-slate-200 bg-canvas p-3">
               <div className="text-xs text-slate-500">{label}</div>
               <div className="mt-1 text-lg font-bold text-slate-900">{fmt.int(modelCounts[kind] || 0)}</div>
             </div>
@@ -788,10 +796,10 @@ export default function Settings() {
           {ASSISTANT_TOOLS.map(([id, label]) => <ToggleSwitch key={id} checked={settings.assistant_enabled_tools.includes(id)} onChange={(checked) => setSettings({ ...settings, assistant_enabled_tools: checked ? [...settings.assistant_enabled_tools, id] : settings.assistant_enabled_tools.filter((item) => item !== id) })} label={label} />)}
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">آماده</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.ready || 0)}</strong></div>
-          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">در انتظار</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.pending || 0)}</strong></div>
-          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">ناموفق</span><strong className="mt-1 block text-lg text-rose-700">{fmt.int(knowledge?.failed || 0)}</strong></div>
-          <div className="border border-slate-200 bg-white p-3"><span className="text-xs text-slate-500">قطعه متن</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.chunks || 0)}</strong></div>
+          <div className="border border-slate-200 bg-canvas p-3"><span className="text-xs text-slate-500">آماده</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.ready || 0)}</strong></div>
+          <div className="border border-slate-200 bg-canvas p-3"><span className="text-xs text-slate-500">در انتظار</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.pending || 0)}</strong></div>
+          <div className="border border-slate-200 bg-canvas p-3"><span className="text-xs text-slate-500">ناموفق</span><strong className="mt-1 block text-lg text-rose-700">{fmt.int(knowledge?.failed || 0)}</strong></div>
+          <div className="border border-slate-200 bg-canvas p-3"><span className="text-xs text-slate-500">قطعه متن</span><strong className="mt-1 block text-lg">{fmt.int(knowledge?.chunks || 0)}</strong></div>
         </div>
         {knowledge?.latest_error ? <p className="border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{knowledge.latest_error}</p> : null}
         <button type="button" className="btn-ghost" disabled={retryingKnowledge || !knowledge?.failed} onClick={() => void retryKnowledge()}>{retryingKnowledge ? "در حال تلاش مجدد…" : "تلاش مجدد برای ایندکس‌های ناموفق"}</button>

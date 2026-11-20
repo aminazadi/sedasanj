@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "sedasanj/web/client", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "admin-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "sedasanj/web/admin", "run", "dev"],
+      "port": 5174
     }
   ]
 }

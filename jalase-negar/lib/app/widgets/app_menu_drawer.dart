@@ -12,17 +12,21 @@ class AppMenuDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: SsColors.canvas,
+      backgroundColor: SsColors.of(context).canvas,
       shape: const RoundedRectangleBorder(),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 16),
-              child: SsBrandLogo(width: 104, animated: false),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+              child: SsBrandLogo(
+                width: 104,
+                animated: false,
+                color: ssBrandLogoColor(context),
+              ),
             ),
-            const Divider(height: 1, color: SsColors.line),
+            Divider(height: 1, color: SsColors.of(context).line),
             ListTile(
               leading: const Icon(Icons.share_outlined),
               title: const Text('اشتراک‌گذاری اپ'),

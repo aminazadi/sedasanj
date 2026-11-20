@@ -15,7 +15,7 @@ export function SelectionCheckbox({ checked, mixed = false, disabled, label, onC
 }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { if (ref.current) ref.current.indeterminate = mixed; }, [mixed]);
-  return <input ref={ref} type="checkbox" className="h-4 w-4 accent-[#4B6E48]" aria-label={label}
+  return <input ref={ref} type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" aria-label={label}
     checked={checked} disabled={disabled} onChange={onChange}
     onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} />;
 }
@@ -52,7 +52,7 @@ export default function BulkActions({ selected, setSelected, actions, onComplete
   }
   const visible = selected.length > 0 || busy || result !== null;
   return <>
-    {visible ? <div className="fixed inset-x-3 bottom-4 z-40 mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-lg border border-[color:var(--line)] bg-white p-3 shadow-xl sm:gap-3" dir="rtl" aria-busy={busy}>
+    {visible ? <div className="fixed inset-x-3 bottom-4 z-40 mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-lg border border-[color:var(--line)] bg-canvas p-3 shadow-xl sm:gap-3" dir="rtl" aria-busy={busy}>
       {selected.length > 0 ? <span className="text-sm font-medium">{fmt.int(selected.length)} مورد انتخاب شده</span> : null}
       {actions.map((action) => {
         const count = selected.filter(action.eligible).length;

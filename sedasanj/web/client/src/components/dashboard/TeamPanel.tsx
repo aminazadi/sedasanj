@@ -10,7 +10,7 @@ function QualityTrend({ current, previous }: { current: number | null; previous:
   if (current == null || previous == null) return <span className="text-slate-400">—</span>;
   const change = current - previous;
   if (Math.abs(change) < 1) return <span className="text-slate-400" title="بدون تغییر محسوس">—</span>;
-  return <span className={change > 0 ? "text-brand-700" : "text-[#8a4b3f]"} title={`دورهٔ قبل ${fmt.decimal(previous)}`}>{change > 0 ? "▲" : "▼"} {fmt.decimal(Math.abs(change))}</span>;
+  return <span className={change > 0 ? "text-brand-700" : "text-[color:var(--color-rust)]"} title={`دورهٔ قبل ${fmt.decimal(previous)}`}>{change > 0 ? "▲" : "▼"} {fmt.decimal(Math.abs(change))}</span>;
 }
 
 /** Leaderboard by sales; low-sample operators are tagged rather than hidden. */
@@ -26,7 +26,7 @@ export function TeamPanel({ operators, total, offset, limit, onOffset }: { opera
         <td className="tabular-nums">{fmt.int(item.calls)}</td>
         <td className="tabular-nums"><span className="inline-flex items-center gap-2"><i className="exec-minibar" style={{ width: `${(item.wins * 48) / maxWins}px` }} aria-hidden="true" />{fmt.int(item.wins)}</span></td>
         <td className="tabular-nums">{item.conversion.value == null ? "—" : `${fmt.decimal(item.conversion.value)}٪`}</td>
-        <td className="tabular-nums" style={{ color: item.quality_score != null && item.quality_score < QUALITY_ALERT ? "#8a4b3f" : undefined }}>{item.quality_score == null ? "—" : fmt.decimal(item.quality_score)}</td>
+        <td className="tabular-nums" style={{ color: item.quality_score != null && item.quality_score < QUALITY_ALERT ? "var(--color-rust)" : undefined }}>{item.quality_score == null ? "—" : fmt.decimal(item.quality_score)}</td>
         <td className="tabular-nums"><QualityTrend current={item.quality_score} previous={item.previous_quality_score} /></td>
       </tr>)}</tbody>
     </table></div> : <Empty>هنوز تماسی به اپراتورها منتسب نشده است.</Empty>}
@@ -38,6 +38,6 @@ export function TeamPanel({ operators, total, offset, limit, onOffset }: { opera
 export function CoachingPanel({ coaching, title = "مربی‌گری من" }: { coaching: KpiDashboard["coaching"]; title?: string }) {
   const list = (rows: KpiDashboard["coaching"]["strengths"], tone: string) => rows.length ? <ul className="space-y-2">{rows.map((item) => <li key={`${item.call_id}-${item.title}`}><Link to={`/calls/${item.call_id}`} className="flex items-center justify-between gap-3 border-b border-[color:var(--line)] py-2 text-sm hover:text-brand-700"><span className="truncate">{item.title}</span><strong className="tabular-nums" style={{ color: tone }}>{fmt.decimal(item.average)}</strong></Link></li>)}</ul> : <p className="text-xs text-slate-500">هنوز امتیازی ثبت نشده است.</p>;
   return <DashboardCard title={title} hint="بر اساس معیارهای امتیازدهی تماس‌های این بازه">
-    <div className="grid gap-6 sm:grid-cols-2"><div><h3 className="mb-2 text-sm font-bold text-brand-700">نقاط قوت</h3>{list(coaching.strengths, "#4b6e48")}</div><div><h3 className="mb-2 text-sm font-bold text-[#8a4b3f]">اولویت‌های بهبود</h3>{list(coaching.improvements, "#8a4b3f")}</div></div>
+    <div className="grid gap-6 sm:grid-cols-2"><div><h3 className="mb-2 text-sm font-bold text-brand-700">نقاط قوت</h3>{list(coaching.strengths, "var(--color-primary)")}</div><div><h3 className="mb-2 text-sm font-bold text-[color:var(--color-rust)]">اولویت‌های بهبود</h3>{list(coaching.improvements, "var(--color-rust)")}</div></div>
   </DashboardCard>;
 }

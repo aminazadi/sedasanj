@@ -41,7 +41,7 @@ class SpeakerLinesCard extends ConsumerWidget {
       trailing: share > 0
           ? SsBadge(
               'هم‌زمان ${toPersianDigits('${(share * 100).round()}')}٪',
-              color: SsColors.warning,
+              color: SsColors.of(context).warning,
             )
           : null,
       child: Column(
@@ -225,7 +225,7 @@ class _Line extends StatelessWidget {
                 child: Text(
                   segment.speakerLabel ?? 'بدون گوینده',
                   style: theme.textTheme.labelLarge?.copyWith(
-                    color: SsColors.primary,
+                    color: SsColors.of(context).primary,
                   ),
                 ),
               ),
@@ -234,7 +234,7 @@ class _Line extends StatelessWidget {
               Text(
                 notes.join(' · '),
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: SsColors.warning,
+                  color: SsColors.of(context).warning,
                 ),
               ),
           ],

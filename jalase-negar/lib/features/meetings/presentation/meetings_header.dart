@@ -31,13 +31,11 @@ class MeetingsFilterButton extends ConsumerWidget {
     return PopupMenuButton<MeetingFilter>(
       tooltip: active ? 'فیلتر: ${filter.label}' : 'فیلتر جلسه‌ها',
       position: PopupMenuPosition.under,
-      color: Colors.white,
-      shape: const RoundedRectangleBorder(
-        side: BorderSide(color: SsColors.line),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: SsColors.of(context).line),
       ),
       initialValue: filter,
-      onSelected: (f) =>
-          ref.read(meetingsSearchProvider.notifier).setFilter(f),
+      onSelected: (f) => ref.read(meetingsSearchProvider.notifier).setFilter(f),
       itemBuilder: (context) => [
         for (final f in MeetingFilter.values)
           PopupMenuItem(
@@ -49,7 +47,7 @@ class MeetingsFilterButton extends ConsumerWidget {
                 Icon(
                   f == filter ? Icons.check : null,
                   size: 18,
-                  color: SsColors.primary,
+                  color: SsColors.of(context).primary,
                 ),
                 const SizedBox(width: 10),
                 Text(f.label, style: Theme.of(context).textTheme.labelMedium),
@@ -59,7 +57,7 @@ class MeetingsFilterButton extends ConsumerWidget {
       ],
       icon: Icon(
         Icons.filter_list,
-        color: active ? SsColors.primary : null,
+        color: active ? SsColors.of(context).primary : null,
       ),
     );
   }
@@ -124,7 +122,7 @@ class _MeetingsSearchFieldState extends ConsumerState<MeetingsSearchField> {
       focusNode: _focus,
       textInputAction: TextInputAction.search,
       style: Theme.of(context).textTheme.titleMedium,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         isDense: true,
         isCollapsed: true,
         filled: false,
@@ -139,7 +137,7 @@ class _MeetingsSearchFieldState extends ConsumerState<MeetingsSearchField> {
         errorBorder: InputBorder.none,
         focusedErrorBorder: InputBorder.none,
         hintText: 'جست‌وجو در عنوان، تاریخ و متن جلسه',
-        hintStyle: TextStyle(color: SsColors.neutral),
+        hintStyle: TextStyle(color: SsColors.of(context).neutral),
       ),
       onChanged: (v) => ref.read(meetingsSearchProvider.notifier).setQuery(v),
     );

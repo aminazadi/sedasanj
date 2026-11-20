@@ -50,7 +50,7 @@ type AudioWaveformPlayerProps = {
   onTimeChange?: (seconds: number) => void;
 };
 
-const controlClassName = "flex h-11 w-11 shrink-0 items-center justify-center border border-[color:var(--line)] bg-[#F2F0EF] text-[#000000] transition hover:border-[#4B6E48] hover:bg-[#B2AC88] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]";
+const controlClassName = "flex h-11 w-11 shrink-0 items-center justify-center border border-[color:var(--line)] bg-[var(--color-canvas)] text-ink transition hover:border-[var(--color-primary)] hover:bg-[var(--color-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]";
 
 export default function AudioWaveformPlayer({ audioRef, downloadName, src, onError, onWaveformReady, title = "فایل صوتی تماس", onTimeChange }: AudioWaveformPlayerProps) {
   const [duration, setDuration] = useState(0);
@@ -141,7 +141,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
   }
 
   return (
-    <div className="border border-[color:var(--line)] bg-white/70 px-4 py-3 shadow-sm sm:px-5" dir="rtl">
+    <div className="border border-[color:var(--line)] bg-canvas/70 px-4 py-3 shadow-sm sm:px-5" dir="rtl">
       <audio
         ref={audioRef}
         src={src}
@@ -161,32 +161,32 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
       />
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-extrabold text-[#000000]">{title}</p>
-          <p className="mt-0.5 text-[11px] text-[#898989]">برای جابه‌جایی روی موج کلیک کنید</p>
+          <p className="text-sm font-extrabold text-ink">{title}</p>
+          <p className="mt-0.5 text-[11px] text-[var(--color-neutral)]">برای جابه‌جایی روی موج کلیک کنید</p>
         </div>
-        <span className="shrink-0 text-xs font-medium tabular-nums text-[#898989]">
+        <span className="shrink-0 text-xs font-medium tabular-nums text-[var(--color-neutral)]">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>
 
       <button
         type="button"
-        className="group relative flex h-16 w-full items-center gap-[3px] overflow-hidden border-y border-[color:var(--line)]/60 bg-[#F2F0EF]/60 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]"
+        className="group relative flex h-16 w-full items-center gap-[3px] overflow-hidden border-y border-[color:var(--line)]/60 bg-[var(--color-canvas)]/60 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
         onClick={seek}
         aria-label={waveformLabel}
         dir="ltr"
       >
-        <span className="pointer-events-none absolute inset-x-2 top-1/2 h-px bg-[#B2AC88]/60" aria-hidden="true" />
+        <span className="pointer-events-none absolute inset-x-2 top-1/2 h-px bg-[var(--color-accent)]/60" aria-hidden="true" />
         {peaks.map((peak, index) => (
           <span
             key={index}
-            className={`relative min-w-[1px] flex-1 transition-all duration-150 ${index < activeBars ? "bg-[#4B6E48]" : "bg-[#B2AC88] group-hover:bg-[#898989]"}`}
+            className={`relative min-w-[1px] flex-1 transition-all duration-150 ${index < activeBars ? "bg-[var(--color-primary)]" : "bg-[var(--color-accent)] group-hover:bg-[var(--color-neutral)]"}`}
             style={{ height: `${Math.max(6, Math.round(peak * 52))}px`, opacity: index < activeBars ? 1 : 0.72 }}
             aria-hidden="true"
           />
         ))}
         <span
-          className="pointer-events-none absolute inset-y-1 w-0.5 bg-[#4B6E48] shadow-[0_0_0_3px_rgba(75,110,72,0.12)]"
+          className="pointer-events-none absolute inset-y-1 w-0.5 bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(75,110,72,0.12)]"
           style={{ left: `calc(${progress * 100}% - 1px)` }}
           aria-hidden="true"
         />
@@ -196,7 +196,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center border border-[#4B6E48] bg-[#4B6E48] text-[#F2F0EF] transition hover:bg-[#3f5f3d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4B6E48]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center border border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)] transition hover:bg-[#3f5f3d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
             onClick={togglePlayback}
             aria-label={playing ? "توقف پخش" : "پخش فایل صوتی"}
           >
@@ -206,7 +206,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg>
             )}
           </button>
-          <span className="text-xs font-medium text-[#898989]">{playing ? "در حال پخش" : "آماده پخش"}</span>
+          <span className="text-xs font-medium text-[var(--color-neutral)]">{playing ? "در حال پخش" : "آماده پخش"}</span>
         </div>
 
         <div className="flex items-center gap-2">

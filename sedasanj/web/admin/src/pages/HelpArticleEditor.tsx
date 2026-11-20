@@ -296,7 +296,7 @@ export default function HelpArticleEditor() {
 
       {insertMedia || pickThumbnail ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-4xl rounded-xl bg-white p-4 shadow-xl">
+          <div className="w-full max-w-4xl rounded-xl bg-canvas p-4 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-bold">کتابخانهٔ تصویر و ویدئو</h2>
               <button type="button" className="btn btn-ghost" onClick={() => { setInsertMedia(null); setPickThumbnail(false); }}>

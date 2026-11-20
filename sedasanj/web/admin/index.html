@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <title>پنل مدیریت پلتفرم</title>
+    <script>
+      // Applies a saved light/dark choice before first paint so there is no
+      // flash of the wrong theme; "system" needs no script, theme-vars.css
+      // already follows prefers-color-scheme when data-theme is unset.
+      (function () {
+        try {
+          var mode = localStorage.getItem("sedasanj:theme-mode");
+          if (mode === "dark" || mode === "light") document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="bg-slate-100 text-slate-900">
     <div id="root"></div>

@@ -36,7 +36,7 @@ export default function ProcessingTimeline({ events }: { events: ProcessingEvent
     <details className="card group" dir="rtl">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-bold text-slate-800">گزارش اجرای پردازش</span>
-        <span className="flex h-9 w-9 items-center justify-center border border-[color:var(--line)] bg-[#F2F0EF] text-[#000000] transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
+        <span className="flex h-9 w-9 items-center justify-center border border-[color:var(--line)] bg-[var(--color-canvas)] text-ink transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter">
             <path d="m6 9 6 6 6-6" />
           </svg>
