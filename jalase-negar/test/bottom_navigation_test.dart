@@ -63,10 +63,12 @@ void main() {
       );
       await tester.pump();
       // The hamburger keeps the app's standard (default) icon-button size,
-      // flush against the edge; only the dead space before the title (the
-      // AppBar's titleSpacing) is trimmed.
+      // pulled in from the edge by the same standard 16px gap the actions
+      // side gets (SsAppBar's own leading wrapper, not titleSpacing — that
+      // only trims the dead space between the button and the title, which
+      // stays 0).
       final menuButtonRect = tester.getRect(find.byType(DrawerButton));
-      expect(menuButtonRect.right, width);
+      expect(menuButtonRect.right, width - 16);
       // The meetings tab no longer carries the models shortcut; its header
       // now has a search and a filter icon button instead (no label, so no
       // SsAppBarAction).
@@ -126,14 +128,24 @@ void main() {
         }
         if (entry.value == '/people') {
           expect(find.byType(SsAppBarAction), findsOneWidget);
-          expect(
-            tester
-                .getRect(
-                  find.byWidgetPredicate((widget) => widget is TextButton),
-                )
-                .left,
-            16,
+          final actionRect = tester.getRect(
+            find.byWidgetPredicate((widget) => widget is TextButton),
           );
+          expect(actionRect.left, 16);
+          // Same tap height as the standard (icon-only) AppBar button, not
+          // a bespoke smaller one.
+          expect(actionRect.height, menuButtonRect.height);
+          // Plain icon+label, no outline border or filled background.
+          final buttonStyle = tester
+              .widget<TextButton>(
+                find.descendant(
+                  of: find.byType(SsAppBarAction),
+                  matching: find.byWidgetPredicate((w) => w is TextButton),
+                ),
+              )
+              .style!;
+          expect(buttonStyle.side?.resolve(const {}), isNull);
+          expect(buttonStyle.backgroundColor?.resolve(const {}), isNull);
           await tester.tap(find.text('افزودن فرد'));
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 500));

@@ -7,7 +7,10 @@ import '../../meetings/data/meeting.dart';
 /// type-picker sheet; reset once a recording has started.
 typedef PendingMeetingType = ({String code, Map<String, String> values});
 
-const _defaultPendingMeetingType = (code: kBuiltinOutputType, values: <String, String>{});
+const _defaultPendingMeetingType = (
+  code: kBuiltinOutputType,
+  values: <String, String>{},
+);
 
 class PendingMeetingTypeNotifier extends Notifier<PendingMeetingType> {
   @override

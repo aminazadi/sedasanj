@@ -1,0 +1,111 @@
+import type { GuideTourStep } from "./guideTourState.mjs";
+
+const BOTH = ["org_admin", "operator"] as const;
+
+export const GUIDE_TOUR_STEPS: readonly GuideTourStep[] = [
+  {
+    id: "welcome",
+    roles: BOTH,
+    target: null,
+    title: "به صدا سنج خوش آمدید",
+    body: "در این تور کوتاه بخش‌های اصلی پنل را نشانتان می‌دهیم. هر زمان خواستید می‌توانید آن را رد کنید و بعداً از دکمه «راهنما» دوباره اجرا کنید.",
+  },
+  {
+    id: "nav:/",
+    roles: BOTH,
+    target: "/",
+    title: "داشبورد",
+    body: "نمای کلی عملکرد و شاخص‌های مهم از همین‌جا در دسترس است.",
+  },
+  {
+    id: "nav:/calls",
+    roles: BOTH,
+    target: "/calls",
+    title: "تماس‌ها",
+    body: "تماس‌های ثبت‌شده، رونوشت و تحلیل هرکدام را این‌جا می‌بینید و می‌توانید تماس جدید هم بارگذاری کنید.",
+  },
+  {
+    id: "nav:/meetings",
+    roles: BOTH,
+    target: "/meetings",
+    title: "صورت‌جلسات عمومی (جلسه‌نگار)",
+    body: "جلسات ضبط‌شده و خروجی‌های تولیدشده از آن‌ها، مثل صورت‌جلسه یا خلاصه، در گروه «جلسه‌نگار» مدیریت می‌شود؛ هر دسته‌ای که سازمانتان در اپ بسازد، کنار همین آیتم اضافه می‌شود.",
+  },
+  {
+    id: "nav:/jalase-negar-install",
+    roles: BOTH,
+    target: "/jalase-negar-install",
+    title: "نصب و دانلود جلسه‌نگار",
+    body: "لینک دانلود اپ جلسه‌نگار برای موبایل و رایانه و مراحل اتصال آن به صداسنج همین‌جاست.",
+  },
+  {
+    id: "nav:/contacts",
+    roles: BOTH,
+    target: "/contacts",
+    title: "دفترچه تلفن",
+    body: "مخاطبان سازمان را این‌جا جست‌وجو و مدیریت می‌کنید تا تماس‌ها و جلسات درست به آن‌ها نسبت داده شود.",
+  },
+  {
+    id: "nav:/extensions",
+    roles: BOTH,
+    target: "/extensions",
+    title: "داخلی‌ها",
+    body: "داخلی‌های سازمان و کاربر متصل به هرکدام را از همین صفحه می‌بینید.",
+  },
+  {
+    id: "nav:/tasks",
+    roles: BOTH,
+    target: "/tasks",
+    title: "کارها",
+    body: "پیگیری‌هایی که از تماس‌ها و جلسات بیرون می‌آید، به‌صورت کار قابل‌انجام این‌جا ثبت و دنبال می‌شود.",
+  },
+  {
+    id: "nav:/assistant",
+    roles: BOTH,
+    target: "/assistant",
+    title: "دستیار تماس‌ها",
+    body: "برای پرسیدن سؤال درباره‌ی تماس‌ها و جلسات یا گرفتن یک گزارش سریع، با دستیار هوشمند گفت‌وگو کنید.",
+  },
+  {
+    id: "nav:/operator-scores",
+    roles: BOTH,
+    target: "/operator-scores",
+    title: "امتیازها",
+    body: "امتیاز و عملکرد تماس‌ها بر اساس معیارهای تعیین‌شده همین‌جا نمایش داده می‌شود.",
+  },
+  {
+    id: "nav:/account",
+    roles: ["org_admin"],
+    target: "/account",
+    title: "اعتبار و اشتراک",
+    body: "وضعیت اعتبار، پلن فعال سازمان و تاریخچه‌ی تراکنش‌ها را از همین‌جا مدیریت می‌کنید.",
+  },
+  {
+    id: "nav:/account-settings",
+    roles: BOTH,
+    target: "/account-settings",
+    title: "تنظیمات حساب",
+    body: "تنظیمات امتیازدهی، دستیار هوشمند، کاربران سازمان، منو و اتصال جلسه‌نگار و سایر یکپارچه‌سازی‌ها زیرمجموعه‌ی همین بخش است.",
+  },
+  {
+    id: "nav:/install",
+    roles: ["org_admin"],
+    target: "/install",
+    title: "راه‌اندازی",
+    body: "راهنمای اتصال سانترال (FreePBX) و تنظیمات اولیه‌ی ضبط تماس در این صفحه قرار دارد.",
+  },
+  {
+    id: "role-badge",
+    roles: BOTH,
+    target: "role-badge",
+    title: "نقش و خروج از حساب",
+    body: "نقش فعلی‌تان همین‌جا نشان داده می‌شود و دکمه‌ی کنارش برای خروج از حساب است.",
+  },
+  {
+    id: "replay-help",
+    roles: BOTH,
+    target: "replay-help",
+    title: "هر وقت خواستید، دوباره راهنما را ببینید",
+    body: "با کلیک روی این دکمه، همین تور را هر زمان لازم داشتید از ابتدا اجرا می‌کنید.",
+  },
+];

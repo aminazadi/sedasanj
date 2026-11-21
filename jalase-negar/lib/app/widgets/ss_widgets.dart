@@ -72,6 +72,50 @@ class _DotsPainter extends CustomPainter {
   bool shouldRepaint(_DotsPainter old) => old.color != color;
 }
 
+/// Sentinel default for [SsAppBar.leading], so its constructor can tell
+/// "the caller passed nothing" (give the standard auto-detected leading,
+/// pulled in from the edge) apart from "the caller passed `null` on
+/// purpose" (e.g. no leading at all while the header shows a search
+/// field). Private, so no real caller can pass it by accident.
+class _UnsetLeading extends StatelessWidget {
+  const _UnsetLeading();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+const Widget _unsetLeading = _UnsetLeading();
+
+/// What [AppBar] would put in [AppBar.leading] on its own — the drawer
+/// button, or a back/close button once the route can pop — pulled in from
+/// the screen edge by the same gap [SsAppBar] gives an explicit leading
+/// widget, instead of sitting flush against it like AppBar's own default.
+class _SsLeadingGap extends StatelessWidget {
+  const _SsLeadingGap();
+
+  @override
+  Widget build(BuildContext context) {
+    final route = ModalRoute.of(context);
+    final Widget? button = (Scaffold.maybeOf(context)?.hasDrawer ?? false)
+        ? const DrawerButton()
+        : (route?.impliesAppBarDismissal ?? false)
+        ? ((route?.fullscreenDialog ?? false)
+              ? const CloseButton()
+              : const BackButton())
+        : null;
+    if (button == null) return const SizedBox.shrink();
+    // AppBar's own leading only gets this Center treatment (keeping the
+    // button at its natural 48 height instead of stretching it to the
+    // bar's full height) when the widget it's handed is itself an
+    // IconButton — true for a bare DrawerButton/BackButton, but not once
+    // it's wrapped in this Padding, so it's reapplied by hand here.
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: 16),
+      child: Center(child: button),
+    );
+  }
+}
+
 /// App bar on the canvas surface: dot pattern plus the office line art,
 /// mirrored onto the end side and fading out towards the title.
 class SsAppBar extends AppBar {
@@ -79,14 +123,39 @@ class SsAppBar extends AppBar {
     super.key,
     super.title,
     super.actions,
-    super.leading,
-    super.leadingWidth,
+    Widget? leading = _unsetLeading,
+    double? leadingWidth,
     super.bottom,
     super.centerTitle,
     super.automaticallyImplyLeading,
     super.titleSpacing,
-    super.actionsPadding,
+    // Standard gap from the screen edge to the last action, so a lone
+    // action (e.g. the rename pencil on the person screen) doesn't sit
+    // flush against the edge like AppBar's own (much smaller) default.
+    EdgeInsetsGeometry actionsPadding = const EdgeInsetsDirectional.only(
+      end: 16,
+    ),
   }) : super(
+         // Same standard gap as the actions side, applied to whichever of
+         // the three cases applies: nothing passed (auto-detect, via
+         // _SsLeadingGap), explicitly suppressed (null, e.g. no back
+         // button while searching), or an explicit widget (e.g.
+         // shell_screen.dart's DrawerButton).
+         leading: identical(leading, _unsetLeading)
+             ? (automaticallyImplyLeading ? const _SsLeadingGap() : null)
+             : (leading == null
+                   ? null
+                   : Padding(
+                       padding: const EdgeInsetsDirectional.only(start: 16),
+                       // See _SsLeadingGap: re-centering by hand, since
+                       // AppBar only does it for a leading widget that is
+                       // itself (still) an IconButton.
+                       child: Center(child: leading),
+                     )),
+         // Room for the standard 48px button plus that same 16px gap;
+         // AppBar only consults this when `leading` above is non-null.
+         leadingWidth: leadingWidth ?? 64,
+         actionsPadding: actionsPadding,
          // Same bottom border as the bottom nav bar's own painted edge, so
          // the two bars read as a matching pair. Wrapped in a Builder since
          // this runs in a constructor initializer, before there's a
@@ -128,12 +197,10 @@ class SsAppBarAction extends StatelessWidget {
         onPressed: onPressed,
         style: TextButton.styleFrom(
           foregroundColor: SsColors.of(context).ink,
-          backgroundColor: SsColors.of(context).ink.withValues(alpha: 0.06),
-          side: BorderSide(
-            color: SsColors.of(context).ink.withValues(alpha: 0.25),
-          ),
-          shape: const RoundedRectangleBorder(),
-          minimumSize: const Size(0, 34),
+          // Same 48×48 tap height as every other AppBar icon button
+          // (measured via tester.getRect, not guessed) — only this one is
+          // wider to fit its label.
+          minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           iconSize: 19,
           textStyle: const TextStyle(

@@ -134,7 +134,7 @@ void main() {
     expect(
       tester.getRect(find.byType(SsCard)).top,
       greaterThan(
-        tester.getRect(find.text('برای شروع ضبط، دکمهٔ زیر را بزنید')).bottom,
+        tester.getRect(find.text('قبل از شروع جلسه لطفا موارد زیر را مشخص کنید')).bottom,
       ),
     );
 

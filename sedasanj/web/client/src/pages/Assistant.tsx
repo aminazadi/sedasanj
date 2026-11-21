@@ -3,6 +3,7 @@ import AssistantContextPicker, { AssistantAttachmentChips } from "../components/
 import ProcessingIndicator from "../components/ProcessingIndicator";
 import { exportFiles } from "../components/assistantExportLinks.mjs";
 import { CallStateArt } from "../components/CallStateArt";
+import assistantMark from "../assets/assistant-mark.svg";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
@@ -1432,7 +1433,7 @@ export default function Assistant() {
       <div ref={messagesScrollerRef} className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7" onScroll={handleMessagesScroll}>
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[var(--color-accent)] bg-canvas px-3 py-2 text-xs text-[var(--color-primary)]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
         {messagesLoading ? <AssistantMessagesSkeleton /> : null}
-        {!messagesLoading && messages.length === 0 ? <div className="mx-auto max-w-lg pt-10 text-center text-[var(--color-neutral)]"><CallStateArt section={training ? "training" : ephemeral ? "temporary" : "assistant"} className="mx-auto mb-3" /><h1 className="mb-3 text-xl font-bold text-[var(--color-primary)]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p></div> : null}
+        {!messagesLoading && messages.length === 0 ? <div className="mx-auto max-w-lg pt-10 text-center text-[var(--color-neutral)]">{training || ephemeral ? <CallStateArt section={training ? "training" : "temporary"} className="mx-auto mb-3" /> : <img src={assistantMark} className="mx-auto mb-3 h-36 w-36" alt="" aria-hidden="true" />}<h1 className="mb-3 text-xl font-bold text-[var(--color-primary)]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p></div> : null}
         {(messagesLoading ? [] : messages).map((message) => {
           const user = message.role === "user";
           const attachedLabels = messageAttachmentLabels(message);

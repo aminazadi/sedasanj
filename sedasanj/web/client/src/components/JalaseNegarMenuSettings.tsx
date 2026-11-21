@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { request } from "../api";
-import { Empty, ErrorBox } from "../components/Widgets";
-import { PageHeader } from "../components/PageHeader";
+import { Empty, ErrorBox } from "./Widgets";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 
 interface MenuEntry { code: string; label: string; hidden?: boolean }
 interface MenuResponse { items: MenuEntry[]; hidden: string[] }
 
-/** Org admins choose which Jalase-Negar document categories show in the panel menu. */
-export default function JalaseMenu() {
+/** Org admins choose which Jalase-Negar document categories show in the panel's "جلسه‌نگار" menu group. */
+export default function JalaseNegarMenuSettings() {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -30,8 +29,11 @@ export default function JalaseMenu() {
   const visible = menu.data?.items ?? [];
   const hidden = menu.data?.hidden ?? [];
   return (
-    <div className="space-y-4">
-      <PageHeader title="منوی جلسه‌نگار" description="دسته‌هایی که سازمان شما در آن‌ها سند دارد؛ هر دسته‌ای که مخفی کنید از منوی کناری حذف می‌شود و اسناد آن پاک نمی‌شوند." />
+    <section className="card space-y-4" aria-labelledby="jalase-negar-menu-title">
+      <div>
+        <h2 id="jalase-negar-menu-title" className="font-bold">منوی جلسه‌نگار</h2>
+        <p className="section-hint">دسته‌هایی که سازمان شما در آن‌ها سند دارد؛ هر دسته‌ای که مخفی کنید از گروه «جلسه‌نگار» در منوی کناری حذف می‌شود و اسناد آن پاک نمی‌شوند.</p>
+      </div>
       <ErrorBox message={error ?? menu.error ?? null} />
       {visible.length === 0 && hidden.length === 0 ? <Empty>هنوز سندی در دسته‌های جلسه‌نگار ثبت نشده است. پس از ارسال اولین سند از اپ، دسته‌اش اینجا ظاهر می‌شود.</Empty> : null}
       <ul className="space-y-2">
@@ -48,6 +50,6 @@ export default function JalaseMenu() {
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }

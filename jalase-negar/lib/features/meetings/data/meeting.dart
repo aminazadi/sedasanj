@@ -125,7 +125,8 @@ class Meeting {
       other.speakersState == speakersState &&
       other.workspace == workspace &&
       other.outputTypeCode == outputTypeCode &&
-      jsonEncode(other.outputTypeInputValues) == jsonEncode(outputTypeInputValues);
+      jsonEncode(other.outputTypeInputValues) ==
+          jsonEncode(outputTypeInputValues);
 
   @override
   int get hashCode => Object.hash(
@@ -211,7 +212,9 @@ class Meeting {
     speakersState: (row['speakers_state'] as String?) ?? 'done',
     workspace: (row['workspace'] as String?) ?? kWorkspacePrimary,
     outputTypeCode: (row['output_type_code'] as String?) ?? kBuiltinOutputType,
-    outputTypeInputValues: _decodeStringMap(row['output_type_input_values'] as String?),
+    outputTypeInputValues: _decodeStringMap(
+      row['output_type_input_values'] as String?,
+    ),
   );
 
   Map<String, Object?> toRow() => {
@@ -242,7 +245,9 @@ Map<String, String> _decodeStringMap(String? raw) {
   try {
     final decoded = jsonDecode(raw);
     if (decoded is Map) {
-      return decoded.map((key, value) => MapEntry(key as String, value as String));
+      return decoded.map(
+        (key, value) => MapEntry(key as String, value as String),
+      );
     }
   } on FormatException {
     // Falls through to the empty map below.

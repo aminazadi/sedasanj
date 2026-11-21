@@ -44,6 +44,13 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
   /// Scroll since the last commit (or direction reversal); not yet acted on.
   double _dragAccum = 0;
 
+  /// Whether the hamburger drawer is open (or more than halfway through an
+  /// edge-swipe open). The record button lives in a Stack entry painted
+  /// above the whole Scaffold — including its native drawer, which is
+  /// otherwise above everything else Scaffold draws — so it has to hide
+  /// itself for the menu to read as on top of it.
+  bool _drawerOpen = false;
+
   @override
   void dispose() {
     _hidden.dispose();
@@ -126,6 +133,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
       // hides, so this padding never jumps mid-scroll.
       extendBody: true,
       drawer: const AppMenuDrawer(),
+      onDrawerChanged: (opened) => setState(() => _drawerOpen = opened),
       appBar: _HidingAppBar(
         progress: progress,
         appBar: SsAppBar(
@@ -139,7 +147,6 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
           leading: searching ? null : const DrawerButton(),
           automaticallyImplyLeading: !searching,
           titleSpacing: 0,
-          actionsPadding: const EdgeInsetsDirectional.only(end: 16),
           centerTitle: false,
           title: searching
               ? const MeetingsSearchField()
@@ -195,6 +202,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
         _FloatingRecordButton(
           progress: progress,
           bottomInset: bottomInset,
+          // Faded out (and no longer tappable) while the drawer is open,
+          // since this Stack entry would otherwise paint over it.
+          hidden: _drawerOpen,
           onTap: () => context.push('/record'),
         ),
       ],
@@ -280,11 +290,13 @@ class _FloatingRecordButton extends StatelessWidget {
   const _FloatingRecordButton({
     required this.progress,
     required this.bottomInset,
+    required this.hidden,
     required this.onTap,
   });
 
   final double progress;
   final double bottomInset;
+  final bool hidden;
   final VoidCallback onTap;
 
   /// Gap kept from the screen's left edge once fully floating.
@@ -324,23 +336,30 @@ class _FloatingRecordButton extends StatelessWidget {
       // Isolated like the bars themselves, so its own frequent repaints
       // (the move, and its pulse even at rest) never cost the page below.
       child: RepaintBoundary(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Transform.translate(
-            offset: Offset(dx, dy),
-            child: Transform.rotate(
-              // One full turn over the move itself (not a fixed-time
-              // flourish), so it always lands upright, however short or
-              // long the scroll that triggered it was.
-              angle: 2 * math.pi * progress,
-              alignment: pivot,
-              child: _RecordSlot(
-                onTap: onTap,
-                lift: lift,
-                half: half,
-                drop: drop,
-                width: slotWidth,
-                height: slotHeight,
+        child: IgnorePointer(
+          ignoring: hidden,
+          child: AnimatedOpacity(
+            opacity: hidden ? 0 : 1,
+            duration: const Duration(milliseconds: 200),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Transform.translate(
+                offset: Offset(dx, dy),
+                child: Transform.rotate(
+                  // One full turn over the move itself (not a fixed-time
+                  // flourish), so it always lands upright, however short or
+                  // long the scroll that triggered it was.
+                  angle: 2 * math.pi * progress,
+                  alignment: pivot,
+                  child: _RecordSlot(
+                    onTap: onTap,
+                    lift: lift,
+                    half: half,
+                    drop: drop,
+                    width: slotWidth,
+                    height: slotHeight,
+                  ),
+                ),
               ),
             ),
           ),

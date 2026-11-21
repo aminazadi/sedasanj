@@ -459,7 +459,7 @@ class _RecordingPreview extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                'برای شروع ضبط، دکمهٔ زیر را بزنید',
+                'قبل از شروع جلسه لطفا موارد زیر را مشخص کنید',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -814,36 +814,33 @@ class _SetupSteps extends ConsumerWidget {
       }
     }
 
-    return SsCard(
-      padding: EdgeInsets.zero,
-      elevated: true,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _StepTile(
-            number: 1,
-            doneIcon: Icons.check_rounded,
-            title: 'حاضران جلسه',
-            subtitle: chosen.isEmpty
-                ? 'برای افزودن حاضران ضربه بزنید'
-                : '${toPersianDigits('${chosen.length}')} نفر: '
-                      '${chosen.map((id) => names[id] ?? 'فرد حذف‌شده').join('، ')}',
-            done: chosen.isNotEmpty,
-            onTap: pickAttendees,
-          ),
-          Padding(
-            padding: const EdgeInsetsDirectional.only(start: 32, end: 16),
-            child: Divider(height: 1, color: SsColors.of(context).line),
-          ),
-          _StepTile(
-            number: 2,
-            doneIcon: Icons.bookmark_rounded,
-            title: 'نوع خروجی درخواستی',
-            subtitle: typeTitle,
-            done: true,
-            onTap: pickType,
-          ),
-        ],
+    return TourTarget(
+      step: TourStep.setup,
+      child: SsCard(
+        padding: EdgeInsets.zero,
+        elevated: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StepTile(
+              title: 'حاضران جلسه',
+              subtitle: chosen.isEmpty
+                  ? 'برای افزودن حاضران ضربه بزنید'
+                  : '${toPersianDigits('${chosen.length}')} نفر: '
+                        '${chosen.map((id) => names[id] ?? 'فرد حذف‌شده').join('، ')}',
+              onTap: pickAttendees,
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
+              child: Divider(height: 1, color: SsColors.of(context).line),
+            ),
+            _StepTile(
+              title: 'نوع خروجی درخواستی',
+              subtitle: typeTitle,
+              onTap: pickType,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -851,19 +848,13 @@ class _SetupSteps extends ConsumerWidget {
 
 class _StepTile extends StatelessWidget {
   const _StepTile({
-    required this.number,
-    required this.doneIcon,
     required this.title,
     required this.subtitle,
-    required this.done,
     required this.onTap,
   });
 
-  final int number;
-  final IconData doneIcon;
   final String title;
   final String subtitle;
-  final bool done;
   final VoidCallback onTap;
 
   @override
@@ -875,8 +866,6 @@ class _StepTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
-            _StepBadge(number: number, done: done, icon: doneIcon),
-            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,47 +898,4 @@ class _StepTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The step's number while pending, a filled circle with [icon] once [done].
-class _StepBadge extends StatelessWidget {
-  const _StepBadge({
-    required this.number,
-    required this.done,
-    required this.icon,
-  });
-
-  final int number;
-  final bool done;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) => AnimatedContainer(
-    duration: const Duration(milliseconds: 220),
-    curve: Curves.easeOutCubic,
-    width: 32,
-    height: 32,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: done
-          ? SsColors.of(context).primary
-          : SsColors.of(context).selected,
-      border: done
-          ? null
-          : Border.all(color: SsColors.of(context).primary, width: 1.4),
-    ),
-    child: Center(
-      child: done
-          ? Icon(icon, size: 16, color: SsColors.of(context).canvas)
-          : Text(
-              toPersianDigits('$number'),
-              style: TextStyle(
-                fontFamily: 'Vazirmatn',
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-                color: SsColors.of(context).primary,
-              ),
-            ),
-    ),
-  );
 }

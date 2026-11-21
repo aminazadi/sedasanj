@@ -14,8 +14,8 @@ test("account settings read the device list from the API items envelope", () => 
   assert.match(component, /setDevices\(response\.items\)/);
 });
 
-test("pairing is exposed under the integrations query tab and removed from the profile", () => {
+test("pairing is exposed under the jalase query tab and removed from the profile", () => {
   assert.match(settings, /searchParams\.get\("tab"\)/);
-  assert.match(settings, /tab === "integrations" \? <JalaseNegarPairing \/>/);
+  assert.match(settings, /tab === "jalase" \? <div[^>]*><JalaseNegarPairing \/>/);
   assert.doesNotMatch(profile, /JalaseNegarPairing/);
 });

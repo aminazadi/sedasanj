@@ -7,6 +7,7 @@ import bookUserIcon from "@iconify-icons/lucide/book-user";
 import botIcon from "@iconify-icons/lucide/bot";
 import calendarClockIcon from "@iconify-icons/lucide/calendar-clock";
 import dashboardIcon from "@iconify-icons/lucide/layout-dashboard";
+import downloadIcon from "@iconify-icons/lucide/download";
 import extensionIcon from "@iconify-icons/lucide/phone-forwarded";
 import fileTextIcon from "@iconify-icons/lucide/file-text";
 import historyIcon from "@iconify-icons/lucide/history";
@@ -28,12 +29,19 @@ import voicemailIcon from "@iconify-icons/lucide/voicemail";
 import walletIcon from "@iconify-icons/lucide/wallet";
 import chevronDownIcon from "@iconify-icons/lucide/chevron-down";
 import closeIcon from "@iconify-icons/lucide/x";
+import circleHelpIcon from "@iconify-icons/lucide/circle-help";
+import monitorIcon from "@iconify-icons/lucide/monitor";
+import moonIcon from "@iconify-icons/lucide/moon";
+import sunIcon from "@iconify-icons/lucide/sun";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { getMenuSound, menuSoundLabel, nextMenuSound, playMenuTick, setMenuSound } from "../lib/menuSound";
 import { isOperator, isOrgAdmin, ROLE_LABELS, useAuth } from "../auth";
 import { request } from "../api";
+import { hasCompletedTour } from "../lib/guideTourState.mjs";
+import { useTheme, type ThemeMode } from "@cbi/web-shared/lib/theme";
 import { BrandLogo } from "./BrandLogo";
 import BillingBanner from "./BillingBanner";
+import GuideTour from "./GuideTour";
 import ModuleUpdateBanner from "./ModuleUpdateBanner";
 import QuickAssistantWidget from "./QuickAssistantWidget";
 
@@ -55,11 +63,17 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
     items: [
       { to: "/calls", label: "تماس‌ها", icon: phoneIcon },
       { to: "/voicemails", label: "پیام‌های صوتی", icon: voicemailIcon },
-      { to: "/meetings", label: "صورت‌جلسات", icon: meetingsIcon },
       { to: "/contacts", label: "دفترچه تلفن", icon: bookUserIcon },
       { to: "/extensions", label: "داخلی‌ها", icon: extensionIcon },
       { to: "/tasks", label: "کارها", icon: tasksIcon },
       { to: "/assistant", label: "دستیار تماس‌ها", icon: botIcon },
+    ],
+  },
+  {
+    label: "جلسه‌نگار",
+    items: [
+      { to: "/meetings", label: "صورت‌جلسات عمومی", icon: meetingsIcon },
+      { to: "/jalase-negar-install", label: "راهنمای نصب و دانلود", icon: downloadIcon },
     ],
   },
   {
@@ -77,7 +91,6 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/account-settings", label: "تنظیمات حساب", icon: settingsIcon },
       { to: "/install", label: "راه‌اندازی", icon: rocketIcon, hideForOperator: true },
       { to: "/freepbx-servers", label: "سرورهای تلفنی", icon: serverIcon, orgAdminOnly: true },
-      { to: "/jalase-menu", label: "منوی جلسه‌نگار", icon: meetingsIcon, orgAdminOnly: true },
       { to: "/module-changelog", label: "تغییرات نسخه‌ها", icon: historyIcon, hideForOperator: true },
       { to: "/help", label: "مقالات و آموزش‌ها", icon: bookOpenIcon },
       { to: "/api-docs", label: "مستندات API", icon: fileTextIcon },
@@ -159,13 +172,13 @@ function MenuIcon({ close = false }: { close?: boolean }) {
 type SidebarTooltip = { label: string; target: HTMLElement };
 type SidebarPill = { top: number; left: number; width: number; height: number; visible: boolean; snap: boolean };
 
-function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu?: () => void; collapsed?: boolean; onToggleCollapse?: () => void }) {
+function Sidebar({ closeMenu, collapsed = false, onToggleCollapse, onReplayGuide }: { closeMenu?: () => void; collapsed?: boolean; onToggleCollapse?: () => void; onReplayGuide?: () => void }) {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const operator = isOperator(session?.role);
   const orgAdmin = isOrgAdmin(session?.role);
-  // Jalase-Negar categories the organization has documents in; each gets a menu item next to the meetings.
+  // Jalase-Negar categories the organization has documents in; each gets a menu item next to general minutes in the "جلسه‌نگار" group.
   const [jalaseItems, setJalaseItems] = useState<NavigationItem[]>([]);
   useEffect(() => {
     if (!hasPanelAccess(session, "meetings")) return;
@@ -298,6 +311,15 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
     return () => window.cancelAnimationFrame(frame);
   }, [tooltip]);
   const roleLabel = operator ? "پنل اپراتور" : ROLE_LABELS[session?.role ?? ""] ?? session?.role;
+  const { mode, setMode } = useTheme();
+  const THEME_OPTIONS: { value: ThemeMode; icon: IconifyIcon; label: string }[] = [
+    { value: "light", icon: sunIcon, label: "روشن" },
+    { value: "dark", icon: moonIcon, label: "تاریک" },
+    { value: "system", icon: monitorIcon, label: "سیستم" },
+  ];
+  const themeIndex = THEME_OPTIONS.findIndex((option) => option.value === mode);
+  const themeOption = THEME_OPTIONS[themeIndex] ?? THEME_OPTIONS[0];
+  const nextThemeOption = THEME_OPTIONS[(themeIndex + 1) % THEME_OPTIONS.length];
 
   return (
     <>
@@ -394,6 +416,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
+                    data-tour-target={item.to}
                     onPointerEnter={showPointerTooltip(item.label)}
                     onFocus={showFocusTooltip(item.label)}
                     onPointerLeave={hideTooltip}
@@ -419,7 +442,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
       </nav>
 
       <div className="shrink-0 border-t border-white/10 p-3">
-        <div className={`sb-round flex items-center bg-black/10 text-[#F2F0EF] ${collapsed ? "flex-col gap-2 p-1.5" : "gap-3 p-2.5"}`} onPointerEnter={showPointerTooltip(roleLabel)} onPointerLeave={hideTooltip}>
+        <div data-tour-target="role-badge" className={`sb-round flex items-center bg-black/10 text-[#F2F0EF] ${collapsed ? "flex-col gap-2 p-1.5" : "gap-3 p-2.5"}`} onPointerEnter={showPointerTooltip(roleLabel)} onPointerLeave={hideTooltip}>
           <div className="sb-round flex h-10 w-10 shrink-0 items-center justify-center bg-gradient-to-br from-[#F2F0EF] to-[#D5D0AE] text-sm font-bold text-[#4B6E48]">{roleLabel?.slice(0, 2) || "کا"}</div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
@@ -444,6 +467,58 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse }: { closeMenu
             <Icon icon={logOutIcon} className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
+        <div className={`mt-2 flex items-center ${collapsed ? "flex-col gap-2" : "justify-between gap-2"}`}>
+          {collapsed ? (
+            <button
+              type="button"
+              className="sb-round p-2 text-[#F2F0EF]/80 transition hover:bg-white/15 hover:text-white"
+              aria-label={`ظاهر برنامه: ${themeOption.label} (برای تغییر کلیک کنید)`}
+              title={`ظاهر برنامه: ${themeOption.label}`}
+              onClick={() => { hideTooltip(); setMode(nextThemeOption.value); }}
+              onPointerEnter={showPointerTooltip(`ظاهر: ${themeOption.label}`)}
+              onFocus={showFocusTooltip(`ظاهر: ${themeOption.label}`)}
+              onPointerLeave={hideTooltip}
+              onBlur={hideTooltip}
+            >
+              <Icon icon={themeOption.icon} className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : (
+            <div role="radiogroup" aria-label="ظاهر برنامه" className="sb-round flex items-center bg-black/10">
+              {THEME_OPTIONS.map((option) => {
+                const active = option.value === mode;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={option.label}
+                    className={`sb-round p-2 transition ${active ? "bg-white/20 text-white" : "text-[#F2F0EF]/70 hover:bg-white/15 hover:text-white"}`}
+                    onClick={() => { hideTooltip(); setMode(option.value); }}
+                  >
+                    <Icon icon={option.icon} className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {onReplayGuide && (operator || orgAdmin) && (
+            <button
+              type="button"
+              data-tour-target="replay-help"
+              className="sb-round p-2 text-[#F2F0EF]/80 transition hover:bg-white/15 hover:text-white"
+              aria-label="نمایش دوباره تور راهنما"
+              title="تور راهنما"
+              onClick={() => { hideTooltip(); onReplayGuide(); }}
+              onPointerEnter={showPointerTooltip(collapsed ? "تور راهنما" : undefined)}
+              onFocus={showFocusTooltip(collapsed ? "تور راهنما" : undefined)}
+              onPointerLeave={hideTooltip}
+              onBlur={hideTooltip}
+            >
+              <Icon icon={circleHelpIcon} className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
     {tooltip ? createPortal(<div key={tooltip.label} ref={tooltipRef} role="tooltip" className="sidebar-tooltip pointer-events-none fixed z-[70] flex items-center whitespace-nowrap border border-white/15 bg-[#4B6E48] px-4 text-sm font-bold text-white shadow-lg" style={{ top: 0, right: 0 }}>{tooltip.label}</div>, document.body) : null}
@@ -460,7 +535,24 @@ export default function Layout({ children }: { children: ReactNode }) {
   // The assistant page opens minimal; expanding it there does not change the saved preference.
   const [assistantExpanded, setAssistantExpanded] = useState(false);
   useEffect(() => setAssistantExpanded(false), [isAssistantPage]);
-  const desktopCollapsed = isAssistantPage ? !assistantExpanded : sidebarCollapsed;
+  const { session } = useAuth();
+  const orgAdmin = isOrgAdmin(session?.role);
+
+  // The sidebar walkthrough: starts once per session for a role that has not completed it, and can always be replayed.
+  const tourRole = session && (isOrgAdmin(session.role) || isOperator(session.role)) ? session.role : null;
+  const [tourActive, setTourActive] = useState(false);
+  const tourAutoStartedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session || !tourRole || tourAutoStartedFor.current === session.userId) return;
+    tourAutoStartedFor.current = session.userId;
+    if (hasCompletedTour(tourRole, window.localStorage)) return;
+    const frame = window.requestAnimationFrame(() => setTourActive(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [session, tourRole]);
+  useEffect(() => setMenuOpen(tourActive), [tourActive]);
+  const replayGuide = tourRole ? () => setTourActive(true) : undefined;
+
+  const desktopCollapsed = isAssistantPage ? !assistantExpanded : tourActive ? false : sidebarCollapsed;
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((collapsed) => {
       writeSidebarCollapsed(!collapsed);
@@ -468,8 +560,6 @@ export default function Layout({ children }: { children: ReactNode }) {
     });
   };
   const pageTitle = getPageTitle(location.pathname);
-  const { session } = useAuth();
-  const orgAdmin = isOrgAdmin(session?.role);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -500,14 +590,16 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <>
       <div ref={panelRef} className={`panel-shell min-h-screen transition-[padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${desktopCollapsed ? "lg:pr-20" : "lg:pr-72"}`} lang="fa">
-        <aside id="client-desktop-menu" className={`fixed inset-y-0 right-0 z-40 hidden ${desktopCollapsed ? "w-20" : "w-72"} transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:block`}><Sidebar collapsed={desktopCollapsed} onToggleCollapse={isAssistantPage ? () => setAssistantExpanded((expanded) => !expanded) : toggleSidebarCollapsed} /></aside>
+        <aside id="client-desktop-menu" className={`fixed inset-y-0 right-0 z-40 hidden ${desktopCollapsed ? "w-20" : "w-72"} transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:block`}><Sidebar collapsed={desktopCollapsed} onToggleCollapse={isAssistantPage ? () => setAssistantExpanded((expanded) => !expanded) : toggleSidebarCollapsed} onReplayGuide={replayGuide} /></aside>
 
       <div className={`fixed inset-0 z-50 lg:hidden ${menuOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!menuOpen}>
         <button type="button" className={`absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity duration-300 ${menuOpen ? "opacity-100" : "opacity-0"}`} onClick={() => setMenuOpen(false)} aria-label="بستن منو" tabIndex={menuOpen ? 0 : -1} />
         <aside id="client-mobile-menu" className={`absolute inset-y-0 right-0 w-[min(88vw,19rem)] shadow-2xl transition-transform duration-300 ease-out ${menuOpen ? "visible translate-x-0" : "invisible translate-x-full"}`} role="dialog" aria-modal="true" aria-label="منوی کاربری">
-          <Sidebar closeMenu={() => setMenuOpen(false)} />
+          <Sidebar closeMenu={() => setMenuOpen(false)} onReplayGuide={replayGuide} />
         </aside>
       </div>
+
+      <GuideTour active={tourActive} role={tourRole ?? ""} onFinish={() => setTourActive(false)} />
 
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-canvas/90 backdrop-blur-xl lg:hidden">
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6">

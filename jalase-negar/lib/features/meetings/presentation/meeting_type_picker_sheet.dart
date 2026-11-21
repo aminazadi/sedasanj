@@ -62,7 +62,9 @@ class _MeetingTypePickerSheetState
     final types = ref.watch(meetingTypesProvider);
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: types.when(
           loading: () => const SizedBox(
             height: 160,
@@ -160,7 +162,10 @@ class _MeetingTypeCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(type.title, style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    type.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   if (type.description.isNotEmpty)
                     Text(
                       type.description,
@@ -170,7 +175,9 @@ class _MeetingTypeCard extends StatelessWidget {
               ),
             ),
             Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
               color: selected ? Theme.of(context).colorScheme.primary : null,
             ),
           ],

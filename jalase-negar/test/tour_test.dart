@@ -6,13 +6,16 @@ import 'package:jalase_negar/features/meetings/data/attendee.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/app/router.dart';
 import 'package:jalase_negar/app/theme.dart';
+import 'package:jalase_negar/app/widgets/ss_widgets.dart';
 import 'package:jalase_negar/core/db/app_database.dart';
 import 'package:jalase_negar/core/providers.dart';
 import 'package:jalase_negar/features/meetings/application/meeting_providers.dart';
 import 'package:jalase_negar/features/models/application/models_controller.dart';
+import 'package:jalase_negar/features/models/presentation/models_screen.dart';
 import 'package:jalase_negar/features/onboarding/tour_overlay.dart';
 import 'package:jalase_negar/features/onboarding/tour_step.dart';
 import 'package:jalase_negar/features/recording/application/recorder_controller.dart';
+import 'package:jalase_negar/features/settings/presentation/meeting_upload_card.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -25,13 +28,23 @@ void main() {
     _expectStep(TourStep.welcome);
     await _tap(tester, 'شروع راهنما');
     _expectStep(TourStep.models);
+    // The install status lives on the settings "مدل‌ها" tab, not the
+    // default one; confirm the tour actually switched to a tab where that
+    // body is built, not just that its own text is on screen (TabBarView
+    // never builds a tab it hasn't switched to).
+    expect(find.byType(ModelsBody), findsOneWidget);
 
     // Tapping a highlighted control advances the tour.
-    await tester.tapAt(tester.getCenter(find.text('مدل‌های هوش مصنوعی')));
+    await tester.tapAt(tester.getCenter(find.text('دانلود، نصب و فعال‌سازی')));
+    await _frame(tester);
+    _expectStep(TourStep.setup);
+
+    // Tapping the highlighted setup card also advances the tour.
+    await tester.tapAt(tester.getCenter(find.text('حاضران جلسه')));
     await _frame(tester);
     _expectStep(TourStep.recording);
 
-    await tester.tapAt(tester.getCenter(find.byIcon(Icons.mic).first));
+    await tester.tapAt(tester.getCenter(find.byType(SsDiamondButton)));
     await _frame(tester);
     _expectStep(TourStep.live);
     await tester.binding.handlePopRoute();
@@ -41,6 +54,13 @@ void main() {
     for (final step in TourStep.values.skip(TourStep.live.index)) {
       await _tap(tester, 'مرحلهٔ بعد');
       _expectStep(step);
+      if (step == TourStep.upload) {
+        // The upload switch lives on the "ضبط و ارسال" settings tab, not
+        // the default one; confirm the tour actually switched to a tab
+        // where that card is built, not just that its own text is on
+        // screen (TabBarView never builds a tab it hasn't switched to).
+        expect(find.byType(MeetingUploadCard), findsOneWidget);
+      }
     }
     expect(db.settings, isEmpty);
     await _tap(tester, 'پایان راهنما');

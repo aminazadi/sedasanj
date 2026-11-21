@@ -634,6 +634,39 @@ select {
   gap: 0.5rem;
 }
 
+.panel-tabs-scroll {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(9rem, 1fr);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.5rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: rgb(137 137 137 / 0.7) transparent;
+  scrollbar-width: thin;
+}
+
+.panel-tabs-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.panel-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-tabs-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(137 137 137 / 0.7);
+}
+
+@media (min-width: 1280px) {
+  .panel-tabs-scroll {
+    grid-auto-flow: row;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+}
+
 .panel-tab {
   min-height: 4.5rem;
   padding: 0.75rem;
@@ -641,6 +674,7 @@ select {
   background: var(--color-canvas);
   color: var(--ink);
   text-align: right;
+  scroll-snap-align: start;
   transition: border-color 200ms ease, background-color 200ms ease;
 }
 

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -195,8 +194,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         children: [
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 180),
-                            child: SvgPicture.asset(
-                              'assets/images/brand/phone-signin.svg',
+                            child: Image.asset(
+                              switch (_step) {
+                                _Step.mobile =>
+                                  'assets/images/brand/phone-auth-dialog.webp',
+                                _Step.code =>
+                                  'assets/images/brand/phone-auth-otp.webp',
+                                _Step.name =>
+                                  'assets/images/brand/phone-auth-organization.webp',
+                              },
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -348,10 +354,7 @@ class _StepFields extends StatelessWidget {
             FilteringTextInputFormatter.allow(RegExp(r'[0-9+]')),
           ],
           style: const TextStyle(fontSize: 18, letterSpacing: 1),
-          decoration: const InputDecoration(
-            labelText: 'شمارهٔ موبایل',
-            hintText: '09123456789',
-          ),
+          decoration: const InputDecoration(hintText: '09123456789'),
           onSubmitted: (_) => onSendCode(),
         ),
       ),

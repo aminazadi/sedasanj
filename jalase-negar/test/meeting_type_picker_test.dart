@@ -21,7 +21,12 @@ const _types = [
     description: '',
     automatic: false,
     fields: [
-      OutputField(key: 'client', label: 'نام مشتری', type: 'text', required: true),
+      OutputField(
+        key: 'client',
+        label: 'نام مشتری',
+        type: 'text',
+        required: true,
+      ),
     ],
   ),
 ];
@@ -33,9 +38,7 @@ Future<PendingMeetingType?> _open(
   PendingMeetingType? result;
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        meetingTypesProvider.overrideWith((ref) async => _types),
-      ],
+      overrides: [meetingTypesProvider.overrideWith((ref) async => _types)],
       child: MaterialApp(
         home: Scaffold(
           body: Builder(
@@ -74,9 +77,7 @@ void main() {
     PendingMeetingType? result;
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          meetingTypesProvider.overrideWith((ref) async => _types),
-        ],
+        overrides: [meetingTypesProvider.overrideWith((ref) async => _types)],
         child: MaterialApp(
           home: Scaffold(
             body: Builder(

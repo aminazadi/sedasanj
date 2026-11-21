@@ -258,8 +258,8 @@ ThemeData buildAppTheme([Brightness brightness = Brightness.light]) {
     dividerTheme: DividerThemeData(color: c.line, thickness: 1, space: 1),
     appBarTheme: AppBarTheme(
       centerTitle: false,
-      // Tight gap between the back arrow and the title.
-      leadingWidth: 48,
+      // leadingWidth is set per bar by SsAppBar itself (to fit its edge
+      // gap), not here — every AppBar in the app goes through it.
       titleSpacing: 0,
       elevation: 0,
       scrolledUnderElevation: 0,

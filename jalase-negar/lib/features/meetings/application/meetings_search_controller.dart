@@ -68,9 +68,8 @@ class MeetingsSearchController extends Notifier<MeetingsSearchState> {
 
   void setQuery(String value) => state = state.copyWith(query: value);
 
-  void setFilter(MeetingFilter filter) => state = state.copyWith(
-    filter: filter,
-  );
+  void setFilter(MeetingFilter filter) =>
+      state = state.copyWith(filter: filter);
 
   void setDate(Jalali date) => state = state.copyWith(date: date);
 

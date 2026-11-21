@@ -7,7 +7,7 @@ export function hasPanelAccess(session: PanelSession | null | undefined, section
 
 export const SETTINGS_ACCESS: Record<string, string> = {
   scoring: "scoring_settings", ai: "ai_settings", kpi: "kpi_settings", users: "users",
-  integrations: "integrations", data: "data",
+  jalase: "integrations", integrations: "integrations", data: "data",
 };
 
 export function canVisitPanel(session: PanelSession | null | undefined, path: string, search = ""): boolean {
@@ -20,7 +20,7 @@ export function canVisitPanel(session: PanelSession | null | undefined, path: st
   }
   const sections: Array<[string, string]> = [
     ["/", "dashboard"], ["/calls", "calls"], ["/voicemails", "calls"],
-    ["/meetings", "meetings"], ["/contacts", "contacts"], ["/extensions", "extensions"],
+    ["/meetings", "meetings"], ["/jalase-negar-install", "meetings"], ["/contacts", "contacts"], ["/extensions", "extensions"],
     ["/tasks", "tasks"], ["/assistant", "assistant"], ["/scheduled-reports", "reports"],
     ["/operator-scores", "scores"], ["/account", "billing"], ["/checkout", "billing"],
     ["/billing", "billing"], ["/payment-result", "billing"], ["/install", "setup"],

@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/features/auth/presentation/login_screen.dart';
@@ -26,10 +25,11 @@ void main() {
     await pump(tester);
     await tester.pump();
 
-    expect(find.byType(SvgPicture), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
     expect(find.text('ورود یا ثبت‌نام'), findsOneWidget);
     expect(find.text('شمارهٔ موبایل خود را وارد کنید.'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'شمارهٔ موبایل'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '09123456789'), findsOneWidget);
+    expect(find.text('شمارهٔ موبایل'), findsNothing);
     expect(find.byIcon(Icons.phone_iphone_outlined), findsNothing);
     expect(find.widgetWithText(FilledButton, 'ارسال کد'), findsOneWidget);
     expect(find.text('شرایط استفاده'), findsOneWidget);
@@ -38,7 +38,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'شمارهٔ موبایل'),
+      find.widgetWithText(TextField, '09123456789'),
       '09123456789',
     );
     await tester.pump();

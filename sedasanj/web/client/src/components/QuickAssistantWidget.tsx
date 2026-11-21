@@ -1,6 +1,5 @@
 import AssistantContextPicker, { AssistantAttachmentChips } from "./AssistantContextPicker";
 import { exportFiles } from "./assistantExportLinks.mjs";
-import { CallStateArt } from "./CallStateArt";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fmt, refreshSession, request, tokens } from "../api";
@@ -11,6 +10,7 @@ import type { AssistantChart, AssistantContextOptions, AssistantMessageAttachmen
 import ConversationBubble from "./ConversationBubble";
 import MarkdownMessage from "./MarkdownMessage";
 import PersianSpeechInputButton from "./PersianSpeechInputButton";
+import assistantMark from "../assets/assistant-mark.svg";
 
 const emptyAttachments = (): AssistantMessageAttachments => ({
   operator_id: null,
@@ -20,8 +20,8 @@ const emptyAttachments = (): AssistantMessageAttachments => ({
   tool_names: [],
 });
 
-function AssistantIcon({ className = "h-6 w-6" }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2v4M8 3h8M5 8h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2ZM9 13h.01M15 13h.01M9 17h6" /></svg>;
+function AssistantIcon({ className = "h-11 w-11" }: { className?: string }) {
+  return <img className={className} src={assistantMark} alt="" aria-hidden="true" />;
 }
 
 function CloseIcon() {
@@ -263,7 +263,7 @@ export default function QuickAssistantWidget() {
     <section className={`quick-assistant-panel fixed bottom-5 left-5 z-[70] flex h-[min(44rem,calc(100dvh-2.5rem))] w-[min(31rem,calc(100vw-2.5rem))] origin-bottom-left flex-col overflow-hidden border border-[color:var(--line)] bg-[var(--color-canvas)] shadow-[0_24px_70px_rgba(34,55,32,0.34)] transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${open ? "scale-100 opacity-100" : "pointer-events-none scale-[0.14] opacity-0"}`} aria-hidden={!open} aria-label="چت سریع دستیار">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--line)] bg-[var(--color-primary)] px-4 py-3 text-white"><div><h2 className="text-sm font-bold">دستیار تماس‌ها</h2><p className="text-[11px] text-[#D8D3B9]">گفتگوی جدید</p></div><div className="flex items-center gap-1"><Link to="/assistant" className="border border-[color:var(--line)] px-2 py-1 text-xs font-bold transition hover:bg-[var(--color-canvas)] hover:text-[var(--color-primary)]">صفحه کامل</Link><button type="button" className="p-1.5 transition hover:bg-white/15" onClick={close} aria-label="بستن چت سریع"><CloseIcon /></button></div></header>
       <div ref={scrollerRef} className="sidebar-scroll flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.length === 0 ? <div className="mx-auto max-w-sm pt-4 text-center text-[var(--color-neutral)]"><CallStateArt section="assistant" compact className="mx-auto mb-2" /><h3 className="mb-2 text-base font-bold text-[var(--color-primary)]">چت سریع با دستیار</h3><p className="text-sm leading-7">درباره تماس‌ها، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
+        {messages.length === 0 ? <div className="mx-auto max-w-sm pt-4 text-center text-[var(--color-neutral)]"><AssistantIcon className="mx-auto mb-2 h-20 w-20" /><h3 className="mb-2 text-base font-bold text-[var(--color-primary)]">چت سریع با دستیار</h3><p className="text-sm leading-7">درباره تماس‌ها، تحلیل‌ها و عملکرد اپراتورها سؤال کنید.</p></div> : null}
         {messages.map((message) => {
           const user = message.role === "user";
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);

@@ -32,11 +32,41 @@ import 'theme_mode_card.dart';
 
 /// SedaSanj connection screen: pair with a QR code, a config file or pasted
 /// config text; shows who the app is connected as.
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+/// Jumps to the tab a tour step's target lives on (the connection badge is
+/// under "حساب", the upload switch under "ضبط و ارسال", the install status
+/// under "مدل‌ها") so the tour's spotlight always lands on something visible
+/// instead of a hidden tab.
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 4, vsync: this);
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tab = switch (TourStep.fromUri(GoRouterState.of(context).uri)) {
+      TourStep.upload => 1,
+      TourStep.models => 2,
+      TourStep.connection => 0,
+      _ => null,
+    };
+    if (tab != null && _tabs.index != tab) _tabs.index = tab;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(connectionControllerProvider);
     final controller = ref.read(connectionControllerProvider.notifier);
     final state = async.value;
@@ -217,30 +247,29 @@ class SettingsScreen extends ConsumerWidget {
       children: children,
     );
 
-    return DefaultTabController(
-      length: 4,
-      child: Column(
-        children: [
-          const TabBar(
-            // Four tabs no longer fit equally divided on a narrow phone
-            // (the longest label, "ضبط و ارسال", got clipped); scrolling
-            // gives every label its natural width instead.
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(text: 'حساب'),
-              Tab(text: 'ضبط و ارسال'),
-              Tab(text: 'مدل‌ها'),
-              Tab(text: 'نسخه اپ'),
-            ],
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabs,
+          // Four tabs no longer fit equally divided on a narrow phone
+          // (the longest label, "ضبط و ارسال", got clipped); scrolling
+          // gives every label its natural width instead.
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: const [
+            Tab(text: 'حساب'),
+            Tab(text: 'ضبط و ارسال'),
+            Tab(text: 'مدل‌ها'),
+            Tab(text: 'نسخه اپ'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [tab(account), tab(recording), tab(models), tab(app)],
           ),
-          Expanded(
-            child: TabBarView(
-              children: [tab(account), tab(recording), tab(models), tab(app)],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
