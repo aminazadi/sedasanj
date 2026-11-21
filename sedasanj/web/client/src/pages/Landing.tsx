@@ -212,41 +212,6 @@ const appFeatures: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "users", title: "تفکیک گوینده‌ها", body: "برای افراد حاضر نمونهٔ صدا ثبت کنید تا هر جمله به گوینده‌اش نسبت داده شود." },
   { icon: "refresh", title: "اتصال به صداسنج", body: "با اسکن یک QR به سازمان خود وصل شوید و جلسه‌ها را به پنل بفرستید." },
 ];
-const LIVE_LINES = [
-  { speaker: "علی سهرابی", text: "سلام و وقت بخیر، جلسه‌ی امروز را با مرور گزارش فروش هفته‌ی گذشته شروع می‌کنیم." },
-  { speaker: "مریم احمدی", text: "فروش نسبت به هفته‌ی قبل حدود ده درصد بالاتر رفته و بیشترین رشد مربوط به شعبه‌ی غرب بوده است." },
-  { speaker: "رضا کریمی", text: "ولی تعداد شکایت‌های مربوط به تأخیر در ارسال هم کمی زیاد شده و باید بررسی‌اش کنیم." },
-  { speaker: "مریم احمدی", text: "بله، بیشتر این تأخیرها از انبار مرکزی بوده. با مسئول انبار صحبت کرده‌ام و برنامه‌ی تازه‌ای می‌دهند." },
-  { speaker: "علی سهرابی", text: "عالیه. پس تا پنجشنبه گزارش کامل را برای همه ارسال کنید تا در جلسه‌ی بعد درباره‌اش تصمیم بگیریم." },
-  { speaker: "رضا کریمی", text: "موضوع بعدی بودجه‌ی تبلیغات فصل آینده است؛ پیشنهاد من این است که سهم کانال‌های آنلاین بیشتر شود." },
-  { speaker: "مریم احمدی", text: "موافقم، چون هزینه‌ی جذب مشتری در آن کانال‌ها نسبت به سه ماه پیش حدود بیست درصد کمتر شده است." },
-  { speaker: "رضا کریمی", text: "باشه، پیگیری‌ها را همین امروز در سامانه ثبت می‌کنم و برای تیم می‌فرستم." },
-  { speaker: "علی سهرابی", text: "خیلی خوب، اگر نکتهٔ دیگری نیست جلسه را همین‌جا تمام می‌کنیم. ممنون از همه." },
-];
-function LiveTyping() {
-  const words = LIVE_LINES.map(({ text }) => text.split(" "));
-  const [shown, setShown] = useState<number[]>(() => (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? words.map((w) => w.length) : [0]));
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setTimeout(() => {
-      const line = shown.length - 1;
-      if (shown[line] < words[line].length) setShown([...shown.slice(0, line), shown[line] + 1]);
-      else if (line < words.length - 1) setShown([...shown, 0]);
-      else setShown([0]);
-    }, shown[shown.length - 1] >= words[shown.length - 1].length ? (shown.length === words.length ? 4000 : 650) : 110);
-    return () => window.clearTimeout(timer);
-  }, [shown]);
-  const box = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    if (shown.length === 1 && shown[0] === 0) { el.scrollTop = 0; stick.current = true; return; }
-    if (stick.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [shown]);
-  return <div className="rec-lines" ref={box} onScroll={(event) => { const el = event.currentTarget; stick.current = el.scrollTop >= el.scrollHeight - el.clientHeight - 48; }}>{shown.map((count, i) => <p key={i}><strong>{LIVE_LINES[i].speaker}:</strong>{" "}{words[i].slice(0, count).join(" ")}{i === shown.length - 1 && count < words[i].length && <span className="rec-caret"/>}</p>)}</div>;
-}
-
 const ucShortLabels: Record<string, string> = {
   gov: "سازمان‌های دولتی",
   finance: "بانک و بیمه",
@@ -298,7 +263,7 @@ function AppDownload() {
       </div>
     </div>
     {dialogOpen && data && <DownloadDialog data={data} onClose={() => setDialogOpen(false)}/>}
-    <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده با نام گوینده‌ها، موج صدا و دکمه‌های توقف موقت و پایان">
+    <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده، موج صدا، انتساب میکروفون به افراد و دکمه‌های توقف موقت و پایان">
       <div className="site-app-phone" aria-hidden="true">
         <svg className="phone-app-icon" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="44" fill="#4b6e48"/><rect x="85" y="22" width="22" height="148" fill="#fff"/><rect x="54" y="54" width="22" height="84" fill="#b9b48f"/><rect x="116" y="54" width="22" height="84" fill="#b9b48f"/><rect x="24" y="76" width="22" height="40" fill="#b9b48f"/><rect x="146" y="76" width="22" height="40" fill="#b9b48f"/></svg>
         <span className="phone-btn phone-btn-power"/><span className="phone-btn phone-btn-vol"/>
@@ -306,14 +271,16 @@ function AppDownload() {
           <span className="phone-camera"/>
           <div className="phone-status"><span dir="ltr">12:30</span><div><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M2 20h3V15H2zM7 20h3V11H7zM12 20h3V7h-3zM17 20h3V3h-3z"/></svg><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 17a5 5 0 0 1 6 0"/></svg><b><i/></b></div></div>
           <div className="rec-bar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>ضبط جلسه</span></div>
-          <div className="rec-panel">
-            <div className="rec-panel-head">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 11h3M13 11h4M7 15h6M16 15h1"/></svg>
-              <b>متن زنده</b><i/><span>در حال شنیدن…</span>
-            </div>
-            <LiveTyping/>
+          <div className="rec-empty">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+            <p>شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.</p>
           </div>
-          <div className="rec-monitor"><RecClock/><div className="rec-wave">{Array.from({ length: 46 }, (_, i) => <i key={i} style={{ "--h": `${12 + Math.abs(Math.sin(i * 1.7) * 62 + Math.cos(i * 0.6) * 22)}%`, "--d": `${(i % 9) * 90}ms` } as CSSProperties}/>)}</div></div>
+          <div className="rec-monitor">
+            <RecClock/>
+            <div className="rec-wave">{Array.from({ length: 46 }, (_, i) => <i key={i} style={{ "--h": `${12 + Math.abs(Math.sin(i * 1.7) * 62 + Math.cos(i * 0.6) * 22)}%`, "--d": `${(i % 9) * 90}ms` } as CSSProperties}/>)}</div>
+            <span className="rec-mute" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg></span>
+            <span className="rec-owner" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1.4-3.2 4-4.8 6.5-4.8s5.1 1.6 6.5 4.8"/></svg>فرد</span>
+          </div>
           <div className="rec-controls">
             <div><span className="rec-diamond rec-diamond-outline"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></span><small>توقف موقت</small></div>
             <div><span className="rec-diamond rec-diamond-stop"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 6h12v12H6z"/></svg></span><small>پایان و ذخیره</small></div>
