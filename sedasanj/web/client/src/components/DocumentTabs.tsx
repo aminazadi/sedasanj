@@ -28,7 +28,7 @@ export default function DocumentTabs<T extends string>({ value, options, onChang
     {options.map((option, index) => <button
       key={option.value} type="button" role="tab" aria-selected={value === option.value}
       tabIndex={value === option.value ? 0 : -1}
-      className={`min-h-10 shrink-0 whitespace-nowrap px-4 text-sm font-bold transition ${value === option.value ? "bg-[var(--color-primary)] text-[var(--color-canvas)]" : "text-[var(--color-primary)] hover:bg-[var(--color-canvas)]"}`}
+      className={`min-h-10 shrink-0 whitespace-nowrap px-4 text-sm font-bold transition ${value === option.value ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-primary)] hover:bg-[var(--color-canvas)]"}`}
       onClick={() => onChange(option.value)}
       onKeyDown={(event) => {
         let next = index;

@@ -43,7 +43,7 @@ export default function TwoFactorSettings() {
     <input id={id} className="input" dir="ltr" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" value={fmt.digits(code)} onChange={(e) => setCode(fmt.latinDigits(e.target.value).replace(/\D/g, "").slice(0, 6))} required />
   </div>;
   const step = (index: number, title: string, children?: React.ReactNode) => <li className="flex gap-3">
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--color-primary)] text-sm font-bold text-[var(--color-canvas)]" aria-hidden="true">{index}</span>
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--color-primary)] text-sm font-bold text-white" aria-hidden="true">{index}</span>
     <div className="min-w-0 flex-1 space-y-2"><p className="text-sm font-medium leading-7">{title}</p>{children}</div>
   </li>;
 
@@ -85,7 +85,7 @@ export default function TwoFactorSettings() {
           <button className="btn" disabled={busy} onClick={start}>فعال‌سازی ورود دومرحله‌ای</button>
         </div>}
       </div>
-      <img className="mx-auto hidden w-full max-w-xs mix-blend-multiply opacity-95 lg:block" src={twoFactorArt} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+      <img className="art-illustration mx-auto hidden w-full max-w-xs mix-blend-multiply opacity-95 lg:block" src={twoFactorArt} alt="" aria-hidden="true" loading="lazy" decoding="async" />
     </div>
   </section>;
 }

@@ -152,7 +152,7 @@ export default function ScheduledReports() {
             گزارش جدید
           </button>
         </div>
-        <img className="hidden h-36 w-auto max-w-full mix-blend-multiply sm:block" src={reportArt} alt="" aria-hidden="true" />
+        <img className="art-illustration hidden h-36 w-auto max-w-full mix-blend-multiply sm:block" src={reportArt} alt="" aria-hidden="true" />
       </section>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-slate-500">{loading && !reports.length ? "…" : `${fmt.int(reports.length)} تعریف`}</span>

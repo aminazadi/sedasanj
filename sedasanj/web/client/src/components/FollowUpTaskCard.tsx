@@ -139,7 +139,7 @@ export default function FollowUpTaskCard({
           aria-label={done ? "بازگرداندن به انجام‌نشده" : "علامت انجام‌شده"}
           className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50 ${
             done
-              ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)]"
+              ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
               : "border-[color:var(--line)] bg-[var(--color-canvas)] text-transparent"
           }`}
           disabled={!canEdit || saving}
@@ -157,7 +157,7 @@ export default function FollowUpTaskCard({
               </p>
               <span
                 className={`badge px-1.5 py-0.5 text-[10px] ${
-                  done ? "bg-[var(--color-primary)] text-[var(--color-canvas)]" : "bg-[var(--color-accent)] text-black"
+                  done ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-accent)] text-black"
                 }`}
               >
                 {TASK_STATUS_LABELS[task.status]}
@@ -178,7 +178,7 @@ export default function FollowUpTaskCard({
                   type="button"
                   className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${
                     open
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)]"
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
                       : "border-[color:var(--line)] text-[var(--color-primary)] hover:bg-[var(--color-accent)]/40"
                   }`}
                   aria-label={open ? "بستن ویرایش" : "ویرایش کار"}

@@ -82,7 +82,7 @@ select {
 
 .panel-shell .btn {
   background: var(--color-primary);
-  color: var(--color-canvas);
+  color: #fff;
 }
 
 .panel-shell .btn-ghost {

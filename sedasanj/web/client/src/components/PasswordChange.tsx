@@ -191,7 +191,7 @@ export default function PasswordChange({ mobile }: { mobile: string | null }) {
           </div>
         </form> : null}
       </div>
-      <img className="mx-auto hidden w-full max-w-xs mix-blend-multiply opacity-95 lg:block" src={passwordArt} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+      <img className="art-illustration mx-auto hidden w-full max-w-xs mix-blend-multiply opacity-95 lg:block" src={passwordArt} alt="" aria-hidden="true" loading="lazy" decoding="async" />
     </div>
   </section>;
 }

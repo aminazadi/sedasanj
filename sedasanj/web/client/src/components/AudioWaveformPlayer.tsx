@@ -196,7 +196,7 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center border border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-canvas)] transition hover:bg-[#3f5f3d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center border border-[var(--color-primary)] bg-[var(--color-primary)] text-white transition hover:bg-[#3f5f3d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
             onClick={togglePlayback}
             aria-label={playing ? "توقف پخش" : "پخش فایل صوتی"}
           >

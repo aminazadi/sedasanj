@@ -1300,8 +1300,8 @@ export default function CallDetailPage() {
                       </time>
                     </>}
                     header={
-                      <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-[var(--color-canvas)]/75" : "text-[var(--color-neutral)]"}`}>
-                        <span className={`font-bold ${caller ? "text-[var(--color-canvas)]" : "text-[var(--color-primary)]"}`}>{speaker}{utterance.uncertain ? " — نیازمند بررسی" : ""}</span>
+                      <div className={`mb-1.5 flex items-center justify-between gap-6 text-[11px] ${caller ? "text-white/75" : "text-[var(--color-neutral)]"}`}>
+                        <span className={`font-bold ${caller ? "text-white" : "text-[var(--color-primary)]"}`}>{speaker}{utterance.uncertain ? " — نیازمند بررسی" : ""}</span>
                         <span className="tabular-nums" dir="ltr">{fmt.duration(utterance.t_start_ms)} — {fmt.duration(utterance.t_end_ms)}</span>
                       </div>
                     }
