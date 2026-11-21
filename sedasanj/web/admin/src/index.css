@@ -243,6 +243,22 @@ select {
   opacity: 0.9;
 }
 
+/* multiply only hides a white illustration background on a light canvas; on
+   a dark one it just darkens every pixel to black. Invert instead (with a
+   hue-rotate to bring the brand green/olive back close to their own hue)
+   and drop the blend mode so the (now-dark) art background blends in on
+   its own. */
+:root[data-theme="dark"] .panel-empty__art {
+  mix-blend-mode: normal;
+  filter: invert(1) hue-rotate(180deg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .panel-empty__art {
+    mix-blend-mode: normal;
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
 /* Section titles: dotted band that fades out, separated from the body by a rule */
 .panel-shell .card:not(.grid, .flex:not(.title-band), .p-0, .p-5, .\!p-0) > :is(h2, h3):first-child {
   position: relative;

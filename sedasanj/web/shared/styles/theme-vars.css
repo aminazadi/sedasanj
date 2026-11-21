@@ -56,7 +56,9 @@
   --badge-orange-bg: #ffeddc;
   --badge-orange-border: #f2bf94;
   --color-rust: #8a4b3f;
+  --color-rust-rgb: 138 75 63;
   --color-tan: #a78a6c;
+  --color-tan-rgb: 167 138 108;
   --color-chart-grid: #d8d4c2;
   --line: rgb(var(--color-accent-rgb) / 0.5);
   --line-strong: rgb(var(--color-neutral-rgb) / 0.5);
@@ -109,7 +111,9 @@
     --badge-orange-bg: #3a2412;
     --badge-orange-border: #8a5a2e;
     --color-rust: #d99478;
+    --color-rust-rgb: 217 148 120;
     --color-tan: #cfae86;
+    --color-tan-rgb: 207 174 134;
     --color-chart-grid: #3c3a34;
     --ink-soft: #b9b6ae;
     --ink-soft-rgb: 185 182 174;
@@ -162,7 +166,9 @@
   --badge-orange-bg: #3a2412;
   --badge-orange-border: #8a5a2e;
   --color-rust: #d99478;
+  --color-rust-rgb: 217 148 120;
   --color-tan: #cfae86;
+  --color-tan-rgb: 207 174 134;
   --color-chart-grid: #3c3a34;
   --ink-soft: #b9b6ae;
   --ink-soft-rgb: 185 182 174;
