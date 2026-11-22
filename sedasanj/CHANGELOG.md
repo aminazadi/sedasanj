@@ -1,6 +1,12 @@
 ## 2026-11-22 — AMINAZADI
 
+- Fixed the public-page Hooshyar widget showing nothing when the provider could not answer: `build_client(...)` in `POST /v1/public-assistant/messages/stream` ran outside the `try`, so a missing admin-panel provider key/base URL killed the stream after the 200 with no `replace`/`done`. The client is now built inside the `try`, an empty model answer is treated as a failure, the visitor always gets a Persian message plus `done`, and an early `phase` event is sent. The widget also shows a Persian message for 429/422/incomplete streams instead of a blank bubble or an English API message (`app/routers/public_assistant.py`, `web/client/src/components/PublicAssistantWidget.tsx`). Tests in `tests/test_public_assistant.py` pass; not run against a live provider. No new API error code or help article (the failure is an in-stream message, not an API error). The root cause on production is unconfirmed until the API log/provider settings are checked.
+
 - Added spacing around the call-volume chart in the landing-page Hooshyar demo: the chart now keeps 16px from the bubble's right edge and 16px from its bottom, instead of touching them (`web/client/src/pages/Landing.css`).
+
+- Changed the Jalase-Negar pitch on the landing page to say the Persian text keeps exact speaker attribution, and widened its column (`max-width` 30em → 36em, `text-wrap: pretty`) so the sentence no longer breaks into short lines; the highlights are unchanged (`web/client/src/pages/Landing.tsx`, `web/client/src/pages/Landing.css`).
+
+- Replaced the generic placeholder image on article cards with a line-art illustration in the site's own palette (`web/client/src/assets/article-default.svg`, used by `web/client/src/components/ArticleThumbnail.tsx`); the old `article-default.webp` was removed.
 
 - Removed the three-item feature strip («ضبط جلسه با یک لمس», «تفکیک گوینده‌ها», «اتصال به صداسنج») from the Jalase-Negar section of the landing page; the list's data array and JSX were removed from `web/client/src/pages/Landing.tsx`. Its now-unused `.site-app-features` rules remain in `Landing.css`.
 

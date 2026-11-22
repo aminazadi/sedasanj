@@ -73,3 +73,64 @@ async def test_public_assistant_prompt_falls_back_to_the_packaged_seed(
 
     assert "صداسنج" in prompt
     assert "جلسه‌نگار" in prompt
+
+
+async def _collect_stream(monkeypatch, build) -> str:  # type: ignore[no-untyped-def]
+    from types import SimpleNamespace
+
+    from app.schemas import PublicAssistantMessageCreate
+
+    async def instructions(_session: object) -> str:
+        return "x"
+
+    async def models(_session: object) -> dict[str, str]:
+        return {"assistant_provider": "aiservice"}
+
+    async def runtime(_session: object, **_kwargs: object) -> object:
+        return object()
+
+    async def no_limit(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(public_assistant.ratelimit, "enforce", no_limit)
+    monkeypatch.setattr(public_assistant, "effective_public_assistant_instructions", instructions)
+    monkeypatch.setattr(public_assistant, "effective_models", models)
+    monkeypatch.setattr(public_assistant, "resolve_provider_settings", runtime)
+    monkeypatch.setattr(public_assistant, "capability_model", lambda *_a: "m")
+    monkeypatch.setattr(public_assistant, "build_client", build)
+    request = SimpleNamespace(client=SimpleNamespace(host="203.0.113.9"))
+    response = await public_assistant.stream_public_message(
+        PublicAssistantMessageCreate(content="سلام"),
+        request,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+    )
+    return b"".join([chunk async for chunk in response.body_iterator]).decode()  # type: ignore[attr-defined]
+
+
+async def test_stream_reports_a_message_when_the_provider_client_cannot_be_built(
+    monkeypatch,
+) -> None:
+    def broken(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("VoiceSanj API key is required")
+
+    body = await _collect_stream(monkeypatch, broken)
+
+    assert "event: replace" in body
+    assert public_assistant.PUBLIC_ASSISTANT_FAILURE_MESSAGE in body
+    assert body.rstrip().endswith("}") and "event: done" in body
+    assert "API key" not in body
+
+
+async def test_stream_reports_a_message_when_the_model_returns_nothing(monkeypatch) -> None:
+    class Empty:
+        async def stream(self, *_args: object, **_kwargs: object):  # type: ignore[no-untyped-def]
+            return
+            yield ""
+
+        async def close(self) -> None:
+            return None
+
+    body = await _collect_stream(monkeypatch, lambda *_a, **_k: Empty())
+
+    assert public_assistant.PUBLIC_ASSISTANT_FAILURE_MESSAGE in body
+    assert "event: done" in body

@@ -13,6 +13,14 @@ type PublicMessage = {
 
 const MAX_HISTORY_TURNS = 12;
 const MAX_MESSAGE_LENGTH = 1500;
+const FAILURE_MESSAGE = "پاسخ هوشیار آماده نشد؛ لطفاً چند لحظه بعد دوباره تلاش کنید.";
+
+// API error bodies are English; a visitor needs a Persian sentence that names the next step.
+function friendlyError(status: number, code?: string): string {
+  if (status === 429 || code === "rate_limited") return "تعداد پیام‌ها زیاد بود؛ یک دقیقه صبر کنید و دوباره بنویسید.";
+  if (status === 422) return "پیام باید حداقل دو نویسه باشد؛ سؤال خود را کامل‌تر بنویسید.";
+  return FAILURE_MESSAGE;
+}
 
 function CloseIcon() {
   return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>;
@@ -66,9 +74,9 @@ export default function PublicAssistantWidget() {
         }),
       });
       if (!response.ok || !response.body) {
-        let message = response.statusText;
-        try { message = (await response.json())?.error?.message ?? message; } catch { /* non-JSON error body */ }
-        throw new Error(message);
+        let code: string | undefined;
+        try { code = (await response.json())?.error?.code; } catch { /* non-JSON error body */ }
+        throw new Error(friendlyError(response.status, code));
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -100,9 +108,10 @@ export default function PublicAssistantWidget() {
         await reader.cancel().catch(() => undefined);
         reader.releaseLock();
       }
-      setMessages((current) => current.map((item) => item.id === draftId ? { ...item, status: finished ? "succeeded" : "failed" } : item));
+      if (!finished) throw new Error(FAILURE_MESSAGE);
+      setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: item.content || FAILURE_MESSAGE, status: "succeeded" } : item));
     } catch (err) {
-      const message = (err as Error).message || "پاسخ هوشیار آماده نشد.";
+      const message = (err as Error).message || FAILURE_MESSAGE;
       setMessages((current) => current.map((item) => item.id === draftId ? { ...item, content: item.content || message, status: "failed" } : item));
       setError(message);
     } finally {
