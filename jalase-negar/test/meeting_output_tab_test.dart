@@ -37,9 +37,7 @@ Future<void> _pump(
       child: const MaterialApp(
         home: Directionality(
           textDirection: TextDirection.rtl,
-          child: Scaffold(
-            body: MeetingOutputTab(remoteMeetingId: 'remote-1'),
-          ),
+          child: Scaffold(body: MeetingOutputTab(remoteMeetingId: 'remote-1')),
         ),
       ),
     ),
@@ -80,6 +78,61 @@ void main() {
     expect(find.text('صورت‌جلسه'), findsNothing);
   });
 
+  testWidgets(
+    'keeps the output visible with a banner when the plan check fails',
+    (tester) async {
+      await _pump(
+        tester,
+        overrides: [
+          connectionControllerProvider.overrideWith(_Connected.new),
+          usageProvider.overrideWith(
+            (ref) async => throw const ApiException(
+              message: 'خطای سرور (500)؛ کمی بعد دوباره تلاش کنید.',
+              statusCode: 500,
+            ),
+          ),
+          meetingMinutesProvider('remote-1').overrideWith(
+            (ref) async => const MinutesResult(
+              status: 'ready',
+              markdown: 'صورت‌جلسه آماده است',
+            ),
+          ),
+          meetingDocumentsProvider(
+            'remote-1',
+          ).overrideWith((ref) async => const []),
+          outputTypesProvider.overrideWith((ref) async => const []),
+        ],
+      );
+
+      expect(find.textContaining('HTTP 500'), findsOneWidget);
+      expect(find.text('بررسی دوباره'), findsOneWidget);
+      expect(find.text('صورت‌جلسه آماده است'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a revoked device asks to sign in again instead of showing output',
+    (tester) async {
+      await _pump(
+        tester,
+        overrides: [
+          connectionControllerProvider.overrideWith(_Connected.new),
+          usageProvider.overrideWith(
+            (ref) async => throw const ApiException(
+              message: 'توکن ابطال شده است',
+              code: 'unauthorized',
+              statusCode: 401,
+              requiresReconnect: true,
+            ),
+          ),
+        ],
+      );
+
+      expect(find.textContaining('نشست این دستگاه معتبر نیست'), findsOneWidget);
+      expect(find.text('صورت‌جلسه'), findsNothing);
+    },
+  );
+
   testWidgets('shows the minutes and documents sub-tabs when entitled', (
     tester,
   ) async {
@@ -90,10 +143,15 @@ void main() {
         usageProvider.overrideWith(
           (ref) async => const UsageInfo(unlimited: false, exhausted: false),
         ),
-        meetingMinutesProvider(
+        meetingMinutesProvider('remote-1').overrideWith(
+          (ref) async => const MinutesResult(
+            status: 'ready',
+            markdown: 'صورت‌جلسه آماده است',
+          ),
+        ),
+        meetingDocumentsProvider(
           'remote-1',
-        ).overrideWith((ref) async => const MinutesResult(status: 'ready', markdown: 'صورت‌جلسه آماده است')),
-        meetingDocumentsProvider('remote-1').overrideWith((ref) async => const []),
+        ).overrideWith((ref) async => const []),
         outputTypesProvider.overrideWith((ref) async => const []),
       ],
     );

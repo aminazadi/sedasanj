@@ -240,15 +240,35 @@ class UploadQueue {
     }
 
     if (current.remoteMeetingId == null) {
-      final session = await api.createSession(
-        clientMeetingId: current.id,
-        title: current.title,
-        startedAt: current.createdAt,
-        appVersion: appVersion,
-        attendees: await store.attendees(current.id),
-        outputType: current.outputTypeCode,
-        outputTypeInputValues: current.outputTypeInputValues,
-      );
+      final attendees = await store.attendees(current.id);
+      RemoteSession session;
+      try {
+        session = await api.createSession(
+          clientMeetingId: current.id,
+          title: current.title,
+          startedAt: current.createdAt,
+          appVersion: appVersion,
+          attendees: attendees,
+          outputType: current.outputTypeCode,
+          outputTypeInputValues: current.outputTypeInputValues,
+        );
+      } on ApiException catch (e) {
+        // The admin unpublished the chosen category after it was picked. The
+        // refusal is permanent, which would fail a meeting that is fine, so
+        // send it as the builtin minutes; the category can be added later from
+        // «اسناد».
+        if (e.code != 'output_type_not_found' ||
+            current.outputTypeCode == kBuiltinOutputType) {
+          rethrow;
+        }
+        session = await api.createSession(
+          clientMeetingId: current.id,
+          title: current.title,
+          startedAt: current.createdAt,
+          appVersion: appVersion,
+          attendees: attendees,
+        );
+      }
       if (session.inputKind != 'text') {
         await store.setStatus(
           current.id,

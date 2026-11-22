@@ -214,6 +214,25 @@ class DocumentDetail {
 ApiException mapMessageError(DioException e) =>
     e.response?.statusCode == 401 ? mapDioError(e) : mapLoginError(e);
 
+/// Errors of starting a meeting on the server. 401/403 still mean the device
+/// must reconnect; the rest keep the server's own message (for example a
+/// category that is no longer published), and an exhausted token budget gets a
+/// message for personal accounts instead of the organization-credit one.
+ApiException mapSessionError(DioException e) {
+  final status = e.response?.statusCode;
+  if (status == 401 || status == 403) return mapDioError(e);
+  final mapped = mapLoginError(e);
+  if (status == 402 && mapped.code == 'token_quota_exceeded') {
+    return ApiException(
+      message:
+          'ساعت پلن شما تمام شده است؛ از «پلن و مصرف» پلن بگیرید یا ساعت شارژ کنید.',
+      code: mapped.code,
+      statusCode: status,
+    );
+  }
+  return mapped;
+}
+
 /// A failed download has a byte body; decode the JSON error inside it when there is one.
 ApiException _bytesError(DioException e) {
   final raw = e.response?.data;
@@ -622,6 +641,13 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       return UsageInfo.fromJson(res.data!);
     } on DioException catch (e) {
       throw mapMessageError(e);
+    } on Object {
+      // Null or malformed body (TypeError/FormatException): report it as a
+      // server problem rather than letting a raw error reach the UI.
+      throw const ApiException(
+        message: 'پاسخ سرور برای پلن معتبر نبود.',
+        code: 'usage_parse_failed',
+      );
     }
   }
 
@@ -862,35 +888,49 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
         '/v1/jalase-negar/output-types',
       );
       final base = _dio.options.baseUrl.replaceAll(RegExp(r'/+$'), '');
-      return [
-        for (final raw in (res.data!['items'] as List))
-          () {
-            final item = raw as Map<String, dynamic>;
-            final thumb = item['thumbnail_url'] as String?;
-            return OutputTypeInfo(
-              code: item['code'] as String,
-              title: item['title'] as String,
-              description: (item['description'] ?? '') as String,
-              automatic: item['automatic'] == true,
-              thumbnailUrl: thumb == null ? null : '$base$thumb',
-              fields: [
-                for (final f in (item['input_fields'] as List? ?? const []))
-                  OutputField(
-                    key: (f as Map)['key'] as String,
-                    label: f['label_fa'] as String,
-                    type: (f['type'] ?? 'text') as String,
-                    required: f['required'] == true,
-                    options: [
-                      for (final o in (f['options'] as List? ?? const []))
-                        o as String,
-                    ],
-                  ),
-              ],
-            );
-          }(),
-      ];
+      final types = <OutputTypeInfo>[];
+      for (final raw in (res.data!['items'] as List)) {
+        // One malformed category (say an input field with no label) must not
+        // hide all the others, so it is skipped on its own.
+        try {
+          types.add(
+            (() {
+              final item = raw as Map<String, dynamic>;
+              final thumb = item['thumbnail_url'] as String?;
+              return OutputTypeInfo(
+                code: item['code'] as String,
+                title: item['title'] as String,
+                description: (item['description'] ?? '') as String,
+                automatic: item['automatic'] == true,
+                thumbnailUrl: thumb == null ? null : '$base$thumb',
+                fields: [
+                  for (final f in (item['input_fields'] as List? ?? const []))
+                    OutputField(
+                      key: (f as Map)['key'] as String,
+                      label: f['label_fa'] as String,
+                      type: (f['type'] ?? 'text') as String,
+                      required: f['required'] == true,
+                      options: [
+                        for (final o in (f['options'] as List? ?? const []))
+                          o as String,
+                      ],
+                    ),
+                ],
+              );
+            })(),
+          );
+        } on Object {
+          continue;
+        }
+      }
+      return types;
     } on DioException catch (e) {
       throw mapMessageError(e);
+    } on Object {
+      throw const ApiException(
+        message: 'پاسخ سرور برای فهرست دسته‌ها معتبر نبود؛ دوباره تلاش کنید.',
+        code: 'output_types_parse_failed',
+      );
     }
   }
 
@@ -1042,7 +1082,7 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
         inputKind: (body['input_kind'] as String?) ?? 'audio',
       );
     } on DioException catch (e) {
-      throw mapDioError(e);
+      throw mapSessionError(e);
     }
   }
 
