@@ -27,6 +27,7 @@ dependencies:
   url_launcher: ^6.2.0
   url_launcher_android: 6.3.23
   flutter_secure_storage: ^10.3.4
+  local_auth: ^2.3.0
   mobile_scanner: ^7.4.3
   file_picker: ^11.0.3
   connectivity_plus: ^7.3.1

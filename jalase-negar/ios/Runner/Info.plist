@@ -10,6 +10,8 @@
 	<string>برای ضبط جلسه به میکروفون نیاز است.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>برای اسکن QR اتصال به صداسنج از دوربین استفاده می‌شود.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>برای باز کردن قفل امنیتی جلسه‌نگار از Face ID استفاده می‌شود.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
+import '../features/app_lock/application/app_lock_providers.dart';
 import '../features/push/push_host.dart';
 import '../features/sedasanj_intro/sedasanj_intro_host.dart';
 import '../features/updates/application/update_controller.dart';
@@ -71,10 +72,12 @@ class _RouterApp extends ConsumerStatefulWidget {
   ConsumerState<_RouterApp> createState() => _RouterAppState();
 }
 
-class _RouterAppState extends ConsumerState<_RouterApp> {
+class _RouterAppState extends ConsumerState<_RouterApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // The database is open here, so the self-updater can read the upload
     // backlog. Fire and forget: it never delays the first frame.
     Future<void>.microtask(
@@ -84,8 +87,33 @@ class _RouterAppState extends ConsumerState<_RouterApp> {
   }
 
   @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // `paused` is true backgrounding; `inactive` also fires for transient
+    // system overlays (camera/file-picker/share-sheet dialogs, and the
+    // biometric prompt itself), which would otherwise re-lock the app out
+    // from under the user mid-task.
+    if (state == AppLifecycleState.paused &&
+        (ref.read(appLockEnabledProvider).value ?? false)) {
+      ref.read(appLockRuntimeProvider).lock();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider).value ?? ThemeMode.system;
+    // Lock immediately once the saved preference resolves after a cold
+    // start, so the real screen is never shown even for a single frame.
+    ref.listen(appLockEnabledProvider, (previous, next) {
+      if (previous == null && (next.value ?? false)) {
+        ref.read(appLockRuntimeProvider).lock();
+      }
+    });
     return MaterialApp.router(
       title: 'جلسه‌نگار',
       debugShowCheckedModeBanner: false,

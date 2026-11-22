@@ -11,6 +11,7 @@ import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
+import '../../app_lock/presentation/app_lock_settings_card.dart';
 import '../../meetings/application/meeting_providers.dart';
 import '../../meetings/data/meeting.dart'
     show Meeting, MeetingStatus, kWorkspaceOrg, kWorkspacePrimary;
@@ -233,6 +234,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     final models = <Widget>[const ModelsBody()];
     final app = <Widget>[
       const UpdateCheckCard(),
+      const SizedBox(height: 12),
+      const AppLockSettingsCard(),
       const SizedBox(height: 12),
       const PushSettingsCard(),
     ];

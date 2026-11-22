@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/app_lock/application/app_lock_providers.dart';
+import '../features/app_lock/presentation/app_lock_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/guide/presentation/guide_screen.dart';
 import '../features/meetings/presentation/meeting_detail_screen.dart';
@@ -25,13 +27,26 @@ import 'shell_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    // Re-runs `redirect` the instant the app-lock state flips, so a resume
+    // that locks the app (or a successful unlock) takes effect immediately
+    // instead of waiting for the next navigation attempt.
+    refreshListenable: ref.watch(appLockRuntimeProvider),
     // The bank page reopens the app with jalasenegar://payment/result; show the
     // plans screen, which re-checks the pending order by itself.
-    redirect: (context, state) =>
-        state.uri.path == '/result' || state.uri.path == '/payment/result'
-        ? '/plans'
-        : null,
+    redirect: (context, state) {
+      if (ref.read(appLockRuntimeProvider).locked) {
+        return state.uri.path == '/lock' ? null : '/lock';
+      }
+      if (state.uri.path == '/lock') return null;
+      return state.uri.path == '/result' || state.uri.path == '/payment/result'
+          ? '/plans'
+          : null;
+    },
     routes: [
+      GoRoute(
+        path: '/lock',
+        builder: (context, state) => const AppLockScreen(),
+      ),
       ShellRoute(
         builder: (context, state, child) =>
             _withTour(state, ShellScreen(child: child)),
