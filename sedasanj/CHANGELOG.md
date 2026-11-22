@@ -1,5 +1,19 @@
 ## 2026-11-22 — AMINAZADI
 
+- Landing page plan cards: removed the bold formatting from the feature list values (operators, assistant messages, free minutes, overage price, extra operator price) (`pages/Landing.tsx`).
+
+- Landing page هوشیار demo: the chat card's column is wider on desktop (grid `1fr 1.6fr`, 56px gap); chat height is unchanged (`pages/Landing.css`).
+
+- Landing page هوشیار demo: the chart's right-side gap is removed. `AssistantCharts` gets a `compact` prop that narrows the line chart's Y-axis reserve (used only by the demo), and the chart block extends 16px into its bubble's right padding (the message text keeps its padding), so the Y-axis labels sit about 15px from the bubble edge (`components/AssistantCharts.tsx`, `pages/Landing.tsx`, `pages/Landing.css`).
+
+- Landing page هوشیار demo: the chart's bottom padding and Recharts' reserved strip under the x-axis labels are removed, so the labels sit at the bubble's normal 12px bottom padding (`pages/Landing.css`).
+
+- Landing page هوشیار demo: chart cards no longer draw their own border inside the assistant bubble (`pages/Landing.css`).
+
+- Landing page هوشیار section: the assistant avatar now uses the same framed box as the user's avatar, the green demo header bar is removed, assistant bubbles stretch to the chat's far edge, and the call-results table drops operator/direction/duration/status columns on phones (they remain in the expanded row) so it no longer forces a wide horizontal scroll (`pages/Landing.tsx`, `pages/Landing.css`).
+
+- Fixed the landing page's mobile launch rocket overlapping the هوشیار chat card: the rocket in `.awareness-launch-edge` rises about 40px above the awareness section, so the assistant section now reserves matching bottom padding on mobile (`.site-assistant` in `pages/Landing.css`). The rocket is also tilted 12° clockwise (nose toward the right) in `pages/Landing.tsx`.
+
 - Two more `AssistantShowcase` fixes found while comparing the demo send button against the real composer's: the real submit button is `disabled:bg-[var(--color-accent)]` (tan) whenever its input is empty and only turns `bg-[var(--color-primary)]` (green) once there is text to send — the tan state is actually what most people see, since the composer is idle/empty most of the time. The demo's send button was hard-coded green, so it never matched that idle look; it now defaults to `var(--color-accent)` and only switches to `var(--site-primary)` while `userTyped` has characters (an `.is-enabled` class), mirroring the real disabled/enabled behavior instead of one fixed color. Also replaced the single generic `TypingIndicator` label with a `TYPING_LABELS` map keyed by turn kind ("در حال آماده‌سازی نمودار...", "در حال بررسی تماس‌ها...", "در حال تولید فایل...", falling back to the normal "در حال فکر کردن..." for plain text turns) so the thinking state reads as if Hooshyar is actually doing that specific thing, not a generic wait. Also removed the small static `AssistantMark` from the demo card's own green header bar per feedback that it was redundant next to the large animated mark now sitting above the section's heading — the header just shows the "هوشیار" name/subtitle text now. Re-verified in the dev server: send button computes to the accent tan by default and the brand green while a user turn is mid-type, and the per-turn typing captions were confirmed during a full playback (chart/table/file turns each showed their own caption before revealing).
 
 - Added هوشیار (the AI assistant) to the public, unauthenticated marketing/help pages (`/`,

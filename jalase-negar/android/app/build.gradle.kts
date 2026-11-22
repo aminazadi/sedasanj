@@ -134,6 +134,8 @@ android {
     packaging {
         resources {
             excludes += "**/libVkLayer_khronos_validation.so"
+            // OkHttp's logging-interceptor (Myket SDK) and jspecify both carry this OSGi file.
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
         jniLibs {
             excludes += "**/x86_64/*.so"

@@ -134,10 +134,8 @@
   .marketing-site .site-assistant-sub { margin-inline: auto; text-align: center; }
   .site-assistant-actions { justify-content: center; }
 }
-.site-assistant-demo-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: var(--site-primary); color: var(--site-canvas); }
-.site-assistant-demo-head strong { display: block; font-size: 14px; }
-.site-assistant-demo-head span { display: block; font-size: 12px; opacity: .82; }
 /* A fixed height (not min/max) so the card never reflows as turns are revealed — avoids layout shift (CLS) while the sequence plays. */
+@media (min-width: 761px) { .marketing-site .site-assistant-grid { grid-template-columns: 1fr 1.6fr; gap: 56px; } }
 .site-assistant-demo-body { display: flex; flex-direction: column; gap: 16px; padding: 22px 20px; height: 32rem; overflow-y: auto; scroll-behavior: smooth; text-align: start; }
 .site-assistant-demo-body .statistics-charts { margin-top: 10px; }
 .site-assistant-demo-input { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--site-border); }
@@ -152,7 +150,25 @@
 .marketing-site .site-assistant-demo .badge { border-radius: 9999px; }
 /* The shared blinking caret defaults to --site-primary; on the solid-green user bubble that's invisible, so force it white to match the bubble's own text color. */
 .marketing-site .site-assistant-demo .assistant-message-bubble-user .uc-caret { background: #fff; }
-@media (max-width: 760px) { .site-assistant-demo-body { height: 26rem; } }
+/* Hooshyar avatar: same framed box as the user's avatar (border + canvas), mark inset inside it. */
+.marketing-site .site-assistant-demo .assistant-message-avatar { border: 1px solid var(--color-accent); background: var(--color-canvas); color: var(--color-primary); }
+.marketing-site .site-assistant-demo .assistant-message-avatar > svg { width: 26px; height: 26px; }
+/* Demo chart cards: no border of their own; the bubble frames them. Drop the card's bottom padding and the Recharts strip under the x-axis labels, so the labels sit at the bubble's own 12px bottom padding. */
+.marketing-site .site-assistant-demo .statistics-chart { border: 0; padding-bottom: 0; padding-right: 0; }
+.marketing-site .site-assistant-demo .statistics-chart > .h-64 { margin-bottom: -15px; }
+/* Bubble holding a chart: keep the bubble's normal padding for the message text, and let only the chart block extend 16px into that right padding, so the chart's own right reserve sits at the bubble edge. */
+.marketing-site .site-assistant-demo .assistant-message-bubble-ai > .statistics-charts { width: calc(100% + 16px); margin-right: -16px; }
+/* Assistant bubbles run to the far edge of the chat (only the avatar and gap are reserved), instead of the narrow 85% column. */
+.marketing-site .site-assistant-demo-body > div:has(> .assistant-message-avatar:first-child) > div { width: 100%; max-width: calc(100% - 3.25rem); }
+@media (max-width: 760px) {
+  .site-assistant-demo-body { height: 26rem; }
+  /* Call table: drop the operator/direction/duration/status columns on phones (the expanded row still shows them) and let the rest wrap instead of forcing a 48rem scroll. */
+  .marketing-site .site-assistant-demo table { min-width: 0; width: 100%; table-layout: auto; }
+  .marketing-site .site-assistant-demo th, .marketing-site .site-assistant-demo td { width: auto; white-space: normal; padding-inline: 4px; }
+  .marketing-site .site-assistant-demo thead th:nth-child(n+4),
+  .marketing-site .site-assistant-demo tbody tr > td:nth-child(n+4) { display: none; }
+  .marketing-site .site-assistant-demo [aria-label="تماس‌های استفاده‌شده در پاسخ"] > div:last-child { max-height: none; overflow: visible; }
+}
 .site-awareness { position: relative; isolation: isolate; padding: 210px 0 150px; background: #2f4a2d; color: #f2f0ef; overflow-x: clip; }
 .awareness-launch-edge, .awareness-bottom-edge { position: absolute; inset-inline: 0; width: 100%; display: block; pointer-events: none; }
 .awareness-launch-edge { top: 0; height: 180px; }
@@ -649,6 +665,8 @@
 /* Compact mobile spacing and swipeable groups of peer cards. */
 @media (max-width: 760px) {
   .marketing-site .site-section { padding-block: 32px; }
+  /* The launch rocket in .awareness-launch-edge rises ~40px above the awareness section's top edge; reserve that space here so it doesn't cover the assistant chat card. */
+  .marketing-site .site-assistant { padding-block-end: 88px; }
   .marketing-site .site-cta { padding-block: 32px; }
   .marketing-site .site-app { padding-block: 32px; }
   .marketing-site .site-app-grid { gap: 24px; }

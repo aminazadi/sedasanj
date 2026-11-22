@@ -585,16 +585,12 @@ function AssistantShowcase() {
         </div>
       </div>
       <div className="site-assistant-demo" ref={ref} aria-label="نمونهٔ گفت‌وگو با هوشیار">
-        <div className="site-assistant-demo-head">
-          <div><strong>هوشیار</strong><span>دستیار هوشمند صداسنج</span></div>
-        </div>
         <div className="site-assistant-demo-body" ref={bodyRef}>
           {ASSISTANT_DEMO.slice(0, shown).map((turn, index) => {
             if (turn.side === "user") return <ConversationBubble key={index} side="user"><p>{turn.text}</p></ConversationBubble>;
-            const wide = turn.kind !== "text";
-            return <ConversationBubble key={index} side="assistant" aiAvatar wide={wide}>
+            return <ConversationBubble key={index} side="assistant" aiAvatar wide>
               <p>{turn.text}</p>
-              {turn.kind === "chart" ? <AssistantCharts charts={[DEMO_CHART]} /> : null}
+              {turn.kind === "chart" ? <AssistantCharts charts={[DEMO_CHART]} compact /> : null}
               {turn.kind === "table" ? <CallSources sources={DEMO_CALL_SOURCES} expandedCallId={expandedCallId} onToggle={toggleCall} /> : null}
               {turn.kind === "file" ? <DemoFileDownload name={turn.fileName} /> : null}
             </ConversationBubble>;
@@ -763,11 +759,11 @@ export default function Landing() {
               {trial && <span className="site-trial-caption">صداسنج را در عمل تجربه کنید</span>}
             </div>
             <ul>
-              <li><Icon name="check" size={15}/><span><b>{fmt.int(plan.base_operators)}</b> کاربر اپراتور</span></li>
-              <li><Icon name="check" size={15}/><span><b>{fmt.int(plan.assistant_monthly_messages)}</b> پیام دستیار در ماه</span></li>
-              <li><Icon name="check" size={15}/><span><b>{fmt.int(plan.monthly_included_minutes)}</b> دقیقه رایگان {trial ? "در دوره آزمایشی" : "در ماه"}</span></li>
-              <li><Icon name="check" size={15}/><span>هر دقیقه اضافه <b>{fmt.toman(plan.overage_price_per_minute_toman)}</b></span></li>
-              {plan.allows_extra_operators && extra != null && <li><Icon name="check" size={15}/><span>اپراتور اضافه: <b>{fmt.toman(extra)}</b> / سال</span></li>}
+              <li><Icon name="check" size={15}/><span>{fmt.int(plan.base_operators)} کاربر اپراتور</span></li>
+              <li><Icon name="check" size={15}/><span>{fmt.int(plan.assistant_monthly_messages)} پیام دستیار در ماه</span></li>
+              <li><Icon name="check" size={15}/><span>{fmt.int(plan.monthly_included_minutes)} دقیقه رایگان {trial ? "در دوره آزمایشی" : "در ماه"}</span></li>
+              <li><Icon name="check" size={15}/><span>هر دقیقه اضافه {fmt.toman(plan.overage_price_per_minute_toman)}</span></li>
+              {plan.allows_extra_operators && extra != null && <li><Icon name="check" size={15}/><span>اپراتور اضافه: {fmt.toman(extra)} / سال</span></li>}
             </ul>
             <div className="site-plan-action">{buyable ? <Link className={`site-button${plan.featured ? "" : " site-button-outline"}`} to={`/signup?plan=${encodeURIComponent(plan.code)}`}>
               {trial ? "شروع آزمایش رایگان" : `انتخاب پلن ${plan.name}`}<Icon name="arrow" size={18}/>
