@@ -751,13 +751,18 @@ class _SetupSteps extends ConsumerWidget {
     final names = {for (final p in people) p.clientId: p.name};
 
     final meetingType = ref.watch(pendingMeetingTypeProvider);
-    final types = ref.watch(meetingTypesProvider).value ?? const [];
-    final typeTitle =
-        [
-          for (final t in types)
-            if (t.code == meetingType.code) t.title,
-        ].firstOrNull ??
-        'صورت جلسه عمومی';
+    final typesAsync = ref.watch(meetingTypesProvider);
+    final types = typesAsync.value ?? const [];
+    // A failed load used to fall back silently to the default label, which hid
+    // why the admin's categories were missing. Say so instead.
+    final typeLoadFailed = typesAsync.hasError && types.isEmpty;
+    final typeTitle = typeLoadFailed
+        ? 'فهرست دسته‌ها بارگذاری نشد؛ برای تلاش دوباره ضربه بزنید'
+        : [
+                for (final t in types)
+                  if (t.code == meetingType.code) t.title,
+              ].firstOrNull ??
+              'صورت جلسه عمومی';
 
     Future<void> pickAttendees() async {
       final result = await showAttendeePicker(context, selected: chosen);
@@ -767,6 +772,10 @@ class _SetupSteps extends ConsumerWidget {
     }
 
     Future<void> pickType() async {
+      if (typeLoadFailed) {
+        ref.invalidate(meetingTypesProvider);
+        return;
+      }
       final result = await showMeetingTypePicker(context, initial: meetingType);
       if (result != null) {
         ref.read(pendingMeetingTypeProvider.notifier).set(result);

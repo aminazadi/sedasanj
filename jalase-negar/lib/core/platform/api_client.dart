@@ -622,6 +622,13 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       return UsageInfo.fromJson(res.data!);
     } on DioException catch (e) {
       throw mapMessageError(e);
+    } on Object {
+      // Null or malformed body (TypeError/FormatException): report it as a
+      // server problem rather than letting a raw error reach the UI.
+      throw const ApiException(
+        message: 'پاسخ سرور برای پلن معتبر نبود.',
+        code: 'usage_parse_failed',
+      );
     }
   }
 
