@@ -147,7 +147,7 @@ class _QrScanScreenState extends State<QrScanScreen>
                   Text(
                     'اسکن QR اتصال',
                     style: TextStyle(
-                      fontFamily: 'Vazirmatn',
+                      fontFamily: 'YekanBakh',
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -158,7 +158,7 @@ class _QrScanScreenState extends State<QrScanScreen>
                     'کد QR نمایش‌داده‌شده در پنل صداسنج را داخل کادر قرار دهید.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontFamily: 'Vazirmatn',
+                      fontFamily: 'YekanBakh',
                       color: Color(0xCCFFFFFF),
                       fontSize: 13,
                       height: 1.7,
@@ -189,7 +189,7 @@ class _CameraError extends StatelessWidget {
             'یا به‌جای آن فایل کانفیگ را انتخاب کنید.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: 'Vazirmatn',
+              fontFamily: 'YekanBakh',
               color: Colors.white,
               height: 1.8,
             ),

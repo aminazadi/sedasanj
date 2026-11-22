@@ -120,7 +120,7 @@ for scale in [1, 2] {
     let rep = render(660 * scale, 440 * scale) { w, h in
         gradient(w, h)
         waveform(in: NSRect(x: (w - 60 * k) / 2, y: h - 80 * k, width: 60 * k, height: 60 * k))
-        text("جلسه‌نگار", font("Vazirmatn-SSStrong.ttf", 28 * k), paper, centerX: w / 2, y: h - 126 * k)
+        text("جلسه‌نگار", font("YekanBakh-Bold.ttf", 28 * k), paper, centerX: w / 2, y: h - 126 * k)
         // arrow between the app icon (x=180) and Applications (x=480)
         paper.withAlphaComponent(0.85).setStroke()
         let arrow = NSBezierPath(); arrow.lineWidth = 4 * k; arrow.lineCapStyle = .round; arrow.lineJoinStyle = .round
@@ -129,12 +129,12 @@ for scale in [1, 2] {
         arrow.move(to: NSPoint(x: 372 * k, y: ay + 16 * k)); arrow.line(to: NSPoint(x: 390 * k, y: ay))
         arrow.line(to: NSPoint(x: 372 * k, y: ay - 16 * k))
         arrow.stroke()
-        text("برای نصب، آیکن جلسه‌نگار را روی پوشهٔ Applications بکشید", font("Vazirmatn-SSStrong.ttf", 15 * k), paper,
+        text("برای نصب، آیکن جلسه‌نگار را روی پوشهٔ Applications بکشید", font("YekanBakh-Bold.ttf", 15 * k), paper,
              centerX: w / 2, y: 104 * k)
-        text("اگر مک هنگام اولین اجرا هشدار داد: روی برنامه راست‌کلیک کنید و Open را بزنید", font("Vazirmatn-SSMedium.ttf", 12 * k), beige,
+        text("اگر مک هنگام اولین اجرا هشدار داد: روی برنامه راست‌کلیک کنید و Open را بزنید", font("YekanBakh-SemiBold.ttf", 12 * k), beige,
              centerX: w / 2, y: 78 * k)
         wordmark(width: 82 * k, centerX: w / 2, y: 38 * k, color: paper.withAlphaComponent(0.9))
-        text("sedasanj.ir", font("Vazirmatn-SSText.ttf", 12 * k), beige, centerX: w / 2, y: 20 * k, kern: 1.6 * k)
+        text("sedasanj.ir", font("YekanBakh-Regular.ttf", 12 * k), beige, centerX: w / 2, y: 20 * k, kern: 1.6 * k)
     }
     save(rep, "macos/dmg/background\(scale == 2 ? "@2x" : "").png", .png)
 }
@@ -145,9 +145,9 @@ for scale in [1, 2] {
     let big = render(164 * scale, 314 * scale) { w, h in
         gradient(w, h)
         waveform(in: NSRect(x: 32 * k, y: h - 140 * k, width: 100 * k, height: 100 * k))
-        text("جلسه‌نگار", font("Vazirmatn-SSStrong.ttf", 26 * k), paper, centerX: w / 2, y: h - 205 * k)
+        text("جلسه‌نگار", font("YekanBakh-Bold.ttf", 26 * k), paper, centerX: w / 2, y: h - 205 * k)
         wordmark(width: 92 * k, centerX: w / 2, y: 44 * k, color: paper.withAlphaComponent(0.9))
-        text("sedasanj.ir", font("Vazirmatn-SSText.ttf", 12 * k), beige, centerX: w / 2, y: 28 * k, kern: 1.6 * k)
+        text("sedasanj.ir", font("YekanBakh-Regular.ttf", 12 * k), beige, centerX: w / 2, y: 28 * k, kern: 1.6 * k)
     }
     saveBMP(big, "windows/installer/wizard\(scale == 2 ? "@2x" : "").bmp")
     let small = render(55 * scale, 55 * scale) { w, h in

@@ -81,7 +81,7 @@ class UpdateDialog extends ConsumerWidget {
                     Text(
                       'تغییرات',
                       style: TextStyle(
-                        fontFamily: 'Vazirmatn',
+                        fontFamily: 'YekanBakh',
                         fontWeight: FontWeight.w600,
                         color: SsColors.of(context).primaryDark,
                       ),
@@ -144,7 +144,7 @@ class _VersionRow extends StatelessWidget {
           child: Text(
             value,
             style: TextStyle(
-              fontFamily: 'Vazirmatn',
+              fontFamily: 'YekanBakh',
               fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
               color: strong
                   ? SsColors.of(context).primary

@@ -63,13 +63,14 @@ flutter:
     - assets/audio/countdown-final.wav
 
   fonts:
-    - family: Vazirmatn
+    - family: YekanBakh
       fonts:
-        # Static instances of the SedaSanj variable font (wght 350 / 500 / 600)
-        - asset: assets/fonts/Vazirmatn-SSText.ttf
-        - asset: assets/fonts/Vazirmatn-SSMedium.ttf
+        # Yekan Bakh (Fontiran) static weights: Regular 400, SemiBold 600, Bold 700.
+        # SemiBold is also mapped to 500 so existing medium-weight text keeps a heavier face.
+        - asset: assets/fonts/YekanBakh-Regular.ttf
+        - asset: assets/fonts/YekanBakh-SemiBold.ttf
           weight: 500
-        - asset: assets/fonts/Vazirmatn-SSStrong.ttf
+        - asset: assets/fonts/YekanBakh-SemiBold.ttf
           weight: 600
-        - asset: assets/fonts/Vazirmatn-SSStrong.ttf
+        - asset: assets/fonts/YekanBakh-Bold.ttf
           weight: 700

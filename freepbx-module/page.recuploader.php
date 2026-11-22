@@ -47,8 +47,11 @@ $helpIcon = function ($title, $content) {
 <style>
 	/* Mirrors the Seda Sanj client panel (sedasanj/web/client/src/index.css):
 	 * square corners, no shadows, dotted green chrome, beige-bordered cards. */
-	@font-face { font-family: "SedaSanj Vazirmatn"; src: url("modules/recuploader/assets/fonts/Vazirmatn-Variable.woff2") format("woff2-variations"); font-weight: 100 900; font-style: normal; font-display: swap; }
-	.sedasanj-panel { --sj-green: #4b6e48; --sj-green-dark: #3d5b3a; --sj-sand: #b2ac88; --sj-canvas: #f2f0ef; --sj-neutral: #898989; --sj-ink: #0f172a; --sj-label: #475569; --sj-dots-light: radial-gradient(circle, rgb(242 240 239 / 0.1) 0 1px, transparent 1.15px) 0 0 / 7px 7px; --sj-dots-grey: radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px; margin: 0 -15px; padding: 24px 24px 32px; min-height: 100vh; background: var(--sj-canvas); color: var(--sj-neutral); font-family: "SedaSanj Vazirmatn", Vazirmatn, system-ui, -apple-system, "Segoe UI", sans-serif; }
+	/* Yekan Bakh fonts are considered a proprietary software. To gain information about the laws regarding the use of these fonts, please visit www.fontiran.com — license code: (.....) */
+	@font-face { font-family: "SedaSanj YekanBakh"; src: url("modules/recuploader/assets/fonts/YekanBakh-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+	@font-face { font-family: "SedaSanj YekanBakh"; src: url("modules/recuploader/assets/fonts/YekanBakh-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+	@font-face { font-family: "SedaSanj YekanBakh"; src: url("modules/recuploader/assets/fonts/YekanBakh-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+	.sedasanj-panel { --sj-green: #4b6e48; --sj-green-dark: #3d5b3a; --sj-sand: #b2ac88; --sj-canvas: #f2f0ef; --sj-neutral: #898989; --sj-ink: #0f172a; --sj-label: #475569; --sj-dots-light: radial-gradient(circle, rgb(242 240 239 / 0.1) 0 1px, transparent 1.15px) 0 0 / 7px 7px; --sj-dots-grey: radial-gradient(circle, rgb(137 137 137 / 0.14) 0 1px, transparent 1.15px) 0 0 / 7px 7px; margin: 0 -15px; padding: 24px 24px 32px; min-height: 100vh; background: var(--sj-canvas); color: var(--sj-neutral); font-family: "SedaSanj YekanBakh", YekanBakh, system-ui, -apple-system, "Segoe UI", sans-serif; }
 	.sedasanj-panel *, .sedasanj-panel *::before, .sedasanj-panel *::after { border-radius: 0 !important; box-shadow: none !important; }
 	.sedasanj-panel h1, .sedasanj-panel h3, .sedasanj-panel h4 { font-family: inherit; color: var(--sj-ink); }
 	.sedasanj-panel a { color: var(--sj-green); }

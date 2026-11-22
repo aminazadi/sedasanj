@@ -160,7 +160,7 @@ const kRecordGreenGradient = [
   Color(0xFF34502F),
 ];
 
-const _kFont = 'Vazirmatn';
+const _kFont = 'YekanBakh';
 
 TextStyle _text(
   double size,

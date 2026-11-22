@@ -728,7 +728,7 @@ class _ControlColumn extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontFamily: 'Vazirmatn',
+            fontFamily: 'YekanBakh',
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: SsColors.of(context).ink,

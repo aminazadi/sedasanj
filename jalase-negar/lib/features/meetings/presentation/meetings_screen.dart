@@ -837,7 +837,7 @@ class _SwipeBackground extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              fontFamily: 'Vazirmatn',
+              fontFamily: 'YekanBakh',
               color: Colors.white,
               fontWeight: FontWeight.w600,
             ),

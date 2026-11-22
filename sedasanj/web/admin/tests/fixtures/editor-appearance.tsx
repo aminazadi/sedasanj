@@ -82,15 +82,15 @@ const timer = setInterval(async () => {
   ];
   const failures: string[] = [];
   for (const frame of frames) {
-    if (!frame.contentDocument!.fonts.check("14px Vazirmatn")) failures.push("Local body font unavailable");
+    if (!frame.contentDocument!.fonts.check("14px YekanBakh")) failures.push("Local body font unavailable");
   }
-  if (!frames[1].contentDocument!.fonts.check('22px Vazirmatn')) {
+  if (!frames[1].contentDocument!.fonts.check('22px YekanBakh')) {
     failures.push("Local heading font unavailable");
   }
   const helpHeading = frames[1].contentDocument!.querySelector("h2")!;
   const headingStyle = frames[1].contentWindow!.getComputedStyle(helpHeading);
-  if (!headingStyle.fontFamily.startsWith("Vazirmatn") || headingStyle.fontSize !== "22px") {
-    failures.push("Help heading must use normalized Vazirmatn typography");
+  if (!headingStyle.fontFamily.startsWith("YekanBakh") || headingStyle.fontSize !== "22px") {
+    failures.push("Help heading must use normalized YekanBakh typography");
   }
   for (const button of document.querySelectorAll(".tox-tbtn")) {
     if (getComputedStyle(button).color !== "rgb(75, 110, 72)") failures.push("Toolbar color mismatch");
@@ -140,7 +140,7 @@ const timer = setInterval(async () => {
     else {
       const style = getComputedStyle(save);
       if (style.backgroundColor !== "rgb(75, 110, 72)") failures.push("Dialog button color mismatch");
-      if (!style.fontFamily.includes("Vazirmatn")) failures.push("Dialog font mismatch");
+      if (!style.fontFamily.includes("YekanBakh")) failures.push("Dialog font mismatch");
     }
     document.querySelector<HTMLButtonElement>(".tox-dialog__header .tox-button")?.click();
   }

@@ -426,7 +426,7 @@ class _HeaderAvatar extends StatelessWidget {
                 : Text(
                     initial,
                     style: TextStyle(
-                      fontFamily: 'Vazirmatn',
+                      fontFamily: 'YekanBakh',
                       fontWeight: FontWeight.w700,
                       color: SsColors.of(context).canvas,
                     ),
@@ -863,7 +863,7 @@ class _NavTabState extends State<_NavTab> with SingleTickerProviderStateMixin {
                   child: AnimatedDefaultTextStyle(
                     duration: _anim,
                     style: TextStyle(
-                      fontFamily: 'Vazirmatn',
+                      fontFamily: 'YekanBakh',
                       fontSize: 12,
                       height: 1.2,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,

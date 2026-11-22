@@ -13,14 +13,14 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import FILL_EVEN_ODD
 
-FONT = "SedaSanjVazirmatn"
+FONT = "SedaSanjYekanBakh"
 PDF_RENDER_LOCK = Lock()
 BIDI_ISOLATES = str.maketrans("", "", "\u2066\u2067\u2068\u2069")
 
 
 @cache
 def register_font() -> None:
-    path = Path(__file__).resolve().parents[1] / "assets/fonts/Vazirmatn-Regular.ttf"
+    path = Path(__file__).resolve().parents[1] / "assets/fonts/YekanBakh-Regular.ttf"
     pdfmetrics.registerFont(TTFont(FONT, str(path)))
 
 

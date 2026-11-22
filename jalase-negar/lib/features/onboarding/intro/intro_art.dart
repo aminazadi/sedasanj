@@ -139,7 +139,7 @@ void _text(
     text: TextSpan(
       text: s,
       style: TextStyle(
-        fontFamily: 'Vazirmatn',
+        fontFamily: 'YekanBakh',
         fontSize: size,
         fontWeight: FontWeight.w600,
         color: color.withValues(alpha: alpha),

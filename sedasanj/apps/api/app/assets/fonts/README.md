@@ -1,7 +1,6 @@
 # PDF font
 
-`Vazirmatn-Regular.ttf` is bundled from the official Vazirmatn v33.003 release:
-https://github.com/rastikerdar/vazirmatn/blob/v33.003/fonts/ttf/Vazirmatn-Regular.ttf
-
-The accompanying `OFL.txt` contains the SIL Open Font License. The API embeds this
-font in assistant PDF exports; it does not fetch fonts at runtime.
+`YekanBakh-Regular.ttf` is the Regular weight of the Yekan Bakh family (Fontiran, v2.0),
+bundled for assistant PDF exports. It is a proprietary font, not OFL: the license
+(Fontiran `FontLicense.txt` and the 5-character license code) must be kept with the font
+before any public release. The API embeds this font and does not fetch fonts at runtime.
