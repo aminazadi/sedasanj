@@ -1,5 +1,6 @@
 import { fmt } from "../../api";
 import type { KpiDashboard } from "../../types";
+import { PanelEmpty } from "../PanelEmpty";
 import { relativeChange, summarize } from "./dashboardInsights.mjs";
 import { DeltaBadge } from "./KpiTiles";
 
@@ -7,6 +8,11 @@ import { DeltaBadge } from "./KpiTiles";
 export function ExecutiveSummary({ data, operator }: { data: KpiDashboard; operator: boolean }) {
   const c = data.cards;
   const summary = summarize(c, data.actions, { operator });
+  if (summary.tone === "empty") {
+    return <section className="exec-hero exec-hero--empty" aria-live="polite">
+      <PanelEmpty title={summary.headline} description="موردی که فوراً به توجه شما نیاز داشته باشد ثبت نشده است." />
+    </section>;
+  }
   const rateText = (value: number | null) => (value == null ? "—" : `${fmt.decimal(value)}٪`);
   const pills = [
     { label: operator ? "فروش من" : "فروش", value: fmt.int(c.explicit_wins), delta: <DeltaBadge change={relativeChange(c.explicit_wins, c.previous_explicit_wins)} unit="percent" /> },

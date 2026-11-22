@@ -827,6 +827,16 @@ class EphemeralChatMessageCreate(ChatMessageCreate):
     history: list[EphemeralChatHistoryItem] = Field(default_factory=list, max_length=24)
 
 
+class PublicAssistantHistoryItem(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1500)
+
+
+class PublicAssistantMessageCreate(BaseModel):
+    content: str = Field(min_length=2, max_length=1500)
+    history: list[PublicAssistantHistoryItem] = Field(default_factory=list, max_length=12)
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -1363,6 +1373,7 @@ class SettingsUpdate(BaseModel):
     prompt_version: str | None = None
     extract_prompt: str | None = Field(default=None, max_length=100_000)
     assistant_instructions: str | None = Field(default=None, max_length=100_000)
+    public_assistant_instructions: str | None = Field(default=None, max_length=100_000)
     coach_prompt: str | None = Field(default=None, max_length=100_000)
     meeting_prompt: str | None = Field(default=None, max_length=100_000)
     api_key: str | None = None

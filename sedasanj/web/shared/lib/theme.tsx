@@ -32,13 +32,21 @@ function applyMode(mode: ThemeMode) {
   else root.setAttribute("data-theme", mode);
 }
 
+/** Where the switch was clicked, so the transition can expand from there. */
+interface ThemeSwitchOrigin {
+  x: number;
+  y: number;
+}
+
 interface ThemeState {
   /** The owner's choice: light, dark, or follow the system. */
   mode: ThemeMode;
   /** What "system" currently resolves to, for anything (e.g. a chart) that
    * needs a concrete light/dark color set rather than CSS variables. */
   resolved: "light" | "dark";
-  setMode: (mode: ThemeMode) => void;
+  /** `origin` is the click position the circular reveal should expand from;
+   * omit it (e.g. for a keyboard change) to just cut over instantly. */
+  setMode: (mode: ThemeMode, origin?: ThemeSwitchOrigin) => void;
 }
 
 const ThemeContext = createContext<ThemeState | null>(null);
@@ -64,13 +72,37 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mql.removeEventListener("change", listener);
   }, []);
 
-  function setMode(next: ThemeMode) {
-    setModeState(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* The choice still applies for this tab/session. */
+  function setMode(next: ThemeMode, origin?: ThemeSwitchOrigin) {
+    const commit = () => {
+      setModeState(next);
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        /* The choice still applies for this tab/session. */
+      }
+    };
+
+    const canAnimate =
+      origin &&
+      typeof document !== "undefined" &&
+      "startViewTransition" in document &&
+      !(typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+    if (!canAnimate) {
+      commit();
+      return;
     }
+
+    const root = document.documentElement;
+    const radius = Math.hypot(
+      Math.max(origin.x, window.innerWidth - origin.x),
+      Math.max(origin.y, window.innerHeight - origin.y),
+    );
+    root.style.setProperty("--theme-switch-x", `${origin.x}px`);
+    root.style.setProperty("--theme-switch-y", `${origin.y}px`);
+    root.style.setProperty("--theme-switch-radius", `${radius}px`);
+    // @ts-expect-error -- startViewTransition isn't in every TS DOM lib yet.
+    document.startViewTransition(commit);
   }
 
   const resolved: "light" | "dark" = mode === "system" ? (systemDark ? "dark" : "light") : mode;

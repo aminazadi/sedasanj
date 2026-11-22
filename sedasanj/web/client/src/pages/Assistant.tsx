@@ -3,7 +3,7 @@ import AssistantContextPicker, { AssistantAttachmentChips } from "../components/
 import ProcessingIndicator from "../components/ProcessingIndicator";
 import { exportFiles } from "../components/assistantExportLinks.mjs";
 import { CallStateArt } from "../components/CallStateArt";
-import assistantMark from "../assets/assistant-mark.svg";
+import AssistantMark from "../components/AssistantMark";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
@@ -1361,7 +1361,7 @@ export default function Assistant() {
     const isProcessing = sendingRuns[item.id] !== undefined;
     const archived = Boolean(item.archived_at);
     const pinned = Boolean(item.pinned_at);
-    return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "is-active bg-[var(--color-primary)]/10 font-bold text-[var(--color-primary-dark)]" : "text-[var(--color-primary)]/90"}`}>
+    return <div key={item.id} className={`assistant-sidebar-item group relative w-full transition-colors duration-200 ${isActive ? "is-active bg-[rgb(var(--color-primary-rgb)/0.1)] font-bold text-[var(--color-primary-dark)]" : "text-[rgb(var(--color-primary-rgb)/0.9)]"}`}>
       {isActive && editingId !== item.id ? <span className="absolute inset-y-2 right-0 w-[3px] bg-[var(--color-primary)]" aria-hidden="true" /> : null}
       {editingId === item.id ? <form className="flex min-h-11 w-full items-center gap-1 p-1.5" onSubmit={(event) => { event.preventDefault(); void rename(item); }}><input autoFocus className="min-w-0 flex-1 border border-[var(--color-accent)] bg-[var(--color-canvas)] px-2 py-1 text-sm text-[var(--color-primary)] outline-none" value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { setEditingId(null); setTitle(""); } }} aria-label="نام گفتگو" /><button type="button" className="px-2 py-1 text-xs font-bold text-[var(--color-neutral)] hover:bg-[var(--color-canvas)] hover:text-[var(--color-primary)]" onClick={() => { setEditingId(null); setTitle(""); }}>انصراف</button><button type="submit" className="px-2 py-1 text-xs font-bold text-[var(--color-primary)] hover:bg-[var(--color-accent)] hover:text-white">ذخیره</button></form> : <button type="button" className={`flex min-h-11 w-full items-center gap-3 py-2.5 pr-3 pl-3 text-right text-sm transition-[padding] ${archived ? "group-hover:pl-28 group-focus-within:pl-28" : "group-hover:pl-36 group-focus-within:pl-36"}`} onClick={() => void loadMessages(item)}>{isProcessing ? <ConversationProcessingIndicator active={isActive} /> : <ChatIcon active={isActive} />}<span className="min-w-0 flex-1 truncate">{item.title || "گفتگوی جدید"}</span></button>}
       {editingId !== item.id && <div className="pointer-events-none absolute inset-y-0 left-1 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[var(--color-neutral)] transition hover:bg-[var(--color-accent)] hover:text-[var(--color-primary)]" aria-label="ویرایش گفتگو" title="ویرایش گفتگو" onClick={() => { setTitle(item.title || ""); setEditingId(item.id); }}><EditIcon /></button>{!archived ? <button type="button" className={`inline-flex h-8 w-8 items-center justify-center transition hover:bg-[var(--color-accent)] hover:text-[var(--color-primary)] ${pinned ? "text-[var(--color-primary)]" : "text-[var(--color-neutral)]"}`} aria-label={pinned ? "برداشتن پین گفتگو" : "پین کردن گفتگو"} title={pinned ? "برداشتن پین گفتگو" : "پین کردن گفتگو"} onClick={() => void setPinned(item, !pinned)}><PinIcon pinned={pinned} /></button> : null}<button type="button" className="inline-flex h-8 w-8 items-center justify-center text-[var(--color-neutral)] transition hover:bg-[var(--color-accent)] hover:text-[var(--color-primary)]" aria-label={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} title={archived ? "بازیابی گفتگو" : "آرشیو گفتگو"} onClick={() => archived ? void setArchived(item, false) : setConfirmation({ action: "archive", item })}><ArchiveIcon restore={archived} /></button><button type="button" className="inline-flex h-8 w-8 items-center justify-center text-rose-600 transition hover:bg-rose-50" aria-label="حذف گفتگو" title="حذف گفتگو" onClick={() => setConfirmation({ action: "delete", item })}><TrashIcon /></button></div>}
@@ -1433,14 +1433,26 @@ export default function Assistant() {
       <div ref={messagesScrollerRef} className="sidebar-scroll flex-1 space-y-5 overflow-y-auto p-4 md:p-7" onScroll={handleMessagesScroll}>
         {ephemeral ? <div className="mx-auto flex max-w-xl items-center gap-2 border border-[var(--color-accent)] bg-canvas px-3 py-2 text-xs text-[var(--color-primary)]" role="status"><TemporaryChatIcon /><span>این چت ذخیره نمی‌شود و با بستن یا ترک صفحه از بین می‌رود.</span></div> : null}
         {messagesLoading ? <AssistantMessagesSkeleton /> : null}
-        {!messagesLoading && messages.length === 0 ? <div className="mx-auto max-w-lg pt-10 text-center text-[var(--color-neutral)]">{training || ephemeral ? <CallStateArt section={training ? "training" : "temporary"} className="mx-auto mb-3" /> : <img src={assistantMark} className="mx-auto mb-3 h-36 w-36" alt="" aria-hidden="true" />}<h1 className="mb-3 text-xl font-bold text-[var(--color-primary)]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "دستیار تماس‌ها"}</h1><p>{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p></div> : null}
+        {!messagesLoading && messages.length === 0 ? <div className="mx-auto flex h-full min-h-[26rem] max-w-md flex-col items-center justify-center gap-3 text-center text-[var(--color-neutral)]">
+          <div className="relative flex items-center justify-center">
+            <span className="absolute h-44 w-44 rounded-full bg-[rgb(var(--color-primary-rgb)/0.1)] blur-2xl" aria-hidden="true" />
+            {training || ephemeral ? <CallStateArt section={training ? "training" : "temporary"} className="relative h-36 w-36" /> : <AssistantMark className="relative h-40 w-40" />}
+          </div>
+          <div className="space-y-2.5">
+            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--ink)]">{training ? "آموزش دستیار" : ephemeral ? "چت موقت" : "من هوشیارم، چه کمکی از من ساخته‌ست؟"}</h1>
+            <p className="text-sm leading-7 text-[var(--color-neutral)]">{training ? "درباره سازمان، محصولات، اصطلاحات و معیارهای تحلیل توضیح دهید تا دستیار با سؤال‌های تکمیلی پیش‌نویس مموری بسازد." : "درباره تماس‌ها، متن مکالمات، تحلیل‌ها و عملکرد اپراتورها سؤال کنید."}</p>
+          </div>
+        </div> : null}
         {(messagesLoading ? [] : messages).map((message) => {
           const user = message.role === "user";
           const attachedLabels = messageAttachmentLabels(message);
           const charts = (message.tool_runs || []).flatMap((run) => run.charts || []);
           const actionClass = "inline-flex h-7 w-7 items-center justify-center text-[var(--color-neutral)] transition hover:bg-canvas hover:text-[var(--color-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-50";
           if (!user && message.status === "running" && !message.content) {
-            return <div key={message.id} className="flex w-full justify-start" dir="ltr"><TypingIndicator label={phases[message.id]} /></div>;
+            return <div key={message.id} className="flex w-full items-end justify-start gap-4" dir="ltr">
+              <span className="assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden="true"><AssistantMark className="h-9 w-9" animated={false} /></span>
+              <TypingIndicator label={phases[message.id]} />
+            </div>;
           }
           const actions = <>
             <span className="flex items-center gap-0.5" dir="rtl">
@@ -1450,7 +1462,7 @@ export default function Assistant() {
             </span>
             <time className="px-1 text-[10px] leading-none text-[var(--color-neutral)]" dateTime={message.created_at} title={fmt.dateTime(message.created_at)}>{fmt.time(message.created_at)}</time>
           </>;
-          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length || charts.length)} actions={messageEdit?.message.id === message.id ? null : actions}>
+          return <ConversationBubble key={message.id} side={user ? "user" : "assistant"} wide={Boolean(message.sources?.length || charts.length)} actions={messageEdit?.message.id === message.id ? null : actions} aiAvatar>
               {user && messageEdit?.message.id === message.id ? <div className="space-y-2">
                 <textarea autoFocus rows={3} className="input min-h-24 resize-y bg-canvas text-slate-900" value={messageEdit.value} onChange={(event) => setMessageEdit({ message, value: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") setMessageEdit(null); }} aria-label="ویرایش پیام" />
                 <div className="flex justify-end gap-2"><button type="button" className="border border-[var(--color-accent)] bg-transparent px-3 py-1.5 text-xs font-bold text-[var(--color-canvas)] transition hover:bg-[var(--color-accent)] hover:text-[var(--color-primary)]" onClick={() => setMessageEdit(null)}>انصراف</button><button type="button" className="border border-[var(--color-canvas)] bg-[var(--color-canvas)] px-3 py-1.5 text-xs font-bold text-[var(--color-primary)] transition hover:border-canvas hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50" disabled={!messageEdit.value.trim() || sending} onClick={requestMessageEdit}>ثبت و دریافت پاسخ جدید</button></div>

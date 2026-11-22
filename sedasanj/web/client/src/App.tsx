@@ -42,6 +42,7 @@ import QuickDemo from "./pages/QuickDemo";
 import MemberAccountAction from "./pages/MemberAccountAction";
 import DemoRecorder from "./pages/DemoRecorder";
 import { RouteLoadingOverlay } from "./components/BrandLoader";
+import PublicAssistantWidget from "./components/PublicAssistantWidget";
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -56,7 +57,8 @@ export default function App() {
   if (location.pathname === "/quick-demo") return <QuickDemo />;
   if (!session) {
     return (
-      <Routes>
+      <>
+        <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/help" element={<HelpHome framed />} />
           <Route path="/help/errors/:code" element={<HelpErrorPage framed />} />
@@ -71,6 +73,8 @@ export default function App() {
           <Route path="/quick-demo" element={<QuickDemo />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        <PublicAssistantWidget />
+      </>
     );
   }
 

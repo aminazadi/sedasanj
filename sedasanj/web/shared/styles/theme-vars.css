@@ -121,6 +121,36 @@
   }
 }
 
+/*
+ * Circular reveal for the روشن/تاریک/سیستم switch: theme.tsx sets
+ * --theme-switch-{x,y,radius} to the click position before calling
+ * document.startViewTransition(), and this expands the new theme out from
+ * that point instead of a flat cut-over.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-switch-reveal 550ms ease-in-out;
+}
+
+@keyframes theme-switch-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-switch-x, 50%) var(--theme-switch-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--theme-switch-radius, 150%) at var(--theme-switch-x, 50%) var(--theme-switch-y, 50%));
+  }
+}
+
 :root[data-theme="dark"] {
   --color-canvas: #1a1917;
   --color-canvas-rgb: 26 25 23;

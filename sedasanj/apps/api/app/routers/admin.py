@@ -111,6 +111,7 @@ from app.services.platform import (
     COACH_PROMPT_KEY,
     EXTRACT_PROMPT_KEY,
     MEETING_PROMPT_KEY,
+    PUBLIC_ASSISTANT_INSTRUCTIONS_KEY,
     effective_models,
     normalize_provider_base_url,
     resolve_provider_settings,
@@ -1477,6 +1478,7 @@ async def update_platform_settings(
     embedding_api_key = changes.pop("embedding_api_key", None)
     ninerouter_api_key = changes.pop("ninerouter_api_key", None)
     assistant_instructions = changes.pop("assistant_instructions", None)
+    public_assistant_instructions = changes.pop("public_assistant_instructions", None)
     coach_prompt = changes.pop("coach_prompt", None)
     meeting_prompt = changes.pop("meeting_prompt", None)
     optional_blank_keys = {
@@ -1718,6 +1720,19 @@ async def update_platform_settings(
         else:
             row.value = assistant_instructions.strip()
             row.updated_at = datetime.now(UTC)
+    if public_assistant_instructions is not None:
+        # A blank value reverts to the packaged default seed description.
+        row = await session.get(PlatformSetting, PUBLIC_ASSISTANT_INSTRUCTIONS_KEY)
+        if row is None:
+            session.add(
+                PlatformSetting(
+                    key=PUBLIC_ASSISTANT_INSTRUCTIONS_KEY,
+                    value=public_assistant_instructions.strip(),
+                )
+            )
+        else:
+            row.value = public_assistant_instructions.strip()
+            row.updated_at = datetime.now(UTC)
     if coach_prompt is not None:
         # A blank value reverts to the packaged default prompt.
         row = await session.get(PlatformSetting, COACH_PROMPT_KEY)
@@ -1743,6 +1758,8 @@ async def update_platform_settings(
         changed_settings.add("extract_prompt")
     if assistant_instructions is not None:
         changed_settings.add("assistant_instructions")
+    if public_assistant_instructions is not None:
+        changed_settings.add("public_assistant_instructions")
     audit_payload: dict[str, Any] = {"changed_settings": sorted(changed_settings)}
     providers = {
         key: value

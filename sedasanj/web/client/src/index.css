@@ -218,6 +218,15 @@ select {
 }
 .exec-hero--bad { background: #5b4b45; color: #f2f0ef; }
 .exec-hero--mixed { background: #56604a; color: #f2f0ef; }
+.exec-hero--empty {
+  display: block;
+  background: var(--color-canvas);
+  color: var(--ink);
+  border: 1px dashed var(--line);
+}
+.exec-hero--empty::before { content: none; }
+.exec-hero--empty .panel-empty { min-height: 9rem; padding: 0.5rem 1rem; }
+.exec-hero--empty .panel-empty__art { width: min(9rem, 50%); }
 .exec-hero::before {
   position: absolute;
   inset: 0;
@@ -343,6 +352,19 @@ select {
     linear-gradient(180deg, #4f7a4c 0%, #4b6e48 55%, #3e5c3b 100%);
 }
 
+:root[data-theme="dark"] .panel-sidebar {
+  background:
+    radial-gradient(circle, rgb(242 240 239 / 0.025) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
+    linear-gradient(180deg, #1e2e1d 0%, #1c2a1b 55%, #172316 100%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .panel-sidebar {
+    background:
+      radial-gradient(circle, rgb(242 240 239 / 0.025) 0 1px, transparent 1.15px) 0 0 / 7px 7px,
+      linear-gradient(180deg, #1e2e1d 0%, #1c2a1b 55%, #172316 100%);
+  }
+}
+
 .sidebar-tooltip {
   transform-origin: right center;
   animation: sidebar-tooltip-out 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -445,6 +467,104 @@ select {
 @keyframes quick-assistant-border-pulse {
   0% { opacity: 0.9; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.7); }
+}
+
+/* The mascot's plastic-shell palette was tuned for a dark canvas (pale cream
+   bevel highlights). On a light canvas those same pale tones sit too close
+   to the page color to read as a shell at all, so light mode gets a
+   darker, more saturated variant of the same gradient; dark mode keeps the
+   original pale tones. */
+:root {
+  --mark-shell-0: #E8E0A8;
+  --mark-shell-38: #BEC48F;
+  --mark-shell-72: #8CA070;
+  --mark-shell-100: #5A7350;
+  --mark-shell-stroke: #8CA070;
+  --mark-shell-stroke-opacity: .4;
+  --mark-trim: #A3B386;
+  --mark-trim-highlight: #EFE6B5;
+  --mark-arm-stroke: #A3B386;
+  --mark-leg-detail-1: #A8BA8A;
+  --mark-leg-detail-2: #9BAE7C;
+}
+:root[data-theme="dark"] {
+  --mark-shell-0: #FFF9DD;
+  --mark-shell-38: #CFD9B0;
+  --mark-shell-72: #8FA77A;
+  --mark-shell-100: #536F55;
+  --mark-shell-stroke: #FFF8D8;
+  --mark-shell-stroke-opacity: .7;
+  --mark-trim: #C7D3A7;
+  --mark-trim-highlight: #FFF8D8;
+  --mark-arm-stroke: #EAF0CE;
+  --mark-leg-detail-1: #D8E0BB;
+  --mark-leg-detail-2: #D7E0B8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mark-shell-0: #FFF9DD;
+    --mark-shell-38: #CFD9B0;
+    --mark-shell-72: #8FA77A;
+    --mark-shell-100: #536F55;
+    --mark-shell-stroke: #FFF8D8;
+    --mark-shell-stroke-opacity: .7;
+    --mark-trim: #C7D3A7;
+    --mark-trim-highlight: #FFF8D8;
+    --mark-arm-stroke: #EAF0CE;
+    --mark-leg-detail-1: #D8E0BB;
+    --mark-leg-detail-2: #D7E0B8;
+  }
+}
+
+.assistant-mark { cursor: pointer; }
+
+.assistant-mark-body { transform-box: fill-box; transform-origin: center; }
+
+.assistant-mark.is-celebrating .assistant-mark-body { animation: assistant-mark-laugh .9s cubic-bezier(.34,1.56,.64,1); }
+
+.assistant-mark-shadow { transform-box: fill-box; transform-origin: center; }
+
+.assistant-mark.is-celebrating .assistant-mark-shadow { animation: assistant-mark-shadow-pulse .9s cubic-bezier(.34,1.56,.64,1); }
+
+.assistant-mark-sparkle { transform-box: fill-box; transform-origin: center; opacity: 0; transform: scale(0); }
+
+.assistant-mark.is-celebrating .assistant-mark-sparkle { animation: assistant-mark-sparkle-burst .9s ease-out forwards; }
+
+.assistant-mark.is-celebrating .assistant-mark-sparkle-2 { animation-delay: .05s; }
+.assistant-mark.is-celebrating .assistant-mark-sparkle-3 { animation-delay: .11s; }
+.assistant-mark.is-celebrating .assistant-mark-sparkle-4 { animation-delay: .04s; }
+.assistant-mark.is-celebrating .assistant-mark-sparkle-5 { animation-delay: .09s; }
+
+@keyframes assistant-mark-laugh {
+  0% { transform: translateY(0) rotate(0deg) scale(1); }
+  8% { transform: translateY(-9%) rotate(-7deg) scale(1.08, .92); }
+  20% { transform: translateY(2%) rotate(6deg) scale(.95, 1.05); }
+  32% { transform: translateY(-6%) rotate(-6deg) scale(1.05, .95); }
+  44% { transform: translateY(1%) rotate(5deg) scale(.97, 1.03); }
+  56% { transform: translateY(-4%) rotate(-4deg) scale(1.03, .97); }
+  68% { transform: translateY(1%) rotate(3deg) scale(.98, 1.02); }
+  80% { transform: translateY(-2%) rotate(-2deg); }
+  92% { transform: translateY(0) rotate(1deg); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+
+@keyframes assistant-mark-shadow-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  8% { transform: scale(.72); opacity: .5; }
+  20% { transform: scale(1.1); opacity: 1; }
+  32% { transform: scale(.8); opacity: .6; }
+  44% { transform: scale(1.06); opacity: .95; }
+  56% { transform: scale(.85); opacity: .72; }
+  68% { transform: scale(1.03); opacity: .92; }
+  80% { transform: scale(.93); opacity: .85; }
+  92% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes assistant-mark-sparkle-burst {
+  0% { transform: scale(0) rotate(0deg); opacity: 0; }
+  35% { transform: scale(1.1) rotate(30deg); opacity: 1; }
+  100% { transform: scale(.25) rotate(70deg); opacity: 0; }
 }
 
 .assistant-thinking-text {
@@ -1879,6 +1999,12 @@ img.article-thumbnail-fallback { object-fit: cover; background: var(--color-canv
 .sub-tabs > button[aria-selected="true"]::after { transform: scaleX(1); }
 [role="tab"]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .sub-tabs > button::after { transition: none; } }
+
+/* Primary segmented tabs: in dark mode the unselected label reads better in white than in the (darker) brand green */
+:root[data-theme="dark"] [role="tablist"] > [role="tab"][aria-selected="false"] { color: #fff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) [role="tablist"] > [role="tab"][aria-selected="false"] { color: #fff; }
+}
 .topup-package-price { color: var(--color-primary); font-weight: 700; }
 
 /* ---- Integrations page (Jalase-negar pairing + API keys) ---- */

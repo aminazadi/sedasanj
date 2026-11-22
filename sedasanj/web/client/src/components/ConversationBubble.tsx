@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import AssistantMark from "./AssistantMark";
 
 type ConversationBubbleProps = {
   side: "user" | "assistant";
@@ -9,6 +10,8 @@ type ConversationBubbleProps = {
   actions?: ReactNode;
   /** Distinguishes more than two speakers: tints the avatar (and the outline of the answering side). */
   accentColor?: string;
+  /** True AI-assistant chats (Hooshyar): shows the Hooshyar mark instead of the generic bot icon. Never set for call-transcript turns, where the "assistant" side is a human participant. */
+  aiAvatar?: boolean;
 };
 
 function readableOn(hex: string): string {
@@ -18,9 +21,17 @@ function readableOn(hex: string): string {
   return (red * 299 + green * 587 + blue * 114) / 1000 > 150 ? "#000000" : "#F2F0EF";
 }
 
-function ConversationAvatar({ side, ariaLabel, accentColor }: Pick<ConversationBubbleProps, "side" | "ariaLabel" | "accentColor">) {
+function ConversationAvatar({ side, ariaLabel, accentColor, aiAvatar }: Pick<ConversationBubbleProps, "side" | "ariaLabel" | "accentColor" | "aiAvatar">) {
   const user = side === "user";
   const label = ariaLabel ?? (user ? "کاربر" : "دستیار");
+
+  if (!user && aiAvatar) {
+    return (
+      <span className="assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center" aria-label={label} title={label}>
+        <AssistantMark className="h-9 w-9" animated={false} />
+      </span>
+    );
+  }
 
   return (
     <span
@@ -36,9 +47,9 @@ function ConversationAvatar({ side, ariaLabel, accentColor }: Pick<ConversationB
   );
 }
 
-export default function ConversationBubble({ side, children, header, ariaLabel, wide = false, actions, accentColor }: ConversationBubbleProps) {
+export default function ConversationBubble({ side, children, header, ariaLabel, wide = false, actions, accentColor, aiAvatar }: ConversationBubbleProps) {
   const user = side === "user";
-  const avatar = <ConversationAvatar side={side} ariaLabel={ariaLabel} accentColor={accentColor} />;
+  const avatar = <ConversationAvatar side={side} ariaLabel={ariaLabel} accentColor={accentColor} aiAvatar={aiAvatar} />;
 
   return (
     <div className={`flex w-full items-end gap-4 ${user ? "justify-end" : "justify-start"}`} dir="ltr">

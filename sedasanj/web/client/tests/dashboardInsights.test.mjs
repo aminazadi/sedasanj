@@ -52,7 +52,9 @@ test("summary reports a steady or unknown period honestly", () => {
   const unknown = summarize(baseCards, []);
   assert.equal(unknown.tone, "unknown");
   assert.match(unknown.headline, /۱۲۰ تماس/);
-  assert.equal(summarize({ ...baseCards, total_calls: 0 }, []).headline, "در این بازه هنوز تماسی ثبت نشده است.");
+  const empty = summarize({ ...baseCards, total_calls: 0 }, []);
+  assert.equal(empty.tone, "empty");
+  assert.equal(empty.headline, "در این بازه هنوز تماسی ثبت نشده است.");
 });
 
 test("summary leads with bad news when losses outweigh gains", () => {

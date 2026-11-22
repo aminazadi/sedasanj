@@ -171,12 +171,12 @@ export default function AudioWaveformPlayer({ audioRef, downloadName, src, onErr
 
       <button
         type="button"
-        className="group relative flex h-16 w-full items-center gap-[3px] overflow-hidden border-y border-[color:var(--line)]/60 bg-[var(--color-canvas)]/60 px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+        className="group relative flex h-16 w-full items-center gap-[3px] overflow-hidden border-y border-[color:var(--line)] bg-[rgb(var(--color-canvas-rgb)/0.6)] px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
         onClick={seek}
         aria-label={waveformLabel}
         dir="ltr"
       >
-        <span className="pointer-events-none absolute inset-x-2 top-1/2 h-px bg-[var(--color-accent)]/60" aria-hidden="true" />
+        <span className="pointer-events-none absolute inset-x-2 top-1/2 h-px bg-[rgb(var(--color-accent-rgb)/0.6)]" aria-hidden="true" />
         {peaks.map((peak, index) => (
           <span
             key={index}

@@ -87,7 +87,7 @@ const ATTENTION_TEXT = {
 
 /**
  * One-line verdict for the period plus a short attention line.
- * tone: good | bad | mixed | steady | unknown (no comparable previous period).
+ * tone: good | bad | mixed | steady | unknown (no comparable previous period) | empty (no calls at all).
  */
 export function summarize(cards, actions, options = {}) {
   const signals = buildSignals(cards, options);
@@ -97,9 +97,12 @@ export function summarize(cards, actions, options = {}) {
   const score = good.reduce((sum, item) => sum + item.weight, 0) - bad.reduce((sum, item) => sum + item.weight, 0);
   let tone;
   let headline;
-  if (!signals.length) {
+  if (!cards.total_calls) {
+    tone = "empty";
+    headline = "در این بازه هنوز تماسی ثبت نشده است.";
+  } else if (!signals.length) {
     tone = "unknown";
-    headline = cards.total_calls ? `${integerFormat.format(cards.total_calls)} تماس در این بازه ثبت شد؛ دورهٔ قبل دادهٔ کافی برای مقایسه ندارد.` : "در این بازه هنوز تماسی ثبت نشده است.";
+    headline = `${integerFormat.format(cards.total_calls)} تماس در این بازه ثبت شد؛ دورهٔ قبل دادهٔ کافی برای مقایسه ندارد.`;
   } else if (!significant.length) {
     tone = "steady";
     headline = "دورهٔ باثباتی بود؛ شاخص‌های اصلی تقریباً مثل دورهٔ قبل مانده‌اند.";

@@ -430,59 +430,169 @@ class _EmptyHint extends StatelessWidget {
     // models); its own copy already names the fix, so it keeps that text
     // but reads as an audio-only state, not an error, with its own
     // illustration and a short headline above it.
-    final (Widget visual, String? title, String body) = switch (live.note) {
-      final note? => (const _AudioOnlyArt(), 'فقط ضبط صدا', note),
+    final waiting = live.note == null && live.phase != LivePhase.preparing &&
+        live.phase != LivePhase.failed;
+    final (double iconSize, Widget Function(double size) buildVisual, String? title, String body) =
+        switch (live.note) {
+      final note? => (
+        148,
+        (size) => const _AudioOnlyArt(),
+        'فقط ضبط صدا',
+        note,
+      ),
       null => switch (live.phase) {
         LivePhase.preparing => (
-          Icon(
+          34,
+          (size) => Icon(
             Icons.hourglass_top_outlined,
-            size: 34,
+            size: size,
             color: SsColors.of(context).neutral,
           ),
           null,
           'مدل در حال آماده‌سازی است؛ ضبط از همین حالا انجام می‌شود.',
         ),
         LivePhase.failed => (
-          Icon(
+          34,
+          (size) => Icon(
             Icons.error_outline,
-            size: 34,
+            size: size,
             color: SsColors.of(context).neutral,
           ),
           null,
           'متن زنده در دسترس نیست.',
         ),
         _ => (
-          Icon(Icons.mic_none, size: 34, color: SsColors.of(context).neutral),
+          64,
+          (size) =>
+              Icon(Icons.mic_none, size: size, color: SsColors.of(context).neutral),
           null,
-          'شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.',
+          'شروع به صحبت کنید\nهر جمله پس از یک مکث\nکوتاه اینجا ظاهر می‌شود.',
         ),
       },
     };
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            visual,
-            const SizedBox(height: 10),
-            if (title != null) ...[
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: SsColors.of(context).ink,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Fills the whole panel instead of sitting at a fixed size: the icon
+        // scales with the available height, up to a comfortable cap.
+        final size = waiting
+            ? (constraints.maxHeight * 0.22).clamp(48.0, 96.0)
+            : iconSize;
+        return SizedBox.expand(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  buildVisual(size),
+                  const SizedBox(height: 16),
+                  if (title != null) ...[
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: SsColors.of(context).ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  _TypedText(
+                    key: ValueKey(body),
+                    text: body,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Reveals [text] one character at a time, as if it were being typed, with a
+/// blinking caret following the last character until it is done. Runs once
+/// whenever [text] changes (give it a [ValueKey] per distinct text so a
+/// switch to new copy restarts the animation).
+class _TypedText extends StatefulWidget {
+  const _TypedText({
+    super.key,
+    required this.text,
+    required this.style,
+    this.textAlign,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+
+  @override
+  State<_TypedText> createState() => _TypedTextState();
+}
+
+class _TypedTextState extends State<_TypedText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+  Timer? _timer;
+  int _shown = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  void _start() {
+    if (!mounted) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      setState(() => _shown = widget.text.length);
+      return;
+    }
+    _timer = Timer.periodic(const Duration(milliseconds: 35), (_) {
+      if (!mounted || _shown >= widget.text.length) {
+        _timer?.cancel();
+        return;
+      }
+      setState(() => _shown++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _blink.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final done = _shown >= widget.text.length;
+    final color = widget.style?.color ?? SsColors.of(context).ink;
+    return Text.rich(
+      TextSpan(
+        style: widget.style,
+        children: [
+          TextSpan(text: widget.text.substring(0, _shown)),
+          if (!done)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: FadeTransition(
+                opacity: _blink,
+                child: Container(
+                  width: 2,
+                  height: (widget.style?.fontSize ?? 14) * 0.9,
+                  margin: const EdgeInsetsDirectional.only(start: 2),
+                  color: color,
                 ),
               ),
-              const SizedBox(height: 4),
-            ],
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
             ),
-          ],
-        ),
+        ],
       ),
+      textAlign: widget.textAlign ?? TextAlign.start,
     );
   }
 }

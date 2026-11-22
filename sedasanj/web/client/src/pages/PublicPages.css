@@ -90,7 +90,10 @@
 .auth-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px 24px; background-color: var(--site-canvas); background-image: radial-gradient(circle, rgb(var(--color-accent-rgb) / 24%) .8px, transparent .9px); background-size: 16px 16px; }
 .auth-logo .site-logo { width: 150px; }
 .auth-card { width: min(100%, 440px); padding: 28px; border: 1px solid var(--site-border, #d7d3c8); background: var(--site-canvas); }
+.auth-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; width: min(100%, 440px); }
 .auth-links { display: flex; gap: 20px; color: var(--site-muted); font-size: 13px; }
+.auth-theme-switch { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 1px solid var(--line-strong); background: transparent; color: var(--color-neutral); cursor: pointer; transition: background-color .2s ease, color .2s ease; }
+.auth-theme-switch:hover { background: var(--color-selected); color: var(--color-primary-dark); }
 .auth-aside { position: relative; display: flex; align-items: center; justify-content: center; padding: 64px; color: #f2f0ef; overflow: hidden; background: radial-gradient(circle, rgb(var(--color-canvas-rgb) / .06) 0 1px, transparent 1.15px) 0 0 / 7px 7px, linear-gradient(180deg, #4f7a4c 0%, #4b6e48 55%, #3e5c3b 100%); }
 .auth-aside-art { position: absolute; inset: 0; pointer-events: none; }
 .auth-aside-art i { position: absolute; border: 1px solid rgb(var(--color-canvas-rgb) / .16); transform: rotate(45deg); }
@@ -114,9 +117,13 @@
 @media (prefers-reduced-motion: reduce) { .auth-aside-caret { animation: none; } .auth-aside-cta, .auth-aside-steps li { transition: none; } }
 .marketing-site .auth-form .auth-title { color: var(--site-primary); font-size: 24px; font-weight: 700; line-height: 1.6; letter-spacing: 0; }
 .marketing-site .auth-form .auth-switch { margin: 24px 0 4px; }
-.auth-form .auth-alt { margin-top: 24px; }
+.auth-form .auth-alt { margin-top: 24px; text-align: center; }
+.auth-form .demo-phone-form small { text-align: center; }
 .auth-form .btn { border-radius: 0; }
 .auth-form .input { border-radius: 0; }
+/* Match the password/TOTP fields to the phone-login tab's demo-phone-form typography and spacing, so switching tabs doesn't change the look of the form. */
+.auth-form .label { display: block; margin: 0 0 8px; font-size: .85rem; font-weight: 600; color: var(--ink); }
+.auth-form .input { padding: 12px; font-size: 16px; }
 
 @media (max-width: 1000px) {
   .about-story { gap: 48px; }

@@ -18,6 +18,9 @@ from worker_llm.client import load_prompt
 
 EXTRACT_PROMPT_KEY = "extract-fa-v3-prompt"
 ASSISTANT_INSTRUCTIONS_KEY = "assistant-instructions"
+PUBLIC_ASSISTANT_INSTRUCTIONS_KEY = "public-assistant-instructions"
+# Lives in a subfolder so it is not offered as an analysis prompt_version.
+PUBLIC_ASSISTANT_SEED_VERSION = "public-assistant/public-assistant-seed-fa-v1"
 COACH_PROMPT_KEY = "operator-coach-prompt"
 # Lives in a subfolder so it is not offered as an analysis prompt_version.
 COACH_PROMPT_VERSION = "coach/operator-coach-fa-v1"
@@ -166,6 +169,7 @@ __all__ = (
     "capability_model",
     "effective_extract_prompt",
     "effective_assistant_instructions",
+    "effective_public_assistant_instructions",
     "effective_coach_prompt",
     "effective_meeting_minutes_prompt",
     "mask_api_key",
@@ -245,6 +249,22 @@ async def effective_assistant_instructions(session: AsyncSession) -> str:
     else:
         row = await session.get(PlatformSetting, ASSISTANT_INSTRUCTIONS_KEY)
     return row.value.strip() if row is not None else ""
+
+
+async def effective_public_assistant_instructions(session: AsyncSession) -> str:
+    """Admin-managed instructions for the public (unauthenticated) assistant widget.
+
+    Falls back to the packaged seed description of SedaSanj/Jalase-Negar, unlike
+    `effective_assistant_instructions` which has no packaged default.
+    """
+    if get_settings().tenant_databases_enabled:
+        async with get_sessionmaker()() as control:
+            row = await control.get(PlatformSetting, PUBLIC_ASSISTANT_INSTRUCTIONS_KEY)
+    else:
+        row = await session.get(PlatformSetting, PUBLIC_ASSISTANT_INSTRUCTIONS_KEY)
+    if row is not None and row.value.strip():
+        return row.value.strip()
+    return load_prompt(PUBLIC_ASSISTANT_SEED_VERSION)
 
 
 async def effective_coach_prompt(session: AsyncSession) -> str:
@@ -576,6 +596,7 @@ async def settings_public_view(session: AsyncSession) -> dict[str, object]:
         "prompt_version": values["prompt_version"],
         "extract_prompt": await effective_extract_prompt(session, values["prompt_version"]),
         "assistant_instructions": await effective_assistant_instructions(session),
+        "public_assistant_instructions": await effective_public_assistant_instructions(session),
         "coach_prompt": await effective_coach_prompt(session),
         "meeting_prompt": await effective_meeting_minutes_prompt(session),
         "api_key_configured": bool(api_key.strip()),

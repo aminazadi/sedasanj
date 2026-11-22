@@ -120,7 +120,7 @@ function IssueCard({ issue, index }: { issue: CoachIssue; index: number }) {
         </blockquote>
         {issue.why_it_hurts ? <p className="text-sm leading-7 text-slate-600">{issue.why_it_hurts}</p> : null}
         {issue.better_phrase ? (
-          <div className="border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5 p-3">
+          <div className="border border-[rgb(var(--color-primary-rgb)/0.4)] bg-[rgb(var(--color-primary-rgb)/0.05)] p-3">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium leading-7 text-[color:var(--color-primary-dark)]">{issue.better_phrase}</p>
               <button type="button" className="btn-ghost h-8 shrink-0 px-2 py-0 text-xs" onClick={copy}>

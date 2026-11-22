@@ -128,7 +128,7 @@ export default function FollowUpTaskCard({
   return (
     <li
       className={`border px-3 py-2.5 ${
-        done ? "border-[color:var(--line)] bg-[var(--color-accent)]/20" : "border-[color:var(--line)] bg-[var(--color-canvas)]"
+        done ? "border-[color:var(--line)] bg-[rgb(var(--color-accent-rgb)/0.2)]" : "border-[color:var(--line)] bg-[var(--color-canvas)]"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -179,7 +179,7 @@ export default function FollowUpTaskCard({
                   className={`inline-flex h-7 w-7 shrink-0 items-center justify-center border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${
                     open
                       ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                      : "border-[color:var(--line)] text-[var(--color-primary)] hover:bg-[var(--color-accent)]/40"
+                      : "border-[color:var(--line)] text-[var(--color-primary)] hover:bg-[rgb(var(--color-accent-rgb)/0.4)]"
                   }`}
                   aria-label={open ? "بستن ویرایش" : "ویرایش کار"}
                   title={open ? "بستن ویرایش" : "ویرایش"}

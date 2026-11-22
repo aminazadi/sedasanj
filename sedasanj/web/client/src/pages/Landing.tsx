@@ -25,6 +25,13 @@ import type { PublicPlan } from "../types";
 import QuickDemoEntry from "../components/QuickDemoEntry";
 import WhyVideoButton, { WhyVideoDialog, WhyVideoPlay, useWhyVideo } from "../components/WhyVideoButton";
 import { Icon, type IconName } from "../components/SiteIcon";
+import ThemeToggleButton from "../components/ThemeToggleButton";
+import AssistantMark from "../components/AssistantMark";
+import ConversationBubble from "../components/ConversationBubble";
+import { AssistantCharts } from "../components/AssistantCharts";
+import { CallSources, TypingIndicator } from "./Assistant";
+import FileTypeIcon from "../components/FileTypeIcon";
+import type { AssistantCallSource, AssistantChart } from "../types";
 
 const benefits: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: "chart", title: "داشبورد و گزارش‌های مدیریتی", body: "حجم تماس‌ها، روند کیفیت پاسخ‌گویی و وضعیت عملکرد تیم را در یک نگاه بررسی کنید و گزارش‌ها را بر اساس بازه زمانی و اپراتور فیلتر کنید." },
@@ -232,6 +239,59 @@ function RecClock() {
   return <span dir="ltr">{mm}:{ss}</span>;
 }
 
+// A fuller, realistic snippet of an actual meeting being transcribed, with a
+// few sample attendees so the speaker-separation feature shows too (the
+// first two lines are the ones the real live-transcript panel is tested
+// with). Each line is kept short on purpose: a single long sentence would
+// auto-wrap and reflow mid-typing, which looks glitchy while it reveals.
+const REC_LINES: { speaker: string; text: string }[] = [
+  { speaker: "امیر رضایی", text: "خب شروع می‌کنیم" },
+  { speaker: "سارا احمدی", text: "سلام، در خدمتم" },
+  { speaker: "نیما کریمی", text: "بله، آماده‌ام" },
+  { speaker: "امیر رضایی", text: "بریم سراغ گزارش فصل" },
+  { speaker: "نیما کریمی", text: "درآمد فصل رو می‌گم" },
+  { speaker: "نیما کریمی", text: "رشد خوبی داشتیم" },
+  { speaker: "سارا احمدی", text: "چند درصد رشد؟" },
+  { speaker: "نیما کریمی", text: "نزدیک هجده درصد" },
+  { speaker: "امیر رضایی", text: "عالیه، تبریک می‌گم" },
+  { speaker: "امیر رضایی", text: "بریم سراغ فصل بعد" },
+];
+
+function RecTranscript({ start }: { start: boolean }) {
+  const [autoplay] = useState(() => typeof window === "undefined" || !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [lineIndex, setLineIndex] = useState(autoplay ? 0 : REC_LINES.length - 1);
+  const [charCount, setCharCount] = useState(autoplay ? 0 : REC_LINES[REC_LINES.length - 1].text.length);
+  useEffect(() => {
+    if (!autoplay || !start) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof window.setTimeout>;
+    const step = (line: number, chars: number) => {
+      if (cancelled) return;
+      const text = REC_LINES[line].text;
+      if (chars < text.length) {
+        chars += 1;
+        setCharCount(chars);
+        timer = window.setTimeout(() => step(line, chars), 45);
+      } else if (line < REC_LINES.length - 1) {
+        timer = window.setTimeout(() => {
+          setLineIndex(line + 1);
+          setCharCount(0);
+          step(line + 1, 0);
+        }, 650);
+      }
+    };
+    step(0, 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [autoplay, start]);
+  return <div className="rec-live" aria-label={REC_LINES.map((l) => `${l.speaker}: ${l.text}`).join("؛ ")}>
+    {REC_LINES.slice(0, lineIndex + 1).map(({ speaker, text }, i) => {
+      const done = i < lineIndex;
+      const shown = done ? text : text.slice(0, charCount);
+      return <p key={i} aria-hidden="true" className={done ? "is-done" : undefined}><b className="rec-speaker">{speaker}:</b>{shown}{!done ? <i className="uc-caret"/> : null}</p>;
+    })}
+  </div>;
+}
+
 function AppDownload() {
   const [data, setData] = useState<AppDownloads | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -243,6 +303,17 @@ function AppDownload() {
       .catch(() => setState("error"));
   }
   useEffect(load, []);
+  const phoneRef = useRef<HTMLDivElement | null>(null);
+  const [phoneInView, setPhoneInView] = useState(false);
+  useEffect(() => {
+    const node = phoneRef.current;
+    if (!node || phoneInView || typeof IntersectionObserver === "undefined") { setPhoneInView(true); return; }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setPhoneInView(true); observer.disconnect(); }
+    }, { threshold: 0.4 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [phoneInView]);
   const fileCount = data ? FILE_LABELS.filter(([key]) => data[key]).length : 0;
   const storeCount = data ? Object.keys(data.stores).length : 0;
   // Only the Android file and nothing else: skip the dialog and start the download directly.
@@ -264,7 +335,7 @@ function AppDownload() {
     </div>
     {dialogOpen && data && <DownloadDialog data={data} onClose={() => setDialogOpen(false)}/>}
     <div className="site-app-visual" role="img" aria-label="صفحهٔ ضبط جلسه در اپ جلسه‌نگار؛ متن زنده، موج صدا، انتساب میکروفون به افراد و دکمه‌های توقف موقت و پایان">
-      <div className="site-app-phone" aria-hidden="true">
+      <div className="site-app-phone" aria-hidden="true" ref={phoneRef}>
         <svg className="phone-app-icon" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="44" fill="#4b6e48"/><rect x="85" y="22" width="22" height="148" fill="#fff"/><rect x="54" y="54" width="22" height="84" fill="#b9b48f"/><rect x="116" y="54" width="22" height="84" fill="#b9b48f"/><rect x="24" y="76" width="22" height="40" fill="#b9b48f"/><rect x="146" y="76" width="22" height="40" fill="#b9b48f"/></svg>
         <span className="phone-btn phone-btn-power"/><span className="phone-btn phone-btn-vol"/>
         <div className="site-app-screen">
@@ -272,14 +343,13 @@ function AppDownload() {
           <div className="phone-status"><span dir="ltr">12:30</span><div><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M2 20h3V15H2zM7 20h3V11H7zM12 20h3V7h-3zM17 20h3V3h-3z"/></svg><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 17a5 5 0 0 1 6 0"/></svg><b><i/></b></div></div>
           <div className="rec-bar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>ضبط جلسه</span></div>
           <div className="rec-empty">
-            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
-            <p>شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.</p>
+            <RecTranscript start={phoneInView}/>
           </div>
           <div className="rec-monitor">
             <RecClock/>
-            <div className="rec-wave">{Array.from({ length: 46 }, (_, i) => <i key={i} style={{ "--h": `${12 + Math.abs(Math.sin(i * 1.7) * 62 + Math.cos(i * 0.6) * 22)}%`, "--d": `${(i % 9) * 90}ms` } as CSSProperties}/>)}</div>
+            <div className={`rec-wave${phoneInView ? " is-live" : ""}`}>{Array.from({ length: 46 }, (_, i) => <i key={i} style={{ "--h": `${12 + Math.abs(Math.sin(i * 1.7) * 62 + Math.cos(i * 0.6) * 22)}%`, "--d": `${(i % 9) * 90}ms` } as CSSProperties}/>)}</div>
             <span className="rec-mute" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg></span>
-            <span className="rec-owner" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1.4-3.2 4-4.8 6.5-4.8s5.1 1.6 6.5 4.8"/></svg>فرد</span>
+            <span className="rec-owner" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5c1.4-3.2 4-4.8 6.5-4.8s5.1 1.6 6.5 4.8"/></svg></span>
           </div>
           <div className="rec-controls">
             <div><span className="rec-diamond rec-diamond-outline"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></span><small>توقف موقت</small></div>
@@ -358,6 +428,191 @@ function SatisfactionShowcase() {
   </section>;
 }
 
+type DemoTurn =
+  | { side: "user"; text: string }
+  | { side: "assistant"; kind: "text"; text: string }
+  | { side: "assistant"; kind: "chart"; text: string }
+  | { side: "assistant"; kind: "table"; text: string }
+  | { side: "assistant"; kind: "file"; text: string; fileName: string };
+
+const TYPING_LABELS: Record<"text" | "chart" | "table" | "file", string> = {
+  text: "در حال فکر کردن و دریافت نتیجه ...",
+  chart: "در حال آماده‌سازی نمودار...",
+  table: "در حال بررسی تماس‌ها...",
+  file: "در حال تولید فایل...",
+};
+
+const ASSISTANT_DEMO: DemoTurn[] = [
+  { side: "assistant", kind: "text", text: "سلام! من هوشیارم. دربارهٔ تماس‌ها، تحلیل‌ها و عملکرد تیم هر سؤالی دارید بپرسید." },
+  { side: "user", text: "روند تماس‌های هفتهٔ اخیر رو نشونم بده" },
+  { side: "assistant", kind: "chart", text: "در هفتهٔ اخیر حجم تماس‌ها نسبت به هفتهٔ قبل حدود ۱۴٪ رشد داشته؛ شنبه و چهارشنبه پرتماس‌ترین روزها بوده‌اند:" },
+  { side: "user", text: "امروز چند تماس با لحن نارضایتی داشتیم؟ با جزئیات بده" },
+  { side: "assistant", kind: "table", text: "امروز ۳ تماس با لحن نارضایتی ثبت شده؛ جزئیات هر تماس:" },
+  { side: "user", text: "یک فایل اکسل از همین گزارش برام بساز" },
+  { side: "assistant", kind: "file", text: "فایل آماده شد:", fileName: "گزارش-تماس‌های-نارضایتی.csv" },
+  { side: "user", text: "ممنونم، همین کافیه" },
+  { side: "assistant", kind: "text", text: "خواهش می‌کنم! هر وقت نیاز به بررسی تماس‌ها یا عملکرد تیم داشتید، من اینجام." },
+];
+
+const DEMO_CHART: AssistantChart = {
+  id: "demo-weekly-calls",
+  title: "حجم تماس‌های هفتهٔ اخیر",
+  type: "line",
+  size: "full",
+  value_label: "تعداد تماس",
+  data: [
+    { label: "شنبه", value: 62 },
+    { label: "یک‌شنبه", value: 74 },
+    { label: "دوشنبه", value: 81 },
+    { label: "سه‌شنبه", value: 69 },
+    { label: "چهارشنبه", value: 92 },
+    { label: "پنجشنبه", value: 54 },
+    { label: "جمعه", value: 31 },
+  ],
+};
+
+const DEMO_CALL_SOURCES: AssistantCallSource[] = [
+  { call_id: "demo-1", started_at: "2026-11-22T09:14:00+03:30", ended_at: "2026-11-22T09:21:00+03:30", caller_number: "09120000001", dialed_number: "02100000", direction: "inbound", agent_extension: "104", duration_ms: 7 * 60000, status: "answered", summary: "مشتری از تأخیر در ارسال سفارش گلایه داشت و خواستار پیگیری فوری شد.", intent: "complaint", sentiment: "angry" },
+  { call_id: "demo-2", started_at: "2026-11-22T11:02:00+03:30", ended_at: "2026-11-22T11:09:00+03:30", caller_number: "09120000002", dialed_number: "02100000", direction: "inbound", agent_extension: "108", duration_ms: 6 * 60000, status: "answered", summary: "پیگیری تعویض کالای معیوب که از هفتهٔ قبل پاسخ روشنی دریافت نکرده بود.", intent: "complaint", sentiment: "sad" },
+  { call_id: "demo-3", started_at: "2026-11-22T14:47:00+03:30", ended_at: "2026-11-22T14:52:00+03:30", caller_number: "09120000003", dialed_number: "02100000", direction: "inbound", agent_extension: "104", duration_ms: 5 * 60000, status: "answered", summary: "تأخیر در پاسخ‌گویی واحد پشتیبانی فنی و نارضایتی از زمان انتظار.", intent: "technical_support", sentiment: "sad" },
+];
+
+function demoCsvContent(): string {
+  const header = ["تاریخ و زمان", "شماره تماس‌گیرنده", "لحن", "خلاصه"];
+  const rows = DEMO_CALL_SOURCES.map((source) => [
+    source.started_at ? fmt.dateTime(source.started_at) : "—",
+    source.caller_number ? fmt.digits(source.caller_number) : "—",
+    source.sentiment ? SENTIMENT_LABELS[source.sentiment] ?? source.sentiment : "—",
+    source.summary ?? "—",
+  ]);
+  return [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+}
+
+function DemoFileDownload({ name }: { name: string }) {
+  function download() {
+    const blob = new Blob([`﻿${demoCsvContent()}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  return <button type="button" onClick={download} className="inline-flex max-w-full items-baseline gap-1 align-baseline text-[var(--color-primary)] underline underline-offset-4 hover:text-[color:var(--color-primary-dark)]">
+    <span className="self-center"><FileTypeIcon name={name} size={16} /></span>
+    <span className="min-w-0 break-words">دریافت <bdi dir="ltr">{name}</bdi></span>
+  </button>;
+}
+
+function AssistantShowcase() {
+  const ref = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  const [shown, setShown] = useState(0);
+  const [typingLabel, setTypingLabel] = useState<string | null>(null);
+  const [userTyped, setUserTyped] = useState<{ index: number; chars: number } | null>(null);
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
+  const [autoplay] = useState(() => typeof window === "undefined" || !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") { setInView(true); return; }
+    const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setInView(true); observer.disconnect(); } }, { threshold: 0.3 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!inView) return;
+    if (!autoplay) { setShown(ASSISTANT_DEMO.length); return; }
+    let cancelled = false;
+    let timer: ReturnType<typeof window.setTimeout>;
+    function step(index: number) {
+      if (cancelled || index >= ASSISTANT_DEMO.length) return;
+      const turn = ASSISTANT_DEMO[index];
+      if (turn.side === "assistant") {
+        setTypingLabel(TYPING_LABELS[turn.kind]);
+        const thinkingTime = turn.kind === "text" ? 900 : 1500;
+        timer = window.setTimeout(() => {
+          if (cancelled) return;
+          setTypingLabel(null);
+          setShown(index + 1);
+          timer = window.setTimeout(() => step(index + 1), 600);
+        }, thinkingTime);
+      } else {
+        timer = window.setTimeout(() => {
+          if (cancelled) return;
+          let chars = 0;
+          setUserTyped({ index, chars: 0 });
+          const typeNext = () => {
+            if (cancelled) return;
+            chars += 1;
+            setUserTyped({ index, chars });
+            if (chars < turn.text.length) { timer = window.setTimeout(typeNext, 28); return; }
+            timer = window.setTimeout(() => {
+              if (cancelled) return;
+              setUserTyped(null);
+              setShown(index + 1);
+              timer = window.setTimeout(() => step(index + 1), 500);
+            }, 400);
+          };
+          typeNext();
+        }, 400);
+      }
+    }
+    step(0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [inView, autoplay]);
+
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: autoplay ? "smooth" : "auto" });
+  }, [shown, typingLabel, userTyped, autoplay]);
+
+  function toggleCall(callId: string) {
+    setExpandedCallId((current) => (current === callId ? null : callId));
+  }
+
+  return <section className="site-section site-assistant" id="assistant">
+    <div className="site-container site-split site-assistant-grid">
+      <div className="site-assistant-copy">
+        <AssistantMark className="site-assistant-mark" />
+        <h2>سؤال از شما، پاسخ از هوشیار</h2>
+        <p className="site-assistant-sub">از وضعیت تماس‌ها و لحن مشتری تا نمودارها و گزارش‌های قابل دانلود؛ کافی‌ست از هوشیار بپرسید تا بر پایهٔ داده‌های سازمان شما، بدون جست‌وجو میان گزارش‌ها، پاسخ دقیق بگیرید.</p>
+        <div className="site-assistant-actions">
+          <button type="button" className="site-button" onClick={() => document.getElementById("public-assistant-trigger")?.click()}>
+            <Icon name="message" size={18} /><span>از هوشیار بپرس</span>
+          </button>
+        </div>
+      </div>
+      <div className="site-assistant-demo" ref={ref} aria-label="نمونهٔ گفت‌وگو با هوشیار">
+        <div className="site-assistant-demo-head">
+          <div><strong>هوشیار</strong><span>دستیار هوشمند صداسنج</span></div>
+        </div>
+        <div className="site-assistant-demo-body" ref={bodyRef}>
+          {ASSISTANT_DEMO.slice(0, shown).map((turn, index) => {
+            if (turn.side === "user") return <ConversationBubble key={index} side="user"><p>{turn.text}</p></ConversationBubble>;
+            const wide = turn.kind !== "text";
+            return <ConversationBubble key={index} side="assistant" aiAvatar wide={wide}>
+              <p>{turn.text}</p>
+              {turn.kind === "chart" ? <AssistantCharts charts={[DEMO_CHART]} /> : null}
+              {turn.kind === "table" ? <CallSources sources={DEMO_CALL_SOURCES} expandedCallId={expandedCallId} onToggle={toggleCall} /> : null}
+              {turn.kind === "file" ? <DemoFileDownload name={turn.fileName} /> : null}
+            </ConversationBubble>;
+          })}
+          {typingLabel ? <div className="flex w-full items-end justify-start gap-4" dir="ltr">
+            <span className="assistant-message-avatar flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden="true"><AssistantMark className="h-9 w-9" animated={false} /></span>
+            <TypingIndicator label={typingLabel} />
+          </div> : null}
+        </div>
+        <div className={`site-assistant-demo-input${userTyped ? " is-typing" : ""}`}>
+          <span className="site-assistant-demo-input-text">{userTyped ? <>{ASSISTANT_DEMO[userTyped.index].text.slice(0, userTyped.chars)}<i className="uc-caret" /></> : "هر سؤالی دربارهٔ تماس‌ها بپرسید…"}</span>
+          <span className={`site-assistant-send${userTyped && userTyped.chars > 0 ? " is-enabled" : ""}`}><Icon name="send" size={16} /><span>ارسال</span></span>
+        </div>
+      </div>
+    </div>
+  </section>;
+}
+
 interface ArticleCard { thumbnail_url?: string | null; category_title?: string | null; id: string; slug: string; title: string; summary: string; published_at: string | null }
 
 function LatestArticles() {
@@ -411,16 +666,39 @@ export default function Landing() {
       <nav id="site-navigation" className={menuOpen ? "site-links is-open" : "site-links"} aria-label="منوی اصلی">
         <a href="#features" onClick={() => setMenuOpen(false)}><Icon name="layers" size={16}/><span>امکانات</span></a><a href="#usecases" onClick={() => setMenuOpen(false)}><Icon name="target" size={16}/><span>کاربردها</span></a><a href="#app" onClick={() => setMenuOpen(false)}><Icon name="download" size={16}/><span>جلسه‌نگار</span></a><a href="#pricing" onClick={() => setMenuOpen(false)}><Icon name="chart" size={16}/><span>تعرفه‌ها</span></a><Link to="/help"><Icon name="tasks" size={16}/><span>مقالات</span></Link><Link to="/about"><Icon name="users" size={16}/><span>درباره ما</span></Link><Link to="/contact"><Icon name="phone" size={16}/><span>تماس با ما</span></Link>
       </nav>
-      <div className="site-nav-actions"><Link className="site-login-button" to="/login"><span>ورود به پنل</span><Icon name="arrow" size={16} className="site-login-arrow"/></Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
+      <div className="site-nav-actions"><ThemeToggleButton className="site-theme-toggle"/><Link className="site-login-button" to="/login"><span>ورود به پنل</span><Icon name="arrow" size={16} className="site-login-arrow"/></Link><button className="site-menu" aria-controls="site-navigation" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} onClick={() => setMenuOpen(!menuOpen)}><Icon name={menuOpen ? "x" : "menu"}/></button></div>
     </div></header>
     <main id="top">
       <section className="site-hero" ref={heroRef}><img className="site-hero-backdrop" src={heroBackdrop} srcSet={srcSetFor(heroBackdrop)} sizes="max(100vw, 160svh)" alt="" aria-hidden="true" width={1774} height={887} fetchPriority="high" decoding="async"/><div className="site-container site-split">
         <div><h1 className="site-hero-title site-hero-title-flow">هر آنچه از <span className="site-hero-title-accent">پردازش صوت</span> در سازمانتان نیاز دارید</h1><p>هر مکالمه به متن، خلاصه و تحلیل تبدیل می‌شود؛ بدون اینکه کسی ساعت‌ها فایل صوتی گوش کند.</p><div className="site-actions"><button className="site-button site-hero-demo" type="button" onClick={openQuickDemo}><svg className="hero-demo-border" aria-hidden="true" focusable="false"><rect className="hero-demo-border-track" pathLength="100"/><rect className="hero-demo-border-trail" pathLength="100"/></svg><span>تست صداسنج در کمتر از ۶۰ ثانیه</span></button><a className="site-hero-features-link" href="#features"><span>مشاهده امکانات</span><Icon name="arrowDown" size={18}/></a></div></div>
         <div className="site-hero-play"><WhyVideoPlay video={whyVideo}/></div>
       </div>
-        <button className="site-scroll-down" type="button" aria-label="رفتن به بخش بعدی" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}><span className="site-scroll-text" dir="ltr">Scroll Down</span><span className="site-scroll-icon" aria-hidden="true"/></button>
+        <button className="site-scroll-down" type="button" aria-label="رفتن به بخش بعدی" onClick={() => document.getElementById("integration")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}><span className="site-scroll-text" dir="ltr">Scroll Down</span><span className="site-scroll-icon" aria-hidden="true"/></button>
       </section>
+      <section className="site-integration-banner" id="integration" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={srcSetFor(integrationBannerMobile) || integrationBannerMobile} sizes="100vw"/><img src={integrationBanner} srcSet={srcSetFor(integrationBanner)} sizes="(max-width: 1160px) 100vw, 1160px" width={1600} height={536} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
       <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
+      <UseCases/>
+      <section className="site-section" id="workflow">
+        <div className="site-container">
+          <h2>از مکالمه تا اقدام همه زیر ذره‌بین</h2>
+          <div className="workflow-timeline" aria-label="مسیر تبدیل تماس به اقدام مدیریتی">
+            <svg className="timeline-art desktop-art" viewBox="0 0 1000 180" preserveAspectRatio="none" fill="none" aria-hidden="true">
+              <defs><marker id="timeline-arrow-desktop" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M7 1 1 4l6 3"/></marker></defs>
+              <path className="timeline-path desktop-path" d="M900 30 C820 30 800 126 700 126 S580 30 500 30 380 126 300 126 180 30 100 30" markerEnd="url(#timeline-arrow-desktop)"/>
+              <path className="timeline-progress desktop-path" d="M900 30 C820 30 800 126 700 126 S580 30 500 30 380 126 300 126 180 30 100 30"/>
+            </svg>
+            <svg className="timeline-art mobile-art" viewBox="0 0 48 900" preserveAspectRatio="none" fill="none" aria-hidden="true">
+              <defs><marker id="timeline-arrow-mobile" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="m1 1 3 6 3-6"/></marker></defs>
+              <path className="timeline-path" d="M24 36 C24 100 8 154 24 221 S40 340 24 407 8 526 24 593 40 712 24 779" markerEnd="url(#timeline-arrow-mobile)"/>
+              <path className="timeline-progress" d="M24 36 C24 100 8 154 24 221 S40 340 24 407 8 526 24 593 40 712 24 779"/>
+            </svg>
+            <ol className="site-steps">
+              {steps.map((item) => <li key={item.title}><span className="timeline-node"><Icon name={item.icon} size={28}/></span><div><h3>{item.title}</h3><p>{item.body}</p></div></li>)}
+            </ol>
+          </div>
+        </div>
+      </section>
+      <AssistantShowcase/>
       <section className="site-awareness" id="awareness">
         <svg className="awareness-launch-edge" style={{ overflow: "visible" }} viewBox="0 0 1440 180" preserveAspectRatio="xMaxYMin slice" fill="none" aria-hidden="true" focusable="false">
           <path fill="var(--site-canvas)" d="M0 0H1440V68C1360 98 1300 54 1236 68C1160 84 1134 136 1040 132C920 126 864 50 732 58C590 66 552 142 408 130C260 118 180 48 0 92Z"/>
@@ -465,31 +743,8 @@ export default function Landing() {
           </g>
         </svg>
       </section>
-      <section className="site-section" id="workflow">
-        <div className="site-container">
-          <h2>از مکالمه تا اقدام همه زیر ذره‌بین</h2>
-          <div className="workflow-timeline" aria-label="مسیر تبدیل تماس به اقدام مدیریتی">
-            <svg className="timeline-art desktop-art" viewBox="0 0 1000 180" preserveAspectRatio="none" fill="none" aria-hidden="true">
-              <defs><marker id="timeline-arrow-desktop" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M7 1 1 4l6 3"/></marker></defs>
-              <path className="timeline-path desktop-path" d="M900 30 C820 30 800 126 700 126 S580 30 500 30 380 126 300 126 180 30 100 30" markerEnd="url(#timeline-arrow-desktop)"/>
-              <path className="timeline-progress desktop-path" d="M900 30 C820 30 800 126 700 126 S580 30 500 30 380 126 300 126 180 30 100 30"/>
-            </svg>
-            <svg className="timeline-art mobile-art" viewBox="0 0 48 900" preserveAspectRatio="none" fill="none" aria-hidden="true">
-              <defs><marker id="timeline-arrow-mobile" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="m1 1 3 6 3-6"/></marker></defs>
-              <path className="timeline-path" d="M24 36 C24 100 8 154 24 221 S40 340 24 407 8 526 24 593 40 712 24 779" markerEnd="url(#timeline-arrow-mobile)"/>
-              <path className="timeline-progress" d="M24 36 C24 100 8 154 24 221 S40 340 24 407 8 526 24 593 40 712 24 779"/>
-            </svg>
-            <ol className="site-steps">
-              {steps.map((item) => <li key={item.title}><span className="timeline-node"><Icon name={item.icon} size={28}/></span><div><h3>{item.title}</h3><p>{item.body}</p></div></li>)}
-            </ol>
-          </div>
-        </div>
-      </section>
-      <UseCases/>
       <SatisfactionShowcase/>
-      <section className="site-integration-banner" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={srcSetFor(integrationBannerMobile) || integrationBannerMobile} sizes="100vw"/><img src={integrationBanner} srcSet={srcSetFor(integrationBanner)} sizes="(max-width: 1160px) 100vw, 1160px" width={1600} height={536} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
       <section className="site-section site-security" id="security"><div className="site-container"><h2>امنیت در تمام مراحل</h2><div className="site-benefits">{([{ icon: "shield", title: "حریم خصوصی", body: "داده‌ها و اطلاعات تماس هر سازمان در پایگاه داده‌ای مستقل نگهداری می‌شوند تا مرز روشنی میان اطلاعات سازمان‌ها برقرار باشد." }, { icon: "lock", title: "کنترل دسترسی", body: "برای هر کاربر نقش و سطح دسترسی مشخصی تعریف می‌شود تا اعضای تیم فقط به بخش‌ها و اطلاعات مرتبط با مسئولیت خود دسترسی داشته باشند." }, { icon: "layers", title: "استقرار منعطف", body: "سامانه می‌تواند روی سرورهای اختصاصی سازمان شما نصب و اجرا شود؛ در این حالت زیرساخت و داده‌ها در محیط تحت مدیریت خودتان باقی می‌مانند." }] as typeof benefits).map((item) => <article key={item.title}><Icon name={item.icon} size={28}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
-      <AppDownload/>
       <section className="site-section" id="pricing"><div className="site-container"><h2>پلن‌های مقرون بصرفه</h2>        {plansState === "loading" && <p className="site-status" role="status">در حال دریافت پلن‌ها…</p>}
         {plansState === "error" && <div className="site-status" role="alert"><p>دریافت پلن‌ها انجام نشد.</p><button className="site-button site-button-outline" onClick={loadPlans}><Icon name="refresh" size={18}/>تلاش دوباره</button></div>}
         {plansState === "ready" && !plans.length && <p className="site-status">در حال حاضر پلنی برای نمایش وجود ندارد.</p>}
@@ -521,6 +776,7 @@ export default function Landing() {
         })}</div>
         <p className="site-pricing-note">نصب اولیه رایگان است. برای استقرار اختصاصی <Link to="/contact">با ما تماس بگیرید.</Link></p>
       </div></section>
+      <AppDownload/>
       <LatestArticles/>
       <QuickDemoEntry />
     </main>

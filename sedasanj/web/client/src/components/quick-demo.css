@@ -40,9 +40,6 @@
 .demo-card p{line-height:1.9;margin:16px 0;color:var(--color-neutral)}
 .demo-card .demo-phone-form{text-align:right}
 .demo-home{display:block;color:var(--color-primary);font-weight:800;margin-bottom:24px}
-.demo-device-tabs{display:flex;gap:4px;margin:24px 0;background:var(--line);padding:4px}
-.demo-device-tabs button{flex:1;padding:10px;border:0;background:transparent;color:var(--color-neutral);cursor:pointer}
-.demo-device-tabs button[aria-pressed=true]{background:var(--color-canvas);color:var(--color-primary);box-shadow:0 1px 4px #0001}
 .demo-qr{display:grid;justify-items:center;margin:20px 0}
 .demo-qr svg{max-width:100%;height:auto}
 .quick-demo-qr-card{border-radius:18px;background:linear-gradient(145deg,rgb(var(--color-canvas-rgb) / .98),rgb(var(--color-canvas-rgb) / .96))}
@@ -120,8 +117,6 @@
 @media(max-width:420px){.demo-landing-section{min-height:540px;background-position:center,64% 28%;background-size:cover,auto 125%}.demo-landing-grid{min-height:470px}.demo-landing-copy{width:100%;padding:0 12px 16px}.demo-landing-copy h2{font-size:28px}.demo-landing-grid p{font-size:13px;margin-bottom:16px}.demo-landing-grid .site-button{min-height:44px;font-size:13px}}
 @media(prefers-reduced-motion:reduce){.demo-equalizer.is-active i{animation:none}}
 
-.login-method-tabs{margin:10px 0}
-.login-method-tabs button{padding:7px 10px}
 .demo-phone-form .demo-field{display:grid;gap:8px;font-size:.85rem;font-weight:600}
 .demo-dialog .demo-phone-form :is(input,select,textarea){padding:12px;border:1px solid var(--line);background-color:var(--color-canvas);font-size:16px;color:var(--ink)}
 .demo-dialog .demo-phone-form select{padding-left:2.75rem}

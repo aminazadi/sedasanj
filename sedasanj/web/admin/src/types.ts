@@ -109,6 +109,7 @@ export interface PlatformSettings {
   prompt_version: string;
   extract_prompt: string;
   assistant_instructions: string;
+  public_assistant_instructions: string;
   coach_prompt: string;
   meeting_prompt: string;
   api_key_configured: boolean;

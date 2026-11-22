@@ -437,6 +437,7 @@ export default function Settings() {
         body.extract_prompt = settings.extract_prompt;
         body.correction_prompt = settings.correction_prompt;
         body.assistant_instructions = settings.assistant_instructions;
+        body.public_assistant_instructions = settings.public_assistant_instructions;
         body.coach_prompt = settings.coach_prompt;
         body.meeting_prompt = settings.meeting_prompt;
       }
@@ -1260,6 +1261,23 @@ export default function Settings() {
           spellCheck={false}
           value={settings.assistant_instructions}
           onChange={(event) => setSettings({ ...settings, assistant_instructions: event.target.value })}
+        />
+      </section>
+      <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
+        <div>
+          <h2 className="font-bold text-slate-900">پرامپت هوشیار برای صفحات عمومی (خارج از پنل)</h2>
+          <p className="mt-1 text-xs leading-6 text-slate-500">
+            این متن به هوشیار در ویجت صفحات عمومی (بدون لاگین) داده می‌شود. در این حالت هوشیار به
+            هیچ داده سازمانی دسترسی ندارد و فقط باید دربارهٔ صداسنج و جلسه‌نگار پاسخ دهد؛ خالی
+            گذاشتن این فیلد، متن پیش‌فرض بسته‌بندی‌شده را دوباره فعال می‌کند.
+          </p>
+        </div>
+        <textarea
+          className="input min-h-56 resize-y font-mono text-sm leading-6"
+          dir="rtl"
+          spellCheck={false}
+          value={settings.public_assistant_instructions}
+          onChange={(event) => setSettings({ ...settings, public_assistant_instructions: event.target.value })}
         />
       </section>
       <section className={`${activeTab === "prompts" ? "" : "hidden"} space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4`}>

@@ -18,7 +18,7 @@ export interface ActionGroup {
   items: DashboardAction[];
 }
 
-export type SummaryTone = "good" | "bad" | "mixed" | "steady" | "unknown";
+export type SummaryTone = "good" | "bad" | "mixed" | "steady" | "unknown" | "empty";
 
 export function relativeChange(current: number | null | undefined, previous: number | null | undefined): number | null;
 export function buildSignals(cards: Cards, options?: { operator?: boolean }): Signal[];

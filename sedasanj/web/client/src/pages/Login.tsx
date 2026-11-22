@@ -44,6 +44,9 @@ export default function Login() {
     event.preventDefault();
     void authenticate();
   }
+  function switchMethod(value: "phone" | "password") {
+    setParams((current) => { const changed = new URLSearchParams(current); changed.set("method", value); return changed; }, { replace: true });
+  }
   useEffect(() => {
     if (step !== "totp" || !isCompleteOtp(totp)) {
       autoSubmittedOtp.current = "";
@@ -57,17 +60,19 @@ export default function Login() {
   return (
     <AuthShell>
           <div className="auth-form">
-            <div className="demo-device-tabs login-method-tabs" role="group" aria-label="روش ورود">{([['phone', 'کد پیامکی'], ['password', 'گذرواژه']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={method === value} onClick={() => setParams((current) => { const changed = new URLSearchParams(current); changed.set("method", value); return changed; }, { replace: true })}>{label}</button>)}</div>
-            {method === "phone" ? <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate(destination); }}/> : <>
+            {method === "phone" ? <>
+            <PhoneAuth onSuccess={(pair) => { acceptSession(pair); navigate(destination); }}/>
+            <p className="auth-alt mt-5 text-center text-sm text-slate-500">حساب با گذرواژه دارید؟ <button type="button" className="font-bold text-brand-600" onClick={() => switchMethod("password")}>ورود با گذرواژه</button></p>
+            </> : <>
             <form onSubmit={submit}>
               <ErrorBox message={error} />
               {step === "password" ? (<>
-              <label className="label font-medium text-slate-700" htmlFor="login-identifier">
+              <label className="label" htmlFor="login-identifier">
                 ایمیل یا شماره موبایل
               </label>
               <input
                 id="login-identifier"
-                className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+                className="input mb-4"
                 type="text"
                 dir="ltr"
                 autoComplete="username"
@@ -78,12 +83,12 @@ export default function Login() {
                 maxLength={320}
                 required
               />
-              <label className="label font-medium text-slate-700" htmlFor="password">
+              <label className="label" htmlFor="password">
                 گذرواژه
               </label>
               <input
                 id="password"
-                className="input mb-4 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+                className="input mb-4"
                 type="password"
                 autoComplete="current-password"
                 dir="ltr"
@@ -92,12 +97,12 @@ export default function Login() {
                 required
               />
               </>) : (<>
-              <label className="label font-medium text-slate-700" htmlFor="totp">
+              <label className="label" htmlFor="totp">
                 کد گوگل آتنتیکیتور
               </label>
               <input
                 id="totp"
-                className="input mb-6 border-slate-200 bg-slate-50 py-2.5 focus:bg-white"
+                className="input mb-6"
                 dir="ltr"
                 inputMode="numeric"
           autoComplete="one-time-code"
@@ -108,11 +113,12 @@ export default function Login() {
               />
               <button type="button" className="mb-4 text-sm text-brand-600" onClick={() => { setStep("password"); setTotp(""); setError(null); }}><Icon name="back" size={18}/>بازگشت و ویرایش اطلاعات ورود</button>
               </>)}
-              <button className="btn w-full py-3 font-bold shadow-lg shadow-brand-500/25" disabled={busy}>
+              <button className="btn w-full py-3 font-bold" disabled={busy}>
                 {busy ? "در حال ورود…" : step === "totp" ? <><Icon name="login" size={18}/>تأیید و ورود</> : <>ادامه<Icon name="arrow" size={18}/></>}
               </button>
               <p className="auth-alt mt-5 text-center text-sm text-slate-500">حساب ندارید؟ <Link className="font-bold text-brand-600" to="/signup?plan=demo">دموی رایگان را شروع کنید</Link></p>
             </form>
+            <p className="auth-alt mt-3 text-center text-sm text-slate-500">ترجیح می‌دهید کد یکبارمصرف دریافت کنید؟ <button type="button" className="font-bold text-brand-600" onClick={() => switchMethod("phone")}>ورود با کد پیامکی</button></p>
             </>}
           </div>
     </AuthShell>

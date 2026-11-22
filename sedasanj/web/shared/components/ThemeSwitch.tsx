@@ -24,7 +24,7 @@ export default function ThemeSwitch({ className = "" }: { className?: string }) 
             type="button"
             role="radio"
             aria-checked={active}
-            onClick={() => setMode(option.value)}
+            onClick={(e) => setMode(option.value, { x: e.clientX, y: e.clientY })}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               active ? "bg-selected text-primary-dark" : "text-ink-soft hover:bg-canvas"
             }`}

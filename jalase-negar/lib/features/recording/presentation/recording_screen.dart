@@ -614,7 +614,7 @@ class _RecordingMonitor extends StatelessWidget {
   }
 }
 
-/// Flat outlined button naming who holds a microphone ("نامشخص" while nobody
+/// Icon-only button naming who holds a microphone ("نامشخص" while nobody
 /// does and voices are recognised automatically); opens the picker.
 class _OwnerButton extends StatelessWidget {
   const _OwnerButton({required this.name, required this.onTap});
@@ -635,45 +635,13 @@ class _OwnerButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: assigned ? 'صاحب میکروفون $name' : 'انتساب میکروفون',
-        child: Material(
-          color: assigned ? SsColors.of(context).primary : Colors.transparent,
-          shape: RoundedRectangleBorder(
-            side: BorderSide(
-              color: assigned
-                  ? SsColors.of(context).primary
-                  : SsColors.of(context).line,
-            ),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 32, maxWidth: 110),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.person_outline,
-                      size: 16,
-                      color: assigned ? SsColors.of(context).canvas : color,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        name ?? 'فرد',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: assigned ? SsColors.of(context).canvas : color,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+        child: InkResponse(
+          onTap: onTap,
+          radius: 20,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(Icons.person_outline, size: 18, color: color),
           ),
         ),
       ),
@@ -681,9 +649,8 @@ class _OwnerButton extends StatelessWidget {
   }
 }
 
-/// Square mute toggle in the app's flat style (like the play buttons): an
-/// outlined mic while the channel is live, a filled red crossed-out mic when
-/// it is muted.
+/// Icon-only mute toggle: a plain mic while the channel is live, a crossed-out
+/// mic in the danger color when it is muted. No border, no fill.
 class _MuteButton extends StatelessWidget {
   const _MuteButton({
     required this.muted,
@@ -710,41 +677,33 @@ class _MuteButton extends StatelessWidget {
         button: true,
         toggled: muted,
         label: label,
-        child: Material(
-          color: muted ? SsColors.of(context).danger : Colors.transparent,
-          shape: RoundedRectangleBorder(side: BorderSide(color: color)),
-          child: InkWell(
-            onTap: onTap,
-            child: SizedBox(
-              width: 32,
-              height: 32,
-              child: Center(
-                child: number == null
-                    ? Icon(
-                        muted ? Icons.mic_off : Icons.mic_none,
-                        size: 18,
-                        color: muted ? SsColors.of(context).canvas : color,
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            muted ? Icons.mic_off : Icons.mic_none,
-                            size: 15,
-                            color: muted ? SsColors.of(context).canvas : color,
-                          ),
-                          Text(
-                            number!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: muted
-                                  ? SsColors.of(context).canvas
-                                  : color,
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
+        child: InkResponse(
+          onTap: onTap,
+          radius: 20,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Center(
+              child: number == null
+                  ? Icon(
+                      muted ? Icons.mic_off : Icons.mic_none,
+                      size: 18,
+                      color: color,
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          muted ? Icons.mic_off : Icons.mic_none,
+                          size: 15,
+                          color: color,
+                        ),
+                        Text(
+                          number!,
+                          style: TextStyle(fontSize: 11, color: color),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ),

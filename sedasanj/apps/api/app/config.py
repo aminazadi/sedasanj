@@ -241,6 +241,7 @@ class Settings(BaseSettings):
     rate_limit_reads_per_minute: int = 120
     rate_limit_meeting_chunks_per_minute: int = Field(default=240, ge=10, le=6000)
     rate_limit_meeting_pairing_per_minute: int = Field(default=10, ge=1, le=600)
+    rate_limit_public_assistant_per_minute: int = Field(default=8, ge=1, le=120)
     meeting_chunk_max_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=64 * 1024 * 1024)
     meeting_chunk_seconds_target: int = Field(default=60, ge=10, le=300)
     meeting_chunk_seconds_max: int = Field(default=90, ge=10, le=600)

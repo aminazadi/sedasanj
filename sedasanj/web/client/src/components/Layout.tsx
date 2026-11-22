@@ -66,7 +66,7 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
       { to: "/contacts", label: "دفترچه تلفن", icon: bookUserIcon },
       { to: "/extensions", label: "داخلی‌ها", icon: extensionIcon },
       { to: "/tasks", label: "کارها", icon: tasksIcon },
-      { to: "/assistant", label: "دستیار تماس‌ها", icon: botIcon },
+      { to: "/assistant", label: "هوشیار", icon: botIcon },
     ],
   },
   {
@@ -474,7 +474,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse, onReplayGuide
               className="sb-round p-2 text-[#F2F0EF]/80 transition hover:bg-white/15 hover:text-white"
               aria-label={`ظاهر برنامه: ${themeOption.label} (برای تغییر کلیک کنید)`}
               title={`ظاهر برنامه: ${themeOption.label}`}
-              onClick={() => { hideTooltip(); setMode(nextThemeOption.value); }}
+              onClick={(e) => { hideTooltip(); setMode(nextThemeOption.value, { x: e.clientX, y: e.clientY }); }}
               onPointerEnter={showPointerTooltip(`ظاهر: ${themeOption.label}`)}
               onFocus={showFocusTooltip(`ظاهر: ${themeOption.label}`)}
               onPointerLeave={hideTooltip}
@@ -494,7 +494,7 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse, onReplayGuide
                     aria-checked={active}
                     aria-label={option.label}
                     className={`sb-round p-2 transition ${active ? "bg-white/20 text-white" : "text-[#F2F0EF]/70 hover:bg-white/15 hover:text-white"}`}
-                    onClick={() => { hideTooltip(); setMode(option.value); }}
+                    onClick={(e) => { hideTooltip(); setMode(option.value, { x: e.clientX, y: e.clientY }); }}
                   >
                     <Icon icon={option.icon} className="h-4 w-4" aria-hidden="true" />
                   </button>
