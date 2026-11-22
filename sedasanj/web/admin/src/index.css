@@ -1,25 +1,31 @@
 @import "@cbi/web-shared/styles/theme-vars.css";
 @import "@cbi/web-shared/styles/rich-content.css";
 @import "@cbi/web-shared/styles/editor-chrome.css";
-@font-face {
-  font-family: Vazirmatn;
-  src: url("./fonts/Vazirmatn-Variable.woff2") format("woff2-variations");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/*
+  Yekan Bakh fonts are considered a proprietary software. To gain information about the laws regarding the use of these fonts, please visit www.fontiran.com
+  ---------------------------------------------------------------------
+  This set of fonts are used in this project under the license: (.....)
+  */
 
 @font-face {
-  font-family: Vazirmatn;
-  src: url("./fonts/Vazirmatn-Regular.woff2") format("woff2");
+  font-family: YekanBakh;
+  src: url("./fonts/YekanBakh-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: Vazirmatn;
-  src: url("./fonts/Vazirmatn-Bold.woff2") format("woff2");
+  font-family: YekanBakh;
+  src: url("./fonts/YekanBakh-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: YekanBakh;
+  src: url("./fonts/YekanBakh-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -37,7 +43,7 @@
 }
 
 body {
-  font-family: Vazirmatn, IRANSans, system-ui, sans-serif;
+  font-family: YekanBakh, Tahoma, system-ui, sans-serif;
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 

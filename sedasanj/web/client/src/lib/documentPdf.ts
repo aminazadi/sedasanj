@@ -1,9 +1,10 @@
 import logoSource from "../assets/sedasanj-refined-master.svg?raw";
-import fontUrl from "../fonts/Vazirmatn-Variable.woff2?url";
+import fontRegularUrl from "../fonts/YekanBakh-Regular.woff2?url";
+import fontBoldUrl from "../fonts/YekanBakh-Bold.woff2?url";
 
 let exportFont: Promise<string> | undefined;
-function inlineFont(): Promise<string> {
-  exportFont ??= fetch(fontUrl).then(response => {
+function dataUrl(url: string): Promise<string> {
+  return fetch(url).then(response => {
     if (!response.ok) throw new Error("Font unavailable");
     return response.blob();
   }).then(blob => new Promise<string>((resolve, reject) => {
@@ -11,7 +12,12 @@ function inlineFont(): Promise<string> {
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error("Font unavailable"));
     reader.readAsDataURL(blob);
-  })).catch(error => { exportFont = undefined; throw error; });
+  }));
+}
+function inlineFont(): Promise<string> {
+  exportFont ??= Promise.all([dataUrl(fontRegularUrl), dataUrl(fontBoldUrl)]).then(([regular, bold]) =>
+    `@font-face{font-family:YekanBakh;src:url('${regular}') format('woff2');font-weight:400;font-style:normal}@font-face{font-family:YekanBakh;src:url('${bold}') format('woff2');font-weight:700;font-style:normal}`
+  ).catch(error => { exportFont = undefined; throw error; });
   return exportFont;
 }
 
@@ -92,7 +98,7 @@ export async function renderDocumentPdf(element: HTMLElement): Promise<Blob> {
       pixelRatio: container.scrollHeight < 7500 ? 2 : Math.min(1, 16000 / Math.max(1, container.scrollHeight)),
       skipAutoScale: true,
       backgroundColor: "#ffffff",
-      fontEmbedCSS: `@font-face{font-family:Vazirmatn;src:url('${fontData}');font-weight:100 900;font-style:normal}`,
+      fontEmbedCSS: fontData,
       style: { position: "static", margin: "0", left: "0", right: "auto" },
     });
     if (!canvas.width || !canvas.height) throw new Error("Document capture failed");

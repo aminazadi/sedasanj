@@ -1,6 +1,6 @@
 @import "./document-content.css";
 .document-export-host { position: absolute; top: 0; left: -200vw; }
-.document-print { width: 186mm; background: #fff; color: #263226; font: 350 14px/2 Vazirmatn, sans-serif; }
+.document-print { width: 186mm; background: #fff; color: #263226; font: 350 14px/2 YekanBakh, sans-serif; }
 .document-print-content { padding: 8px 0; }
 .document-print-footer, .document-print-spacer { display: none; }
 .document-body .statistics-chart { break-inside: avoid; }

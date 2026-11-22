@@ -5,7 +5,7 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}", "./node_modules/@cbi/web-shared/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      fontFamily: { sans: ["Vazirmatn", "IRANSans", "system-ui", "sans-serif"] },
+      fontFamily: { sans: ["YekanBakh", "Tahoma", "system-ui", "sans-serif"] },
       colors: tailwindColors,
     },
   },

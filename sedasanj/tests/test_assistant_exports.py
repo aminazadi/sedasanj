@@ -463,8 +463,8 @@ async def test_authenticated_download_enforces_owner_and_expiry(principal, stora
 
 def test_font_license_is_bundled():
     path = Path(exports.__file__).resolve().parents[1] / "assets/fonts"
-    assert (path / "Vazirmatn-Regular.ttf").stat().st_size > 10000
-    assert "SIL OPEN FONT LICENSE" in (path / "OFL.txt").read_text()
+    assert (path / "YekanBakh-Regular.ttf").stat().st_size > 10000
+    assert "Fontiran" in (path / "README.md").read_text(encoding="utf-8")
 
 
 async def test_commit_failure_compensates_uploaded_export(monkeypatch, principal, storage):

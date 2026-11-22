@@ -20,7 +20,8 @@ import "tinymce-i18n/langs7/fa.js";
 import { documentToHtml, documentToMarkdown } from "../lib/documentMarkdown.mjs";
 import markdownStyles from "./markdown-content.css?raw";
 import documentStyles from "./document-content.css?raw";
-import fontUrl from "../fonts/Vazirmatn-Variable.woff2?url";
+import fontRegularUrl from "../fonts/YekanBakh-Regular.woff2?url";
+import fontBoldUrl from "../fonts/YekanBakh-Bold.woff2?url";
 import { request } from "../api";
 import { ErrorBox } from "./Widgets";
 
@@ -105,7 +106,7 @@ export default function DocumentEditor({ content, expectedContent, path, onSaved
         block_formats: "پاراگراف=p; عنوان=h1; تیتر=h2; زیرعنوان=h3",
         valid_elements: "p,br,hr,h1,h2,h3,h4,strong/b,em/i,s,ul,ol[start],li,blockquote,pre,code[class],a[href|title],table,thead,tbody,tr,th,td",
         paste_data_images: false,
-        content_style: `@font-face{font-family:Vazirmatn;src:url('${fontUrl}') format('woff2');font-weight:100 900;font-display:swap}
+        content_style: `@font-face{font-family:YekanBakh;src:url('${fontRegularUrl}') format('woff2');font-weight:400;font-display:swap}@font-face{font-family:YekanBakh;src:url('${fontBoldUrl}') format('woff2');font-weight:700;font-display:swap}
           ${editorReset}body{margin:24px;background:#f2f0ef}
           ${markdownStyles}
           ${documentStyles}`,

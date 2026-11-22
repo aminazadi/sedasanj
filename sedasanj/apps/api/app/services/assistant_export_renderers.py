@@ -68,7 +68,7 @@ def render(
         for cells in sheet:
             for cell in cells:
                 cell.alignment = Alignment(horizontal="right", vertical="top", wrap_text=True)
-                cell.font = Font(name="Vazirmatn", size=11, bold=cell.row == 1)
+                cell.font = Font(name="YekanBakh", size=11, bold=cell.row == 1)
                 # Explicit string cells also protect phone numbers and formula-like values.
                 cell.data_type = "s"
         for index in range(1, len(columns) + 1):

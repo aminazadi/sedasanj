@@ -8,5 +8,5 @@
 :is(.document-body .markdown-message, .document-content) :is(td,th) { border: 1px solid #b2ac88; padding: 8px; }
 :is(.document-body .markdown-message, .document-content) :is(ul,ol) { list-style-position: inside; }
 :is(.document-body .markdown-message, .document-content) th { background: #f2f0ef; }
-:is(.document-body .markdown-message, .document-content) { font-family: Vazirmatn, sans-serif; font-weight: 350; }
+:is(.document-body .markdown-message, .document-content) { font-family: YekanBakh, sans-serif; font-weight: 350; }
 :is(.document-body .markdown-message, .document-content) :is(pre, code) { line-height: 2; }
