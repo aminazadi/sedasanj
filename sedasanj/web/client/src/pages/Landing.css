@@ -594,9 +594,9 @@
   .site-app-visual { order: 0; padding-inline: 52px; }
 }
 
-.site-app-copy .site-app-pitch { max-width: 30em; margin-top: 22px; font-size: 17px; line-height: 2.2; color: var(--site-muted); text-wrap: balance; }
+.site-app-copy .site-app-pitch { max-width: 36em; margin-top: 22px; font-size: 17px; line-height: 2.2; color: var(--site-muted); text-wrap: pretty; }
 .site-app-pitch strong { color: var(--site-text, #20251f); font-weight: 800; }
-.site-app-pitch em { font-style: normal; font-weight: 700; color: var(--site-primary); padding: 0 .3em; background: linear-gradient(transparent 62%, rgb(var(--color-primary-rgb) / .16) 62%); }
+.site-app-pitch em { font-style: normal; font-weight: 700; color: var(--site-primary); padding: 0 .3em; background: linear-gradient(transparent 62%, rgb(var(--color-primary-rgb) / .16) 62%); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
 /* Satisfaction preview: compact, centered cards instead of widely spread items. */
 @media (min-width: 861px) {

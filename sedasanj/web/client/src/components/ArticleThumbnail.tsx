@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import fallback from "../assets/article-default.webp";
+import fallback from "../assets/article-default.svg";
 
 /** Keep article cards illustrated when no cover is set or the selected file fails. */
 export default function ArticleThumbnail({ src }: { src?: string | null }) {

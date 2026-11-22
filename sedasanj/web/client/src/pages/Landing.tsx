@@ -317,7 +317,7 @@ function AppDownload() {
   return <section className="site-hero site-app" id="app"><div className="site-container site-split site-app-grid">
     <div className="site-app-copy">
       <h2 className="site-hero-title site-hero-title-flow">راحت‌تر و هر زمان<br/><span className="site-hero-title-accent">صورت‌جلسه‌ای حرفه‌ای</span> داشته باشید</h2>
-      <p className="site-app-pitch">با جلسه‌نگار <strong>جلسه‌های حضوری را ضبط کنید</strong>، <em>متن فارسی</em> گفت‌وگو را دریافت کنید و آن را به <em>پنل سازمان</em> بفرستید.</p>
+      <p className="site-app-pitch">با جلسه‌نگار <strong>جلسه‌های حضوری را ضبط کنید</strong>، <em>متن فارسی</em> گفت‌وگو با انتساب دقیق به اعضای جلسه را دریافت کنید و آن را به <em>پنل سازمان</em> بفرستید.</p>
       <div className="site-actions">
         {state === "ready" && data && directOnly && <a className="site-button" href={data.android!.download_path} download><Icon name="download" size={18}/>دانلود جلسه‌نگار</a>}
         {state === "ready" && data && hasAny && !directOnly && <button className="site-button" type="button" onClick={() => setDialogOpen(true)}><Icon name="download" size={18}/>دانلود جلسه‌نگار</button>}
