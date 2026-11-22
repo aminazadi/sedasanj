@@ -204,7 +204,7 @@ class SsAppBarAction extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           iconSize: 19,
           textStyle: const TextStyle(
-            fontFamily: 'Vazirmatn',
+            fontFamily: 'YekanBakh',
             fontSize: 12.5,
             fontWeight: FontWeight.w500,
           ),
@@ -448,7 +448,7 @@ class SsBadge extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontFamily: 'Vazirmatn',
+              fontFamily: 'YekanBakh',
               fontSize: 11,
               fontWeight: FontWeight.w500,
               height: 1.4,
