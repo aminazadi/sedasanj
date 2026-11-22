@@ -154,8 +154,8 @@
 .marketing-site .site-assistant-demo .assistant-message-avatar { border: 1px solid var(--color-accent); background: var(--color-canvas); color: var(--color-primary); }
 .marketing-site .site-assistant-demo .assistant-message-avatar > svg { width: 26px; height: 26px; }
 /* Demo chart cards: no border of their own; the bubble frames them. Drop the card's bottom padding and the Recharts strip under the x-axis labels, so the labels sit at the bubble's own 12px bottom padding. */
-.marketing-site .site-assistant-demo .statistics-chart { border: 0; padding-bottom: 0; padding-right: 0; }
-.marketing-site .site-assistant-demo .statistics-chart > .h-64 { margin-bottom: -15px; }
+.marketing-site .site-assistant-demo .statistics-chart { border: 0; padding: 4px 16px 16px; }
+.marketing-site .site-assistant-demo .statistics-chart > .h-64 { margin-bottom: 0; }
 /* Bubble holding a chart: keep the bubble's normal padding for the message text, and let only the chart block extend 16px into that right padding, so the chart's own right reserve sits at the bubble edge. */
 .marketing-site .site-assistant-demo .assistant-message-bubble-ai > .statistics-charts { width: calc(100% + 16px); margin-right: -16px; }
 /* Assistant bubbles run to the far edge of the chat (only the avatar and gap are reserved), instead of the narrow 85% column. */

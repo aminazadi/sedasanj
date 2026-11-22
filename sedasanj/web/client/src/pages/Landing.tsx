@@ -214,11 +214,6 @@ function DownloadDialog({ data, onClose }: { data: AppDownloads; onClose: () => 
     {stores.length > 0 && <><h4>فروشگاه‌ها</h4><ul className="site-dl-list">{stores.map(([key, label]) => <li key={key}><a href={data.stores[key]} target="_blank" rel="noopener noreferrer"><span><Icon name="arrow" size={16}/>{label}</span></a></li>)}</ul></>}
   </dialog>;
 }
-const appFeatures: Array<{ icon: IconName; title: string; body: string }> = [
-  { icon: "headset", title: "ضبط جلسه با یک لمس", body: "جلسه را روی گوشی ضبط کنید؛ متن فارسی هم‌زمان با ضبط ساخته می‌شود." },
-  { icon: "users", title: "تفکیک گوینده‌ها", body: "برای افراد حاضر نمونهٔ صدا ثبت کنید تا هر جمله به گوینده‌اش نسبت داده شود." },
-  { icon: "refresh", title: "اتصال به صداسنج", body: "با اسکن یک QR به سازمان خود وصل شوید و جلسه‌ها را به پنل بفرستید." },
-];
 const ucShortLabels: Record<string, string> = {
   gov: "سازمان‌های دولتی",
   finance: "بانک و بیمه",
@@ -323,7 +318,6 @@ function AppDownload() {
     <div className="site-app-copy">
       <h2 className="site-hero-title site-hero-title-flow">راحت‌تر و هر زمان<br/><span className="site-hero-title-accent">صورت‌جلسه‌ای حرفه‌ای</span> داشته باشید</h2>
       <p className="site-app-pitch">با جلسه‌نگار <strong>جلسه‌های حضوری را ضبط کنید</strong>، <em>متن فارسی</em> گفت‌وگو را دریافت کنید و آن را به <em>پنل سازمان</em> بفرستید.</p>
-      <ul className="site-app-features">{appFeatures.map((item) => <li key={item.title}><Icon name={item.icon} size={18}/><span>{item.title}</span></li>)}</ul>
       <div className="site-actions">
         {state === "ready" && data && directOnly && <a className="site-button" href={data.android!.download_path} download><Icon name="download" size={18}/>دانلود جلسه‌نگار</a>}
         {state === "ready" && data && hasAny && !directOnly && <button className="site-button" type="button" onClick={() => setDialogOpen(true)}><Icon name="download" size={18}/>دانلود جلسه‌نگار</button>}
@@ -461,7 +455,7 @@ const DEMO_CHART: AssistantChart = {
   size: "full",
   value_label: "تعداد تماس",
   data: [
-    { label: "شنبه", value: 62 },
+    { label: "شنبه", value: 88 },
     { label: "یک‌شنبه", value: 74 },
     { label: "دوشنبه", value: 81 },
     { label: "سه‌شنبه", value: 69 },
