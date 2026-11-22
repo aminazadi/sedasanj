@@ -62,6 +62,12 @@ PUBLIC_ASSISTANT_SYSTEM_PROMPT = """تو هوشیار، دستیار راهنم�
 نمی‌دانی حدس نزن و کاربر را به پشتیبانی صداسنج ارجاع بده."""
 
 
+PUBLIC_ASSISTANT_FAILURE_MESSAGE = (
+    "پاسخ آماده نشد؛ لطفاً چند لحظه بعد دوباره تلاش کنید یا از صفحهٔ «تماس با ما» "
+    "به پشتیبانی صداسنج پیام بدهید."
+)
+
+
 async def _public_assistant_system_prompt(session: Any) -> str:
     instructions = await effective_public_assistant_instructions(session)
     return (
@@ -103,10 +109,15 @@ async def stream_public_message(
 
     async def events() -> AsyncIterator[bytes]:
         answer = ""
-        client = build_client(runtime, request_namespace="public-assistant", purpose="chat")
-        question = payload.content.strip()
-        user_input = f"{history}\n\nکاربر: {question}" if history else question
+        client: Any = None
+        # Tells the widget the request was accepted before a (possibly slow) provider answers.
+        yield _sse("phase", {"phase": "thinking"})
         try:
+            # Building the client raises when the admin-panel provider key/base URL is unset;
+            # that must reach the visitor as a message, not as a silently dropped stream.
+            client = build_client(runtime, request_namespace="public-assistant", purpose="chat")
+            question = payload.content.strip()
+            user_input = f"{history}\n\nکاربر: {question}" if history else question
             async for chunk in client.stream(
                 system_prompt,
                 user_input,
@@ -115,15 +126,18 @@ async def stream_public_message(
             ):
                 answer += chunk
                 yield _sse("delta", {"content": chunk})
+            if not answer.strip():
+                raise RuntimeError("empty public assistant response")
         except Exception as exc:
             logger.warning(
                 "public assistant response failed",
                 extra={"extra_fields": {"error_code": getattr(exc, "code", type(exc).__name__)}},
             )
-            answer = "پاسخ آماده نشد؛ لطفاً دوباره تلاش کنید."
+            answer = PUBLIC_ASSISTANT_FAILURE_MESSAGE
             yield _sse("replace", {"content": answer})
         finally:
-            await client.close()
+            if client is not None:
+                await client.close()
         yield _sse("done", {"content": answer.strip()})
 
     return StreamingResponse(

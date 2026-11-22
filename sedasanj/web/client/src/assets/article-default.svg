@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="تصویر پیش‌فرض مقاله">
+  <!-- ground shadow -->
+  <ellipse cx="480" cy="436" rx="260" ry="20" fill="#4B6E48" fill-opacity="0.08"/>
+  <!-- image card with folded corner -->
+  <path d="M320 140H600L660 200V400H320Z" fill="#F0EEED" stroke="#4B6E48" stroke-width="10"/>
+  <path d="M600 140V200H660" fill="#E8EDE0" stroke="#4B6E48" stroke-width="8"/>
+  <!-- one text-like bar -->
+  <path d="M358 186H500" stroke="#B5AE8A" stroke-width="12"/>
+  <!-- picture: sun and mountains -->
+  <circle cx="580" cy="262" r="20" fill="#E8EDE0" stroke="#4B6E48" stroke-width="8"/>
+  <path d="M358 376L440 290L500 344L540 308L622 376Z" fill="#E8EDE0" stroke="#4B6E48" stroke-width="8"/>
+</svg>
