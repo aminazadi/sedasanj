@@ -675,7 +675,7 @@ export default function Landing() {
       </div>
         <button className="site-scroll-down" type="button" aria-label="رفتن به بخش بعدی" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}><span className="site-scroll-text" dir="ltr">Scroll Down</span><span className="site-scroll-icon" aria-hidden="true"/></button>
       </section>
-      <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها آماده‌س</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
+      <section className="site-section" id="features"><div className="site-container"><h2>همه‌چیز برای درک بهتر تماس‌ها آمادست</h2><div className="site-benefits">{benefits.map((item) => <article key={item.title}><Icon name={item.icon} size={32}/><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></div></section>
       <section className="site-integration-banner" id="integration" aria-label="اتصال سامانه تلفنی به صداسنج"><picture><source media="(max-width: 760px)" srcSet={srcSetFor(integrationBannerMobile) || integrationBannerMobile} sizes="100vw"/><img src={integrationBanner} srcSet={srcSetFor(integrationBanner)} sizes="(max-width: 1160px) 100vw, 1160px" width={1600} height={536} alt="اتصال Issabel و FreePBX به داشبورد تحلیل مکالمات صداسنج" loading="lazy" decoding="async"/></picture><div className="site-integration-copy"><h2>به‌راحتی به تلفن ابری شما متصل می‌شود</h2><p>صداسنج با ماژول حرفه‌ای روی FreePBX و Issabel نصب می‌شود و همهٔ فرایندها به‌صورت خودکار انجام می‌شوند.</p><a className="site-button" href="https://github.com/aminazadi/Sedasanj-Module.git" target="_blank" rel="noreferrer"><Icon name="download" size={18}/>دانلود ماژول</a></div></section>
       <UseCases/>
       <section className="site-section" id="workflow">
@@ -713,7 +713,7 @@ export default function Landing() {
             <path stroke="#fff" strokeWidth="1.6" strokeLinecap="round" opacity=".7" d="M1199 60C1196 78 1170 90 1130 98C1090 108 1050 120 1010 118"/>
           </g>
           <g fill="#cfe0c9"><circle cx="1182" cy="56" r="2.2" opacity=".8"/><circle cx="1226" cy="60" r="1.8" opacity=".7"/><circle cx="1174" cy="68" r="1.5" opacity=".6"/><circle cx="1234" cy="48" r="1.4" opacity=".6"/></g>
-          <g transform="translate(1204 9)">
+          <g transform="translate(1204 9) rotate(12 0 40)">
             <path fill="#f5c542" d="M-11 29Q-18 44 0 56Q18 44 11 29Z"/>
             <path fill="#ffe08a" d="M-7 30Q-10 41 0 49Q10 41 7 30Z"/>
             <path fill="#fff6cf" d="M-3.5 30Q-5 37 0 42Q5 37 3.5 30Z"/>
