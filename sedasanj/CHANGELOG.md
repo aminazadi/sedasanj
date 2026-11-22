@@ -1,5 +1,17 @@
 ## 2026-11-22 — AMINAZADI
 
+- On phones, the landing-page Hooshyar demo chat hides the message avatars and the bubble tails, and bubbles use the full row width (`web/client/src/pages/Landing.css`).
+
+- Removed the pulsing border ring around the quick assistant launcher (the `::after` on `.quick-assistant-trigger` and its `quick-assistant-border-pulse` keyframes) (`web/client/src/index.css`).
+
+- Removed the hand-drawn green arrow that sat beside every landing-page section heading (the `::after` on `.site-section > .site-container > h2`) (`web/client/src/pages/Landing.css`).
+
+- Fixed extra spacing between the sign-in card and its footer links: the footer sits 12px below the card (was 24px) (`web/client/src/pages/PublicPages.css`).
+
+- Fixed the theme toggle on public pages: the border is removed from the sign-in page toggle (`.auth-theme-switch`) and the header toggle on the landing and public pages (`.site-theme-toggle`) (`web/client/src/pages/PublicPages.css`, `web/client/src/pages/Landing.css`).
+
+- Fixed extra spacing on the web panel sign-in page: the gap between the phone-login button and the terms line is 12px (was 18px), and the gap before the "ورود با گذرواژه" / "ورود با کد پیامکی" switch line is 16px (was 24px) (`web/client/src/pages/PublicPages.css`).
+
 - Landing page plan cards: removed the bold formatting from the feature list values (operators, assistant messages, free minutes, overage price, extra operator price) (`pages/Landing.tsx`).
 
 - Landing page هوشیار demo: the chat card's column is wider on desktop (grid `1fr 1.6fr`, 56px gap); chat height is unchanged (`pages/Landing.css`).
