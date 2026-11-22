@@ -469,6 +469,26 @@ select {
   100% { opacity: 0; transform: scale(1.7); }
 }
 
+@media (max-width: 760px) {
+  .quick-assistant-trigger,
+  .quick-assistant-panel {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .quick-assistant-panel.scale-100 {
+    transform: translateX(-50%) scale(1);
+  }
+
+  .quick-assistant-panel.scale-\[0\.14\] {
+    transform: translateX(-50%) scale(.14);
+  }
+
+  .quick-assistant-trigger.scale-90 {
+    transform: translateX(-50%) scale(.9);
+  }
+}
+
 /* The mascot's plastic-shell palette was tuned for a dark canvas (pale cream
    bevel highlights). On a light canvas those same pale tones sit too close
    to the page color to read as a shell at all, so light mode gets a
