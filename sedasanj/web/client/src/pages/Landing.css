@@ -296,8 +296,7 @@
   .site-hero::after { background: linear-gradient(to left, rgb(var(--color-canvas-rgb) / .97), rgb(var(--color-canvas-rgb) / .86)); }
   .site-section { padding: 48px 0; }
   .site-integration-banner { padding-block: 0 32px; }
-  .site-integration-banner img { position: relative; top: -80px; margin-bottom: -48px; }
-  .site-integration-copy { margin-top: -84px; }
+  .site-integration-copy { position: absolute; inset-inline: 0; top: 50%; margin: 0 auto; transform: translateY(-50%); }
   #pricing .site-container { width: 100%; }
   #pricing h2, #pricing .site-intro, #pricing .site-status, #pricing .site-pricing-note { margin-inline: 20px; }
   .site-hero p { font-size: 14px; }
