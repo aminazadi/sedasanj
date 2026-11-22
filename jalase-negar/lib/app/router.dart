@@ -37,7 +37,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (ref.read(appLockRuntimeProvider).locked) {
         return state.uri.path == '/lock' ? null : '/lock';
       }
-      if (state.uri.path == '/lock') return null;
+      // Unlocked while still sitting on /lock (successful device auth): leave
+      // the gate for the home screen. Returning null here kept the user on
+      // the lock page after a successful fingerprint.
+      if (state.uri.path == '/lock') return '/';
       return state.uri.path == '/result' || state.uri.path == '/payment/result'
           ? '/plans'
           : null;
