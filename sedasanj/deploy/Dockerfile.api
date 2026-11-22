@@ -26,7 +26,9 @@ RUN python scripts/install_project_dependencies.py
 ENV PYTHONPATH=/srv/app/apps/api:/srv/app/apps/worker_asr:/srv/app/apps/worker_emotion:/srv/app/apps/worker_llm:/srv/app/apps/worker_notify:/srv/app/apps/worker_meeting:/srv/app/apps/worker_dispatch:/srv/app/apps/worker_provision:/srv/app/apps/agent
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
+# One worker: Socket.IO/Engine.IO keeps session state per process and the proxy has no sticky
+# routing, so multiple workers make polling and websocket upgrades fail with "Invalid session".
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
 
 FROM base AS api
 # Only the API inspects uploaded Jalase-Negar releases.
