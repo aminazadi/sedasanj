@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
+import 'package:jalase_negar/core/models/model_catalog.dart';
 import 'package:jalase_negar/features/meetings/application/meeting_providers.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/meetings/presentation/meetings_screen.dart';
+import 'package:jalase_negar/features/models/application/models_controller.dart';
 import 'package:jalase_negar/features/upload/upload_controller.dart';
 
 void main() {
@@ -40,6 +42,7 @@ void main() {
               (ref) => _MeetingActions(ref, meeting.id, () => deleted = true),
             ),
             uploadQueueProvider.overrideWith(_IdleUploadController.new),
+            modelsControllerProvider.overrideWith(_ReadyModels.new),
           ],
           child: MaterialApp(
             theme: buildAppTheme(),
@@ -96,4 +99,15 @@ class _MeetingActions extends MeetingActions {
 class _IdleUploadController extends UploadController {
   @override
   UploadState build() => const UploadState();
+}
+
+class _ReadyModels extends ModelsController {
+  @override
+  ModelsState build() => ModelsState(
+    loading: false,
+    items: [
+      for (final spec in ModelCatalog.all)
+        ModelItemState(spec: spec, installed: true, selected: true),
+    ],
+  );
 }

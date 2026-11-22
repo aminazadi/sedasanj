@@ -100,6 +100,7 @@ class UploadQueue {
     required this.api,
     this.appVersion = '2.0.0',
     this.concurrency = 2,
+    this.workspace = kWorkspacePrimary,
     Random? random,
     DateTime Function()? now,
   }) : _random = random ?? Random(),
@@ -109,6 +110,9 @@ class UploadQueue {
   final MeetingUploadApi api;
   final String appVersion;
   final int concurrency;
+
+  /// Only meetings of this workspace are sent with this queue's key.
+  final String workspace;
   final Random _random;
   final DateTime Function() _now;
 
@@ -122,7 +126,9 @@ class UploadQueue {
       if (wake == null || d < wake!) wake = d;
     }
 
-    for (final meeting in await store.uploadableMeetings()) {
+    for (final meeting in (await store.uploadableMeetings()).where(
+      (m) => m.workspace == workspace,
+    )) {
       try {
         final result = await _processMeeting(meeting, wakeIn);
         if (result != null) lastError = result;
@@ -240,6 +246,8 @@ class UploadQueue {
         startedAt: current.createdAt,
         appVersion: appVersion,
         attendees: await store.attendees(current.id),
+        outputType: current.outputTypeCode,
+        outputTypeInputValues: current.outputTypeInputValues,
       );
       if (session.inputKind != 'text') {
         await store.setStatus(

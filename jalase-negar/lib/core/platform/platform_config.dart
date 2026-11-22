@@ -114,10 +114,14 @@ class PlatformConnection {
     required this.userName,
     required this.tenantName,
     required this.tokenPrefix,
+    this.personal = false,
   });
 
   final String serverUrl;
   final String userName;
   final String tenantName;
   final String tokenPrefix;
+
+  /// True for a phone-number (stand-alone) account, false for a paired organization.
+  final bool personal;
 }

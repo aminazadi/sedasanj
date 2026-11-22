@@ -12,6 +12,7 @@ import '../data/attendee.dart';
 import '../data/meeting.dart';
 import '../data/transcript_edit.dart';
 import 'audio_waveform_player.dart';
+import 'meeting_output_tab.dart';
 import 'share_meeting_audio.dart';
 import 'detected_speakers_card.dart';
 import 'send_meeting_action.dart';
@@ -64,7 +65,12 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             ref.watch(meetingAttendeesProvider(meetingId)).value ??
             const <Attendee>[];
         final showAttendees = attendees.isNotEmpty;
-        final tabCount = 1 + (showSpeakers ? 1 : 0) + (showAttendees ? 1 : 0);
+        final showOutput = data.meeting.remoteMeetingId != null;
+        final tabCount =
+            1 +
+            (showSpeakers ? 1 : 0) +
+            (showAttendees ? 1 : 0) +
+            (showOutput ? 1 : 0);
         final canSend = canSendMeetingText(
           data.meeting,
           hasText: transcript.isNotEmpty,
@@ -91,6 +97,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         const Tab(text: 'متن جلسه'),
                         if (showSpeakers) const Tab(text: 'گوینده‌ها'),
                         if (showAttendees) const Tab(text: 'حاضران'),
+                        if (showOutput) const Tab(text: 'خروجی جلسه'),
                       ],
                     )
                   : null,
@@ -135,6 +142,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         _AttendeesTab(
                           attendees: attendees,
                           segments: data.segments,
+                        ),
+                      if (showOutput)
+                        MeetingOutputTab(
+                          remoteMeetingId: data.meeting.remoteMeetingId!,
                         ),
                     ],
                   )
@@ -280,7 +291,7 @@ class _MeetingMenu extends ConsumerWidget {
       enabled: enabled,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: color ?? SsColors.ink),
+          Icon(icon, size: 18, color: color ?? SsColors.of(context).ink),
           const SizedBox(width: 10),
           Flexible(
             child: Text(label, style: TextStyle(color: color)),
@@ -292,9 +303,8 @@ class _MeetingMenu extends ConsumerWidget {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
       tooltip: 'گزینه‌ها',
-      color: Colors.white,
       shape: RoundedRectangleBorder(
-        side: const BorderSide(color: SsColors.line),
+        side: BorderSide(color: SsColors.of(context).line),
       ),
       position: PopupMenuPosition.under,
       onSelected: (value) => switch (value) {
@@ -316,7 +326,7 @@ class _MeetingMenu extends ConsumerWidget {
           'delete',
           Icons.delete_outline,
           'حذف جلسه',
-          color: SsColors.danger,
+          color: SsColors.of(context).danger,
         ),
       ],
     );
@@ -549,14 +559,17 @@ class _AttendeesTab extends StatelessWidget {
                     if (lines > 0) ...[
                       SsBadge(
                         '${toPersianDigits('$lines')} خط',
-                        color: SsColors.primary,
+                        color: SsColors.of(context).primary,
                       ),
                       SsBadge(
                         'مدت صحبت ${formatDuration(Duration(milliseconds: spokenMs))}',
-                        color: SsColors.neutral,
+                        color: SsColors.of(context).neutral,
                       ),
                     ] else
-                      const SsBadge('صحبتی ثبت نشده', color: SsColors.neutral),
+                      SsBadge(
+                        'صحبتی ثبت نشده',
+                        color: SsColors.of(context).neutral,
+                      ),
                   ],
                 ),
               ],
@@ -568,3 +581,4 @@ class _AttendeesTab extends StatelessWidget {
     );
   }
 }
+

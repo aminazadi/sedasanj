@@ -8,28 +8,36 @@ import '../../onboarding/tour_step.dart';
 import '../application/models_controller.dart';
 import '../../../app/widgets/ss_widgets.dart';
 
-class ModelsScreen extends ConsumerWidget {
+class ModelsScreen extends StatelessWidget {
   const ModelsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(modelsControllerProvider);
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: SsAppBar(
         title: Padding(
           padding: Navigator.canPop(context)
               ? EdgeInsets.zero
               : const EdgeInsetsDirectional.only(start: 12),
-          child: const TourTarget(
-            step: TourStep.models,
-            child: Text('مدل‌های هوش مصنوعی'),
-          ),
+          child: const Text('مدل‌های هوش مصنوعی'),
         ),
       ),
-      body: state.loading
-          ? const Center(child: SsProcessingMark(size: 30))
-          : const _InstallAllCard(),
+      body: const ModelsBody(),
     );
+  }
+}
+
+/// The models screen's content on its own, without a Scaffold/AppBar, so it
+/// can also be embedded as a settings tab.
+class ModelsBody extends ConsumerWidget {
+  const ModelsBody({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(modelsControllerProvider);
+    return state.loading
+        ? const Center(child: SsProcessingMark(size: 30))
+        : const _InstallAllCard();
   }
 }
 
@@ -58,24 +66,34 @@ class _InstallAllCard extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ExcludeSemantics(
-                  child: AspectRatio(
-                    aspectRatio: 480 / 230,
-                    child: SvgPicture.asset(
-                      state.ready
-                          ? 'assets/images/brand/model-ready.svg'
-                          : state.installingAll
-                          ? 'assets/images/brand/model-progress.svg'
-                          : 'assets/images/brand/model-download.svg',
-                      fit: BoxFit.contain,
-                    ),
+                TourTarget(
+                  step: TourStep.models,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ExcludeSemantics(
+                        child: AspectRatio(
+                          aspectRatio: 480 / 230,
+                          child: SvgPicture.asset(
+                            state.ready
+                                ? 'assets/images/brand/model-ready.svg'
+                                : state.installingAll
+                                ? 'assets/images/brand/model-progress.svg'
+                                : 'assets/images/brand/model-download.svg',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        state.ready
+                            ? 'نصب و فعال است'
+                            : 'دانلود، نصب و فعال‌سازی',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  state.ready ? 'نصب و فعال است' : 'دانلود، نصب و فعال‌سازی',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
                 if (state.installingAll) ...[

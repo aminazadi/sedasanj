@@ -22,7 +22,9 @@ class GuideScreen extends StatelessWidget {
         _GuideTile(
           icon: Icons.help_outline,
           title: 'راهنمای تعاملی',
-          subtitle: 'قدم‌به‌قدم: ضبط، متن زنده، مدل‌ها و اتصال به صداسنج',
+          subtitle:
+              'قدم‌به‌قدم: حاضران و نوع خروجی، ضبط، متن زنده، مدل‌ها و اتصال '
+              'به صداسنج',
           onTap: () =>
               context.go(TourStep.welcome.location(fromSettings: true)),
         ),
@@ -69,8 +71,8 @@ class _GuideTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SsCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
-        contentPadding: EdgeInsets.zero,
         leading: Icon(icon),
         title: Text(title),
         subtitle: Text(subtitle),

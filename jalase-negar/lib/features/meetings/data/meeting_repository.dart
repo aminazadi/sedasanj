@@ -270,6 +270,26 @@ class MeetingRepository implements UploadStore, TranscriptStore {
     return rows.map(Meeting.fromRow).toList();
   }
 
+  /// Chooses where one meeting goes; only allowed before it was sent, because a
+  /// meeting already started on the server belongs to that workspace's key.
+  Future<void> setWorkspace(String id, String workspace) => _db.db.update(
+    'meetings',
+    {'workspace': workspace},
+    where: 'id = ? AND remote_meeting_id IS NULL',
+    whereArgs: [id],
+  );
+
+  /// Moves meetings that are not fully sent yet to [workspace] (used when the
+  /// organization link is removed, so nothing is left waiting for a key that is gone).
+  Future<void> moveUnsentToWorkspace(String workspace) => _db.db.update(
+    'meetings',
+    {'workspace': workspace},
+    where:
+        "status IN ('recording', 'recorded', 'transcribed') "
+        'AND remote_meeting_id IS NULL AND workspace != ?',
+    whereArgs: [workspace],
+  );
+
   /// Recordings whose people still have to be identified (also those a
   /// closed app left mid-analysis).
   Future<List<Meeting>> speakerAnalysisPending() async {

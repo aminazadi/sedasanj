@@ -88,7 +88,7 @@ class PersonScreen extends ConsumerWidget {
           SsCard(
             title: 'نمونه‌های صدا',
             trailing: person.pendingSync
-                ? const SsBadge('منتظر ارسال', color: SsColors.warning)
+                ? SsBadge('منتظر ارسال', color: SsColors.of(context).warning)
                 : null,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -104,7 +104,7 @@ class PersonScreen extends ConsumerWidget {
                     'نمونه‌های این فرد با مدلی ساخته شده که روی این گوشی نصب نیست؛ '
                     'برای شناسایی، صدا را دوباره ثبت کنید یا مدل را نصب کنید.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: SsColors.danger,
+                      color: SsColors.of(context).danger,
                     ),
                   ),
                 ],
@@ -154,7 +154,9 @@ class PersonScreen extends ConsumerWidget {
           if (person.mine) ...[
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(foregroundColor: SsColors.danger),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: SsColors.of(context).danger,
+              ),
               onPressed: () => _confirmDelete(context, ref, person),
               icon: const Icon(Icons.delete_outline),
               label: const Text('حذف این فرد و صدایش'),

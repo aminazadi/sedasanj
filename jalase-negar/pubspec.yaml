@@ -2,7 +2,7 @@ name: jalase_negar
 description: "ضبط جلسه و رونویسی لوکال فارسی؛ تحلیل و صورت‌جلسه توسط صداسنج"
 publish_to: 'none'
 
-version: 1.1.5+14
+version: 1.1.6+15
 
 environment:
   sdk: ^3.9.2
@@ -27,6 +27,7 @@ dependencies:
   url_launcher: ^6.2.0
   url_launcher_android: 6.3.23
   flutter_secure_storage: ^10.3.4
+  local_auth: ^2.3.0
   mobile_scanner: ^7.4.3
   file_picker: ^11.0.3
   connectivity_plus: ^7.3.1
@@ -44,6 +45,8 @@ dependencies:
   firebase_messaging: ^15.2.10
   flutter_local_notifications: ^19.5.0
   video_player: ^2.11.1
+  flutter_poolakey: ^2.2.0+1.0.0
+  myket_iap: ^2.0.1
 
 dev_dependencies:
   flutter_test:

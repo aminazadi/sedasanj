@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../app/theme.dart';
 import '../application/live_transcript_session.dart';
@@ -150,15 +151,15 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
             decoration: widget.bare
                 ? const BoxDecoration()
                 : BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.6),
-                    border: Border.all(color: SsColors.line),
+                    color: SsColors.of(context).canvas.withValues(alpha: 0.6),
+                    border: Border.all(color: SsColors.of(context).line),
                   ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (!widget.bare) ...[
                   _Header(live: live),
-                  const Divider(height: 1, color: SsColors.line),
+                  Divider(height: 1, color: SsColors.of(context).line),
                 ],
                 Expanded(
                   child: live.lines.isEmpty
@@ -237,8 +238,8 @@ class _LiveTranscriptPanelState extends State<LiveTranscriptPanel> {
                       live.note!,
                       style: textTheme.bodySmall?.copyWith(
                         color: live.phase == LivePhase.failed
-                            ? SsColors.danger
-                            : SsColors.warning,
+                            ? SsColors.of(context).danger
+                            : SsColors.of(context).warning,
                       ),
                     ),
                   ),
@@ -329,7 +330,7 @@ class _FadingLineState extends State<_FadingLine>
   @override
   Widget build(BuildContext context) {
     final base = widget.style ?? const TextStyle();
-    final color = base.color ?? SsColors.ink;
+    final color = base.color ?? SsColors.of(context).ink;
     final spans = <InlineSpan>[];
     if (widget.typing) {
       final words = widget.text.split(' ');
@@ -355,7 +356,7 @@ class _FadingLineState extends State<_FadingLine>
               width: 2,
               height: 16,
               margin: const EdgeInsetsDirectional.only(start: 3),
-              color: SsColors.primary,
+              color: SsColors.of(context).primary,
             ),
           ),
         ),
@@ -375,21 +376,28 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (live.phase) {
-      LivePhase.preparing => ('در حال آماده‌سازی…', SsColors.warning),
+      LivePhase.preparing => (
+        'در حال آماده‌سازی…',
+        SsColors.of(context).warning,
+      ),
       LivePhase.listening when live.speaking => (
         'در حال شنیدن…',
-        SsColors.primary,
+        SsColors.of(context).primary,
       ),
-      LivePhase.listening => ('زنده', SsColors.success),
-      LivePhase.lagging => ('کمی عقب است', SsColors.warning),
-      LivePhase.failed => ('متوقف شد', SsColors.danger),
-      LivePhase.off => ('خاموش', SsColors.neutral),
+      LivePhase.listening => ('زنده', SsColors.of(context).success),
+      LivePhase.lagging => ('کمی عقب است', SsColors.of(context).warning),
+      LivePhase.failed => ('متوقف شد', SsColors.of(context).danger),
+      LivePhase.off => ('خاموش', SsColors.of(context).neutral),
     };
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.subtitles_outlined, size: 18, color: SsColors.ink),
+          Icon(
+            Icons.subtitles_outlined,
+            size: 18,
+            color: SsColors.of(context).ink,
+          ),
           const SizedBox(width: 8),
           Text('متن زنده', style: Theme.of(context).textTheme.titleSmall),
           const Spacer(),
@@ -418,24 +426,193 @@ class _EmptyHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text =
-        live.note ??
-        switch (live.phase) {
-          LivePhase.preparing =>
-            'مدل در حال آماده‌سازی است؛ ضبط از همین حالا انجام می‌شود.',
-          LivePhase.failed => 'متن زنده در دسترس نیست.',
-          _ =>
-            'شروع به صحبت کنید؛ متن هر جمله پس از یک مکث کوتاه اینجا ظاهر می‌شود.',
-        };
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+    // live.note is always a "no live text" reason (missing/incomplete
+    // models); its own copy already names the fix, so it keeps that text
+    // but reads as an audio-only state, not an error, with its own
+    // illustration and a short headline above it.
+    final waiting = live.note == null && live.phase != LivePhase.preparing &&
+        live.phase != LivePhase.failed;
+    final (double iconSize, Widget Function(double size) buildVisual, String? title, String body) =
+        switch (live.note) {
+      final note? => (
+        148,
+        (size) => const _AudioOnlyArt(),
+        'فقط ضبط صدا',
+        note,
       ),
+      null => switch (live.phase) {
+        LivePhase.preparing => (
+          34,
+          (size) => Icon(
+            Icons.hourglass_top_outlined,
+            size: size,
+            color: SsColors.of(context).neutral,
+          ),
+          null,
+          'مدل در حال آماده‌سازی است؛ ضبط از همین حالا انجام می‌شود.',
+        ),
+        LivePhase.failed => (
+          34,
+          (size) => Icon(
+            Icons.error_outline,
+            size: size,
+            color: SsColors.of(context).neutral,
+          ),
+          null,
+          'متن زنده در دسترس نیست.',
+        ),
+        _ => (
+          64,
+          (size) =>
+              Icon(Icons.mic_none, size: size, color: SsColors.of(context).neutral),
+          null,
+          'شروع به صحبت کنید\nهر جمله پس از یک مکث\nکوتاه اینجا ظاهر می‌شود.',
+        ),
+      },
+    };
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Fills the whole panel instead of sitting at a fixed size: the icon
+        // scales with the available height, up to a comfortable cap.
+        final size = waiting
+            ? (constraints.maxHeight * 0.22).clamp(48.0, 96.0)
+            : iconSize;
+        return SizedBox.expand(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  buildVisual(size),
+                  const SizedBox(height: 16),
+                  if (title != null) ...[
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: SsColors.of(context).ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  _TypedText(
+                    key: ValueKey(body),
+                    text: body,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
+}
+
+/// Reveals [text] one character at a time, as if it were being typed, with a
+/// blinking caret following the last character until it is done. Runs once
+/// whenever [text] changes (give it a [ValueKey] per distinct text so a
+/// switch to new copy restarts the animation).
+class _TypedText extends StatefulWidget {
+  const _TypedText({
+    super.key,
+    required this.text,
+    required this.style,
+    this.textAlign,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+
+  @override
+  State<_TypedText> createState() => _TypedTextState();
+}
+
+class _TypedTextState extends State<_TypedText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+  Timer? _timer;
+  int _shown = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  void _start() {
+    if (!mounted) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      setState(() => _shown = widget.text.length);
+      return;
+    }
+    _timer = Timer.periodic(const Duration(milliseconds: 35), (_) {
+      if (!mounted || _shown >= widget.text.length) {
+        _timer?.cancel();
+        return;
+      }
+      setState(() => _shown++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _blink.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final done = _shown >= widget.text.length;
+    final color = widget.style?.color ?? SsColors.of(context).ink;
+    return Text.rich(
+      TextSpan(
+        style: widget.style,
+        children: [
+          TextSpan(text: widget.text.substring(0, _shown)),
+          if (!done)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: FadeTransition(
+                opacity: _blink,
+                child: Container(
+                  width: 2,
+                  height: (widget.style?.fontSize ?? 14) * 0.9,
+                  margin: const EdgeInsetsDirectional.only(start: 2),
+                  color: color,
+                ),
+              ),
+            ),
+        ],
+      ),
+      textAlign: widget.textAlign ?? TextAlign.start,
+    );
+  }
+}
+
+/// A waveform card with a crossed-out captions badge: audio is still being
+/// recorded, there's just no live text for it right now.
+class _AudioOnlyArt extends StatelessWidget {
+  const _AudioOnlyArt();
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: SizedBox(
+      width: 148,
+      child: AspectRatio(
+        aspectRatio: 300 / 330,
+        child: SvgPicture.asset(
+          'assets/images/brand/audio-only-recording.svg',
+          fit: BoxFit.contain,
+        ),
+      ),
+    ),
+  );
 }

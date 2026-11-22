@@ -44,6 +44,12 @@ if (pushConfigured) {
     }
 }
 
+fun storeBilling(id: String, bind: String, permission: String) = mapOf(
+    "marketApplicationId" to id,
+    "marketBindAddress" to bind,
+    "marketPermission" to permission,
+)
+
 android {
     namespace = "app.jalasenegar.jalase_negar"
     compileSdk = 36
@@ -79,9 +85,20 @@ android {
     // drop it (see src/<flavor>/AndroidManifest.xml) because the store delivers updates.
     flavorDimensions += "store"
     productFlavors {
-        create("direct") { dimension = "store" }
-        create("bazaar") { dimension = "store" }
-        create("myket") { dimension = "store" }
+        // The myket_iap plugin reads these placeholders in every flavor (its manifest adds the
+        // billing permission and package query); only the store builds actually call the SDK.
+        create("direct") {
+            dimension = "store"
+            manifestPlaceholders += storeBilling("ir.mservices.market", "ir.mservices.market.InAppBillingService.BIND", "ir.mservices.market.BILLING")
+        }
+        create("bazaar") {
+            dimension = "store"
+            manifestPlaceholders += storeBilling("com.farsitel.bazaar", "ir.cafebazaar.pardakht.InAppBillingService.BIND", "com.farsitel.bazaar.permission.PAY_THROUGH_BAZAAR")
+        }
+        create("myket") {
+            dimension = "store"
+            manifestPlaceholders += storeBilling("ir.mservices.market", "ir.mservices.market.InAppBillingService.BIND", "ir.mservices.market.BILLING")
+        }
     }
 
     signingConfigs {

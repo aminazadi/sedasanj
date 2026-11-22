@@ -5,11 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/db/document_cache.dart';
 import '../../../core/platform/api_client.dart';
 import '../../../core/platform/connection_store.dart';
 import '../../../core/platform/platform_config.dart';
 import '../../../core/providers.dart';
 import '../../meetings/application/meeting_providers.dart';
+import '../../meetings/data/meeting.dart';
+import '../../plans/data/billing_models.dart';
 import '../../recording/application/live_engine_provider.dart';
 import '../../upload/upload_controller.dart';
 
@@ -108,6 +111,138 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
     }
   }
 
+  /// Stores the device token of a phone-number (personal) sign-in. The upload
+  /// queue then sends meetings with it exactly like a paired organization.
+  Future<void> savePersonal({
+    required String serverUrl,
+    required PersonalLoginResult login,
+  }) async {
+    final connection = PlatformConnection(
+      serverUrl: serverUrl,
+      userName: login.userName,
+      tenantName: 'حساب شخصی',
+      tokenPrefix: login.tokenPrefix,
+      personal: true,
+    );
+    final store = await ref.read(connectionStoreProvider.future);
+    await store.save(connection, login.token);
+    state = AsyncData(ConnectionState(connection: connection));
+    if (await ref.read(sendTranscriptEnabledProvider.future)) {
+      final repo = await ref.read(meetingRepositoryProvider.future);
+      await repo.enableSendForUnsent();
+      ref.invalidate(meetingsProvider);
+    }
+    ref.read(uploadQueueProvider.notifier).kick();
+  }
+
+  /// Links the signed-in personal account to a SedaSanj organization with the
+  /// organization's pairing code. Returns a Persian error that names the next
+  /// step, or null on success.
+  Future<String?> linkOrganization(String pairingCode) async {
+    final connection = state.value?.connection;
+    final store = await ref.read(connectionStoreProvider.future);
+    final token = await store.token();
+    if (connection == null || !connection.personal || token == null) {
+      return 'اتصال به سازمان فقط با حساب شخصی ممکن است؛ ابتدا با شمارهٔ موبایل وارد شوید.';
+    }
+    try {
+      final result =
+          await ApiClient(
+            serverUrl: connection.serverUrl,
+            token: token,
+          ).linkOrganization(
+            pairingCode: pairingCode.trim(),
+            deviceLabel: _deviceLabel(),
+            appVersion: await ref.read(appVersionProvider.future),
+            platform: _serverPlatform(),
+          );
+      await store.saveOrg(
+        OrgLink(
+          linkId: result.linkId,
+          organization: result.organization,
+          userName: result.userName,
+        ),
+        result.token,
+      );
+      ref.invalidate(orgLinkProvider);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } on Object catch (e, st) {
+      debugPrint('JN-LINK: saving the organization link failed: $e\n$st');
+      return 'ذخیرهٔ اتصال سازمان روی این دستگاه ناموفق بود؛ دوباره امتحان کنید.';
+    }
+  }
+
+  /// Forgets everything on this device after the server deleted the account.
+  Future<void> forgetAfterDeletion() async {
+    final store = await ref.read(connectionStoreProvider.future);
+    await store.clear();
+    ref.invalidate(orgLinkProvider);
+    ref.invalidate(meetingsProvider);
+    state = const AsyncData(ConnectionState());
+  }
+
+  /// Copies the chosen finished meetings into the linked organization.
+  /// Returns a Persian message (success or the next step).
+  Future<String> importMeetings(List<String> remoteMeetingIds) async {
+    final connection = state.value?.connection;
+    final store = await ref.read(connectionStoreProvider.future);
+    final token = await store.token();
+    final link = await store.loadOrg();
+    if (connection == null || token == null || link == null) {
+      return 'ابتدا به یک سازمان وصل شوید.';
+    }
+    try {
+      final result = await ApiClient(
+        serverUrl: connection.serverUrl,
+        token: token,
+      ).importToOrganization(link.linkId, remoteMeetingIds);
+      return '${result.imported} جلسه به سازمان کپی شد'
+          '${result.existing > 0 ? ' (${result.existing} جلسه از قبل آنجا بود)' : ''}.';
+    } on ApiException catch (e) {
+      return e.message;
+    } on Object {
+      return 'کپی انجام نشد؛ اینترنت را بررسی کنید و دوباره تلاش کنید.';
+    }
+  }
+
+  /// Revokes the organization key (best effort) and forgets it on this device.
+  /// Meetings already sent stay in the organization; unsent ones go back to
+  /// the own account.
+  Future<void> unlinkOrganization() async {
+    final store = await ref.read(connectionStoreProvider.future);
+    final link = await store.loadOrg();
+    final connection = state.value?.connection;
+    final token = await store.token();
+    if (link != null && connection != null && token != null) {
+      try {
+        await ApiClient(
+          serverUrl: connection.serverUrl,
+          token: token,
+        ).unlinkOrganization(link.linkId);
+      } on Object catch (e) {
+        debugPrint('JN-LINK: server unlink failed: $e');
+      }
+    }
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    await repo.moveUnsentToWorkspace(kWorkspacePrimary);
+    await store.clearOrg();
+    ref.invalidate(orgLinkProvider);
+    ref.invalidate(meetingsProvider);
+  }
+
+  Future<void> setDefaultWorkspace(String workspace) async {
+    final store = await ref.read(connectionStoreProvider.future);
+    await store.setDefaultWorkspace(workspace);
+    ref.invalidate(orgLinkProvider);
+  }
+
+  /// The stand-alone sign-in knows every desktop platform (the pairing API does not).
+  String loginPlatform() => Platform.operatingSystem;
+
+  String deviceLabel() => _deviceLabel();
+
   /// Re-checks the stored token against the server.
   Future<void> recheck() async {
     final current = state.value;
@@ -129,12 +264,40 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
 
   Future<void> disconnect() async {
     final store = await ref.read(connectionStoreProvider.future);
+    if (await store.loadOrg() != null) await unlinkOrganization();
+    final connection = state.value?.connection;
+    if (connection != null && connection.personal) {
+      // Best effort: a token that cannot be revoked now (offline) is still
+      // forgotten on this device and can be revoked later from the account.
+      final token = await store.token();
+      if (token != null) {
+        try {
+          await ApiClient(
+            serverUrl: connection.serverUrl,
+            token: token,
+          ).logout();
+        } on Object catch (e) {
+          debugPrint('JN-CONNECT: server logout failed: $e');
+        }
+      }
+    }
     await store.clear();
     state = const AsyncData(ConnectionState());
   }
 
   String _deviceLabel() => 'Jalase-Negar (${Platform.operatingSystem})';
 }
+
+/// The linked organization and the workspace new meetings go to.
+final orgLinkProvider = FutureProvider<({OrgLink? link, String workspace})>((
+  ref,
+) async {
+  final store = await ref.watch(connectionStoreProvider.future);
+  return (
+    link: await store.loadOrg(),
+    workspace: await store.defaultWorkspace(),
+  );
+});
 
 final connectionControllerProvider =
     AsyncNotifierProvider<ConnectionController, ConnectionState>(
@@ -145,3 +308,174 @@ final connectionControllerProvider =
 /// (`MeetingPairIn`), so desktop builds report `ios` until the server
 /// accepts more values.
 String _serverPlatform() => Platform.isAndroid ? 'android' : 'ios';
+
+/// Minutes the server built for a meeting of a personal account.
+final meetingMinutesProvider = FutureProvider.autoDispose
+    .family<MinutesResult, String>((ref, remoteMeetingId) async {
+      final connection = (await ref.watch(
+        connectionControllerProvider.future,
+      )).connection;
+      final store = await ref.watch(connectionStoreProvider.future);
+      final token = await store.token();
+      if (connection == null || token == null) {
+        throw const ApiException(
+          message: 'ابتدا با شماره موبایل وارد شوید.',
+          requiresReconnect: true,
+        );
+      }
+      return ApiClient(
+        serverUrl: connection.serverUrl,
+        token: token,
+      ).minutes(remoteMeetingId);
+    });
+
+/// Plan and remaining minutes of the signed-in personal account.
+final personalProfileProvider = FutureProvider.autoDispose<PersonalProfile>((
+  ref,
+) async {
+  final connection = (await ref.watch(
+    connectionControllerProvider.future,
+  )).connection;
+  final token = await (await ref.watch(connectionStoreProvider.future)).token();
+  if (connection == null || !connection.personal || token == null) {
+    throw const ApiException(message: 'حساب شخصی متصل نیست.');
+  }
+  return ApiClient(
+    serverUrl: connection.serverUrl,
+    token: token,
+  ).personalProfile();
+});
+
+/// An API client signed in as the personal account, for the documents features.
+final personalClientProvider = FutureProvider.autoDispose<ApiClient>((
+  ref,
+) async {
+  final connection = (await ref.watch(
+    connectionControllerProvider.future,
+  )).connection;
+  final token = await (await ref.watch(connectionStoreProvider.future)).token();
+  if (connection == null || !connection.personal || token == null) {
+    throw const ApiException(
+      message: 'ابتدا با شماره موبایل وارد شوید.',
+      requiresReconnect: true,
+    );
+  }
+  return ApiClient(serverUrl: connection.serverUrl, token: token);
+});
+
+/// The categories the admin published, minutes excluded: used for the
+/// after-the-fact "add another category" picker, where minutes (already made
+/// automatically) is not offered again.
+final outputTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
+  ref,
+) async {
+  final client = await ref.watch(personalClientProvider.future);
+  return [
+    for (final type in await client.outputTypes())
+      if (!type.automatic) type,
+  ];
+});
+
+/// Every published category, minutes included — for the pre-recording picker,
+/// where "صورت جلسه عمومی" is a normal, always-available choice.
+final meetingTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
+  ref,
+) async {
+  final client = await ref.watch(personalClientProvider.future);
+  return client.outputTypes();
+});
+
+final meetingDocumentsProvider = FutureProvider.autoDispose
+    .family<List<DocumentInfo>, String>((ref, remoteMeetingId) async {
+      final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
+      try {
+        final client = await ref.watch(personalClientProvider.future);
+        final docs = await client.listDocuments(remoteMeetingId);
+        for (final d in docs) {
+          final old = await db.cachedDocument(d.id);
+          await db.cacheDocument(
+            documentId: d.id,
+            remoteMeetingId: remoteMeetingId,
+            outputType: d.outputType,
+            status: d.status,
+            progressPct: d.progressPct,
+            selectedVersion: d.selectedVersion,
+            // Keep the text of a version already downloaded.
+            markdown: old?['selected_version'] == d.selectedVersion
+                ? (old?['markdown'] as String?)
+                : null,
+          );
+        }
+        return docs;
+      } on Object catch (e) {
+        final rows = await db.cachedDocuments(remoteMeetingId);
+        if (rows.isEmpty || !_isOffline(e)) rethrow;
+        return [for (final r in rows) _cachedInfo(r)];
+      }
+    });
+
+/// An error that only means "no connection right now" (not a refusal by the
+/// server), so a cached copy may be shown instead.
+bool _isOffline(Object e) =>
+    e is! ApiException ||
+    (!e.requiresReconnect && (e.statusCode == null || e.statusCode! >= 500));
+
+final documentDetailProvider = FutureProvider.autoDispose
+    .family<DocumentDetail, String>((ref, documentId) async {
+      final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
+      try {
+        final client = await ref.watch(personalClientProvider.future);
+        final detail = await client.getDocument(documentId);
+        final old = await db.cachedDocument(documentId);
+        await db.cacheDocument(
+          documentId: documentId,
+          remoteMeetingId: old?['remote_meeting_id'] as String?,
+          outputType: detail.info.outputType,
+          status: detail.info.status,
+          progressPct: detail.info.progressPct,
+          selectedVersion: detail.info.selectedVersion,
+          markdown: detail.markdown,
+        );
+        return detail;
+      } on Object catch (e) {
+        final cached = await db.cachedDocument(documentId);
+        if (cached == null || !_isOffline(e)) rethrow;
+        return _cachedDetail(cached);
+      }
+    });
+
+DocumentDetail _cachedDetail(Map<String, Object?> row) => DocumentDetail(
+  info: _cachedInfo(row),
+  markdown: row['markdown'] as String?,
+);
+
+DocumentInfo _cachedInfo(Map<String, Object?> row) => DocumentInfo(
+  id: row['document_id'] as String,
+  outputType: row['output_type'] as String,
+  status: row['status'] as String,
+  progressPct: (row['progress_pct'] as int?) ?? 0,
+  selectedVersion: row['selected_version'] as int?,
+);
+
+/// Hours left, plans and token packs of the personal account.
+final usageProvider = FutureProvider.autoDispose<UsageInfo>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).usage();
+});
+
+final plansProvider = FutureProvider.autoDispose<PlansResult>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).plans();
+});
+
+final tokenPackagesProvider = FutureProvider.autoDispose<List<PackInfo>>((
+  ref,
+) async {
+  return (await ref.watch(personalClientProvider.future)).tokenPackages();
+});
+
+final progressProvider = FutureProvider.autoDispose<ProgressInfo>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).progress();
+});
+
+final inviteProvider = FutureProvider.autoDispose<InviteInfo>((ref) async {
+  return (await ref.watch(personalClientProvider.future)).invite();
+});

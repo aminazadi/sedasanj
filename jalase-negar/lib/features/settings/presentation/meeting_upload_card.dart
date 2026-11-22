@@ -33,7 +33,7 @@ class MeetingUploadCard extends StatelessWidget {
         'صورت‌جلسه به صداسنج ارسال می‌شوند. این تنظیم برای جلسه‌های بعدی است.',
         style: Theme.of(
           context,
-        ).textTheme.bodySmall?.copyWith(color: SsColors.ink),
+        ).textTheme.bodySmall?.copyWith(color: SsColors.of(context).ink),
       ),
     );
   }

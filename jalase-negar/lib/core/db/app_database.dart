@@ -35,6 +35,9 @@ class AppDatabase {
         await _migrateToV9(db);
         await _migrateToV10(db);
         await _migrateToV11(db);
+        await _migrateToV12(db);
+        await _migrateToV13(db);
+        await _migrateToV14(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
@@ -45,6 +48,9 @@ class AppDatabase {
         if (oldVersion < 9) await _migrateToV9(db);
         if (oldVersion < 10) await _migrateToV10(db);
         if (oldVersion < 11) await _migrateToV11(db);
+        if (oldVersion < 12) await _migrateToV12(db);
+        if (oldVersion < 13) await _migrateToV13(db);
+        if (oldVersion < 14) await _migrateToV14(db);
       },
       onOpen: _ensureUploadChunksTable,
     );
@@ -61,7 +67,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const int schemaVersion = 11;
+  static const int schemaVersion = 14;
 
   /// Creates the schema as the last app version before people existed (v8).
   /// Only for migration tests.
@@ -281,6 +287,55 @@ class AppDatabase {
         PRIMARY KEY (meeting_id, person_id)
       )
     ''');
+  }
+
+  /// Each meeting remembers which workspace it is sent to (own account or the
+  /// linked organization); older meetings keep going to the own account.
+  static Future<void> _migrateToV12(Database db) async {
+    try {
+      await db.execute(
+        "ALTER TABLE meetings ADD COLUMN workspace TEXT NOT NULL DEFAULT 'primary'",
+      );
+    } on DatabaseException catch (e) {
+      // A database built from the full schema already has the column.
+      if (!e.toString().contains('duplicate column name')) rethrow;
+    }
+  }
+
+  /// Documents fetched from the server are kept here so they open offline.
+  static Future<void> _migrateToV13(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS document_cache (
+        document_id TEXT PRIMARY KEY,
+        remote_meeting_id TEXT,
+        output_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress_pct INTEGER NOT NULL DEFAULT 0,
+        selected_version INTEGER,
+        markdown TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_document_cache_meeting '
+      'ON document_cache(remote_meeting_id)',
+    );
+  }
+
+  /// The output type (meeting category) chosen before recording; defaults to
+  /// the builtin "صورت جلسه عمومی" so older rows behave exactly as before.
+  static Future<void> _migrateToV14(Database db) async {
+    try {
+      await db.execute(
+        "ALTER TABLE meetings ADD COLUMN output_type_code TEXT NOT NULL DEFAULT 'minutes'",
+      );
+      await db.execute(
+        "ALTER TABLE meetings ADD COLUMN output_type_input_values TEXT NOT NULL DEFAULT '{}'",
+      );
+    } on DatabaseException catch (e) {
+      // A database built from the full schema already has the columns.
+      if (!e.toString().contains('duplicate column name')) rethrow;
+    }
   }
 
   Future<String?> getSetting(String key) async {

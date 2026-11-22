@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../../features/meetings/data/attendee.dart';
 import '../../features/meetings/data/meeting.dart';
+import '../../features/plans/data/billing_models.dart';
 import '../../features/people/data/speaker_payload.dart';
 import 'speaker_api.dart';
 
@@ -56,6 +59,193 @@ class PairResult {
   final String tenantName;
 }
 
+/// Result of the first sign-in step: where to enter the code and how long to wait.
+class OtpRequestResult {
+  const OtpRequestResult({required this.otpId, required this.resendAfter});
+
+  final String otpId;
+  final Duration resendAfter;
+}
+
+/// A signed-in stand-alone (personal) account.
+class OrgLinkResult {
+  const OrgLinkResult({
+    required this.linkId,
+    required this.token,
+    required this.organization,
+    required this.userName,
+  });
+
+  final String linkId;
+  final String token;
+  final String organization;
+  final String userName;
+}
+
+class PersonalLoginResult {
+  const PersonalLoginResult({
+    required this.token,
+    required this.tokenPrefix,
+    required this.userName,
+    required this.created,
+  });
+
+  final String token;
+  final String tokenPrefix;
+  final String userName;
+  final bool created;
+}
+
+/// Sign-in errors carry a Persian message that already names the next action;
+/// show it as is. 401/403 here mean a wrong code or a closed sign-up, never a
+/// revoked token, so they must not trigger the reconnect flow.
+ApiException mapLoginError(DioException e) {
+  final data = e.response?.data;
+  final status = e.response?.statusCode;
+  if (status != null && data is Map && data['error'] is Map) {
+    final error = data['error'] as Map;
+    final message = error['message']?.toString();
+    if (message != null && message.trim().isNotEmpty) {
+      return ApiException(
+        message: message,
+        code: error['code']?.toString(),
+        statusCode: status,
+      );
+    }
+  }
+  return mapDioError(e);
+}
+
+/// The selected minutes of a meeting; `markdown` is null until they are ready.
+class MinutesResult {
+  const MinutesResult({required this.status, this.markdown});
+
+  final String status;
+  final String? markdown;
+}
+
+/// Plan and remaining allowance of a personal account.
+class PersonalProfile {
+  const PersonalProfile({
+    required this.remainingSeconds,
+    this.planName,
+    this.monthlyMinutes,
+    this.usage,
+  });
+
+  final UsageInfo? usage;
+  final int remainingSeconds;
+  final String? planName;
+  final int? monthlyMinutes;
+}
+
+/// One input the admin asked for in a category (shown as a form field).
+class OutputField {
+  const OutputField({
+    required this.key,
+    required this.label,
+    required this.type,
+    required this.required,
+    this.options = const [],
+  });
+
+  final String key;
+  final String label;
+
+  /// `text`, `select` or `number`.
+  final String type;
+  final bool required;
+  final List<String> options;
+}
+
+/// A conversion category the admin published (counseling, lecture notes, ...).
+class OutputTypeInfo {
+  const OutputTypeInfo({
+    required this.code,
+    required this.title,
+    required this.description,
+    required this.automatic,
+    required this.fields,
+    this.thumbnailUrl,
+  });
+
+  final String code;
+  final String title;
+  final String description;
+
+  /// The builtin "صورت جلسه عمومی" category; shown first in the pre-recording
+  /// picker but left out of the after-the-fact "add another category" list.
+  final bool automatic;
+  final List<OutputField> fields;
+  final String? thumbnailUrl;
+}
+
+class DocumentInfo {
+  const DocumentInfo({
+    required this.id,
+    required this.outputType,
+    required this.status,
+    required this.progressPct,
+    this.errorCode,
+    this.selectedVersion,
+  });
+
+  final String id;
+  final String outputType;
+
+  /// `queued`, `running`, `done` or `failed`.
+  final String status;
+  final int progressPct;
+  final String? errorCode;
+  final int? selectedVersion;
+
+  bool get inProgress => status == 'queued' || status == 'running';
+}
+
+class DocumentDetail {
+  const DocumentDetail({required this.info, this.markdown});
+
+  final DocumentInfo info;
+  final String? markdown;
+}
+
+/// Server messages of these calls already name the next action; keep them, except for a
+/// revoked token (401), which must trigger the reconnect flow.
+ApiException mapMessageError(DioException e) =>
+    e.response?.statusCode == 401 ? mapDioError(e) : mapLoginError(e);
+
+/// A failed download has a byte body; decode the JSON error inside it when there is one.
+ApiException _bytesError(DioException e) {
+  final raw = e.response?.data;
+  if (raw is List<int>) {
+    try {
+      final decoded = jsonDecode(utf8.decode(raw));
+      return mapMessageError(
+        DioException(
+          requestOptions: e.requestOptions,
+          response: Response(
+            requestOptions: e.requestOptions,
+            statusCode: e.response?.statusCode,
+            data: decoded,
+          ),
+        ),
+      );
+    } on Object {
+      // Not JSON: fall through to the generic mapping.
+    }
+  }
+  return mapMessageError(e);
+}
+
+DocumentInfo parseDocumentInfo(Map<String, dynamic> body) => DocumentInfo(
+  id: body['id'] as String,
+  outputType: body['output_type'] as String,
+  status: body['status'] as String,
+  progressPct: (body['progress_pct'] as num?)?.toInt() ?? 0,
+  errorCode: body['error_code'] as String?,
+  selectedVersion: (body['selected_version'] as num?)?.toInt(),
+);
+
 class RemoteSession {
   const RemoteSession({
     required this.meetingId,
@@ -100,6 +290,8 @@ abstract class MeetingUploadApi {
     required DateTime startedAt,
     required String appVersion,
     List<Attendee> attendees = const [],
+    String outputType = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
   });
 
   Future<void> putChunk({
@@ -317,6 +509,482 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     }
   }
 
+  /// Step 1 of phone sign-in: sends the SMS code.
+  Future<OtpRequestResult> requestOtp(String mobile) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/auth/request',
+        data: {'mobile': mobile},
+      );
+      final body = res.data!;
+      return OtpRequestResult(
+        otpId: body['otp_id'] as String,
+        resendAfter: Duration(
+          seconds: (body['resend_after'] as num?)?.toInt() ?? 60,
+        ),
+      );
+    } on DioException catch (e) {
+      throw mapLoginError(e);
+    }
+  }
+
+  /// Step 2: checks the code; returns the short-lived token for step 3.
+  Future<({String token, bool hasAccount})> verifyOtp({
+    required String otpId,
+    required String code,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/auth/verify',
+        data: {'otp_id': otpId, 'code': code},
+      );
+      final body = res.data!;
+      return (
+        token: body['verified_token'] as String,
+        hasAccount: body['has_account'] == true,
+      );
+    } on DioException catch (e) {
+      throw mapLoginError(e);
+    }
+  }
+
+  /// Step 3: signs in (or signs up) and returns the device token.
+  Future<PersonalLoginResult> completeLogin({
+    required String verifiedToken,
+    required String deviceName,
+    required String platform,
+    required String appVersion,
+    String? displayName,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/auth/complete',
+        data: {
+          'verified_token': verifiedToken,
+          if (displayName != null && displayName.trim().isNotEmpty)
+            'display_name': displayName.trim(),
+          'device_name': deviceName,
+          'platform': platform,
+          'app_version': appVersion,
+        },
+      );
+      final body = res.data!;
+      return PersonalLoginResult(
+        token: body['token'] as String,
+        tokenPrefix: (body['token_prefix'] ?? '') as String,
+        userName: ((body['user'] as Map?)?['display_name'] ?? '') as String,
+        created: body['created'] == true,
+      );
+    } on DioException catch (e) {
+      throw mapLoginError(e);
+    }
+  }
+
+  /// Minutes of one of the signed-in user's meetings (personal accounts only).
+  Future<MinutesResult> minutes(String remoteMeetingId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/meetings/$remoteMeetingId/minutes',
+      );
+      final body = res.data!;
+      return MinutesResult(
+        status: (body['status'] ?? '') as String,
+        markdown: body['markdown'] as String?,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  Future<PersonalProfile> personalProfile() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>('/v1/jalase-negar/me');
+      final body = res.data!;
+      final plan = body['plan'] as Map?;
+      final usage = body['usage'];
+      return PersonalProfile(
+        remainingSeconds: (body['remaining_seconds'] as num?)?.toInt() ?? 0,
+        planName: plan?['name'] as String?,
+        monthlyMinutes: (plan?['monthly_minutes'] as num?)?.toInt(),
+        usage: usage is Map<String, dynamic> ? UsageInfo.fromJson(usage) : null,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  /// Hours left this month and bought or gift hours (personal accounts).
+  Future<UsageInfo> usage() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/usage',
+      );
+      return UsageInfo.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<PlansResult> plans() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/plans',
+      );
+      return PlansResult.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<List<PackInfo>> tokenPackages() async {
+    try {
+      final res = await _dio.get<List<dynamic>>(
+        '/v1/jalase-negar/token-packages',
+      );
+      return [
+        for (final raw in res.data!)
+          PackInfo.fromJson(raw as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Creates the order for a plan (`planCode`) or a token pack (`packageId`), then returns the
+  /// payment page address and the order id. `idempotencyKey` makes a retry reuse the order.
+  Future<({String orderId, String payUrl})> startPurchase({
+    String? planCode,
+    String? packageId,
+    required String idempotencyKey,
+  }) async {
+    assert((planCode == null) != (packageId == null));
+    try {
+      final created = await _dio.post<Map<String, dynamic>>(
+        planCode != null
+            ? '/v1/jalase-negar/orders'
+            : '/v1/jalase-negar/token-orders',
+        data: planCode != null
+            ? {'plan_code': planCode}
+            : {'package_id': packageId},
+        options: Options(headers: {'Idempotency-Key': idempotencyKey}),
+      );
+      final orderId = created.data!['id'] as String;
+      final paid = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/orders/$orderId/pay',
+        data: const <String, Object?>{},
+      );
+      return (orderId: orderId, payUrl: paid.data!['redirect_url'] as String);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Products this store build sells, and the developer payload the server expects back
+  /// (the account id; the stores echo it so the server can match the purchase to the account).
+  Future<
+    ({
+      Map<String, String> skuToPlan,
+      Map<String, String> skuToPack,
+      String payload,
+    })
+  >
+  storeSkus(String store) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/store/skus',
+        queryParameters: {'store': store},
+      );
+      final plans = <String, String>{};
+      final packs = <String, String>{};
+      for (final raw in (res.data!['skus'] as List<dynamic>)) {
+        final row = raw as Map<String, dynamic>;
+        if (row['kind'] == 'plan') {
+          plans[row['sku'] as String] = row['plan_code'] as String;
+        } else {
+          packs[row['sku'] as String] = row['package_id'] as String;
+        }
+      }
+      return (
+        skuToPlan: plans,
+        skuToPack: packs,
+        payload: res.data!['developer_payload'] as String,
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Hands a store purchase token to the server, which checks it with the store and activates
+  /// the plan or token pack. Safe to repeat for the same token.
+  Future<void> verifyStorePurchase({
+    required String store,
+    required String sku,
+    required String purchaseToken,
+  }) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/store/verify',
+        data: {'store': store, 'sku': sku, 'purchase_token': purchaseToken},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<OrderStatus> orderStatus(String orderId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/orders/$orderId',
+      );
+      return OrderStatus(status: (res.data!['status'] ?? '') as String);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Level, badges and gift allowance; the server also awards any badge just reached.
+  Future<ProgressInfo> progress() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/progress',
+      );
+      return ProgressInfo.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<InviteInfo> invite() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/invite',
+      );
+      return InviteInfo.fromJson(res.data!);
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<void> redeemInvite(String code) async {
+    try {
+      await _dio.post<Object?>(
+        '/v1/jalase-negar/invite/redeem',
+        data: {'code': code.trim()},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// Revokes the device token on the server.
+  /// Swaps an organization's pairing code for an organization device key.
+  Future<OrgLinkResult> linkOrganization({
+    required String pairingCode,
+    required String deviceLabel,
+    required String appVersion,
+    required String platform,
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/link',
+        data: {
+          'pairing_code': pairingCode,
+          'device_label': deviceLabel,
+          'app_version': appVersion,
+          'platform': platform,
+        },
+      );
+      final body = res.data!;
+      return OrgLinkResult(
+        linkId: body['link_id'] as String,
+        token: body['token'] as String,
+        organization: (body['organization'] ?? '') as String,
+        userName: (body['user'] ?? '') as String,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  /// Copies finished personal meetings (by their server ids) into the
+  /// organization; returns how many were copied now and how many were there.
+  Future<({int imported, int existing})> importToOrganization(
+    String linkId,
+    List<String> remoteMeetingIds,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/link/$linkId/import',
+        data: {'meeting_ids': remoteMeetingIds},
+      );
+      final body = res.data!;
+      return (
+        imported: (body['imported'] as List).length,
+        existing: (body['already_imported'] as List).length,
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  Future<void> unlinkOrganization(String linkId) async {
+    try {
+      await _dio.delete<Object?>('/v1/jalase-negar/link/$linkId');
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  /// Deletes the account for good; [verifiedToken] comes from a fresh SMS check
+  /// of the account's own number.
+  Future<void> deleteAccount(String verifiedToken) async {
+    try {
+      await _dio.delete<Object?>(
+        '/v1/jalase-negar/me',
+        data: {'verified_token': verifiedToken},
+      );
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await _dio.post<Object?>('/v1/jalase-negar/auth/logout');
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
+  }
+
+  Future<List<OutputTypeInfo>> outputTypes() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/output-types',
+      );
+      final base = _dio.options.baseUrl.replaceAll(RegExp(r'/+$'), '');
+      return [
+        for (final raw in (res.data!['items'] as List))
+          () {
+            final item = raw as Map<String, dynamic>;
+            final thumb = item['thumbnail_url'] as String?;
+            return OutputTypeInfo(
+              code: item['code'] as String,
+              title: item['title'] as String,
+              description: (item['description'] ?? '') as String,
+              automatic: item['automatic'] == true,
+              thumbnailUrl: thumb == null ? null : '$base$thumb',
+              fields: [
+                for (final f in (item['input_fields'] as List? ?? const []))
+                  OutputField(
+                    key: (f as Map)['key'] as String,
+                    label: f['label_fa'] as String,
+                    type: (f['type'] ?? 'text') as String,
+                    required: f['required'] == true,
+                    options: [
+                      for (final o in (f['options'] as List? ?? const []))
+                        o as String,
+                    ],
+                  ),
+              ],
+            );
+          }(),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<List<DocumentInfo>> createDocuments(
+    String remoteMeetingId,
+    List<({String code, Map<String, String> values})> items,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/v1/jalase-negar/meetings/$remoteMeetingId/documents',
+        data: {
+          'items': [
+            for (final i in items)
+              {'output_type': i.code, 'input_values': i.values},
+          ],
+        },
+      );
+      return [
+        for (final d in (res.data!['items'] as List))
+          parseDocumentInfo(d as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<List<DocumentInfo>> listDocuments(String remoteMeetingId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/meetings/$remoteMeetingId/documents',
+      );
+      return [
+        for (final d in (res.data!['items'] as List))
+          parseDocumentInfo(d as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<DocumentDetail> getDocument(String documentId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/documents/$documentId',
+      );
+      final body = res.data!;
+      return DocumentDetail(
+        info: parseDocumentInfo(body),
+        markdown: body['markdown'] as String?,
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  Future<void> editDocument(String documentId, String markdown) async {
+    try {
+      await _dio.patch<Object?>(
+        '/v1/jalase-negar/documents/$documentId',
+        data: {'markdown': markdown},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
+  /// The selected version as a `pdf` or `docx` file's bytes.
+  Future<List<int>> exportDocument(String documentId, String format) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        '/v1/jalase-negar/documents/$documentId/export',
+        queryParameters: {'format': format},
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(minutes: 2),
+        ),
+      );
+      return res.data!;
+    } on DioException catch (e) {
+      throw _bytesError(e);
+    }
+  }
+
+  Future<void> regenerateDocument(String documentId) async {
+    try {
+      await _dio.post<Object?>(
+        '/v1/jalase-negar/documents/$documentId/regenerate',
+        data: <String, Object?>{},
+      );
+    } on DioException catch (e) {
+      throw mapMessageError(e);
+    }
+  }
+
   Future<ServerInfo> validate() async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(
@@ -343,6 +1011,8 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     required DateTime startedAt,
     required String appVersion,
     List<Attendee> attendees = const [],
+    String outputType = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
   }) async {
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -355,6 +1025,8 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
           'channels': 1,
           'app_version': appVersion,
           'input_kind': 'text',
+          'output_type': outputType,
+          'output_type_input_values': outputTypeInputValues,
           if (attendees.isNotEmpty)
             'attendees': [
               for (final a in attendees)

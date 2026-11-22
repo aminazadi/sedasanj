@@ -23,7 +23,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     return Scaffold(
-      backgroundColor: SsColors.canvas,
+      backgroundColor: SsColors.of(context).canvas,
       body: Stack(
         children: [
           Positioned.fill(
@@ -44,6 +44,7 @@ class _SplashScreenState extends State<SplashScreen> {
           Center(
             child: SsBrandLogo(
               width: (width * 0.76).clamp(0, 320),
+              color: ssBrandLogoColor(context),
               onComplete: widget.onComplete,
             ),
           ),
@@ -68,7 +69,7 @@ class _SplashScreenState extends State<SplashScreen> {
                             : 'جلسه‌نگار نسخه \u2066$version\u2069',
                         textDirection: TextDirection.rtl,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: SsColors.primary,
+                          color: SsColors.of(context).primary,
                         ),
                       );
                     },

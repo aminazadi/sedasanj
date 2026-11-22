@@ -21,6 +21,7 @@ import '../../../core/speaker/speaker_matcher.dart';
 import '../../meetings/application/meeting_providers.dart';
 import '../../meetings/data/attendee.dart';
 import '../../meetings/data/meeting.dart';
+import '../../settings/application/connection_controller.dart';
 import '../../meetings/data/meeting_repository.dart';
 import '../../upload/upload_controller.dart';
 import 'live_audio_waveform.dart';
@@ -408,7 +409,14 @@ class RecorderController extends Notifier<RecorderState> {
 
   /// Starts recording. [attendees] are the people chosen as present; they are
   /// saved with the meeting before audio starts so a crash keeps them.
-  Future<void> start({List<Attendee> attendees = const []}) async {
+  /// [outputTypeCode] is the category chosen before recording (builtin
+  /// "صورت جلسه عمومی" by default), with its field values in
+  /// [outputTypeInputValues].
+  Future<void> start({
+    List<Attendee> attendees = const [],
+    String outputTypeCode = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
+  }) async {
     if (state.status != RecorderStatus.idle) return;
     final recorder = AudioRecorder();
     try {
@@ -498,6 +506,15 @@ class RecorderController extends Notifier<RecorderState> {
         },
       );
       final sendText = await ref.read(sendTranscriptEnabledProvider.future);
+      // Never let a failed read stop the recording; the own account is the default.
+      var workspace = kWorkspacePrimary;
+      try {
+        workspace = await (await ref.read(
+          connectionStoreProvider.future,
+        )).defaultWorkspace();
+      } on Object catch (e) {
+        debugPrint('JN-REC: reading the workspace failed: $e');
+      }
       // Marked before the row exists so the upload queue never sees an open
       // recording that looks abandoned.
       _meetingId = meetingId;
@@ -516,6 +533,9 @@ class RecorderController extends Notifier<RecorderState> {
           recordingState: 'recording',
           sendText: sendText,
           speakersState: 'pending',
+          workspace: workspace,
+          outputTypeCode: outputTypeCode,
+          outputTypeInputValues: outputTypeInputValues,
         ),
       );
       ref.invalidate(meetingsProvider);

@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/features/meetings/data/attendee.dart';
+import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/app/theme.dart';
 import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/app/widgets/ss_widgets.dart';
@@ -127,17 +128,17 @@ void main() {
   ) async {
     final (recorder, _) = await _openScreen(tester);
     expect(find.text('حاضران جلسه (اختیاری)'), findsNothing);
-    expect(find.byType(SsCard), findsNothing);
-    final button = find.widgetWithText(OutlinedButton, 'انتخاب حاضران');
-    expect(button, findsOneWidget);
+    expect(find.byType(SsCard), findsOneWidget);
+    expect(find.text('حاضران جلسه'), findsOneWidget);
+    expect(find.text('برای افزودن حاضران ضربه بزنید'), findsOneWidget);
     expect(
-      tester.getRect(button).top,
+      tester.getRect(find.byType(SsCard)).top,
       greaterThan(
-        tester.getRect(find.text('برای شروع ضبط، دکمهٔ زیر را بزنید')).bottom,
+        tester.getRect(find.text('قبل از شروع جلسه لطفا موارد زیر را مشخص کنید')).bottom,
       ),
     );
 
-    await tester.tap(find.text('انتخاب حاضران'));
+    await tester.tap(find.text('حاضران جلسه'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('علی رضایی'), findsOneWidget);
@@ -146,14 +147,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('تأیید (۱ نفر)'));
     await tester.pump(const Duration(milliseconds: 500));
-    final chip = find.widgetWithText(InputChip, 'علی رضایی');
-    expect(chip, findsOneWidget);
-    final editButton = find.widgetWithText(OutlinedButton, 'ویرایش حاضران');
-    expect(tester.getCenter(chip).dy, tester.getCenter(editButton).dy);
-    expect(
-      tester.getRect(chip).right,
-      lessThan(tester.getRect(editButton).left),
-    );
+    expect(find.textContaining('۱ نفر: علی رضایی'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byIcon(Icons.mic));
@@ -176,6 +170,9 @@ void main() {
       of: illustration,
       matching: find.byType(CustomPaint),
     );
+    // Keyed (not a bare text lookup) since the attendees step also shows a
+    // plain "۱" while no one has been added yet.
+    final countdown = find.byKey(const Key('countdown-digit'));
     expect(find.byType(SvgPicture), findsOneWidget);
     expect(find.byKey(_transcript), findsNothing);
 
@@ -183,38 +180,38 @@ void main() {
     await tester.pump();
     expect(find.byType(SvgPicture), findsNothing);
     expect(particles, findsOneWidget);
-    expect(find.text('۳'), findsNothing);
+    expect(countdown, findsNothing);
     expect(find.byKey(_transcript), findsNothing);
     expect(sound.playCount, 0);
     await tester.pump(const Duration(milliseconds: 450));
     expect(particles, findsOneWidget);
     await tester.pump(const Duration(milliseconds: 500));
     expect(particles, findsNothing);
-    expect(find.text('۳'), findsOneWidget);
-    expect(
-      tester.widget<Text>(find.text('۳')).style?.fontWeight,
-      FontWeight.w700,
-    );
+    expect(countdown, findsOneWidget);
+    expect(tester.widget<Text>(countdown).data, '۳');
+    expect(tester.widget<Text>(countdown).style?.fontWeight, FontWeight.w700);
     expect(sound.playCount, 1);
     expect(find.byIcon(Icons.mic), findsNothing);
 
     for (final (digit, playCount) in [('۲', 2), ('۱', 3)]) {
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text(digit), findsOneWidget);
+      expect(countdown, findsOneWidget);
+      expect(tester.widget<Text>(countdown).data, digit);
       expect(sound.playCount, playCount);
       expect(sound.finalCount, 0);
       expect(recorder.startCount, 0);
       expect(find.byKey(_transcript), findsNothing);
     }
     await tester.pump(const Duration(milliseconds: 999));
-    expect(find.text('۱'), findsOneWidget);
+    expect(countdown, findsOneWidget);
+    expect(tester.widget<Text>(countdown).data, '۱');
     final readyText = find.text('آمادهٔ ضبط…');
     expect(readyText, findsNothing);
     expect(recorder.startCount, 0);
     final finalGate = sound.finalGate = Completer<void>();
     final closeGate = sound.closeGate = Completer<void>();
     await tester.pump(const Duration(milliseconds: 1));
-    expect(find.text('۱'), findsNothing);
+    expect(countdown, findsNothing);
     expect(readyText, findsOneWidget);
     expect(sound.finalCount, 1);
     expect(sound.closeCount, 0);
@@ -429,6 +426,7 @@ Future<(_Recorder, _StartSound)> _openScreen(
 class _Recorder extends RecorderController {
   int startCount = 0;
   List<Attendee> lastAttendees = const [];
+  String lastOutputTypeCode = kBuiltinOutputType;
 
   void update({bool interrupted = false}) {
     state = RecorderState(
@@ -439,9 +437,14 @@ class _Recorder extends RecorderController {
   }
 
   @override
-  Future<void> start({List<Attendee> attendees = const []}) async {
+  Future<void> start({
+    List<Attendee> attendees = const [],
+    String outputTypeCode = kBuiltinOutputType,
+    Map<String, String> outputTypeInputValues = const {},
+  }) async {
     startCount++;
     lastAttendees = attendees;
+    lastOutputTypeCode = outputTypeCode;
     update();
   }
 

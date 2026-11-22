@@ -450,6 +450,13 @@ class _StaticLogoPainter extends CustomPainter {
   bool shouldRepaint(_StaticLogoPainter old) => old.color != color;
 }
 
+/// The wordmark's ink color on the current canvas: near-black in light mode,
+/// white in dark mode (the artwork itself stays the same strokes either way).
+Color ssBrandLogoColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? Colors.white
+    : const Color(0xFF101113);
+
 /// The SedaSanj wordmark. With [animated] it is written stroke by stroke with
 /// sparks, exactly like the web panel's `BrandLogo animated`.
 class SsBrandLogo extends StatefulWidget {

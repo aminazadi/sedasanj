@@ -1,7 +1,6 @@
 import 'dart:async';
 import '../../../core/speaker/speaker_matcher.dart';
 import 'channel_owner_sheet.dart';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,12 +11,15 @@ import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../meetings/data/attendee.dart';
+import '../../meetings/presentation/meeting_type_picker_sheet.dart';
 import '../../onboarding/tour_overlay.dart';
 import '../../people/application/people_providers.dart';
 import '../../people/presentation/attendee_picker_sheet.dart';
 import '../../onboarding/tour_step.dart';
+import '../../settings/application/connection_controller.dart';
 import '../application/live_audio_waveform.dart';
 import '../application/pending_attendees.dart';
+import '../application/pending_meeting_type.dart';
 import '../application/recorder_controller.dart';
 import 'live_transcript_panel.dart';
 import 'live_waveform.dart';
@@ -116,10 +118,16 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
           if (chosen.contains(p.clientId))
             Attendee(personId: p.clientId, name: p.name),
       ];
+      final meetingType = ref.read(pendingMeetingTypeProvider);
       await ref
           .read(recorderControllerProvider.notifier)
-          .start(attendees: attendees);
+          .start(
+            attendees: attendees,
+            outputTypeCode: meetingType.code,
+            outputTypeInputValues: meetingType.values,
+          );
       ref.read(pendingAttendeesProvider.notifier).clear();
+      ref.read(pendingMeetingTypeProvider.notifier).clear();
     } finally {
       if (mounted) setState(() => _openingMicrophone = false);
     }
@@ -167,7 +175,9 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                 child: const Text('ادامه ضبط'),
               ),
               TextButton(
-                style: TextButton.styleFrom(foregroundColor: SsColors.danger),
+                style: TextButton.styleFrom(
+                  foregroundColor: SsColors.of(context).danger,
+                ),
                 onPressed: () => Navigator.pop(context, 'discard'),
                 child: const Text('حذف'),
               ),
@@ -195,7 +205,7 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                 ),
                 FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: SsColors.danger,
+                    backgroundColor: SsColors.of(context).danger,
                   ),
                   onPressed: () => Navigator.pop(context, true),
                   child: const Text('حذف'),
@@ -324,10 +334,15 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                             label: 'شروع ضبط',
                             child: TourTarget(
                               step: TourStep.recording,
-                              child: _DiamondButton(
+                              child: SsDiamondButton(
                                 pulse: true,
                                 half: 38,
-                                icon: Icons.mic,
+                                // Same hand-drawn glyph as the bottom nav
+                                // bar's floating record button, since both
+                                // represent the same "start recording"
+                                // action.
+                                glyphBuilder: (color, size) =>
+                                    SsMicGlyph(color: color, size: size),
                                 onTap: _prepare,
                               ),
                             ),
@@ -341,8 +356,12 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                             children: [
                               _ControlColumn(
                                 label: isRecording ? 'توقف موقت' : 'ادامه',
-                                child: _DiamondButton(
-                                  half: 34,
+                                // Same half as "شروع ضبط" and the bottom
+                                // bar's record diamond: the gap between the
+                                // two buttons closes the space instead of
+                                // shrinking either one below that size.
+                                child: SsDiamondButton(
+                                  half: 38,
                                   icon: isRecording
                                       ? Icons.pause
                                       : Icons.play_arrow,
@@ -352,11 +371,11 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
                                       : controller.resume,
                                 ),
                               ),
-                              const SizedBox(width: 44),
+                              const SizedBox(width: 28),
                               _ControlColumn(
                                 label: 'پایان و ذخیره',
-                                child: _DiamondButton(
-                                  half: 34,
+                                child: SsDiamondButton(
+                                  half: 38,
                                   icon: Icons.stop,
                                   danger: true,
                                   onTap: controller.stop,
@@ -440,12 +459,12 @@ class _RecordingPreview extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                'برای شروع ضبط، دکمهٔ زیر را بزنید',
+                'قبل از شروع جلسه لطفا موارد زیر را مشخص کنید',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 12),
-              const _AttendeesSelector(),
+              const SizedBox(height: 14),
+              const SizedBox(width: double.infinity, child: _SetupSteps()),
             ],
           ),
         ),
@@ -479,8 +498,9 @@ class _CountdownNumber extends StatelessWidget {
         ),
         child: Text(
           digit,
+          key: const Key('countdown-digit'),
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
-            color: SsColors.primary,
+            color: SsColors.of(context).primary,
             fontSize: 96,
             fontWeight: FontWeight.w700,
           ),
@@ -514,11 +534,13 @@ class _RecordingMonitor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? SsColors.danger : SsColors.ink;
+    final color = active
+        ? SsColors.of(context).danger
+        : SsColors.of(context).ink;
     final many = waveforms.length > 1;
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: SsColors.line)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: SsColors.of(context).line)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -592,7 +614,7 @@ class _RecordingMonitor extends StatelessWidget {
   }
 }
 
-/// Flat outlined button naming who holds a microphone ("نامشخص" while nobody
+/// Icon-only button naming who holds a microphone ("نامشخص" while nobody
 /// does and voices are recognised automatically); opens the picker.
 class _OwnerButton extends StatelessWidget {
   const _OwnerButton({required this.name, required this.onTap});
@@ -603,7 +625,9 @@ class _OwnerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final assigned = name != null;
-    final color = assigned ? SsColors.primary : SsColors.ink;
+    final color = assigned
+        ? SsColors.of(context).primary
+        : SsColors.of(context).ink;
     return Tooltip(
       message: assigned
           ? 'صاحب میکروفون: $name؛ برای تغییر بزنید'
@@ -611,43 +635,13 @@ class _OwnerButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: assigned ? 'صاحب میکروفون $name' : 'انتساب میکروفون',
-        child: Material(
-          color: assigned ? SsColors.primary : Colors.transparent,
-          shape: RoundedRectangleBorder(
-            side: BorderSide(
-              color: assigned ? SsColors.primary : SsColors.line,
-            ),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 32, maxWidth: 110),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.person_outline,
-                      size: 16,
-                      color: assigned ? SsColors.canvas : color,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        name ?? 'فرد',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: assigned ? SsColors.canvas : color,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+        child: InkResponse(
+          onTap: onTap,
+          radius: 20,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(Icons.person_outline, size: 18, color: color),
           ),
         ),
       ),
@@ -655,9 +649,8 @@ class _OwnerButton extends StatelessWidget {
   }
 }
 
-/// Square mute toggle in the app's flat style (like the play buttons): an
-/// outlined mic while the channel is live, a filled red crossed-out mic when
-/// it is muted.
+/// Icon-only mute toggle: a plain mic while the channel is live, a crossed-out
+/// mic in the danger color when it is muted. No border, no fill.
 class _MuteButton extends StatelessWidget {
   const _MuteButton({
     required this.muted,
@@ -673,7 +666,9 @@ class _MuteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = muted ? SsColors.danger : SsColors.primary;
+    final color = muted
+        ? SsColors.of(context).danger
+        : SsColors.of(context).primary;
     return Tooltip(
       message: muted
           ? '$label بی‌صدا است؛ برای باز کردن بزنید'
@@ -682,39 +677,33 @@ class _MuteButton extends StatelessWidget {
         button: true,
         toggled: muted,
         label: label,
-        child: Material(
-          color: muted ? SsColors.danger : Colors.transparent,
-          shape: RoundedRectangleBorder(side: BorderSide(color: color)),
-          child: InkWell(
-            onTap: onTap,
-            child: SizedBox(
-              width: 32,
-              height: 32,
-              child: Center(
-                child: number == null
-                    ? Icon(
-                        muted ? Icons.mic_off : Icons.mic_none,
-                        size: 18,
-                        color: muted ? SsColors.canvas : color,
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            muted ? Icons.mic_off : Icons.mic_none,
-                            size: 15,
-                            color: muted ? SsColors.canvas : color,
-                          ),
-                          Text(
-                            number!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: muted ? SsColors.canvas : color,
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
+        child: InkResponse(
+          onTap: onTap,
+          radius: 20,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Center(
+              child: number == null
+                  ? Icon(
+                      muted ? Icons.mic_off : Icons.mic_none,
+                      size: 18,
+                      color: color,
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          muted ? Icons.mic_off : Icons.mic_none,
+                          size: 15,
+                          color: color,
+                        ),
+                        Text(
+                          number!,
+                          style: TextStyle(fontSize: 11, color: color),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ),
@@ -738,11 +727,11 @@ class _ControlColumn extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Vazirmatn',
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: SsColors.ink,
+            color: SsColors.of(context).ink,
           ),
         ),
       ],
@@ -750,264 +739,121 @@ class _ControlColumn extends StatelessWidget {
   }
 }
 
-/// Diamond (45° square) button, the same shape as the record button in the
-/// bottom bar. [half] is the diamond's half-diagonal.
-class _DiamondButton extends StatefulWidget {
-  const _DiamondButton({
-    required this.half,
-    required this.icon,
-    required this.onTap,
-    this.outlined = false,
-    this.danger = false,
-    this.pulse = false,
-  });
-
-  final double half;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool outlined;
-  final bool danger;
-  final bool pulse;
-
-  @override
-  State<_DiamondButton> createState() => _DiamondButtonState();
-}
-
-class _DiamondButtonState extends State<_DiamondButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
-  bool _down = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.pulse) _pulse.repeat();
-  }
-
-  @override
-  void didUpdateWidget(covariant _DiamondButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.pulse != oldWidget.pulse) {
-      if (widget.pulse) {
-        _pulse.repeat();
-      } else {
-        _pulse.stop();
-        _pulse.value = 0;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = widget.half;
-    final side = d * math.sqrt2;
-    // The pulsing start button is the record button: red, like the bar's.
-    final red = widget.danger || widget.pulse;
-    final main = red ? SsColors.danger : SsColors.primary;
-    final colors = red
-        ? const [Color(0xFFE5484D), SsColors.danger, Color(0xFF8F0E2E)]
-        : const [SsColors.primaryLight, SsColors.primary, SsColors.primaryDark];
-    return Semantics(
-      button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _down = true),
-        onTapCancel: () => setState(() => _down = false),
-        onTapUp: (_) => setState(() => _down = false),
-        onTap: widget.onTap,
-        child: AnimatedBuilder(
-          animation: _pulse,
-          builder: (context, child) {
-            final animate =
-                widget.pulse && !MediaQuery.disableAnimationsOf(context);
-            return Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                if (animate)
-                  Container(
-                    width: side * 0.9,
-                    height: side * 0.9,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: main.withValues(
-                            alpha:
-                                0.25 +
-                                0.3 *
-                                    (0.5 +
-                                        0.5 *
-                                            math.sin(
-                                              _pulse.value * 2 * math.pi,
-                                            )),
-                          ),
-                          blurRadius:
-                              18 +
-                              12 *
-                                  (0.5 +
-                                      0.5 *
-                                          math.sin(_pulse.value * 2 * math.pi)),
-                          spreadRadius: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                if (animate)
-                  Builder(
-                    builder: (context) {
-                      // Same single ring as the bottom bar's record diamond.
-                      final t = Curves.easeOut.transform(_pulse.value);
-                      final ringSize = side + 12 * t;
-                      return Positioned(
-                        left: (2 * d + 8 - ringSize) / 2,
-                        top: (2 * d + 8 - ringSize) / 2,
-                        width: ringSize,
-                        height: ringSize,
-                        child: Transform.rotate(
-                          angle: math.pi / 4,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: main.withValues(alpha: 0.35 * (1 - t)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                child!,
-              ],
-            );
-          },
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 120),
-            scale: _down ? 0.93 : 1,
-            child: SizedBox(
-              width: 2 * d + 8,
-              height: 2 * d + 8,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Transform.rotate(
-                    angle: math.pi / 4,
-                    child: Container(
-                      width: side,
-                      height: side,
-                      decoration: BoxDecoration(
-                        color: widget.outlined ? SsColors.canvas : null,
-                        gradient: widget.outlined
-                            ? null
-                            : LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: colors,
-                                stops: const [0, 0.55, 1],
-                              ),
-                        border: Border.all(color: main, width: 1.5),
-                        boxShadow: widget.outlined
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: main.withValues(alpha: 0.4),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                      ),
-                      child: widget.pulse
-                          ? ClipRect(
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  const SsDots.onPrimary(
-                                    child: SizedBox.expand(),
-                                  ),
-                                  FractionallySizedBox(
-                                    alignment: Alignment(
-                                      -2 + 4 * _pulse.value,
-                                      0,
-                                    ),
-                                    widthFactor: 0.35,
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Colors.white.withValues(alpha: 0),
-                                            Colors.white.withValues(
-                                              alpha: 0.35,
-                                            ),
-                                            Colors.white.withValues(alpha: 0),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : null,
-                    ),
-                  ),
-                  Icon(
-                    widget.icon,
-                    size: d * 0.8,
-                    color: widget.outlined ? main : SsColors.canvas,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Inline attendee selection below the ready-to-record instructions.
-class _AttendeesSelector extends ConsumerWidget {
-  const _AttendeesSelector();
+/// Two steps between the ready-to-record instructions and the mic button:
+/// who's in the meeting, and which category it will be converted into.
+class _SetupSteps extends ConsumerWidget {
+  const _SetupSteps();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chosen = ref.watch(pendingAttendeesProvider);
     final people = ref.watch(peopleProvider).value ?? const [];
     final names = {for (final p in people) p.clientId: p.name};
-    Future<void> pick() async {
+
+    final meetingType = ref.watch(pendingMeetingTypeProvider);
+    final types = ref.watch(meetingTypesProvider).value ?? const [];
+    final typeTitle =
+        [
+          for (final t in types)
+            if (t.code == meetingType.code) t.title,
+        ].firstOrNull ??
+        'صورت جلسه عمومی';
+
+    Future<void> pickAttendees() async {
       final result = await showAttendeePicker(context, selected: chosen);
       if (result != null) {
         ref.read(pendingAttendeesProvider.notifier).set(result);
       }
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          OutlinedButton.icon(
-            onPressed: pick,
-            icon: const Icon(Icons.group_add_outlined),
-            label: Text(chosen.isEmpty ? 'انتخاب حاضران' : 'ویرایش حاضران'),
-          ),
-          for (final id in chosen) ...[
-            const SizedBox(width: 8),
-            InputChip(
-              label: Text(names[id] ?? 'فرد حذف‌شده'),
-              onDeleted: () =>
-                  ref.read(pendingAttendeesProvider.notifier).remove(id),
+    Future<void> pickType() async {
+      final result = await showMeetingTypePicker(context, initial: meetingType);
+      if (result != null) {
+        ref.read(pendingMeetingTypeProvider.notifier).set(result);
+      }
+    }
+
+    return TourTarget(
+      step: TourStep.setup,
+      child: SsCard(
+        padding: EdgeInsets.zero,
+        elevated: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StepTile(
+              title: 'حاضران جلسه',
+              subtitle: chosen.isEmpty
+                  ? 'برای افزودن حاضران ضربه بزنید'
+                  : '${toPersianDigits('${chosen.length}')} نفر: '
+                        '${chosen.map((id) => names[id] ?? 'فرد حذف‌شده').join('، ')}',
+              onTap: pickAttendees,
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 16, end: 16),
+              child: Divider(height: 1, color: SsColors.of(context).line),
+            ),
+            _StepTile(
+              title: 'نوع خروجی درخواستی',
+              subtitle: typeTitle,
+              onTap: pickType,
             ),
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepTile extends StatelessWidget {
+  const _StepTile({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: SsColors.of(context).neutral,
+              size: 22,
+            ),
+          ],
+        ),
       ),
     );
   }

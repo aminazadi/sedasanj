@@ -3,38 +3,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shamsi_date/shamsi_date.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
+import '../../models/application/models_controller.dart';
 import '../../recording/application/recorder_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../application/meeting_providers.dart';
+import '../application/meetings_search_controller.dart';
 import '../data/meeting.dart';
 import '../data/meeting_repository.dart' show foldPersianLetters;
+import 'jalali_date_picker.dart';
 import 'send_meeting_action.dart';
 import 'share_meeting_audio.dart';
-
-enum _Filter {
-  all('همه'),
-  active('در حال پردازش'),
-  complete('کامل'),
-  failed('ناموفق');
-
-  const _Filter(this.label);
-
-  final String label;
-
-  bool accepts(Meeting m) => switch (this) {
-    _Filter.all => true,
-    _Filter.active =>
-      m.status != MeetingStatus.complete && m.status != MeetingStatus.failed,
-    _Filter.complete => m.status == MeetingStatus.complete,
-    _Filter.failed => m.status == MeetingStatus.failed,
-  };
-}
 
 bool _matchesQuery(Meeting m, String query, Set<String> textMatches) {
   if (query.trim().isEmpty) return true;
@@ -42,6 +27,12 @@ bool _matchesQuery(Meeting m, String query, Set<String> textMatches) {
   return displayMeetingTitle(m.title).contains(q) ||
       formatJalaliDay(m.createdAt).contains(q) ||
       textMatches.contains(m.id);
+}
+
+bool _matchesDate(Meeting m, Jalali? date) {
+  if (date == null) return true;
+  final d = Jalali.fromDateTime(m.createdAt);
+  return d.year == date.year && d.month == date.month && d.day == date.day;
 }
 
 class MeetingsScreen extends ConsumerStatefulWidget {
@@ -52,35 +43,45 @@ class MeetingsScreen extends ConsumerStatefulWidget {
 }
 
 class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
-  final _search = TextEditingController();
-  var _query = '';
   // The transcript lookup follows the typing after a short pause.
   var _textQuery = '';
   Timer? _debounce;
-  var _filter = _Filter.all;
 
-  void _onQuery(String v) {
-    setState(() => _query = v);
+  void _scheduleTextMatch(String query) {
     _debounce?.cancel();
-    if (v.trim().isEmpty) {
+    if (query.trim().isEmpty) {
       setState(() => _textQuery = '');
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) setState(() => _textQuery = v);
+      if (mounted) setState(() => _textQuery = query);
     });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _search.dispose();
     super.dispose();
+  }
+
+  /// Opens the "jump to date" calendar from a pinned date-group header and
+  /// applies the pick as a filter on the list.
+  Future<void> _pickDate(BuildContext context) async {
+    final current = ref.read(meetingsSearchProvider).date;
+    final picked = await showJalaliDatePicker(context, initial: current);
+    if (picked == null || !mounted) return;
+    ref.read(meetingsSearchProvider.notifier).setDate(picked);
   }
 
   @override
   Widget build(BuildContext context) {
     final hidden = ref.watch(pendingDeletesProvider);
+    // The search box lives in the shell's header, not on this screen.
+    final search = ref.watch(meetingsSearchProvider);
+    ref.listen(
+      meetingsSearchProvider.select((s) => s.query),
+      (_, next) => _scheduleTextMatch(next),
+    );
     // Search results follow list changes (a finished transcription or an
     // edit), refreshed after the frame so no provider is invalidated mid-build.
     ref.listen(meetingsProvider, (_, _) {
@@ -100,8 +101,9 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
             ?.where(
               (m) =>
                   !hidden.contains(m.id) &&
-                  _filter.accepts(m) &&
-                  _matchesQuery(m, _query, textMatches),
+                  search.filter.accepts(m) &&
+                  _matchesQuery(m, search.query, textMatches) &&
+                  _matchesDate(m, search.date),
             )
             .map((m) => m.id)
             .join(','),
@@ -165,36 +167,40 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           const SliverToBoxAdapter(child: _Header(key: ValueKey('header'))),
-          SliverToBoxAdapter(
-            child: _SearchAndFilters(
-              controller: _search,
-              filter: _filter,
-              onQuery: _onQuery,
-              onFilter: (f) => setState(() => _filter = f),
-            ),
-          ),
+          const SliverToBoxAdapter(child: _ModelsPromptCard()),
           if (ids.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
               child: _NoResults(
-                onClear: () => setState(() {
-                  _search.clear();
-                  _query = '';
-                  _textQuery = '';
-                  _filter = _Filter.all;
-                }),
+                onClear: () =>
+                    ref.read(meetingsSearchProvider.notifier).clear(),
               ),
             )
           else
-            for (final (label, groupIds) in groups)
+            for (final (index, (label, groupIds)) in groups.indexed)
               SliverMainAxisGroup(
                 slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _GroupHeaderDelegate(label, groupIds.length),
-                  ),
+                  // The first group's date is obvious from context, so its
+                  // header is skipped; later groups still show one.
+                  if (index != 0)
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _GroupHeaderDelegate(
+                        label,
+                        groupIds.length,
+                        onTap: () => _pickDate(context),
+                      ),
+                    ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+                    // Without its own header above, the first group needs
+                    // the same standard top gap other sections use instead
+                    // of the header's left-over 2px.
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      index == 0 ? 12 : 2,
+                      12,
+                      4,
+                    ),
                     sliver: SliverList.builder(
                       itemCount: groupIds.length,
                       findChildIndexCallback: (key) {
@@ -222,11 +228,75 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   }
 }
 
+/// A meeting-card-styled prompt shown above the list, only while the
+/// transcription models are not fully installed and activated.
+class _ModelsPromptCard extends ConsumerWidget {
+  const _ModelsPromptCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(modelsControllerProvider);
+    if (state.loading || state.ready) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final downloading = state.installingAll;
+    final failed = state.hasFailure && !downloading;
+    final percent = toPersianDigits('${(state.progress * 100).floor()}');
+
+    return Padding(
+      // Top padding so this card doesn't sit flush against the header above
+      // it, matching its own bottom spacing before the meetings list.
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: SsCard(
+        ripple: true,
+        elevated: true,
+        onTap: () => context.push('/models'),
+        child: Row(
+          children: [
+            Icon(Icons.download_outlined, color: SsColors.of(context).primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'نصب مدل‌های رونویسی',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    downloading
+                        ? 'در حال دانلود و نصب… $percent٪'
+                        : failed
+                        ? 'دانلود کامل نشد؛ برای ادامه دوباره بزنید.'
+                        : 'برای رونویسی فارسی و تشخیص گوینده روی گوشی و '
+                              'بدون اینترنت، مدل‌ها را دانلود و نصب کنید.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: SsColors.of(context).ink.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  if (downloading) ...[
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(value: state.progress),
+                  ],
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: SsColors.of(context).neutral),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _GroupHeaderDelegate(this.label, this.count);
+  const _GroupHeaderDelegate(this.label, this.count, {required this.onTap});
 
   final String label;
   final int count;
+  final VoidCallback onTap;
 
   @override
   double get minExtent => 38;
@@ -242,23 +312,31 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   ) {
     final theme = Theme.of(context);
     return Container(
-      color: SsColors.canvas,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      alignment: AlignmentDirectional.centerStart,
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: SsColors.primaryDark,
-              fontWeight: FontWeight.w600,
+      alignment: Alignment.center,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: SsColors.of(context).canvas,
+              border: Border.all(
+                color: SsColors.of(context).neutral.withValues(alpha: 0.5),
+              ),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: SsColors.of(context).primaryDark,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(toPersianDigits('$count'), style: theme.textTheme.labelSmall),
-          const SizedBox(width: 10),
-          const Expanded(child: Divider()),
-        ],
+        ),
       ),
     );
   }
@@ -266,133 +344,6 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_GroupHeaderDelegate old) =>
       old.label != label || old.count != count;
-}
-
-class _SearchAndFilters extends StatelessWidget {
-  const _SearchAndFilters({
-    required this.controller,
-    required this.filter,
-    required this.onQuery,
-    required this.onFilter,
-  });
-
-  final TextEditingController controller;
-  final _Filter filter;
-  final ValueChanged<String> onQuery;
-  final ValueChanged<_Filter> onFilter;
-
-  @override
-  Widget build(BuildContext context) {
-    OutlineInputBorder border(Color c) => OutlineInputBorder(
-      borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: c),
-    );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: ValueListenableBuilder<TextEditingValue>(
-                valueListenable: controller,
-                builder: (context, value, _) => TextField(
-                  controller: controller,
-                  onChanged: onQuery,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'جست‌وجو در عنوان، تاریخ و متن جلسه',
-                    filled: true,
-                    fillColor: Colors.white,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      color: SsColors.neutral,
-                    ),
-                    suffixIcon: value.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'پاک کردن',
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () {
-                              controller.clear();
-                              onQuery('');
-                            },
-                          ),
-                    border: border(SsColors.line),
-                    enabledBorder: border(SsColors.line),
-                    focusedBorder: border(SsColors.primary),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            _FilterMenu(filter: filter, onFilter: onFilter),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Icon button beside the search field; opens the status filters as a dropdown.
-class _FilterMenu extends StatelessWidget {
-  const _FilterMenu({required this.filter, required this.onFilter});
-
-  final _Filter filter;
-  final ValueChanged<_Filter> onFilter;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = filter != _Filter.all;
-    return PopupMenuButton<_Filter>(
-      tooltip: 'فیلتر جلسه‌ها',
-      position: PopupMenuPosition.under,
-      color: Colors.white,
-      shape: const RoundedRectangleBorder(
-        side: BorderSide(color: SsColors.line),
-      ),
-      initialValue: filter,
-      onSelected: onFilter,
-      itemBuilder: (context) => [
-        for (final f in _Filter.values)
-          PopupMenuItem(
-            value: f,
-            height: 40,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  f == filter ? Icons.check : null,
-                  size: 18,
-                  color: SsColors.primary,
-                ),
-                const SizedBox(width: 10),
-                Text(f.label, style: Theme.of(context).textTheme.labelMedium),
-              ],
-            ),
-          ),
-      ],
-      child: Semantics(
-        button: true,
-        label: active ? 'فیلتر: ${filter.label}' : 'فیلتر جلسه‌ها',
-        child: Container(
-          width: 46,
-          decoration: BoxDecoration(
-            color: active ? SsColors.primary : Colors.white,
-            border: Border.all(
-              color: active ? SsColors.primary : SsColors.line,
-            ),
-          ),
-          child: Icon(
-            Icons.filter_list,
-            color: active ? SsColors.canvas : SsColors.neutral,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _NoResults extends StatelessWidget {
@@ -408,7 +359,7 @@ class _NoResults extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.search_off, size: 44, color: SsColors.accent),
+          Icon(Icons.search_off, size: 44, color: SsColors.of(context).accent),
           const SizedBox(height: 12),
           Text('جلسه‌ای پیدا نشد', style: theme.textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -435,15 +386,81 @@ class _Header extends ConsumerWidget {
     final creditExhausted = ref.watch(
       uploadQueueProvider.select((s) => s.creditExhausted),
     );
+    final date = ref.watch(meetingsSearchProvider.select((s) => s.date));
     final notice = needsReconnect
         ? 'توکن ابطال شده است؛ از «تنظیمات» دوباره به صداسنج متصل شوید.'
         : creditExhausted
         ? 'اعتبار سازمان تمام شده است؛ در پنل صداسنج شارژ کنید تا ارسال ادامه یابد.'
         : null;
-    if (notice == null) return const SizedBox.shrink();
+    if (notice == null && date == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: _QueueNotice(notice),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (date != null) ...[
+            _DateFilterChip(date),
+            if (notice != null) const SizedBox(height: 8),
+          ],
+          if (notice != null) _QueueNotice(notice),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows the active "jump to date" filter, with a way to clear it back to
+/// the full list.
+class _DateFilterChip extends ConsumerWidget {
+  const _DateFilterChip(this.date);
+
+  final Jalali date;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final f = date.formatter;
+    final label = toPersianDigits('${f.d} ${f.mN} ${f.yyyy}');
+    return Align(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: SsColors.of(context).selected,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.event,
+              size: 14,
+              color: SsColors.of(context).primaryDark,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: SsColors.of(context).primaryDark,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: () =>
+                  ref.read(meetingsSearchProvider.notifier).clearDate(),
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: SsColors.of(context).primaryDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -508,7 +525,6 @@ class _MeetingTile extends ConsumerWidget {
     final card = SsCard(
       ripple: true,
       elevated: true,
-      color: Colors.white,
       padding: EdgeInsets.zero,
       onTap: () => context.push('/meeting/${meeting.id}'),
       child: Padding(
@@ -562,7 +578,7 @@ class _MeetingTile extends ConsumerWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontSize: 13,
                     height: 1.65,
-                    color: SsColors.ink.withValues(alpha: 0.8),
+                    color: SsColors.of(context).ink.withValues(alpha: 0.8),
                   ),
                 ),
               ),
@@ -651,7 +667,7 @@ class _MeetingTile extends ConsumerWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: color ?? SsColors.ink),
+          Icon(icon, size: 18, color: color ?? SsColors.of(context).ink),
           const SizedBox(width: 10),
           Flexible(child: Text(label, style: style(color))),
         ],
@@ -664,11 +680,10 @@ class _MeetingTile extends ConsumerWidget {
       child: PopupMenuButton<String>(
         padding: EdgeInsets.zero,
         iconSize: 20,
-        icon: const Icon(Icons.more_vert, color: SsColors.neutral),
+        icon: Icon(Icons.more_vert, color: SsColors.of(context).neutral),
         tooltip: 'گزینه‌ها',
-        color: Colors.white,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: SsColors.line),
+          side: BorderSide(color: SsColors.of(context).line),
         ),
         constraints: const BoxConstraints(minWidth: 0),
         position: PopupMenuPosition.under,
@@ -691,7 +706,7 @@ class _MeetingTile extends ConsumerWidget {
             'delete',
             Icons.delete_outline,
             'حذف جلسه',
-            color: SsColors.danger,
+            color: SsColors.of(context).danger,
           ),
         ],
       ),
@@ -789,24 +804,27 @@ class _RenameDialogState extends State<_RenameDialog> {
 
 class _SwipeBackground extends StatelessWidget {
   const _SwipeBackground.rename()
-    : color = SsColors.primary,
+    : _rename = true,
       icon = Icons.edit_outlined,
       label = 'تغییر نام',
       alignment = AlignmentDirectional.centerStart;
 
   const _SwipeBackground.delete()
-    : color = SsColors.danger,
+    : _rename = false,
       icon = Icons.delete_outline,
       label = 'حذف',
       alignment = AlignmentDirectional.centerEnd;
 
-  final Color color;
+  final bool _rename;
   final IconData icon;
   final String label;
   final AlignmentDirectional alignment;
 
   @override
   Widget build(BuildContext context) {
+    final color = _rename
+        ? SsColors.of(context).primary
+        : SsColors.of(context).danger;
     return Container(
       color: color,
       padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -862,8 +880,8 @@ class _StatusArea extends ConsumerWidget {
       child: SsBadge(
         _statusLabel(status),
         color: status == MeetingStatus.recording
-            ? SsColors.danger
-            : SsColors.neutral,
+            ? SsColors.of(context).danger
+            : SsColors.of(context).neutral,
         icon: _statusIcon(status),
       ),
     );
@@ -901,9 +919,9 @@ class _BusyLine extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: SsColors.primaryDark),
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: SsColors.of(context).primaryDark,
+            ),
           ),
         ),
       ],
@@ -930,16 +948,20 @@ class _FailedPanel extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, size: 18, color: SsColors.danger),
+          Icon(
+            Icons.error_outline,
+            size: 18,
+            color: SsColors.of(context).danger,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: SsColors.danger),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: SsColors.of(context).danger,
+              ),
             ),
           ),
         ],
@@ -960,7 +982,7 @@ class _Meta extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: SsColors.neutral),
+        Icon(icon, size: 14, color: SsColors.of(context).neutral),
         const SizedBox(width: 5),
         Flexible(
           child: Text(
@@ -983,16 +1005,20 @@ class _DurationChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-      decoration: BoxDecoration(color: SsColors.selected),
+      decoration: BoxDecoration(color: SsColors.of(context).selected),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer_outlined, size: 13, color: SsColors.primary),
+          Icon(
+            Icons.timer_outlined,
+            size: 13,
+            color: SsColors.of(context).primary,
+          ),
           const SizedBox(width: 4),
           Text(
             text,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: SsColors.primaryDark,
+              color: SsColors.of(context).primaryDark,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1049,8 +1075,8 @@ class _SkeletonListState extends State<_SkeletonList>
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: SsColors.line),
+                color: SsColors.of(context).canvas,
+                border: Border.all(color: SsColors.of(context).line),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1072,6 +1098,6 @@ class _SkeletonListState extends State<_SkeletonList>
   Widget _bar(double width, double height) => Container(
     width: width,
     height: height,
-    decoration: BoxDecoration(color: SsColors.selected),
+    decoration: BoxDecoration(color: SsColors.of(context).selected),
   );
 }

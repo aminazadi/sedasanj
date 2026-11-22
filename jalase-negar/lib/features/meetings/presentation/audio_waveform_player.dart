@@ -208,7 +208,7 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Material(
-      color: Colors.white,
+      color: SsColors.of(context).canvas,
       child: SafeArea(
         top: false,
         child: Padding(
@@ -221,7 +221,9 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
 
   Widget _buildError(ThemeData theme) => Text(
     'فایل صوتی قابل پخش نیست.',
-    style: theme.textTheme.bodySmall?.copyWith(color: SsColors.danger),
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: SsColors.of(context).danger,
+    ),
   );
 
   Widget _buildPlayer(ThemeData theme) {
@@ -277,8 +279,8 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
               child: IconButton.filled(
                 tooltip: playing ? 'توقف پخش' : 'پخش فایل صوتی',
                 style: IconButton.styleFrom(
-                  backgroundColor: SsColors.primary,
-                  foregroundColor: SsColors.canvas,
+                  backgroundColor: SsColors.of(context).primary,
+                  foregroundColor: SsColors.of(context).canvas,
                   shape: const RoundedRectangleBorder(),
                 ),
                 onPressed: _toggle,
@@ -295,7 +297,7 @@ class _AudioWaveformPlayerState extends State<AudioWaveformPlayer> {
                   '${formatDuration(position)} / ${formatDuration(total)}',
                   textDirection: TextDirection.ltr,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: SsColors.neutral,
+                    color: SsColors.of(context).neutral,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -360,8 +362,8 @@ class _ControlButton extends StatelessWidget {
               height: 36,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: SsColors.canvas,
-                border: Border.all(color: SsColors.line),
+                color: SsColors.of(context).canvas,
+                border: Border.all(color: SsColors.of(context).line),
               ),
               child: child,
             ),
@@ -403,7 +405,13 @@ class _Waveform extends StatelessWidget {
               height: 56,
               width: double.infinity,
               child: CustomPaint(
-                painter: _WaveformPainter(peaks: peaks, progress: progress),
+                painter: _WaveformPainter(
+                  peaks: peaks,
+                  progress: progress,
+                  canvasColor: SsColors.of(context).canvas,
+                  accentColor: SsColors.of(context).accent,
+                  primaryColor: SsColors.of(context).primary,
+                ),
               ),
             ),
           );
@@ -414,23 +422,32 @@ class _Waveform extends StatelessWidget {
 }
 
 class _WaveformPainter extends CustomPainter {
-  _WaveformPainter({required this.peaks, required this.progress});
+  _WaveformPainter({
+    required this.peaks,
+    required this.progress,
+    required this.canvasColor,
+    required this.accentColor,
+    required this.primaryColor,
+  });
 
   final List<double> peaks;
   final double progress;
+  final Color canvasColor;
+  final Color accentColor;
+  final Color primaryColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = SsColors.canvas.withValues(alpha: 0.6),
+      Paint()..color = canvasColor.withValues(alpha: 0.6),
     );
     final midY = size.height / 2;
     canvas.drawLine(
       Offset(0, midY),
       Offset(size.width, midY),
       Paint()
-        ..color = SsColors.accent.withValues(alpha: 0.6)
+        ..color = accentColor.withValues(alpha: 0.6)
         ..strokeWidth = 1,
     );
     final slot = size.width / peaks.length;
@@ -439,8 +456,8 @@ class _WaveformPainter extends CustomPainter {
       final h = (peaks[i] * (size.height - 8)).clamp(6.0, size.height - 4);
       final paint = Paint()
         ..color = i < active
-            ? SsColors.primary
-            : SsColors.accent.withValues(alpha: 0.72);
+            ? primaryColor
+            : accentColor.withValues(alpha: 0.72);
       canvas.drawRect(
         Rect.fromCenter(
           center: Offset(slot * i + slot / 2, midY),
@@ -453,11 +470,15 @@ class _WaveformPainter extends CustomPainter {
     final x = (progress * size.width).clamp(1.0, size.width - 1);
     canvas.drawRect(
       Rect.fromLTWH(x - 1, 2, 2, size.height - 4),
-      Paint()..color = SsColors.primary,
+      Paint()..color = primaryColor,
     );
   }
 
   @override
   bool shouldRepaint(_WaveformPainter old) =>
-      old.progress != progress || old.peaks != peaks;
+      old.progress != progress ||
+      old.peaks != peaks ||
+      old.canvasColor != canvasColor ||
+      old.accentColor != accentColor ||
+      old.primaryColor != primaryColor;
 }

@@ -19,6 +19,7 @@ void main() {
       const LiveTranscriptState(phase: LivePhase.preparing),
     );
     await tester.pumpWidget(host(state));
+    await tester.pump(const Duration(seconds: 3));
     expect(find.text('متن زنده'), findsOneWidget);
     expect(find.text('در حال آماده‌سازی…'), findsOneWidget);
     expect(
@@ -32,6 +33,7 @@ void main() {
       const LiveTranscriptState(phase: LivePhase.listening),
     );
     await tester.pumpWidget(host(state));
+    await tester.pump(const Duration(seconds: 3));
     expect(find.text('زنده'), findsOneWidget);
     expect(find.textContaining('شروع به صحبت کنید'), findsOneWidget);
   });
@@ -77,6 +79,7 @@ void main() {
       ),
     );
     await tester.pumpWidget(host(state));
+    await tester.pump(const Duration(seconds: 3));
     expect(find.text('متوقف شد'), findsOneWidget);
     expect(find.text('مدل بارگذاری نشد'), findsOneWidget);
   });
@@ -145,6 +148,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump(const Duration(seconds: 3));
     expect(find.text('متن زنده'), findsNothing);
     expect(find.text('زنده'), findsNothing);
     // The empty state still tells the user what to do.

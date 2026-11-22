@@ -10,12 +10,14 @@ import app.jalasenegar.jalase_negar.update.UpdateInstaller
 import app.jalasenegar.jalase_negar.update.UpdateReporter
 import app.jalasenegar.jalase_negar.update.UpdateStore
 import app.jalasenegar.jalase_negar.update.UpdateWorker
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// local_auth's BiometricPrompt needs a FragmentActivity; FlutterFragmentActivity
+// is itself a FlutterActivity subclass, so nothing else below changes.
+class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MultichannelCapture.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)

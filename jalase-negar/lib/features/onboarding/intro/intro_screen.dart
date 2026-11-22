@@ -41,8 +41,9 @@ const kIntroSlides = <IntroSlide>[
   IntroSlide(
     IntroScene.liveText,
     'متن زنده هنگام ضبط',
-    'پیش از شروع، «متن زنده» را از آیکون زیرنویس روشن کنید. متن کمی بعد از '
-        'هر مکث در صفحهٔ ضبط ظاهر می‌شود و همراه جلسه ذخیره خواهد شد.',
+    'با نصب مدل‌ها، همین که ضبط را شروع کنید متن زنده خودش ظاهر می‌شود؛ '
+        'کمی بعد از هر مکث در صفحهٔ ضبط به‌روز می‌شود و همراه جلسه ذخیره '
+        'خواهد شد.',
   ),
   IntroSlide(
     IntroScene.mic,
@@ -295,10 +296,10 @@ class _Segments extends StatelessWidget {
               width: i == index ? 28 : 10,
               height: 4,
               color: i == index
-                  ? SsColors.primary
+                  ? SsColors.of(context).primary
                   : i < index
-                  ? SsColors.accent
-                  : SsColors.line,
+                  ? SsColors.of(context).accent
+                  : SsColors.of(context).line,
             ),
         ],
       ),

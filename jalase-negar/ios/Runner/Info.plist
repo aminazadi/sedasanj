@@ -10,6 +10,8 @@
 	<string>برای ضبط جلسه به میکروفون نیاز است.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>برای اسکن QR اتصال به صداسنج از دوربین استفاده می‌شود.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>برای باز کردن قفل امنیتی جلسه‌نگار از Face ID استفاده می‌شود.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -20,6 +22,17 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.jalasenegar.jalase_negar.payment</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>jalasenegar</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleName</key>
 	<string>jalase_negar</string>
 	<key>CFBundlePackageType</key>

@@ -171,7 +171,7 @@ class _PersonCheckTile extends StatelessWidget {
       value: checked,
       onChanged: (v) => onChanged(v ?? false),
       controlAffinity: ListTileControlAffinity.trailing,
-      activeColor: SsColors.primary,
+      activeColor: SsColors.of(context).primary,
       secondary: CircleAvatar(
         child: Text(person.name.isEmpty ? '؟' : person.name.characters.first),
       ),

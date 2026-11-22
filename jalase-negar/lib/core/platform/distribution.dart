@@ -20,3 +20,10 @@ bool get hasForegroundService => Platform.isAndroid || Platform.isIOS;
 /// `mobile_scanner` has no Windows implementation, so QR scanning is hidden there
 /// (config file and pasted text still connect the app).
 bool get qrScanSupported => !Platform.isWindows;
+
+/// Server used by phone-number sign-in (the stand-alone account). Override with
+/// `--dart-define=SERVER_URL=https://host` for staging or local development.
+const String kDefaultServerUrl = String.fromEnvironment(
+  'SERVER_URL',
+  defaultValue: 'https://sedasanj.ir',
+);

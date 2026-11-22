@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 330" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <ellipse cx="150" cy="298" rx="72" ry="9" fill="#b2ac88" opacity=".14"/>
+  <rect x="70" y="26" width="160" height="234" rx="28" fill="#eef1e7" stroke="#c7d0b8" stroke-width="1.5"/>
+  <!-- Sound ripples: the mic is actively picking up audio. -->
+  <g stroke="#9caf9a" stroke-width="3">
+    <path d="M208 70a24 24 0 0 1 0 22" opacity=".6"/>
+    <path d="M222 62a40 40 0 0 1 0 38" opacity=".32"/>
+    <path d="M92 70a24 24 0 0 0 0 22" opacity=".6"/>
+    <path d="M78 62a40 40 0 0 0 0 38" opacity=".32"/>
+  </g>
+  <!-- Mic, drawn at the same proportions as the record button's own glyph: audio keeps coming in. -->
+  <g transform="translate(102.8 45) scale(4)">
+    <rect x="8.8" y="2.8" width="6.4" height="11.4" rx="3.2" fill="#4b6e48"/>
+    <path d="M18.75 11.81A6.8 6.8 0 0 1 5.39 12.6" stroke="#4b6e48" stroke-width="1.8"/>
+    <path d="M12 17.8V21M8.6 21H15.4" stroke="#4b6e48" stroke-width="1.8"/>
+  </g>
+  <!-- Waveform: the live level meter. -->
+  <g stroke="#4b6e48" stroke-width="7">
+    <path d="M111 157v16M124 151v28M137 145v40M150 141v48M163 145v40M176 151v28M189 157v16"/>
+  </g>
+  <!-- No text: two lines of "transcript" struck through, in a muted grey against the mic's green. -->
+  <g stroke="#898989" stroke-width="7">
+    <path d="M115 215h70M115 230h60"/>
+    <path d="M112 203l81 44"/>
+  </g>
+</svg>

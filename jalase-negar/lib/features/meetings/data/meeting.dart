@@ -1,3 +1,15 @@
+import 'dart:convert';
+
+/// The account the app is signed in to (personal phone account or a paired organization).
+const String kWorkspacePrimary = 'primary';
+
+/// The code of the builtin "صورت جلسه عمومی" category; always published, selected by
+/// default when the admin has not created any other category.
+const String kBuiltinOutputType = 'minutes';
+
+/// The SedaSanj organization linked to a personal account.
+const String kWorkspaceOrg = 'org';
+
 enum MeetingStatus {
   recording,
   recorded,
@@ -40,6 +52,9 @@ class Meeting {
     this.sendText = true,
     this.textSyncPending = false,
     this.speakersState = 'done',
+    this.workspace = kWorkspacePrimary,
+    this.outputTypeCode = kBuiltinOutputType,
+    this.outputTypeInputValues = const {},
   });
 
   final String id;
@@ -75,6 +90,17 @@ class Meeting {
   /// identified (nothing is sent meanwhile), 'done' otherwise.
   final String speakersState;
 
+  /// Where this meeting is sent: [kWorkspacePrimary] (the signed-in account) or
+  /// [kWorkspaceOrg] (the SedaSanj organization linked to a personal account).
+  final String workspace;
+
+  /// The meeting-type category chosen before recording; [kBuiltinOutputType]
+  /// ("صورت جلسه عمومی") unless the user picked something else.
+  final String outputTypeCode;
+
+  /// The values typed for that category's input fields, if it has any.
+  final Map<String, String> outputTypeInputValues;
+
   bool get analyzingSpeakers => speakersState != 'done';
 
   /// Value equality lets the list skip rebuilding tiles whose meeting did not
@@ -96,7 +122,11 @@ class Meeting {
       other.asrIdentity == asrIdentity &&
       other.sendText == sendText &&
       other.textSyncPending == textSyncPending &&
-      other.speakersState == speakersState;
+      other.speakersState == speakersState &&
+      other.workspace == workspace &&
+      other.outputTypeCode == outputTypeCode &&
+      jsonEncode(other.outputTypeInputValues) ==
+          jsonEncode(outputTypeInputValues);
 
   @override
   int get hashCode => Object.hash(
@@ -115,6 +145,9 @@ class Meeting {
     sendText,
     textSyncPending,
     speakersState,
+    workspace,
+    outputTypeCode,
+    jsonEncode(outputTypeInputValues),
   );
 
   /// The meeting as the list should show it when no recorder is open: a row
@@ -137,6 +170,9 @@ class Meeting {
     bool? sendText,
     bool? textSyncPending,
     String? speakersState,
+    String? workspace,
+    String? outputTypeCode,
+    Map<String, String>? outputTypeInputValues,
   }) => Meeting(
     id: id,
     title: title ?? this.title,
@@ -153,6 +189,9 @@ class Meeting {
     sendText: sendText ?? this.sendText,
     textSyncPending: textSyncPending ?? this.textSyncPending,
     speakersState: speakersState ?? this.speakersState,
+    workspace: workspace ?? this.workspace,
+    outputTypeCode: outputTypeCode ?? this.outputTypeCode,
+    outputTypeInputValues: outputTypeInputValues ?? this.outputTypeInputValues,
   );
 
   factory Meeting.fromRow(Map<String, Object?> row) => Meeting(
@@ -171,6 +210,11 @@ class Meeting {
     sendText: ((row['send_text'] as int?) ?? 1) != 0,
     textSyncPending: ((row['text_sync_pending'] as int?) ?? 0) != 0,
     speakersState: (row['speakers_state'] as String?) ?? 'done',
+    workspace: (row['workspace'] as String?) ?? kWorkspacePrimary,
+    outputTypeCode: (row['output_type_code'] as String?) ?? kBuiltinOutputType,
+    outputTypeInputValues: _decodeStringMap(
+      row['output_type_input_values'] as String?,
+    ),
   );
 
   Map<String, Object?> toRow() => {
@@ -189,7 +233,26 @@ class Meeting {
     'send_text': sendText ? 1 : 0,
     'text_sync_pending': textSyncPending ? 1 : 0,
     'speakers_state': speakersState,
+    'workspace': workspace,
+    'output_type_code': outputTypeCode,
+    'output_type_input_values': jsonEncode(outputTypeInputValues),
   };
+}
+
+/// Lenient decode: a missing, null or malformed column never crashes the list.
+Map<String, String> _decodeStringMap(String? raw) {
+  if (raw == null || raw.isEmpty) return const {};
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) {
+      return decoded.map(
+        (key, value) => MapEntry(key as String, value as String),
+      );
+    }
+  } on FormatException {
+    // Falls through to the empty map below.
+  }
+  return const {};
 }
 
 /// Where a segment's timestamps come from (ASR parity contract).

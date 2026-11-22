@@ -472,7 +472,7 @@ class TranscriptEditorState extends State<TranscriptEditor>
           ],
           Expanded(
             child: ColoredBox(
-              color: Colors.white,
+              color: SsColors.of(context).canvas,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: TextField(
@@ -527,7 +527,9 @@ class TranscriptEditorState extends State<TranscriptEditor>
         onPressed: () => _save(settle: true),
         icon: const Icon(Icons.refresh, size: 16),
         label: const Text('ذخیره نشد؛ تلاش دوباره'),
-        style: TextButton.styleFrom(foregroundColor: SsColors.danger),
+        style: TextButton.styleFrom(
+          foregroundColor: SsColors.of(context).danger,
+        ),
       );
     }
     final (icon, label) = _saving || _dirty
@@ -536,7 +538,7 @@ class TranscriptEditorState extends State<TranscriptEditor>
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: SsColors.neutral),
+        Icon(icon, size: 14, color: SsColors.of(context).neutral),
         const SizedBox(width: 4),
         Text(label, style: theme.textTheme.bodySmall),
       ],
@@ -555,7 +557,7 @@ class TranscriptEditorState extends State<TranscriptEditor>
     final editable = !_locked;
     final hasText = _text.text.trim().isNotEmpty;
     return Container(
-      color: SsColors.selected.withValues(alpha: 0.5),
+      color: SsColors.of(context).selected.withValues(alpha: 0.5),
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -609,7 +611,7 @@ class TranscriptEditorState extends State<TranscriptEditor>
     tooltip: tooltip,
     visualDensity: VisualDensity.compact,
     style: active
-        ? IconButton.styleFrom(backgroundColor: SsColors.selected)
+        ? IconButton.styleFrom(backgroundColor: SsColors.of(context).selected)
         : null,
     onPressed: onPressed,
     icon: Icon(icon, size: 20),
@@ -626,7 +628,7 @@ class TranscriptEditorState extends State<TranscriptEditor>
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: SsColors.selected.withValues(alpha: 0.5),
+        color: SsColors.of(context).selected.withValues(alpha: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -706,11 +708,15 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: SsColors.selected),
+      decoration: BoxDecoration(color: SsColors.of(context).selected),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, size: 18, color: SsColors.primary),
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: SsColors.of(context).primary,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -762,8 +768,8 @@ class _TranscriptController extends TextEditingController {
           text: text.substring(at, at + matchLength),
           style: TextStyle(
             backgroundColor: i == current
-                ? SsColors.accent
-                : SsColors.accent.withValues(alpha: 0.3),
+                ? SsColors.of(context).accent
+                : SsColors.of(context).accent.withValues(alpha: 0.3),
           ),
         ),
       );

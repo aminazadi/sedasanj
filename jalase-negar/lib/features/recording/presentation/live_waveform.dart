@@ -54,7 +54,14 @@ class LiveWaveform extends StatelessWidget {
         height: 34,
         width: double.infinity,
         child: RepaintBoundary(
-          child: CustomPaint(painter: _WavePainter(waveform, active)),
+          child: CustomPaint(
+            painter: _WavePainter(
+              waveform,
+              active,
+              dangerColor: SsColors.of(context).danger,
+              neutralColor: SsColors.of(context).neutral,
+            ),
+          ),
         ),
       ),
     );
@@ -62,16 +69,22 @@ class LiveWaveform extends StatelessWidget {
 }
 
 class _WavePainter extends CustomPainter {
-  _WavePainter(this.waveform, this.active)
-    : super(repaint: active ? waveform : null);
+  _WavePainter(
+    this.waveform,
+    this.active, {
+    required this.dangerColor,
+    required this.neutralColor,
+  }) : super(repaint: active ? waveform : null);
 
   final LiveAudioWaveform waveform;
   final bool active;
+  final Color dangerColor;
+  final Color neutralColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     final mid = size.height / 2;
-    final color = active ? SsColors.danger : SsColors.neutral;
+    final color = active ? dangerColor : neutralColor;
     final paint = Paint()..color = color.withValues(alpha: 0.25);
     canvas.drawLine(Offset(0, mid), Offset(size.width, mid), paint);
     if (!active) return;
@@ -95,5 +108,8 @@ class _WavePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WavePainter oldDelegate) =>
-      waveform != oldDelegate.waveform || active != oldDelegate.active;
+      waveform != oldDelegate.waveform ||
+      active != oldDelegate.active ||
+      dangerColor != oldDelegate.dangerColor ||
+      neutralColor != oldDelegate.neutralColor;
 }
