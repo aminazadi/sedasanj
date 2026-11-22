@@ -1,3 +1,7 @@
+## 2026-11-22 — AMINAZADI
+
+- Added «خروجی جلسه» on the meeting detail screen, merging the old «صورت‌جلسه» and «اسناد» tabs into one: it always appears once the meeting has a remote id, but shows the minutes/documents content only to a signed-in personal account whose `/v1/jalase-negar/usage` is not exhausted (`lib/features/meetings/presentation/meeting_output_tab.dart`); otherwise it shows a locked state with its own illustration — a padlock badge (`assets/images/brand/login-required.svg`) asking to sign in, or a star/plan badge (`assets/images/brand/plan-upgrade.svg`) asking to buy or top up a plan. `flutter test test/meeting_output_tab_test.dart test/meeting_detail_screen_test.dart test/documents_test.dart` and `flutter analyze` pass; NOT run on a phone, and the new illustrations were only checked by rendering the raw SVG in a browser, not inside the running app.
+
 ## 2026-11-19 — AMINAZADI
 
 - Changed settings from one long list into three tabs: «حساب» (connection status, sign-in, organization link, delete account), «ضبط و ارسال» (send transcript, speaker names, CPU share, sound events) and «برنامه» (updates, notifications). Also, disconnecting no longer fails when the macOS keychain refuses to delete the token (error -34018). Widget test `test/settings_tabs_test.dart`; `flutter test` and analyze pass; looked at only in tests, not on screen.
