@@ -31,7 +31,7 @@ from app.models import (
     MeetingSegment,
     MeetingSpeaker,
 )
-from app.services import tenant_ai_instructions
+from app.services import meeting_ingest, meeting_progress, tenant_ai_instructions
 from app.services.ai_usage import set_ai_feature
 from app.services.meeting_minutes import _digest, format_clock, format_transcript, plan_blocks
 from app.services.platform import effective_models, resolve_provider_settings
@@ -475,6 +475,59 @@ async def _store(
         document.error_code = None
         document.progress_pct = 100
         document.updated_at = datetime.now(UTC)
+        await _close_meeting(session, document, ok=True)
+
+
+async def _close_meeting(session: AsyncSession, document: MeetingDocument, *, ok: bool) -> None:
+    """End the meeting when its chosen category was the only thing it was waiting for.
+
+    A meeting whose category is not the builtin minutes has no minutes job (finish enqueues just
+    this document), so nothing else would move it out of `processing`: the app would poll it
+    forever and its billing hold would never be settled.  Documents added later, or made for a
+    meeting that is already closed, leave the meeting alone.
+    """
+    meeting = (
+        await session.execute(
+            select(Meeting).where(Meeting.id == document.meeting_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if (
+        meeting is None
+        or meeting.status != "processing"
+        or meeting.output_type_code != document.output_type_code
+    ):
+        return
+    now = datetime.now(UTC)
+    if ok:
+        if meeting.billed_seconds is None:
+            try:
+                await meeting_ingest.settle_meeting(session, meeting)
+            except ApiError:
+                logger.warning(
+                    "meeting settlement failed; the hold stays for the reconciler",
+                    extra={"extra_fields": {"meeting_id": str(meeting.id)}},
+                    exc_info=True,
+                )
+        meeting.status = "complete"
+        meeting.error_code = None
+        meeting.progress_pct = 100
+        stage = "complete"
+    else:
+        if meeting.billed_seconds is None:
+            await meeting_ingest.release_meeting(session, meeting)
+        meeting.status = "failed_terminal"
+        meeting.error_code = "document_generation_failed"
+        stage = "failed_terminal"
+    meeting.updated_at = now
+    meeting_progress.set_stage(meeting, stage, progress_pct=100 if ok else None)
+    await meeting_progress.record_event(
+        session,
+        meeting,
+        step_key=f"document:{document.id}",
+        kind="document",
+        status=stage,
+        detail=meeting_progress.STAGE_LABELS[stage],
+    )
 
 
 async def _fail(tenant_id: UUID, document_id: UUID, code: str) -> None:
@@ -484,6 +537,9 @@ async def _fail(tenant_id: UUID, document_id: UUID, code: str) -> None:
             .where(MeetingDocument.id == document_id)
             .values(status="failed", error_code=code[:64], updated_at=datetime.now(UTC))
         )
+        document = await session.get(MeetingDocument, document_id)
+        if document is not None:
+            await _close_meeting(session, document, ok=False)
 
 
 async def reopen(session: AsyncSession, document: MeetingDocument) -> None:

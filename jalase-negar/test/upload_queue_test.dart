@@ -107,6 +107,9 @@ class FakeStore implements UploadStore {
 
 class FakeApi implements MeetingUploadApi {
   int createCalls = 0;
+
+  /// A category the server no longer has published; its session is refused.
+  String? unpublishedType;
   List<Attendee> lastAttendees = const [];
   String lastOutputType = kBuiltinOutputType;
   Map<String, String> lastOutputTypeInputValues = const {};
@@ -133,6 +136,13 @@ class FakeApi implements MeetingUploadApi {
     Map<String, String> outputTypeInputValues = const {},
   }) async {
     createCalls += 1;
+    if (unpublishedType != null && outputType == unpublishedType) {
+      throw const ApiException(
+        message: 'این دسته وجود ندارد یا منتشر نشده است.',
+        code: 'output_type_not_found',
+        statusCode: 404,
+      );
+    }
     lastAttendees = attendees;
     lastOutputType = outputType;
     lastOutputTypeInputValues = outputTypeInputValues;
@@ -339,6 +349,23 @@ void main() {
     await queue().processOnce();
     expect(api.lastOutputType, 'counseling');
     expect(api.lastOutputTypeInputValues, const {'client': 'شرکت نمونه'});
+  });
+
+  test('a category the admin unpublished falls back to the minutes', () async {
+    setUpStore(
+      meeting(
+        outputTypeCode: 'counseling',
+        outputTypeInputValues: const {'client': 'شرکت نمونه'},
+      ),
+    );
+    api.unpublishedType = 'counseling';
+    await queue().processOnce();
+    // Refused once, then accepted as the builtin minutes; not marked failed.
+    expect(api.createCalls, 2);
+    expect(api.lastOutputType, kBuiltinOutputType);
+    expect(api.lastOutputTypeInputValues, const <String, String>{});
+    expect(store.meetings.single.status, isNot(MeetingStatus.failed));
+    expect(store.meetings.single.remoteMeetingId, 'remote-1');
   });
 
   test('a meeting with the switch off is never touched', () async {

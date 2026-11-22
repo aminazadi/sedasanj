@@ -337,6 +337,78 @@ async def test_invalid_model_output_fails_only_the_document(
     assert again["items"][0]["status"] == "queued"
 
 
+async def _meeting_waiting_for(meeting_id: UUID, tenant_id: UUID, code: str) -> None:
+    """The state `finish` leaves a custom category in: processing, with no minutes job."""
+    async with db.session_scope(tenant_id) as session:
+        meeting = await session.get(MeetingRow, meeting_id)
+        assert meeting is not None
+        meeting.status = "processing"
+        meeting.output_type_code = code
+
+
+async def test_the_chosen_category_document_completes_its_meeting(
+    world: SimpleNamespace, queued: list[UUID], fake: FakeClient
+) -> None:
+    code = await publish_type(world)
+    who, meeting_id = await setup_user(world, ["سلام", "بودجه"])
+    await _meeting_waiting_for(meeting_id, who.tenant_id, code)
+    out = await router.create_documents(
+        meeting_id, router.DocumentsCreate(items=[router.DocumentItem(output_type=code)]), who
+    )
+    assert await engine.generate_document(who.tenant_id, UUID(out["items"][0]["id"])) == "complete"
+    async with db.session_scope(who.tenant_id) as session:
+        meeting = await session.get(MeetingRow, meeting_id)
+        assert meeting is not None
+        # No other job would move it on, so the app would otherwise poll it forever.
+        assert meeting.status == "complete" and meeting.progress_pct == 100
+
+
+async def test_a_failed_chosen_category_ends_its_meeting_instead_of_leaving_it_processing(
+    world: SimpleNamespace, queued: list[UUID], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = FakeClient(replies=["not json", "still not json"])
+    monkeypatch.setattr(engine, "build_client", lambda *a, **k: client)
+    code = await publish_type(world)
+    who, meeting_id = await setup_user(world, ["متن"])
+    await _meeting_waiting_for(meeting_id, who.tenant_id, code)
+    out = await router.create_documents(
+        meeting_id, router.DocumentsCreate(items=[router.DocumentItem(output_type=code)]), who
+    )
+    assert await engine.generate_document(who.tenant_id, UUID(out["items"][0]["id"])) == "failed"
+    async with db.session_scope(who.tenant_id) as session:
+        meeting = await session.get(MeetingRow, meeting_id)
+        assert meeting is not None
+        assert meeting.status == "failed_terminal"
+        assert meeting.error_code == "document_generation_failed"
+
+
+async def test_documents_are_refused_once_the_plan_hours_are_used_up(
+    world: SimpleNamespace, queued: list[UUID], fake: FakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = await publish_type(world)
+    who, meeting_id = await setup_user(world, ["متن"])
+    out = await router.create_documents(
+        meeting_id, router.DocumentsCreate(items=[router.DocumentItem(output_type=code)]), who
+    )
+    document_id = UUID(out["items"][0]["id"])
+    await engine.generate_document(who.tenant_id, document_id)
+
+    async def exhausted(*args: object, **kwargs: object) -> None:
+        raise ApiError("token_quota_exceeded", "monthly LLM token budget is exhausted")
+
+    monkeypatch.setattr(router.token_quota, "require_budget", exhausted)
+    other = await publish_type(world)
+    with pytest.raises(ApiError) as created_error:
+        await router.create_documents(
+            meeting_id, router.DocumentsCreate(items=[router.DocumentItem(output_type=other)]), who
+        )
+    assert created_error.value.code == "token_quota_exceeded"
+    assert "پلن و مصرف" in created_error.value.message
+    with pytest.raises(ApiError) as regenerate_error:
+        await router.regenerate_document(document_id, router.DocumentRegenerate(), who)
+    assert regenerate_error.value.code == "token_quota_exceeded"
+
+
 async def test_transform_rewrites_every_block_without_summarising(
     world: SimpleNamespace, queued: list[UUID], fake: FakeClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

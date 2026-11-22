@@ -1,5 +1,7 @@
 ## 2026-11-22 — AMINAZADI
 
+- Fixed two server gaps in the Jalase-Negar document flow. A meeting whose chosen category is not the builtin minutes (finish enqueues only that document, no minutes job) used to stay in `processing` for ever, so the app polled it endlessly and its billing hold was never settled; now the chosen category's document ends it: `complete` with the hold settled on success, `failed_terminal` with the hold released and `error_code = document_generation_failed` on a final failure (`app/services/meeting_documents.py`). Creating and regenerating documents (`POST /v1/jalase-negar/meetings/{id}/documents`, `POST /v1/jalase-negar/documents/{id}/regenerate`) now refuse with `token_quota_exceeded` and a Persian message naming «پلن و مصرف» once the plan hours are used up, instead of relying on the app to hide them (`app/routers/jalase_negar_app.py`). Tests in `tests/test_meeting_documents_postgres.py`; ruff clean on the changed files; those tests are Postgres-only and were SKIPPED here (no disposable PostgreSQL), so they have not run, and no help article was added because both codes already have one.
+
 - On phones, the landing-page Hooshyar demo chat hides the message avatars and the bubble tails, and bubbles use the full row width (`web/client/src/pages/Landing.css`).
 
 - Removed the pulsing border ring around the quick assistant launcher (the `::after` on `.quick-assistant-trigger` and its `quick-assistant-border-pulse` keyframes) (`web/client/src/index.css`).

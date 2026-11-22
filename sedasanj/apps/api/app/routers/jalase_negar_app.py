@@ -51,6 +51,7 @@ from app.services import (
     ratelimit,
     sms_notify,
     store_billing,
+    token_quota,
 )
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.phone_identity import mobile_accounts, normalize_mobile
@@ -386,6 +387,23 @@ def _personal(principal: MeetingsKeyDep) -> tuple[UUID, UUID]:
     return principal.tenant_id, principal.user_id
 
 
+async def _require_plan_hours(session: AsyncSession, tenant_id: UUID) -> None:
+    """Refuse new AI work once the plan's hours and any bought hours are used up.
+
+    The app also hides the output of such an account, but the server must not rely on that:
+    without this check anyone could keep making documents past their plan.
+    """
+    try:
+        await token_quota.require_budget(session, tenant_id)
+    except ApiError as exc:
+        if exc.code != "token_quota_exceeded":
+            raise
+        raise ApiError(
+            "token_quota_exceeded",
+            "ساعت پلن این حساب تمام شده است؛ از بخش «پلن و مصرف» پلن بگیرید یا ساعت شارژ کنید.",
+        ) from exc
+
+
 def _document_out(document: MeetingDocument, selected: int | None = None) -> dict[str, object]:
     return {
         "id": str(document.id),
@@ -480,6 +498,7 @@ async def create_documents(
     queued: list[UUID] = []
     async with session_scope(tenant_id) as session:
         await _owned_meeting(session, tenant_id, user_id, meeting_id)
+        await _require_plan_hours(session, tenant_id)
         has_text = (
             await session.execute(
                 select(MeetingSegment.id).where(MeetingSegment.meeting_id == meeting_id).limit(1)
@@ -642,6 +661,7 @@ async def regenerate_document(
     await ratelimit.enforce(f"jn-doc:{user_id}", 30, 3600)
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
+        await _require_plan_hours(session, tenant_id)
         if document.status in ("queued", "running"):
             raise ApiError("document_input_invalid", "این سند در حال ساخت است؛ کمی صبر کنید.")
         code = document.output_type_code
