@@ -58,7 +58,7 @@ export function PageSizeSelect({ value, onChange }: { value: number; onChange: (
     <button
       ref={trigger}
       type="button"
-      className="btn-ghost inline-flex items-center gap-3 !rounded-none text-xs"
+      className="inline-flex items-center gap-1.5 text-xs opacity-60 transition hover:opacity-100"
       aria-haspopup="listbox"
       aria-expanded={open}
       aria-controls={open ? listId : undefined}
@@ -72,7 +72,7 @@ export function PageSizeSelect({ value, onChange }: { value: number; onChange: (
     >
       <span>تعداد نمایش</span>
       <span>{value.toLocaleString("fa-IR")}</span>
-      <img src={chevronDownUrl} alt="" aria-hidden="true" width={20} height={20} className="h-5 w-5 shrink-0" />
+      <img src={chevronDownUrl} alt="" aria-hidden="true" width={12} height={12} className="h-3 w-3 shrink-0" />
     </button>
     {open && createPortal(
       <div
@@ -109,4 +109,14 @@ export function PageSizeSelect({ value, onChange }: { value: number; onChange: (
       trigger.current?.closest("dialog") ?? document.body,
     )}
   </>;
+}
+
+export function PagerArrow({ direction }: { direction: "prev" | "next" }) {
+  // Outline chevron: `prev` points toward the previous page (right side in RTL), `next` toward the next page.
+  const path = direction === "prev" ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6";
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      <path d={path} />
+    </svg>
+  );
 }

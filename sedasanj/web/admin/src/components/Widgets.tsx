@@ -1,4 +1,4 @@
-import { PageSizeSelect } from "@cbi/web-shared/components/PageSizeSelect";
+import { PageSizeSelect, PagerArrow } from "@cbi/web-shared/components/PageSizeSelect";
 import { useTablePageSize } from "../lib/useTablePagination";
 import type { ReactNode } from "react";
 import { Skeleton, SkeletonPanel } from "@cbi/web-shared/components/Skeleton";
@@ -105,14 +105,14 @@ export function Pagination({
   const page = Math.floor(offset / limit) + 1;
   const pages = Math.max(1, Math.ceil(total / limit));
   return (
-    <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4" aria-label="صفحه‌بندی">
+    <nav className="mt-3 flex flex-wrap items-center justify-between gap-3" aria-label="صفحه‌بندی">
       <PageSizeSelect value={pageSize} onChange={setPageSize} />
       <span className="text-xs text-slate-500">
         صفحه {fmt.int(page)} از {fmt.int(pages)} · {fmt.int(total)} مورد
       </span>
       <div className="flex gap-2">
-        <button className="btn-ghost text-sm" type="button" disabled={loading || offset === 0} onClick={() => onChange(Math.max(0, offset - limit))}>صفحه قبل</button>
-        <button className="btn-ghost text-sm" type="button" disabled={loading || offset + limit >= total} onClick={() => onChange(offset + limit)}>صفحه بعد</button>
+        <button className="inline-flex h-7 w-7 items-center justify-center opacity-60 transition hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-30" type="button" disabled={loading || offset === 0} onClick={() => onChange(Math.max(0, offset - limit))} aria-label="صفحه قبل" title="صفحه قبل"><PagerArrow direction="prev" /></button>
+        <button className="inline-flex h-7 w-7 items-center justify-center opacity-60 transition hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-30" type="button" disabled={loading || offset + limit >= total} onClick={() => onChange(offset + limit)} aria-label="صفحه بعد" title="صفحه بعد"><PagerArrow direction="next" /></button>
       </div>
     </nav>
   );
