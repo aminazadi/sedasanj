@@ -640,6 +640,7 @@
   .site-nav > a:first-child { order: 1; margin-inline-end: auto; }
   .site-menu { order: 0; margin-inline-end: -8px; padding: 4px; border: 0; background: transparent; color: var(--site-text); }
   .site-menu svg { width: 26px; height: 26px; }
+  .site-theme-toggle { order: 2; }
   .site-login-button { order: 2; }
 }
 
