@@ -1,7 +1,9 @@
 """Public health route and browser-based administration pages."""
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 from ..dependencies import authorize_admin
 
@@ -15,6 +17,21 @@ from asr_service.web.dashboard import render_admin_page
 from ..schemas.responses import HealthResponse
 
 router = APIRouter()
+
+# Yekan Bakh (Fontiran) web fonts shipped with the service; the dashboard loads them locally.
+FONT_DIR = Path(__file__).resolve().parents[2] / "web" / "fonts"
+ADMIN_FONTS = frozenset({"YekanBakh-Regular.woff2", "YekanBakh-SemiBold.woff2", "YekanBakh-Bold.woff2"})
+
+
+@router.get("/admin/fonts/{name}", include_in_schema=False)
+def admin_font(name: str):
+    if name not in ADMIN_FONTS:
+        raise HTTPException(status_code=404, detail="font not found")
+    return FileResponse(
+        FONT_DIR / name,
+        media_type="font/woff2",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/live", include_in_schema=False)
