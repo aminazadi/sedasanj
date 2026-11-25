@@ -65,12 +65,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             ref.watch(meetingAttendeesProvider(meetingId)).value ??
             const <Attendee>[];
         final showAttendees = attendees.isNotEmpty;
-        final showOutput = data.meeting.remoteMeetingId != null;
-        final tabCount =
-            1 +
-            (showSpeakers ? 1 : 0) +
-            (showAttendees ? 1 : 0) +
-            (showOutput ? 1 : 0);
+        // The output tab is always offered: categories show even before the meeting
+        // reaches the server.
+        final tabCount = 2 + (showSpeakers ? 1 : 0) + (showAttendees ? 1 : 0);
         final canSend = canSendMeetingText(
           data.meeting,
           hasText: transcript.isNotEmpty,
@@ -94,10 +91,21 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               bottom: tabCount > 1
                   ? TabBar(
                       tabs: [
-                        const Tab(text: 'متن جلسه'),
-                        if (showSpeakers) const Tab(text: 'گوینده‌ها'),
-                        if (showAttendees) const Tab(text: 'حاضران'),
-                        if (showOutput) const Tab(text: 'خروجی جلسه'),
+                        const Tab(icon: Icon(Icons.notes), text: 'متن جلسه'),
+                        if (showSpeakers)
+                          const Tab(
+                            icon: Icon(Icons.record_voice_over_outlined),
+                            text: 'گوینده‌ها',
+                          ),
+                        if (showAttendees)
+                          const Tab(
+                            icon: Icon(Icons.groups_outlined),
+                            text: 'حاضران',
+                          ),
+                        const Tab(
+                          icon: Icon(Icons.auto_awesome_outlined),
+                          text: 'خروجی جلسه',
+                        ),
                       ],
                     )
                   : null,
@@ -143,10 +151,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                           attendees: attendees,
                           segments: data.segments,
                         ),
-                      if (showOutput)
-                        MeetingOutputTab(
-                          remoteMeetingId: data.meeting.remoteMeetingId!,
-                        ),
+                      MeetingOutputTab(
+                        remoteMeetingId: data.meeting.remoteMeetingId,
+                      ),
                     ],
                   )
                 : _transcriptTab(context, ref, data, transcript),
@@ -581,4 +588,3 @@ class _AttendeesTab extends StatelessWidget {
     );
   }
 }
-

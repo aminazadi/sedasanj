@@ -12,6 +12,7 @@ import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../settings/application/connection_controller.dart';
+import '../../catalog/application/catalog_providers.dart';
 
 String _errorText(Object error) => error is ApiException
     ? error.message
@@ -491,7 +492,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       }
     });
     return Scaffold(
-      appBar: AppBar(
+      appBar: SsAppBar(
         title: Text(widget.title),
         actions: [
           if (markdown != null && !_editing) ...[

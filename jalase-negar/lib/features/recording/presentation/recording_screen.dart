@@ -16,7 +16,7 @@ import '../../onboarding/tour_overlay.dart';
 import '../../people/application/people_providers.dart';
 import '../../people/presentation/attendee_picker_sheet.dart';
 import '../../onboarding/tour_step.dart';
-import '../../settings/application/connection_controller.dart';
+import '../../catalog/application/catalog_providers.dart';
 import '../application/live_audio_waveform.dart';
 import '../application/pending_attendees.dart';
 import '../application/pending_meeting_type.dart';

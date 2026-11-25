@@ -340,10 +340,16 @@ final personalProfileProvider = FutureProvider.autoDispose<PersonalProfile>((
   if (connection == null || !connection.personal || token == null) {
     throw const ApiException(message: 'حساب شخصی متصل نیست.');
   }
+  // A stalled request must end in an error (shown with a retry), not an endless "…".
   return ApiClient(
     serverUrl: connection.serverUrl,
     token: token,
-  ).personalProfile();
+  ).personalProfile().timeout(
+    const Duration(seconds: 20),
+    onTimeout: () => throw const ApiException(
+      message: 'اطلاعات حساب دریافت نشد. «بررسی اتصال» را بزنید و دوباره تلاش کنید.',
+    ),
+  );
 });
 
 /// An API client signed in as the personal account, for the documents features.
@@ -361,28 +367,6 @@ final personalClientProvider = FutureProvider.autoDispose<ApiClient>((
     );
   }
   return ApiClient(serverUrl: connection.serverUrl, token: token);
-});
-
-/// The categories the admin published, minutes excluded: used for the
-/// after-the-fact "add another category" picker, where minutes (already made
-/// automatically) is not offered again.
-final outputTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
-  ref,
-) async {
-  final client = await ref.watch(personalClientProvider.future);
-  return [
-    for (final type in await client.outputTypes())
-      if (!type.automatic) type,
-  ];
-});
-
-/// Every published category, minutes included — for the pre-recording picker,
-/// where "صورت جلسه عمومی" is a normal, always-available choice.
-final meetingTypesProvider = FutureProvider.autoDispose<List<OutputTypeInfo>>((
-  ref,
-) async {
-  final client = await ref.watch(personalClientProvider.future);
-  return client.outputTypes();
 });
 
 final meetingDocumentsProvider = FutureProvider.autoDispose
@@ -462,15 +446,6 @@ final usageProvider = FutureProvider.autoDispose<UsageInfo>((ref) async {
   return (await ref.watch(personalClientProvider.future)).usage();
 });
 
-final plansProvider = FutureProvider.autoDispose<PlansResult>((ref) async {
-  return (await ref.watch(personalClientProvider.future)).plans();
-});
-
-final tokenPackagesProvider = FutureProvider.autoDispose<List<PackInfo>>((
-  ref,
-) async {
-  return (await ref.watch(personalClientProvider.future)).tokenPackages();
-});
 
 final progressProvider = FutureProvider.autoDispose<ProgressInfo>((ref) async {
   return (await ref.watch(personalClientProvider.future)).progress();

@@ -117,6 +117,11 @@ def request_sections(path: str, method: str) -> tuple[str, ...] | None:
         return ("scoring_settings", "scores", "calls")
     if path == "/v1/kpi/dashboard" or path == "/v1/analytics/summary":
         return ("dashboard",)
+    # A personal Jalase-Negar token owns its own account (plans, hours, categories, documents);
+    # every such route already scopes data to the token's tenant and user, so no panel section
+    # applies. Without this the unclassified path is refused for every personal token.
+    if path == "/v1/jalase-negar" or path.startswith("/v1/jalase-negar/"):
+        return ()
     if path.startswith("/v1/meetings/devices"):
         return ("integrations",)
     if path == "/v1/module/installations":

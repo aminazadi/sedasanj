@@ -11,6 +11,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../../core/utils/format.dart';
 import '../../settings/application/connection_controller.dart';
+import '../../catalog/application/catalog_providers.dart';
 import '../../../core/platform/distribution.dart';
 import '../data/billing_models.dart';
 import '../store_purchase.dart';
@@ -223,7 +224,11 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
 
   @override
   Widget build(BuildContext context) {
-    final usage = ref.watch(usageProvider);
+    // Plans and packs come from the public catalogue, so they show without an account. Only
+    // the usage of this account and buying need a signed-in personal account.
+    final personal =
+        ref.watch(connectionControllerProvider).value?.connection?.personal ??
+        false;
     final plans = ref.watch(plansProvider);
     final packs = ref.watch(tokenPackagesProvider);
     return Scaffold(
@@ -231,12 +236,14 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          usage.when(
-            loading: () => const SsCard(child: Text('…')),
-            error: (e, _) => SsCard(child: Text(_errorText(e))),
-            data: (u) => _UsageCard(usage: u),
-          ),
-          const SizedBox(height: 12),
+          if (personal) ...[
+            ref.watch(usageProvider).when(
+              loading: () => const SsCard(child: Text('…')),
+              error: (e, _) => SsCard(child: Text(_errorText(e))),
+              data: (u) => _UsageCard(usage: u),
+            ),
+            const SizedBox(height: 12),
+          ],
           const SsSectionTitle(title: 'پلن‌ها'),
           plans.when(
             loading: () => const SsCard(child: Text('…')),
@@ -247,14 +254,22 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
                 for (final plan in p.plans)
                   _PlanCard(
                     plan: plan,
-                    onBuy: !widget.canBuy || _busy
+                    onBuy: !widget.canBuy || !personal || _busy
                         ? null
                         : () => _buy(planCode: plan.code),
-                    showBuy: widget.canBuy,
+                    showBuy: widget.canBuy && personal,
                   ),
               ],
             ),
           ),
+          if (!personal)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'برای خرید پلن یا بسته‌ی ساعت اضافه، ابتدا وارد حساب شوید.',
+                textAlign: TextAlign.center,
+              ),
+            ),
           const SizedBox(height: 12),
           const SsSectionTitle(title: 'ساعت اضافه'),
           packs.when(

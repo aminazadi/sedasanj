@@ -484,6 +484,48 @@ ApiException? _speakerError(
 }
 
 /// Thin SedaSanj API client. It never logs headers or bodies.
+/// Categories of the public catalogue. One malformed category is skipped on its own so it
+/// cannot hide the others.
+List<OutputTypeInfo> parseOutputTypes(Map<String, dynamic> body, String baseUrl) {
+  final base = baseUrl.replaceAll(RegExp(r'/+$'), '');
+  final types = <OutputTypeInfo>[];
+  final items = body['items'];
+  if (items is! List) {
+    throw const FormatException('output types response has no items list');
+  }
+  for (final raw in items) {
+    try {
+      final item = raw as Map<String, dynamic>;
+      final thumb = item['thumbnail_url'] as String?;
+      types.add(
+        OutputTypeInfo(
+          code: item['code'] as String,
+          title: item['title'] as String,
+          description: (item['description'] ?? '') as String,
+          automatic: item['automatic'] == true,
+          thumbnailUrl: thumb == null ? null : '$base$thumb',
+          fields: [
+            for (final f in (item['input_fields'] as List? ?? const []))
+              OutputField(
+                key: (f as Map)['key'] as String,
+                label: f['label_fa'] as String,
+                type: (f['type'] ?? 'text') as String,
+                required: f['required'] == true,
+                options: [
+                  for (final o in (f['options'] as List? ?? const []))
+                    o as String,
+                ],
+              ),
+          ],
+        ),
+      );
+    } on Object {
+      continue;
+    }
+  }
+  return types;
+}
+
 class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
   ApiClient({required String serverUrl, String? token, Dio? dio})
     : _dio =
@@ -651,10 +693,11 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     }
   }
 
+  /// Public plans from the catalogue (no sign-in needed).
   Future<PlansResult> plans() async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(
-        '/v1/jalase-negar/plans',
+        '/v1/jalase-negar/catalog/plans',
       );
       return PlansResult.fromJson(res.data!);
     } on DioException catch (e) {
@@ -664,11 +707,11 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
 
   Future<List<PackInfo>> tokenPackages() async {
     try {
-      final res = await _dio.get<List<dynamic>>(
-        '/v1/jalase-negar/token-packages',
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/v1/jalase-negar/catalog/token-packages',
       );
       return [
-        for (final raw in res.data!)
+        for (final raw in (res.data!['items'] as List? ?? const []))
           PackInfo.fromJson(raw as Map<String, dynamic>),
       ];
     } on DioException catch (e) {
@@ -882,48 +925,13 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
     }
   }
 
+  /// Published categories from the public catalogue (no sign-in needed).
   Future<List<OutputTypeInfo>> outputTypes() async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(
-        '/v1/jalase-negar/output-types',
+        '/v1/jalase-negar/catalog/output-types',
       );
-      final base = _dio.options.baseUrl.replaceAll(RegExp(r'/+$'), '');
-      final types = <OutputTypeInfo>[];
-      for (final raw in (res.data!['items'] as List)) {
-        // One malformed category (say an input field with no label) must not
-        // hide all the others, so it is skipped on its own.
-        try {
-          types.add(
-            (() {
-              final item = raw as Map<String, dynamic>;
-              final thumb = item['thumbnail_url'] as String?;
-              return OutputTypeInfo(
-                code: item['code'] as String,
-                title: item['title'] as String,
-                description: (item['description'] ?? '') as String,
-                automatic: item['automatic'] == true,
-                thumbnailUrl: thumb == null ? null : '$base$thumb',
-                fields: [
-                  for (final f in (item['input_fields'] as List? ?? const []))
-                    OutputField(
-                      key: (f as Map)['key'] as String,
-                      label: f['label_fa'] as String,
-                      type: (f['type'] ?? 'text') as String,
-                      required: f['required'] == true,
-                      options: [
-                        for (final o in (f['options'] as List? ?? const []))
-                          o as String,
-                      ],
-                    ),
-                ],
-              );
-            })(),
-          );
-        } on Object {
-          continue;
-        }
-      }
-      return types;
+      return parseOutputTypes(res.data!, _dio.options.baseUrl);
     } on DioException catch (e) {
       throw mapMessageError(e);
     } on Object {

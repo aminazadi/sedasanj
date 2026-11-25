@@ -361,10 +361,6 @@ class _ControlButton extends StatelessWidget {
               width: 36,
               height: 36,
               alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: SsColors.of(context).canvas,
-                border: Border.all(color: SsColors.of(context).line),
-              ),
               child: child,
             ),
           ),

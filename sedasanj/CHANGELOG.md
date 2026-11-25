@@ -1,3 +1,7 @@
+## 2026-11-25 — AMINAZADI
+
+- Added public, sign-in-free Jalase-Negar catalogue endpoints `GET /v1/jalase-negar/catalog/output-types`, `/catalog/plans` and `/catalog/token-packages`, with a strong ETag and `Cache-Control: public, max-age=300` (304 on a matching `If-None-Match`), rate-limited per IP (`routers/jalase_catalog.py`). Categories, plans and token packs no longer need a personal token to load; the personal `/output-types`, `/plans` and `/token-packages` routes stay for older app builds. Tests in `tests/test_jalase_catalog.py`; the panel-access test now also checks every Jalase-Negar route is own-account access. Not yet deployed.
+
 ## 2026-11-24 — AMINAZADI
 
 - Added a footer strip above the copyright line on the public site: the eShare logo, in a light-mode and a dark-mode version (`web/client/src/assets/eshare-logo-light.svg` and `eshare-logo-dark.svg`, both based on `eshare.ir/brand/eshare.svg`), switched by the site's theme and linking to `https://eshare.ir/`, and the text "محصولی از گروه مهندسی نرم افزار اشاره شرق" with the group name linked to eshare.ir for SEO (`web/client/src/components/SiteFooter.tsx`, `web/client/src/pages/Landing.css`). The text is static, not editable from the admin footer settings. No API, error code or help article change.
