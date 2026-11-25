@@ -50,16 +50,18 @@ final outputTypesProvider = StreamProvider<List<OutputTypeInfo>>((ref) async* {
   }
 });
 
+/// No automatic retry: the plans screen shows the failure with its own «تلاش دوباره» button,
+/// and retrying ten times in the background would only keep a spinner on screen.
 final plansProvider = StreamProvider<PlansResult>((ref) async* {
   final repo = await ref.watch(catalogRepositoryProvider.future);
   await for (final value in repo.plans()) {
     yield value.value;
   }
-});
+}, retry: (_, _) => null);
 
 final tokenPackagesProvider = StreamProvider<List<PackInfo>>((ref) async* {
   final repo = await ref.watch(catalogRepositoryProvider.future);
   await for (final value in repo.tokenPackages()) {
     yield value.value;
   }
-});
+}, retry: (_, _) => null);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError, request, uploadWithProgress } from "../api";
+import MenuIconPicker from "../components/MenuIconPicker";
 import { ErrorBox, Loading } from "../components/Widgets";
 
 const BASE = "/v1/admin/jalase/output-types";
@@ -13,7 +14,7 @@ type Version = {
   llm_provider: string | null; llm_model: string | null;
 };
 type OutputType = {
-  id: string; code: string; title_fa: string; description_fa: string; menu_label_fa: string;
+  id: string; code: string; title_fa: string; description_fa: string; menu_label_fa: string; icon: string;
   thumbnail_url: string | null; thumbnail_media_id: string | null; sort_order: number;
   status: "draft" | "published" | "archived"; builtin: boolean; versions: Version[];
 };
@@ -115,7 +116,7 @@ function Editor({ item, media, busy, run, onMediaChange, setError }: {
 }) {
   const draft = item.versions.find((v) => v.state === "draft");
   const base = draft ?? item.versions[0];
-  const [meta, setMeta] = useState({ title_fa: item.title_fa, description_fa: item.description_fa, menu_label_fa: item.menu_label_fa, sort_order: item.sort_order });
+  const [meta, setMeta] = useState({ title_fa: item.title_fa, description_fa: item.description_fa, menu_label_fa: item.menu_label_fa, icon: item.icon, sort_order: item.sort_order });
   const [mode, setMode] = useState<Version["mode"]>(base?.mode ?? "summarize");
   const [mapInstruction, setMapInstruction] = useState(base?.map_instruction ?? "");
   const [systemPrompt, setSystemPrompt] = useState(base?.system_prompt ?? "");
@@ -154,6 +155,7 @@ function Editor({ item, media, busy, run, onMediaChange, setError }: {
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-sm"><span className="mb-1 block">عنوان</span><input className="input" maxLength={120} value={meta.title_fa} onChange={(e) => setMeta({ ...meta, title_fa: e.target.value })}/></label>
         <label className="block text-sm"><span className="mb-1 block">برچسب منو (در پنل سازمان)</span><input className="input" maxLength={60} value={meta.menu_label_fa} onChange={(e) => setMeta({ ...meta, menu_label_fa: e.target.value })}/></label>
+        <div className="block text-sm"><span className="mb-1 block">آیکن منو (در پنل سازمان)</span><MenuIconPicker value={meta.icon} onChange={(icon) => setMeta({ ...meta, icon })} /></div>
         <label className="block text-sm md:col-span-2"><span className="mb-1 block">توضیح کوتاه برای کاربر</span><input className="input" maxLength={500} value={meta.description_fa} onChange={(e) => setMeta({ ...meta, description_fa: e.target.value })}/></label>
         <label className="block text-sm"><span className="mb-1 block">ترتیب نمایش (عدد کمتر، بالاتر)</span><input className="input" type="number" min={0} max={100000} value={meta.sort_order} onChange={(e) => setMeta({ ...meta, sort_order: Number(e.target.value) })}/></label>
         <label className="block text-sm"><span className="mb-1 block">بارگذاری تصویر تازه (png، jpg یا webp)</span>

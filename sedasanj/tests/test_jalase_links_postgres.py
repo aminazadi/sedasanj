@@ -227,13 +227,15 @@ async def test_revoking_cuts_the_organization_key_only(created: list[UUID]) -> N
     await do_link(me, await code_for(*org_ids))
 
 
-async def test_panel_menu_shows_categories_with_documents_and_honours_hiding(
+async def test_panel_menu_shows_all_published_categories_and_honours_hiding(
     created: list[UUID],
 ) -> None:
     org_ids = await org(created)
     principal = SimpleNamespace(tenant_id=org_ids[0], id=org_ids[1])
     async with db.session_scope(org_ids[0]) as session:
-        assert (await menu.menu(principal, session))["items"] == []  # type: ignore[arg-type]
+        # Published categories are listed even before the organization has any document.
+        first = (await menu.menu(principal, session))["items"]  # type: ignore[arg-type]
+        assert [i["code"] for i in first][:1] == ["minutes"]
     async with db.session_scope(staff=True) as session:
         user_id = (
             await session.execute(select(User.id).where(User.tenant_id == org_ids[0]))
@@ -248,7 +250,9 @@ async def test_panel_menu_shows_categories_with_documents_and_honours_hiding(
         await session.flush()
         code = (
             await session.execute(
-                text("SELECT code FROM jalase_output_types WHERE code <> 'minutes' LIMIT 1")
+                text(
+                    "SELECT code FROM jalase_output_types WHERE code <> 'minutes' AND status = 'published' LIMIT 1"
+                )
             )
         ).scalar_one()
         session.add(
@@ -278,18 +282,18 @@ async def test_panel_menu_shows_categories_with_documents_and_honours_hiding(
             assert page.total == expected
     async with db.session_scope(org_ids[0]) as session:
         shown = await menu.menu(principal, session)  # type: ignore[arg-type]
-        assert [i["code"] for i in shown["items"]] == [code]
+        assert code in [i["code"] for i in shown["items"]]
         await menu.set_hidden(code, menu.HiddenUpdate(hidden=True), principal, session)  # type: ignore[arg-type]
     async with db.session_scope(org_ids[0]) as session:
         shown = await menu.menu(principal, session)  # type: ignore[arg-type]
-        assert shown["items"] == [] and shown["hidden"] == [code]
+        assert code not in [i["code"] for i in shown["items"]] and shown["hidden"] == [code]
         await menu.set_hidden(code, menu.HiddenUpdate(hidden=False), principal, session)  # type: ignore[arg-type]
         with pytest.raises(ApiError):
             await menu.set_hidden(
                 "nope_nothing", menu.HiddenUpdate(hidden=True), principal, session
             )  # type: ignore[arg-type]
     async with db.session_scope(org_ids[0]) as session:
-        assert [i["code"] for i in (await menu.menu(principal, session))["items"]] == [code]  # type: ignore[arg-type]
+        assert code in [i["code"] for i in (await menu.menu(principal, session))["items"]]  # type: ignore[arg-type]
 
 
 async def test_import_copies_finished_meetings_once_and_refuses_purged(
@@ -302,7 +306,9 @@ async def test_import_copies_finished_meetings_once_and_refuses_purged(
     async with db.session_scope(staff=True) as session:
         code = (
             await session.execute(
-                text("SELECT code FROM jalase_output_types WHERE code <> 'minutes' LIMIT 1")
+                text(
+                    "SELECT code FROM jalase_output_types WHERE code <> 'minutes' AND status = 'published' LIMIT 1"
+                )
             )
         ).scalar_one()
         good = Meeting(

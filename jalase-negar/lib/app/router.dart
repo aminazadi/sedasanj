@@ -85,7 +85,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             IntroScreen(replay: state.uri.queryParameters['replay'] == '1'),
       ),
-      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) =>
+            LoginScreen(popOnSuccess: state.uri.queryParameters['back'] == '1'),
+      ),
       GoRoute(path: '/plans', builder: (context, state) => PlansScreen()),
       GoRoute(
         path: '/progress',

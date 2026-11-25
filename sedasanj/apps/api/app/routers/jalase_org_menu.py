@@ -1,4 +1,4 @@
-"""Panel menu of Jalase-Negar document categories an organization actually has documents in."""
+"""Panel menu of the published Jalase-Negar document categories an organization has not hidden."""
 
 from __future__ import annotations
 
@@ -31,25 +31,12 @@ class HiddenUpdate(BaseModel):
 
 @router.get("")
 async def menu(principal: UserDep, session: TenantSession) -> dict[str, Any]:
-    """Categories with at least one document, minus the ones an admin hid.
+    """Every published category, minus the ones an admin hid.
 
-    A category appears with its first document, so the menu never lists empty entries.
+    Categories are listed even before the organization has a document in them, so people can see
+    what the app can produce; an empty category page tells them to connect the app.
     """
     assert principal.tenant_id is not None
-    codes = set(
-        (
-            await session.execute(
-                select(MeetingDocument.output_type_code)
-                .where(
-                    MeetingDocument.tenant_id == principal.tenant_id,
-                    MeetingDocument.status != "purged",
-                )
-                .distinct()
-            )
-        )
-        .scalars()
-        .all()
-    )
     hidden = set(
         (
             await session.execute(
@@ -61,14 +48,12 @@ async def menu(principal: UserDep, session: TenantSession) -> dict[str, Any]:
         .scalars()
         .all()
     )
-    if not codes:
-        return {"items": [], "hidden": sorted(hidden)}
     async with control_session_scope() as control:
         types = (
             (
                 await control.execute(
                     select(JalaseOutputType)
-                    .where(JalaseOutputType.code.in_(codes))
+                    .where(JalaseOutputType.status == "published")
                     .order_by(JalaseOutputType.sort_order, JalaseOutputType.code)
                 )
             )
@@ -79,6 +64,7 @@ async def menu(principal: UserDep, session: TenantSession) -> dict[str, Any]:
         {
             "code": t.code,
             "label": t.menu_label_fa,
+            "icon": t.icon,
             "thumbnail_media_id": str(t.thumbnail_media_id) if t.thumbnail_media_id else None,
             "hidden": t.code in hidden,
         }
@@ -87,6 +73,8 @@ async def menu(principal: UserDep, session: TenantSession) -> dict[str, Any]:
     return {
         "items": [i for i in items if not i["hidden"]],
         "hidden": [i["code"] for i in items if i["hidden"]],
+        # Every category in catalogue order with its hidden flag, so settings keep the position.
+        "categories": items,
     }
 
 

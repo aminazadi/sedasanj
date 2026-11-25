@@ -4,7 +4,7 @@ import { Empty, ErrorBox } from "./Widgets";
 import { useResource } from "@cbi/web-shared/lib/useResource";
 
 interface MenuEntry { code: string; label: string; hidden?: boolean }
-interface MenuResponse { items: MenuEntry[]; hidden: string[] }
+interface MenuResponse { items: MenuEntry[]; hidden: string[]; categories: MenuEntry[] }
 
 /** Org admins choose which Jalase-Negar document categories show in the panel's "جلسه‌نگار" menu group. */
 export default function JalaseNegarMenuSettings() {
@@ -17,7 +17,7 @@ export default function JalaseNegarMenuSettings() {
     setBusy(code);
     setError(null);
     try {
-      await request(`/v1/jalase/org-menu/${encodeURIComponent(code)}/hidden`, { method: "PUT", body: JSON.stringify({ hidden }) });
+      await request(`/v1/jalase/org-menu/${encodeURIComponent(code)}/hidden`, { method: "PUT", body: { hidden } });
       setVersion((current) => current + 1);
     } catch (err) {
       setError((err as Error).message);
@@ -26,27 +26,20 @@ export default function JalaseNegarMenuSettings() {
     }
   }
 
-  const visible = menu.data?.items ?? [];
-  const hidden = menu.data?.hidden ?? [];
+  const categories = menu.data?.categories ?? [];
   return (
     <section className="card space-y-4" aria-labelledby="jalase-negar-menu-title">
       <div>
         <h2 id="jalase-negar-menu-title" className="font-bold">منوی جلسه‌نگار</h2>
-        <p className="section-hint">دسته‌هایی که سازمان شما در آن‌ها سند دارد؛ هر دسته‌ای که مخفی کنید از گروه «جلسه‌نگار» در منوی کناری حذف می‌شود و اسناد آن پاک نمی‌شوند.</p>
+        <p className="section-hint">همهٔ دسته‌های جلسه‌نگار؛ هر دسته‌ای که مخفی کنید از گروه «جلسه‌نگار» در منوی کناری حذف می‌شود و اسناد آن پاک نمی‌شوند.</p>
       </div>
       <ErrorBox message={error ?? menu.error ?? null} />
-      {visible.length === 0 && hidden.length === 0 ? <Empty>هنوز سندی در دسته‌های جلسه‌نگار ثبت نشده است. پس از ارسال اولین سند از اپ، دسته‌اش اینجا ظاهر می‌شود.</Empty> : null}
+      {!menu.loading && categories.length === 0 ? <Empty>هنوز دسته‌ای برای جلسه‌نگار منتشر نشده است.</Empty> : null}
       <ul className="space-y-2">
-        {visible.map((entry) => (
+        {categories.map((entry) => (
           <li key={entry.code} className="card flex items-center justify-between gap-3">
-            <span>{entry.label}</span>
-            <button type="button" className="btn btn-ghost" disabled={busy === entry.code} onClick={() => toggle(entry.code, true)}>مخفی کردن</button>
-          </li>
-        ))}
-        {hidden.map((code) => (
-          <li key={code} className="card flex items-center justify-between gap-3">
-            <span className="text-slate-500">{code} (مخفی)</span>
-            <button type="button" className="btn btn-ghost" disabled={busy === code} onClick={() => toggle(code, false)}>نمایش دوباره</button>
+            <span className={entry.hidden ? "text-slate-500" : undefined}>{entry.label}{entry.hidden ? " (مخفی)" : ""}</span>
+            <button type="button" className="btn-ghost h-9 px-3 py-0 text-xs" disabled={busy === entry.code} onClick={() => toggle(entry.code, !entry.hidden)}>{entry.hidden ? "نمایش دوباره" : "مخفی کردن"}</button>
           </li>
         ))}
       </ul>

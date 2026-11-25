@@ -140,7 +140,7 @@ const MeetingsTableSection = memo(function MeetingsTableSection({
         {meetings.loading ? (
           <SkeletonTable columns={columns} rows={meetings.data ? Math.min(items.length || EMPTY_PREVIOUS_ROWS, PAGE_SIZE) : FIRST_LOAD_ROWS} />
         ) : items.length === 0 ? (
-          <Empty>هنوز جلسه‌ای ثبت نشده است. برای ضبط جلسه، <Link className="underline" to="/account-settings?tab=integrations">اپ جلسه‌نگار را متصل کنید</Link>.</Empty>
+          <Empty>هنوز جلسه‌ای ثبت نشده است. برای ضبط جلسه، <Link className="underline" to="/account-settings?tab=jalase">اپ جلسه‌نگار را متصل کنید</Link>.</Empty>
         ) : (
           <table className="table" dir="rtl">
             <thead>

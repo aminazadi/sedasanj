@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/widgets/ss_picker_sheet.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../recording/application/pending_meeting_type.dart';
@@ -13,12 +14,9 @@ import '../../catalog/application/catalog_providers.dart';
 Future<PendingMeetingType?> showMeetingTypePicker(
   BuildContext context, {
   required PendingMeetingType initial,
-}) => showModalBottomSheet<PendingMeetingType>(
-  context: context,
-  showDragHandle: true,
-  isScrollControlled: true,
-  useSafeArea: true,
-  builder: (_) => _MeetingTypePickerSheet(initial: initial),
+}) => showSsPickerSheet<PendingMeetingType>(
+  context,
+  (_) => _MeetingTypePickerSheet(initial: initial),
 );
 
 class _MeetingTypePickerSheet extends ConsumerStatefulWidget {
@@ -39,6 +37,12 @@ class _MeetingTypePickerSheetState
   };
   String? _error;
 
+  /// Automatic types first, then the rest, in the order the server sent them.
+  static List<OutputTypeInfo> _sorted(List<OutputTypeInfo> all) => [
+    ...all.where((t) => t.automatic),
+    ...all.where((t) => !t.automatic),
+  ];
+
   bool _complete(OutputTypeInfo type) => type.fields.every(
     (f) => !f.required || (_values[type.code]?[f.key] ?? '').trim().isNotEmpty,
   );
@@ -58,79 +62,68 @@ class _MeetingTypePickerSheetState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final types = ref.watch(meetingTypesProvider);
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: types.when(
-          loading: () => const SizedBox(
-            height: 160,
-            child: Center(child: SsProcessingMark(size: 30)),
-          ),
-          error: (_, _) => Padding(
-            padding: const EdgeInsets.all(24),
+    final all = types.value;
+    return SsPickerSheet(
+      title: 'نوع جلسه',
+      searchHint: 'جستجوی نوع جلسه',
+      bodyBuilder: (context, scroll, query) => types.when(
+        loading: () => const Center(child: SsProcessingMark(size: 30)),
+        error: (_, _) => const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
             child: Text(
               'فهرست دسته‌ها بارگذاری نشد؛ برگردید و دوباره تلاش کنید.',
               textAlign: TextAlign.center,
             ),
           ),
-          data: (all) {
-            final sorted = [
-              ...all.where((t) => t.automatic),
-              ...all.where((t) => !t.automatic),
-            ];
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 8),
-                  child: Text('نوع جلسه', style: theme.textTheme.titleMedium),
-                ),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
-                      for (final t in sorted) ...[
-                        _MeetingTypeCard(
-                          type: t,
-                          selected: _selected == t.code,
-                          values: _values.putIfAbsent(t.code, () => {}),
-                          onSelect: () => setState(() {
-                            _selected = t.code;
-                            _error = null;
-                          }),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                    ],
-                  ),
-                ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Text(
-                      _error!,
-                      style: TextStyle(color: theme.colorScheme.error),
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => _confirm(sorted),
-                      child: const Text('تأیید'),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
         ),
+        data: (list) {
+          final shown = [
+            for (final t in _sorted(list))
+              if (query.isEmpty ||
+                  t.title.contains(query) ||
+                  t.description.contains(query))
+                t,
+          ];
+          if (shown.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'نوع جلسه‌ای با این نام پیدا نشد.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+          return ListView.builder(
+            controller: scroll,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: shown.length,
+            itemBuilder: (context, i) {
+              final t = shown[i];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _MeetingTypeCard(
+                  key: ValueKey(t.code),
+                  type: t,
+                  selected: _selected == t.code,
+                  values: _values.putIfAbsent(t.code, () => {}),
+                  onSelect: () => setState(() {
+                    _selected = t.code;
+                    _error = null;
+                  }),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      footer: SsPickerConfirm(
+        label: 'تأیید',
+        error: _error,
+        onPressed: all == null ? null : () => _confirm(_sorted(all)),
       ),
     );
   }
@@ -138,6 +131,7 @@ class _MeetingTypePickerSheetState
 
 class _MeetingTypeCard extends StatelessWidget {
   const _MeetingTypeCard({
+    super.key,
     required this.type,
     required this.selected,
     required this.values,

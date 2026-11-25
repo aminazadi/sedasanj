@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/theme.dart';
+import '../../../app/widgets/ss_picker_sheet.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../documents/presentation/documents_tab.dart';
@@ -63,10 +65,12 @@ class MeetingOutputTab extends ConsumerWidget {
               children: [
                 if (prompt != null)
                   prompt
-                else if (remote == null)
-                  const Text(pending, textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                const _CategoryPreview(),
+                else ...[
+                  if (remote == null)
+                    const Text(pending, textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  const _CategoriesButton(),
+                ],
               ],
             ),
           ),
@@ -232,28 +236,140 @@ class _OutputErrorState extends StatelessWidget {
   );
 }
 
-/// Categories the admin published, shown to everyone; no account or plan needed.
-class _CategoryPreview extends ConsumerWidget {
-  const _CategoryPreview();
+/// Opens the list of categories the admin published, in a drawer. Shown to everyone: no
+/// account or plan is needed to see what an output can be.
+class _CategoriesButton extends StatelessWidget {
+  const _CategoriesButton();
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+    label: const Text('دسته‌های خروجی'),
+    onPressed: () => showSsPickerSheet<void>(
+      context,
+      (_) => const _CategoriesSheet(),
+    ),
+  );
+}
+
+/// The category drawer: same shell as the session-type and attendee drawers (title, search,
+/// list, one closing button).
+class _CategoriesSheet extends ConsumerWidget {
+  const _CategoriesSheet();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final types = ref.watch(outputTypesProvider);
-    return types.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
-      data: (items) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final type in items)
-            Card(
-              child: ListTile(
-                title: Text(type.title),
-                subtitle: type.description.isEmpty
-                    ? null
-                    : Text(type.description),
-              ),
+    return SsPickerSheet(
+      title: 'دسته‌های خروجی جلسه',
+      searchHint: 'جستجوی دسته',
+      bodyBuilder: (context, scroll, query) => types.when(
+        loading: () => const Center(child: SsProcessingMark(size: 30)),
+        error: (_, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'فهرست دسته‌ها بارگذاری نشد؛ اینترنت را بررسی کنید و دوباره تلاش کنید.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(outputTypesProvider),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('تلاش دوباره'),
+                ),
+              ],
             ),
+          ),
+        ),
+        data: (items) {
+          final shown = [
+            for (final t in items)
+              if (query.isEmpty ||
+                  t.title.contains(query) ||
+                  t.description.contains(query))
+                t,
+          ];
+          if (shown.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  items.isEmpty
+                      ? 'هنوز دسته‌ای منتشر نشده است.'
+                      : 'دسته‌ای با این نام پیدا نشد.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+          return ListView.builder(
+            controller: scroll,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: shown.length,
+            itemBuilder: (context, i) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _CategoryTile(type: shown[i]),
+            ),
+          );
+        },
+      ),
+      footer: SsPickerConfirm(
+        label: 'بستن',
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+    );
+  }
+}
+
+class _CategoryTile extends StatelessWidget {
+  const _CategoryTile({required this.type});
+
+  final OutputTypeInfo type;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SsColors.of(context);
+    return SsCard(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.selected,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.description_outlined,
+              size: 22,
+              color: colors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(type.title, style: theme.textTheme.titleSmall),
+                if (type.description.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    type.description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.neutral,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -303,10 +419,18 @@ class _OutputPrompt extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          FilledButton.icon(
-            icon: const Icon(Icons.phone_android, size: 18),
-            label: Text(actionLabel),
-            onPressed: onAction,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                icon: const Icon(Icons.phone_android, size: 18),
+                label: Text(actionLabel),
+                onPressed: onAction,
+              ),
+              const _CategoriesButton(),
+            ],
           ),
         ],
       ),

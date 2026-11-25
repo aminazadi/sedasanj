@@ -57,6 +57,7 @@ ERROR_STATUS: dict[str, int] = {
     "output_type_code_taken": status.HTTP_409_CONFLICT,
     "output_type_builtin_locked": status.HTTP_409_CONFLICT,
     "output_type_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "output_type_icon_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "output_type_not_publishable": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "meeting_closed": status.HTTP_409_CONFLICT,
     "meeting_chunk_conflict": status.HTTP_409_CONFLICT,

@@ -380,10 +380,9 @@ class _HeaderAuth extends ConsumerWidget {
       connectionControllerProvider.select((a) => a.value?.connection),
     );
     if (connection == null) {
-      // A plain icon button, like the search/filter actions beside it, not
-      // the bordered icon+label style of SsAppBarAction.
+      // A plain icon button, like the search/filter actions beside it.
       return IconButton(
-        icon: const Icon(Icons.login),
+        icon: const Icon(Icons.person_outline),
         tooltip: 'ورود',
         onPressed: () => context.push('/login'),
       );
@@ -405,18 +404,23 @@ class _HeaderAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final trimmed = name.trim();
     final initial = trimmed.isEmpty ? null : trimmed.substring(0, 1);
+    final radius = BorderRadius.circular(8);
     return Center(
       child: Semantics(
         button: true,
         label: trimmed.isEmpty ? 'حساب کاربری' : 'حساب کاربری: $trimmed',
         child: InkWell(
           onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: CircleAvatar(
-            // Same diameter as the standard header action's height so the
-            // avatar reads as the same size control, not a smaller one.
-            radius: 17,
-            backgroundColor: SsColors.of(context).primary,
+          borderRadius: radius,
+          child: Container(
+            // Square with a slight radius, 34×34 like the old circle's diameter.
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: SsColors.of(context).primary,
+              borderRadius: radius,
+            ),
             child: initial == null
                 ? Icon(
                     Icons.person,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,7 @@ import '../../../core/providers.dart';
 import '../../../core/utils/format.dart';
 import '../../models/application/models_controller.dart';
 import '../../recording/application/recorder_controller.dart';
+import '../../settings/application/connection_controller.dart';
 import '../../upload/upload_controller.dart';
 import '../application/meeting_providers.dart';
 import '../application/meetings_search_controller.dart';
@@ -387,6 +389,20 @@ class _Header extends ConsumerWidget {
       uploadQueueProvider.select((s) => s.creditExhausted),
     );
     final date = ref.watch(meetingsSearchProvider.select((s) => s.date));
+    // Only once the connection state has loaded, so a fresh start does not
+    // flash the sign-in notice before the saved account is read.
+    final signedOut = ref.watch(
+      connectionControllerProvider.select(
+        (a) => a.hasValue && a.value?.connection == null,
+      ),
+    );
+    if (signedOut) {
+      // Same 12px gutters as the meeting cards; no extra gap before the list.
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: _SignInNotice(),
+      );
+    }
     final notice = needsReconnect
         ? 'توکن ابطال شده است؛ از «تنظیمات» دوباره به صداسنج متصل شوید.'
         : creditExhausted
@@ -494,6 +510,71 @@ class _QueueNotice extends StatelessWidget {
     );
   }
 }
+
+/// Shown to a signed-out user at the top of the sessions tab: the red
+/// diamond mic from the record button, the sign-in text, and a «ورود» button.
+class _SignInNotice extends StatefulWidget {
+  const _SignInNotice();
+
+  @override
+  State<_SignInNotice> createState() => _SignInNoticeState();
+}
+
+class _SignInNoticeState extends State<_SignInNotice> {
+  final _link = TapGestureRecognizer();
+
+  @override
+  void initState() {
+    super.initState();
+    _link.onTap = () => context.push('/login');
+  }
+
+  @override
+  void dispose() {
+    _link.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final red = SsColors.of(context).danger;
+    return SsCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // The AI sparkle, drawn in the danger red on its own, no badge.
+          Icon(Icons.auto_awesome, size: 28, color: red),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: theme.textTheme.bodyMedium,
+                children: [
+                  const TextSpan(
+                    text: 'برای استفاده از امکانات پردازش جلسات، لطفا ',
+                  ),
+                  TextSpan(
+                    text: 'وارد حساب کاربری خود شوید',
+                    recognizer: _link,
+                    style: TextStyle(
+                      color: red,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline,
+                      decorationColor: red,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 
 class _MeetingTile extends ConsumerWidget {
   const _MeetingTile({super.key, required this.id});
