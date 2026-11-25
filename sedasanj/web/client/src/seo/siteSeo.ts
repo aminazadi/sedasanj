@@ -15,7 +15,7 @@ export const OG_IMAGE = { path: "/og-image.webp", width: 1200, height: 630, type
 export const LOGO_PATH = "/logo.webp";
 
 /** Bump `lastmod` on a route only when its visible content really changed. */
-export type RouteKind = "home" | "about" | "contact" | "help" | "legal" | "auth" | "demo";
+export type RouteKind = "home" | "about" | "solutions" | "contact" | "help" | "legal" | "auth" | "demo";
 export type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 
 export interface SeoRoute {
@@ -77,6 +77,22 @@ export const SEO_ROUTES: SeoRoute[] = [
     h1: "درباره صداسنج",
     description: "با صداسنج و مأموریت آن آشنا شوید: کمک به سازمان‌ها برای شنیدن همه تماس‌های مشتریان، بهبود کیفیت پاسخ‌گویی و تصمیم‌گیری بر پایه داده‌های واقعی مکالمه.",
     keywords: ["درباره صداسنج", "شرکت تحلیل مکالمات فارسی", "تیم صداسنج", "هوش مصنوعی فارسی", "تحلیل گفتار فارسی", "بهبود تجربه مشتری", "کیفیت پاسخ‌گویی مرکز تماس"],
+  },
+  {
+    path: "/solutions", kind: "solutions", crumb: "راهکارهای سازمانی", index: true, changefreq: "monthly", priority: 0.8, lastmod: "2026-11-25",
+    title: "راهکارهای سازمانی صداسنج | تحلیل مکالمات، جلسه‌نگار و دستیار هوشمند",
+    h1: "راهکارهای سازمانی",
+    description: "صداسنج برای سازمان‌ها: تحلیل هوشمند تماس‌های تلفنی روی FreePBX و Issabel، جلسه‌نگار با تفکیک گویندگان، ارزیابی اپراتورها، دستیار هوش مصنوعی، استقرار ابری یا اختصاصی.",
+    keywords: [
+      "راهکار سازمانی تحلیل مکالمات",
+      "تحلیل تماس برای سازمان",
+      "هوش مصنوعی سازمانی فارسی",
+      "جلسه‌نگار سازمانی",
+      "ارزیابی اپراتور با هوش مصنوعی",
+      "استقرار اختصاصی تحلیل مکالمات",
+      "دستیار هوش مصنوعی سازمان",
+      "مدیریت دانش سازمانی",
+    ],
   },
   {
     path: "/contact", kind: "contact", crumb: "تماس با ما", index: true, changefreq: "monthly", priority: 0.7, lastmod: "2026-10-30",
@@ -176,8 +192,8 @@ export interface PageSeo {
 }
 
 const SCHEMA_TYPE: Record<RouteKind, string> = {
-  home: "WebPage", about: "AboutPage", contact: "ContactPage", help: "CollectionPage",
-  legal: "WebPage", auth: "WebPage", demo: "WebPage",
+  home: "WebPage", about: "AboutPage", solutions: "CollectionPage", contact: "ContactPage",
+  help: "CollectionPage", legal: "WebPage", auth: "WebPage", demo: "WebPage",
 };
 
 function organization(siteUrl: string): Record<string, unknown> {

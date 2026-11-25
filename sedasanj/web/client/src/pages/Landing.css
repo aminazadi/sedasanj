@@ -636,7 +636,9 @@
   .site-nav { gap: 16px; }
   .site-links { gap: 12px; font-size: 12px; }
   .site-links a { gap: 5px; }
-  .site-links a svg { width: 14px; height: 14px; }
+  /* Eight nav items with icons overflow the header between the burger
+     breakpoint (760px) and the full desktop layout. */
+  .site-links a svg { display: none; }
   .site-logo { width: 86px; }
   .marketing-site .site-login-button { gap: 8px; padding-inline: 14px; font-size: 12px; }
   .site-login-arrow { display: none; }

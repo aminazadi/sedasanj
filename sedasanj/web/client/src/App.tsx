@@ -36,6 +36,7 @@ import ScheduledReports from "./pages/ScheduledReports";
 import ScheduledReportDetail from "./pages/ScheduledReportDetail";
 import OperatorScores from "./pages/OperatorScores";
 import PaymentResult from "./pages/PaymentResult";
+import Solutions from "./pages/Solutions";
 import Signup from "./pages/Signup";
 import Profile from "./pages/Profile";
 import QuickDemo from "./pages/QuickDemo";
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="/help/errors/:code" element={<HelpErrorPage framed />} />
           <Route path="/help/:slug" element={<HelpArticlePage framed />} />
           <Route path="/about" element={<About />} />
+          <Route path="/solutions" element={<Solutions />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/terms" element={<Legal slug="terms" />} />
           <Route path="/privacy" element={<Legal slug="privacy" />} />
@@ -122,6 +124,7 @@ export default function App() {
         <Route path="/help/errors/:code" element={<HelpErrorPage framed={false} />} />
         <Route path="/help/:slug" element={<HelpArticlePage framed={false} />} />
         <Route path="/about" element={<About />} />
+        <Route path="/solutions" element={<Solutions />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/terms" element={<Legal slug="terms" />} />
         <Route path="/privacy" element={<Legal slug="privacy" />} />

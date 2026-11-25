@@ -1,0 +1,248 @@
+/* Page-specific layout for /solutions. Everything builds on the marketing-site
+   tokens and primitives in Landing.css; only the grids and the roadmap badge
+   are new. Colours always come from tokens so dark mode keeps working. */
+
+.solutions-page .solutions-hero { padding-block: 88px 72px; }
+.solutions-hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); align-items: center; gap: 64px; }
+
+.solutions-snapshot { padding: 28px 26px; border: 1px solid var(--site-border); background: var(--site-canvas); }
+.solutions-snapshot-title {
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--site-border);
+  color: var(--site-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.solutions-snapshot ul { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.solutions-snapshot li { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; gap: 12px; }
+.solutions-snapshot svg { color: var(--site-primary); margin-top: 5px; }
+.solutions-snapshot li > span { display: grid; gap: 2px; font-size: 14px; font-weight: 600; }
+.solutions-snapshot small { color: var(--site-muted); font-size: 12.5px; font-weight: 400; line-height: 1.9; }
+.solutions-snapshot-note { margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--site-border); color: var(--site-muted); font-size: 12.5px; line-height: 2; }
+.solutions-eyebrow {
+  display: inline-block;
+  margin: 0 0 22px;
+  padding: 3px 12px;
+  border: 1px solid var(--site-border);
+  color: var(--site-primary);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.solutions-title { max-width: 18ch; }
+.solutions-lead {
+  max-width: 660px;
+  margin: 22px 0 0;
+  color: var(--site-muted);
+  font-size: 16.5px;
+  line-height: 2.15;
+}
+
+.solutions-intro {
+  max-width: 760px;
+  margin: 16px auto 0;
+  color: var(--site-muted);
+  font-size: 15px;
+  line-height: 2.1;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Two products: one bordered block split in half. */
+.solutions-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 44px;
+  border: 1px solid var(--site-border);
+}
+.solutions-pair > article { padding: 40px 36px; }
+.solutions-pair > article + article { border-inline-start: 1px solid var(--site-border); }
+.solutions-pair svg,
+.solutions-capabilities svg,
+.solutions-deploy svg,
+.solutions-roadmap svg,
+.solutions-model svg,
+.solutions-access > svg,
+.solutions-industries svg,
+.solutions-roles svg { color: var(--site-primary); }
+.solutions-pair h3,
+.solutions-capabilities h3,
+.solutions-deploy h3,
+.solutions-roadmap h3,
+.solutions-model h3,
+.solutions-access h3,
+.solutions-industries h3,
+.solutions-roles h3 { margin: 16px 0 0; }
+.solutions-pair p,
+.solutions-capabilities p,
+.solutions-deploy p,
+.solutions-roadmap p,
+.solutions-model p,
+.solutions-access p,
+.solutions-industries p,
+.solutions-roles p { margin-top: 12px; color: var(--site-muted); font-size: 14.5px; line-height: 2.05; }
+
+.solutions-pair ul,
+.solutions-capabilities ul { display: grid; gap: 10px; margin: 22px 0 0; padding: 0; list-style: none; }
+.solutions-pair li,
+.solutions-capabilities li { position: relative; padding-inline-start: 22px; color: var(--site-text); font-size: 14px; line-height: 1.95; }
+.solutions-pair li::before,
+.solutions-capabilities li::before {
+  position: absolute;
+  inset-inline-start: 0;
+  top: .85em;
+  width: 7px;
+  height: 7px;
+  background: var(--site-primary);
+  content: "";
+}
+
+/* Value path: four numbered steps in one row. */
+.solutions-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 44px 0 0;
+  padding: 0;
+  border: 1px solid var(--site-border);
+  list-style: none;
+}
+.solutions-flow li { display: grid; gap: 8px; padding: 28px 24px; }
+.solutions-flow li + li { border-inline-start: 1px solid var(--site-border); }
+.solutions-flow-num {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--site-border);
+  color: var(--site-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+.solutions-flow strong { font-size: 15px; }
+.solutions-flow li > span:last-child { color: var(--site-muted); font-size: 13.5px; line-height: 2; }
+
+/* Card grids. */
+.solutions-roles,
+.solutions-industries,
+.solutions-capabilities,
+.solutions-deploy,
+.solutions-roadmap,
+.solutions-model {
+  display: grid;
+  gap: 20px;
+  margin-top: 40px;
+}
+.solutions-roles { grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); }
+.solutions-industries { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.solutions-capabilities { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.solutions-deploy { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.solutions-roadmap { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.solutions-model { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.solutions-roles > article,
+.solutions-industries > article,
+.solutions-capabilities > article,
+.solutions-deploy > article,
+.solutions-roadmap > article,
+.solutions-model > article {
+  padding: 28px 26px;
+  border: 1px solid var(--site-border);
+  background: var(--site-canvas);
+}
+
+.solutions-capabilities > article { display: flex; flex-direction: column; }
+
+.solutions-access {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 22px;
+  margin-top: 20px;
+  padding: 30px 28px;
+  border: 1px solid var(--site-border);
+}
+.solutions-access h3 { margin-top: 4px; }
+
+.solutions-note {
+  max-width: 900px;
+  margin-top: 26px;
+  color: var(--site-muted);
+  font-size: 13.5px;
+  line-height: 2.1;
+}
+
+/* Roadmap: visibly different from shipped capabilities. */
+.solutions-roadmap > article { position: relative; padding-top: 34px; }
+.solutions-badge {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--site-border);
+  border-block-start: 0;
+  border-inline-start: 0;
+  background: var(--site-canvas);
+  color: var(--site-muted);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.solutions-roadmap small { display: block; margin-top: 12px; color: var(--site-muted); font-size: 12.5px; line-height: 1.95; }
+
+/* Start of cooperation: a vertical numbered list. */
+.solutions-steps { margin: 40px 0 0; padding: 0; list-style: none; }
+.solutions-steps li {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: start;
+  gap: 18px;
+  padding: 20px 0;
+  border-top: 1px solid var(--site-border);
+}
+.solutions-steps li:last-child { border-bottom: 1px solid var(--site-border); }
+.solutions-step-num {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--site-border);
+  color: var(--site-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+.solutions-steps li > span:last-child { font-size: 15px; line-height: 2.05; }
+
+.solutions-notes { display: grid; gap: 18px; margin-top: 32px; }
+.solutions-notes p { color: var(--site-muted); font-size: 13.5px; line-height: 2.1; }
+
+@media (max-width: 1080px) {
+  .solutions-capabilities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .solutions-industries,
+  .solutions-roadmap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .solutions-hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .solutions-snapshot { max-width: 520px; }
+  .solutions-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .solutions-flow li:nth-child(3) { border-inline-start: 0; }
+  .solutions-flow li:nth-child(n + 3) { border-top: 1px solid var(--site-border); }
+}
+
+@media (max-width: 760px) {
+  .solutions-page .solutions-hero { padding-block: 56px 48px; }
+  .solutions-snapshot { max-width: none; }
+  .solutions-lead { font-size: 15px; }
+  .solutions-pair { grid-template-columns: 1fr; }
+  .solutions-pair > article { padding: 30px 24px; }
+  .solutions-pair > article + article { border-inline-start: 0; border-top: 1px solid var(--site-border); }
+  .solutions-flow { grid-template-columns: 1fr; }
+  .solutions-flow li + li { border-inline-start: 0; border-top: 1px solid var(--site-border); }
+  .solutions-capabilities,
+  .solutions-deploy,
+  .solutions-industries,
+  .solutions-roadmap,
+  .solutions-model { grid-template-columns: 1fr; }
+  .solutions-access { grid-template-columns: 1fr; gap: 12px; padding: 24px 22px; }
+  .solutions-steps li { grid-template-columns: 34px 1fr; gap: 14px; }
+}
