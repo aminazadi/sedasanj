@@ -2,6 +2,7 @@
 
 ## 2026-11-25 — AMINAZADI
 
+- Fixed the Debian mirror script failing certificate verification in images without CA certificates: an `https` mirror entry now falls back to `http` for such images (package signatures are still verified) and stays HTTPS where a CA bundle exists.
 - Changed the CPU image Debian package installation to use the new `docker/apt-debian-mirrors.sh`, which takes the mirror list from `APT_DEBIAN_MIRRORS` / `APT_DEBIAN_SECURITY_MIRRORS` (default: Arvan mirror first, official Debian mirror as fallback) instead of the built-in `deb.debian.org` sources, and tries each mirror in order. Script behaviour was tested locally with a stub `apt-get`; the full image build was not run.
 
 ## 2026-11-14 — AMINAZADI
