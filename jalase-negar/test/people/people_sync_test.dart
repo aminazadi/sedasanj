@@ -326,6 +326,20 @@ void main() {
     expect(await repo.cursor(), 0);
   });
 
+  test(
+    'two accounts with the same display name keep separate people',
+    () async {
+      final repo = await open();
+      // The sync controller keys people by the server account id, not by the
+      // display name both accounts may share.
+      await repo.bindToAccount('https://server|tenant-a');
+      await repo.create(name: 'علی');
+      expect(await repo.people(), hasLength(1));
+      expect(await repo.bindToAccount('https://server|tenant-b'), isTrue);
+      expect(await repo.people(), isEmpty);
+    },
+  );
+
   test('voiceprints are encrypted in the database file', () async {
     final (db, d) = await openTestDb();
     dir = d;

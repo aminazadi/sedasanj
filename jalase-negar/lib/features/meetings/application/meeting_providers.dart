@@ -245,10 +245,16 @@ class MeetingActions {
     await repo.setSpeakersState(meetingId, 'analyzing');
     ref.invalidate(meetingsProvider);
     ref.invalidate(meetingDetailProvider(meetingId));
+    var cancelled = false;
     try {
       return await _runPrecise(repo, meeting);
+    } on PreciseCancelled {
+      cancelled = true;
+      return const PreciseOutcome(PreciseStatus.busy);
     } finally {
-      await repo.setSpeakersState(meetingId, 'done');
+      // A cancelled pass is retried after the recording; it must not be
+      // marked done, or the upload queue would send it unanalysed.
+      await repo.setSpeakersState(meetingId, cancelled ? 'pending' : 'done');
       ref.read(speakerProgressProvider.notifier).clear(meetingId);
       ref.invalidate(meetingsProvider);
       ref.invalidate(meetingDetailProvider(meetingId));
@@ -316,6 +322,8 @@ class MeetingActions {
           ],
         ),
       );
+    } on PreciseCancelled {
+      rethrow;
     } on FormatException catch (e) {
       return PreciseOutcome(
         e.message == 'recording_too_long'
@@ -517,6 +525,12 @@ class MeetingActions {
     final repo = await ref.read(meetingRepositoryProvider.future);
     final meeting = await repo.byId(meetingId);
     if (meeting == null) return;
+    // Deleting on the phone must also remove the server copy (audio, text,
+    // minutes and documents); the queue retries when offline.
+    if (meeting.remoteMeetingId != null &&
+        meeting.workspace == kWorkspacePrimary) {
+      await repo.queueServerDelete(meeting.remoteMeetingId!);
+    }
     final paths = await ref.read(appPathsProvider.future);
     final chunksDir = paths.meetingChunksDir(meetingId);
     if (await chunksDir.exists()) await chunksDir.delete(recursive: true);
@@ -530,6 +544,7 @@ class MeetingActions {
     );
     ref.invalidate(meetingsProvider);
     ref.invalidate(meetingDetailProvider(meetingId));
+    ref.read(uploadQueueProvider.notifier).kick();
   }
 }
 
@@ -624,6 +639,8 @@ class SpeakerAnalysisState {
 /// is being captured.
 class SpeakerAnalysisController extends Notifier<SpeakerAnalysisState> {
   bool _running = false;
+  bool _again = false;
+  bool _paused = false;
 
   @override
   SpeakerAnalysisState build() {
@@ -632,20 +649,42 @@ class SpeakerAnalysisController extends Notifier<SpeakerAnalysisState> {
   }
 
   Future<void> kick() async {
-    if (_running) return;
+    if (ref.read(recorderControllerProvider.notifier).isCapturing) {
+      // Do not compete with live transcription; the end of the recording
+      // kicks again.
+      _again = true;
+      return;
+    }
+    _paused = false;
+    if (_running) {
+      // A meeting finished while another was being analysed: run one more pass
+      // instead of dropping it until the app restarts.
+      _again = true;
+      return;
+    }
     _running = true;
     state = const SpeakerAnalysisState(running: true);
     try {
-      final repo = await ref.read(meetingRepositoryProvider.future);
-      for (final meeting in await repo.speakerAnalysisPending()) {
-        if (ref.read(recorderControllerProvider.notifier).isCapturing) break;
-        final outcome = await ref
-            .read(meetingActionsProvider(meeting.id))
-            .runPreciseProcessing();
-        if (outcome.status == PreciseStatus.busy) {
-          await repo.setSpeakersState(meeting.id, 'done');
+      do {
+        _again = false;
+        final repo = await ref.read(meetingRepositoryProvider.future);
+        // Re-read every pass: meetings that finished meanwhile are included.
+        for (final meeting in await repo.speakerAnalysisPending()) {
+          if (_paused ||
+              ref.read(recorderControllerProvider.notifier).isCapturing) {
+            break;
+          }
+          final outcome = await ref
+              .read(meetingActionsProvider(meeting.id))
+              .runPreciseProcessing();
+          if (outcome.status == PreciseStatus.busy && _paused) break;
+          if (outcome.status == PreciseStatus.busy) {
+            await repo.setSpeakersState(meeting.id, 'done');
+          }
         }
-      }
+      } while (_again &&
+          !_paused &&
+          !ref.read(recorderControllerProvider.notifier).isCapturing);
     } catch (_) {
       // Retried on the next kick (next recording or app start).
     } finally {
@@ -653,6 +692,14 @@ class SpeakerAnalysisController extends Notifier<SpeakerAnalysisState> {
       if (ref.mounted) state = const SpeakerAnalysisState();
     }
     ref.read(uploadQueueProvider.notifier).kick();
+  }
+
+  /// Stops the running analysis before a recording starts. It is picked up
+  /// again when the recording ends (the recorder calls [kick]).
+  void pauseForRecording() {
+    _paused = true;
+    _again = true;
+    cancelPreciseAnalysis();
   }
 }
 

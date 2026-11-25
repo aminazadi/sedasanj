@@ -44,6 +44,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       _code.clear();
       ref
         ..invalidate(usageProvider)
+        ..invalidate(personalProfileProvider)
         ..invalidate(inviteProvider)
         ..invalidate(progressProvider);
       if (mounted) {
@@ -64,9 +65,17 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       if (!_celebrated && p.newlyEarned.isNotEmpty) {
         _celebrated = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            SsToastHost.show(context, 'نشان جدید: ${p.newlyEarned.join('، ')}');
-          }
+          if (!mounted) return;
+          SsToastHost.show(context, 'نشان جدید: ${p.newlyEarned.join('، ')}');
+          // The gift changed the hours shown in settings and on the plan page.
+          ref
+            ..invalidate(usageProvider)
+            ..invalidate(personalProfileProvider);
+          // Tell the server the notice was shown so it is not repeated.
+          ref
+              .read(personalClientProvider.future)
+              .then((client) => client.markProgressSeen())
+              .catchError((Object _) {});
         });
       }
     });
@@ -168,6 +177,25 @@ class _BadgeTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(badge.description),
+          if (badge.rewardTokens > 0)
+            Text(
+              badge.earned
+                  ? 'هدیه: ${toPersianDigits('${badge.rewardTokens}')} توکن'
+                  : 'با گرفتن این نشان ${toPersianDigits('${badge.rewardTokens}')} توکن هدیه می‌گیرید',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          if (badge.rewardSkipped)
+            Text(
+              'سقف هدیهٔ این ماه پر بود؛ نشان ثبت شد ولی هدیهٔ کامل به آن اضافه نشد.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: SsColors.of(context).danger,
+              ),
+            ),
+          if (!badge.active)
+            Text(
+              'این نشان دیگر برای کاربران جدید فعال نیست.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           if (!badge.earned)
             Text(
               '${toPersianDigits('${badge.current}')} از ${toPersianDigits('${badge.threshold}')}',

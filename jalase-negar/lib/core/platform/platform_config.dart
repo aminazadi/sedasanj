@@ -115,6 +115,7 @@ class PlatformConnection {
     required this.tenantName,
     required this.tokenPrefix,
     this.personal = false,
+    this.accountId = '',
   });
 
   final String serverUrl;
@@ -124,4 +125,9 @@ class PlatformConnection {
 
   /// True for a phone-number (stand-alone) account, false for a paired organization.
   final bool personal;
+
+  /// Stable server id of the signed-in account (tenant id for a personal
+  /// account). Local meetings and people are keyed by it, so two accounts with
+  /// the same display name never share data.
+  final String accountId;
 }

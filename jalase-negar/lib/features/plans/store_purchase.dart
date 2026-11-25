@@ -1,4 +1,5 @@
 import '../../core/platform/api_client.dart';
+import 'store_purchase_store.dart';
 
 /// What the store's own billing SDK must offer. The Bazaar (Poolakey) and Myket (`myket_iap`)
 /// bindings implement this; the flow below is the same for both stores.
@@ -25,6 +26,7 @@ Future<StorePurchaseResult> buyFromStore({
   required ApiClient api,
   required StoreBillingSdk sdk,
   required String store,
+  PendingPurchaseStore? pending,
   String? sku,
   String? planCode,
   String? packageId,
@@ -44,7 +46,32 @@ Future<StorePurchaseResult> buyFromStore({
   }
   final token = await sdk.purchase(sku, skus.payload);
   if (token == null) return const StorePurchaseResult(activated: false);
+  // Remember the paid token before the network call: if the server cannot be
+  // reached, the app retries it on the next start instead of asking the
+  // person to pay again.
+  final purchase = PendingStorePurchase(store: store, sku: sku, token: token);
+  await pending?.save(purchase);
   await api.verifyStorePurchase(store: store, sku: sku, purchaseToken: token);
   await sdk.consume(token);
+  await pending?.clear();
   return const StorePurchaseResult(activated: true);
+}
+
+/// Confirms a purchase that was paid earlier but never reached the server.
+/// Returns true when one was waiting and is now activated.
+Future<bool> retryPendingPurchase({
+  required ApiClient api,
+  required StoreBillingSdk sdk,
+  required PendingPurchaseStore pending,
+}) async {
+  final purchase = await pending.load();
+  if (purchase == null) return false;
+  await api.verifyStorePurchase(
+    store: purchase.store,
+    sku: purchase.sku,
+    purchaseToken: purchase.token,
+  );
+  await sdk.consume(purchase.token);
+  await pending.clear();
+  return true;
 }

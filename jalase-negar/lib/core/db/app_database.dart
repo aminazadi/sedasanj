@@ -38,6 +38,8 @@ class AppDatabase {
         await _migrateToV12(db);
         await _migrateToV13(db);
         await _migrateToV14(db);
+        await _migrateToV15(db);
+        await _migrateToV16(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 4) await _migrateToV4(db);
@@ -51,6 +53,8 @@ class AppDatabase {
         if (oldVersion < 12) await _migrateToV12(db);
         if (oldVersion < 13) await _migrateToV13(db);
         if (oldVersion < 14) await _migrateToV14(db);
+        if (oldVersion < 15) await _migrateToV15(db);
+        if (oldVersion < 16) await _migrateToV16(db);
       },
       onOpen: _ensureUploadChunksTable,
     );
@@ -67,7 +71,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const int schemaVersion = 14;
+  static const int schemaVersion = 16;
 
   /// Creates the schema as the last app version before people existed (v8).
   /// Only for migration tests.
@@ -336,6 +340,27 @@ class AppDatabase {
       // A database built from the full schema already has the columns.
       if (!e.toString().contains('duplicate column name')) rethrow;
     }
+  }
+
+  /// v15 tags every meeting with the server account it belongs to, so signing
+  /// in as another account can never send the previous one's recordings.
+  static Future<void> _migrateToV15(Database db) async {
+    try {
+      await db.execute('ALTER TABLE meetings ADD COLUMN account_id TEXT');
+    } on DatabaseException catch (e) {
+      if (!e.toString().contains('duplicate column name')) rethrow;
+    }
+  }
+
+  /// v16 keeps "delete this meeting on the server" intents so a deletion made
+  /// offline still reaches SedaSanj on the next pass.
+  static Future<void> _migrateToV16(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS server_deletes (
+        remote_meeting_id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   Future<String?> getSetting(String key) async {

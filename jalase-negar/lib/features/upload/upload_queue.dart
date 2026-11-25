@@ -38,7 +38,9 @@ class UploadChunk {
 
 /// Persistence the queue needs; implemented by the meeting repository.
 abstract class UploadStore {
-  Future<List<Meeting>> uploadableMeetings();
+  /// Meetings this queue may send.  With [accountId], only that account's
+  /// recordings are returned, so switching accounts never sends the old one's.
+  Future<List<Meeting>> uploadableMeetings({String? accountId});
   Future<List<UploadChunk>> chunks(String meetingId);
   Future<void> updateChunk(
     String meetingId,
@@ -64,6 +66,10 @@ abstract class UploadStore {
   /// Meetings already on SedaSanj whose edited text the server has not taken.
   Future<List<Meeting>> textSyncPendingMeetings();
   Future<void> setTextSyncPending(String id, bool pending);
+
+  /// Meetings deleted on the phone that still have to be deleted on the server.
+  Future<List<String>> pendingServerDeletes({int limit});
+  Future<void> clearServerDelete(String remoteMeetingId);
 }
 
 /// What a pass of the queue learned; the controller turns it into UI state
@@ -101,6 +107,7 @@ class UploadQueue {
     this.appVersion = '2.0.0',
     this.concurrency = 2,
     this.workspace = kWorkspacePrimary,
+    this.accountId,
     Random? random,
     DateTime Function()? now,
   }) : _random = random ?? Random(),
@@ -113,6 +120,9 @@ class UploadQueue {
 
   /// Only meetings of this workspace are sent with this queue's key.
   final String workspace;
+
+  /// Only meetings of this server account are sent with this queue's key.
+  final String? accountId;
   final Random _random;
   final DateTime Function() _now;
 
@@ -126,9 +136,28 @@ class UploadQueue {
       if (wake == null || d < wake!) wake = d;
     }
 
-    for (final meeting in (await store.uploadableMeetings()).where(
-      (m) => m.workspace == workspace,
-    )) {
+    // Deletions first: a meeting the user removed must not stay on the server
+    // just because the phone was offline when they removed it. Only personal
+    // meetings are queued; an organization's copy belongs to its panel.
+    if (workspace == kWorkspacePrimary) {
+      for (final remoteId in await store.pendingServerDeletes(limit: 20)) {
+        try {
+          await api.deleteMeeting(remoteId);
+          await store.clearServerDelete(remoteId);
+        } on ApiException catch (e) {
+          if (e.requiresReconnect) {
+            needsReconnect = true;
+            lastError = e.message;
+            return UploadOutcome(needsReconnect: true, lastError: lastError);
+          }
+          wakeIn(uploadBackoff(1, _random));
+        }
+      }
+    }
+
+    for (final meeting in (await store.uploadableMeetings(
+      accountId: accountId,
+    )).where((m) => m.workspace == workspace)) {
       try {
         final result = await _processMeeting(meeting, wakeIn);
         if (result != null) lastError = result;
@@ -233,6 +262,14 @@ class UploadQueue {
       if (segments.isEmpty || current.asrIdentity == null) {
         // Nothing to build minutes from (live transcript off, model missing,
         // or silence). Stop trying; the detail screen can send it later.
+        // A session created while recording must not stay open on the server.
+        if (current.remoteMeetingId != null) {
+          try {
+            await api.cancel(current.remoteMeetingId!);
+          } on Object {
+            // Retried by the server's abandoned-upload sweep.
+          }
+        }
         await store.setSendText(current.id, false);
         return 'برای یکی از جلسه‌ها متنی ساخته نشده بود و چیزی ارسال نشد؛ '
             'رونویسی زنده را در تنظیمات روشن کنید و جلسه‌ی بعد را ضبط کنید.';

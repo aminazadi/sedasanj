@@ -4,6 +4,11 @@
 
 - Changed the Jalase-Negar release version to 1.1.9 (build 18) for the next release builds.
 - Fixed Jalase-Negar iOS release dependency resolution by setting the minimum iOS version to 14.0, as required by the installed file picker plugin.
+- Fixed Jalase-Negar personal accounts being blocked by the organization minute ledger: `create_session` and `finish` no longer reserve or settle minutes for `product='jalase_negar'`, so a free account keeps working while its token budget lasts. The 402 message is Persian and points to «پلن و مصرف»; buying an hour pack now matches what the app shows.
+- Fixed badges being awarded only when the progress screen was opened: meetings and documents now evaluate badges when they finish, progress is read-only, new badges get a push and a one-time notice, and `POST /v1/jalase-negar/progress/seen` records that the notice was shown. Gift grants are idempotent (`token_grants.source_id` plus a partial unique index), XP is recorded in `jalase_xp_events` so deleting a meeting does not lower the level, only complete meetings count, streaks use Saturday-start Tehran weeks with a threshold-based window, and a deactivated badge stays visible to the people who earned it.
+- Fixed organization device keys reaching personal-only Jalase-Negar endpoints: `/progress`, `/invite`, `/usage` and `/plans` now return 403 for a non-personal tenant. Importing meetings into an organization now copies minutes, speakers and attendees; deleting a personal account also removes voiceprints, speaker profiles, badges, XP events, token grants, invite codes and push installations, and uses the tenant database scope when it is enabled.
+- Added owner deletion for personal meetings (`DELETE /v1/jalase-negar/meetings/{id}`) that releases credit and removes audio, segments, minutes and documents, plus a worker sweep that cancels abandoned `receiving` meetings after `meeting_abandoned_after_hours` and frees their reservation. Invite settlement locks the redemption row and pays once; invite codes of deleted accounts no longer redeem.
+- Added migration `0162_jalase_meeting_delete_help` with the help article «حذف جلسه و آزاد شدن اعتبار» and the `ingest_abandoned` error page.
 
 ## 2026-11-22 — AMINAZADI
 

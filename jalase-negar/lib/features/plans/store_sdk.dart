@@ -136,8 +136,28 @@ class MyketBillingSdk implements StoreBillingSdk {
 
   @override
   Future<void> consume(String purchaseToken) async {
-    final purchase = _owned.remove(purchaseToken);
-    if (purchase == null) return;
+    var purchase = _owned.remove(purchaseToken);
+    if (purchase == null) {
+      // A retry after an app restart has a fresh SDK instance and no memory
+      // of the purchase, so look it up in the store's inventory.
+      await _init();
+      final inventory = await MyketIAP.queryInventory(
+        querySkuDetails: false,
+        skus: <String>[],
+      );
+      final owned = (inventory[MyketIAP.INVENTORY] as Inventory?)?.mPurchaseMap;
+      for (final candidate in owned?.values ?? const <Purchase>[]) {
+        if (candidate.mToken == purchaseToken) {
+          purchase = candidate;
+          break;
+        }
+      }
+    }
+    if (purchase == null) {
+      throw StateError(
+        'خرید تأییدشده در مایکت پیدا نشد؛ اپ را دوباره باز کنید تا دوباره بررسی شود.',
+      );
+    }
     await MyketIAP.consume(purchase: purchase);
   }
 }

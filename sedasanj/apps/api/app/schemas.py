@@ -1963,6 +1963,7 @@ class MeetingPairedUser(BaseModel):
 
 class MeetingPairedTenant(BaseModel):
     name: str
+    id: str | None = None
 
 
 class MeetingPairOut(BaseModel):

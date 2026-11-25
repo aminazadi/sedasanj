@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ from app.errors import ApiError
 from app.models import (
     AuditEvent,
     JalaseAchievement,
+    JalaseInviteRedemption,
     Meeting,
     MeetingDocument,
     StaffUser,
@@ -32,6 +34,7 @@ TENANT_TABLES = (
     "api_keys",
     "audit_events",
     "jalase_earned_achievements",
+    "jalase_xp_events",
     "meeting_documents",
     "meetings",
     "token_grants",
@@ -120,6 +123,7 @@ async def add_meetings(tenant_id: UUID, count: int, *, documents: int = 0) -> No
                 owner_user_id=user_id,
                 client_meeting_id=uuid4(),
                 title=f"جلسه {index}",
+                status="complete",
                 started_at=datetime.now(UTC),
             )
             session.add(meeting)
@@ -167,6 +171,7 @@ async def test_a_badge_is_earned_once_and_pays_gift_tokens(created: list[UUID]) 
 async def test_progress_reports_level_badges_and_gift_allowance(created: list[UUID]) -> None:
     tenant_id = await account(created)
     await add_meetings(tenant_id, 3, documents=3)
+    await jalase_rewards.evaluate(tenant_id)
     shown = await jalase_rewards.progress(tenant_id)
     assert shown["xp"] == 3 * 10 + 3 * 5
     assert shown["level"] == 2 and shown["next_level_xp"] == 100
@@ -222,8 +227,7 @@ async def test_friend_invite_rewards_both_sides_once(created: list[UUID]) -> Non
     assert bad.value.code == "invite_invalid"
     await jalase_rewards.redeem(invitee, code.lower())
     assert await grants(invitee, "invite") == [20_000]
-    assert await grants(inviter, "invite") == []  # paid when the inviter next opens progress
-    await jalase_rewards.progress(inviter)
+    # Both sides are paid by the redemption itself; the inviter need not open the app.
     assert await grants(inviter, "invite") == [20_000]
     await jalase_rewards.progress(inviter)  # idempotent
     await jalase_rewards.progress(invitee)
@@ -328,3 +332,102 @@ async def test_admin_edits_badges_and_gifts(created: list[UUID]) -> None:
         await session.flush()
         await session.execute(text("DELETE FROM audit_events WHERE actor_id = :s"), {"s": staff.id})
         await session.delete(staff)
+
+
+async def test_opening_progress_awards_nothing(created: list[UUID]) -> None:
+    """The progress screen is a read; the gift is paid when the meeting finishes."""
+    tenant_id = await account(created)
+    await add_meetings(tenant_id, 1)
+    shown = await jalase_rewards.progress(tenant_id)
+    assert shown["newly_earned"] == []
+    assert not any(badge["earned"] for badge in shown["badges"])
+    assert await grants(tenant_id, "reward") == []
+    # The event path is the one that pays, and it pays once.
+    assert [item["code"] for item in await jalase_rewards.evaluate(tenant_id)] == ["first_meeting"]
+    assert await grants(tenant_id, "reward") == [5_000]
+    assert [
+        item["code"] for item in (await jalase_rewards.progress(tenant_id))["newly_earned"]
+    ] == ["first_meeting"]
+    await jalase_rewards.mark_seen(tenant_id)
+    assert (await jalase_rewards.progress(tenant_id))["newly_earned"] == []
+
+
+async def test_an_earned_badge_stays_visible_after_it_is_deactivated(
+    created: list[UUID],
+) -> None:
+    tenant_id = await account(created)
+    async with db.session_scope(staff=True) as session:
+        session.add(
+            JalaseAchievement(
+                code="test_inactive_badge",
+                title_fa="نشان آزمایشی",
+                description_fa="برای آزمون",
+                metric="meetings",
+                threshold=1,
+                reward_tokens=0,
+                sort_order=999,
+            )
+        )
+    await add_meetings(tenant_id, 1)
+    await jalase_rewards.evaluate(tenant_id)
+    async with db.session_scope(staff=True) as session:
+        await session.execute(
+            text("UPDATE jalase_achievements SET active = false WHERE code = 'test_inactive_badge'")
+        )
+    shown = await jalase_rewards.progress(tenant_id)
+    badge = next(item for item in shown["badges"] if item["code"] == "test_inactive_badge")
+    assert badge["earned"] is True and badge["active"] is False
+
+
+async def test_a_long_streak_badge_is_reachable(created: list[UUID]) -> None:
+    """The streak window follows the longest active badge instead of a hidden 200-day cap."""
+    tenant_id = await account(created)
+    async with db.session_scope(staff=True) as session:
+        session.add(
+            JalaseAchievement(
+                code="test_streak_40",
+                title_fa="چهل هفته",
+                description_fa="برای آزمون",
+                metric="streak_weeks",
+                threshold=40,
+                reward_tokens=0,
+                sort_order=998,
+            )
+        )
+    now = datetime.now(UTC)
+    async with db.session_scope(staff=True) as session:
+        user_id = (
+            await session.execute(select(User.id).where(User.tenant_id == tenant_id))
+        ).scalar_one()
+        for index in range(40):
+            session.add(
+                Meeting(
+                    tenant_id=tenant_id,
+                    owner_user_id=user_id,
+                    client_meeting_id=uuid4(),
+                    status="complete",
+                    started_at=now - timedelta(weeks=index),
+                    created_at=now - timedelta(weeks=index),
+                )
+            )
+    newly = {item["code"] for item in await jalase_rewards.evaluate(tenant_id, now)}
+    assert "test_streak_40" in newly
+
+
+async def test_concurrent_invite_settlement_pays_once(created: list[UUID]) -> None:
+    inviter = await account(created)
+    invitee = await account(created)
+    async with db.session_scope(staff=True) as session:
+        session.add(
+            JalaseInviteRedemption(
+                invitee_tenant_id=invitee,
+                inviter_tenant_id=inviter,
+                reward_tokens=20_000,
+            )
+        )
+    now = datetime.now(UTC)
+    await asyncio.gather(
+        *(jalase_rewards.settle_invites(inviter, now) for _ in range(4)),
+        return_exceptions=False,
+    )
+    assert await grants(inviter, "invite") == [20_000]

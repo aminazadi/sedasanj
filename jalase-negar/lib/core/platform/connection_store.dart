@@ -13,6 +13,7 @@ const _kTenantName = 'platform_tenant_name';
 const _kTokenPrefix = 'platform_token_prefix';
 const _kTokenKey = 'platform_token';
 const _kPersonal = 'platform_personal';
+const _kAccountId = 'platform_account_id';
 const _kPushBinding = 'platform_push_binding';
 const _kOrgLinkId = 'org_link_id';
 const _kOrgName = 'org_name';
@@ -51,6 +52,7 @@ class ConnectionStore {
       tenantName: await _db.getSetting(_kTenantName) ?? '',
       tokenPrefix: await _db.getSetting(_kTokenPrefix) ?? '',
       personal: await _db.getSetting(_kPersonal) == '1',
+      accountId: await _db.getSetting(_kAccountId) ?? '',
     );
   }
 
@@ -94,6 +96,7 @@ class ConnectionStore {
     await _db.setSetting(_kTenantName, connection.tenantName);
     await _db.setSetting(_kTokenPrefix, connection.tokenPrefix);
     await _db.setSetting(_kPersonal, connection.personal ? '1' : '0');
+    await _db.setSetting(_kAccountId, connection.accountId);
     await _secure.write(
       key: _kPushBinding,
       value: _binding(connection.serverUrl, token),
@@ -157,13 +160,14 @@ class ConnectionStore {
     await _deleteSecret(_kPushBinding);
     await _db.db.delete(
       'settings',
-      where: 'key IN (?, ?, ?, ?, ?)',
+      where: 'key IN (?, ?, ?, ?, ?, ?)',
       whereArgs: [
         _kServerUrl,
         _kUserName,
         _kTenantName,
         _kTokenPrefix,
         _kPersonal,
+        _kAccountId,
       ],
     );
   }

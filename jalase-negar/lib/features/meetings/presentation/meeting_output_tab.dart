@@ -9,6 +9,7 @@ import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../documents/presentation/documents_tab.dart';
 import '../../catalog/application/catalog_providers.dart';
+import '../data/meeting.dart';
 import '../../settings/application/connection_controller.dart';
 import 'minutes_tab.dart';
 
@@ -17,10 +18,18 @@ import 'minutes_tab.dart';
 /// to sign in or buy/upgrade a plan. If the plan check itself fails the output
 /// is still shown, with the reason and a retry in a banner.
 class MeetingOutputTab extends ConsumerWidget {
-  const MeetingOutputTab({super.key, this.remoteMeetingId});
+  const MeetingOutputTab({
+    super.key,
+    this.remoteMeetingId,
+    this.workspace = kWorkspacePrimary,
+  });
 
   /// Null while the meeting has not reached the server yet; the categories still show.
   final String? remoteMeetingId;
+
+  /// The organization's meetings are read with its own device key; the
+  /// personal plan check does not apply to them.
+  final String workspace;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,6 +39,9 @@ class MeetingOutputTab extends ConsumerWidget {
         ?.connection;
     final loggedIn = connection != null && connection.personal;
     final remote = remoteMeetingId;
+    if (workspace == kWorkspaceOrg && remote != null) {
+      return _OutputTabs(remoteMeetingId: remote, workspace: workspace);
+    }
     if (!loggedIn || remote == null) {
       // Categories are public and always listed. Only the account (sign-in, active plan)
       // and the meeting's place on the server decide what else is asked for.
@@ -88,6 +100,7 @@ class MeetingOutputTab extends ConsumerWidget {
         void retry() {
           ref
             ..invalidate(personalClientProvider)
+            ..invalidate(orgClientProvider)
             ..invalidate(usageProvider);
         }
 
@@ -99,6 +112,7 @@ class MeetingOutputTab extends ConsumerWidget {
         }
         return _OutputTabs(
           remoteMeetingId: remote,
+          workspace: workspace,
           banner: _PlanCheckBanner(
             message: _usageErrorMessage(error),
             onAction: retry,
@@ -111,6 +125,7 @@ class MeetingOutputTab extends ConsumerWidget {
         final entitled = info.unlimited || !info.exhausted;
         return _OutputTabs(
           remoteMeetingId: remote,
+          workspace: workspace,
           banner: entitled
               ? null
               : _PlanCheckBanner(
@@ -127,9 +142,14 @@ class MeetingOutputTab extends ConsumerWidget {
 
 /// The minutes and documents sub-tabs, with an optional banner above them.
 class _OutputTabs extends StatelessWidget {
-  const _OutputTabs({required this.remoteMeetingId, this.banner});
+  const _OutputTabs({
+    required this.remoteMeetingId,
+    this.workspace = kWorkspacePrimary,
+    this.banner,
+  });
 
   final String remoteMeetingId;
+  final String workspace;
   final Widget? banner;
 
   @override
@@ -147,8 +167,14 @@ class _OutputTabs extends StatelessWidget {
         Expanded(
           child: TabBarView(
             children: [
-              MinutesTab(remoteMeetingId: remoteMeetingId),
-              DocumentsTab(remoteMeetingId: remoteMeetingId),
+              MinutesTab(
+                remoteMeetingId: remoteMeetingId,
+                workspace: workspace,
+              ),
+              DocumentsTab(
+                remoteMeetingId: remoteMeetingId,
+                workspace: workspace,
+              ),
             ],
           ),
         ),
@@ -245,10 +271,8 @@ class _CategoriesButton extends StatelessWidget {
   Widget build(BuildContext context) => OutlinedButton.icon(
     icon: const Icon(Icons.auto_awesome_outlined, size: 18),
     label: const Text('دسته‌های خروجی'),
-    onPressed: () => showSsPickerSheet<void>(
-      context,
-      (_) => const _CategoriesSheet(),
-    ),
+    onPressed: () =>
+        showSsPickerSheet<void>(context, (_) => const _CategoriesSheet()),
   );
 }
 

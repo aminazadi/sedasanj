@@ -210,3 +210,27 @@ async def test_sweep_settles_complete_meetings_whose_billing_failed(funded) -> N
         assert row.billed_seconds == 120
         assert await _balance(session, funded.tenant_id) == 3600 - 120
     assert await settle_stuck_meetings() == 0  # charged once, never again
+
+
+@requires_postgres
+async def test_sweep_cancels_an_abandoned_receiving_and_frees_the_hold(funded) -> None:
+    """A discarded upload must not keep its block until the end of the month."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.services.maintenance import expire_abandoned_receivings
+
+    meeting, tenant = await _new_meeting(funded)
+    async with db.session_scope(funded.tenant_id) as session:
+        await billing.reserve(
+            session, tenant=tenant, meeting_id=meeting.id, block=0, duration_ms=1_800_000
+        )
+        row = await session.get(Meeting, meeting.id)
+        row.status = "receiving"
+        row.updated_at = datetime.now(UTC) - timedelta(hours=7)
+        assert await _balance(session, funded.tenant_id) == 3600 - 1800
+    assert await expire_abandoned_receivings() >= 1
+    async with db.session_scope(funded.tenant_id) as session:
+        row = await session.get(Meeting, meeting.id)
+        assert row.status == "canceled" and row.error_code == "ingest_abandoned"
+        assert await _balance(session, funded.tenant_id) == 3600
+    assert await expire_abandoned_receivings() == 0  # already canceled

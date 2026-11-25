@@ -168,6 +168,51 @@ async def settle_stuck_meetings() -> int:
     return fixed
 
 
+async def expire_abandoned_receivings() -> int:
+    """Cancel uploads that stopped arriving, and give back whatever they still hold.
+
+    A meeting whose session was created but never finished keeps its reserved block until it is
+    settled; before this sweep nothing released it, so a couple of discarded recordings could
+    lock a whole month of a small plan.  `updated_at` moves on every accepted chunk, so a long
+    recording that is still uploading is left alone.
+    """
+    from app.services import meeting_ingest
+
+    cutoff = datetime.now(UTC) - timedelta(hours=get_settings().meeting_abandoned_after_hours)
+    expired = 0
+    for tenant_id in await routable_tenant_ids():
+        try:
+            async with session_scope(tenant_id) as session:
+                meetings = (
+                    (
+                        await session.execute(
+                            select(Meeting)
+                            .where(
+                                Meeting.tenant_id == tenant_id,
+                                Meeting.status == "receiving",
+                                Meeting.updated_at < cutoff,
+                            )
+                            .limit(100)
+                            .with_for_update(skip_locked=True)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for meeting in meetings:
+                    await meeting_ingest.release_meeting(session, meeting)
+                    meeting.status = "canceled"
+                    meeting.error_code = "ingest_abandoned"
+                    meeting.updated_at = datetime.now(UTC)
+                    expired += 1
+        except Exception:  # noqa: BLE001 - one tenant must not stop the sweep
+            logger.exception(
+                "abandoned receiving sweep failed",
+                extra={"extra_fields": {"tenant_id": str(tenant_id)}},
+            )
+    return expired
+
+
 async def expire_commerce_state() -> tuple[int, int]:
     now = datetime.now(UTC)
     expired_subscriptions = 0

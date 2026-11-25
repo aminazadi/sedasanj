@@ -14,11 +14,15 @@ class FakeStore implements UploadStore {
   final List<Meeting> meetings;
   final Map<String, List<Segment>> segmentMap;
   final Map<String, List<UploadChunk>> chunkMap;
+  final List<String> serverDeletes = [];
 
   @override
-  Future<List<Meeting>> uploadableMeetings() async => [
+  Future<List<Meeting>> uploadableMeetings({String? accountId}) async => [
     for (final m in meetings)
-      if (m.sendText &&
+      if ((accountId == null ||
+              accountId.isEmpty ||
+              m.accountId == accountId) &&
+          m.sendText &&
           const [
             MeetingStatus.recording,
             MeetingStatus.recorded,
@@ -28,6 +32,14 @@ class FakeStore implements UploadStore {
           ].contains(m.status))
         m,
   ];
+
+  @override
+  Future<List<String>> pendingServerDeletes({int limit = 50}) async =>
+      serverDeletes.take(limit).toList();
+
+  @override
+  Future<void> clearServerDelete(String remoteMeetingId) async =>
+      serverDeletes.remove(remoteMeetingId);
 
   @override
   Future<List<UploadChunk>> chunks(String id) async => chunkMap[id] ?? [];
@@ -124,6 +136,14 @@ class FakeApi implements MeetingUploadApi {
   List<Segment>? sentSegments;
   String? sentIdentity;
   int? finishedChunks;
+  final List<String> cancelled = [];
+  final List<String> deleted = [];
+
+  @override
+  Future<void> cancel(String meetingId) async => cancelled.add(meetingId);
+
+  @override
+  Future<void> deleteMeeting(String meetingId) async => deleted.add(meetingId);
 
   @override
   Future<RemoteSession> createSession({
@@ -211,6 +231,7 @@ void main() {
     String? remoteId,
     String outputTypeCode = kBuiltinOutputType,
     Map<String, String> outputTypeInputValues = const {},
+    String accountId = '',
   }) => Meeting(
     id: 'm1',
     title: 'جلسه',
@@ -225,6 +246,7 @@ void main() {
     remoteMeetingId: remoteId,
     outputTypeCode: outputTypeCode,
     outputTypeInputValues: outputTypeInputValues,
+    accountId: accountId,
   );
 
   const lines = [
@@ -276,6 +298,50 @@ void main() {
       expect(outcome.nextWake, isNotNull);
     },
   );
+
+  test('a queued server deletion is sent before meetings', () async {
+    setUpStore(meeting());
+    store.serverDeletes.add('remote-old');
+    await queue().processOnce();
+    expect(api.deleted, ['remote-old']);
+    expect(store.serverDeletes, isEmpty);
+  });
+
+  test(
+    'an organization queue leaves personal server deletions alone',
+    () async {
+      setUpStore(meeting());
+      store.serverDeletes.add('remote-old');
+      final org = UploadQueue(
+        store: store,
+        api: api,
+        random: Random(1),
+        workspace: kWorkspaceOrg,
+      );
+      await org.processOnce();
+      expect(api.deleted, isEmpty);
+      expect(store.serverDeletes, ['remote-old']);
+    },
+  );
+
+  test('a meeting of another account is never sent', () async {
+    setUpStore(meeting(accountId: 'account-a'));
+    final other = UploadQueue(
+      store: store,
+      api: api,
+      random: Random(1),
+      accountId: 'account-b',
+    );
+    await other.processOnce();
+    expect(api.createCalls, 0);
+  });
+
+  test('a recording with no text cancels its open server session', () async {
+    setUpStore(meeting(remoteId: 'remote-9'), const []);
+    await queue().processOnce();
+    expect(api.cancelled, ['remote-9']);
+    expect(store.meetings.single.sendText, isFalse);
+  });
 
   test(
     'sends the text and the audio chunks, then finishes with their count',

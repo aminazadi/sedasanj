@@ -11,6 +11,7 @@ import '../../../app/widgets/markdown_view.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
+import '../../meetings/data/meeting.dart';
 import '../../settings/application/connection_controller.dart';
 import '../../catalog/application/catalog_providers.dart';
 
@@ -27,9 +28,14 @@ String _statusLabel(DocumentInfo d) => switch (d.status) {
 
 /// Documents (counseling report, lecture notes, ...) made from one meeting.
 class DocumentsTab extends ConsumerStatefulWidget {
-  const DocumentsTab({super.key, required this.remoteMeetingId});
+  const DocumentsTab({
+    super.key,
+    required this.remoteMeetingId,
+    this.workspace = kWorkspacePrimary,
+  });
 
   final String remoteMeetingId;
+  final String workspace;
 
   @override
   ConsumerState<DocumentsTab> createState() => _DocumentsTabState();
@@ -44,8 +50,12 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
     super.dispose();
   }
 
-  void _refresh() =>
-      ref.invalidate(meetingDocumentsProvider(widget.remoteMeetingId));
+  void _refresh() => ref.invalidate(_documentsProvider);
+
+  FutureProvider<List<DocumentInfo>> get _documentsProvider =>
+      widget.workspace == kWorkspaceOrg
+      ? orgMeetingDocumentsProvider(widget.remoteMeetingId)
+      : meetingDocumentsProvider(widget.remoteMeetingId);
 
   /// While any document is still being made, check again every few seconds.
   void _schedulePoll(bool pending) {
@@ -61,7 +71,7 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final docs = ref.watch(meetingDocumentsProvider(widget.remoteMeetingId));
+    final docs = ref.watch(_documentsProvider);
     final titles = {
       for (final t
           in ref.watch(outputTypesProvider).value ?? const <OutputTypeInfo>[])
@@ -92,6 +102,7 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
                   showDragHandle: true,
                   builder: (_) => CategoryPickerSheet(
                     remoteMeetingId: widget.remoteMeetingId,
+                    workspace: widget.workspace,
                     existing: {for (final d in items) d.outputType},
                   ),
                 );
@@ -112,6 +123,7 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
                       builder: (_) => DocumentScreen(
                         documentId: d.id,
                         title: titles[d.outputType] ?? d.outputType,
+                        workspace: widget.workspace,
                       ),
                     ),
                   ),
@@ -167,10 +179,12 @@ class CategoryPickerSheet extends ConsumerStatefulWidget {
   const CategoryPickerSheet({
     super.key,
     required this.remoteMeetingId,
+    this.workspace = kWorkspacePrimary,
     this.existing = const {},
   });
 
   final String remoteMeetingId;
+  final String workspace;
 
   /// Categories this meeting already has a document for.
   final Set<String> existing;
@@ -207,7 +221,9 @@ class _CategoryPickerSheetState extends ConsumerState<CategoryPickerSheet> {
       _error = null;
     });
     try {
-      final client = await ref.read(personalClientProvider.future);
+      final client = await ref.read(
+        workspaceClientProvider(widget.workspace).future,
+      );
       await client.createDocuments(widget.remoteMeetingId, [
         for (final t in chosen)
           (
@@ -407,10 +423,12 @@ class DocumentScreen extends ConsumerStatefulWidget {
     super.key,
     required this.documentId,
     required this.title,
+    this.workspace = kWorkspacePrimary,
   });
 
   final String documentId;
   final String title;
+  final String workspace;
 
   @override
   ConsumerState<DocumentScreen> createState() => _DocumentScreenState();
@@ -429,7 +447,12 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
     super.dispose();
   }
 
-  void _refresh() => ref.invalidate(documentDetailProvider(widget.documentId));
+  FutureProvider<DocumentDetail> get _detailProvider =>
+      widget.workspace == kWorkspaceOrg
+      ? orgDocumentDetailProvider(widget.documentId)
+      : documentDetailProvider(widget.documentId);
+
+  void _refresh() => ref.invalidate(_detailProvider);
 
   Future<void> _act(
     Future<void> Function(ApiClient client) action,
@@ -437,7 +460,9 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
   ) async {
     setState(() => _busy = true);
     try {
-      await action(await ref.read(personalClientProvider.future));
+      await action(
+        await ref.read(workspaceClientProvider(widget.workspace).future),
+      );
       _refresh();
       if (mounted) SsToastHost.show(context, done);
     } on Object catch (e) {
@@ -451,7 +476,9 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
   Future<void> _export(String format) async {
     setState(() => _busy = true);
     try {
-      final client = await ref.read(personalClientProvider.future);
+      final client = await ref.read(
+        workspaceClientProvider(widget.workspace).future,
+      );
       final bytes = await client.exportDocument(widget.documentId, format);
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/jalase-${widget.documentId}.$format');
@@ -478,7 +505,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final detail = ref.watch(documentDetailProvider(widget.documentId));
+    final detail = ref.watch(_detailProvider);
     final markdown = detail.value?.markdown;
     final info = detail.value?.info;
     WidgetsBinding.instance.addPostFrameCallback((_) {

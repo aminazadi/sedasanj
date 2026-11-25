@@ -142,9 +142,12 @@ class SpeakerSyncController extends Notifier<SpeakerSyncState> {
       state = SpeakerSyncState(pending: pending, tick: state.tick + 1);
       return;
     }
-    await repo.bindToAccount(
-      '${connection.serverUrl}|${connection.tenantName}|${connection.userName}',
-    );
+    // Keyed by the stable server account id, so two accounts with the same
+    // display name never share people (and their voiceprints).
+    final accountKey = connection.accountId.isNotEmpty
+        ? '${connection.serverUrl}|${connection.accountId}'
+        : '${connection.serverUrl}|${connection.tenantName}|${connection.userName}';
+    await repo.bindToAccount(accountKey);
     state = SpeakerSyncState(
       running: true,
       connected: true,

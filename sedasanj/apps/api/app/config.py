@@ -249,6 +249,7 @@ class Settings(BaseSettings):
     meeting_pairing_ttl_minutes: int = Field(default=15, ge=1, le=120)
     meeting_min_balance_seconds: int = Field(default=600, ge=0)
     meeting_reserve_block_seconds: int = Field(default=1800, ge=60)
+    meeting_abandoned_after_hours: int = Field(default=6, ge=1, le=168)
     meeting_max_duration_ms: int = Field(default=12 * 3600 * 1000, ge=60_000)
     meeting_transcript_max_chars: int = Field(default=2_000_000, ge=10_000)
     # Speaker profiles (people and voiceprints from the Jalase-Negar app). The key is one Fernet

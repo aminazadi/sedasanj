@@ -409,6 +409,7 @@ async def generate_document(
         finally:
             await client.close()
         await _store(tenant_id, ctx, markdown, structured, system)
+        await _award_badges(tenant_id)
         return "complete"
     except Exception as exc:  # noqa: BLE001 - the document row must always reach a final state
         code, _detail, retryable = classify_failure(exc, kind="meeting")
@@ -426,6 +427,20 @@ async def generate_document(
             "document_generation_failed" if not isinstance(exc, ApiError) else exc.code,
         )
         return "failed"
+
+
+async def _award_badges(tenant_id: UUID) -> None:
+    """A finished document may complete a badge; the award must not fail the job."""
+    from app.services import jalase_rewards
+
+    try:
+        await jalase_rewards.evaluate(tenant_id)
+    except Exception:  # noqa: BLE001 - the document is already done
+        logger.warning(
+            "badge evaluation after document failed",
+            extra={"extra_fields": {"tenant_id": str(tenant_id)}},
+            exc_info=True,
+        )
 
 
 async def _store(

@@ -18,6 +18,16 @@ from app.services import audit
 router = APIRouter(prefix="/v1/admin/jalase/achievements", tags=["admin"])
 
 Metric = Literal["meetings", "documents", "categories", "streak_weeks"]
+# A streak is measured from stored meetings; asking for more weeks than this can never be met.
+STREAK_MAX_WEEKS = 52
+
+
+def _check_threshold(metric: str, threshold: int) -> None:
+    if metric == "streak_weeks" and threshold > STREAK_MAX_WEEKS:
+        raise ApiError(
+            "invalid_request",
+            f"سقف هفته‌های پیاپی {STREAK_MAX_WEEKS} است؛ عدد کوچک‌تری بگذارید.",
+        )
 
 
 class AchievementCreate(BaseModel):
@@ -67,6 +77,7 @@ async def create_achievement(
     payload: AchievementCreate, request: Request, staff: SuperAdminDep, session: StaffSession
 ) -> dict[str, Any]:
     row = JalaseAchievement(**payload.model_dump())
+    _check_threshold(row.metric, row.threshold)
     try:
         async with session.begin_nested():
             session.add(row)
@@ -96,6 +107,7 @@ async def update_achievement(
     if row is None:
         raise ApiError("not_found", "نشان پیدا نشد؛ صفحه را تازه کنید.")
     changes = payload.model_dump(exclude_none=True)
+    _check_threshold(changes.get("metric", row.metric), changes.get("threshold", row.threshold))
     for key, value in changes.items():
         setattr(row, key, value)
     row.updated_at = func.now()

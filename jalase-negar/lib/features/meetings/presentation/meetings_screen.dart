@@ -385,8 +385,16 @@ class _Header extends ConsumerWidget {
     final needsReconnect = ref.watch(
       uploadQueueProvider.select((s) => s.needsReconnect),
     );
+    final orgNeedsReconnect = ref.watch(
+      uploadQueueProvider.select((s) => s.orgNeedsReconnect),
+    );
     final creditExhausted = ref.watch(
       uploadQueueProvider.select((s) => s.creditExhausted),
+    );
+    final personal = ref.watch(
+      connectionControllerProvider.select(
+        (a) => a.value?.connection?.personal ?? false,
+      ),
     );
     final date = ref.watch(meetingsSearchProvider.select((s) => s.date));
     // Only once the connection state has loaded, so a fresh start does not
@@ -403,11 +411,36 @@ class _Header extends ConsumerWidget {
         child: _SignInNotice(),
       );
     }
-    final notice = needsReconnect
-        ? 'توکن ابطال شده است؛ از «تنظیمات» دوباره به صداسنج متصل شوید.'
-        : creditExhausted
-        ? 'اعتبار سازمان تمام شده است؛ در پنل صداسنج شارژ کنید تا ارسال ادامه یابد.'
-        : null;
+    String? notice;
+    String? actionLabel;
+    String? actionRoute;
+    if (needsReconnect) {
+      if (personal) {
+        notice =
+            'نشست این دستگاه معتبر نیست؛ دوباره با شمارهٔ موبایل وارد شوید.';
+        actionLabel = 'ورود دوباره';
+        actionRoute = '/login';
+      } else {
+        notice = 'توکن ابطال شده است؛ از «تنظیمات» دوباره به صداسنج متصل شوید.';
+        actionLabel = 'تنظیمات';
+        actionRoute = '/settings';
+      }
+    } else if (orgNeedsReconnect) {
+      notice =
+          'اتصال به سازمان قطع شده است؛ از تنظیمات دوباره متصل شوید یا جلسه‌ها را به حساب خودتان بفرستید.';
+      actionLabel = 'تنظیمات';
+      actionRoute = '/settings';
+    } else if (creditExhausted) {
+      if (personal) {
+        notice =
+            'ساعت پلن تمام شده است؛ از «پلن و مصرف» ساعت بخرید تا ارسال ادامه یابد.';
+        actionLabel = 'پلن و مصرف';
+        actionRoute = '/plans';
+      } else {
+        notice =
+            'اعتبار سازمان تمام شده است؛ در پنل صداسنج شارژ کنید تا ارسال ادامه یابد.';
+      }
+    }
     if (notice == null && date == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -418,7 +451,17 @@ class _Header extends ConsumerWidget {
             _DateFilterChip(date),
             if (notice != null) const SizedBox(height: 8),
           ],
-          if (notice != null) _QueueNotice(notice),
+          if (notice != null)
+            _QueueNotice(
+              notice,
+              actionLabel: actionLabel,
+              onAction: actionRoute == null
+                  ? null
+                  : () {
+                      final route = actionRoute;
+                      if (route != null) context.push(route);
+                    },
+            ),
         ],
       ),
     );
@@ -482,9 +525,11 @@ class _DateFilterChip extends ConsumerWidget {
 }
 
 class _QueueNotice extends StatelessWidget {
-  const _QueueNotice(this.text);
+  const _QueueNotice(this.text, {this.actionLabel, this.onAction});
 
   final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -505,6 +550,12 @@ class _QueueNotice extends StatelessWidget {
               ).textTheme.bodySmall?.copyWith(color: scheme.error),
             ),
           ),
+          if (actionLabel != null && onAction != null)
+            TextButton(
+              onPressed: onAction,
+              style: TextButton.styleFrom(foregroundColor: scheme.error),
+              child: Text(actionLabel!),
+            ),
         ],
       ),
     );
@@ -574,7 +625,6 @@ class _SignInNoticeState extends State<_SignInNotice> {
     );
   }
 }
-
 
 class _MeetingTile extends ConsumerWidget {
   const _MeetingTile({super.key, required this.id});
@@ -812,7 +862,8 @@ class _MeetingTile extends ConsumerWidget {
         title: const Text('حذف جلسه'),
         content: Text(
           '«${displayMeetingTitle(meeting.title)}» به همراه فایل صوتی، متن و '
-          'صورت‌جلسه حذف شود؟',
+          'صورت‌جلسه از این گوشی حذف شود؟'
+          '${meeting.workspace == kWorkspacePrimary ? ' نسخهٔ سرور هم حذف می‌شود.' : ' نسخهٔ سازمان در پنل می‌ماند.'}',
         ),
         actions: [
           TextButton(

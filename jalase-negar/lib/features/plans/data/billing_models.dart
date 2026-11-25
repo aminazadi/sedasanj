@@ -122,6 +122,9 @@ class BadgeInfo {
     required this.current,
     required this.threshold,
     required this.earned,
+    this.rewardTokens = 0,
+    this.rewardSkipped = false,
+    this.active = true,
   });
 
   factory BadgeInfo.fromJson(Map<String, dynamic> json) => BadgeInfo(
@@ -131,6 +134,9 @@ class BadgeInfo {
     current: (json['current'] as num?)?.toInt() ?? 0,
     threshold: (json['threshold'] as num?)?.toInt() ?? 1,
     earned: json['earned'] == true,
+    rewardTokens: (json['reward_tokens'] as num?)?.toInt() ?? 0,
+    rewardSkipped: json['reward_skipped'] == true,
+    active: json['active'] != false,
   );
 
   final String code;
@@ -139,6 +145,15 @@ class BadgeInfo {
   final int current;
   final int threshold;
   final bool earned;
+  final int rewardTokens;
+
+  /// The badge was earned but the month's gift cap left no room for all of
+  /// its tokens.
+  final bool rewardSkipped;
+
+  /// False for a badge the admin stopped offering; it stays listed only for
+  /// people who already earned it.
+  final bool active;
 }
 
 class ProgressInfo {

@@ -153,6 +153,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         ),
                       MeetingOutputTab(
                         remoteMeetingId: data.meeting.remoteMeetingId,
+                        workspace: data.meeting.workspace,
                       ),
                     ],
                   )
@@ -356,7 +357,8 @@ class _MeetingMenu extends ConsumerWidget {
         title: const Text('حذف جلسه'),
         content: Text(
           '«${displayMeetingTitle(meeting.title)}» به همراه فایل صوتی، متن و '
-          'صورت‌جلسه حذف شود؟',
+          'صورت‌جلسه از این گوشی حذف شود؟'
+          '${meeting.workspace == kWorkspacePrimary ? ' نسخهٔ سرور هم حذف می‌شود.' : ' نسخهٔ سازمان در پنل می‌ماند.'}',
         ),
         actions: [
           TextButton(

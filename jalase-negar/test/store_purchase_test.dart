@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
 import 'package:jalase_negar/features/plans/store_purchase.dart';
+import 'package:jalase_negar/features/plans/store_purchase_store.dart';
 
 class _Api extends ApiClient {
   _Api({this.verifyFails = false}) : super(serverUrl: 'https://example.test');
@@ -47,6 +48,19 @@ class _Sdk implements StoreBillingSdk {
   @override
   Future<void> consume(String purchaseToken) async =>
       consumed.add(purchaseToken);
+}
+
+class _Pending implements PendingPurchaseStore {
+  PendingStorePurchase? value;
+
+  @override
+  Future<void> save(PendingStorePurchase purchase) async => value = purchase;
+
+  @override
+  Future<PendingStorePurchase?> load() async => value;
+
+  @override
+  Future<void> clear() async => value = null;
 }
 
 void main() {
@@ -114,6 +128,34 @@ void main() {
       expect(sdk.consumed, isEmpty);
     },
   );
+
+  test('a paid token survives a failed confirmation and is retried', () async {
+    final pending = _Pending();
+    final sdk = _Sdk('tok-5');
+    await expectLater(
+      buyFromStore(
+        api: _Api(verifyFails: true),
+        sdk: sdk,
+        store: 'bazaar',
+        sku: 'jn_plus_month',
+        pending: pending,
+      ),
+      throwsStateError,
+    );
+    expect(pending.value?.token, 'tok-5');
+    expect(sdk.consumed, isEmpty);
+
+    final api = _Api();
+    final done = await retryPendingPurchase(
+      api: api,
+      sdk: sdk,
+      pending: pending,
+    );
+    expect(done, isTrue);
+    expect(api.verified, ['bazaar:jn_plus_month:tok-5']);
+    expect(sdk.consumed, ['tok-5']);
+    expect(pending.value, isNull);
+  });
 
   test(
     'a product the server does not sell is refused before any payment',

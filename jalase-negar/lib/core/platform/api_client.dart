@@ -88,12 +88,14 @@ class PersonalLoginResult {
     required this.tokenPrefix,
     required this.userName,
     required this.created,
+    this.accountId = '',
   });
 
   final String token;
   final String tokenPrefix;
   final String userName;
   final bool created;
+  final String accountId;
 }
 
 /// Sign-in errors carry a Persian message that already names the next action;
@@ -131,12 +133,14 @@ class PersonalProfile {
     this.planName,
     this.monthlyMinutes,
     this.usage,
+    this.accountId = '',
   });
 
   final UsageInfo? usage;
   final int remainingSeconds;
   final String? planName;
   final int? monthlyMinutes;
+  final String accountId;
 }
 
 /// One input the admin asked for in a category (shown as a form field).
@@ -338,13 +342,25 @@ abstract class MeetingUploadApi {
     required int totalChunks,
     required int durationMs,
   });
+
+  /// Ends a session that will never produce text, so the server stops holding
+  /// credit for it.  Cancelling an already finished meeting is a no-op.
+  Future<void> cancel(String meetingId);
+
+  /// Removes the server copy of a meeting the user deleted on the phone.
+  Future<void> deleteMeeting(String meetingId);
 }
 
 class ServerInfo {
-  const ServerInfo({required this.userName, required this.tenantName});
+  const ServerInfo({
+    required this.userName,
+    required this.tenantName,
+    this.tenantId = '',
+  });
 
   final String userName;
   final String tenantName;
+  final String tenantId;
 }
 
 ApiException mapDioError(DioException e) {
@@ -486,7 +502,10 @@ ApiException? _speakerError(
 /// Thin SedaSanj API client. It never logs headers or bodies.
 /// Categories of the public catalogue. One malformed category is skipped on its own so it
 /// cannot hide the others.
-List<OutputTypeInfo> parseOutputTypes(Map<String, dynamic> body, String baseUrl) {
+List<OutputTypeInfo> parseOutputTypes(
+  Map<String, dynamic> body,
+  String baseUrl,
+) {
   final base = baseUrl.replaceAll(RegExp(r'/+$'), '');
   final types = <OutputTypeInfo>[];
   final items = body['items'];
@@ -635,6 +654,7 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
         tokenPrefix: (body['token_prefix'] ?? '') as String,
         userName: ((body['user'] as Map?)?['display_name'] ?? '') as String,
         created: body['created'] == true,
+        accountId: (body['tenant_id'] ?? '') as String,
       );
     } on DioException catch (e) {
       throw mapLoginError(e);
@@ -668,6 +688,7 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
         planName: plan?['name'] as String?,
         monthlyMinutes: (plan?['monthly_minutes'] as num?)?.toInt(),
         usage: usage is Map<String, dynamic> ? UsageInfo.fromJson(usage) : null,
+        accountId: (body['tenant_id'] ?? '') as String,
       );
     } on DioException catch (e) {
       throw mapDioError(e);
@@ -1042,6 +1063,7 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       return ServerInfo(
         userName: ((body['user'] as Map?)?['display_name'] ?? '') as String,
         tenantName: ((body['tenant'] as Map?)?['name'] ?? '') as String,
+        tenantId: ((body['tenant'] as Map?)?['id'] ?? '') as String,
       );
     } on DioException catch (e) {
       throw mapDioError(e);
@@ -1229,6 +1251,38 @@ class ApiClient implements MeetingUploadApi, SpeakerSyncApi {
       );
     } on DioException catch (e) {
       throw mapDioError(e);
+    }
+  }
+
+  @override
+  Future<void> cancel(String meetingId) async {
+    try {
+      await _dio.post<Object?>('/v1/meetings/$meetingId/cancel');
+    } on DioException catch (e) {
+      // A meeting the server already closed needs no second cancel.
+      if (e.response?.statusCode == 409) return;
+      throw mapDioError(e);
+    }
+  }
+
+  /// Deletes a personal meeting on the server, including its audio and documents.
+  @override
+  Future<void> deleteMeeting(String meetingId) async {
+    try {
+      await _dio.delete<Object?>('/v1/jalase-negar/meetings/$meetingId');
+    } on DioException catch (e) {
+      // Already gone is the outcome the caller wanted.
+      if (e.response?.statusCode == 404) return;
+      throw mapDioError(e);
+    }
+  }
+
+  /// The app has shown the new-badge notice; the server stops repeating it.
+  Future<void> markProgressSeen() async {
+    try {
+      await _dio.post<Object?>('/v1/jalase-negar/progress/seen');
+    } on DioException catch (e) {
+      throw mapMessageError(e);
     }
   }
 }

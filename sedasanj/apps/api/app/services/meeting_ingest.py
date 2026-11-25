@@ -104,6 +104,9 @@ async def _ensure_block(
     session: AsyncSession, *, meeting: Meeting, tenant: Tenant, needed_seconds: int
 ) -> None:
     """Reserve credit blocks until the reservation covers `needed_seconds` of recorded audio."""
+    if tenant.product == "jalase_negar":
+        # Personal accounts are metered by LLM tokens; there is no minute ledger to hold.
+        return
     settings = get_settings()
     for _ in range(MAX_BLOCKS_PER_CHUNK):
         if meeting.reserved_seconds >= needed_seconds:
@@ -297,6 +300,10 @@ async def processed_seqs(session: AsyncSession, meeting_id: UUID) -> list[int]:
 
 async def settle_meeting(session: AsyncSession, meeting: Meeting) -> int:
     """Charge the recorded length (the sum of chunk durations) and free the unused hold."""
+    tenant = await session.get(Tenant, meeting.tenant_id)
+    if tenant is not None and tenant.product == "jalase_negar":
+        meeting.billed_seconds = max(0, meeting.received_ms // 1000)
+        return meeting.billed_seconds
     billed = await billing.settle(
         session,
         tenant_id=meeting.tenant_id,

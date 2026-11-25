@@ -87,6 +87,7 @@ from app.services import (
     billing,
     document_pdf,
     entitlements,
+    jalase_accounts,
     jalase_output_types,
     meeting_documents,
     meeting_ingest,
@@ -282,7 +283,7 @@ async def redeem_pairing_code(
         token=secret,
         token_prefix=prefix,
         user=MeetingPairedUser(display_name=user.display_name),
-        tenant=MeetingPairedTenant(name=tenant.name),
+        tenant=MeetingPairedTenant(name=tenant.name, id=str(tenant.id)),
         limits=_limits(),
     )
     return out, api_key.id, code.tenant_id, user.id
@@ -362,7 +363,7 @@ async def validate_config(principal: MeetingsKeyDep) -> MeetingConfigValidation:
     return MeetingConfigValidation(
         ok=True,
         user=MeetingPairedUser(display_name=user.display_name),
-        tenant=MeetingPairedTenant(name=tenant.name),
+        tenant=MeetingPairedTenant(name=tenant.name, id=str(tenant.id)),
         limits=_limits(),
         server_time=datetime.now(UTC),
     )
@@ -458,9 +459,20 @@ async def create_session(
         tenant_id,
         price_per_minute_toman=plan_price if plan_price > 0 else entitlement.price_per_minute_toman,
     )
-    await token_quota.require_budget(session, tenant_id)
-    balance = await billing.get_balance(session, tenant_id)
-    if balance.seconds < settings.meeting_min_balance_seconds:
+    try:
+        await token_quota.require_budget(session, tenant_id)
+    except ApiError as exc:
+        if exc.code != "token_quota_exceeded" or tenant.product != jalase_accounts.PRODUCT:
+            raise
+        raise ApiError(
+            "token_quota_exceeded",
+            "ساعت پلن شما تمام شده است؛ از «پلن و مصرف» پلن بگیرید یا ساعت شارژ کنید.",
+        ) from exc
+    # A personal Jalase-Negar account is metered by LLM tokens only; the minute ledger is for
+    # organizations.  Keeping both meters made the app show hours that could not be used.
+    personal = tenant.product == jalase_accounts.PRODUCT
+    balance = None if personal else await billing.get_balance(session, tenant_id)
+    if balance is not None and balance.seconds < settings.meeting_min_balance_seconds:
         raise ApiError(
             "insufficient_credit",
             f"برای شروع جلسه حداقل {settings.meeting_min_balance_seconds // 60} دقیقه اعتبار "
@@ -520,17 +532,18 @@ async def create_session(
 
     await _save_attendees(session, meeting, payload)
 
-    block = min(settings.meeting_reserve_block_seconds, balance.seconds)
-    reservation = await billing.reserve(
-        session,
-        tenant=tenant,
-        meeting_id=meeting.id,
-        block=0,
-        duration_ms=block * 1000,
-        price_per_minute_toman=entitlement.price_per_minute_toman,
-    )
-    meeting.reserved_seconds = reservation.seconds
-    meeting.reserved_blocks = 1
+    if balance is not None:
+        block = min(settings.meeting_reserve_block_seconds, balance.seconds)
+        reservation = await billing.reserve(
+            session,
+            tenant=tenant,
+            meeting_id=meeting.id,
+            block=0,
+            duration_ms=block * 1000,
+            price_per_minute_toman=entitlement.price_per_minute_toman,
+        )
+        meeting.reserved_seconds = reservation.seconds
+        meeting.reserved_blocks = 1
     meeting_progress.set_stage(meeting, "receiving", progress_pct=0)
     await meeting_progress.record_event(
         session,

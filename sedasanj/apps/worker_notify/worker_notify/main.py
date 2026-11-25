@@ -35,14 +35,15 @@ from app.services import (
     webhook_delivery,
 )
 from app.services.maintenance import (
+    expire_abandoned_receivings,
     expire_commerce_state,
     prepare_renewal_orders,
     reconcile_stuck_calls,
     refresh_failure_gauge,
     refresh_queue_depth,
     release_abandoned_reservations,
-    settle_stuck_meetings,
     run_retention,
+    settle_stuck_meetings,
 )
 from app.services.payments import reconcile_pending
 from app.services.subscription_notices import send_due_notices
@@ -449,6 +450,17 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
     except Exception:  # noqa: BLE001 - meeting billing repair must not stall reconciliation
         logger.exception("stuck meeting billing sweep failed")
     try:
+        abandoned_receivings = await expire_abandoned_receivings()
+    except Exception:  # noqa: BLE001 - abandoned uploads must not stall reconciliation
+        logger.exception("abandoned receiving sweep failed")
+        abandoned_receivings = 0
+    try:
+        from app.services.jalase_rewards import settle_pending_invites
+
+        await settle_pending_invites()
+    except Exception:  # noqa: BLE001 - invite repair must not stall reconciliation
+        logger.exception("pending invite settlement failed")
+    try:
         expired_subscriptions, expired_grants = await expire_commerce_state()
     except Exception:  # noqa: BLE001 - commerce expiry must not stall other reconciliation
         logger.exception("commerce expiry sweep failed")
@@ -483,7 +495,8 @@ async def reconciler_cron(ctx: dict[str, Any]) -> str:
     await refresh_failure_gauge()
     await refresh_queue_depth()
     return (
-        f"reconciled:{requeued}:abandoned:{abandoned}:subscriptions:{expired_subscriptions}:"
+        f"reconciled:{requeued}:abandoned:{abandoned}:receivings:{abandoned_receivings}:"
+        f"subscriptions:{expired_subscriptions}:"
         f"grants:{expired_grants}:renewals:{renewal_orders}:notices:{notices_sent}:"
         f"payments:{payment_counts['verified']}/{payment_counts['settled']}/"
         f"{payment_counts['expired']}/{payment_counts['errors']}"

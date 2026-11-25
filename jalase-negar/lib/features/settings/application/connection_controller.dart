@@ -78,6 +78,7 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
             ? paired.tenantName
             : info.tenantName,
         tokenPrefix: paired.tokenPrefix,
+        accountId: info.tenantId,
       );
       final store = await ref.read(connectionStoreProvider.future);
       await store.save(connection, paired.token);
@@ -86,7 +87,13 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
       // out (when the settings switch is on).
       if (await ref.read(sendTranscriptEnabledProvider.future)) {
         final repo = await ref.read(meetingRepositoryProvider.future);
-        await repo.enableSendForUnsent();
+        if ((current.connection == null ||
+                current.connection?.personal == false) &&
+            (current.connection?.accountId ?? '').isEmpty &&
+            connection.accountId.isNotEmpty) {
+          await repo.adoptLegacyMeetings(connection.accountId);
+        }
+        await repo.enableSendForUnsent(accountId: connection.accountId);
         ref.invalidate(meetingsProvider);
       }
       ref.read(uploadQueueProvider.notifier).kick();
@@ -123,16 +130,61 @@ class ConnectionController extends AsyncNotifier<ConnectionState> {
       tenantName: 'حساب شخصی',
       tokenPrefix: login.tokenPrefix,
       personal: true,
+      accountId: login.accountId,
     );
     final store = await ref.read(connectionStoreProvider.future);
+    final previous = await store.load();
+    final hadAccount = (previous?.accountId ?? '').isNotEmpty;
     await store.save(connection, login.token);
     state = AsyncData(ConnectionState(connection: connection));
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    // Rows written before this version have no account; the first sign-in of a
+    // personal account adopts them. An organization connection's rows are left
+    // alone, so they can never be sent with a personal account's key.
+    if ((previous == null || (!hadAccount && previous.personal)) &&
+        connection.accountId.isNotEmpty) {
+      await repo.adoptLegacyMeetings(connection.accountId);
+    }
     if (await ref.read(sendTranscriptEnabledProvider.future)) {
-      final repo = await ref.read(meetingRepositoryProvider.future);
-      await repo.enableSendForUnsent();
+      await repo.enableSendForUnsent(accountId: connection.accountId);
       ref.invalidate(meetingsProvider);
     }
     ref.read(uploadQueueProvider.notifier).kick();
+  }
+
+  /// How many meetings on this phone belong to the account that was signed in
+  /// before [accountId] (or predate account ids). Used to ask before the new
+  /// account takes over the device.
+  Future<int> otherAccountMeetingCount(String accountId) async {
+    final store = await ref.read(connectionStoreProvider.future);
+    final previous = await store.load();
+    if (previous == null ||
+        previous.accountId.isEmpty ||
+        previous.accountId == accountId) {
+      return 0;
+    }
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    return (await repo.meetingsOfOtherAccounts(accountId)).length;
+  }
+
+  /// Removes the previous account's meetings, their audio and channel files
+  /// from this phone. The server copies are untouched.
+  Future<void> discardOtherAccountMeetings(String accountId) async {
+    final repo = await ref.read(meetingRepositoryProvider.future);
+    final paths = await ref.read(appPathsProvider.future);
+    for (final meeting in await repo.meetingsOfOtherAccounts(accountId)) {
+      final chunks = paths.meetingChunksDir(meeting.id);
+      if (await chunks.exists()) await chunks.delete(recursive: true);
+      await repo.delete(
+        meeting,
+        extraFiles: [
+          paths.multiChannelWavPath(meeting.id),
+          for (var ch = 0; ch < meeting.channels; ch++)
+            paths.channelWavPath(meeting.id, ch),
+        ],
+      );
+    }
+    ref.invalidate(meetingsProvider);
   }
 
   /// Links the signed-in personal account to a SedaSanj organization with the
@@ -347,7 +399,8 @@ final personalProfileProvider = FutureProvider.autoDispose<PersonalProfile>((
   ).personalProfile().timeout(
     const Duration(seconds: 20),
     onTimeout: () => throw const ApiException(
-      message: 'اطلاعات حساب دریافت نشد. «بررسی اتصال» را بزنید و دوباره تلاش کنید.',
+      message:
+          'اطلاعات حساب دریافت نشد. «بررسی اتصال» را بزنید و دوباره تلاش کنید.',
     ),
   );
 });
@@ -369,33 +422,83 @@ final personalClientProvider = FutureProvider.autoDispose<ApiClient>((
   return ApiClient(serverUrl: connection.serverUrl, token: token);
 });
 
+/// An API client signed in with the linked organization's device key. The
+/// organization's meetings, minutes and documents live in its own tenant, so
+/// they must be read with this key and never with the personal one.
+final orgClientProvider = FutureProvider.autoDispose<ApiClient>((ref) async {
+  final connection = (await ref.watch(
+    connectionControllerProvider.future,
+  )).connection;
+  final store = await ref.watch(connectionStoreProvider.future);
+  final token = await store.orgToken();
+  final link = await store.loadOrg();
+  if (connection == null || token == null || link == null) {
+    throw const ApiException(
+      message:
+          'اتصال به سازمان برقرار نیست؛ از «تنظیمات» دوباره به سازمان متصل شوید.',
+      requiresReconnect: true,
+    );
+  }
+  return ApiClient(serverUrl: connection.serverUrl, token: token);
+});
+
+/// The client that owns a meeting of [workspace]: the personal account for
+/// its own meetings, the organization key for meetings sent there.
+final workspaceClientProvider = FutureProvider.autoDispose
+    .family<ApiClient, String>((ref, workspace) async {
+      if (workspace == kWorkspaceOrg) {
+        return ref.watch(orgClientProvider.future);
+      }
+      return ref.watch(personalClientProvider.future);
+    });
+
+final orgMeetingMinutesProvider = FutureProvider.autoDispose
+    .family<MinutesResult, String>((ref, remoteMeetingId) async {
+      return (await ref.watch(
+        orgClientProvider.future,
+      )).minutes(remoteMeetingId);
+    });
+
+Future<List<DocumentInfo>> _documentsFor(
+  Ref ref,
+  String workspace,
+  String remoteMeetingId,
+) async {
+  final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
+  try {
+    final client = await ref.watch(workspaceClientProvider(workspace).future);
+    final docs = await client.listDocuments(remoteMeetingId);
+    for (final d in docs) {
+      final old = await db.cachedDocument(d.id);
+      await db.cacheDocument(
+        documentId: d.id,
+        remoteMeetingId: remoteMeetingId,
+        outputType: d.outputType,
+        status: d.status,
+        progressPct: d.progressPct,
+        selectedVersion: d.selectedVersion,
+        // Keep the text of a version already downloaded.
+        markdown: old?['selected_version'] == d.selectedVersion
+            ? (old?['markdown'] as String?)
+            : null,
+      );
+    }
+    return docs;
+  } on Object catch (e) {
+    final rows = await db.cachedDocuments(remoteMeetingId);
+    if (rows.isEmpty || !_isOffline(e)) rethrow;
+    return [for (final r in rows) _cachedInfo(r)];
+  }
+}
+
 final meetingDocumentsProvider = FutureProvider.autoDispose
     .family<List<DocumentInfo>, String>((ref, remoteMeetingId) async {
-      final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
-      try {
-        final client = await ref.watch(personalClientProvider.future);
-        final docs = await client.listDocuments(remoteMeetingId);
-        for (final d in docs) {
-          final old = await db.cachedDocument(d.id);
-          await db.cacheDocument(
-            documentId: d.id,
-            remoteMeetingId: remoteMeetingId,
-            outputType: d.outputType,
-            status: d.status,
-            progressPct: d.progressPct,
-            selectedVersion: d.selectedVersion,
-            // Keep the text of a version already downloaded.
-            markdown: old?['selected_version'] == d.selectedVersion
-                ? (old?['markdown'] as String?)
-                : null,
-          );
-        }
-        return docs;
-      } on Object catch (e) {
-        final rows = await db.cachedDocuments(remoteMeetingId);
-        if (rows.isEmpty || !_isOffline(e)) rethrow;
-        return [for (final r in rows) _cachedInfo(r)];
-      }
+      return _documentsFor(ref, kWorkspacePrimary, remoteMeetingId);
+    });
+
+final orgMeetingDocumentsProvider = FutureProvider.autoDispose
+    .family<List<DocumentInfo>, String>((ref, remoteMeetingId) async {
+      return _documentsFor(ref, kWorkspaceOrg, remoteMeetingId);
     });
 
 /// An error that only means "no connection right now" (not a refusal by the
@@ -406,27 +509,40 @@ bool _isOffline(Object e) =>
 
 final documentDetailProvider = FutureProvider.autoDispose
     .family<DocumentDetail, String>((ref, documentId) async {
-      final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
-      try {
-        final client = await ref.watch(personalClientProvider.future);
-        final detail = await client.getDocument(documentId);
-        final old = await db.cachedDocument(documentId);
-        await db.cacheDocument(
-          documentId: documentId,
-          remoteMeetingId: old?['remote_meeting_id'] as String?,
-          outputType: detail.info.outputType,
-          status: detail.info.status,
-          progressPct: detail.info.progressPct,
-          selectedVersion: detail.info.selectedVersion,
-          markdown: detail.markdown,
-        );
-        return detail;
-      } on Object catch (e) {
-        final cached = await db.cachedDocument(documentId);
-        if (cached == null || !_isOffline(e)) rethrow;
-        return _cachedDetail(cached);
-      }
+      return _documentDetailFor(ref, kWorkspacePrimary, documentId);
     });
+
+final orgDocumentDetailProvider = FutureProvider.autoDispose
+    .family<DocumentDetail, String>((ref, documentId) async {
+      return _documentDetailFor(ref, kWorkspaceOrg, documentId);
+    });
+
+Future<DocumentDetail> _documentDetailFor(
+  Ref ref,
+  String workspace,
+  String documentId,
+) async {
+  final db = DocumentCache(await ref.watch(appDatabaseProvider.future));
+  try {
+    final client = await ref.watch(workspaceClientProvider(workspace).future);
+    final detail = await client.getDocument(documentId);
+    final old = await db.cachedDocument(documentId);
+    await db.cacheDocument(
+      documentId: documentId,
+      remoteMeetingId: old?['remote_meeting_id'] as String?,
+      outputType: detail.info.outputType,
+      status: detail.info.status,
+      progressPct: detail.info.progressPct,
+      selectedVersion: detail.info.selectedVersion,
+      markdown: detail.markdown,
+    );
+    return detail;
+  } on Object catch (e) {
+    final cached = await db.cachedDocument(documentId);
+    if (cached == null || !_isOffline(e)) rethrow;
+    return _cachedDetail(cached);
+  }
+}
 
 DocumentDetail _cachedDetail(Map<String, Object?> row) => DocumentDetail(
   info: _cachedInfo(row),
@@ -445,7 +561,6 @@ DocumentInfo _cachedInfo(Map<String, Object?> row) => DocumentInfo(
 final usageProvider = FutureProvider.autoDispose<UsageInfo>((ref) async {
   return (await ref.watch(personalClientProvider.future)).usage();
 });
-
 
 final progressProvider = FutureProvider.autoDispose<ProgressInfo>((ref) async {
   return (await ref.watch(personalClientProvider.future)).progress();

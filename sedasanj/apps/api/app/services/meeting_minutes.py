@@ -409,6 +409,7 @@ async def generate_minutes(
         finally:
             await client.close()
         await _store(tenant_id, meeting_id, ctx, result, system)
+        await _award_badges(tenant_id)
         return "complete"
     except Exception as exc:  # noqa: BLE001 - the meeting row must always reach a final state
         code, detail, retryable = classify_failure(exc, kind="meeting")
@@ -422,6 +423,20 @@ async def generate_minutes(
             raise MinutesRetryable(code) from exc
         await _fail(tenant_id, meeting_id, code, detail, retryable=bool(transient))
         return "failed"
+
+
+async def _award_badges(tenant_id: UUID) -> None:
+    """A finished meeting may complete a badge; the award must not fail the job."""
+    from app.services import jalase_rewards
+
+    try:
+        await jalase_rewards.evaluate(tenant_id)
+    except Exception:  # noqa: BLE001 - the meeting is already complete
+        logger.warning(
+            "badge evaluation after meeting failed",
+            extra={"extra_fields": {"tenant_id": str(tenant_id)}},
+            exc_info=True,
+        )
 
 
 async def _store(

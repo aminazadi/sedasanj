@@ -16,6 +16,7 @@ import '../../catalog/application/catalog_providers.dart';
 import '../../../core/platform/distribution.dart';
 import '../data/billing_models.dart';
 import '../store_purchase.dart';
+import '../store_purchase_store.dart';
 import '../store_sdk.dart';
 
 String _errorText(Object error) => error is ApiException
@@ -78,6 +79,7 @@ class PlansScreen extends ConsumerStatefulWidget {
 class _PlansScreenState extends ConsumerState<PlansScreen>
     with WidgetsBindingObserver {
   bool _busy = false;
+  final _pending = SecurePendingPurchaseStore();
 
   /// While the "پرداخت انجام شد؟" dialog is open: asks the server whether the
   /// order is paid when the user comes back from the bank page.
@@ -88,6 +90,32 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    Future<void>.microtask(_retryPending);
+  }
+
+  /// A purchase paid earlier may have failed confirmation; finish it before
+  /// the person considers buying again.
+  Future<void> _retryPending() async {
+    final sdk = widget.storeSdk;
+    if (sdk == null) return;
+    try {
+      final client = await ref.read(personalClientProvider.future);
+      final done = await retryPendingPurchase(
+        api: client,
+        sdk: sdk,
+        pending: _pending,
+      );
+      if (!done) return;
+      _paidDone();
+      if (mounted) {
+        await SsToastHost.show(
+          context,
+          'خرید قبلی تأیید شد؛ ساعت‌ها اضافه شد.',
+        );
+      }
+    } on Object {
+      // Still stored: the next start or plan visit tries again.
+    }
   }
 
   @override
@@ -119,6 +147,7 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
           api: client,
           sdk: sdk,
           store: widget.storeChannel ?? kStoreChannel,
+          pending: _pending,
           planCode: planCode,
           packageId: packageId,
         );

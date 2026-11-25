@@ -10,16 +10,24 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.db import control_session_scope, session_scope
 from app.errors import ApiError
 from app.models import (
     ApiKey,
     AudioObject,
     JalaseAccountLink,
+    JalaseEarnedAchievement,
+    JalaseInviteCode,
+    JalasePushInstallation,
+    JalaseXpEvent,
     Meeting,
     Plan,
     PlanVersion,
+    SpeakerProfile,
+    SpeakerVoiceprint,
     Subscription,
     Tenant,
+    TokenGrant,
     User,
 )
 from app.security import generate_api_key
@@ -171,45 +179,87 @@ async def restore_free_plan(session: AsyncSession, tenant_id: UUID, now: datetim
     return True
 
 
-async def delete_account(session: AsyncSession, *, tenant_id: UUID, user_id: UUID) -> None:
+async def delete_account(*, tenant_id: UUID, user_id: UUID) -> None:
     """Close a personal account for good.
 
     Every key and organization link stops working, the active subscription is cancelled (a paid
-    month is not refunded), all meetings with their text, segments and documents are deleted and
-    audio is marked for removal.  The tenant row stays as `deleted` so payments and audit history
-    keep their references; the mobile number and name are cleared so the number can sign up again.
+    month is not refunded), and everything the account stored is removed: meetings with their
+    text, segments and documents, audio, speaker profiles and voiceprints (biometric data), badge
+    records, gift grants, the invite code and push installations.  The tenant row stays as
+    `deleted` so payments and audit history keep their references; the mobile number and name are
+    cleared so the number can sign up again.
+
+    Tenant tables are deleted through `session_scope(tenant_id)` so the tenant's own database is
+    cleaned when it is enabled; control-only tables (links, invite codes, push) are cleaned in the
+    control database.
     """
-    tenant = await session.get(Tenant, tenant_id, with_for_update=True)
-    user = await session.get(User, user_id, with_for_update=True)
-    if tenant is None or user is None or tenant.product != PRODUCT or user.tenant_id != tenant_id:
-        raise ApiError("unauthorized", "حساب پیدا نشد.")
     now = datetime.now(UTC)
-    link_key_ids = (
-        (
-            await session.execute(
-                select(JalaseAccountLink.org_api_key_id).where(
-                    JalaseAccountLink.personal_tenant_id == tenant_id,
-                    JalaseAccountLink.status == "active",
+    async with control_session_scope() as control:
+        tenant = await control.get(Tenant, tenant_id, with_for_update=True)
+        user = await control.get(User, user_id, with_for_update=True)
+        if (
+            tenant is None
+            or user is None
+            or tenant.product != PRODUCT
+            or user.tenant_id != tenant_id
+        ):
+            raise ApiError("unauthorized", "حساب پیدا نشد.")
+    async with session_scope(tenant_id) as session:
+        await _purge_tenant_data(session, tenant_id, user_id, now)
+    async with control_session_scope() as control:
+        await _purge_tenant_data(control, tenant_id, user_id, now)
+        link_key_ids = (
+            (
+                await control.execute(
+                    select(JalaseAccountLink.org_api_key_id).where(
+                        JalaseAccountLink.personal_tenant_id == tenant_id,
+                        JalaseAccountLink.status == "active",
+                    )
                 )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+        if link_key_ids:
+            await control.execute(
+                update(ApiKey)
+                .where(ApiKey.id.in_(link_key_ids), ApiKey.revoked_at.is_(None))
+                .values(revoked_at=now)
+            )
+        await control.execute(
+            update(JalaseAccountLink)
+            .where(
+                JalaseAccountLink.personal_tenant_id == tenant_id,
+                JalaseAccountLink.status == "active",
+            )
+            .values(status="revoked", revoked_at=now)
+        )
+        await control.execute(
+            delete(JalaseInviteCode).where(JalaseInviteCode.tenant_id == tenant_id)
+        )
+        await control.execute(
+            update(JalasePushInstallation)
+            .where(
+                JalasePushInstallation.mobile_key_id.in_(
+                    select(ApiKey.id).where(ApiKey.tenant_id == tenant_id)
+                )
+            )
+            .values(enabled=False)
+        )
+
+
+async def _purge_tenant_data(
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, now: datetime
+) -> None:
+    """Delete the account's rows and clear its identity; safe to run on both copies."""
+    tenant = await session.get(Tenant, tenant_id, with_for_update=True)
+    user = await session.get(User, user_id, with_for_update=True)
+    if tenant is None or user is None or tenant.status == "deleted":
+        return
     await session.execute(
         update(ApiKey)
-        .where(
-            (ApiKey.tenant_id == tenant_id) | (ApiKey.id.in_(link_key_ids)),
-            ApiKey.revoked_at.is_(None),
-        )
+        .where(ApiKey.tenant_id == tenant_id, ApiKey.revoked_at.is_(None))
         .values(revoked_at=now)
-    )
-    await session.execute(
-        update(JalaseAccountLink)
-        .where(
-            JalaseAccountLink.personal_tenant_id == tenant_id, JalaseAccountLink.status == "active"
-        )
-        .values(status="revoked", revoked_at=now)
     )
     await session.execute(
         update(Subscription)
@@ -225,6 +275,13 @@ async def delete_account(session: AsyncSession, *, tenant_id: UUID, user_id: UUI
         .values(deleted_at=now)
     )
     await session.execute(delete(Meeting).where(Meeting.tenant_id == tenant_id))
+    await session.execute(delete(SpeakerVoiceprint).where(SpeakerVoiceprint.tenant_id == tenant_id))
+    await session.execute(delete(SpeakerProfile).where(SpeakerProfile.tenant_id == tenant_id))
+    await session.execute(
+        delete(JalaseEarnedAchievement).where(JalaseEarnedAchievement.tenant_id == tenant_id)
+    )
+    await session.execute(delete(JalaseXpEvent).where(JalaseXpEvent.tenant_id == tenant_id))
+    await session.execute(delete(TokenGrant).where(TokenGrant.tenant_id == tenant_id))
     user.mobile_number = None
     user.display_name = "حساب حذف‌شده"
     user.email = f"deleted-{user.id}@accounts.sedasanj.ir"

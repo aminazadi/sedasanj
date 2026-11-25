@@ -18,6 +18,7 @@ class UploadState {
     this.running = false,
     this.connected = false,
     this.needsReconnect = false,
+    this.orgNeedsReconnect = false,
     this.creditExhausted = false,
     this.lastError,
     this.tick = 0,
@@ -26,6 +27,10 @@ class UploadState {
   final bool running;
   final bool connected;
   final bool needsReconnect;
+
+  /// The organization key was revoked; meetings chosen for the organization
+  /// stay queued until the user reconnects or sends them to their own account.
+  final bool orgNeedsReconnect;
   final bool creditExhausted;
   final String? lastError;
 
@@ -93,12 +98,14 @@ class UploadController extends Notifier<UploadState> {
     MeetingRepository repo,
     ApiClient api,
     String workspace,
+    String? accountId,
   ) async {
     try {
       return await UploadQueue(
         store: repo,
         api: api,
         workspace: workspace,
+        accountId: accountId,
       ).processOnce();
     } catch (e) {
       return UploadOutcome(
@@ -128,16 +135,20 @@ class UploadController extends Notifier<UploadState> {
       repo,
       ApiClient(serverUrl: connection.serverUrl, token: token),
       kWorkspacePrimary,
+      connection.accountId,
     );
     // A personal account may also be linked to an organization; the meetings
     // chosen for it go out with the organization's own key.
     final orgToken = await connectionStore.orgToken();
+    var orgNeedsReconnect = false;
     if (orgToken != null && await connectionStore.loadOrg() != null) {
       final orgOutcome = await _runQueue(
         repo,
         ApiClient(serverUrl: connection.serverUrl, token: orgToken),
         kWorkspaceOrg,
+        connection.accountId,
       );
+      orgNeedsReconnect = orgOutcome.needsReconnect;
       outcome = UploadOutcome(
         nextWake: _earlier(outcome.nextWake, orgOutcome.nextWake),
         needsReconnect: outcome.needsReconnect,
@@ -148,13 +159,14 @@ class UploadController extends Notifier<UploadState> {
     state = UploadState(
       connected: true,
       needsReconnect: outcome.needsReconnect,
+      orgNeedsReconnect: orgNeedsReconnect,
       creditExhausted: outcome.creditExhausted,
       lastError: outcome.lastError,
       tick: state.tick + 1,
     );
     ref.invalidate(meetingsProvider);
     final wake = outcome.nextWake;
-    if (wake != null && !outcome.needsReconnect) {
+    if (wake != null && !outcome.needsReconnect && !orgNeedsReconnect) {
       _wake = Timer(wake + Duration(milliseconds: Random().nextInt(500)), kick);
     }
   }

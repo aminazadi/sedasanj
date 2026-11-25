@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -41,9 +42,95 @@ class PreciseRequest {
 typedef PreciseRunner =
     Future<PreciseAnalysis> Function(PreciseRequest request);
 
-/// Runs [analyzePrecise] in a separate isolate, so the screen stays smooth.
-Future<PreciseAnalysis> runPreciseInIsolate(PreciseRequest request) =>
-    Isolate.run(() => analyzePrecise(request));
+/// The analysis was stopped because a new recording is starting. The meeting
+/// stays "pending" and is analysed after the recording ends.
+class PreciseCancelled implements Exception {
+  const PreciseCancelled();
+
+  @override
+  String toString() => 'speaker analysis cancelled for a new recording';
+}
+
+class _PreciseFailure {
+  const _PreciseFailure(this.message);
+  final String message;
+}
+
+Isolate? _active;
+
+/// Stops the running analysis, if any. Its isolate is killed so the live
+/// transcription of a new recording does not share the CPU with diarization.
+void cancelPreciseAnalysis() {
+  final isolate = _active;
+  _active = null;
+  isolate?.kill(priority: Isolate.immediate);
+}
+
+void _preciseEntry((PreciseRequest, SendPort) args) {
+  final (request, port) = args;
+  analyzePrecise(request).then(
+    (analysis) => port.send(analysis),
+    onError: (Object error) => port.send(
+      _PreciseFailure(
+        error is FormatException ? error.message : 'analysis_failed',
+      ),
+    ),
+  );
+}
+
+/// Runs [analyzePrecise] in a separate isolate, so the screen stays smooth
+/// and a new recording can stop it with [cancelPreciseAnalysis].
+Future<PreciseAnalysis> runPreciseInIsolate(PreciseRequest request) async {
+  final results = ReceivePort();
+  final errors = ReceivePort();
+  final exits = ReceivePort();
+  final isolate = await Isolate.spawn(
+    _preciseEntry,
+    (request, results.sendPort),
+    onError: errors.sendPort,
+    onExit: exits.sendPort,
+  );
+  _active = isolate;
+  final done = Completer<PreciseAnalysis>();
+  void succeed(PreciseAnalysis analysis) {
+    if (!done.isCompleted) done.complete(analysis);
+  }
+
+  void fail(Object error) {
+    if (!done.isCompleted) done.completeError(error);
+  }
+
+  final subscriptions = [
+    results.listen((message) {
+      if (message is _PreciseFailure) {
+        fail(FormatException(message.message));
+      } else {
+        succeed(message as PreciseAnalysis);
+      }
+    }),
+    errors.listen((message) => fail(StateError('$message'))),
+    // The result travels on another port; give it a moment before treating
+    // the exit as a cancellation.
+    exits.listen(
+      (_) => Future<void>.delayed(
+        const Duration(milliseconds: 100),
+        () => fail(const PreciseCancelled()),
+      ),
+    ),
+  ];
+  try {
+    return await done.future;
+  } finally {
+    if (identical(_active, isolate)) _active = null;
+    isolate.kill(priority: Isolate.immediate);
+    for (final subscription in subscriptions) {
+      await subscription.cancel();
+    }
+    results.close();
+    errors.close();
+    exits.close();
+  }
+}
 
 /// Layer B: diarizes the whole recording (global clustering keeps labels
 /// consistent for the entire meeting), then names each cluster by matching

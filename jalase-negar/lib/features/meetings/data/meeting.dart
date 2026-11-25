@@ -55,6 +55,7 @@ class Meeting {
     this.workspace = kWorkspacePrimary,
     this.outputTypeCode = kBuiltinOutputType,
     this.outputTypeInputValues = const {},
+    this.accountId = '',
   });
 
   final String id;
@@ -100,6 +101,10 @@ class Meeting {
 
   /// The values typed for that category's input fields, if it has any.
   final Map<String, String> outputTypeInputValues;
+
+  /// Stable server account this meeting belongs to (empty for rows written by
+  /// an older version, which are adopted by the account that is signed in).
+  final String accountId;
 
   bool get analyzingSpeakers => speakersState != 'done';
 
@@ -215,6 +220,7 @@ class Meeting {
     outputTypeInputValues: _decodeStringMap(
       row['output_type_input_values'] as String?,
     ),
+    accountId: (row['account_id'] as String?) ?? '',
   );
 
   Map<String, Object?> toRow() => {
@@ -236,6 +242,7 @@ class Meeting {
     'workspace': workspace,
     'output_type_code': outputTypeCode,
     'output_type_input_values': jsonEncode(outputTypeInputValues),
+    'account_id': accountId,
   };
 }
 

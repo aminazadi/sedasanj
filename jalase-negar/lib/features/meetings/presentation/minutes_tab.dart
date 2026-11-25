@@ -5,25 +5,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/widgets/ss_toast.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
+import '../data/meeting.dart';
 import '../../settings/application/connection_controller.dart';
 
 /// The minutes the server built, shown as selectable text with copy and refresh.
 class MinutesTab extends ConsumerWidget {
-  const MinutesTab({super.key, required this.remoteMeetingId});
+  const MinutesTab({
+    super.key,
+    required this.remoteMeetingId,
+    this.workspace = kWorkspacePrimary,
+  });
 
   final String remoteMeetingId;
+  final String workspace;
+
+  bool get _org => workspace == kWorkspaceOrg;
+
+  FutureProvider<MinutesResult> _provider() => _org
+      ? orgMeetingMinutesProvider(remoteMeetingId)
+      : meetingMinutesProvider(remoteMeetingId);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final minutes = ref.watch(meetingMinutesProvider(remoteMeetingId));
+    final minutes = ref.watch(_provider());
     return minutes.when(
       loading: () => const Center(child: SsProcessingMark(size: 30)),
       error: (error, _) => _MinutesMessage(
         message: error is ApiException
             ? error.message
             : 'دریافت صورت‌جلسه ناموفق بود؛ اینترنت را بررسی کنید و دوباره تلاش کنید.',
-        onRefresh: () =>
-            ref.invalidate(meetingMinutesProvider(remoteMeetingId)),
+        onRefresh: () => ref.invalidate(_provider()),
       ),
       data: (result) {
         final markdown = result.markdown;
@@ -31,8 +42,7 @@ class MinutesTab extends ConsumerWidget {
           return _MinutesMessage(
             message:
                 'صورت‌جلسه هنوز آماده نیست؛ پس از ارسال کامل جلسه کمی صبر کنید و دوباره بررسی کنید.',
-            onRefresh: () =>
-                ref.invalidate(meetingMinutesProvider(remoteMeetingId)),
+            onRefresh: () => ref.invalidate(_provider()),
           );
         }
         return ListView(
@@ -53,8 +63,7 @@ class MinutesTab extends ConsumerWidget {
                 TextButton.icon(
                   icon: const Icon(Icons.refresh),
                   label: const Text('به‌روزرسانی'),
-                  onPressed: () =>
-                      ref.invalidate(meetingMinutesProvider(remoteMeetingId)),
+                  onPressed: () => ref.invalidate(_provider()),
                 ),
               ],
             ),

@@ -3854,6 +3854,25 @@ class JalaseEarnedAchievement(Base):
     achievement_code: Mapped[str] = mapped_column(String(48), nullable=False)
     reward_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     earned_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
+    notified_at: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class JalaseXpEvent(Base):
+    """One meeting or finished document that counts toward XP; written once, never removed."""
+
+    __tablename__ = "jalase_xp_events"
+    __table_args__ = (UniqueConstraint("tenant_id", "kind", "ref_id"),)
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    ref_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TSTZ, server_default=func.now(), nullable=False)
 
 
 class JalaseInviteCode(Base):

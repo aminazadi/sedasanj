@@ -508,10 +508,11 @@ class RecorderController extends Notifier<RecorderState> {
       final sendText = await ref.read(sendTranscriptEnabledProvider.future);
       // Never let a failed read stop the recording; the own account is the default.
       var workspace = kWorkspacePrimary;
+      var accountId = '';
       try {
-        workspace = await (await ref.read(
-          connectionStoreProvider.future,
-        )).defaultWorkspace();
+        final store = await ref.read(connectionStoreProvider.future);
+        workspace = await store.defaultWorkspace();
+        accountId = (await store.load())?.accountId ?? '';
       } on Object catch (e) {
         debugPrint('JN-REC: reading the workspace failed: $e');
       }
@@ -534,6 +535,7 @@ class RecorderController extends Notifier<RecorderState> {
           sendText: sendText,
           speakersState: 'pending',
           workspace: workspace,
+          accountId: accountId,
           outputTypeCode: outputTypeCode,
           outputTypeInputValues: outputTypeInputValues,
         ),
@@ -557,6 +559,9 @@ class RecorderController extends Notifier<RecorderState> {
       _assignments = ChannelAssignments();
       channelOwners.value = const {};
       _liveSamples = 0;
+      // Diarization of an earlier meeting must not share the CPU with the
+      // live transcript; it resumes when this recording ends.
+      ref.read(speakerAnalysisProvider.notifier).pauseForRecording();
       await _startLive(
         repo,
         meetingId,
@@ -822,8 +827,15 @@ class RecorderController extends Notifier<RecorderState> {
     try {
       final meeting = await repo.byId(id);
       if (meeting == null) return;
+      // A session created while recording is still open on the server; queue
+      // its removal so the discarded audio does not stay there.
+      if (meeting.remoteMeetingId != null &&
+          meeting.workspace == kWorkspacePrimary) {
+        await repo.queueServerDelete(meeting.remoteMeetingId!);
+      }
       final paths = await ref.read(appPathsProvider.future);
       await repo.delete(meeting, extraFiles: [paths.multiChannelWavPath(id)]);
+      ref.read(uploadQueueProvider.notifier).kick();
     } catch (e) {
       debugPrint('JN-REC: discard failed ($e)');
     }

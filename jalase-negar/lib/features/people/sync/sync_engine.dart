@@ -179,6 +179,9 @@ class SyncEngine {
       if (page.nextCursor > cursor) {
         cursor = page.nextCursor;
         await repository.setCursor(cursor);
+      } else if (page.hasMore) {
+        // A page that does not advance the cursor would loop forever.
+        break;
       }
       if (!page.hasMore || page.nextCursor <= cursor && page.items.isEmpty) {
         break;

@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
 import '../features/app_lock/application/app_lock_providers.dart';
 import '../features/push/push_host.dart';
+import '../features/plans/store_purchase.dart';
+import '../features/plans/store_purchase_store.dart';
+import '../features/plans/store_sdk.dart';
+import '../features/settings/application/connection_controller.dart';
 import '../features/sedasanj_intro/sedasanj_intro_host.dart';
 import '../features/updates/application/update_controller.dart';
 import '../features/updates/presentation/update_prompt_host.dart';
@@ -84,6 +88,28 @@ class _RouterAppState extends ConsumerState<_RouterApp>
       () =>
           ref.read(updateControllerProvider.notifier).startBackgroundUpdates(),
     );
+    Future<void>.microtask(_retryPendingStorePurchase);
+  }
+
+  /// Finishes a store purchase that was paid but whose confirmation failed
+  /// last time, so the person does not have to buy it again.
+  Future<void> _retryPendingStorePurchase() async {
+    final sdk = currentStoreSdk;
+    if (sdk == null) return;
+    try {
+      final client = await ref.read(personalClientProvider.future);
+      final done = await retryPendingPurchase(
+        api: client,
+        sdk: sdk,
+        pending: SecurePendingPurchaseStore(),
+      );
+      if (!done) return;
+      ref
+        ..invalidate(usageProvider)
+        ..invalidate(personalProfileProvider);
+    } on Object {
+      // Kept for the next start or a visit to the plan page.
+    }
   }
 
   @override

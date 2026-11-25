@@ -126,6 +126,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       platform: controller.loginPlatform(),
       appVersion: version,
     );
+    final previousCount = await controller.otherAccountMeetingCount(
+      login.accountId,
+    );
+    if (previousCount > 0 && mounted) {
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('جلسه‌های حساب قبلی'),
+          content: Text(
+            '$previousCount جلسهٔ حساب قبلی روی این گوشی مانده است. '
+            'آن‌ها با حساب جدید ارسال نمی‌شوند. از این گوشی پاک شوند یا بمانند؟ '
+            '(نسخهٔ سرور حساب قبلی دست‌نخورده می‌ماند.)',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('نگه‌داشتن'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('پاک کردن'),
+            ),
+          ],
+        ),
+      );
+      if (discard == true) {
+        await controller.discardOtherAccountMeetings(login.accountId);
+      }
+    }
     try {
       await controller.savePersonal(serverUrl: widget.serverUrl, login: login);
     } on Object catch (e, st) {
@@ -218,17 +247,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         children: [
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 180),
-                            child: Image.asset(
-                              switch (_step) {
-                                _Step.mobile =>
-                                  'assets/images/brand/phone-auth-dialog.webp',
-                                _Step.code =>
-                                  'assets/images/brand/phone-auth-otp.webp',
-                                _Step.name =>
-                                  'assets/images/brand/phone-auth-organization.webp',
-                              },
-                              fit: BoxFit.contain,
-                            ),
+                            child: Image.asset(switch (_step) {
+                              _Step.mobile =>
+                                'assets/images/brand/phone-auth-dialog.webp',
+                              _Step.code =>
+                                'assets/images/brand/phone-auth-otp.webp',
+                              _Step.name =>
+                                'assets/images/brand/phone-auth-organization.webp',
+                            }, fit: BoxFit.contain),
                           ),
                           const SizedBox(height: 16),
                           Semantics(

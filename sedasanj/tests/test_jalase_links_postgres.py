@@ -17,12 +17,19 @@ from app.errors import ApiError
 from app.models import (
     ApiKey,
     JalaseAccountLink,
+    JalaseEarnedAchievement,
+    JalaseInviteCode,
     Meeting,
     MeetingDocument,
     MeetingDocumentVersion,
+    MeetingMinutes,
     MeetingPairingCode,
     MeetingSegment,
+    MeetingSpeaker,
+    SpeakerProfile,
+    SpeakerVoiceprint,
     Tenant,
+    TokenGrant,
     User,
 )
 from app.routers import jalase_org_menu as menu
@@ -35,7 +42,28 @@ from app.services.phone_identity import mobile_accounts
 
 pytestmark = requires_postgres
 
+
+async def published_category() -> str:
+    """A published non-default category created by the test, not borrowed from the database."""
+    async with db.session_scope(staff=True) as session:
+        await session.execute(
+            text(
+                "INSERT INTO jalase_output_types (code, title_fa, menu_label_fa, status) "
+                "VALUES ('test_links_cat', 'دستهٔ آزمون', 'آزمون', 'published') "
+                "ON CONFLICT (code) DO UPDATE SET status = 'published'"
+            )
+        )
+    return "test_links_cat"
+
+
 TABLES = (
+    "speaker_voiceprints",
+    "speaker_profiles",
+    "jalase_earned_achievements",
+    "jalase_xp_events",
+    "jalase_invite_codes",
+    "meeting_minutes",
+    "meeting_speakers",
     "meeting_document_versions",
     "meeting_segments",
     "jalase_menu_hidden",
@@ -231,6 +259,7 @@ async def test_panel_menu_shows_all_published_categories_and_honours_hiding(
     created: list[UUID],
 ) -> None:
     org_ids = await org(created)
+    code = await published_category()
     principal = SimpleNamespace(tenant_id=org_ids[0], id=org_ids[1])
     async with db.session_scope(org_ids[0]) as session:
         # Published categories are listed even before the organization has any document.
@@ -248,13 +277,6 @@ async def test_panel_menu_shows_all_published_categories_and_honours_hiding(
         )
         session.add(meeting)
         await session.flush()
-        code = (
-            await session.execute(
-                text(
-                    "SELECT code FROM jalase_output_types WHERE code <> 'minutes' AND status = 'published' LIMIT 1"
-                )
-            )
-        ).scalar_one()
         session.add(
             MeetingDocument(
                 tenant_id=org_ids[0],
@@ -303,14 +325,8 @@ async def test_import_copies_finished_meetings_once_and_refuses_purged(
     org_ids = await org(created)
     result = await do_link(me, await code_for(*org_ids))
     link_id = UUID(str(result["link_id"]))
+    code = await published_category()
     async with db.session_scope(staff=True) as session:
-        code = (
-            await session.execute(
-                text(
-                    "SELECT code FROM jalase_output_types WHERE code <> 'minutes' AND status = 'published' LIMIT 1"
-                )
-            )
-        ).scalar_one()
         good = Meeting(
             tenant_id=me[0],
             owner_user_id=me[1],
@@ -331,6 +347,20 @@ async def test_import_copies_finished_meetings_once_and_refuses_purged(
         session.add(
             MeetingSegment(
                 tenant_id=me[0], meeting_id=good.id, t_start_ms=0, t_end_ms=900, text="سلام"
+            )
+        )
+        session.add(
+            MeetingSpeaker(
+                tenant_id=me[0], meeting_id=good.id, speaker_idx=1, label="سارا", total_ms=900
+            )
+        )
+        session.add(
+            MeetingMinutes(
+                tenant_id=me[0],
+                meeting_id=good.id,
+                version=1,
+                content_md="# صورت‌جلسه",
+                is_selected=True,
             )
         )
         doc = MeetingDocument(
@@ -355,14 +385,12 @@ async def test_import_copies_finished_meetings_once_and_refuses_purged(
         good_id, purged_id = good.id, purged.id
 
     async def run(ids: list[UUID]) -> dict[str, object]:
-        async with db.session_scope(staff=True) as session:
-            return await jalase_links.import_meetings(
-                session,
-                personal_tenant_id=me[0],
-                personal_user_id=me[1],
-                link_id=link_id,
-                meeting_ids=ids,
-            )
+        return await jalase_links.import_meetings(
+            personal_tenant_id=me[0],
+            personal_user_id=me[1],
+            link_id=link_id,
+            meeting_ids=ids,
+        )
 
     with pytest.raises(ApiError) as refused:
         await run([good_id, purged_id])
@@ -399,8 +427,27 @@ async def test_import_copies_finished_meetings_once_and_refuses_purged(
                 )
             )
         ).scalar_one()
+        minutes = (
+            await session.execute(
+                select(MeetingMinutes.content_md).where(
+                    MeetingMinutes.meeting_id == copy.id,
+                    MeetingMinutes.is_selected.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        speakers = (
+            (
+                await session.execute(
+                    select(MeetingSpeaker.label).where(MeetingSpeaker.meeting_id == copy.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
         original = await session.get(Meeting, good_id)
     assert texts == ["سلام"] and markdown == "# متن" and original is not None
+    # The organization copy keeps the minutes and the speaker labels, not just the transcript.
+    assert minutes == "# صورت‌جلسه" and speakers == ["سارا"]
     admin = SimpleNamespace(tenant_id=org_ids[0], id=org_ids[1], kind="user", role="org_admin")
     async with db.session_scope(org_ids[0]) as session:
         shown = await menu.meeting_documents(copy.id, admin, session)  # type: ignore[arg-type]
@@ -427,8 +474,41 @@ async def test_deleting_an_account_closes_everything_and_frees_the_number(
                 started_at=datetime.now(UTC),
             )
         )
-    async with db.session_scope(staff=True) as session:
-        await jalase_accounts.delete_account(session, tenant_id=me[0], user_id=me[1])
+        profile = SpeakerProfile(
+            tenant_id=me[0],
+            owner_user_id=me[1],
+            client_id=uuid4(),
+            display_name="سارا",
+            change_seq=1,
+        )
+        session.add(profile)
+        await session.flush()
+        session.add(
+            SpeakerVoiceprint(
+                tenant_id=me[0],
+                profile_id=profile.id,
+                client_id=uuid4(),
+                model_id="test-model",
+                model_version="1",
+                dim=16,
+                embedding=b"\x00" * 64,
+            )
+        )
+        session.add(
+            JalaseEarnedAchievement(
+                tenant_id=me[0], achievement_code="first_meeting", reward_tokens=5_000
+            )
+        )
+        session.add(
+            TokenGrant(
+                tenant_id=me[0],
+                source="reward",
+                total_tokens=5_000,
+                remaining_tokens=5_000,
+            )
+        )
+        session.add(JalaseInviteCode(tenant_id=me[0], code="TESTCODE"))
+    await jalase_accounts.delete_account(tenant_id=me[0], user_id=me[1])
     async with db.session_scope(staff=True) as session:
         keys = (
             (await session.execute(select(ApiKey).where(ApiKey.tenant_id == me[0]))).scalars().all()
@@ -444,3 +524,25 @@ async def test_deleting_an_account_closes_everything_and_frees_the_number(
         ).first() is None
         assert (await jalase_links.list_links(session, me[0])) == []
         assert await mobile_accounts(session, str(mobile), product="jalase_negar") == []
+        # Nothing that identifies the person or pays them survives the deletion.
+        assert (
+            await session.execute(select(SpeakerProfile).where(SpeakerProfile.tenant_id == me[0]))
+        ).first() is None
+        assert (
+            await session.execute(
+                select(SpeakerVoiceprint).where(SpeakerVoiceprint.tenant_id == me[0])
+            )
+        ).first() is None
+        assert (
+            await session.execute(
+                select(JalaseEarnedAchievement).where(JalaseEarnedAchievement.tenant_id == me[0])
+            )
+        ).first() is None
+        assert (
+            await session.execute(select(TokenGrant).where(TokenGrant.tenant_id == me[0]))
+        ).first() is None
+        assert (
+            await session.execute(
+                select(JalaseInviteCode).where(JalaseInviteCode.tenant_id == me[0])
+            )
+        ).first() is None

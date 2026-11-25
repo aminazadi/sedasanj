@@ -258,17 +258,72 @@ class MeetingRepository implements UploadStore, TranscriptStore {
   }
 
   @override
-  Future<List<Meeting>> uploadableMeetings() async {
+  Future<List<Meeting>> uploadableMeetings({String? accountId}) async {
+    final owned = _ownedBy(accountId);
     final rows = await _db.db.query(
       'meetings',
       where:
           "send_text = 1 AND (speakers_state = 'done' OR status = 'recording') "
           "AND status IN "
-          "('recording', 'recorded', 'transcribed', 'uploading', 'processing')",
+          "('recording', 'recorded', 'transcribed', 'uploading', 'processing')"
+          "$owned",
       orderBy: 'created_at ASC',
     );
     return rows.map(Meeting.fromRow).toList();
   }
+
+  /// SQL fragment limiting rows to one account; rows with no account (written
+  /// before v15) are left out so they are never sent with the wrong key.
+  static String _ownedBy(String? accountId) =>
+      accountId == null || accountId.isEmpty
+      ? " AND (account_id IS NULL OR account_id = '')"
+      : " AND account_id = '${accountId.replaceAll("'", "''")}'";
+
+  /// Tags meetings recorded before accounts were stored with the account that
+  /// is signing in now. Called only when the device had no account id yet.
+  Future<int> adoptLegacyMeetings(String accountId) => _db.db.update(
+    'meetings',
+    {'account_id': accountId},
+    where: "account_id IS NULL OR account_id = ''",
+  );
+
+  /// Meetings on this phone that belong to an earlier account (or predate
+  /// account ids). They are never sent with the current account's key.
+  Future<List<Meeting>> meetingsOfOtherAccounts(String accountId) async {
+    if (accountId.isEmpty) return const [];
+    final rows = await _db.db.query(
+      'meetings',
+      where: "account_id IS NULL OR account_id = '' OR account_id != ?",
+      whereArgs: [accountId],
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(Meeting.fromRow).toList();
+  }
+
+  /// Remembers that a meeting must also be removed from SedaSanj. Survives a
+  /// lost connection, so deleting on the phone always reaches the server.
+  Future<void> queueServerDelete(String remoteMeetingId) =>
+      _db.db.insert('server_deletes', {
+        'remote_meeting_id': remoteMeetingId,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+  @override
+  Future<List<String>> pendingServerDeletes({int limit = 50}) async {
+    final rows = await _db.db.query(
+      'server_deletes',
+      orderBy: 'created_at ASC',
+      limit: limit,
+    );
+    return [for (final row in rows) row['remote_meeting_id'] as String];
+  }
+
+  @override
+  Future<void> clearServerDelete(String remoteMeetingId) => _db.db.delete(
+    'server_deletes',
+    where: 'remote_meeting_id = ?',
+    whereArgs: [remoteMeetingId],
+  );
 
   /// Chooses where one meeting goes; only allowed before it was sent, because a
   /// meeting already started on the server belongs to that workspace's key.
@@ -383,15 +438,19 @@ class MeetingRepository implements UploadStore, TranscriptStore {
   /// Turns sending back on for meetings that were recorded while the switch
   /// was off (or before SedaSanj was connected) and have text but were never
   /// sent. Called when the app connects and when the switch is turned on.
-  Future<int> enableSendForUnsent() => _db.db.rawUpdate('''
+  Future<int> enableSendForUnsent({String? accountId}) {
+    final owned = _ownedBy(accountId);
+    return _db.db.rawUpdate('''
     UPDATE meetings SET send_text = 1
     WHERE send_text = 0 AND remote_meeting_id IS NULL
       AND status IN ('recorded', 'transcribed')
+      $owned
       AND EXISTS (
         SELECT 1 FROM segments s
         WHERE s.meeting_id = meetings.id AND TRIM(s.text) != ''
       )
   ''');
+  }
 
   @override
   Future<List<Meeting>> textSyncPendingMeetings() async {

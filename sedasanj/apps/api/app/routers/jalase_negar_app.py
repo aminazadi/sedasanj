@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import control_session_scope, session_scope
@@ -17,8 +17,10 @@ from app.deps import MeetingsKeyDep, PublicSession, client_ip
 from app.errors import ApiError
 from app.models import (
     ApiKey,
+    AudioObject,
     JalaseOutputType,
     Meeting,
+    MeetingChunk,
     MeetingDocument,
     MeetingDocumentVersion,
     MeetingSegment,
@@ -46,6 +48,7 @@ from app.services import (
     jalase_output_types,
     jalase_rewards,
     meeting_documents,
+    meeting_ingest,
     payments,
     platform,
     ratelimit,
@@ -53,6 +56,7 @@ from app.services import (
     store_billing,
     token_quota,
 )
+from app.services.audio_lifecycle import has_audio_reference, retire_audio
 from app.services.ingest import ensure_monthly_plan_credit
 from app.services.phone_identity import mobile_accounts, normalize_mobile
 
@@ -170,6 +174,10 @@ async def auth_complete(payload: AuthComplete, request: Request) -> dict[str, ob
             "token": secret,
             "token_prefix": prefix,
             "created": created,
+            # Stable ids: the app keys local meetings and people by these, never by the
+            # display name (two accounts can share a name).
+            "tenant_id": str(tenant.id),
+            "user_id": str(user.id),
             "user": {
                 "display_name": user.display_name,
                 "mobile": jalase_accounts.mask_mobile(row.mobile),
@@ -201,7 +209,9 @@ async def auth_logout(principal: MeetingsKeyDep) -> None:
 @router.get("/me")
 async def me(principal: MeetingsKeyDep) -> dict[str, object]:
     assert principal.tenant_id is not None and principal.user_id is not None
-    async with session_scope(None, staff=True) as session:
+    # The subscription, balance and usage live with the tenant's own data, so read them from the
+    # tenant database when it is enabled instead of the control copy.
+    async with session_scope(principal.tenant_id) as session:
         user = await session.get(User, principal.user_id)
         tenant = await session.get(Tenant, principal.tenant_id)
         if user is None or tenant is None:
@@ -222,6 +232,8 @@ async def me(principal: MeetingsKeyDep) -> dict[str, object]:
         usage = await jalase_billing.usage(session, tenant.id)
     return {
         "product": tenant.product,
+        "tenant_id": str(tenant.id),
+        "user_id": str(user.id),
         "user": {
             "display_name": user.display_name,
             "mobile": jalase_accounts.mask_mobile(user.mobile_number or ""),
@@ -253,7 +265,7 @@ async def delete_me(
     payload: AccountDelete, request: Request, principal: MeetingsKeyDep
 ) -> Response:
     """Delete the account for good; needs a fresh SMS verification of the account's own number."""
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-delete:{user_id}", 5, 3600)
     async with control_session_scope() as session:
         row = await phone_auth.lock_verified_phone(
@@ -266,7 +278,7 @@ async def delete_me(
                 "شمارهٔ تأییدشده با شمارهٔ این حساب یکی نیست؛ با همان شماره کد بگیرید.",
             )
         row.consumed_at = datetime.now(UTC)
-        await jalase_accounts.delete_account(session, tenant_id=tenant_id, user_id=user_id)
+    await jalase_accounts.delete_account(tenant_id=tenant_id, user_id=user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -318,6 +330,71 @@ async def list_my_meetings(
                 for m in rows
             ],
         }
+
+
+@router.delete("/meetings/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_meeting(
+    meeting_id: UUID, request: Request, principal: MeetingsKeyDep
+) -> Response:
+    """Delete a personal meeting for good: text, segments, documents and its audio.
+
+    The app has no panel, so this is the only way a personal user can remove what was uploaded.
+    Any held credit block is released first, so a discarded meeting cannot keep the month locked.
+    """
+    tenant_id, user_id = await _personal(principal)
+    async with session_scope(tenant_id) as session:
+        meeting = (
+            await session.execute(
+                select(Meeting)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.tenant_id == tenant_id,
+                    Meeting.owner_user_id == user_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if meeting is None:
+            raise ApiError("meeting_not_found", "جلسه پیدا نشد؛ فهرست را تازه کنید.")
+        await meeting_ingest.release_meeting(session, meeting)
+        audio_ids = set(
+            (
+                await session.execute(
+                    select(MeetingChunk.audio_id).where(
+                        MeetingChunk.meeting_id == meeting.id,
+                        MeetingChunk.audio_id.is_not(None),
+                    )
+                )
+            ).scalars()
+        )
+        if meeting.audio_id is not None:
+            audio_ids.add(meeting.audio_id)
+        if audio_ids:
+            for audio in (
+                (
+                    await session.execute(
+                        select(AudioObject).where(
+                            AudioObject.tenant_id == tenant_id,
+                            AudioObject.id.in_(audio_ids),
+                            ~has_audio_reference(tenant_id, other_than_meeting=meeting.id),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            ):
+                await retire_audio(session, audio)
+        await audit.record(
+            session,
+            actor_type="user",
+            actor_id=user_id,
+            tenant_id=tenant_id,
+            action="meeting.delete",
+            payload={"meeting_id": str(meeting.id), "source": "jalase_app"},
+            ip=client_ip(request),
+        )
+        await session.execute(delete(Meeting).where(Meeting.id == meeting.id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/meetings/{meeting_id}/minutes")
@@ -378,8 +455,20 @@ class DocumentEdit(BaseModel):
 MAX_DOCUMENT_VERSIONS = 50
 
 
-def _personal(principal: MeetingsKeyDep) -> tuple[UUID, UUID]:
+async def _personal(principal: MeetingsKeyDep) -> tuple[UUID, UUID]:
+    """The tenant and user of a personal Jalase-Negar account.
+
+    An organization's pairing key also carries a `user_id`, so checking only that is not enough:
+    progress, invites, plans and the like belong to the personal account, not the organization.
+    """
     if principal.tenant_id is None or principal.user_id is None:
+        raise ApiError(
+            "forbidden",
+            "این بخش فقط برای حساب شخصی جلسه‌نگار است؛ با شمارهٔ موبایل وارد شوید.",
+        )
+    async with control_session_scope() as session:
+        tenant = await session.get(Tenant, principal.tenant_id)
+    if tenant is None or tenant.product != jalase_accounts.PRODUCT:
         raise ApiError(
             "forbidden",
             "این بخش فقط برای حساب شخصی جلسه‌نگار است؛ با شمارهٔ موبایل وارد شوید.",
@@ -475,7 +564,7 @@ async def create_documents(
     meeting_id: UUID, payload: DocumentsCreate, principal: MeetingsKeyDep
 ) -> dict[str, object]:
     """Start one document per chosen output type; asking again for a type returns its document."""
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-doc:{user_id}", 30, 3600)
     codes = [item.output_type for item in payload.items]
     if len(set(codes)) != len(codes):
@@ -531,7 +620,7 @@ async def create_documents(
 
 @router.get("/meetings/{meeting_id}/documents")
 async def list_documents(meeting_id: UUID, principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with session_scope(tenant_id) as session:
         await _owned_meeting(session, tenant_id, user_id, meeting_id)
         rows = (
@@ -554,7 +643,7 @@ async def list_documents(meeting_id: UUID, principal: MeetingsKeyDep) -> dict[st
 
 @router.get("/documents/{document_id}")
 async def get_document(document_id: UUID, principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id)
         versions = (
@@ -601,7 +690,7 @@ async def edit_document(
     document_id: UUID, payload: DocumentEdit, principal: MeetingsKeyDep
 ) -> dict[str, object]:
     """Save the user's edit as a new selected version; earlier versions stay."""
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
         if document.status != "done":
@@ -637,7 +726,7 @@ async def edit_document(
 async def select_document_version(
     document_id: UUID, version: int, principal: MeetingsKeyDep
 ) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with session_scope(tenant_id) as session:
         await _owned_document(session, tenant_id, user_id, document_id, lock=True)
         target = await session.get(MeetingDocumentVersion, (document_id, version))
@@ -657,7 +746,7 @@ async def regenerate_document(
     document_id: UUID, payload: DocumentRegenerate, principal: MeetingsKeyDep
 ) -> dict[str, object]:
     """Make a new model version with the type's current published prompt."""
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-doc:{user_id}", 30, 3600)
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
@@ -688,7 +777,7 @@ async def regenerate_document(
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(document_id: UUID, principal: MeetingsKeyDep) -> None:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id, lock=True)
         await session.delete(document)
@@ -704,7 +793,7 @@ async def export_document(
     export_format: Annotated[Literal["pdf", "docx"], Query(alias="format")] = "pdf",
 ) -> Response:
     """The selected version as a PDF or Word file (private, never cached)."""
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-export:{user_id}", 60, 3600)
     async with session_scope(tenant_id) as session:
         document = await _owned_document(session, tenant_id, user_id, document_id)
@@ -771,7 +860,7 @@ class PayCreate(BaseModel):
 
 @router.get("/plans")
 async def list_plans(principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, _ = _personal(principal)
+    tenant_id, _ = await _personal(principal)
     async with session_scope(tenant_id) as session:
         paid = await jalase_billing.plans(session)
         free = await jalase_billing.free_plan(session)
@@ -780,14 +869,14 @@ async def list_plans(principal: MeetingsKeyDep) -> dict[str, object]:
 
 @router.get("/usage")
 async def get_usage(principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, _ = _personal(principal)
+    tenant_id, _ = await _personal(principal)
     async with session_scope(tenant_id) as session:
         return await jalase_billing.usage(session, tenant_id)
 
 
 @router.get("/token-packages")
 async def list_token_packages(principal: MeetingsKeyDep) -> list[dict[str, object]]:
-    _personal(principal)
+    await _personal(principal)
     async with control_session_scope() as session:
         rows = (
             (
@@ -819,7 +908,7 @@ async def create_plan_order(
     principal: MeetingsKeyDep,
     idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
 ) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-order:{user_id}", 20, 3600)
     async with session_scope(tenant_id) as session:
         tenant = await session.get(Tenant, tenant_id)
@@ -858,7 +947,7 @@ async def create_token_order(
     principal: MeetingsKeyDep,
     idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=128),
 ) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-order:{user_id}", 20, 3600)
     async with session_scope(tenant_id) as session:
         return await token_packages.create_pack_order(
@@ -877,7 +966,7 @@ async def store_skus(
     principal: MeetingsKeyDep, store: Literal["bazaar", "myket"]
 ) -> dict[str, object]:
     """Products to sell in the store build; the app sends the account id as developer payload."""
-    tenant_id, _ = _personal(principal)
+    tenant_id, _ = await _personal(principal)
     return {"skus": await store_billing.skus(store), "developer_payload": str(tenant_id)}
 
 
@@ -885,7 +974,7 @@ async def store_skus(
 async def store_verify(
     payload: StoreVerifyIn, request: Request, principal: MeetingsKeyDep
 ) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-store:{user_id}", 30, 3600)
     result = await store_billing.verify_and_grant(
         tenant_id=tenant_id,
@@ -911,7 +1000,7 @@ async def store_verify(
 async def pay_order(
     order_id: UUID, request: Request, principal: MeetingsKeyDep, payload: PayCreate | None = None
 ) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with session_scope(tenant_id) as session:
         order = (
             await session.execute(
@@ -940,7 +1029,7 @@ async def pay_order(
 @router.get("/orders/{order_id}")
 async def order_status(order_id: UUID, principal: MeetingsKeyDep) -> dict[str, object]:
     """Poll after the payment page closes: the order is `paid` once the gateway confirms."""
-    tenant_id, _ = _personal(principal)
+    tenant_id, _ = await _personal(principal)
     async with session_scope(tenant_id) as session:
         order = (
             await session.execute(
@@ -968,23 +1057,35 @@ class InviteRedeem(BaseModel):
 
 @router.get("/progress")
 async def get_progress(principal: MeetingsKeyDep) -> dict[str, object]:
-    """Level, badges and the month's gift allowance; also awards any badge just reached."""
-    tenant_id, _ = _personal(principal)
+    """Level, badges and the month's gift allowance.
+
+    Read-only: badges are awarded when the meeting or document finishes, so opening this screen
+    no longer pays a gift or moves `earned_at`.
+    """
+    tenant_id, _ = await _personal(principal)
     return await jalase_rewards.progress(tenant_id)
+
+
+@router.post("/progress/seen", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_progress_seen(principal: MeetingsKeyDep) -> Response:
+    """The app showed the new-badge notice; do not repeat it on the next visit."""
+    tenant_id, _ = await _personal(principal)
+    await jalase_rewards.mark_seen(tenant_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/invite")
 async def get_invite(principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, _ = _personal(principal)
+    tenant_id, _ = await _personal(principal)
     return await jalase_rewards.invite_info(tenant_id)
 
 
 @router.post("/invite/redeem")
 async def redeem_invite(payload: InviteRedeem, principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-invite:{user_id}", 10, 3600)
     result = await jalase_rewards.redeem(tenant_id, payload.code)
-    return {"ok": True, "tokens": result["tokens"]}
+    return {"ok": True, "tokens": result["tokens"], "reward_hours": result["reward_hours"]}
 
 
 # ---- link to a SedaSanj organization ------------------------------------------------------
@@ -1000,7 +1101,7 @@ class LinkCreate(BaseModel):
 
 @router.get("/link")
 async def get_links(principal: MeetingsKeyDep) -> dict[str, object]:
-    tenant_id, _ = _personal(principal)
+    tenant_id, _ = await _personal(principal)
     async with control_session_scope() as session:
         return {"items": await jalase_links.list_links(session, tenant_id)}
 
@@ -1010,7 +1111,7 @@ async def create_link(
     payload: LinkCreate, request: Request, principal: MeetingsKeyDep
 ) -> dict[str, object]:
     """Swap an organization's pairing code for an organization device key (returned once)."""
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     await ratelimit.enforce(f"jn-link:{user_id}", 10, 3600)
     async with control_session_scope() as session:
         return await jalase_links.link(
@@ -1032,20 +1133,18 @@ async def import_into_link(
     link_id: UUID, payload: LinkImport, principal: MeetingsKeyDep
 ) -> dict[str, object]:
     """Copy chosen finished personal meetings into the linked organization (originals stay)."""
-    tenant_id, user_id = _personal(principal)
-    async with control_session_scope() as session:
-        return await jalase_links.import_meetings(
-            session,
-            personal_tenant_id=tenant_id,
-            personal_user_id=user_id,
-            link_id=link_id,
-            meeting_ids=payload.meeting_ids,
-        )
+    tenant_id, user_id = await _personal(principal)
+    return await jalase_links.import_meetings(
+        personal_tenant_id=tenant_id,
+        personal_user_id=user_id,
+        link_id=link_id,
+        meeting_ids=payload.meeting_ids,
+    )
 
 
 @router.delete("/link/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_link(link_id: UUID, principal: MeetingsKeyDep) -> Response:
-    tenant_id, user_id = _personal(principal)
+    tenant_id, user_id = await _personal(principal)
     async with control_session_scope() as session:
         await jalase_links.revoke(session, tenant_id, user_id, link_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
