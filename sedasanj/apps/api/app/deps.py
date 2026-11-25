@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,8 @@ from app.models import ApiKey, StaffUser, Tenant, User
 from app.security import API_KEY_PREFIX, decode_access_token, hash_api_key
 from app.services import audit, panel_access, ratelimit
 from app.services.api_scopes import ip_allowed
+
+logger = logging.getLogger(__name__)
 
 LAST_USED_WRITE_INTERVAL = timedelta(seconds=60)
 
@@ -240,6 +243,16 @@ def require_scope(scope: str) -> Callable[..., Awaitable[Principal]]:
 async def _enforce_mobile(request: Request, principal: Principal, scope: str) -> Principal:
     """Personal mobile-token guard: right scope, a `mobile` key and the user it belongs to."""
     if scope not in principal.scopes or principal.key_kind != "mobile" or principal.user_id is None:
+        # The reason is logged (never the token) so a 403 on the app can be traced to its cause.
+        logger.warning(
+            "mobile_key_denied path=%s scope=%s scope_ok=%s kind=%s has_user=%s key_id=%s",
+            request.url.path,
+            scope,
+            scope in principal.scopes,
+            principal.key_kind,
+            principal.user_id is not None,
+            principal.id,
+        )
         raise await _deny_scope(request, principal, scope)
     # One budget per device token, separate from integration-key traffic.
     await ratelimit.enforce(

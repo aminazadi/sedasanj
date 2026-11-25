@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../recording/application/pending_meeting_type.dart';
-import '../../settings/application/connection_controller.dart';
+import '../../catalog/application/catalog_providers.dart';
 
 /// Lets the user pick the category this meeting will be converted into, before
 /// recording starts. "صورت جلسه عمومی" (the builtin type) is always offered

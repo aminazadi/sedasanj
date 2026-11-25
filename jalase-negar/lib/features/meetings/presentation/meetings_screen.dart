@@ -674,42 +674,35 @@ class _MeetingTile extends ConsumerWidget {
       ),
     );
 
-    return SizedBox(
-      width: 36,
-      height: 36,
-      child: PopupMenuButton<String>(
-        padding: EdgeInsets.zero,
-        iconSize: 20,
-        icon: Icon(Icons.more_vert, color: SsColors.of(context).neutral),
-        tooltip: 'گزینه‌ها',
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: SsColors.of(context).line),
-        ),
-        constraints: const BoxConstraints(minWidth: 0),
-        position: PopupMenuPosition.under,
-        onSelected: (value) => switch (value) {
-          'rename' => _rename(context, ref, meeting),
-          'send' => sendMeetingToSedasanj(context, ref, meeting.id),
-          'share' => shareMeetingAudio(context, meeting),
-          _ => _confirmDelete(context, ref, meeting),
-        },
-        itemBuilder: (context) => [
-          item('rename', Icons.edit_outlined, 'تغییر نام'),
-          item(
-            'send',
-            Icons.cloud_upload_outlined,
-            'ارسال به صداسنج',
-            enabled: canSendMeetingText(meeting, hasText: preview.isNotEmpty),
-          ),
-          item('share', Icons.ios_share, 'اشتراک‌گذاری فایل صوتی'),
-          item(
-            'delete',
-            Icons.delete_outline,
-            'حذف جلسه',
-            color: SsColors.of(context).danger,
-          ),
-        ],
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert, color: SsColors.of(context).neutral),
+      tooltip: 'گزینه‌ها',
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: SsColors.of(context).line),
       ),
+      position: PopupMenuPosition.under,
+      onSelected: (value) => switch (value) {
+        'rename' => _rename(context, ref, meeting),
+        'send' => sendMeetingToSedasanj(context, ref, meeting.id),
+        'share' => shareMeetingAudio(context, meeting),
+        _ => _confirmDelete(context, ref, meeting),
+      },
+      itemBuilder: (context) => [
+        item('rename', Icons.edit_outlined, 'تغییر نام'),
+        item(
+          'send',
+          Icons.cloud_upload_outlined,
+          'ارسال به صداسنج',
+          enabled: canSendMeetingText(meeting, hasText: preview.isNotEmpty),
+        ),
+        item('share', Icons.ios_share, 'اشتراک‌گذاری فایل صوتی'),
+        item(
+          'delete',
+          Icons.delete_outline,
+          'حذف جلسه',
+          color: SsColors.of(context).danger,
+        ),
+      ],
     );
   }
 

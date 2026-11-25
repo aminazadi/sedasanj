@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jalase_negar/features/catalog/application/catalog_providers.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
 import 'package:jalase_negar/features/documents/presentation/documents_tab.dart';
 import 'package:jalase_negar/features/settings/application/connection_controller.dart';
@@ -171,7 +172,7 @@ void main() {
         ProviderScope(
           overrides: [
             outputTypesProvider.overrideWith(
-              (ref) async => const [
+              (ref) => Stream.value(const [
                 OutputTypeInfo(
                   code: 'university_notes',
                   title: 'جزوهٔ کلاس',
@@ -186,7 +187,7 @@ void main() {
                     ),
                   ],
                 ),
-              ],
+              ]),
             ),
             personalClientProvider.overrideWith((ref) async => fake),
           ],

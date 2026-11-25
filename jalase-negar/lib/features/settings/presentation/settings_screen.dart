@@ -27,6 +27,7 @@ import '../../upload/upload_controller.dart';
 import '../application/connection_controller.dart';
 import 'cpu_limit_card.dart';
 import 'meeting_upload_card.dart';
+import '../../../core/platform/api_client.dart';
 import '../../../core/platform/distribution.dart';
 import 'qr_scan_screen.dart';
 import 'theme_mode_card.dart';
@@ -82,10 +83,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           child: SsBadge(connection == null ? 'متصل نیست' : 'متصل'),
         ),
         child: connection == null
-            ? const Text(
-                'در پنل صداسنج از «تنظیمات حساب ← اتصال‌ها»، '
-                'بخش «اتصال اپ جلسه‌نگار» را باز کنید '
-                'و QR یا فایل کانفیگ را اینجا وارد کنید.',
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'در پنل صداسنج از «تنظیمات حساب ← اتصال‌ها»، '
+                    'بخش «اتصال اپ جلسه‌نگار» را باز کنید '
+                    'و QR یا فایل کانفیگ را اینجا وارد کنید.',
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => context.push('/plans'),
+                    child: const Text('پلن‌ها و بسته‌های ساعت'),
+                  ),
+                ],
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,6 +231,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ),
         ),
       const SizedBox(height: 12),
+      const AppLockSettingsCard(),
+      const SizedBox(height: 12),
       const ThemeModeCard(),
     ];
     final recording = <Widget>[
@@ -234,8 +247,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     final models = <Widget>[const ModelsBody()];
     final app = <Widget>[
       const UpdateCheckCard(),
-      const SizedBox(height: 12),
-      const AppLockSettingsCard(),
       const SizedBox(height: 12),
       const PushSettingsCard(),
     ];
@@ -603,6 +614,15 @@ class _SoundEventsCard extends ConsumerWidget {
   }
 }
 
+/// The server's own message and error code when the profile fails, so the cause is visible.
+String _profileErrorText(Object error) {
+  if (error is ApiException) {
+    final code = error.code;
+    return code == null ? error.message : '${error.message} [$code]';
+  }
+  return 'نامشخص: $error';
+}
+
 /// Plan name and remaining minutes of a personal account.
 class _PersonalUsageRows extends ConsumerWidget {
   const _PersonalUsageRows();
@@ -612,7 +632,7 @@ class _PersonalUsageRows extends ConsumerWidget {
     final profile = ref.watch(personalProfileProvider);
     return profile.when(
       loading: () => const _Row('ساعت باقی‌مانده', '…'),
-      error: (_, _) => const _Row('ساعت باقی‌مانده', 'نامشخص'),
+      error: (e, _) => _Row('ساعت باقی‌مانده', _profileErrorText(e)),
       data: (p) {
         final usage = p.usage;
         return Column(

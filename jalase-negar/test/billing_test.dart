@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jalase_negar/features/catalog/application/catalog_providers.dart';
 import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
+import 'package:jalase_negar/core/platform/platform_config.dart';
 import 'package:jalase_negar/features/plans/data/billing_models.dart';
 import 'package:jalase_negar/features/plans/presentation/plans_screen.dart';
 import 'package:jalase_negar/features/plans/presentation/progress_screen.dart';
@@ -61,6 +63,19 @@ const _plans = {
     },
   ],
 };
+
+class _PersonalConnected extends ConnectionController {
+  @override
+  Future<ConnectionState> build() async => const ConnectionState(
+    connection: PlatformConnection(
+      serverUrl: 'https://sedasanj.test',
+      userName: 'کاربر',
+      tenantName: '',
+      tokenPrefix: 'jn_test',
+      personal: true,
+    ),
+  );
+}
 
 void main() {
   test('usage and plans keep hours and prices', () {
@@ -198,13 +213,14 @@ void main() {
               (ref) async => UsageInfo.fromJson(_usage),
             ),
             plansProvider.overrideWith(
-              (ref) async => PlansResult.fromJson(_plans),
+              (ref) => Stream.value(PlansResult.fromJson(_plans)),
             ),
             tokenPackagesProvider.overrideWith(
-              (ref) async => const [
+              (ref) => Stream.value(const [
                 PackInfo(id: 'pk1', name: 'بسته', hours: 4, priceToman: 160000),
-              ],
+              ]),
             ),
+            connectionControllerProvider.overrideWith(_PersonalConnected.new),
             personalClientProvider.overrideWith((ref) async => fake),
           ],
           child: MaterialApp(
@@ -252,9 +268,10 @@ void main() {
         overrides: [
           usageProvider.overrideWith((ref) async => UsageInfo.fromJson(_usage)),
           plansProvider.overrideWith(
-            (ref) async => PlansResult.fromJson(_plans),
+            (ref) => Stream.value(PlansResult.fromJson(_plans)),
           ),
-          tokenPackagesProvider.overrideWith((ref) async => const []),
+          tokenPackagesProvider.overrideWith((ref) => Stream.value(const [])),
+          connectionControllerProvider.overrideWith(_PersonalConnected.new),
           personalClientProvider.overrideWith((ref) async => fake),
         ],
         child: MaterialApp(
@@ -285,12 +302,12 @@ void main() {
         overrides: [
           usageProvider.overrideWith((ref) async => UsageInfo.fromJson(_usage)),
           plansProvider.overrideWith(
-            (ref) async => PlansResult.fromJson(_plans),
+            (ref) => Stream.value(PlansResult.fromJson(_plans)),
           ),
           tokenPackagesProvider.overrideWith(
-            (ref) async => const [
+            (ref) => Stream.value(const [
               PackInfo(id: 'pk1', name: 'بسته', hours: 4, priceToman: 160000),
-            ],
+            ]),
           ),
           personalClientProvider.overrideWith((ref) async => _FakeClient()),
         ],
@@ -351,6 +368,7 @@ void main() {
               enabled: true,
             ),
           ),
+          connectionControllerProvider.overrideWith(_PersonalConnected.new),
           personalClientProvider.overrideWith((ref) async => fake),
         ],
         child: const MaterialApp(home: SsToastHost(child: ProgressScreen())),

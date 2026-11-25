@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
+import 'package:jalase_negar/features/catalog/application/catalog_providers.dart';
 import 'package:jalase_negar/core/platform/platform_config.dart';
 import 'package:jalase_negar/features/meetings/presentation/meeting_output_tab.dart';
 import 'package:jalase_negar/features/plans/data/billing_models.dart';
@@ -52,12 +53,12 @@ void main() {
       overrides: [connectionControllerProvider.overrideWith(_Disconnected.new)],
     );
 
-    expect(find.text('برای دیدن خروجی جلسه وارد حساب شوید'), findsOneWidget);
-    expect(find.text('ورود با شماره موبایل'), findsOneWidget);
+    expect(find.text('برای ساخت خروجی وارد شوید.'), findsOneWidget);
+    expect(find.text('ورود'), findsOneWidget);
     expect(find.text('صورت‌جلسه'), findsNothing);
   });
 
-  testWidgets('asks a signed-in account with no usable plan to buy one', (
+  testWidgets('keeps the output visible and offers a plan when hours are used up', (
     tester,
   ) async {
     await _pump(
@@ -70,12 +71,9 @@ void main() {
       ],
     );
 
-    expect(
-      find.text('برای دریافت خروجی جلسه، به پلن فعال نیاز دارید'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('ساعت پلن تمام شده است'), findsOneWidget);
     expect(find.text('پلن و مصرف'), findsOneWidget);
-    expect(find.text('صورت‌جلسه'), findsNothing);
+    expect(find.text('صورت‌جلسه'), findsOneWidget);
   });
 
   testWidgets(
@@ -100,7 +98,7 @@ void main() {
           meetingDocumentsProvider(
             'remote-1',
           ).overrideWith((ref) async => const []),
-          outputTypesProvider.overrideWith((ref) async => const []),
+          outputTypesProvider.overrideWith((ref) => Stream.value(const [])),
         ],
       );
 
@@ -152,7 +150,7 @@ void main() {
         meetingDocumentsProvider(
           'remote-1',
         ).overrideWith((ref) async => const []),
-        outputTypesProvider.overrideWith((ref) async => const []),
+        outputTypesProvider.overrideWith((ref) => Stream.value(const [])),
       ],
     );
 

@@ -294,6 +294,49 @@ async def test_mobile_tokens_observe_current_owner_permissions(monkeypatch, sele
         assert caught.value.code == "panel_access_denied"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/jalase-negar/me",
+        "/v1/jalase-negar/usage",
+        "/v1/jalase-negar/plans",
+        "/v1/jalase-negar/token-packages",
+        "/v1/jalase-negar/output-types",
+        "/v1/jalase-negar/auth/logout",
+    ],
+)
+async def test_personal_account_routes_are_not_blocked_by_panel_sections(monkeypatch, path):
+    """A personal Jalase-Negar token owns its account: no organization panel section applies."""
+    from unittest.mock import MagicMock
+
+    from app.models import ApiKey
+
+    owner = User(id=uuid4(), tenant_id=uuid4(), role="org_admin", panel_permissions=None)
+    key = ApiKey(
+        id=uuid4(),
+        tenant_id=owner.tenant_id,
+        user_id=owner.id,
+        kind="mobile",
+        scopes=["meetings:write"],
+        allowed_cidrs=[],
+        last_used_at=datetime.now(UTC),
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = key
+    session = AsyncMock()
+    session.execute.return_value = result
+    session.get.return_value = owner
+
+    @asynccontextmanager
+    async def scope(*args, **kwargs):
+        yield session
+
+    monkeypatch.setattr(deps, "session_scope", scope)
+    monkeypatch.setattr(deps, "_assert_tenant_active", AsyncMock())
+    principal = await deps.current_api_key(request(path, "GET"), "Bearer test-mobile-key")
+    assert principal.key_kind == "mobile"
+
+
 @pytest.mark.asyncio
 async def test_primary_admin_profile_and_password_reset_blocked_for_others(monkeypatch):
     tenant = uuid4()
@@ -310,3 +353,21 @@ async def test_primary_admin_profile_and_password_reset_blocked_for_others(monke
     with pytest.raises(ApiError) as caught:
         await auth.request_member_password_reset(owner.id, request(), session, actor)
     assert caught.value.code == "primary_admin_protected"
+
+
+def test_every_jalase_negar_route_is_own_account_access():
+    """Every route under /v1/jalase-negar must need no organization panel section.
+
+    A new route added to the Jalase-Negar router must not be refused by the organization panel
+    check, or the app's personal token gets 403 with no clear cause.
+    """
+    from app.routers import jalase_catalog, jalase_negar_app
+
+    checked = 0
+    for module in (jalase_negar_app, jalase_catalog):
+        for route in module.router.routes:
+            path = route.path.replace("{", "").replace("}", "")
+            for method in getattr(route, "methods", {"GET"}):
+                assert access.request_sections(path, method) == (), (path, method)
+                checked += 1
+    assert checked > 0

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jalase_negar/features/catalog/application/catalog_providers.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
 import 'package:jalase_negar/features/meetings/data/meeting.dart';
 import 'package:jalase_negar/features/meetings/presentation/meeting_type_picker_sheet.dart';
 import 'package:jalase_negar/features/recording/application/pending_meeting_type.dart';
-import 'package:jalase_negar/features/settings/application/connection_controller.dart';
 
 const _types = [
   OutputTypeInfo(
@@ -38,7 +38,9 @@ Future<PendingMeetingType?> _open(
   PendingMeetingType? result;
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [meetingTypesProvider.overrideWith((ref) async => _types)],
+      overrides: [
+        meetingTypesProvider.overrideWith((ref) => Stream.value(_types)),
+      ],
       child: MaterialApp(
         home: Scaffold(
           body: Builder(
@@ -77,7 +79,9 @@ void main() {
     PendingMeetingType? result;
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [meetingTypesProvider.overrideWith((ref) async => _types)],
+        overrides: [
+          meetingTypesProvider.overrideWith((ref) => Stream.value(_types)),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: Builder(

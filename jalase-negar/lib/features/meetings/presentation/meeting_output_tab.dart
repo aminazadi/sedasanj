@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/widgets/ss_widgets.dart';
 import '../../../core/platform/api_client.dart';
 import '../../documents/presentation/documents_tab.dart';
+import '../../catalog/application/catalog_providers.dart';
 import '../../settings/application/connection_controller.dart';
 import 'minutes_tab.dart';
 
@@ -14,9 +15,10 @@ import 'minutes_tab.dart';
 /// to sign in or buy/upgrade a plan. If the plan check itself fails the output
 /// is still shown, with the reason and a retry in a banner.
 class MeetingOutputTab extends ConsumerWidget {
-  const MeetingOutputTab({super.key, required this.remoteMeetingId});
+  const MeetingOutputTab({super.key, this.remoteMeetingId});
 
-  final String remoteMeetingId;
+  /// Null while the meeting has not reached the server yet; the categories still show.
+  final String? remoteMeetingId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,16 +27,49 @@ class MeetingOutputTab extends ConsumerWidget {
         .value
         ?.connection;
     final loggedIn = connection != null && connection.personal;
-    if (!loggedIn) {
-      return _OutputLockedState(
-        image: 'assets/images/brand/login-required.svg',
-        title: 'برای دیدن خروجی جلسه وارد حساب شوید',
-        hint:
-            'با ورود به حساب شخصی، صورت‌جلسه و اسناد این جلسه نمایش داده می‌شود.',
-        action: FilledButton.icon(
-          icon: const Icon(Icons.phone_android, size: 18),
-          label: const Text('ورود با شماره موبایل'),
-          onPressed: () => context.push('/login'),
+    final remote = remoteMeetingId;
+    if (!loggedIn || remote == null) {
+      // Categories are public and always listed. Only the account (sign-in, active plan)
+      // and the meeting's place on the server decide what else is asked for.
+      final noPlan =
+          loggedIn && (ref.watch(usageProvider).value?.exhausted ?? false);
+      const pending = 'این جلسه هنوز پردازش نشده است.';
+      final prompt = !loggedIn
+          ? _OutputPrompt(
+              image: 'assets/images/brand/login-required.svg',
+              pending: remote == null ? pending : null,
+              hint: 'برای ساخت خروجی وارد شوید.',
+              actionLabel: 'ورود',
+              onAction: () => context.push('/login'),
+            )
+          : noPlan
+          ? _OutputPrompt(
+              image: 'assets/images/brand/plan-upgrade.svg',
+              pending: remote == null ? pending : null,
+              hint: 'پلن فعال ندارید.',
+              actionLabel: 'خرید پلن',
+              onAction: () => context.push('/plans'),
+            )
+          : null;
+      // Same placement as the speakers empty state: the prompt sits in the middle of the tab,
+      // and the category list follows it when there is one.
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (prompt != null)
+                  prompt
+                else if (remote == null)
+                  const Text(pending, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                const _CategoryPreview(),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -59,29 +94,28 @@ class MeetingOutputTab extends ConsumerWidget {
           );
         }
         return _OutputTabs(
-          remoteMeetingId: remoteMeetingId,
+          remoteMeetingId: remote,
           banner: _PlanCheckBanner(
             message: _usageErrorMessage(error),
-            onRetry: retry,
+            onAction: retry,
           ),
         );
       },
       data: (info) {
+        // Used-up hours never hide what already exists; they only block new
+        // documents, so the tab stays and offers the plan page.
         final entitled = info.unlimited || !info.exhausted;
-        if (!entitled) {
-          return _OutputLockedState(
-            image: 'assets/images/brand/plan-upgrade.svg',
-            title: 'برای دریافت خروجی جلسه، به پلن فعال نیاز دارید',
-            hint:
-                'ساعت پلن این حساب تمام شده است؛ با تهیهٔ پلن یا شارژ ساعت، خروجی این جلسه در دسترس می‌شود.',
-            action: FilledButton.icon(
-              icon: const Icon(Icons.workspace_premium_outlined, size: 18),
-              label: const Text('پلن و مصرف'),
-              onPressed: () => context.push('/plans'),
-            ),
-          );
-        }
-        return _OutputTabs(remoteMeetingId: remoteMeetingId);
+        return _OutputTabs(
+          remoteMeetingId: remote,
+          banner: entitled
+              ? null
+              : _PlanCheckBanner(
+                  message:
+                      'ساعت پلن تمام شده است؛ برای ساخت خروجی جدید پلن تهیه کنید.',
+                  actionLabel: 'پلن و مصرف',
+                  onAction: () => context.push('/plans'),
+                ),
+        );
       },
     );
   }
@@ -122,10 +156,15 @@ class _OutputTabs extends StatelessWidget {
 /// Shown above the tabs when the plan check failed but the output is still
 /// listed, with the real reason and a retry.
 class _PlanCheckBanner extends StatelessWidget {
-  const _PlanCheckBanner({required this.message, required this.onRetry});
+  const _PlanCheckBanner({
+    required this.message,
+    required this.onAction,
+    this.actionLabel = 'بررسی دوباره',
+  });
 
   final String message;
-  final VoidCallback onRetry;
+  final VoidCallback onAction;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +183,7 @@ class _PlanCheckBanner extends StatelessWidget {
               ),
             ),
           ),
-          TextButton(onPressed: onRetry, child: const Text('بررسی دوباره')),
+          TextButton(onPressed: onAction, child: Text(actionLabel)),
         ],
       ),
     );
@@ -153,51 +192,6 @@ class _PlanCheckBanner extends StatelessWidget {
 
 /// Locked empty state for the output tab: an illustration of its own
 /// (instead of [SsEmptyState]'s fixed one), a message and an action button.
-class _OutputLockedState extends StatelessWidget {
-  const _OutputLockedState({
-    required this.image,
-    required this.title,
-    this.hint,
-    this.action,
-  });
-
-  final String image;
-  final String title;
-  final String? hint;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SvgPicture.asset(image, width: 180),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium,
-            ),
-            if (hint != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                hint!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Turns a usage-load failure into a message that names the real cause, so the
 /// user knows whether to reconnect, retry, or wait.
 String _usageErrorMessage(Object error) {
@@ -236,4 +230,86 @@ class _OutputErrorState extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Categories the admin published, shown to everyone; no account or plan needed.
+class _CategoryPreview extends ConsumerWidget {
+  const _CategoryPreview();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final types = ref.watch(outputTypesProvider);
+    return types.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (items) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final type in items)
+            Card(
+              child: ListTile(
+                title: Text(type.title),
+                subtitle: type.description.isEmpty
+                    ? null
+                    : Text(type.description),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The same layout as the speakers empty state: an illustration, a status title, one hint and
+/// one action. Shown when the account cannot create output yet.
+class _OutputPrompt extends StatelessWidget {
+  const _OutputPrompt({
+    required this.image,
+    required this.hint,
+    required this.actionLabel,
+    required this.onAction,
+    this.pending,
+  });
+
+  final String image;
+
+  /// The meeting's status, shown as the title when there is one.
+  final String? pending;
+  final String hint;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SvgPicture.asset(image, width: 180),
+          const SizedBox(height: 16),
+          Text(
+            pending ?? hint,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium,
+          ),
+          if (pending != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              hint,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            icon: const Icon(Icons.phone_android, size: 18),
+            label: Text(actionLabel),
+            onPressed: onAction,
+          ),
+        ],
+      ),
+    );
+  }
 }

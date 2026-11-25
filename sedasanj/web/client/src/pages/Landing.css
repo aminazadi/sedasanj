@@ -291,6 +291,18 @@
 .site-footer-trust-slots { display: flex; gap: 10px; }
 .site-footer-trust-slots span { display: grid; place-items: center; width: 76px; height: 76px; border: 1px dashed var(--site-border); background: rgb(var(--color-canvas-rgb) / 45%); color: var(--site-muted); font-size: 10px; text-align: center; }
 .site-footer-trust-frame { display: block; width: 100%; min-width: 180px; height: 120px; border: 0; background: transparent; }
+.site-footer-partner { display: flex; align-items: center; justify-content: center; gap: 12px; padding-block: 16px; color: var(--site-muted); font-size: 12px; }
+.site-footer-partner p { margin: 0; }
+.site-footer-partner a { color: var(--site-text); text-decoration: underline; text-underline-offset: 3px; }
+.site-footer-partner-logo { display: grid; place-items: center; }
+.site-footer-partner-logo img { display: block; width: 52px; height: auto; }
+.site-footer-partner-logo .eshare-logo-dark { display: none; }
+:root[data-theme="dark"] .site-footer-partner-logo .eshare-logo-light { display: none; }
+:root[data-theme="dark"] .site-footer-partner-logo .eshare-logo-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .site-footer-partner-logo .eshare-logo-light { display: none; }
+  :root:not([data-theme="light"]) .site-footer-partner-logo .eshare-logo-dark { display: block; }
+}
 .site-footer-bottom { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; padding-block: 14px; border-top: 1px solid var(--site-border); color: var(--site-muted); }
 .site-footer-credit { margin-right: auto; }
 .site-footer-credit a { text-decoration: underline; text-underline-offset: 3px; }

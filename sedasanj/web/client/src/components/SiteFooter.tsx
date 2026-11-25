@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { defaultFooter, isSafeFooterUrl, type FooterLink, type SiteContactSettingsValue } from "../../../shared/lib/siteFooter";
 import { request } from "../api";
 import logo from "../assets/sedasanj-refined-master.webp";
+import eshareLogoLight from "../assets/eshare-logo-light.svg";
+import eshareLogoDark from "../assets/eshare-logo-dark.svg";
 import FooterSocialLinks from "./FooterSocialLinks";
 
 export default function SiteFooter() {
@@ -37,6 +39,13 @@ export default function SiteFooter() {
         <nav className="site-footer-links" aria-label={footer.links_title || "لینک‌های پرکاربرد"}>{footer.links_title && <strong>{footer.links_title}</strong>}{footer.links.map(renderLink)}</nav>
         <nav className="site-footer-legal" aria-label="قوانین و حریم خصوصی">{footer.legal_links.map(renderLink)}</nav>
         <div className="site-footer-trust" aria-label="نمادهای اعتماد"><strong>{footer.trust_title}</strong>{siteContact.trust_html ? <iframe className="site-footer-trust-frame" title="نمادهای اعتماد صداسنج" sandbox="allow-scripts" srcDoc={siteContact.trust_html}/> : <div className="site-footer-trust-slots"><span aria-hidden="true">جایگاه نماد</span><span aria-hidden="true">جایگاه نماد</span></div>}</div>
+      </div>
+      <div className="site-container site-footer-partner" dir="rtl">
+        <a className="site-footer-partner-logo" href="https://eshare.ir/" title="اشاره | eshare.ir" aria-label="اشاره، eshare.ir">
+          <img className="eshare-logo-light" src={eshareLogoLight} alt="لوگوی اشاره - eshare.ir" width="52" height="49"/>
+          <img className="eshare-logo-dark" src={eshareLogoDark} alt="" aria-hidden="true" width="52" height="49"/>
+        </a>
+        <p>محصولی از <a href="https://eshare.ir/">گروه مهندسی نرم افزار اشاره شرق</a></p>
       </div>
       <div className="site-container site-footer-bottom" dir="rtl">
         <small>{footer.copyright}</small>
