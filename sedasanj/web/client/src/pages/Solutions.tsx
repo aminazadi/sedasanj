@@ -1,6 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import PublicPageFrame from "../components/PublicPageFrame";
 import { Icon, type IconName } from "../components/SiteIcon";
+import { srcSetFor } from "../lib/imageSources";
+import heroBackdrop from "../assets/page-hero-about.webp";
 import "./Solutions.css";
 
 type Card = { icon: IconName; title: string; text: string };
@@ -123,10 +126,12 @@ const CAPABILITIES: Capability[] = [
 ];
 
 const INDUSTRIES: Card[] = [
-  { icon: "chart", title: "فناوری و الکترونیک", text: "شناخت مشکلات پرتکرار فنی، کیفیت پاسخ پشتیبانی و بازخورد محصولات." },
-  { icon: "pulse", title: "صنعتی و نیروگاهی", text: "مستندسازی مذاکرات فنی، هماهنگی‌های پروژه و جلسات کارشناسی." },
-  { icon: "users", title: "انجمن‌ها و تشکل‌ها", text: "جمع‌بندی دغدغه‌های اعضا، پیگیری موضوعات پرتکرار و صورت‌جلسات کمیته‌ها." },
-  { icon: "phone", title: "سازمان‌های خدماتی", text: "تحلیل کیفیت ارتباط با مشتریان و آموزش هدفمند اپراتورها." },
+  { icon: "shield", title: "سازمان‌های دولتی", text: "مستندسازی تماس‌های پیگیری، شناخت موضوعات پرتکرار و پاسخ مستند به مراجع نظارتی." },
+  { icon: "lock", title: "بانک، بیمه و مالی", text: "ثبت تعهدها و سررسیدها و شناسایی تماس‌های پرریسک، پیش از تبدیل به شکایت رسمی." },
+  { icon: "pulse", title: "مرکز درمانی و کلینیک", text: "دلیل لغو نوبت، ساعت‌های شلوغ تماس و بازخورد بیماران از متن مکالمات." },
+  { icon: "trend", title: "تیم فروش", text: "فرصت‌های پیگیری‌نشده، کیفیت مذاکره و تماس‌های آمادهٔ خرید." },
+  { icon: "headset", title: "پشتیبانی و پس از فروش", text: "تماس‌های تکراری و افت لحن مشتری، پیش از آنکه به شکایت تبدیل شود." },
+  { icon: "message", title: "فروشگاه و خدمات آنلاین", text: "وضعیت سفارش، مرجوعی و شکایت‌های پرتکرار در یک نگاه." },
 ];
 
 const DEPLOY: Card[] = [
@@ -188,29 +193,79 @@ function CardGrid({ items, className }: { items: Card[]; className: string }) {
   </article>)}</div>;
 }
 
+/** Same carousel as the related-articles block: shared classes from index.css,
+    the arrows move exactly one card and stay in sync with manual swipes. */
+function RolesCarousel() {
+  const track = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+  const [atEnd, setAtEnd] = useState(false);
+  function updateEnd() {
+    const container = track.current;
+    if (container) setAtEnd(container.scrollWidth - container.clientWidth - Math.abs(container.scrollLeft) < 2);
+  }
+  useEffect(() => {
+    const container = track.current;
+    if (!container) return;
+    const observer = new ResizeObserver(updateEnd);
+    observer.observe(container);
+    updateEnd();
+    return () => observer.disconnect();
+  }, []);
+  function go(index: number) {
+    const container = track.current;
+    const card = container?.children[index];
+    if (!container || !card) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    container.scrollBy({ left: card.getBoundingClientRect().right - container.getBoundingClientRect().right, behavior: reduced ? "auto" : "smooth" });
+  }
+  return <div className="solutions-roles-carousel">
+    <div className="related-articles-track" ref={track} onScroll={() => {
+      const container = track.current;
+      if (!container) return;
+      updateEnd();
+      const right = container.getBoundingClientRect().right;
+      let nearest = 0;
+      let distance = Infinity;
+      Array.from(container.children).forEach((card, index) => {
+        const delta = Math.abs(card.getBoundingClientRect().right - right);
+        if (delta < distance) { nearest = index; distance = delta; }
+      });
+      setActive(nearest);
+    }}>
+      {ROLES.map((role, index) => <div className="related-article-slot" key={role.title} role="group" aria-label={`${index + 1} از ${ROLES.length}`}>
+        <article className="solutions-role-card">
+          <Icon name={role.icon} size={30}/>
+          <h3>{role.title}</h3>
+          <p>{role.text}</p>
+        </article>
+      </div>)}
+    </div>
+    <div className="related-articles-controls solutions-carousel-arrows">
+      <button type="button" aria-label="کارت قبلی" disabled={active === 0} onClick={() => go(active - 1)}><Icon name="back" size={20}/></button>
+      <button type="button" aria-label="کارت بعدی" disabled={atEnd} onClick={() => go(active + 1)}><Icon name="arrow" size={20}/></button>
+    </div>
+  </div>;
+}
+
 export default function Solutions() {
   return <PublicPageFrame>
     <main className="page-main solutions-page">
-      <section className="site-hero page-hero solutions-hero"><div className="site-container solutions-hero-grid">
-        <div>
-          <h1 className="site-hero-title page-title solutions-title">راهکارهای <span className="site-hero-title-accent">سازمانی</span></h1>
+      <section className="site-hero solutions-hero">
+        <img className="site-hero-backdrop" src={heroBackdrop} srcSet={srcSetFor(heroBackdrop)} sizes="max(100vw, 160svh)" alt="" aria-hidden="true" width={1774} height={887} fetchPriority="high" decoding="async"/>
+        <div className="site-container solutions-hero-inner">
+          <h1 className="site-hero-title site-hero-title-flow solutions-title">راهکارهای <span className="site-hero-title-accent">سازمانی</span></h1>
           <p className="solutions-lead">تماس‌ها، جلسات و مکالمات کوتاه کاری، بخش بزرگی از تصمیمات سازمان را می‌سازند و معمولاً پراکنده باقی می‌مانند. صداسنج این ارتباطات را به اطلاعات قابل جست‌وجو، گزارش مدیریتی و دانش سازمانی تبدیل می‌کند.</p>
           <div className="site-actions">
             <Link className="site-button" to="/contact">درخواست جلسه معرفی<Icon name="arrow" size={18}/></Link>
             <Link className="site-button site-button-outline" to="/quick-demo">تست رایگان</Link>
           </div>
-        </div>
-        <aside className="solutions-snapshot" aria-label="اجزای راهکار در یک نگاه">
-          <p className="solutions-snapshot-title">در یک نگاه</p>
-          <ul>
-            <li><Icon name="headset" size={22}/><span>تحلیل هوشمند تماس‌های تلفنی<small>روی Asterisk، FreePBX و Issabel</small></span></li>
-            <li><Icon name="tasks" size={22}/><span>جلسه‌نگار هوشمند<small>اپ موبایل و دسکتاپ، صورت‌جلسه رسمی</small></span></li>
-            <li><Icon name="brain" size={22}/><span>دستیار هوش مصنوعی<small>پرسش با زبان طبیعی از تماس‌ها و جلسات</small></span></li>
-            <li><Icon name="layers" size={22}/><span>گراف دانش سازمان<small>افراد، نقش‌ها، محصولات و مشتریان</small></span></li>
+          <ul className="solutions-hero-points">
+            <li><Icon name="headset" size={18}/><span>تحلیل تماس‌ها روی FreePBX و Issabel</span></li>
+            <li><Icon name="tasks" size={18}/><span>جلسه‌نگار موبایل و دسکتاپ</span></li>
+            <li><Icon name="brain" size={18}/><span>دستیار هوش مصنوعی سازمان</span></li>
           </ul>
-          <p className="solutions-snapshot-note">هر بخش مستقل قابل بهره‌برداری است؛ در استفاده هم‌زمان، همه در یک داشبورد در اختیار کاربران مجاز قرار می‌گیرد.</p>
-        </aside>
-      </div></section>
+        </div>
+      </section>
 
       <section className="site-section"><div className="site-container about-story">
         <div>
@@ -245,11 +300,11 @@ export default function Solutions() {
       <section className="site-section solutions-roles-section"><div className="site-container">
         <h2>برای چه کسانی در سازمان</h2>
         <p className="solutions-intro">هر نقش، متناسب با مجوزهای خود، بخشی از تصویر را می‌بیند.</p>
-        <CardGrid items={ROLES} className="solutions-roles"/>
+        <RolesCarousel/>
       </div></section>
 
       <section className="site-section solutions-capabilities-section"><div className="site-container">
-        <h2>قابلیت‌های راهکار</h2>
+        <h2>قابلیت‌های سامانه</h2>
         <div className="solutions-capabilities">{CAPABILITIES.map((item) => <article key={item.title}>
           <Icon name={item.icon} size={28}/>
           <h3>{item.title}</h3>
@@ -282,9 +337,9 @@ export default function Solutions() {
 
       <section className="site-section solutions-roadmap-section"><div className="site-container">
         <h2>قابلیت‌های قابل توسعه</h2>
-        <p className="solutions-intro">این موارد در نقشه راه هستند و هنوز به‌عنوان امکان آماده ارائه نمی‌شوند.</p>
+        <p className="solutions-intro">این موارد هنوز آماده نیستند و به‌عنوان امکان فعلی محصول ارائه نمی‌شوند.</p>
         <div className="solutions-roadmap">{ROADMAP.map((item) => <article key={item.title}>
-          <span className="solutions-badge">در نقشه راه</span>
+          <span className="solutions-badge">هنوز آماده نیست</span>
           <Icon name={item.icon} size={26}/>
           <h3>{item.title}</h3>
           <p>{item.text}</p>
@@ -305,13 +360,21 @@ export default function Solutions() {
       <section className="site-section solutions-start-section"><div className="site-container">
         <h2>شروع همکاری با یک جلسه معرفی</h2>
         <p className="solutions-intro">برای شناخت محصول و تصمیم‌گیری درباره بهره‌برداری، همکاری با یک جلسه معرفی و نمایش عملی صداسنج آغاز می‌شود.</p>
-        <ol className="solutions-steps">{STEPS.map((step, index) => <li key={step}>
-          <span className="solutions-step-num">{index + 1}</span>
-          <span>{step}</span>
-        </li>)}</ol>
-        <div className="solutions-notes">
-          <p>پیشنهاد می‌شود شاخص‌های موفقیت پیش از اجرا تعریف شوند؛ برای نمونه زمان تهیه گزارش روزانه، پوشش ارزیابی مکالمات، کیفیت خروجی صورت‌جلسات و میزان مفید بودن گزارش‌ها برای مدیران. این شاخص‌ها پیشنهادی‌اند و به معنای تضمین نتیجه نیستند.</p>
-          <p>در مدل اختصاصی، تهیه سخت‌افزار و نصب مدل‌ها هزینه‌بر است؛ از این‌رو دوره آزمایشی رایگان برای این مدل پیشنهاد پیش‌فرض نیست. کیفیت محصول با نمونه‌های واقعی دارای مجوز نمایش قابل ارزیابی است و شرایط هرگونه پایلوت جداگانه توافق خواهد شد.</p>
+        <div className="solutions-start">
+          <ol className="solutions-steps">{STEPS.map((step, index) => <li key={step}>
+            <span className="solutions-step-num">{index + 1}</span>
+            <span>{step}</span>
+          </li>)}</ol>
+          <aside className="solutions-notes">
+            <div>
+              <h3>ارزیابی موفقیت همکاری</h3>
+              <p>شاخص‌های موفقیت بهتر است پیش از اجرا تعریف شوند؛ برای نمونه زمان تهیه گزارش روزانه، پوشش ارزیابی مکالمات، کیفیت خروجی صورت‌جلسات و میزان مفید بودن گزارش‌ها برای مدیران. این شاخص‌ها پیشنهادی‌اند و به معنای تضمین نتیجه نیستند.</p>
+            </div>
+            <div>
+              <h3>ملاحظات اجرای آزمایشی</h3>
+              <p>در مدل اختصاصی، تهیه سخت‌افزار و نصب مدل‌ها هزینه‌بر است؛ از این‌رو دوره آزمایشی رایگان برای این مدل پیشنهاد پیش‌فرض نیست. کیفیت محصول با نمونه‌های واقعی دارای مجوز نمایش قابل ارزیابی است و شرایط هرگونه پایلوت جداگانه توافق خواهد شد.</p>
+            </div>
+          </aside>
         </div>
       </div></section>
 

@@ -2,37 +2,62 @@
    tokens and primitives in Landing.css; only the grids and the roadmap badge
    are new. Colours always come from tokens so dark mode keeps working. */
 
-.solutions-page .solutions-hero { padding-block: 88px 72px; }
-.solutions-hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); align-items: center; gap: 64px; }
-
-.solutions-snapshot { padding: 28px 26px; border: 1px solid var(--site-border); background: var(--site-canvas); }
-.solutions-snapshot-title {
-  margin: 0 0 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--site-border);
-  color: var(--site-muted);
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: .02em;
+/* One spacing scale for the whole page: inner card padding, gaps between cards
+   and the space between a section heading and its content. */
+.solutions-page {
+  --sol-pad-x: 26px;
+  --sol-pad-y: 28px;
+  --sol-gap: 20px;
+  --sol-block: 40px;
+  --sol-intro-gap: 12px;
+  --sol-text-gap: 12px;
+  --sol-section-pad: 72px;
+  --sol-note-gap: 32px;
 }
-.solutions-snapshot ul { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
-.solutions-snapshot li { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; gap: 12px; }
-.solutions-snapshot svg { color: var(--site-primary); margin-top: 5px; }
-.solutions-snapshot li > span { display: grid; gap: 2px; font-size: 14px; font-weight: 600; }
-.solutions-snapshot small { color: var(--site-muted); font-size: 12.5px; font-weight: 400; line-height: 1.9; }
-.solutions-snapshot-note { margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--site-border); color: var(--site-muted); font-size: 12.5px; line-height: 2; }
+@media (max-width: 760px) {
+  .solutions-page {
+    --sol-pad-x: 20px;
+    --sol-pad-y: 24px;
+    --sol-gap: 16px;
+    --sol-block: 28px;
+    --sol-intro-gap: 10px;
+    --sol-section-pad: 48px;
+    --sol-note-gap: 24px;
+  }
+}
+.solutions-page .site-section { padding-block: var(--sol-section-pad); }
+
+/* Same backdrop and canvas fade as the landing hero, with the copy sitting in
+   the strong side of the gradient. */
+.solutions-hero { min-height: clamp(460px, 62svh, 660px); padding: 72px 0 88px; }
+/* This artwork reads correctly unmirrored: the whiteboard stays on the left,
+   away from the copy. */
+.solutions-hero .site-hero-backdrop { transform: none; }
+.solutions-hero-inner { display: grid; justify-items: start; }
 .solutions-title { max-width: 18ch; margin: 0; }
-.solutions-lead {
-  max-width: 660px;
-  margin: 22px 0 0;
+.solutions-page .solutions-lead {
+  max-width: 560px;
+  margin: 24px 0 0;
   color: var(--site-muted);
   font-size: 16.5px;
   line-height: 2.15;
 }
+.solutions-hero-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 40px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.solutions-hero-points li { display: inline-flex; align-items: center; gap: 8px; color: var(--site-muted); font-size: 13px; }
+.solutions-hero-points svg { flex: none; color: var(--site-primary); }
 
-.solutions-intro {
-  max-width: 760px;
-  margin: 16px auto 0;
+/* `.marketing-site p` zeroes the margin with higher specificity, so the block
+   needs the page prefix to stay centred. */
+.solutions-page .solutions-intro {
+  max-width: 720px;
+  margin: var(--sol-intro-gap) auto 0;
   color: var(--site-muted);
   font-size: 15px;
   line-height: 2.1;
@@ -44,10 +69,10 @@
 .solutions-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 44px;
+  margin-top: var(--sol-block);
   border: 1px solid var(--site-border);
 }
-.solutions-pair > article { padding: 40px 36px; }
+.solutions-pair > article { padding: var(--sol-pad-y) var(--sol-pad-x); }
 .solutions-pair > article + article { border-inline-start: 1px solid var(--site-border); }
 .solutions-pair svg,
 .solutions-capabilities svg,
@@ -56,7 +81,7 @@
 .solutions-model svg,
 .solutions-access > svg,
 .solutions-industries svg,
-.solutions-roles svg { color: var(--site-primary); }
+.solutions-role-card svg { color: var(--site-primary); }
 .solutions-pair h3,
 .solutions-capabilities h3,
 .solutions-deploy h3,
@@ -64,7 +89,7 @@
 .solutions-model h3,
 .solutions-access h3,
 .solutions-industries h3,
-.solutions-roles h3 { margin: 16px 0 0; }
+.solutions-role-card h3 { margin: 16px 0 0; }
 .solutions-pair p,
 .solutions-capabilities p,
 .solutions-deploy p,
@@ -72,7 +97,7 @@
 .solutions-model p,
 .solutions-access p,
 .solutions-industries p,
-.solutions-roles p { margin-top: 12px; color: var(--site-muted); font-size: 14.5px; line-height: 2.05; }
+.solutions-role-card p { margin-top: var(--sol-text-gap); color: var(--site-muted); font-size: 14.5px; line-height: 2.05; }
 
 .solutions-pair ul,
 .solutions-capabilities ul { display: grid; gap: 10px; margin: 22px 0 0; padding: 0; list-style: none; }
@@ -93,70 +118,117 @@
 .solutions-flow {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 44px 0 0;
+  margin: var(--sol-block) 0 0;
   padding: 0;
   border: 1px solid var(--site-border);
   list-style: none;
 }
-.solutions-flow li { display: grid; gap: 8px; padding: 28px 24px; }
-.solutions-flow li + li { border-inline-start: 1px solid var(--site-border); }
-.solutions-flow-num {
+/* Extra top room so the step number fits above the title. */
+.solutions-flow li {
+  position: relative;
   display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--site-border);
+  gap: 8px;
+  padding: calc(var(--sol-pad-y) + 30px) var(--sol-pad-x) var(--sol-pad-y);
+}
+.solutions-flow li + li { border-inline-start: 1px solid var(--site-border); }
+/* Large faded step number inside the card, top-right corner, with the title
+   starting below it. */
+.solutions-flow-num {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-start: var(--sol-pad-x);
   color: var(--site-primary);
-  font-size: 14px;
-  font-weight: 700;
+  background: linear-gradient(to bottom, var(--site-primary) 0%, transparent 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 54px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: .55;
+  pointer-events: none;
 }
 .solutions-flow strong { font-size: 15px; }
 .solutions-flow li > span:last-child { color: var(--site-muted); font-size: 13.5px; line-height: 2; }
 
 /* Card grids. */
-.solutions-roles,
 .solutions-industries,
 .solutions-capabilities,
 .solutions-deploy,
 .solutions-roadmap,
 .solutions-model {
   display: grid;
-  gap: 20px;
-  margin-top: 40px;
+  gap: var(--sol-gap);
+  margin-top: var(--sol-block);
 }
-.solutions-roles { grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); }
-.solutions-industries { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.solutions-industries { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .solutions-capabilities { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .solutions-deploy { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .solutions-roadmap { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .solutions-model { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
-.solutions-roles > article,
 .solutions-industries > article,
 .solutions-capabilities > article,
 .solutions-deploy > article,
 .solutions-roadmap > article,
 .solutions-model > article {
-  padding: 28px 26px;
+  padding: var(--sol-pad-y) var(--sol-pad-x);
   border: 1px solid var(--site-border);
   background: var(--site-canvas);
 }
 
 .solutions-capabilities > article { display: flex; flex-direction: column; }
+/* An odd last card fills the row instead of leaving a gap. */
+.solutions-capabilities > article:last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
+@media (max-width: 1080px) {
+  .solutions-capabilities > article:last-child:nth-child(2n + 1) { grid-column: 1 / -1; }
+}
+.solutions-capabilities > article:last-child:nth-child(3n + 1) p { max-width: 78ch; }
+.solutions-capabilities > article:last-child:nth-child(3n + 1) ul { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+
+/* Audiences: the same carousel as the related-articles block, with its arrows
+   floating on the right and left edges, vertically centred. */
+.solutions-roles-carousel { position: relative; margin-top: var(--sol-block); }
+.solutions-carousel-arrows { position: absolute; inset: 0; pointer-events: none; }
+.solutions-carousel-arrows button {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  background: var(--site-canvas);
+  pointer-events: auto;
+}
+.solutions-carousel-arrows button:first-child { inset-inline-start: 8px; }
+.solutions-carousel-arrows button:last-child { inset-inline-end: 8px; }
+/* Half of the next card stays visible, so the row reads as continuing. */
+.solutions-roles-carousel .related-article-slot { flex: 0 0 calc((100% - 72px) / 3.5); }
+@media (max-width: 900px) {
+  .solutions-roles-carousel .related-article-slot { flex-basis: calc((100% - 48px) / 2.5); }
+}
+@media (max-width: 600px) {
+  .solutions-roles-carousel .related-article-slot { flex-basis: 78%; }
+}
+.solutions-role-card {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sol-pad-y) var(--sol-pad-x);
+  border: 1px solid var(--site-border);
+  background: var(--site-canvas);
+}
 
 .solutions-access {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 22px;
-  margin-top: 20px;
-  padding: 30px 28px;
+  gap: var(--sol-gap);
+  margin-top: var(--sol-block);
+  padding: var(--sol-pad-y) var(--sol-pad-x);
   border: 1px solid var(--site-border);
 }
 .solutions-access h3 { margin-top: 4px; }
 
-.solutions-note {
+.solutions-page .solutions-note {
   max-width: 900px;
-  margin-top: 26px;
+  margin-top: var(--sol-note-gap);
   color: var(--site-muted);
   font-size: 13.5px;
   line-height: 2.1;
@@ -167,42 +239,65 @@
 .solutions-badge {
   position: absolute;
   inset-block-start: 0;
-  inset-inline-start: 0;
+  inset-inline-end: 0;
   padding: 3px 10px;
   border: 1px solid var(--site-border);
   border-block-start: 0;
-  border-inline-start: 0;
+  border-inline-end: 0;
   background: var(--site-canvas);
   color: var(--site-muted);
   font-size: 11.5px;
   font-weight: 700;
 }
-.solutions-roadmap small { display: block; margin-top: 12px; color: var(--site-muted); font-size: 12.5px; line-height: 1.95; }
+.solutions-roadmap small { display: block; margin-top: var(--sol-text-gap); color: var(--site-muted); font-size: 12.5px; line-height: 1.95; }
 
-/* Start of cooperation: a vertical numbered list. */
-.solutions-steps { margin: 40px 0 0; padding: 0; list-style: none; }
+/* Start of cooperation: a timeline of steps next to a panel of notes. */
+.solutions-start {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  align-items: start;
+  gap: var(--sol-block);
+  margin-top: var(--sol-block);
+}
+.solutions-steps { position: relative; margin: 0; padding: 0; list-style: none; }
+.solutions-steps::before {
+  position: absolute;
+  inset-block: 18px;
+  inset-inline-start: 16px;
+  width: 1px;
+  background: var(--site-border);
+  content: "";
+}
 .solutions-steps li {
   display: grid;
-  grid-template-columns: 40px 1fr;
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: start;
-  gap: 18px;
-  padding: 20px 0;
-  border-top: 1px solid var(--site-border);
+  gap: var(--sol-gap);
+  padding-bottom: var(--sol-gap);
 }
-.solutions-steps li:last-child { border-bottom: 1px solid var(--site-border); }
+.solutions-steps li:last-child { padding-bottom: 0; }
 .solutions-step-num {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 34px;
   height: 34px;
   border: 1px solid var(--site-border);
+  background: var(--site-canvas);
   color: var(--site-primary);
   font-size: 14px;
   font-weight: 700;
 }
-.solutions-steps li > span:last-child { font-size: 15px; line-height: 2.05; }
+.solutions-steps li > span:last-child { padding-top: 4px; font-size: 15px; line-height: 2.05; }
 
-.solutions-notes { display: grid; gap: 18px; margin-top: 32px; }
+.solutions-notes {
+  padding: var(--sol-pad-y) var(--sol-pad-x);
+  border: 1px solid var(--site-border);
+  background: var(--site-canvas);
+}
+.solutions-notes > div + div { margin-top: var(--sol-gap); padding-top: var(--sol-gap); border-top: 1px solid var(--site-border); }
+.solutions-notes h3 { margin: 0 0 8px; font-size: 15px; }
 .solutions-notes p { color: var(--site-muted); font-size: 13.5px; line-height: 2.1; }
 
 @media (max-width: 1080px) {
@@ -212,19 +307,20 @@
 }
 
 @media (max-width: 900px) {
-  .solutions-hero-grid { grid-template-columns: 1fr; gap: 40px; }
-  .solutions-snapshot { max-width: 520px; }
   .solutions-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .solutions-flow li:nth-child(3) { border-inline-start: 0; }
   .solutions-flow li:nth-child(n + 3) { border-top: 1px solid var(--site-border); }
 }
 
 @media (max-width: 760px) {
-  .solutions-page .solutions-hero { padding-block: 56px 48px; }
-  .solutions-snapshot { max-width: none; }
+  .solutions-hero { min-height: 0; padding: var(--sol-section-pad) 0 calc(var(--sol-section-pad) + 8px); }
+  /* The artwork is a texture here, not a backdrop: text sits on top of it. */
+  .solutions-hero::after { background: linear-gradient(to bottom, rgb(var(--color-canvas-rgb) / .97) 0%, rgb(var(--color-canvas-rgb) / .9) 55%, rgb(var(--color-canvas-rgb) / .82) 100%); }
   .solutions-lead { font-size: 15px; }
+  .solutions-hero .site-actions { display: grid; grid-template-columns: 1fr; gap: var(--sol-text-gap); width: 100%; margin-top: var(--sol-block); }
+  .solutions-hero .site-actions .site-button { width: 100%; }
+  .solutions-hero-points { display: grid; gap: var(--sol-text-gap); margin-top: var(--sol-block); }
   .solutions-pair { grid-template-columns: 1fr; }
-  .solutions-pair > article { padding: 30px 24px; }
   .solutions-pair > article + article { border-inline-start: 0; border-top: 1px solid var(--site-border); }
   .solutions-flow { grid-template-columns: 1fr; }
   .solutions-flow li + li { border-inline-start: 0; border-top: 1px solid var(--site-border); }
@@ -233,6 +329,10 @@
   .solutions-industries,
   .solutions-roadmap,
   .solutions-model { grid-template-columns: 1fr; }
-  .solutions-access { grid-template-columns: 1fr; gap: 12px; padding: 24px 22px; }
-  .solutions-steps li { grid-template-columns: 34px 1fr; gap: 14px; }
+  .solutions-capabilities > article:last-child:nth-child(3n + 1) ul { grid-template-columns: 1fr; }
+  .solutions-access { grid-template-columns: 1fr; gap: var(--sol-text-gap); }
+  .solutions-start { grid-template-columns: 1fr; gap: var(--sol-gap); }
+  .solutions-steps li { grid-template-columns: 34px 1fr; }
+  .solutions-carousel-arrows button:first-child { inset-inline-start: 4px; }
+  .solutions-carousel-arrows button:last-child { inset-inline-end: 4px; }
 }
