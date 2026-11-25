@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-25 — AMINAZADI
+
+- Changed the Jalase-Negar release version to 1.1.9 (build 18) for the next release builds.
+- Fixed Jalase-Negar iOS release dependency resolution by setting the minimum iOS version to 14.0, as required by the installed file picker plugin.
+
 ## 2026-11-22 — AMINAZADI
 
 - Fixed the assistant socket taking a long time to connect (or never connecting): the API container ran uvicorn with `--workers 2`, but Socket.IO/Engine.IO keeps session state per process and the proxy has no sticky routing, so polling and websocket upgrades landed on a worker that did not know the session and failed with `Invalid session`. The API now runs with `--workers 1` (`sedasanj/deploy/Dockerfile.api`). Test: `sedasanj/tests/test_api_container_workers.py`. API HTTP capacity per container is halved; scale horizontally or add sticky routing if that becomes a bottleneck.

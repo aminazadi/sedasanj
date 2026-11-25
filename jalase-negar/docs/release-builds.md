@@ -27,7 +27,7 @@ scripts/build-jalase-negar-release.sh android  # فقط اندروید
 
 - **سیب‌اپ:** طبق [مقالهٔ زومیت دربارهٔ SibApp Export](https://www.zoomit.ir/tech-iran/410578-sib-app-export) (مهر ۱۴۰۲) ابزار SibApp Export از آرشیو Xcode فایل IPA مناسب استورهای ادهاک می‌سازد و آن را در پنل توسعه‌دهندهٔ سیب‌اپ بارگذاری می‌کنید. ⚠ مقاله حدود سه سال قدمت دارد؛ روش فعلی را از پنل سیب‌اپ تأیید کنید.
 - **اناردونی:** مستندات عمومی پیدا نشد؛ پنل `developer.anardoni.com` پشت ورود است. ⚠ نوع فایل (IPA امضاشده یا بدون امضا) و قوانین بررسی را از پنل یا پشتیبانی اناردونی بپرسید.
-- حداقل iOS برابر `IPHONEOS_DEPLOYMENT_TARGET` پروژه است. شناسهٔ بسته: `app.jalasenegar.jalaseNegar`.
+- حداقل iOS از نسخهٔ `1.1.9+18` برابر `14.0` است؛ افزونهٔ `file_picker_darwin` این حداقل را نیاز دارد. مقدار `platform` در `ios/Podfile`، مقدار `IPHONEOS_DEPLOYMENT_TARGET` پروژه و مقدار `MinimumOSVersion` در `ios/Flutter/AppFrameworkInfo.plist` باید هماهنگ باشند. اگر `pod install` خطای حداقل نسخه داد، این سه مقدار را با حداقل اعلام‌شده در فایل `podspec` افزونه تطبیق دهید و بیلد را دوباره اجرا کنید. شناسهٔ بسته: `app.jalasenegar.jalaseNegar`.
 - `ios/Podfile` نام فریم‌ورک `sherpa-onnx` را به `SherpaOnnxC` اصلاح می‌کند؛ بدون آن لینک و embed شکست می‌خورد. بعد از ارتقای `sherpa_onnx` بررسی کنید هنوز لازم است.
 - بیلد iOS به نصب «iOS platform» در Xcode نیاز دارد (`xcodebuild -downloadPlatform iOS`).
 
