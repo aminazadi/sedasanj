@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme.dart';
@@ -222,83 +223,116 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
     }
   }
 
+  /// Plans and packs are public, so anyone can look; only buying needs an account. A signed-out
+  /// user who taps a buy button is sent to sign in and comes back to this screen.
+  void _select({required bool personal, String? planCode, String? packageId}) {
+    if (!personal) {
+      unawaited(
+        SsToastHost.show(context, 'برای خرید ابتدا وارد حساب خود شوید.'),
+      );
+      context.push('/login?back=1');
+      return;
+    }
+    _buy(planCode: planCode, packageId: packageId);
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Plans and packs come from the public catalogue, so they show without an account. Only
-    // the usage of this account and buying need a signed-in personal account.
     final personal =
         ref.watch(connectionControllerProvider).value?.connection?.personal ??
         false;
     final plans = ref.watch(plansProvider);
     final packs = ref.watch(tokenPackagesProvider);
+    final canBuy = widget.canBuy;
     return Scaffold(
       appBar: SsAppBar(title: const Text('پلن و مصرف')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (personal) ...[
-            ref.watch(usageProvider).when(
-              loading: () => const SsCard(child: Text('…')),
-              error: (e, _) => SsCard(child: Text(_errorText(e))),
-              data: (u) => _UsageCard(usage: u),
-            ),
-            const SizedBox(height: 12),
-          ],
-          const SsSectionTitle(title: 'پلن‌ها'),
+          if (personal)
+            ref
+                .watch(usageProvider)
+                .when(
+                  loading: () => const _LoadingCard(),
+                  error: (e, _) => _ErrorCard(
+                    message: _errorText(e),
+                    onRetry: () => ref.invalidate(usageProvider),
+                  ),
+                  data: (u) => _UsageCard(usage: u),
+                )
+          else
+            const _SignedOutCard(),
+          const SizedBox(height: 24),
+          const _SectionHeading(
+            title: 'پلن‌ها',
+            caption: 'ساعت جلسهٔ هر پلن هر ماه دوباره شارژ می‌شود.',
+          ),
           plans.when(
-            loading: () => const SsCard(child: Text('…')),
-            error: (e, _) => SsCard(child: Text(_errorText(e))),
+            loading: () => const _LoadingCard(),
+            error: (e, _) => _ErrorCard(
+              message: _errorText(e),
+              onRetry: () => ref.invalidate(plansProvider),
+            ),
             data: (p) => Column(
               children: [
-                if (p.free != null) _PlanCard(plan: p.free!, onBuy: null),
+                if (p.free != null)
+                  _PlanCard(plan: p.free!, busy: _busy, onChoose: null),
                 for (final plan in p.plans)
                   _PlanCard(
                     plan: plan,
-                    onBuy: !widget.canBuy || !personal || _busy
-                        ? null
-                        : () => _buy(planCode: plan.code),
-                    showBuy: widget.canBuy && personal,
+                    busy: _busy,
+                    onChoose: plan.buyable && canBuy
+                        ? () => _select(personal: personal, planCode: plan.code)
+                        : null,
                   ),
               ],
             ),
           ),
-          if (!personal)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'برای خرید پلن یا بسته‌ی ساعت اضافه، ابتدا وارد حساب شوید.',
-                textAlign: TextAlign.center,
-              ),
-            ),
           const SizedBox(height: 12),
-          const SsSectionTitle(title: 'ساعت اضافه'),
+          const _SectionHeading(
+            title: 'ساعت اضافه',
+            caption:
+                'پس از ساعت‌های ماهانه مصرف می‌شود و تمام نمی‌شود مگر با استفاده.',
+          ),
           packs.when(
-            loading: () => const SsCard(child: Text('…')),
-            error: (e, _) => SsCard(child: Text(_errorText(e))),
+            loading: () => const _LoadingCard(),
+            error: (e, _) => _ErrorCard(
+              message: _errorText(e),
+              onRetry: () => ref.invalidate(tokenPackagesProvider),
+            ),
             data: (items) => items.isEmpty
                 ? const SsCard(
                     child: Text('فعلاً بستهٔ ساعت اضافه‌ای در دسترس نیست.'),
                   )
-                : Column(
-                    children: [
-                      for (final pack in items)
-                        SsCard(
-                          title: '${hoursText(pack.hours)} ساعت',
-                          trailing: FilledButton(
-                            onPressed: !widget.canBuy || _busy
-                                ? null
-                                : () => _buy(packageId: pack.id),
-                            child: Text(tomanText(pack.priceToman)),
-                          ),
-                          child: const Text(
-                            'پس از ساعت‌های ماهانه مصرف می‌شود و تمام نمی‌شود مگر با استفاده.',
-                          ),
-                        ),
-                    ],
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      const gap = 12.0;
+                      final width = (constraints.maxWidth - gap) / 2;
+                      return Wrap(
+                        spacing: gap,
+                        runSpacing: gap,
+                        children: [
+                          for (final pack in items)
+                            SizedBox(
+                              width: width,
+                              child: _PackTile(
+                                pack: pack,
+                                busy: _busy,
+                                onChoose: canBuy
+                                    ? () => _select(
+                                        personal: personal,
+                                        packageId: pack.id,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
           ),
-          const SizedBox(height: 8),
-          if (!widget.canBuy)
+          const SizedBox(height: 20),
+          if (!canBuy)
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
               child: Text(
@@ -315,6 +349,136 @@ class _PlansScreenState extends ConsumerState<PlansScreen>
   }
 }
 
+/// A section's title with a one-line caption under it.
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title, required this.caption});
+
+  final String title;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SsColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(color: colors.primary),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            caption,
+            style: theme.textTheme.bodySmall?.copyWith(color: colors.neutral),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadingCard extends StatelessWidget {
+  const _LoadingCard();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.only(bottom: 12),
+    child: SsCard(
+      child: SizedBox(
+        height: 72,
+        child: Center(child: SsProcessingMark(size: 28)),
+      ),
+    ),
+  );
+}
+
+/// A failed load, with the reason and a retry (every error names an action).
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: SsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                size: 22,
+                color: SsColors.of(context).danger,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('تلاش دوباره'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Shown instead of the usage card while signed out: browsing is open, buying needs an account.
+class _SignedOutCard extends StatelessWidget {
+  const _SignedOutCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SsColors.of(context);
+    return SsCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: colors.selected,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.auto_awesome, color: colors.primary),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'پلن مناسب خود را ببینید',
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'برای خرید و دیدن میزان مصرف، وارد حساب شوید.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.neutral,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _UsageCard extends StatelessWidget {
   const _UsageCard({required this.usage});
 
@@ -322,48 +486,112 @@ class _UsageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SsColors.of(context);
     if (usage.unlimited) {
-      return const SsCard(
-        title: 'مصرف',
-        child: Text('پلن شما محدودیت ساعتی ندارد.'),
+      return SsCard(
+        child: Row(
+          children: [
+            Icon(Icons.all_inclusive, size: 36, color: colors.primary),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'پلن شما محدودیت ساعتی ندارد.',
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+          ],
+        ),
       );
     }
     final fraction = usage.planHours <= 0
         ? 0.0
         : (usage.planRemainingHours / usage.planHours).clamp(0.0, 1.0);
-    final resets = usage.resetsAt;
+    final resets = usage.resetsAt?.toLocal();
+    final tone = usage.exhausted ? colors.danger : colors.primary;
     return SsCard(
-      title: 'حدود ${hoursText(usage.remainingHours)} ساعت جلسه باقی مانده',
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          LinearProgressIndicator(
-            value: fraction,
-            minHeight: 10,
-            color: usage.exhausted
-                ? SsColors.of(context).danger
-                : SsColors.of(context).primary,
-            backgroundColor: SsColors.of(context).selected,
+          Row(
+            children: [
+              SizedBox(
+                width: 92,
+                height: 92,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox.expand(
+                      child: CircularProgressIndicator(
+                        value: fraction,
+                        strokeWidth: 9,
+                        strokeCap: StrokeCap.round,
+                        color: tone,
+                        backgroundColor: colors.selected,
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          hoursText(usage.remainingHours),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: tone,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text('ساعت', style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'حدود ${hoursText(usage.remainingHours)} ساعت جلسه باقی مانده',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'سهمیهٔ این ماه: ${hoursText(usage.planRemainingHours)} از '
+                      '${hoursText(usage.planHours)} ساعت',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (usage.bonusHours > 0)
+                      Text(
+                        'ساعت اضافه: ${hoursText(usage.bonusHours)}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            'سهمیهٔ این ماه: ${hoursText(usage.planRemainingHours)} از '
-            '${hoursText(usage.planHours)} ساعت',
-          ),
-          if (usage.bonusHours > 0)
-            Text(
-              'ساعت اضافه (خریداری‌شده یا هدیه): ${hoursText(usage.bonusHours)}',
+          if (resets != null) ...[
+            const SizedBox(height: 12),
+            Divider(height: 1, color: colors.line),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.event_repeat, size: 16, color: colors.neutral),
+                const SizedBox(width: 6),
+                Text(
+                  'شارژ ماهانه بعدی: ${toPersianDigits('${resets.year}/${resets.month}/${resets.day}')} (میلادی)',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
             ),
-          if (resets != null)
-            Text(
-              'شارژ ماهانه بعدی: ${toPersianDigits('${resets.toLocal().year}/${resets.toLocal().month}/${resets.toLocal().day}')} (میلادی)',
-            ),
+          ],
           if (usage.exhausted)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: 10),
               child: Text(
                 'ساعت‌هایتان تمام شده است؛ پلن را ارتقا دهید یا ساعت اضافه بخرید.',
-                style: TextStyle(color: SsColors.of(context).danger),
+                style: TextStyle(color: colors.danger),
               ),
             ),
         ],
@@ -372,32 +600,145 @@ class _UsageCard extends StatelessWidget {
   }
 }
 
+/// One big number with its caption under it.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.value, required this.caption});
+
+  final String value;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: theme.textTheme.titleLarge?.copyWith(
+            color: SsColors.of(context).primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        Text(
+          caption,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: SsColors.of(context).neutral,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
-    required this.onBuy,
-    this.showBuy = true,
+    required this.busy,
+    required this.onChoose,
   });
 
-  final bool showBuy;
   final PlanInfo plan;
-  final VoidCallback? onBuy;
+  final bool busy;
+
+  /// Null: no buy button (the free plan, a plan that is not for sale, or iOS).
+  final VoidCallback? onChoose;
 
   @override
   Widget build(BuildContext context) {
     final hours = plan.monthlyHours;
+    final free = plan.monthlyPriceToman == 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SsCard(
+        title: plan.name,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _Figure(
+                    value: hours == null ? 'نامحدود' : hoursText(hours),
+                    caption: 'ساعت جلسه در ماه',
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: SsColors.of(context).line,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _Figure(
+                    value: free ? 'رایگان' : tomanText(plan.monthlyPriceToman),
+                    caption: free ? 'بدون هزینه' : 'در ماه',
+                  ),
+                ),
+              ],
+            ),
+            if (onChoose != null) ...[
+              const SizedBox(height: 14),
+              FilledButton(
+                onPressed: busy ? null : onChoose,
+                child: const Text('خرید'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PackTile extends StatelessWidget {
+  const _PackTile({
+    required this.pack,
+    required this.busy,
+    required this.onChoose,
+  });
+
+  final PackInfo pack;
+  final bool busy;
+
+  /// Null on iOS: the price is shown without a button.
+  final VoidCallback? onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SsColors.of(context);
+    final price = tomanText(pack.priceToman);
     return SsCard(
-      title: plan.name,
-      trailing: plan.buyable && showBuy
-          ? FilledButton(onPressed: onBuy, child: const Text('خرید'))
-          : null,
-      child: Text(
-        [
-          if (hours != null) '${hoursText(hours)} ساعت جلسه در ماه',
-          plan.monthlyPriceToman == 0
-              ? 'رایگان'
-              : '${tomanText(plan.monthlyPriceToman)} در ماه',
-        ].join(' · '),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(Icons.bolt, color: colors.accent, size: 26),
+          const SizedBox(height: 4),
+          Text(
+            hoursText(pack.hours),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: colors.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            'ساعت اضافه',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(color: colors.neutral),
+          ),
+          const SizedBox(height: 12),
+          if (onChoose != null)
+            FilledButton(onPressed: busy ? null : onChoose, child: Text(price))
+          else
+            Text(
+              price,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall,
+            ),
+        ],
       ),
     );
   }

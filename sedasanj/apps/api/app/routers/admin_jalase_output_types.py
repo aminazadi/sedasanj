@@ -20,11 +20,21 @@ from app.services import jalase_output_types as types
 router = APIRouter(prefix="/v1/admin/jalase/output-types", tags=["admin"])
 
 
+def _checked_icon(icon: str) -> str:
+    if icon not in types.MENU_ICONS:
+        raise ApiError(
+            "output_type_icon_invalid",
+            "آیکن انتخاب‌شده در فهرست آیکن‌ها نیست؛ یکی از فهرست را انتخاب کنید.",
+        )
+    return icon
+
+
 class TypeCreate(BaseModel):
     code: str = Field(pattern=r"^[a-z][a-z0-9_]{1,39}$")
     title_fa: str = Field(min_length=2, max_length=120)
     description_fa: str = Field(default="", max_length=500)
     menu_label_fa: str = Field(min_length=2, max_length=60)
+    icon: str = Field(default=types.DEFAULT_MENU_ICON, max_length=40)
     thumbnail_media_id: UUID | None = None
     sort_order: int | None = Field(default=None, ge=0, le=100000)
 
@@ -33,6 +43,7 @@ class TypeUpdate(BaseModel):
     title_fa: str | None = Field(default=None, min_length=2, max_length=120)
     description_fa: str | None = Field(default=None, max_length=500)
     menu_label_fa: str | None = Field(default=None, min_length=2, max_length=60)
+    icon: str | None = Field(default=None, max_length=40)
     thumbnail_media_id: UUID | None = None
     clear_thumbnail: bool = False
     sort_order: int | None = Field(default=None, ge=0, le=100000)
@@ -72,6 +83,7 @@ def _type_out(
         "title_fa": output_type.title_fa,
         "description_fa": output_type.description_fa,
         "menu_label_fa": output_type.menu_label_fa,
+        "icon": output_type.icon,
         "thumbnail_url": types.thumbnail_url(output_type.thumbnail_media_id),
         "thumbnail_media_id": (
             str(output_type.thumbnail_media_id) if output_type.thumbnail_media_id else None
@@ -148,6 +160,7 @@ async def create_type(
         title_fa=payload.title_fa.strip(),
         description_fa=payload.description_fa.strip(),
         menu_label_fa=payload.menu_label_fa.strip(),
+        icon=_checked_icon(payload.icon),
         thumbnail_media_id=payload.thumbnail_media_id,
         sort_order=payload.sort_order
         if payload.sort_order is not None
@@ -181,6 +194,8 @@ async def update_type(
     session: StaffSession,
 ) -> dict[str, Any]:
     row = await types.get_type(session, type_id, lock=True)
+    if payload.icon is not None:
+        row.icon = _checked_icon(payload.icon)
     if payload.thumbnail_media_id is not None:
         await _check_thumbnail(session, payload.thumbnail_media_id)
         row.thumbnail_media_id = payload.thumbnail_media_id

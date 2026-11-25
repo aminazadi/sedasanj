@@ -198,11 +198,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 icon: const Icon(Icons.file_open_outlined),
                 label: const Text('انتخاب فایل کانفیگ'),
                 onPressed: () async {
-                  final res = await FilePicker.pickFiles(
+                  // An empty list means the user cancelled.
+                  final files = await FilePicker.pickFiles(
                     type: FileType.custom,
                     allowedExtensions: const ['json'],
                   );
-                  final path = res?.files.single.path;
+                  final path = files.isEmpty ? null : files.first.path;
                   if (path != null) {
                     controller.connectFromText(await File(path).readAsString());
                   }

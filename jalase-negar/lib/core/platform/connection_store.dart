@@ -84,7 +84,10 @@ class ConnectionStore {
   }
 
   Future<void> save(PlatformConnection connection, String token) async {
-    await _secure.delete(key: _kPushBinding);
+    // Best effort: the binding is checked against the token's hash when it is read, so a stale one
+    // can never match the new token. On macOS without keychain entitlements the plugin's delete
+    // fails with -34018 even for a key that does not exist, and that must not block signing in.
+    await _deleteSecret(_kPushBinding);
     await _secure.write(key: _kTokenKey, value: token);
     await _db.setSetting(_kServerUrl, connection.serverUrl);
     await _db.setSetting(_kUserName, connection.userName);

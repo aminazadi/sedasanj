@@ -7,7 +7,7 @@ import Foundation
 
 import audio_session
 import connectivity_plus
-import file_picker
+import file_picker_darwin
 import firebase_core
 import firebase_messaging
 import flutter_local_notifications

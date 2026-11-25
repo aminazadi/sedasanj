@@ -17,6 +17,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ApiError
 from app.models import JalaseOutputType, JalaseOutputTypeVersion
 
+# Menu icons an admin may pick; the panel maps each name to a bundled icon (web/client Layout.tsx).
+MENU_ICONS = (
+    "sparkles",
+    "notebook-pen",
+    "graduation-cap",
+    "users",
+    "message-square",
+    "mic",
+    "list-checks",
+    "file-text",
+    "book-open",
+    "lightbulb",
+    "layers",
+    "clipboard-list",
+    "scroll-text",
+    "brain",
+    "presentation",
+    "heart-handshake",
+)
+DEFAULT_MENU_ICON = "sparkles"
 FIELD_TYPES = ("text", "select", "number")
 MAX_FIELDS = 8
 MAX_OPTIONS = 20
@@ -196,6 +216,7 @@ async def published_catalog(session: AsyncSession) -> list[dict[str, Any]]:
             "title": output_type.title_fa,
             "description": output_type.description_fa,
             "menu_label": output_type.menu_label_fa,
+            "icon": output_type.icon,
             "thumbnail_url": thumbnail_url(output_type.thumbnail_media_id),
             "mode": version.mode,
             "automatic": output_type.builtin,

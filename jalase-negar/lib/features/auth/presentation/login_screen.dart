@@ -19,9 +19,17 @@ const _otpLength = 6;
 
 /// Phone-number sign-in: mobile → SMS code → (first time only) display name.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, this.serverUrl = kDefaultServerUrl});
+  const LoginScreen({
+    super.key,
+    this.serverUrl = kDefaultServerUrl,
+    this.popOnSuccess = false,
+  });
 
   final String serverUrl;
+
+  /// Set when another screen pushed this one (for example the plans screen asking the user to
+  /// sign in before buying): a successful sign-in returns there instead of opening settings.
+  final bool popOnSuccess;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -60,11 +68,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await action();
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } on Object {
+    } on Object catch (e, st) {
+      debugPrint('login step failed: ${e.runtimeType}: $e\n$st');
       if (mounted) {
         setState(
           () => _error =
-              'خطای پیش‌بینی‌نشده؛ اینترنت را بررسی کنید و دوباره تلاش کنید.',
+              'خطای پیش‌بینی‌نشده؛ اینترنت را بررسی کنید و دوباره تلاش کنید. (JN-AUTH-0001)',
         );
       }
     } finally {
@@ -117,9 +126,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       platform: controller.loginPlatform(),
       appVersion: version,
     );
-    await controller.savePersonal(serverUrl: widget.serverUrl, login: login);
+    try {
+      await controller.savePersonal(serverUrl: widget.serverUrl, login: login);
+    } on Object catch (e, st) {
+      // The server already accepted the sign-in, so this is a failure of this device (keychain,
+      // local database), not of the code the user typed: say so and name the next step.
+      debugPrint('login: saving the account failed: ${e.runtimeType}: $e\n$st');
+      throw const ApiException(
+        message:
+            'ورود در سرور انجام شد، اما ذخیرهٔ حساب روی این دستگاه ناموفق بود؛ برنامه را کامل ببندید، دوباره باز کنید و ورود را تکرار کنید. (JN-AUTH-0002)',
+        code: 'login_save_failed',
+      );
+    }
     if (!mounted) return;
-    context.go('/settings');
+    if (widget.popOnSuccess && context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/settings');
+    }
   }
 
   Future<void> _saveName() => _run(() => _complete(displayName: _name.text));

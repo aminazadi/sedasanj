@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jalase_negar/features/catalog/application/catalog_providers.dart';
 import 'package:jalase_negar/app/widgets/ss_toast.dart';
 import 'package:jalase_negar/core/platform/api_client.dart';
@@ -323,6 +324,93 @@ void main() {
     await tester.pump();
     expect(find.textContaining('نسخهٔ iOS'), findsOneWidget);
   });
+  testWidgets(
+    'a signed-out visitor sees plans and packs; buying asks them to sign in',
+    (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) =>
+                SsToastHost(child: PlansScreen(launcher: (url) async => true)),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (context, state) =>
+                const Scaffold(body: Text('صفحهٔ ورود')),
+          ),
+        ],
+      );
+      // Tall enough that the packs below the plans are built too.
+      await tester.binding.setSurfaceSize(const Size(400, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            plansProvider.overrideWith(
+              (ref) => Stream.value(PlansResult.fromJson(_plans)),
+            ),
+            tokenPackagesProvider.overrideWith(
+              (ref) => Stream.value(const [
+                PackInfo(id: 'pk1', name: 'بسته', hours: 4, priceToman: 160000),
+              ]),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      // Browsing needs no account: plans and packs show, the usage card does not.
+      expect(find.textContaining('۲۸۰٬۰۰۰ تومان'), findsWidgets);
+      expect(find.textContaining('۱۶۰٬۰۰۰ تومان'), findsWidgets);
+      expect(find.textContaining('حدود'), findsNothing);
+      expect(
+        find.text('برای خرید و دیدن میزان مصرف، وارد حساب شوید.'),
+        findsOneWidget,
+      );
+
+      // Choosing is what needs the account.
+      await tester.tap(find.widgetWithText(FilledButton, 'خرید'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('صفحهٔ ورود'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
+    },
+  );
+
+  testWidgets('a failed catalogue shows the reason and can be retried', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          plansProvider.overrideWith((ref) {
+            calls++;
+            return Stream<PlansResult>.error(
+              const ApiException(
+                message:
+                    'فهرست دریافت نشد؛ اینترنت را بررسی کنید و دوباره تلاش کنید.',
+                code: 'catalog_unavailable',
+              ),
+            );
+          }),
+          tokenPackagesProvider.overrideWith((ref) => Stream.value(const [])),
+        ],
+        child: MaterialApp(home: SsToastHost(child: PlansScreen())),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('فهرست دریافت نشد'), findsOneWidget);
+    expect(calls, 1);
+    await tester.tap(find.text('تلاش دوباره'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(calls, 2);
+  });
+
   testWidgets('the progress screen lists badges and sends a friend code', (
     tester,
   ) async {

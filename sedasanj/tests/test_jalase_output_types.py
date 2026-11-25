@@ -64,6 +64,7 @@ def test_error_codes_have_statuses() -> None:
         "output_type_code_taken",
         "output_type_builtin_locked",
         "output_type_invalid",
+        "output_type_icon_invalid",
         "output_type_not_publishable",
     ):
         assert code in ERROR_STATUS
@@ -123,6 +124,14 @@ async def test_seed_has_a_published_builtin_minutes_type_and_draft_categories(
 
 
 @requires_postgres
+def test_menu_icon_is_limited_to_the_allowed_list() -> None:
+    assert admin._checked_icon("brain") == "brain"
+    assert types.DEFAULT_MENU_ICON in types.MENU_ICONS
+    with pytest.raises(ApiError) as caught:
+        admin._checked_icon("<script>")
+    assert caught.value.code == "output_type_icon_invalid"
+
+
 async def test_create_draft_publish_new_version_and_archive(
     cleanup: list[str], admin_staff: SimpleNamespace
 ) -> None:

@@ -56,7 +56,7 @@ class MeetingsFilterButton extends ConsumerWidget {
           ),
       ],
       icon: Icon(
-        Icons.filter_list,
+        Icons.filter_alt_outlined,
         color: active ? SsColors.of(context).primary : null,
       ),
     );

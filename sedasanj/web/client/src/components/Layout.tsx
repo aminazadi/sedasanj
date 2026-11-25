@@ -16,6 +16,19 @@ import volumeOnIcon from "@iconify-icons/lucide/volume-2";
 import logOutIcon from "@iconify-icons/lucide/log-out";
 import menuIcon from "@iconify-icons/lucide/menu";
 import meetingsIcon from "@iconify-icons/lucide/notebook-pen";
+import sparklesIcon from "@iconify-icons/lucide/sparkles";
+import graduationCapIcon from "@iconify-icons/lucide/graduation-cap";
+import usersIcon from "@iconify-icons/lucide/users";
+import messageSquareIcon from "@iconify-icons/lucide/message-square";
+import micIcon from "@iconify-icons/lucide/mic";
+import listChecksIcon from "@iconify-icons/lucide/list-checks";
+import lightbulbIcon from "@iconify-icons/lucide/lightbulb";
+import layersIcon from "@iconify-icons/lucide/layers";
+import clipboardListIcon from "@iconify-icons/lucide/clipboard-list";
+import scrollTextIcon from "@iconify-icons/lucide/scroll-text";
+import brainIcon from "@iconify-icons/lucide/brain";
+import presentationIcon from "@iconify-icons/lucide/presentation";
+import heartHandshakeIcon from "@iconify-icons/lucide/heart-handshake";
 import panelCloseIcon from "@iconify-icons/lucide/panel-right-close";
 import panelOpenIcon from "@iconify-icons/lucide/panel-right-open";
 import phoneIcon from "@iconify-icons/lucide/phone";
@@ -97,6 +110,14 @@ const NAVIGATION: Array<{ label: string; items: NavigationItem[] }> = [
     ],
   },
 ];
+
+// Menu icons an admin can pick for a Jalase-Negar category; keep in sync with MENU_ICONS in the API.
+const CATEGORY_ICONS: Record<string, typeof sparklesIcon> = {
+  sparkles: sparklesIcon, "notebook-pen": meetingsIcon, "graduation-cap": graduationCapIcon, users: usersIcon,
+  "message-square": messageSquareIcon, mic: micIcon, "list-checks": listChecksIcon, "file-text": fileTextIcon,
+  "book-open": bookOpenIcon, lightbulb: lightbulbIcon, layers: layersIcon, "clipboard-list": clipboardListIcon,
+  "scroll-text": scrollTextIcon, brain: brainIcon, presentation: presentationIcon, "heart-handshake": heartHandshakeIcon,
+};
 
 // Category items share the /meetings path with the plain list, so they are told apart by the query string.
 function navItemActive(to: string, pathActive: boolean, search: string) {
@@ -183,10 +204,10 @@ function Sidebar({ closeMenu, collapsed = false, onToggleCollapse, onReplayGuide
   useEffect(() => {
     if (!hasPanelAccess(session, "meetings")) return;
     let cancelled = false;
-    request<{ items: Array<{ code: string; label: string }> }>("/v1/jalase/org-menu")
+    request<{ items: Array<{ code: string; label: string; icon?: string }> }>("/v1/jalase/org-menu")
       .then((menu) => {
         if (cancelled) return;
-        setJalaseItems(menu.items.filter((entry) => entry.code !== "minutes").map((entry) => ({ to: `/meetings?output_type=${encodeURIComponent(entry.code)}`, label: entry.label, icon: meetingsIcon })));
+        setJalaseItems(menu.items.filter((entry) => entry.code !== "minutes").map((entry) => ({ to: `/meetings?output_type=${encodeURIComponent(entry.code)}`, label: entry.label, icon: CATEGORY_ICONS[entry.icon ?? ""] ?? sparklesIcon })));
       })
       .catch(() => { if (!cancelled) setJalaseItems([]); });
     return () => { cancelled = true; };

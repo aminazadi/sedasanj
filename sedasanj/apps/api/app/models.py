@@ -2997,6 +2997,7 @@ class JalaseOutputType(Base):
     title_fa: Mapped[str] = mapped_column(String(120), nullable=False)
     description_fa: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
     menu_label_fa: Mapped[str] = mapped_column(String(60), nullable=False)
+    icon: Mapped[str] = mapped_column(String(40), nullable=False, server_default="sparkles")
     thumbnail_media_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("help_media.id", ondelete="SET NULL")
     )

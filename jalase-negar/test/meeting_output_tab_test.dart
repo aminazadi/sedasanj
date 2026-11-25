@@ -58,23 +58,72 @@ void main() {
     expect(find.text('صورت‌جلسه'), findsNothing);
   });
 
-  testWidgets('keeps the output visible and offers a plan when hours are used up', (
+  testWidgets('the categories open in a drawer beside the sign-in button', (
     tester,
   ) async {
     await _pump(
       tester,
       overrides: [
-        connectionControllerProvider.overrideWith(_Connected.new),
-        usageProvider.overrideWith(
-          (ref) async => const UsageInfo(unlimited: false, exhausted: true),
+        connectionControllerProvider.overrideWith(_Disconnected.new),
+        outputTypesProvider.overrideWith(
+          (ref) => Stream.value(const [
+            OutputTypeInfo(
+              code: 'counseling',
+              title: 'گزارش مشاوره',
+              description: 'خلاصهٔ جلسهٔ مشاوره',
+              automatic: false,
+              fields: [],
+            ),
+            OutputTypeInfo(
+              code: 'sales',
+              title: 'گزارش فروش',
+              description: '',
+              automatic: false,
+              fields: [],
+            ),
+          ]),
         ),
       ],
     );
 
-    expect(find.textContaining('ساعت پلن تمام شده است'), findsOneWidget);
-    expect(find.text('پلن و مصرف'), findsOneWidget);
-    expect(find.text('صورت‌جلسه'), findsOneWidget);
+    // The list is behind a button now, next to «ورود», not spread over the tab.
+    expect(find.text('گزارش مشاوره'), findsNothing);
+    expect(find.text('ورود'), findsOneWidget);
+    expect(find.text('دسته‌های خروجی'), findsOneWidget);
+
+    await tester.tap(find.text('دسته‌های خروجی'));
+    await tester.pumpAndSettle();
+    expect(find.text('گزارش مشاوره'), findsOneWidget);
+    expect(find.text('گزارش فروش'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'فروش');
+    await tester.pumpAndSettle();
+    expect(find.text('گزارش مشاوره'), findsNothing);
+    expect(find.text('گزارش فروش'), findsOneWidget);
+
+    await tester.tap(find.text('بستن'));
+    await tester.pumpAndSettle();
+    expect(find.text('گزارش فروش'), findsNothing);
   });
+
+  testWidgets(
+    'keeps the output visible and offers a plan when hours are used up',
+    (tester) async {
+      await _pump(
+        tester,
+        overrides: [
+          connectionControllerProvider.overrideWith(_Connected.new),
+          usageProvider.overrideWith(
+            (ref) async => const UsageInfo(unlimited: false, exhausted: true),
+          ),
+        ],
+      );
+
+      expect(find.textContaining('ساعت پلن تمام شده است'), findsOneWidget);
+      expect(find.text('پلن و مصرف'), findsOneWidget);
+      expect(find.text('صورت‌جلسه'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'keeps the output visible with a banner when the plan check fails',
