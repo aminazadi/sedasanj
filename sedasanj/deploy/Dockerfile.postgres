@@ -1,11 +1,13 @@
 FROM pgvector/pgvector:0.8.0-pg16-bookworm@sha256:a132765ec351c65111b5b675928a3a0515a466a40f97277329db8b8209ad8bc9
 
 ARG AGE_COMMIT=2db2f060c4c9265a14d40f007eb8c56febf31e4c
+ARG APT_DEBIAN_MIRRORS=
+ARG APT_DEBIAN_SECURITY_MIRRORS=
 
 COPY deploy/postgres/healthcheck.sh /usr/local/bin/age-healthcheck
+COPY deploy/apt-debian-mirrors.sh /usr/local/bin/apt-debian-mirrors
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN /usr/local/bin/apt-debian-mirrors \
         build-essential ca-certificates flex bison git libreadline-dev postgresql-server-dev-16 zlib1g-dev \
     && git clone https://github.com/apache/age.git /tmp/age \
     && git -C /tmp/age checkout "${AGE_COMMIT}" \

@@ -7,6 +7,8 @@ ARG PIP_DEFAULT_TIMEOUT=600
 ARG PIP_FALLBACK_INDEX_URLS="https://mirrors.aliyun.com/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG TARGETARCH
+ARG APT_DEBIAN_MIRRORS=
+ARG APT_DEBIAN_SECURITY_MIRRORS=
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
@@ -15,9 +17,8 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     CMAKE_BUILD_PARALLEL_LEVEL=4
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake ninja-build \
-    && rm -rf /var/lib/apt/lists/*
+COPY docker/apt-debian-mirrors.sh /usr/local/bin/apt-debian-mirrors
+RUN /usr/local/bin/apt-debian-mirrors build-essential cmake ninja-build
 WORKDIR /build
 COPY requirements-runtime.txt requirements-build.txt ./
 COPY docker/pip-install-with-fallback.sh /usr/local/bin/pip-install-with-fallback
@@ -38,6 +39,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
        -r requirements-runtime.txt -r requirements-build.txt
 
 FROM python:3.11-slim-bookworm AS runtime
+ARG APT_DEBIAN_MIRRORS=
+ARG APT_DEBIAN_SECURITY_MIRRORS=
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH \
@@ -45,8 +48,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ASR_MODELS_DIR=/data/models \
     ASR_FORWARDED_ALLOW_IPS=127.0.0.1,172.29.0.0/16
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+COPY docker/apt-debian-mirrors.sh /usr/local/bin/apt-debian-mirrors
+RUN /usr/local/bin/apt-debian-mirrors ffmpeg curl libgomp1
 COPY --from=python-builder /opt/venv /opt/venv
 WORKDIR /app
 COPY app.py ./

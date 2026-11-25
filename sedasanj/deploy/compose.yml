@@ -118,6 +118,8 @@ x-api-build: &api-build
   args:
     PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
     PIP_FALLBACK_INDEX_URLS: ${PIP_FALLBACK_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple/ https://mirrors.ustc.edu.cn/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/}
+    APT_DEBIAN_MIRRORS: ${APT_DEBIAN_MIRRORS:-}
+    APT_DEBIAN_SECURITY_MIRRORS: ${APT_DEBIAN_SECURITY_MIRRORS:-}
 
 services:
   model-storage-init:
@@ -323,6 +325,8 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirror.novin.cloud/artifactory/api/pypi/pypi/simple/}
         PIP_FALLBACK_INDEX_URLS: ${PIP_FALLBACK_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple/ https://mirrors.ustc.edu.cn/pypi/simple/ https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/}
+        APT_DEBIAN_MIRRORS: ${APT_DEBIAN_MIRRORS:-}
+        APT_DEBIAN_SECURITY_MIRRORS: ${APT_DEBIAN_SECURITY_MIRRORS:-}
         TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     restart: unless-stopped
     command: ["arq", "worker_emotion.main.WorkerSettings"]
@@ -569,6 +573,8 @@ services:
       dockerfile: deploy/Dockerfile.postgres
       args:
         AGE_COMMIT: ${AGE_COMMIT:-2db2f060c4c9265a14d40f007eb8c56febf31e4c}
+        APT_DEBIAN_MIRRORS: ${APT_DEBIAN_MIRRORS:-}
+        APT_DEBIAN_SECURITY_MIRRORS: ${APT_DEBIAN_SECURITY_MIRRORS:-}
     restart: unless-stopped
     environment:
       POSTGRES_USER: cbi

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-25 — AMINAZADI
+
+- Changed the CPU image Debian package installation to use the new `docker/apt-debian-mirrors.sh`, which takes the mirror list from `APT_DEBIAN_MIRRORS` / `APT_DEBIAN_SECURITY_MIRRORS` (default: Arvan mirror first, official Debian mirror as fallback) instead of the built-in `deb.debian.org` sources, and tries each mirror in order. Script behaviour was tested locally with a stub `apt-get`; the full image build was not run.
+
 ## 2026-11-14 — AMINAZADI
 
 - Added Whisper (faster-whisper) models to `segmenter=silero_vad`: every Silero span is decoded separately with `vad_filter=False` and `condition_on_previous_text=False`, so Whisper Large v3, Whisper Persian v4 and BuzzASR get the same Jalase-Negar pipeline (context padding, quiet-audio gain, duplicate filter) as Shenava. Whisper spans keep `avg_logprob`, `no_speech_prob` and `compression_ratio`; Shenava spans still run on the CPU only, Whisper spans follow the normal CPU/GPU choice and are never rerouted to 9Router. The 422 for an unsupported first model now names both families. ⚠ Whisper speed and accuracy on this path are not measured.

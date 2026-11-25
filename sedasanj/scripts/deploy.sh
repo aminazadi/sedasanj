@@ -46,8 +46,8 @@ env_value() { # env_value NAME DEFAULT: value from the shell or deploy/.env
 SITE_URL_VALUE="$(env_value SITE_URL "https://$(env_value APP_DOMAIN none)")"
 AGE_COMMIT_VALUE="$(env_value AGE_COMMIT 2db2f060c4c9265a14d40f007eb8c56febf31e4c)"
 
-export API_TAG="$(hash_of pyproject.toml README.md apps scripts deploy/Dockerfile.api)"
-export POSTGRES_TAG="$(hash_of deploy/Dockerfile.postgres deploy/postgres/healthcheck.sh)-$(printf '%s' "$AGE_COMMIT_VALUE" | "${SUM[@]}" | cut -c1-8)"
+export API_TAG="$(hash_of pyproject.toml README.md apps scripts deploy/Dockerfile.api deploy/apt-debian-mirrors.sh)"
+export POSTGRES_TAG="$(hash_of deploy/Dockerfile.postgres deploy/postgres/healthcheck.sh deploy/apt-debian-mirrors.sh)-$(printf '%s' "$AGE_COMMIT_VALUE" | "${SUM[@]}" | cut -c1-8)"
 export CLIENT_TAG="$(hash_of web/shared web/client deploy/web-server.mjs deploy/Dockerfile.web)-$(printf '%s' "$SITE_URL_VALUE" | "${SUM[@]}" | cut -c1-8)"
 export ADMIN_TAG="$(hash_of web/shared web/admin deploy/web-server.mjs deploy/Dockerfile.web)"
 
