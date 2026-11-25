@@ -226,7 +226,15 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             expected=claimable_job_statuses,
         )
         if queued_job is None:
+            # The newest row may already be running or succeeded while an older
+            # duplicate is still queued and blocking global admission.
+            await pipeline.close_queued_duplicates(
+                session, tenant_id=tenant_id, call_id=call_id, kind="llm"
+            )
             return "skipped"
+        # The admission rule considers the oldest queued LLM job globally; a second
+        # queued row for this call would therefore defer the real one forever.
+        await pipeline.supersede_older_queued_jobs(session, keep=queued_job)
         has_tenant_slot = await pipeline.concurrency_slot_free(
             session, tenant_id, tenant_limit, kind="llm"
         )
@@ -257,6 +265,9 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 next_status="analyzing",
             )
             if claimed is None:
+                # The call already moved past this job. Closing the queued row stops it
+                # from being the globally oldest candidate and blocking every analysis.
+                await pipeline.close_unclaimable_queued_job(session, queued_job)
                 logger.info("llm call state is not claimable")
                 return "skipped"
             transcript = (
@@ -498,6 +509,18 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
         except Exception:  # noqa: BLE001 - low-balance warning is not part of call analysis
             logger.exception("failed to enqueue low balance warning")
         return "analyzed"
+    except asyncio.CancelledError:
+        # ARQ enforces job_timeout by cancelling the task; a leaked `running` row
+        # would keep holding the global analysis slot after the worker is gone.
+        await pipeline.handle_cancellation(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="llm",
+            analysis_run_id=run_id,
+            reanalysis=reanalysis,
+            previous_status=previous_status,
+        )
+        raise
     except Exception as exc:  # noqa: BLE001 - retry policy owns the outcome
         code, detail, retryable = classify_failure(exc, kind="llm")
         async with session_scope(tenant_id) as session:

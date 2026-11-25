@@ -76,6 +76,26 @@ groups:
         annotations:
           summary: "oldest queued LLM job is above 60 seconds"
 
+      - alert: LlmQueueJammed
+        # Analysis admission is a global gate: a queued job this old means calls are
+        # waiting for a slot or for the reconciler, not merely queue latency.
+        expr: cbi_oldest_job_seconds{kind="llm"} > 300
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "oldest queued LLM job is above five minutes; analysis is jammed"
+          runbook: "docs/runbook.md#queue-stalls"
+
+      - alert: StuckCallsRecovered
+        # The reconciler had to rescue, close or time out calls in the last pass.
+        # A steady non-zero value means calls keep entering states they cannot leave.
+        expr: sum(cbi_calls_stuck) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "the call reconciler keeps rescuing stuck calls"
+          runbook: "docs/runbook.md#queue-stalls"
+
       - alert: CallSileroAsrFailures
         expr: sum(increase(cbi_asr_call_attempts_total{mode="vad_segment",code!="succeeded",code!="asr_no_speech"}[15m])) >= 5
         for: 5m

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -323,6 +324,8 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             job = await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="notify", status="running"
             )
+            if job is None:
+                return "missing"
             attempt = job.attempt + 1
             if event == "call.complete":
                 await progress.report(
@@ -379,6 +382,13 @@ async def deliver_event(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 session, tenant_id=tenant_id, call_id=call_id, kind="notify", status="succeeded"
             )
         return "delivered"
+    except asyncio.CancelledError:
+        await pipeline.handle_cancellation(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="notify",
+        )
+        raise
     except Exception as exc:  # noqa: BLE001 - retry policy owns the outcome
         retried = await pipeline.handle_failure(
             tenant_id=tenant_id,

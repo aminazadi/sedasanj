@@ -113,7 +113,7 @@
 | `reserved` | رزرو اعتبار | violet | info |
 | `stored` | ذخیره‌شده | info | info |
 | `transcribing` | در حال پیاده‌سازی | info | info |
-| `transcribed` | پیاده‌سازی شد | info | info |
+| `transcribed` | در صف تحلیل متن | info | info |
 | `correcting` | در حال تصحیح متن | violet | info |
 | `emotion_queued` | در صف تحلیل لحن | violet | info |
 | `emotion_analyzing` | در حال تحلیل لحن | violet | info |

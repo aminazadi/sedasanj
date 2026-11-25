@@ -412,6 +412,8 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                     kind="asr",
                     status="queued",
                 )
+            if job is None:
+                return "missing"
             deferred_outbox_id = await outbox.stage_job(
                 session,
                 job_id=job.id,
@@ -437,6 +439,14 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 next_status="transcribing",
             )
             if claimed is None:
+                stale_job = await session.scalar(
+                    select(Job)
+                    .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == "asr")
+                    .order_by(Job.created_at.desc())
+                    .limit(1)
+                )
+                if stale_job is not None:
+                    await pipeline.close_unclaimable_queued_job(session, stale_job)
                 logger.info("asr job already owned elsewhere")
                 return "skipped"
             audio = (
@@ -459,6 +469,8 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             asr_job = await pipeline.mark_job(
                 session, tenant_id=tenant_id, call_id=call_id, kind="asr", status="running"
             )
+            if asr_job is None:
+                return "missing"
             if asr_revision_id is not None:
                 asr_revision = await session.get(AsrTranscriptRevision, asr_revision_id)
                 if asr_revision is not None:
@@ -664,6 +676,17 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             logger.exception("immediate downstream dispatch failed; durable dispatcher will retry")
             return "transcribed_enqueue_pending"
         return "transcribed"
+    except asyncio.CancelledError:
+        await pipeline.handle_cancellation(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="asr",
+            reanalysis=retranscription,
+            previous_status=previous_status,
+            asr_revision_id=asr_revision_id,
+            retranscription=retranscription,
+        )
+        raise
     except Exception as exc:  # noqa: BLE001 - retry policy owns the outcome
         code, detail, retryable = classify_failure(exc, kind="asr")
         asr_call_attempts.labels(mode, code).inc()

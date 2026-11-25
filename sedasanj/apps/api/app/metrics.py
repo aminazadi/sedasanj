@@ -72,6 +72,11 @@ webhook_responses_total = Counter(
 jobs_failed_retryable = Gauge(
     "cbi_jobs_failed_retryable", "Jobs waiting for a retry after a failure"
 )
+calls_stuck = Gauge(
+    "cbi_calls_stuck",
+    "Calls the reconciler had to rescue, close or time out in the last pass",
+    ["kind"],
+)
 http_requests_total = Counter(
     "cbi_http_requests_total", "HTTP requests", ["method", "path", "status"]
 )

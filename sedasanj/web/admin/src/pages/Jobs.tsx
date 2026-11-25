@@ -32,6 +32,8 @@ export default function Jobs() {
   const setKind = (value: string) => setFilters({ kind: value, offset: "0" });
   const setStatus = (value: string) => setFilters({ status: value, offset: "0" });
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
   const jobsData = useResource<{ page: Page<Job>; operations: Operations }>(async (signal) => {
     const params = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
     if (kind) params.set("kind", kind);
@@ -55,13 +57,28 @@ export default function Jobs() {
     }
   }
 
+  async function reconcileStuck() {
+    setReconciling(true);
+    setError(null);
+    try {
+      const result = await request<{ requeued: number }>("/v1/admin/operations/reconcile", { method: "POST" });
+      setNotice(`بازیابی انجام شد؛ ${fmt.int(result.requeued)} کار دوباره در صف قرار گرفت.`);
+      jobsData.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setReconciling(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <ErrorBox message={jobsData.error ?? error} />
+      {notice ? <p className="text-sm text-emerald-700" role="status">{notice}</p> : null}
       <FilterBar
         hasActive={Boolean(kind) || status !== DEFAULT_STATUS}
         onClear={() => { setFilters({ kind: "", status: DEFAULT_STATUS, offset: "0" }); }}
-        actions={<button type="button" className="btn min-h-[42px]" onClick={() => void reload()}>بازخوانی</button>}
+        actions={<div className="flex gap-2"><button type="button" className="btn min-h-[42px]" disabled={reconciling} onClick={() => void reconcileStuck()}>{reconciling ? "در حال بازیابی…" : "بازیابی تماس‌های گیرکرده"}</button><button type="button" className="btn min-h-[42px]" onClick={() => void reload()}>بازخوانی</button></div>}
         fields={[
           { id: "status", label: "وضعیت", pinned: true, active: status !== DEFAULT_STATUS, onRemove: () => { setStatus(DEFAULT_STATUS); }, control: <FilterSelect allLabel={null} value={status} onChange={(value) => { setStatus(value); }} options={[{ value: "failed_retryable", label: "خطای موقت" }, { value: "failed_terminal", label: "خطای نهایی" }, { value: "queued", label: "در صف" }, { value: "running", label: "در اجرا" }, { value: "succeeded", label: "موفق" }]} /> },
           { id: "kind", label: "نوع کار", active: Boolean(kind), onRemove: () => { setKind(""); }, control: <FilterSelect value={kind} onChange={(value) => { setKind(value); }} options={KINDS.filter(Boolean).map((item) => ({ value: item, label: item }))} /> },

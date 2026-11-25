@@ -11,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import operational_tenant_ids, routable_tenant_ids, session_scope
 from app.errors import ApiError
-from app.metrics import jobs_failed_retryable, oldest_job_seconds, provider_tasks, queue_depth
+from app.metrics import (
+    calls_stuck,
+    jobs_failed_retryable,
+    oldest_job_seconds,
+    provider_tasks,
+    queue_depth,
+)
 from app.models import (
     AnalysisRun,
     AnalysisStep,
@@ -20,6 +26,7 @@ from app.models import (
     Call,
     CreditGrant,
     Job,
+    JobOutbox,
     LedgerEntry,
     Meeting,
     MeetingChunk,
@@ -31,6 +38,7 @@ from app.models import (
     Subscription,
     SubscriptionChange,
     TenantBalanceCache,
+    TranscriptRevision,
     User,
     WebhookDelivery,
 )
@@ -55,9 +63,9 @@ STUCK_AFTER = timedelta(seconds=30)
 RUNNING_STUCK_AFTER = timedelta(minutes=40)
 QUEUED_STATES = {
     "stored": "asr",
+    "correcting": "correction",
     "emotion_queued": "emotion",
     "transcribed": "llm",
-    "analyzed": "llm",
     "billed": "notify",
     "notified": "notify",
 }
@@ -67,12 +75,17 @@ RUNNING_STATES = {
     "analyzing": "llm",
 }
 IN_FLIGHT = {**QUEUED_STATES, **RUNNING_STATES}
-RETRY_KIND_STATUS = {
-    "asr": "asr",
-    "emotion": "emotion",
-    "llm": "llm",
-    "notify": "notify",
+# Call states from which a queued job of each kind can still be claimed. A queued
+# row whose call sits anywhere else can never run; the sweep closes it instead of
+# letting it linger (and, for llm, block admission for the rest of the fleet).
+JOB_CALL_STATES: dict[str, tuple[str, ...]] = {
+    "asr": ("stored", "transcribing", "failed_retryable", "complete"),
+    "correction": ("correcting", "failed_retryable"),
+    "emotion": ("emotion_queued", "emotion_analyzing", "failed_retryable"),
+    "llm": ("transcribed", "analyzing", "failed_retryable"),
+    "notify": ("billed", "notified", "failed_retryable"),
 }
+TERMINAL_STATES = ("complete", "failed_terminal", "canceled", "missed")
 
 
 ABANDONED_RESERVATION_AFTER = timedelta(hours=6)
@@ -81,8 +94,9 @@ ABANDONED_RESERVATION_AFTER = timedelta(hours=6)
 async def release_abandoned_reservations() -> int:
     """Give back credit held by calls whose upload never finished.
 
-    A crash between the reservation commit and the audio store leaves a call in ``reserved``
-    with no audio; nothing else would ever release that hold.
+    A crash between the reservation commit and the audio store leaves a call in
+    ``reserved`` (or ``received``, before the reservation) with no audio; nothing else
+    would ever release that hold or move the row out of its state.
     """
     released = 0
     cutoff = datetime.now(UTC) - ABANDONED_RESERVATION_AFTER
@@ -95,7 +109,9 @@ async def release_abandoned_reservations() -> int:
                             select(Call.id)
                             .where(
                                 Call.tenant_id == tenant_id,
-                                Call.status == "reserved",
+                                # `received` never reaches this sweep otherwise: the upload
+                                # died before the audio row, so no worker will ever touch it.
+                                Call.status.in_(("received", "reserved")),
                                 Call.audio_id.is_(None),
                                 Call.created_at < cutoff,
                             )
@@ -544,171 +560,412 @@ async def _retire_expired_audio(session: AsyncSession, tenant_id: UUID) -> int:
     return len(batch)
 
 
+async def _latest_job(
+    session: AsyncSession, *, tenant_id: UUID, call_id: UUID, kind: str
+) -> Job | None:
+    return (
+        await session.execute(
+            select(Job)
+            .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == kind)
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _pending_outbox(session: AsyncSession, job_id: UUID) -> bool:
+    """A staged, not-yet-dispatched outbox row already owns this delivery.
+
+    The reconciler used to stage a fresh row on every pass, which burst through
+    the deliberate notify delay and grew `job_outbox` without bound.
+    """
+    return (
+        await session.scalar(
+            select(JobOutbox.id)
+            .where(JobOutbox.job_id == job_id, JobOutbox.dispatched_at.is_(None))
+            .limit(1)
+        )
+    ) is not None
+
+
+async def _recovery_extras(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    call: Call,
+    kind: str,
+    reanalysis: bool,
+    previous_status: str | None,
+) -> dict[str, object] | None:
+    """Payload fields needed to re-dispatch a stuck job, or None when it cannot run."""
+    extras: dict[str, object] = {
+        "analysis_run_id": None,
+        "correction_run_id": None,
+        "asr_revision_id": None,
+        "retranscription": False,
+        "reanalysis": reanalysis,
+        "previous_status": previous_status,
+        "event": None,
+    }
+    if kind == "asr":
+        revision = await session.scalar(
+            select(AsrTranscriptRevision)
+            .where(
+                AsrTranscriptRevision.call_id == call.id,
+                AsrTranscriptRevision.tenant_id == tenant_id,
+                AsrTranscriptRevision.status.in_(("queued", "running")),
+            )
+            .order_by(AsrTranscriptRevision.created_at.desc())
+            .limit(1)
+        )
+        if revision is not None:
+            extras["asr_revision_id"] = revision.id
+            extras["retranscription"] = True
+            extras["previous_status"] = str(
+                (revision.metrics or {}).get("previous_status") or "complete"
+            )
+        elif call.status not in ("stored", "transcribing", "failed_retryable"):
+            return None
+    elif kind == "correction":
+        revision = await session.scalar(
+            select(TranscriptRevision)
+            .where(
+                TranscriptRevision.call_id == call.id,
+                TranscriptRevision.tenant_id == tenant_id,
+                TranscriptRevision.status.in_(("queued", "running", "validating", "succeeded")),
+            )
+            .order_by(TranscriptRevision.created_at.desc())
+            .limit(1)
+        )
+        if revision is None:
+            return None
+        extras["correction_run_id"] = revision.id
+    elif kind == "emotion":
+        run_id = await session.scalar(
+            select(AnalysisRun.id)
+            .where(AnalysisRun.call_id == call.id, AnalysisRun.tenant_id == tenant_id)
+            .order_by(AnalysisRun.created_at.desc())
+            .limit(1)
+        )
+        if run_id is None:
+            return None
+        extras["analysis_run_id"] = run_id
+    elif kind == "notify":
+        extras["event"] = "call.complete"
+    return extras
+
+
+async def _fail_call(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    call: Call,
+    error_code: str,
+    detail: str,
+) -> None:
+    """Stop a call that can no longer advance, release its hold and notify the tenant."""
+    call.status = "failed_terminal"
+    call.error_code = error_code
+    call.progress_detail = detail[:500]
+    call.updated_at = datetime.now(UTC)
+    await billing.release(session, tenant_id=tenant_id, call_id=call.id)
+    await outbox.stage(
+        session,
+        tenant_id=tenant_id,
+        queue_name="q:notify",
+        function_name="deliver_event",
+        payload={
+            "tenant_id": str(tenant_id),
+            "call_id": str(call.id),
+            "event": "call.failed",
+        },
+    )
+
+
+async def _recover_call(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    call: Call,
+    kind: str,
+    reanalysis: bool,
+    previous_status: str | None,
+    running_cutoff: datetime,
+) -> UUID | None:
+    # Lock the job row, in the same order the workers use (job, then call), and
+    # re-check its state: the sweep read the call before another worker could claim.
+    job = (
+        await session.execute(
+            select(Job)
+            .where(Job.tenant_id == tenant_id, Job.call_id == call.id, Job.kind == kind)
+            .order_by(Job.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if job is not None:
+        if job.status in {"failed_terminal", "canceled"}:
+            return None
+        if job.status == "succeeded" and kind != "correction":
+            # Success commits the call's next state in the same transaction; a
+            # succeeded row on a stuck call is a leftover, not a missing hand-off.
+            # Correction is different: it commits the revision, then stages the
+            # analysis in a second transaction, so its hand-off can be lost.
+            return None
+        if job.status == "running":
+            heartbeats = [value for value in (job.locked_at, job.started_at) if value]
+            heartbeats.append(call.updated_at)
+            if max(heartbeats) >= running_cutoff:
+                return None
+    extras = await _recovery_extras(
+        session,
+        tenant_id=tenant_id,
+        call=call,
+        kind=kind,
+        reanalysis=reanalysis,
+        previous_status=previous_status,
+    )
+    if extras is None:
+        # Nothing to dispatch: close the row and, when the call is still processing,
+        # stop it instead of leaving a state no worker will ever revisit.
+        if job is not None:
+            await pipeline.close_unclaimable_queued_job(session, job)
+        if call.status not in TERMINAL_STATES:
+            await _fail_call(
+                session,
+                tenant_id=tenant_id,
+                call=call,
+                error_code="job_call_state_mismatch",
+                detail="مرحله بعدی پردازش قابل بازیابی نبود؛ تماس متوقف شد. دوباره پردازش کنید.",
+            )
+        return None
+    job = await pipeline.mark_job(
+        session, tenant_id=tenant_id, call_id=call.id, kind=kind, status="queued"
+    )
+    if job is None:
+        return None
+    return await outbox.stage_job(
+        session,
+        job_id=job.id,
+        tenant_id=tenant_id,
+        call_id=call.id,
+        kind=kind,
+        recovery=True,
+        **extras,  # type: ignore[arg-type]
+    )
+
+
+async def _reconcile_tenant(
+    tenant_id: UUID,
+    *,
+    now: datetime,
+    queued_cutoff: datetime,
+    running_cutoff: datetime,
+) -> tuple[int, dict[str, int]]:
+    outbox_ids: list[UUID] = []
+    requeued = 0
+    counts: dict[str, int] = {}
+    async with session_scope(tenant_id) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Call)
+                    .where(
+                        (Call.status.in_(tuple(QUEUED_STATES)) & (Call.updated_at < queued_cutoff))
+                        | (
+                            Call.status.in_(tuple(RUNNING_STATES))
+                            & (Call.updated_at < running_cutoff)
+                        )
+                    )
+                    .limit(200)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        call_ids = [call.id for call in rows]
+        run_counts: dict[UUID, int] = {}
+        latest_runs: dict[UUID, AnalysisRun] = {}
+        if call_ids:
+            for call_id, count in (
+                await session.execute(
+                    select(AnalysisRun.call_id, func.count(AnalysisRun.id))
+                    .where(AnalysisRun.call_id.in_(call_ids))
+                    .group_by(AnalysisRun.call_id)
+                )
+            ).all():
+                run_counts[call_id] = count
+            for run in (
+                (
+                    await session.execute(
+                        select(AnalysisRun)
+                        .where(AnalysisRun.call_id.in_(call_ids))
+                        .order_by(AnalysisRun.call_id, AnalysisRun.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            ):
+                latest_runs.setdefault(run.call_id, run)
+        handled: set[tuple[UUID, str]] = set()
+        for call in rows:
+            kind = IN_FLIGHT[call.status]
+            job = await _latest_job(session, tenant_id=tenant_id, call_id=call.id, kind=kind)
+            if call.status in RUNNING_STATES and job is not None and job.status == "running":
+                heartbeats = [value for value in (job.locked_at, job.started_at) if value]
+                heartbeats.append(call.updated_at)
+                if max(heartbeats) >= running_cutoff:
+                    continue
+            if (
+                job is not None
+                and job.status == "queued"
+                and await _pending_outbox(session, job.id)
+            ):
+                continue
+            reanalysis, previous_status = reanalysis_recovery_context(
+                call, latest_runs.get(call.id), int(run_counts.get(call.id, 0))
+            )
+            handled.add((call.id, kind))
+            staged = await _recover_call(
+                session,
+                tenant_id=tenant_id,
+                call=call,
+                kind=kind,
+                reanalysis=reanalysis,
+                previous_status=previous_status,
+                running_cutoff=running_cutoff,
+            )
+            counts[kind] = counts.get(kind, 0) + 1
+            if staged is not None:
+                outbox_ids.append(staged)
+                requeued += 1
+
+        # Job-driven sweep: a queued row whose call is not in a recovered status was
+        # invisible to the call-driven pass (lost retranscription/notify outboxes).
+        queued_jobs = (
+            (
+                await session.execute(
+                    select(Job)
+                    .where(
+                        Job.status == "queued",
+                        Job.queued_at < queued_cutoff,
+                        Job.kind.in_(tuple(JOB_CALL_STATES)),
+                    )
+                    .with_for_update(skip_locked=True)
+                    .limit(200)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for job in queued_jobs:
+            if (job.call_id, job.kind) in handled:
+                continue
+            queued_call = await session.get(Call, job.call_id)
+            if queued_call is None or await _pending_outbox(session, job.id):
+                continue
+            handled.add((queued_call.id, job.kind))
+            if queued_call.status not in JOB_CALL_STATES[job.kind]:
+                if await pipeline.close_unclaimable_queued_job(session, job):
+                    counts[job.kind] = counts.get(job.kind, 0) + 1
+                continue
+            latest_run = (
+                await session.scalar(
+                    select(AnalysisRun)
+                    .where(
+                        AnalysisRun.call_id == queued_call.id,
+                        AnalysisRun.tenant_id == tenant_id,
+                    )
+                    .order_by(AnalysisRun.created_at.desc())
+                    .limit(1)
+                )
+                if job.kind == "llm"
+                else None
+            )
+            reanalysis, previous_status = reanalysis_recovery_context(queued_call, latest_run, 1)
+            staged = await _recover_call(
+                session,
+                tenant_id=tenant_id,
+                call=queued_call,
+                kind=job.kind,
+                reanalysis=reanalysis,
+                previous_status=previous_status,
+                running_cutoff=running_cutoff,
+            )
+            counts[job.kind] = counts.get(job.kind, 0) + 1
+            if staged is not None:
+                outbox_ids.append(staged)
+                requeued += 1
+
+        # Last-resort watchdog: no non-terminal call may keep a reservation forever.
+        timeout_cutoff = now - timedelta(hours=get_settings().call_stuck_timeout_hours)
+        stale_calls = (
+            (
+                await session.execute(
+                    select(Call)
+                    .where(
+                        Call.status.not_in(TERMINAL_STATES + ("received", "reserved")),
+                        Call.updated_at < timeout_cutoff,
+                    )
+                    .with_for_update(skip_locked=True)
+                    .limit(200)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for call in stale_calls:
+            await _fail_call(
+                session,
+                tenant_id=tenant_id,
+                call=call,
+                error_code="processing_timeout",
+                detail="مهلت مجاز پردازش تمام شد؛ پردازش متوقف شد. دوباره تلاش کنید.",
+            )
+            counts["timeout"] = counts.get("timeout", 0) + 1
+
+    for outbox_id in outbox_ids:
+        try:
+            await outbox.dispatch_one(outbox_id, tenant_id)
+        except Exception:  # noqa: BLE001 - the dispatcher retries; keep the sweep running
+            logger.exception(
+                "recovery dispatch failed",
+                extra={"extra_fields": {"tenant_id": str(tenant_id)}},
+            )
+    return requeued, counts
+
+
 async def reconcile_stuck_calls() -> int:
-    """§6 reconciler: re-enqueue rows that stalled between a commit and an ARQ enqueue."""
+    """§6 reconciler: re-enqueue rows that stalled between a commit and an ARQ enqueue.
+
+    Every non-terminal call is covered: queued and running stages, corrections, and
+    queued job rows whose call already moved on (closed as orphans). One bad tenant
+    must never stop the sweep for the rest.
+    """
     now = datetime.now(UTC)
     queued_cutoff = now - STUCK_AFTER
     running_cutoff = now - RUNNING_STUCK_AFTER
     requeued = 0
-    stuck: list[tuple[UUID, UUID, str, str, str, bool, str | None]] = []
+    totals: dict[str, int] = {}
     for tenant_id in await operational_tenant_ids():
-        async with session_scope(tenant_id) as session:
-            rows = (
-                (
-                    await session.execute(
-                        select(Call).where(
-                            (
-                                Call.status.in_(tuple(QUEUED_STATES))
-                                & (Call.updated_at < queued_cutoff)
-                            )
-                            | (
-                                Call.status.in_(tuple(RUNNING_STATES))
-                                & (Call.updated_at < running_cutoff)
-                            )
-                        )
-                    )
-                )
-                .scalars()
-                .all()
+        try:
+            count, counts = await _reconcile_tenant(
+                tenant_id,
+                now=now,
+                queued_cutoff=queued_cutoff,
+                running_cutoff=running_cutoff,
             )
-            call_ids = [call.id for call in rows]
-            run_counts: dict[UUID, int] = {}
-            if call_ids:
-                count_rows = (
-                    await session.execute(
-                        select(AnalysisRun.call_id, func.count(AnalysisRun.id))
-                        .where(AnalysisRun.call_id.in_(call_ids))
-                        .group_by(AnalysisRun.call_id)
-                    )
-                ).all()
-                for call_id, count in count_rows:
-                    run_counts[call_id] = count
-            latest_runs: dict[UUID, AnalysisRun] = {}
-            if call_ids:
-                analysis_runs = (
-                    (
-                        await session.execute(
-                            select(AnalysisRun)
-                            .where(AnalysisRun.call_id.in_(call_ids))
-                            .order_by(AnalysisRun.call_id, AnalysisRun.created_at.desc())
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                for run in analysis_runs:
-                    latest_runs.setdefault(run.call_id, run)
-            for call in rows:
-                reanalysis, previous_status = reanalysis_recovery_context(
-                    call, latest_runs.get(call.id), int(run_counts.get(call.id, 0))
-                )
-                stuck.append(
-                    (
-                        tenant_id,
-                        call.id,
-                        IN_FLIGHT[call.status],
-                        call.status,
-                        f"recovery:{IN_FLIGHT[call.status]}:{call.id}:"
-                        f"{call.status}:{int(call.updated_at.timestamp())}",
-                        reanalysis,
-                        previous_status,
-                    )
-                )
-            overdue = (
-                (
-                    await session.execute(
-                        select(Job).where(
-                            Job.status == "failed_retryable",
-                            Job.run_after < now,
-                        )
-                    )
-                )
-                .scalars()
-                .all()
+        except Exception:  # noqa: BLE001 - one tenant must not stop the fleet sweep
+            logger.exception(
+                "stuck-call sweep failed",
+                extra={"extra_fields": {"tenant_id": str(tenant_id)}},
             )
-            known = {call_id for _, call_id, _, _, _, _, _ in stuck}
-            stuck.extend(
-                (
-                    tenant_id,
-                    job.call_id,
-                    RETRY_KIND_STATUS[job.kind],
-                    "failed_retryable",
-                    f"retry:{job.kind}:{job.call_id}:{job.attempt}",
-                    False,
-                    None,
-                )
-                for job in overdue
-                if job.call_id not in known and job.kind in RETRY_KIND_STATUS
-            )
-
-    for tenant_id, call_id, kind, status, _job_id, reanalysis, previous_status in stuck:
-        async with session_scope(tenant_id) as session:
-            recovered_call = await session.get(Call, call_id)
-            if recovered_call is None:
-                continue
-            analysis_run_id: UUID | None = None
-            asr_revision_id: UUID | None = None
-            if kind == "asr":
-                revision = await session.scalar(
-                    select(AsrTranscriptRevision)
-                    .where(
-                        AsrTranscriptRevision.call_id == call_id,
-                        AsrTranscriptRevision.tenant_id == tenant_id,
-                        AsrTranscriptRevision.status.in_(("queued", "running")),
-                    )
-                    .order_by(AsrTranscriptRevision.created_at.desc())
-                    .limit(1)
-                )
-                if revision is not None:
-                    asr_revision_id = revision.id
-                    previous_status = str(
-                        (revision.metrics or {}).get("previous_status") or "complete"
-                    )
-            if kind == "emotion":
-                analysis_run_id = (
-                    await session.execute(
-                        select(AnalysisRun.id)
-                        .where(
-                            AnalysisRun.call_id == call_id,
-                            AnalysisRun.tenant_id == recovered_call.tenant_id,
-                        )
-                        .order_by(AnalysisRun.created_at.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                if analysis_run_id is None:
-                    logger.error(
-                        "cannot recover emotion job without an analysis run",
-                        extra={"extra_fields": {"call_id": str(call_id)}},
-                    )
-                    continue
-            job = await pipeline.mark_job(
-                session,
-                tenant_id=recovered_call.tenant_id,
-                call_id=call_id,
-                kind=kind,
-                status="queued",
-            )
-            staged_id = await outbox.stage_job(
-                session,
-                job_id=job.id,
-                tenant_id=recovered_call.tenant_id,
-                call_id=call_id,
-                kind=kind,
-                analysis_run_id=analysis_run_id,
-                asr_revision_id=asr_revision_id,
-                retranscription=asr_revision_id is not None,
-                recovery=True,
-                reanalysis=reanalysis,
-                previous_status=previous_status,
-                event="call.complete" if kind == "notify" else None,
-            )
-        await outbox.dispatch_one(staged_id, tenant_id)
-        requeued += 1
-        logger.warning(
-            "requeued stuck call",
-            extra={"extra_fields": {"call_id": str(call_id), "status": status, "kind": kind}},
-        )
+            continue
+        requeued += count
+        for kind, value in counts.items():
+            totals[kind] = totals.get(kind, 0) + value
+    for kind in (*JOB_CALL_STATES, "timeout"):
+        calls_stuck.labels(kind=kind).set(totals.get(kind, 0))
     return requeued
 
 

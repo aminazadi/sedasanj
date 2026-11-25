@@ -249,13 +249,24 @@ async def test_retranscription_reuses_unbilled_analysis_after_correction(monkeyp
 
     run = SimpleNamespace(id=uuid4(), ai_provider="aiservice", result=None)
     call = SimpleNamespace(status="correcting")
+    tenant_id = uuid4()
+    revision_id = uuid4()
+    revision = SimpleNamespace(
+        id=revision_id,
+        tenant_id=tenant_id,
+        trigger="automatic",
+        metrics={"previous_status": "failed_terminal"},
+    )
+
+    async def get(model, _key):
+        return revision if model is correction.TranscriptRevision else call
+
     session = SimpleNamespace(
-        get=AsyncMock(return_value=call),
+        get=get,
         execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: run)),
         add=lambda row: None,
         flush=AsyncMock(),
     )
-    revision = SimpleNamespace(trigger="automatic", metrics={"previous_status": "failed_terminal"})
 
     @asynccontextmanager
     async def scope(_tenant):
@@ -266,7 +277,10 @@ async def test_retranscription_reuses_unbilled_analysis_after_correction(monkeyp
     monkeypatch.setattr(correction.analysis_runs, "ensure_snapshot", AsyncMock())
     monkeypatch.setattr(correction.processing_events, "record", AsyncMock())
     monkeypatch.setattr(correction.outbox, "stage_job", stage)
-    await correction._stage_analysis(tenant_id=uuid4(), call_id=uuid4(), revision=revision)
+    monkeypatch.setattr(correction.pipeline, "supersede_older_queued_jobs", AsyncMock())
+    await correction._stage_analysis(
+        tenant_id=tenant_id, call_id=uuid4(), revision_id=revision_id
+    )
     assert stage.await_args.kwargs["reanalysis"] is True
     assert stage.await_args.kwargs["previous_status"] == "failed_terminal"
     assert run.result == {"_reanalysis": True, "_previous_status": "failed_terminal"}

@@ -65,6 +65,11 @@ x-python-env: &python-env
   ANALYSIS_TIMEOUT_SECONDS: ${ANALYSIS_TIMEOUT_SECONDS:-1500}
   MAX_CONCURRENT_ASR_JOBS: ${MAX_CONCURRENT_ASR_JOBS:-10}
   MAX_CONCURRENT_LLM_SUBMISSIONS: ${MAX_CONCURRENT_LLM_SUBMISSIONS:-16}
+  # Whole-call analyses admitted fleet-wide. The DB setting wins once seeded; this is
+  # the env default for a fresh install. Keep it at or below worker-llm capacity.
+  ANALYSIS_CONCURRENCY: ${ANALYSIS_CONCURRENCY:-2}
+  # Last-resort watchdog for calls that never leave a processing state.
+  CALL_STUCK_TIMEOUT_HOURS: ${CALL_STUCK_TIMEOUT_HOURS:-72}
   LLM_POLL_INTERVAL_SECONDS: ${LLM_POLL_INTERVAL_SECONDS:-2}
   OUTBOX_DISPATCH_INTERVAL_SECONDS: ${OUTBOX_DISPATCH_INTERVAL_SECONDS:-1}
   SHENAVA_MODEL_PATH: /models/shenava-koochik-int8.bin

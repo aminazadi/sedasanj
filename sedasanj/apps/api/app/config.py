@@ -187,6 +187,9 @@ class Settings(BaseSettings):
     asr_worker_max_jobs: int = Field(default=4, ge=1, le=64)
     max_concurrent_llm_submissions: int = Field(default=16, ge=1, le=256)
     analysis_concurrency: int = Field(default=1, ge=1, le=3)
+    # Last-resort watchdog: a non-terminal call with no update for this long is
+    # stopped and its hold released, so no call can sit in a processing state forever.
+    call_stuck_timeout_hours: int = Field(default=72, ge=1, le=720)
     llm_poll_interval_seconds: float = Field(default=2.0, ge=0.25, le=60.0)
     outbox_dispatch_interval_seconds: float = Field(default=1.0, ge=0.25, le=30.0)
     # Runtime carrier only — set from admin Settings via resolve_provider_settings.

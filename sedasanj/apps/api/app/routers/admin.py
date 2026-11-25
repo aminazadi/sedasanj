@@ -47,6 +47,7 @@ from app.models import (
     TokenGrant,
     Transcript,
     TranscriptChunk,
+    TranscriptRevision,
     User,
 )
 from app.schemas import (
@@ -96,6 +97,7 @@ from app.services import (
     billing,
     entitlements,
     knowledge,
+    maintenance,
     org_knowledge,
     outbox,
     processing_events,
@@ -132,6 +134,7 @@ logger = logging.getLogger(__name__)
 
 QUEUE_BY_KIND = {
     "asr": (queue.QUEUE_ASR, queue.JOB_ASR),
+    "correction": (queue.QUEUE_LLM, queue.JOB_CORRECTION),
     "emotion": (queue.QUEUE_EMOTION, queue.JOB_EMOTION),
     "llm": (queue.QUEUE_LLM, queue.JOB_LLM),
     "notify": (queue.QUEUE_NOTIFY, queue.JOB_NOTIFY),
@@ -1195,6 +1198,13 @@ async def operations(
     }
 
 
+@router.post("/operations/reconcile", status_code=status.HTTP_202_ACCEPTED)
+async def reconcile_now(staff: SuperAdminDep) -> dict[str, int]:
+    """Run the stuck-call sweep on demand instead of waiting for the notify-worker cron."""
+    requeued = await maintenance.reconcile_stuck_calls()
+    return {"requeued": requeued}
+
+
 @router.post("/jobs/{job_id}/requeue", status_code=status.HTTP_202_ACCEPTED)
 async def requeue_job(job_id: UUID, request: Request, staff: StaffDep) -> dict[str, str]:
     """Reset a job and re-enqueue it only after the DB commit (§6 / ingest pattern)."""
@@ -1230,6 +1240,7 @@ async def requeue_job(job_id: UUID, request: Request, staff: StaffDep) -> dict[s
         # the Redis message is consumed while the job row stays queued.
         target_status = {
             "asr": "stored",
+            "correction": "correcting",
             "emotion": "emotion_queued",
             "llm": "transcribed",
             "notify": "billed",
@@ -1254,8 +1265,32 @@ async def requeue_job(job_id: UUID, request: Request, staff: StaffDep) -> dict[s
         )
 
         kind, call_id, tenant_id = job.kind, job.call_id, job.tenant_id
+        correction_run_id: UUID | None = None
+        reanalysis = False
+        previous_status: str | None = None
         if kind in {"emotion", "llm"}:
             run_id = await _ensure_analysis_run(session, tenant_id, call_id)
+        if kind == "llm" and run_id is not None:
+            run = await session.get(AnalysisRun, run_id)
+            result = (run.result if run is not None else None) or {}
+            reanalysis = result.get("_reanalysis") is True
+            previous_status = result.get("_previous_status")
+        if kind == "correction":
+            correction_run_id = await session.scalar(
+                select(TranscriptRevision.id)
+                .where(
+                    TranscriptRevision.call_id == call_id,
+                    TranscriptRevision.tenant_id == tenant_id,
+                    TranscriptRevision.status.in_(("queued", "running", "validating")),
+                )
+                .order_by(TranscriptRevision.created_at.desc())
+                .limit(1)
+            )
+            if correction_run_id is None:
+                raise ApiError(
+                    "invalid_request",
+                    "نسخه تصحیح متن برای این کار پیدا نشد؛ از صفحه تماس پردازش مجدد را بزنید.",
+                )
         await processing_events.record(
             session,
             tenant_id=tenant_id,
@@ -1272,6 +1307,9 @@ async def requeue_job(job_id: UUID, request: Request, staff: StaffDep) -> dict[s
             call_id=call_id,
             kind=kind,
             analysis_run_id=run_id,
+            correction_run_id=correction_run_id,
+            reanalysis=reanalysis,
+            previous_status=str(previous_status) if previous_status else None,
             event="call.complete" if kind == "notify" else None,
         )
 

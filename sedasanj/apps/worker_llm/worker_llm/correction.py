@@ -34,8 +34,11 @@ def _correction_prompt(runtime: Any, revision: TranscriptRevision) -> str:
     )
 
 
-async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision: TranscriptRevision) -> UUID:
+async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision_id: UUID) -> UUID:
     async with session_scope(tenant_id) as session:
+        revision = await session.get(TranscriptRevision, revision_id)
+        if revision is None or revision.tenant_id != tenant_id:
+            raise RuntimeError("correction revision disappeared before analysis staging")
         call = await session.get(Call, call_id)
         run = (
             await session.execute(
@@ -72,6 +75,7 @@ async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision: Transcrip
             call.progress_pct = int(values["progress_pct"])
             call.progress_detail = str(values["progress_detail"])
         await session.flush()
+        await pipeline.supersede_older_queued_jobs(session, keep=job)
         await processing_events.record(
             session,
             tenant_id=tenant_id,
@@ -197,9 +201,28 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
     log_context(tenant_id=str(tenant_id), call_id=str(call_id))
     try:
         async with session_scope(tenant_id) as session:
+            prior_status = await session.scalar(
+                select(TranscriptRevision.status).where(
+                    TranscriptRevision.id == revision_id,
+                    TranscriptRevision.tenant_id == tenant_id,
+                )
+            )
+        if prior_status is None:
+            return "missing"
+        if prior_status == "succeeded":
+            # The correction finished but the process died before the analysis was
+            # staged; the recovery delivery completes the hand-off.
+            outbox_id = await _stage_analysis(
+                tenant_id=tenant_id, call_id=call_id, revision_id=revision_id
+            )
+            await outbox.dispatch_one(outbox_id)
+            return "recovered_analysis"
+        if prior_status == "failed":
+            return "skipped"
+        async with session_scope(tenant_id) as session:
             revision = await session.get(TranscriptRevision, revision_id)
-            if revision is None or revision.status in {"succeeded", "failed"}:
-                return "skipped"
+            if revision is None:
+                return "missing"
             transcript = await session.get(Transcript, call_id)
             if transcript is None:
                 raise RuntimeError("call has no transcript")
@@ -309,11 +332,19 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
                     await client.close()
         if dispatch_analysis:
             outbox_id = await _stage_analysis(
-                tenant_id=tenant_id, call_id=call_id, revision=revision
+                tenant_id=tenant_id, call_id=call_id, revision_id=revision_id
             )
             await outbox.dispatch_one(outbox_id)
             return "succeeded"
         return await poll_transcript_correction({}, payload)
+    except asyncio.CancelledError:
+        await pipeline.handle_cancellation(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="correction",
+            correction_run_id=revision_id,
+        )
+        raise
     except Exception as exc:  # noqa: BLE001
         return await _fail(tenant_id, call_id, revision_id, exc)
 
@@ -492,8 +523,18 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
         if return_value[0] == "polling" and return_value[1] is not None:
             await outbox.dispatch_one(return_value[1])
             return "polling"
-        outbox_id = await _stage_analysis(tenant_id=tenant_id, call_id=call_id, revision=revision)
+        outbox_id = await _stage_analysis(
+            tenant_id=tenant_id, call_id=call_id, revision_id=revision_id
+        )
         await outbox.dispatch_one(outbox_id)
         return "succeeded"
+    except asyncio.CancelledError:
+        await pipeline.handle_cancellation(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="correction",
+            correction_run_id=revision_id,
+        )
+        raise
     except Exception as exc:  # noqa: BLE001
         return await _fail(tenant_id, call_id, revision_id, exc)

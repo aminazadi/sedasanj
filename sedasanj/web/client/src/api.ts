@@ -243,7 +243,7 @@ export const STATUS_LABELS: Record<string, string> = {
   reserved: "رزرو اعتبار",
   stored: "ذخیره‌شده",
   transcribing: "در حال پیاده‌سازی",
-  transcribed: "پیاده‌سازی شد",
+  transcribed: "در صف تحلیل متن",
   correcting: "در حال تصحیح متن",
   emotion_queued: "در صف تحلیل لحن",
   emotion_analyzing: "در حال تحلیل لحن",

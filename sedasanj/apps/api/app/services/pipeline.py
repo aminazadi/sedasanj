@@ -129,7 +129,7 @@ async def mark_job(
     error_code: str | None = None,
     error_detail: str | None = None,
     run_after: datetime | None = None,
-) -> Job:
+) -> Job | None:
     job = (
         await session.execute(
             select(Job)
@@ -140,9 +140,27 @@ async def mark_job(
         )
     ).scalar_one_or_none()
     if job is None:
+        # A worker that outlives `DELETE /calls/{id}` must not resurrect a job row:
+        # the foreign key would abort the whole transaction. Nothing left to record.
+        exists = await session.scalar(
+            select(Call.id).where(Call.id == call_id, Call.tenant_id == tenant_id)
+        )
+        if exists is None:
+            logger.warning(
+                "job target call no longer exists",
+                extra={
+                    "extra_fields": {
+                        "call_id": str(call_id),
+                        "kind": kind,
+                        "status": status,
+                    }
+                },
+            )
+            return None
         job = Job(tenant_id=tenant_id, call_id=call_id, kind=kind, status=status, attempt=0)
         session.add(job)
         await session.flush()
+    was_queued = job.status == "queued"
     job.status = status
     if attempt is not None:
         job.attempt = attempt
@@ -151,7 +169,10 @@ async def mark_job(
     if run_after is not None:
         job.run_after = run_after
     if status == "queued":
-        job.queued_at = datetime.now(UTC)
+        # Re-dispatching an already queued job must not make it look newly queued:
+        # age drives the reconciler, the admission order and the backlog metrics.
+        if not was_queued:
+            job.queued_at = datetime.now(UTC)
         job.started_at = None
         job.provider_submitted_at = None
         job.completed_at = None
@@ -276,6 +297,9 @@ async def handle_failure(
             error_detail=error_detail,
             run_after=datetime.now(UTC) + delay,
         )
+        if job is None:
+            # The call was deleted while this job was in flight; nothing to retry.
+            return False
         if touches_call:
             next_status = "failed_retryable" if retry else "failed_terminal"
             await session.execute(
@@ -352,6 +376,46 @@ async def handle_failure(
     return retry
 
 
+async def handle_cancellation(
+    *,
+    tenant_id: UUID,
+    call_id: UUID,
+    kind: str,
+    analysis_run_id: UUID | None = None,
+    correction_run_id: UUID | None = None,
+    reanalysis: bool = False,
+    previous_status: str | None = None,
+    asr_revision_id: UUID | None = None,
+    retranscription: bool = False,
+) -> None:
+    """Record an ARQ cancellation, which bypasses ``except Exception``.
+
+    ``asyncio.CancelledError`` derives from ``BaseException``: without this a worker
+    stopped by its timeout or a deploy leaves the ``Job`` row ``running`` and, under
+    the global analysis limit, that leaked row freezes every other call.
+    """
+    try:
+        await handle_failure(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind=kind,
+            error_code="job_cancelled",
+            error_detail="worker stopped before the step finished; retried automatically",
+            analysis_run_id=analysis_run_id,
+            correction_run_id=correction_run_id,
+            reanalysis=reanalysis,
+            previous_status=previous_status,
+            asr_revision_id=asr_revision_id,
+            retranscription=retranscription,
+            retryable=True,
+        )
+    except Exception:  # noqa: BLE001 - shutdown best effort must not mask the cancellation
+        logger.exception(
+            "failed to record job cancellation",
+            extra={"extra_fields": {"call_id": str(call_id), "kind": kind}},
+        )
+
+
 async def concurrency_slot_free(
     session: AsyncSession,
     tenant_id: UUID,
@@ -373,6 +437,12 @@ async def concurrency_slot_free(
     return int(running) < limit
 
 
+# A queued LLM job can only be claimed while its call is in one of these states.
+# Anything else (complete, billed, correcting, canceled, deleted) means the row is
+# orphaned: it can never be claimed, so it must never block admission either.
+LLM_CLAIMABLE_CALL_STATES: tuple[str, ...] = ("transcribed", "analyzing", "failed_retryable")
+
+
 async def global_analysis_slot_free(
     session: AsyncSession,
     *,
@@ -385,11 +455,26 @@ async def global_analysis_slot_free(
     polled, so it continues to consume this slot until the call is finalized or
     fails terminally. The advisory lock makes the count and oldest-job decision
     one atomic admission operation across every worker process.
+
+    The oldest-job rule only considers rows whose call can still be claimed. An
+    orphaned queued row (its call advanced, was deleted or is in a non-claimable
+    state) used to be the oldest candidate forever, which froze analysis for the
+    whole fleet; it is excluded here and closed by ``analyze_call`` / the reconciler.
     """
     await session.execute(text("SELECT pg_advisory_xact_lock(918273645)"))
+    # Only a running job whose call is still in progress holds a slot: a leaked row on
+    # a finished call or on a suspended tenant must not starve every other analysis.
     running = (
         await session.execute(
-            select(func.count(Job.id)).where(Job.kind == "llm", Job.status == "running")
+            select(func.count(Job.id))
+            .join(Call, (Call.id == Job.call_id) & (Call.tenant_id == Job.tenant_id))
+            .join(Tenant, Tenant.id == Job.tenant_id)
+            .where(
+                Job.kind == "llm",
+                Job.status == "running",
+                Call.status == "analyzing",
+                Tenant.status == "active",
+            )
         )
     ).scalar_one()
     if int(running) >= limit:
@@ -397,9 +482,109 @@ async def global_analysis_slot_free(
     oldest = (
         await session.execute(
             select(Job.id)
-            .where(Job.kind == "llm", Job.status.in_(("queued", "failed_retryable")))
+            .join(Call, (Call.id == Job.call_id) & (Call.tenant_id == Job.tenant_id))
+            .where(
+                Job.kind == "llm",
+                Job.status.in_(("queued", "failed_retryable")),
+                Call.status.in_(LLM_CLAIMABLE_CALL_STATES),
+            )
             .order_by(Job.queued_at.asc(), Job.created_at.asc(), Job.id.asc())
             .limit(1)
         )
     ).scalar_one_or_none()
     return oldest == job_id
+
+
+async def close_unclaimable_queued_job(
+    session: AsyncSession,
+    job: Job,
+    *,
+    error_code: str = "job_call_state_mismatch",
+) -> bool:
+    """Close a queued job whose call left every claimable state.
+
+    Only ``queued`` rows are closed: a ``running`` row may still be finalized by the
+    worker that owns it, and the reconciler's stale-running cutoff owns that case.
+    """
+    if job.status != "queued":
+        return False
+    job.status = "failed_terminal"
+    job.error_code = error_code
+    job.error_detail = "call state no longer accepts this job"
+    job.completed_at = datetime.now(UTC)
+    await processing_events.record(
+        session,
+        tenant_id=job.tenant_id,
+        call_id=job.call_id,
+        kind=job.kind,
+        level="warning",
+        status="failed_terminal",
+        message="کار در صف ماند چون وضعیت تماس دیگر آن را نمی‌پذیرد؛ بسته شد",
+        error_code=error_code,
+        step_key=f"{job.id}:closed:{error_code}",
+    )
+    return True
+
+
+async def close_queued_duplicates(
+    session: AsyncSession, *, tenant_id: UUID, call_id: UUID, kind: str
+) -> int:
+    """Close every queued row except the newest, even when the newest is not claimable.
+
+    A duplicate can be the globally oldest queued LLM job while the call's real job is
+    already running; the delivery for the duplicate then locks the running row, fails
+    the expected-state check and returns before it could supersede anything.
+    """
+    rows = (
+        (
+            await session.execute(
+                select(Job)
+                .where(
+                    Job.tenant_id == tenant_id,
+                    Job.call_id == call_id,
+                    Job.kind == kind,
+                )
+                .order_by(Job.created_at.desc(), Job.id.desc())
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) < 2:
+        return 0
+    closed = 0
+    for duplicate in rows[1:]:
+        if duplicate.status == "queued":
+            await close_unclaimable_queued_job(session, duplicate, error_code="job_superseded")
+            closed += 1
+    return closed
+
+
+async def supersede_older_queued_jobs(session: AsyncSession, *, keep: Job) -> int:
+    """Close duplicate queued rows of the same call/kind, keeping the newest one.
+
+    Duplicates came from correction completion and manual re-analysis racing each
+    other. With the oldest-job admission rule a duplicate could defer the real job
+    forever, so the worker closes them the moment it owns the newest row.
+    """
+    duplicates = (
+        (
+            await session.execute(
+                select(Job)
+                .where(
+                    Job.tenant_id == keep.tenant_id,
+                    Job.call_id == keep.call_id,
+                    Job.kind == keep.kind,
+                    Job.status == "queued",
+                    Job.id != keep.id,
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for duplicate in duplicates:
+        await close_unclaimable_queued_job(session, duplicate, error_code="job_superseded")
+    return len(duplicates)

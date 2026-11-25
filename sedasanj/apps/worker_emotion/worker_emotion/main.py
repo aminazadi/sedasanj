@@ -313,6 +313,7 @@ async def analyze_voice_sentiment(ctx: dict[str, Any], payload: dict[str, Any]) 
         )
         if job is None:
             return "skipped"
+        await pipeline.supersede_older_queued_jobs(session, keep=job)
         call = await session.get(Call, call_id)
         if call is None or call.audio_id is None:
             raise RuntimeError("call has no audio object")
@@ -404,6 +405,14 @@ async def analyze_voice_sentiment(ctx: dict[str, Any], payload: dict[str, Any]) 
                 logger.exception("immediate LLM dispatch failed; durable dispatcher will retry")
                 return "emotion_analyzed_enqueue_pending"
         return "emotion_analyzed"
+    except asyncio.CancelledError:
+        await pipeline.handle_cancellation(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="emotion",
+            analysis_run_id=analysis_run_id,
+        )
+        raise
     except Exception as exc:  # noqa: BLE001 - the retry policy owns the outcome
         code, detail, retryable = classify_failure(exc, kind="emotion")
         retried = await pipeline.handle_failure(

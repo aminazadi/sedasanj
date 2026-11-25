@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.db import session_scope
 from app.logging import log_context
@@ -41,6 +41,23 @@ MAP_INSTRUCTION = (
     "و نکات کلیدی، مبالغ، تاریخ‌ها و کارهای قابل پیگیری را حفظ کن. فقط متن خلاصه را بنویس."
 )
 REDUCE_HEADER = "خلاصه بخش‌های مکالمه (به ترتیب):"
+
+
+async def _heartbeat(session: Any, *, tenant_id: UUID, call_id: UUID) -> None:
+    """Mark a durable analysis as alive.
+
+    The durable chain only writes provider steps and processing events between
+    submit and finalize, so ``Call.updated_at`` used to freeze. The reconciler then
+    treated any run longer than 40 minutes as a dead worker and started a second
+    analysis. Touch both rows whenever a provider step makes progress.
+    """
+    now = datetime.now(UTC)
+    await session.execute(
+        update(Call).where(Call.id == call_id, Call.tenant_id == tenant_id).values(updated_at=now)
+    )
+    job = await _latest_job(session, tenant_id, call_id)
+    if job is not None and job.status == "running":
+        job.locked_at = now
 
 
 def _step_key(run_id: UUID, kind: str, ordinal: int, input_text: str) -> tuple[str, str]:
@@ -218,6 +235,7 @@ async def submit_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> 
             step.provider_task_id = provider_task_id
             step.status = "submitted"
             step.submitted_at = now
+            await _heartbeat(session, tenant_id=tenant_id, call_id=call_id)
             job = await _latest_job(session, tenant_id, call_id)
             if job is not None and job.provider_submitted_at is None:
                 job.provider_submitted_at = now
@@ -284,6 +302,7 @@ async def poll_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> st
                     if current is None or current.status == "succeeded":
                         return "already_completed"
                     current.status = "polling"
+                    await _heartbeat(session, tenant_id=tenant_id, call_id=call_id)
                     poll_id = await _stage_poll(session, current, runtime.llm_poll_interval_seconds)
                 await _best_effort_dispatch(poll_id)
                 return str(state)
@@ -312,6 +331,7 @@ async def poll_analysis_step(ctx: dict[str, Any], payload: dict[str, Any]) -> st
             current.status = "succeeded"
             current.result_text = result_text
             current.completed_at = completed_at
+            await _heartbeat(session, tenant_id=tenant_id, call_id=call_id)
             if current.submitted_at:
                 llm_provider_wait_seconds.observe(
                     max((completed_at - current.submitted_at).total_seconds(), 0.0)

@@ -108,7 +108,7 @@ async def test_seed_has_a_published_builtin_minutes_type_and_draft_categories(
     async with db.session_scope(staff=True) as session:
         catalog = await types.published_catalog(session)
         minutes = next(item for item in catalog if item["code"] == "minutes")
-        assert minutes["menu_label"] == "صورت‌جلسات"
+        assert minutes["menu_label"] == "صورت‌جلسات عمومی"
         drafts = (
             (
                 await session.execute(
