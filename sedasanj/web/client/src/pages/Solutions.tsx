@@ -193,7 +193,6 @@ export default function Solutions() {
     <main className="page-main solutions-page">
       <section className="site-hero page-hero solutions-hero"><div className="site-container solutions-hero-grid">
         <div>
-          <p className="solutions-eyebrow">صداسنج برای سازمان‌ها</p>
           <h1 className="site-hero-title page-title solutions-title">راهکارهای <span className="site-hero-title-accent">سازمانی</span></h1>
           <p className="solutions-lead">تماس‌ها، جلسات و مکالمات کوتاه کاری، بخش بزرگی از تصمیمات سازمان را می‌سازند و معمولاً پراکنده باقی می‌مانند. صداسنج این ارتباطات را به اطلاعات قابل جست‌وجو، گزارش مدیریتی و دانش سازمانی تبدیل می‌کند.</p>
           <div className="site-actions">

@@ -21,17 +21,7 @@
 .solutions-snapshot li > span { display: grid; gap: 2px; font-size: 14px; font-weight: 600; }
 .solutions-snapshot small { color: var(--site-muted); font-size: 12.5px; font-weight: 400; line-height: 1.9; }
 .solutions-snapshot-note { margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--site-border); color: var(--site-muted); font-size: 12.5px; line-height: 2; }
-.solutions-eyebrow {
-  display: inline-block;
-  margin: 0 0 22px;
-  padding: 3px 12px;
-  border: 1px solid var(--site-border);
-  color: var(--site-primary);
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: .02em;
-}
-.solutions-title { max-width: 18ch; }
+.solutions-title { max-width: 18ch; margin: 0; }
 .solutions-lead {
   max-width: 660px;
   margin: 22px 0 0;
