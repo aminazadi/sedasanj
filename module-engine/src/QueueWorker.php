@@ -69,7 +69,36 @@ class QueueWorker
             $job['last_error'] = $exc->getMessage() . ' [' . $exc->errorCode . ']';
             $job['last_error_code'] = $exc->errorCode;
 
-            if (!$exc->retryable || $job['attempts'] >= $cfg['queue']['max_retries']) {
+            $retryable = $exc->retryable;
+            if ($exc->errorCode === 'SS-UPL-1004') {
+                // The CDR can finalize several minutes after the recording closes.
+                // Retry on a fixed cadence until the grace deadline, then fail for good.
+                $deadline = (float) ($job['metadata_deadline_epoch'] ?? 0);
+                if ($deadline === 0.0) {
+                    $deadline = microtime(true) + max(60, (int) ($cfg['queue']['metadata_grace_seconds'] ?? 1800));
+                    $job['metadata_deadline_epoch'] = $deadline;
+                }
+                if (microtime(true) < $deadline) {
+                    $delay = max(
+                        (int) ($cfg['queue']['metadata_retry_seconds'] ?? 300),
+                        Queue::backoffSeconds($cfg, $job['attempts'])
+                    );
+                    $job['next_attempt_epoch'] = microtime(true) + $delay;
+                    $queue->save($job);
+                    $log->coded(
+                        'SS-QUE-1003',
+                        "Job {$jobId} is waiting for CDR call numbers; retrying in {$delay}s",
+                        ['cause' => $exc->errorCode, 'retry_in_s' => $delay] + $ctx
+                    );
+                    StateStore::record($cfg, $stateKey, 'spooled', [
+                        'source' => 'queue_worker', 'job_id' => $jobId, 'last_error' => $exc->getMessage(),
+                    ]);
+                    return 'retry';
+                }
+                $retryable = false;
+            }
+
+            if (!$retryable || $job['attempts'] >= $cfg['queue']['max_retries']) {
                 $queue->save($job);
                 $log->coded('SS-QUE-1004', "Job {$jobId} failed permanently: {$exc->getMessage()}", ['cause' => $exc->errorCode] + $ctx);
                 Pipeline::moveToFailed($cfg, $filepath, $job['archive_path'] ?? null, $log, [

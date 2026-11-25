@@ -4,6 +4,13 @@
 
 - Added installation identity to extension sync and separated answered CDR endpoints from dialed numbers.
 
+## 1.5.6 — AMINAZADI
+
+- Fixed inbound calls being rejected with `422 caller_number and dialed_number are required` when FreePBX supplied a dialplan label (for example `recordcheck`) as `CDR(dnid)`/`CDR(dst)` instead of a number. The hook now forwards only numeric values, keeps labels as `dst_label`/`src_label` for diagnosis, and falls back to the inbound DID. At upload time the mapper resolves the answered extension or both CDR parties; an ambiguous CDR answer is reported instead of guessed.
+- Added `SS-UPL-1004`: unresolved call numbers are retried for `queue.metadata_grace_seconds` (default 30 minutes) while the CDR finalizes, then kept in `failed/` instead of being dropped immediately.
+- Added `recover-unresolved.php` to re-queue `failed/` recordings whose numbers can now be resolved with confidence; the rest stay in `failed/` with `SS-SWP-1001`. It shares the manifest handling with `requeue-failed.php`.
+- Added a Persian help article for `SS-UPL-1001`/`SS-UPL-1004` and clarified the API's missing-number messages.
+
 ## 1.5.5 — AMINAZADI
 
 - Packaged internal-call direction mapping for exten-* recordings. PBX lab validation remains pending.

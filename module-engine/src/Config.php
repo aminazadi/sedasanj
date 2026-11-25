@@ -119,6 +119,10 @@ class Config
             'retry_max_seconds' => 3600,
             'credit_retry_seconds' => 3600,
             'config_retry_seconds' => 3600,
+            // How long a recording may wait for its CDR row to finalize before
+            // unresolved caller/dialed numbers become a permanent failure.
+            'metadata_grace_seconds' => 1800,
+            'metadata_retry_seconds' => 300,
         ],
         'state' => [
             'state_file' => '/var/lib/asterisk-recording-uploader/state.json',

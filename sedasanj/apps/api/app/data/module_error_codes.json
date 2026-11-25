@@ -252,6 +252,13 @@
         "action": "No action; if the call is missing in the panel contact support with the call ID."
     },
     {
+        "code": "SS-UPL-1004",
+        "severity": "error",
+        "retryable": true,
+        "title": "Call numbers are not resolved yet",
+        "action": "Usually the CDR has not finalized. The module retries for 30 minutes, then keeps the recording in failed/; run recover-unresolved.php after the CDR is available."
+    },
+    {
         "code": "SS-UPL-2001",
         "severity": "error",
         "retryable": true,

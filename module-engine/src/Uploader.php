@@ -251,22 +251,9 @@ class Uploader
         $u = $cfg['upload'];
         $headers = self::authHeaders($cfg);
 
+        // IngestMapper owns party resolution, including CDR evidence. Resolving here
+        // as well used to inject the raw dialplan label (dst) back after mapping.
         $formMetadata = IngestMapper::toIngestForm($metadata);
-        if (empty($metadata['_voicemail'])) {
-            $started = strtotime((string) ($formMetadata['started_at'] ?? ''));
-            $evidence = CallPartyEvidence::lookup(
-                (string) ($formMetadata['asterisk_uniqueid'] ?? ''),
-                (string) ($metadata['source_filename'] ?? ''),
-                (string) ($formMetadata['direction'] ?? ''),
-                $started === false ? null : $started
-            );
-            if ($evidence) {
-                unset($formMetadata['agent_extension']);
-                $formMetadata = array_replace($formMetadata, $evidence);
-                $formMetadata['dialed_number'] = $metadata['dialed_number'] ?? $metadata['dst']
-                    ?? $formMetadata['dialed_number'];
-            }
-        }
 
         $missing = [];
         $requiredFields = !empty($metadata['_voicemail'])
@@ -279,6 +266,23 @@ class Uploader
         }
         if ($missing) {
             $gotKeys = implode(', ', array_keys($formMetadata));
+            $partyMissing = array_intersect($missing, ['caller_number', 'dialed_number']);
+            if ($partyMissing && empty($metadata['_voicemail'])) {
+                // The CDR can finalize after the recording closes; let the queue retry
+                // for a bounded window instead of dropping the call immediately.
+                throw new UploadError(
+                    'Call numbers are not resolved yet: ' . implode(', ', $partyMissing)
+                        . " (got keys: {$gotKeys})",
+                    null,
+                    true,
+                    false,
+                    'SS-UPL-1004',
+                    [
+                        'missing' => implode(',', $missing),
+                        'label' => (string) ($metadata['dst_label'] ?? $metadata['src_label'] ?? ''),
+                    ]
+                );
+            }
             throw new UploadError(
                 'Missing required ingest field(s): ' . implode(', ', $missing) . " (got keys: {$gotKeys})",
                 null,

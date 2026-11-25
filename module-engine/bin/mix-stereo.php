@@ -36,6 +36,14 @@ use Engine\AnsweredExtension;
  * Logs a coded message to the module log (when the config can be loaded) and always to STDERR,
  * which is the only channel that reaches Asterisk's console. Never throws.
  */
+function mixstereo_number(string $value): bool
+{
+    // Dialplan labels such as "recordcheck" or "ivr2" are not destinations, even when
+    // they contain a digit; a number is made only of digits and dialing symbols.
+    return preg_match('/^[0-9*#+]+$/', $value) === 1
+        && preg_match('/[0-9]/', $value) === 1;
+}
+
 function mixstereo_say(string $code, string $message, array $ctx = []): void
 {
     fwrite(STDERR, "mix-stereo.php: {$message} [{$code}]\n");
@@ -77,9 +85,6 @@ function mixstereo_main(array $argv): int
         mixstereo_say('SS-HOOK-1002', 'rejected unsafe directory, uniqueid or duration argument');
         return 1;
     }
-    if ($dialed === '') {
-        $dialed = $fromDid !== '' ? $fromDid : $cdrDestination;
-    }
     // FreePBX names extension-to-extension recordings with the "exten-" prefix.
     $direction = str_starts_with($name, 'in-') ? 'inbound'
         : (str_starts_with($name, 'out-') ? 'outbound'
@@ -119,6 +124,32 @@ function mixstereo_main(array $argv): int
         : (str_starts_with($name, 'out-') ? 'outbound'
         : (strncmp($name, 'exten-', 6) === 0 ? 'internal' : ''));
     if (in_array($argv[9] ?? '', ['inbound', 'outbound', 'internal'], true)) { $direction = $argv[9]; }
+
+    // MIXMON_POST often yields a dialplan label (for example FreePBX's
+    // callrecording "recordcheck" context) instead of a destination number.
+    // Keep labels for diagnosis, never send them as src/dst.
+    $dialedNumber = '';
+    $dialedLabel = '';
+    foreach ([$dialed, $cdrDestination] as $candidate) {
+        if ($candidate === '') {
+            continue;
+        }
+        if (mixstereo_number($candidate)) {
+            $dialedNumber = $dialedNumber === '' ? $candidate : $dialedNumber;
+        } elseif ($dialedLabel === '') {
+            $dialedLabel = $candidate;
+        }
+    }
+    $fromDidNumber = mixstereo_number($fromDid) ? $fromDid : '';
+    $callerNumber = mixstereo_number($caller) ? $caller : '';
+    $callerLabel = ($caller !== '' && $callerNumber === '') ? $caller : '';
+    $pbxEvidence = '';
+    if ($dialedNumber === '' && $direction === 'inbound' && $fromDidNumber !== '') {
+        // The DID is the only trustworthy destination left; the CDR resolver at
+        // upload time still prefers the answered extension when it becomes available.
+        $dialedNumber = $fromDidNumber;
+        $pbxEvidence = 'direct';
+    }
     $destination = "{$dir}stereo_{$name}.wav";
 
     // The merged file is built as <name>.part and renamed into place only after the metadata
@@ -185,11 +216,19 @@ function mixstereo_main(array $argv): int
     if ($uniqueId !== '') {
         $args = array_merge($args, ['--uniqueid', $uniqueId]);
     }
-    if ($caller !== '') {
-        $args = array_merge($args, ['--src', $caller]);
+    if ($callerNumber !== '') {
+        $args = array_merge($args, ['--src', $callerNumber]);
     }
-    if ($dialed !== '') {
-        $args = array_merge($args, ['--dst', $dialed]);
+    if ($dialedNumber !== '') {
+        $args = array_merge($args, ['--dst', $dialedNumber]);
+    }
+    foreach (['from_did' => $fromDidNumber, 'dst_label' => $dialedLabel, 'src_label' => $callerLabel] as $key => $value) {
+        if ($value !== '') {
+            $args = array_merge($args, ['--extra', "{$key}={$value}"]);
+        }
+    }
+    if ($pbxEvidence !== '') {
+        $args = array_merge($args, ['--extra', "pbx_evidence={$pbxEvidence}"]);
     }
     if ($startIso !== null) {
         $args = array_merge($args, ['--start', $startIso]);
@@ -203,8 +242,12 @@ function mixstereo_main(array $argv): int
 
     $metadata = array_filter([
         'uniqueid' => $uniqueId,
-        'src' => $caller,
-        'dst' => $dialed,
+        'src' => $callerNumber,
+        'dst' => $dialedNumber,
+        'from_did' => $fromDidNumber,
+        'src_label' => $callerLabel,
+        'dst_label' => $dialedLabel,
+        'pbx_evidence' => $pbxEvidence,
         'start_time' => $startIso,
         'duration_seconds' => $durationFile,
         'direction' => $direction,

@@ -62,6 +62,7 @@ class ErrorCatalog
         'SS-UPL-1001' => ['error', false, 'Required call metadata is missing', 'Usually an unusual call (no caller or dialed number). The recording is kept in failed/.'],
         'SS-UPL-1002' => ['error', false, 'Recording file disappeared before upload', 'Check for a second uploader instance or manual deletion.'],
         'SS-UPL-1003' => ['info', false, 'Server reported this call as already received', 'No action; if the call is missing in the panel contact support with the call ID.'],
+        'SS-UPL-1004' => ['error', true, 'Call numbers are not resolved yet', 'Usually the CDR has not finalized. The module retries for 30 minutes, then keeps the recording in failed/; run recover-unresolved.php after the CDR is available.'],
         'SS-UPL-2001' => ['error', true, 'Network error while uploading', 'Check connectivity from the PBX to the endpoint (curl -v).'],
         'SS-UPL-2002' => ['error', true, 'DNS lookup of the endpoint failed', 'Fix the PBX DNS resolver or the endpoint host name.'],
         'SS-UPL-2003' => ['error', true, 'Connection to the endpoint was refused or unreachable', 'Check firewall rules and the endpoint URL and port.'],

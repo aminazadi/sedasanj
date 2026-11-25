@@ -46,6 +46,35 @@ $base = Config::DEFAULTS;
 $base['general']['api_key'] = 'sk_live_LEAKME123456';
 $base['general']['timeout_seconds'] = 5;
 
+// A dialplan label is never uploaded as a call number; the queue retries while the CDR finalizes.
+$unresolved = [
+	'uniqueid' => '1730000000.7', 'src' => '09351234567', 'dst' => 'recordcheck',
+	'dst_label' => 'recordcheck',
+	'start_time' => '2026-10-29T10:00:00Z', 'ended_at' => '2026-10-29T10:01:00Z',
+];
+$cfg = $base;
+$cfg['general']['endpoint'] = "http://127.0.0.1:$port/200/-/calls";
+try {
+	Uploader::uploadFile($cfg, $audio, $unresolved);
+	$fail('A dialplan label was uploaded as the destination');
+} catch (UploadError $e) {
+	if ($e->errorCode !== 'SS-UPL-1004' || !$e->retryable || $e->configBlocked) {
+		$fail("unresolved numbers: got {$e->errorCode} retryable=" . var_export($e->retryable, true));
+	}
+	if (strpos($e->getMessage(), 'recordcheck') !== false) { $fail('A dialplan label leaked into the error message'); }
+}
+if (is_file("$dir/last.json")) { $fail('An unresolved recording reached the endpoint'); }
+
+// Other required metadata still fails permanently.
+$incomplete = ['uniqueid' => '1730000000.8', 'src' => '1001', 'dst' => '1002'];
+$cfg['general']['endpoint'] = "http://127.0.0.1:$port/200/-/calls";
+try {
+	Uploader::uploadFile($cfg, $audio, $incomplete);
+	$fail('A recording without timestamps was uploaded');
+} catch (UploadError $e) {
+	if ($e->errorCode !== 'SS-UPL-1001' || $e->retryable) { $fail("incomplete metadata: {$e->errorCode}"); }
+}
+
 $cases = [
 	// path, retryable, credit, config, code
 	['401/unauthorized', true, false, true, 'SS-UPL-0401'],

@@ -19,6 +19,9 @@ file_put_contents(dirname(__FILE__) . '/hits.log', json_encode([
 	'path' => $_SERVER['REQUEST_URI'], 'type' => $_SERVER['CONTENT_TYPE'] ?? '',
     'direction' => $_POST['direction'] ?? '',
 	'uid' => preg_match('/name="asterisk_uniqueid"\r\n\r\n([^\r]+)/', (string) file_get_contents('php://input'), $m) ? $m[1] : ($_POST['asterisk_uniqueid'] ?? null),
+	'caller' => $_POST['caller_number'] ?? '',
+	'dialed' => $_POST['dialed_number'] ?? '',
+	'evidence' => $_POST['pbx_evidence'] ?? '',
 ]) . "\n", FILE_APPEND);
 http_response_code($status);
 if ($status === 401) { echo json_encode(['error' => ['code' => 'unauthorized', 'message' => 'bad key', 'retryable' => false]]); }
@@ -98,6 +101,21 @@ function runNormalizedFilename(string $root, string $ini, string $uid): array
     return [$code, implode("\n", $out), $dir, $name];
 }
 
+function runInbound(string $root, string $ini, string $uid, string $dialed, string $dst, string $did): array
+{
+    $dir = "$root/monitor/2026/10/29/";
+    @mkdir($dir, 0755, true);
+    $name = "in-20261029-$uid";
+    leg("{$dir}recv_$name.wav");
+    leg("{$dir}trans_$name.wav");
+    leg("{$dir}$name.wav");
+    putenv("ARU_CONFIG=$ini");
+    $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/../engine/bin/mix-stereo.php')
+        . ' ' . implode(' ', array_map('escapeshellarg', [$dir, $name, $uid, '09351234567', $dialed, '', $dst, $did]));
+    exec($cmd . ' 2>&1', $out, $code);
+    return [$code, implode("\n", $out)];
+}
+
 // A. healthy legs -> stereo upload, nothing left behind.
 $ini = writeConfig($root, $port, '200/-');
 [$code, $out, $dir, $name] = run($root, $ini, '1730000000.1', false);
@@ -146,6 +164,25 @@ if (count(array_filter(explode("\n", (string) @file_get_contents("$root/hits.log
 if (!preg_match('/WARNING|ERROR|INFO/', (string) file_get_contents("$root/log/uploader.log")) || strpos(file_get_contents("$root/log/uploader.log"), 'Local archive copy skipped') === false) {
 	// the closure logs at DEBUG; the config sets log_level = DEBUG so it must be present
 	$fail('D: archive failure not logged');
+}
+
+// E. A dialplan label as CDR(dnid) falls back to the inbound DID instead of being uploaded.
+@unlink("$root/hits.log");
+[$code, $out] = runInbound($root, $ini, '1730000000.5', 'recordcheck', '', '02112345678');
+if ($code !== 0) { $fail("E: inbound label call failed (exit $code): $out"); }
+$hits = array_filter(explode("\n", (string) @file_get_contents("$root/hits.log")));
+if (count($hits) !== 1) { $fail('E: inbound label call was not uploaded exactly once'); }
+if (strpos($hits[0], '"dialed":"02112345678"') === false) { $fail('E: the inbound DID was not used as the destination: ' . $hits[0]); }
+if (strpos($hits[0], '"evidence":"direct"') === false) { $fail('E: the DID fallback was not labelled direct: ' . $hits[0]); }
+if (strpos($hits[0], 'recordcheck') !== false) { $fail('E: the dialplan label reached the endpoint'); }
+
+// F. Without a CDR or DID the call waits for the CDR; the label is never uploaded.
+@unlink("$root/hits.log");
+[$code, $out] = runInbound($root, $ini, '1730000000.6', 'recordcheck', '', '');
+if ($code !== 2) { $fail("F: expected the call to be spooled (exit 2), got $code: $out"); }
+if (array_filter(explode("\n", (string) @file_get_contents("$root/hits.log")))) { $fail('F: the label was uploaded'); }
+if (strpos((string) file_get_contents("$root/log/uploader.log"), 'SS-UPL-1004') === false) {
+    $fail('F: the CDR wait was not logged with SS-UPL-1004');
 }
 
 proc_terminate($server);

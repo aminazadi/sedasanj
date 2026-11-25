@@ -103,6 +103,35 @@ class IngestResult:
     replayed: bool
 
 
+def call_number_issues(
+    raw_caller: str | None,
+    raw_dialed: str | None,
+    caller_number: str | None,
+    dialed_number: str | None,
+    *,
+    require_caller: bool = True,
+) -> list[str]:
+    """Name the missing call numbers without echoing their values.
+
+    Dialplan labels such as "recordcheck" normalize to an empty string because they
+    contain no digits; the message says so instead of the generic "required" text.
+    """
+    issues: list[str] = []
+    if require_caller and not caller_number:
+        issues.append(
+            "caller_number is missing"
+            if not (raw_caller or "").strip()
+            else "caller_number contains no dialable digits"
+        )
+    if not dialed_number:
+        issues.append(
+            "dialed_number is missing"
+            if not (raw_dialed or "").strip()
+            else "dialed_number contains no dialable digits"
+        )
+    return issues
+
+
 def resolve_uniqueid(raw: str | None) -> str:
     value = (raw or "").strip()
     return value or f"manual-{uuid4()}"
@@ -159,8 +188,15 @@ async def accept_upload(
     dialed_number = normalize_call_number(dialed_number)
     if not dialed_number and pbx_evidence:
         dialed_number = raw_dialed.strip()
-    if (not caller_number and call_type != "voicemail") or not dialed_number:
-        raise ApiError("invalid_request", "caller_number and dialed_number are required")
+    issues = call_number_issues(
+        raw_caller,
+        raw_dialed,
+        caller_number,
+        dialed_number,
+        require_caller=call_type != "voicemail",
+    )
+    if issues:
+        raise ApiError("invalid_request", "; ".join(issues))
     if direction is not None and direction not in DIRECTIONS:
         raise ApiError("invalid_request", f"direction must be one of {', '.join(DIRECTIONS)}")
     if idempotency_key is not None and idempotency_key.strip() not in ("", unique_id):

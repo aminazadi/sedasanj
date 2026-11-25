@@ -1789,6 +1789,8 @@ class Recuploader extends \FreePBX_Helpers implements \BMO {
 			'bin/service.php',
 			'bin/uploader.php',
 			'bin/mix-stereo.php',
+			'bin/recover-unresolved.php',
+			'src/FailedRequeue.php',
 			'src/Config.php',
 			'src/StateStore.php',
 			'src/Queue.php',

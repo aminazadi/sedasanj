@@ -2,6 +2,7 @@
 
 ## 2026-11-25 — AMINAZADI
 
+- Fixed FreePBX recordings rejected with `422 caller_number and dialed_number are required` when the dialplan supplied a label such as `recordcheck` as the destination: the hook now forwards only numeric parties, the mapper resolves the answered extension/DID/CDR parties, `SS-UPL-1004` retries for 30 minutes while the CDR finalizes, and the new `recover-unresolved.php` re-queues recoverable `failed/` recordings. Module 1.5.6; PBX lab validation is still pending.
 - Changed the Jalase-Negar release version to 1.1.9 (build 18) for the next release builds.
 - Fixed Jalase-Negar iOS release dependency resolution by setting the minimum iOS version to 14.0, as required by the installed file picker plugin.
 - Fixed Jalase-Negar personal accounts being blocked by the organization minute ledger: `create_session` and `finish` no longer reserve or settle minutes for `product='jalase_negar'`, so a free account keeps working while its token budget lasts. The 402 message is Persian and points to «پلن و مصرف»; buying an hour pack now matches what the app shows.
