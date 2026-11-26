@@ -267,7 +267,7 @@ async def analyze_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             if claimed is None:
                 # The call already moved past this job. Closing the queued row stops it
                 # from being the globally oldest candidate and blocking every analysis.
-                await pipeline.close_unclaimable_queued_job(session, queued_job)
+                await pipeline.close_unclaimable_job(session, queued_job)
                 logger.info("llm call state is not claimable")
                 return "skipped"
             transcript = (

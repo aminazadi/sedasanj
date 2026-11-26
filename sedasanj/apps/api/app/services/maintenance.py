@@ -49,6 +49,7 @@ from app.services import (
     jalase_accounts,
     outbox,
     pipeline,
+    progress,
     queue,
     speaker_profiles,
     subscription_state,
@@ -567,7 +568,7 @@ async def _latest_job(
         await session.execute(
             select(Job)
             .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == kind)
-            .order_by(Job.created_at.desc())
+            .order_by(Job.created_at.desc(), Job.id.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -682,6 +683,59 @@ async def _fail_call(
     )
 
 
+async def _close_queued_duplicates(
+    session: AsyncSession, *, tenant_id: UUID, call: Call, kind: str
+) -> int:
+    """Close redundant queued rows so a stale duplicate cannot block admission."""
+    closed = await pipeline.close_queued_duplicates(
+        session, tenant_id=tenant_id, call_id=call.id, kind=kind
+    )
+    if closed:
+        logger.warning(
+            "closed duplicate queued jobs",
+            extra={
+                "extra_fields": {
+                    "call_id": str(call.id),
+                    "kind": kind,
+                    "closed": closed,
+                    "error_code": "job_superseded",
+                }
+            },
+        )
+    return closed
+
+
+async def _settle_after_terminal_job(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    call: Call,
+    kind: str,
+    error_code: str | None,
+) -> None:
+    """Move a call out of a state whose step has permanently given up.
+
+    Notification is best-effort: the analysis is done and billed, so the call is
+    complete even when the webhook never accepts the event. Every other stage is on
+    the path to a result, so the call cannot finish and is stopped with the job's code.
+    """
+    if kind == "notify" and call.status in ("billed", "notified"):
+        call.status = "complete"
+        call.error_code = None
+        values = progress.values_for_status("complete")
+        call.progress_pct = int(values["progress_pct"])
+        call.progress_detail = str(values["progress_detail"])
+        call.updated_at = datetime.now(UTC)
+        return
+    await _fail_call(
+        session,
+        tenant_id=tenant_id,
+        call=call,
+        error_code=error_code or "job_call_state_mismatch",
+        detail="مرحله پردازش پس از چند تلاش متوقف شد؛ تماس ادامه پیدا نکرد. دوباره پردازش کنید.",
+    )
+
+
 async def _recover_call(
     session: AsyncSession,
     *,
@@ -691,32 +745,63 @@ async def _recover_call(
     reanalysis: bool,
     previous_status: str | None,
     running_cutoff: datetime,
-) -> UUID | None:
+) -> tuple[UUID | None, bool]:
+    """Re-dispatch or close one call stage; the flag marks a real anomaly.
+
+    A routine re-dispatch of a queued job (worker saturated) is not an anomaly and
+    must not count towards ``cbi_calls_stuck`` or its alert.
+    """
     # Lock the job row, in the same order the workers use (job, then call), and
     # re-check its state: the sweep read the call before another worker could claim.
     job = (
         await session.execute(
             select(Job)
             .where(Job.tenant_id == tenant_id, Job.call_id == call.id, Job.kind == kind)
-            .order_by(Job.created_at.desc())
+            .order_by(Job.created_at.desc(), Job.id.desc())
             .limit(1)
             .with_for_update()
         )
     ).scalar_one_or_none()
     if job is not None:
         if job.status in {"failed_terminal", "canceled"}:
-            return None
+            # The stage gave up for good. Re-dispatching it here retried forever (and for
+            # notify, burned a delivery every 30 s); settle the call the way the stage's
+            # own terminal path should have instead.
+            closed = await _close_queued_duplicates(
+                session, tenant_id=tenant_id, call=call, kind=kind
+            )
+            settled = call.status not in TERMINAL_STATES
+            if settled:
+                await _settle_after_terminal_job(
+                    session,
+                    tenant_id=tenant_id,
+                    call=call,
+                    kind=kind,
+                    error_code=job.error_code,
+                )
+            return None, bool(closed) or settled
         if job.status == "succeeded" and kind != "correction":
             # Success commits the call's next state in the same transaction; a
             # succeeded row on a stuck call is a leftover, not a missing hand-off.
             # Correction is different: it commits the revision, then stages the
             # analysis in a second transaction, so its hand-off can be lost.
-            return None
+            closed = await _close_queued_duplicates(
+                session, tenant_id=tenant_id, call=call, kind=kind
+            )
+            return None, bool(closed)
         if job.status == "running":
             heartbeats = [value for value in (job.locked_at, job.started_at) if value]
             heartbeats.append(call.updated_at)
             if max(heartbeats) >= running_cutoff:
-                return None
+                # An older queued duplicate is still the global admission candidate.
+                closed = await _close_queued_duplicates(
+                    session, tenant_id=tenant_id, call=call, kind=kind
+                )
+                return None, bool(closed)
+        # Re-check under the row lock: two overlapping sweeps must not stage two
+        # deliveries for the same job.
+        if await _pending_outbox(session, job.id):
+            return None, False
     extras = await _recovery_extras(
         session,
         tenant_id=tenant_id,
@@ -728,8 +813,9 @@ async def _recover_call(
     if extras is None:
         # Nothing to dispatch: close the row and, when the call is still processing,
         # stop it instead of leaving a state no worker will ever revisit.
+        closed = False
         if job is not None:
-            await pipeline.close_unclaimable_queued_job(session, job)
+            closed = await pipeline.close_unclaimable_job(session, job)
         if call.status not in TERMINAL_STATES:
             await _fail_call(
                 session,
@@ -738,13 +824,17 @@ async def _recover_call(
                 error_code="job_call_state_mismatch",
                 detail="مرحله بعدی پردازش قابل بازیابی نبود؛ تماس متوقف شد. دوباره پردازش کنید.",
             )
-        return None
+            closed = True
+        return None, closed
+    # One active job per call/kind is enforced by a partial unique index; close older
+    # queued rows before moving the newest back to queued, or the UPDATE fails.
+    await _close_queued_duplicates(session, tenant_id=tenant_id, call=call, kind=kind)
     job = await pipeline.mark_job(
         session, tenant_id=tenant_id, call_id=call.id, kind=kind, status="queued"
     )
     if job is None:
-        return None
-    return await outbox.stage_job(
+        return None, False
+    staged = await outbox.stage_job(
         session,
         job_id=job.id,
         tenant_id=tenant_id,
@@ -753,6 +843,103 @@ async def _recover_call(
         recovery=True,
         **extras,  # type: ignore[arg-type]
     )
+    return staged, False
+
+
+async def _redispatch_lost_retries(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    now: datetime,
+    stale_before: datetime,
+) -> tuple[list[UUID], dict[str, int]]:
+    """Re-arm a retry whose ARQ delivery was lost after the outbox marked it sent.
+
+    ``handle_failure`` stages an outbox row and marks it dispatched once ARQ accepts
+    the enqueue. If that ARQ job is then lost (Redis restart without persistence, an
+    evicted key, a worker killed before the claim), the job stays ``failed_retryable``
+    with no undispatched row, and no sweep looked at it: the call waited for the 72 h
+    watchdog instead of retrying. ARQ dedupes on the job id, so re-arming the same row
+    is a no-op; the original payload is cloned into a new row instead.
+    """
+    staged: list[UUID] = []
+    anomalies: dict[str, int] = {}
+    jobs = (
+        (
+            await session.execute(
+                select(Job)
+                .where(
+                    Job.tenant_id == tenant_id,
+                    Job.status == "failed_retryable",
+                    Job.run_after.is_not(None),
+                    Job.run_after < stale_before,
+                )
+                .order_by(Job.run_after, Job.id)
+                .with_for_update(skip_locked=True)
+                .limit(200)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for job in jobs:
+        newest = await _latest_job(session, tenant_id=tenant_id, call_id=job.call_id, kind=job.kind)
+        if newest is not None and newest.id != job.id:
+            # A newer attempt already owns this stage; this row is an obsolete retry.
+            closed = await pipeline.close_unclaimable_job(
+                session,
+                job,
+                error_code="job_superseded",
+                statuses=("failed_retryable",),
+            )
+            if closed:
+                anomalies[job.kind] = anomalies.get(job.kind, 0) + 1
+            continue
+        call = await session.get(Call, job.call_id)
+        if call is None:
+            continue
+        if call.status not in JOB_CALL_STATES[job.kind]:
+            closed = await pipeline.close_unclaimable_job(
+                session, job, statuses=("failed_retryable",)
+            )
+            if closed:
+                anomalies[job.kind] = anomalies.get(job.kind, 0) + 1
+            continue
+        if await _pending_outbox(session, job.id):
+            # The delivery is still pending; the dispatcher owns it.
+            continue
+        previous = await session.scalar(
+            select(JobOutbox)
+            .where(JobOutbox.job_id == job.id, JobOutbox.dispatched_at.is_not(None))
+            .order_by(JobOutbox.created_at.desc(), JobOutbox.id.desc())
+            .limit(1)
+        )
+        if previous is None:
+            # No delivery was ever sent, so there is nothing to replay.
+            continue
+        last_sent = previous.dispatched_at
+        if last_sent is None or last_sent >= stale_before:
+            # The last delivery is recent enough that the worker may still be
+            # claiming it; the next sweep decides.
+            continue
+        outbox_id = await outbox.stage(
+            session,
+            tenant_id=tenant_id,
+            job_id=job.id,
+            queue_name=previous.queue_name,
+            function_name=previous.function_name,
+            payload=dict(previous.payload),
+            available_at=now,
+        )
+        job.run_after = now
+        staged.append(outbox_id)
+        anomalies[job.kind] = anomalies.get(job.kind, 0) + 1
+    if staged:
+        logger.warning(
+            "re-armed retries whose worker delivery was lost",
+            extra={"extra_fields": {"tenant_id": str(tenant_id), "count": len(staged)}},
+        )
+    return staged, anomalies
 
 
 async def _reconcile_tenant(
@@ -826,7 +1013,7 @@ async def _reconcile_tenant(
                 call, latest_runs.get(call.id), int(run_counts.get(call.id, 0))
             )
             handled.add((call.id, kind))
-            staged = await _recover_call(
+            staged, anomaly = await _recover_call(
                 session,
                 tenant_id=tenant_id,
                 call=call,
@@ -835,7 +1022,8 @@ async def _reconcile_tenant(
                 previous_status=previous_status,
                 running_cutoff=running_cutoff,
             )
-            counts[kind] = counts.get(kind, 0) + 1
+            if anomaly:
+                counts[kind] = counts.get(kind, 0) + 1
             if staged is not None:
                 outbox_ids.append(staged)
                 requeued += 1
@@ -866,7 +1054,7 @@ async def _reconcile_tenant(
                 continue
             handled.add((queued_call.id, job.kind))
             if queued_call.status not in JOB_CALL_STATES[job.kind]:
-                if await pipeline.close_unclaimable_queued_job(session, job):
+                if await pipeline.close_unclaimable_job(session, job):
                     counts[job.kind] = counts.get(job.kind, 0) + 1
                 continue
             latest_run = (
@@ -883,7 +1071,7 @@ async def _reconcile_tenant(
                 else None
             )
             reanalysis, previous_status = reanalysis_recovery_context(queued_call, latest_run, 1)
-            staged = await _recover_call(
+            staged, anomaly = await _recover_call(
                 session,
                 tenant_id=tenant_id,
                 call=queued_call,
@@ -892,7 +1080,8 @@ async def _reconcile_tenant(
                 previous_status=previous_status,
                 running_cutoff=running_cutoff,
             )
-            counts[job.kind] = counts.get(job.kind, 0) + 1
+            if anomaly:
+                counts[job.kind] = counts.get(job.kind, 0) + 1
             if staged is not None:
                 outbox_ids.append(staged)
                 requeued += 1
@@ -923,6 +1112,17 @@ async def _reconcile_tenant(
                 detail="مهلت مجاز پردازش تمام شد؛ پردازش متوقف شد. دوباره تلاش کنید.",
             )
             counts["timeout"] = counts.get("timeout", 0) + 1
+
+        # A retry whose ARQ delivery vanished after the outbox marked it sent used to
+        # wait for that watchdog; replay it from its own recorded payload instead.
+        # Runs after the watchdog so a call it just stopped does not get a delivery.
+        lost_ids, lost = await _redispatch_lost_retries(
+            session, tenant_id=tenant_id, now=now, stale_before=queued_cutoff
+        )
+        outbox_ids.extend(lost_ids)
+        requeued += len(lost_ids)
+        for kind, value in lost.items():
+            counts[kind] = counts.get(kind, 0) + value
 
     for outbox_id in outbox_ids:
         try:

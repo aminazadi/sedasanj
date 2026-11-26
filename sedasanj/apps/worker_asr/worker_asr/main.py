@@ -348,7 +348,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
             await session.execute(
                 select(Job)
                 .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == "asr")
-                .order_by(Job.created_at.desc())
+                .order_by(Job.created_at.desc(), Job.id.desc())
                 .limit(1)
             )
         ).scalar_one_or_none()
@@ -400,7 +400,7 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 await session.execute(
                     select(Job)
                     .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == "asr")
-                    .order_by(Job.created_at.desc())
+                    .order_by(Job.created_at.desc(), Job.id.desc())
                     .limit(1)
                 )
             ).scalar_one_or_none()
@@ -442,11 +442,11 @@ async def transcribe_call(ctx: dict[str, Any], payload: dict[str, Any]) -> str:
                 stale_job = await session.scalar(
                     select(Job)
                     .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == "asr")
-                    .order_by(Job.created_at.desc())
+                    .order_by(Job.created_at.desc(), Job.id.desc())
                     .limit(1)
                 )
                 if stale_job is not None:
-                    await pipeline.close_unclaimable_queued_job(session, stale_job)
+                    await pipeline.close_unclaimable_job(session, stale_job)
                 logger.info("asr job already owned elsewhere")
                 return "skipped"
             audio = (

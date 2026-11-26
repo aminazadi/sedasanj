@@ -53,10 +53,10 @@ async def test_close_unclaimable_only_closes_queued_jobs(
         completed_at=None,
     )
     running = SimpleNamespace(**{**vars(queued), "id": uuid4(), "status": "running"})
-    assert await pipeline.close_unclaimable_queued_job(None, queued) is True  # type: ignore[arg-type]
+    assert await pipeline.close_unclaimable_job(None, queued) is True  # type: ignore[arg-type]
     assert queued.status == "failed_terminal"
     assert queued.error_code == "job_call_state_mismatch"
-    assert await pipeline.close_unclaimable_queued_job(None, running) is False  # type: ignore[arg-type]
+    assert await pipeline.close_unclaimable_job(None, running) is False  # type: ignore[arg-type]
     assert running.status == "running"
     assert recorded and recorded[0]["call_id"] == queued.call_id
 
@@ -94,6 +94,7 @@ async def _tenant_and_call(
     with_job: str | None = None,
     job_status: str = "queued",
     queued_at: datetime | None = None,
+    run_after: datetime | None = None,
 ) -> tuple[UUID, UUID, UUID | None]:
     from app import db
     from app.models import Call, Job, Tenant
@@ -133,6 +134,8 @@ async def _tenant_and_call(
             await session.flush()
             if queued_at is not None:
                 job.queued_at = queued_at
+            if run_after is not None:
+                job.run_after = run_after
             job_id = job.id
     return tenant_id, call_id, job_id
 
@@ -194,6 +197,102 @@ async def test_reconciler_closes_orphan_job_and_recovers_claimable_call(
     finally:
         await _cleanup(orphan_tenant)
         await _cleanup(live_tenant)
+
+
+@requires_postgres
+@pytest.mark.usefixtures("scratch")
+async def test_reconciler_closes_a_duplicate_and_stops_the_call_whose_step_gave_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import select
+
+    from app import db
+    from app.models import Call, Job
+
+    async def dispatch_one(outbox_id: UUID, tenant_id: UUID | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(maintenance.outbox, "dispatch_one", dispatch_one)
+    old = datetime.now(UTC) - timedelta(minutes=5)
+    tenant_id, call_id, _job = await _tenant_and_call(status="transcribed", updated_at=old)
+    async with db.session_scope(None, staff=True) as session:
+        duplicate = Job(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="llm",
+            status="queued",
+            attempt=0,
+            queued_at=old,
+            created_at=old,
+        )
+        session.add(duplicate)
+        await session.flush()
+        newest = Job(
+            tenant_id=tenant_id,
+            call_id=call_id,
+            kind="llm",
+            status="failed_terminal",
+            attempt=1,
+            error_code="llm_provider_task_failed",
+            created_at=old + timedelta(minutes=1),
+        )
+        session.add(newest)
+        await session.flush()
+        duplicate_id, newest_id = duplicate.id, newest.id
+    try:
+        await maintenance.reconcile_stuck_calls()
+        async with db.session_scope(None, staff=True) as session:
+            duplicate = await session.get(Job, duplicate_id)
+            newest = await session.get(Job, newest_id)
+            assert duplicate is not None and duplicate.status == "failed_terminal"
+            assert duplicate.error_code == "job_superseded"
+            # Re-dispatching a terminal row retried it forever; the call is stopped instead.
+            assert newest is not None and newest.status == "failed_terminal"
+            active = await session.scalar(
+                select(Job.id).where(
+                    Job.tenant_id == tenant_id,
+                    Job.call_id == call_id,
+                    Job.status.in_(("queued", "running")),
+                )
+            )
+            assert active is None
+            call = await session.get(Call, call_id)
+            assert call is not None and call.status == "failed_terminal"
+            assert call.error_code == "llm_provider_task_failed"
+    finally:
+        await _cleanup(tenant_id)
+
+
+@requires_postgres
+@pytest.mark.usefixtures("scratch")
+async def test_reconciler_completes_a_call_whose_notification_gave_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A webhook nobody accepts is best-effort; the analysed call must not stay billed."""
+    from app import db
+    from app.models import Call
+
+    async def dispatch_one(outbox_id: UUID, tenant_id: UUID | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(maintenance.outbox, "dispatch_one", dispatch_one)
+    old = datetime.now(UTC) - timedelta(minutes=5)
+    tenant_id, call_id, _job = await _tenant_and_call(
+        status="billed",
+        updated_at=old,
+        with_job="notify",
+        job_status="failed_terminal",
+        queued_at=old,
+    )
+    try:
+        await maintenance.reconcile_stuck_calls()
+        async with db.session_scope(None, staff=True) as session:
+            call = await session.get(Call, call_id)
+            assert call is not None
+            assert call.status == "complete"
+            assert call.error_code is None
+    finally:
+        await _cleanup(tenant_id)
 
 
 @requires_postgres
@@ -290,5 +389,153 @@ async def test_reconciler_times_out_an_ancient_processing_call(
             assert call is not None
             assert call.status == "failed_terminal"
             assert call.error_code == "processing_timeout"
+    finally:
+        await _cleanup(tenant_id)
+
+
+@requires_postgres
+@pytest.mark.usefixtures("scratch")
+async def test_mark_job_returns_none_when_the_call_was_deleted() -> None:
+    """A worker outliving ``DELETE /calls/{id}`` must not break its transaction on the FK."""
+    from app import db
+    from app.models import Call
+
+    tenant_id, call_id, _job = await _tenant_and_call(
+        status="transcribed", updated_at=datetime.now(UTC)
+    )
+    try:
+        async with db.session_scope(None, staff=True) as session:
+            call = await session.get(Call, call_id)
+            assert call is not None
+            await session.delete(call)
+        async with db.session_scope(None, staff=True) as session:
+            job = await pipeline.mark_job(
+                session, tenant_id=tenant_id, call_id=call_id, kind="llm", status="failed_terminal"
+            )
+            assert job is None
+    finally:
+        await _cleanup(tenant_id)
+
+
+@requires_postgres
+@pytest.mark.usefixtures("scratch")
+async def test_recovery_flag_separates_a_redispatch_from_a_real_anomaly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saturation re-dispatch feeds returns, not the stuck-call metric."""
+    from app import db
+    from app.models import Call
+
+    async def dispatch_one(outbox_id: UUID, tenant_id: UUID | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(maintenance.outbox, "dispatch_one", dispatch_one)
+    old = datetime.now(UTC) - timedelta(minutes=5)
+    running_cutoff = datetime.now(UTC) - maintenance.RUNNING_STUCK_AFTER
+    healthy_tenant, healthy_call, _ = await _tenant_and_call(
+        status="transcribed", updated_at=old, with_job="llm", queued_at=old
+    )
+    broken_tenant, broken_call, _ = await _tenant_and_call(
+        status="correcting", updated_at=old, with_job="correction", queued_at=old
+    )
+    try:
+        async with db.session_scope(None, staff=True) as session:
+            call = await session.get(Call, healthy_call)
+            assert call is not None
+            staged, anomaly = await maintenance._recover_call(
+                session,
+                tenant_id=healthy_tenant,
+                call=call,
+                kind="llm",
+                reanalysis=False,
+                previous_status=None,
+                running_cutoff=running_cutoff,
+            )
+            assert staged is not None
+            assert anomaly is False
+        async with db.session_scope(None, staff=True) as session:
+            call = await session.get(Call, broken_call)
+            assert call is not None
+            # No revision exists, so the correction cannot be re-dispatched: that is
+            # the case the sweep must count (and alert on).
+            staged, anomaly = await maintenance._recover_call(
+                session,
+                tenant_id=broken_tenant,
+                call=call,
+                kind="correction",
+                reanalysis=False,
+                previous_status=None,
+                running_cutoff=running_cutoff,
+            )
+            assert staged is None
+            assert anomaly is True
+    finally:
+        await _cleanup(healthy_tenant)
+        await _cleanup(broken_tenant)
+
+
+@requires_postgres
+@pytest.mark.usefixtures("scratch")
+async def test_reconciler_rearms_a_retry_whose_delivery_was_lost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dispatched-but-lost retry used to wait for the 72 h watchdog."""
+    from sqlalchemy import select
+
+    from app import db
+    from app.models import Call, JobOutbox
+
+    async def dispatch_one(outbox_id: UUID, tenant_id: UUID | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(maintenance.outbox, "dispatch_one", dispatch_one)
+    old = datetime.now(UTC) - timedelta(minutes=10)
+    tenant_id, call_id, job_id = await _tenant_and_call(
+        status="failed_retryable",
+        updated_at=old,
+        with_job="llm",
+        job_status="failed_retryable",
+        queued_at=old,
+        run_after=old,
+    )
+    payload = {
+        "tenant_id": str(tenant_id),
+        "call_id": str(call_id),
+        "analysis_run_id": str(uuid4()),
+    }
+    async with db.session_scope(None, staff=True) as session:
+        session.add(
+            JobOutbox(
+                tenant_id=tenant_id,
+                job_id=job_id,
+                queue_name="q:llm",
+                function_name="analyze_call",
+                payload=payload,
+                available_at=old,
+                dispatched_at=old,
+            )
+        )
+    try:
+        await maintenance.reconcile_stuck_calls()
+        async with db.session_scope(None, staff=True) as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(JobOutbox)
+                        .where(JobOutbox.tenant_id == tenant_id, JobOutbox.job_id == job_id)
+                        .order_by(JobOutbox.created_at, JobOutbox.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(rows) == 2
+            rearmed = rows[-1]
+            assert rearmed.dispatched_at is None
+            assert rearmed.queue_name == "q:llm"
+            assert rearmed.function_name == "analyze_call"
+            assert rearmed.payload == payload
+            call = await session.get(Call, call_id)
+            assert call is not None and call.status == "failed_retryable"
     finally:
         await _cleanup(tenant_id)

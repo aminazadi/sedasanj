@@ -52,12 +52,14 @@ async def _heartbeat(session: Any, *, tenant_id: UUID, call_id: UUID) -> None:
     analysis. Touch both rows whenever a provider step makes progress.
     """
     now = datetime.now(UTC)
+    # Lock order must match the claim path (job, then call); the reverse order here
+    # could deadlock against a recovery delivery that already holds the job row.
+    job = await _latest_job(session, tenant_id, call_id)
+    if job is not None and job.status == "running":
+        await session.execute(update(Job).where(Job.id == job.id).values(locked_at=now))
     await session.execute(
         update(Call).where(Call.id == call_id, Call.tenant_id == tenant_id).values(updated_at=now)
     )
-    job = await _latest_job(session, tenant_id, call_id)
-    if job is not None and job.status == "running":
-        job.locked_at = now
 
 
 def _step_key(run_id: UUID, kind: str, ordinal: int, input_text: str) -> tuple[str, str]:
@@ -673,7 +675,7 @@ async def _latest_job(
     stmt = (
         select(Job)
         .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == "llm")
-        .order_by(Job.created_at.desc())
+        .order_by(Job.created_at.desc(), Job.id.desc())
         .limit(1)
     )
     if lock:

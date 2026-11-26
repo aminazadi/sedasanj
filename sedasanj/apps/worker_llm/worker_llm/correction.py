@@ -34,12 +34,26 @@ def _correction_prompt(runtime: Any, revision: TranscriptRevision) -> str:
     )
 
 
-async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision_id: UUID) -> UUID:
+async def _stage_analysis(*, tenant_id: UUID, call_id: UUID, revision_id: UUID) -> UUID | None:
     async with session_scope(tenant_id) as session:
         revision = await session.get(TranscriptRevision, revision_id)
         if revision is None or revision.tenant_id != tenant_id:
             raise RuntimeError("correction revision disappeared before analysis staging")
         call = await session.get(Call, call_id)
+        active_job = await session.scalar(
+            select(Job.id)
+            .where(
+                Job.tenant_id == tenant_id,
+                Job.call_id == call_id,
+                Job.kind == "llm",
+                Job.status.in_(("queued", "running")),
+            )
+            .limit(1)
+        )
+        if active_job is not None:
+            # A repeated recovery delivery must not start a second analysis while the
+            # existing one is queued or running (and must not reset the call state).
+            return None
         run = (
             await session.execute(
                 select(AnalysisRun)
@@ -215,7 +229,8 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
             outbox_id = await _stage_analysis(
                 tenant_id=tenant_id, call_id=call_id, revision_id=revision_id
             )
-            await outbox.dispatch_one(outbox_id)
+            if outbox_id is not None:
+                await outbox.dispatch_one(outbox_id)
             return "recovered_analysis"
         if prior_status == "failed":
             return "skipped"
@@ -334,19 +349,40 @@ async def start_transcript_correction(_: dict[str, Any], payload: dict[str, Any]
             outbox_id = await _stage_analysis(
                 tenant_id=tenant_id, call_id=call_id, revision_id=revision_id
             )
-            await outbox.dispatch_one(outbox_id)
+            if outbox_id is not None:
+                await outbox.dispatch_one(outbox_id)
             return "succeeded"
         return await poll_transcript_correction({}, payload)
     except asyncio.CancelledError:
+        reanalysis, previous_status = await _cancellation_context(tenant_id, revision_id)
         await pipeline.handle_cancellation(
             tenant_id=tenant_id,
             call_id=call_id,
             kind="correction",
             correction_run_id=revision_id,
+            reanalysis=reanalysis,
+            previous_status=previous_status,
         )
         raise
     except Exception as exc:  # noqa: BLE001
         return await _fail(tenant_id, call_id, revision_id, exc)
+
+
+async def _cancellation_context(tenant_id: UUID, revision_id: UUID) -> tuple[bool, str | None]:
+    """Correction reanalysis must not turn a manual run into a first-time run."""
+    try:
+        async with session_scope(tenant_id) as session:
+            revision = await session.get(TranscriptRevision, revision_id)
+            previous_status = (
+                (revision.metrics or {}).get("previous_status") if revision is not None else None
+            )
+            reanalysis = revision is not None and (
+                revision.trigger == "manual" or isinstance(previous_status, str)
+            )
+            return reanalysis, previous_status if isinstance(previous_status, str) else None
+    except Exception:  # noqa: BLE001 - shutdown best effort; the retry still runs
+        logger.exception("failed to load correction context for cancellation")
+        return False, None
 
 
 async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any]) -> str:
@@ -389,7 +425,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                         await session.execute(
                             select(Job)
                             .where(Job.call_id == call_id, Job.kind == "correction")
-                            .order_by(Job.created_at.desc())
+                            .order_by(Job.created_at.desc(), Job.id.desc())
                             .limit(1)
                         )
                     ).scalar_one()
@@ -455,7 +491,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                                 await session.execute(
                                     select(Job)
                                     .where(Job.call_id == call_id, Job.kind == "correction")
-                                    .order_by(Job.created_at.desc())
+                                    .order_by(Job.created_at.desc(), Job.id.desc())
                                     .limit(1)
                                 )
                             ).scalar_one()
@@ -502,7 +538,7 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
                         await session.execute(
                             select(Job)
                             .where(Job.call_id == call_id, Job.kind == "correction")
-                            .order_by(Job.created_at.desc())
+                            .order_by(Job.created_at.desc(), Job.id.desc())
                             .limit(1)
                         )
                     ).scalar_one()
@@ -523,17 +559,21 @@ async def poll_transcript_correction(_: dict[str, Any], payload: dict[str, Any])
         if return_value[0] == "polling" and return_value[1] is not None:
             await outbox.dispatch_one(return_value[1])
             return "polling"
-        outbox_id = await _stage_analysis(
+        analysis_outbox_id = await _stage_analysis(
             tenant_id=tenant_id, call_id=call_id, revision_id=revision_id
         )
-        await outbox.dispatch_one(outbox_id)
+        if analysis_outbox_id is not None:
+            await outbox.dispatch_one(analysis_outbox_id)
         return "succeeded"
     except asyncio.CancelledError:
+        reanalysis, previous_status = await _cancellation_context(tenant_id, revision_id)
         await pipeline.handle_cancellation(
             tenant_id=tenant_id,
             call_id=call_id,
             kind="correction",
             correction_run_id=revision_id,
+            reanalysis=reanalysis,
+            previous_status=previous_status,
         )
         raise
     except Exception as exc:  # noqa: BLE001

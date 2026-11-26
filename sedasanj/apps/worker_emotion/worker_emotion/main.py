@@ -221,7 +221,7 @@ async def _stage_llm(
                     Job.kind == "llm",
                     Job.status.in_(("queued", "running")),
                 )
-                .order_by(Job.created_at.desc())
+                .order_by(Job.created_at.desc(), Job.id.desc())
                 .limit(1)
             )
         ).scalar_one_or_none()

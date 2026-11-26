@@ -264,6 +264,7 @@ async def test_retranscription_reuses_unbilled_analysis_after_correction(monkeyp
     session = SimpleNamespace(
         get=get,
         execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: run)),
+        scalar=AsyncMock(return_value=None),
         add=lambda row: None,
         flush=AsyncMock(),
     )
@@ -278,12 +279,44 @@ async def test_retranscription_reuses_unbilled_analysis_after_correction(monkeyp
     monkeypatch.setattr(correction.processing_events, "record", AsyncMock())
     monkeypatch.setattr(correction.outbox, "stage_job", stage)
     monkeypatch.setattr(correction.pipeline, "supersede_older_queued_jobs", AsyncMock())
-    await correction._stage_analysis(
-        tenant_id=tenant_id, call_id=uuid4(), revision_id=revision_id
-    )
+    await correction._stage_analysis(tenant_id=tenant_id, call_id=uuid4(), revision_id=revision_id)
     assert stage.await_args.kwargs["reanalysis"] is True
     assert stage.await_args.kwargs["previous_status"] == "failed_terminal"
     assert run.result == {"_reanalysis": True, "_previous_status": "failed_terminal"}
+
+
+async def test_correction_handoff_does_not_stage_a_second_analysis(monkeypatch) -> None:
+    """A repeated recovery delivery must not reset the call or queue another analysis."""
+    from worker_llm import correction
+
+    tenant_id = uuid4()
+    revision_id = uuid4()
+    revision = SimpleNamespace(id=revision_id, tenant_id=tenant_id, trigger="manual", metrics={})
+    call = SimpleNamespace(status="analyzing")
+    session = SimpleNamespace(
+        get=AsyncMock(side_effect=[revision, call]),
+        scalar=AsyncMock(return_value=uuid4()),
+        add=lambda row: None,
+        flush=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def scope(_tenant):
+        yield session
+
+    stage = AsyncMock(return_value=uuid4())
+    monkeypatch.setattr(correction, "session_scope", scope)
+    monkeypatch.setattr(correction.outbox, "stage_job", stage)
+    monkeypatch.setattr(correction.processing_events, "record", AsyncMock())
+
+    assert (
+        await correction._stage_analysis(
+            tenant_id=tenant_id, call_id=uuid4(), revision_id=revision_id
+        )
+        is None
+    )
+    stage.assert_not_awaited()
+    assert call.status == "analyzing"
 
 
 async def test_retranscription_reuses_unbilled_analysis_after_emotion(monkeypatch) -> None:

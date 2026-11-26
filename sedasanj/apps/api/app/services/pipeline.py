@@ -108,7 +108,7 @@ async def lock_job_for_claim(
         await session.execute(
             select(Job)
             .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == kind)
-            .order_by(Job.created_at.desc())
+            .order_by(Job.created_at.desc(), Job.id.desc())
             .limit(1)
             .with_for_update()
         )
@@ -134,7 +134,7 @@ async def mark_job(
         await session.execute(
             select(Job)
             .where(Job.tenant_id == tenant_id, Job.call_id == call_id, Job.kind == kind)
-            .order_by(Job.created_at.desc())
+            .order_by(Job.created_at.desc(), Job.id.desc())
             .limit(1)
             .with_for_update()
         )
@@ -261,7 +261,7 @@ async def handle_failure(
                     Job.call_id == call_id,
                     Job.kind == kind,
                 )
-                .order_by(Job.created_at.desc())
+                .order_by(Job.created_at.desc(), Job.id.desc())
                 .limit(1)
                 .with_for_update()
             )
@@ -310,6 +310,24 @@ async def handle_failure(
                     error_code=error_code,
                     updated_at=datetime.now(UTC),
                     **progress.values_for_status(next_status),
+                )
+            )
+        elif kind == "notify" and not retry and event == "call.complete":
+            # The analysis is finished and billed; a webhook nobody will ever accept is
+            # best-effort. Leaving the call in `billed` made it look stuck until the
+            # watchdog stopped it 72 h later, and re-running notify never helps.
+            await session.execute(
+                update(Call)
+                .where(
+                    Call.id == call_id,
+                    Call.tenant_id == tenant_id,
+                    Call.status.in_(("billed", "notified")),
+                )
+                .values(
+                    status="complete",
+                    error_code=None,
+                    updated_at=datetime.now(UTC),
+                    **progress.values_for_status("complete"),
                 )
             )
         elif kind == "emotion" and retry:
@@ -495,18 +513,20 @@ async def global_analysis_slot_free(
     return oldest == job_id
 
 
-async def close_unclaimable_queued_job(
+async def close_unclaimable_job(
     session: AsyncSession,
     job: Job,
     *,
     error_code: str = "job_call_state_mismatch",
+    statuses: tuple[str, ...] = ("queued",),
 ) -> bool:
-    """Close a queued job whose call left every claimable state.
+    """Close a waiting job that can never run again.
 
-    Only ``queued`` rows are closed: a ``running`` row may still be finalized by the
+    Defaults to ``queued`` rows: a ``running`` row may still be finalized by the
     worker that owns it, and the reconciler's stale-running cutoff owns that case.
+    The reconciler also passes ``failed_retryable`` for a retry whose call moved on.
     """
-    if job.status != "queued":
+    if job.status not in statuses:
         return False
     job.status = "failed_terminal"
     job.error_code = error_code
@@ -556,7 +576,7 @@ async def close_queued_duplicates(
     closed = 0
     for duplicate in rows[1:]:
         if duplicate.status == "queued":
-            await close_unclaimable_queued_job(session, duplicate, error_code="job_superseded")
+            await close_unclaimable_job(session, duplicate, error_code="job_superseded")
             closed += 1
     return closed
 
@@ -586,5 +606,5 @@ async def supersede_older_queued_jobs(session: AsyncSession, *, keep: Job) -> in
         .all()
     )
     for duplicate in duplicates:
-        await close_unclaimable_queued_job(session, duplicate, error_code="job_superseded")
+        await close_unclaimable_job(session, duplicate, error_code="job_superseded")
     return len(duplicates)

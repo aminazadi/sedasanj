@@ -243,7 +243,7 @@
 | `reserved` | رزرو اعتبار | بنفش |
 | `stored` | ذخیره‌شده | اطلاع |
 | `transcribing` | در حال پیاده‌سازی | اطلاع |
-| `transcribed` | پیاده‌سازی شد | اطلاع |
+| `transcribed` | در صف تحلیل متن | اطلاع |
 | `correcting` | در حال تصحیح متن | بنفش |
 | `emotion_queued` | در صف تحلیل لحن | بنفش |
 | `emotion_analyzing` | در حال تحلیل لحن | بنفش |
