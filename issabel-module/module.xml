@@ -2,7 +2,7 @@
 <module>
   <rawname>recuploader</rawname>
   <name>Seda Sanj</name>
-  <version>1.6.0</version>
+  <version>1.6.1</version>
   <product>issabel-recuploader</product>
   <publisher>Seda Sanj</publisher>
   <license>GPLv3+</license>
@@ -14,5 +14,5 @@
   <depends><version>2.11.0.0</version><phpversion>5.4.0</phpversion><module>core ge 2.11.0.0</module><module>framework le 2.12.99</module><file>/etc/issabel-release</file></depends>
   <menuitems><recuploader>Seda Sanj</recuploader></menuitems>
   <methods><get_config pri="900">recuploader_get_config</get_config></methods>
-  <changelog>*1.6.0* Add Issabel 4/5 adapters, independent CLI runtime, management page and signed beta releases. Lab confirmation required.</changelog>
+  <changelog>*1.6.1* Refuse installation on a mismatched Issabel bootstrap or framework, move the management script to assets/admin.js with an escaped CSRF token, ship Yekan Bakh fonts and update the shared engine (call-party resolution, SS-UPL-1004, recover-unresolved.php). Lab confirmation required. *1.6.0* Add Issabel 4/5 adapters, independent CLI runtime, management page and signed beta releases. Lab confirmation required.</changelog>
 </module>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-26 — AMINAZADI
+
+- Released the Issabel module as 1.6.1: `install.php` now rejects a mismatched Issabel bootstrap or framework version, the management script moved to `assets/admin.js` with an escaped CSRF token, the admin page uses the bundled Yekan Bakh fonts, and the package carries the shared engine updates from 1.5.6 (call-party resolution, `SS-UPL-1004`, `recover-unresolved.php`). Built the FreePBX 1.5.6 archive as `asterisk-module-1.5.6.zip`; live PBX lab validation remains pending for both modules.
+
 ## 2026-11-25 — AMINAZADI
 
 - Fixed FreePBX recordings rejected with `422 caller_number and dialed_number are required` when the dialplan supplied a label such as `recordcheck` as the destination: the hook now forwards only numeric parties, the mapper resolves the answered extension/DID/CDR parties, `SS-UPL-1004` retries for 30 minutes while the CDR finalizes, and the new `recover-unresolved.php` re-queues recoverable `failed/` recordings. Module 1.5.6; PBX lab validation is still pending.
