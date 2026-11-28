@@ -33,7 +33,7 @@ if grep -q '^REPLACE_WITH_' "$MODULE/assets/release-signing.pub"; then
   echo "         will be disabled on servers running this build (see README.md)." >&2
 fi
 
-WORK=$(mktemp -d)
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/sedasanj-build.XXXXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 cp -RL "$MODULE" "$WORK/recuploader"

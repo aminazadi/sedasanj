@@ -8,9 +8,24 @@ VERSIONS="${*:-7.4 8.1 8.3}"
 status=0
 # Test a snapshot: bind-mounting the live tree races with editors on macOS (files read as empty or
 # unreadable right after a write), which shows up as spurious lint failures.
-SNAPSHOT=$(mktemp -d)
+#
+# The snapshot must live where the container runtime can actually mount it. Docker Desktop, colima
+# and lima share $HOME (and often $TMPDIR); a checkout on another volume (e.g. /Volumes/...) or a
+# TMPDIR outside the share mounts as an empty directory, so the tests would "find no files".
+MOUNT_ROOT=${SEDA_SANJ_MOUNT_ROOT:-$HOME}
+[ -d "$MOUNT_ROOT" ] || { echo "ERROR: MOUNT_ROOT $MOUNT_ROOT is not a directory" >&2; exit 1; }
+SNAPSHOT=$(mktemp -d "${MOUNT_ROOT%/}/.sedasanj-test.XXXXXXXX") || {
+  echo "ERROR: cannot create a test snapshot under $MOUNT_ROOT; set SEDA_SANJ_MOUNT_ROOT to a directory shared with the container runtime" >&2
+  exit 1
+}
 trap 'rm -rf "$SNAPSHOT"' EXIT HUP INT TERM
 cp -RL "$ROOT/freepbx-module" "$SNAPSHOT/m"
+# Fail loudly if the snapshot is not a real module tree; an empty or unmountable snapshot used to
+# surface only as "Could not open input file: /m/tests/*Test.php" from inside the container.
+[ -d "$SNAPSHOT/m/tests" ] && [ -d "$SNAPSHOT/m/engine" ] || {
+  echo "ERROR: snapshot $SNAPSHOT/m is incomplete" >&2
+  exit 1
+}
 for v in $VERSIONS; do
   echo "=== PHP $v"
   docker run --rm -v "$SNAPSHOT/m":/m:ro "php:$v-cli" sh -c '

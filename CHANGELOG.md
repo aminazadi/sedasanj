@@ -2,6 +2,8 @@
 
 ## 2026-11-26 — AMINAZADI
 
+- Fixed the module test/build scripts creating their snapshot where the container runtime cannot mount it (this replaces the earlier `TMPDIR`-only attempt): colima here only shares `$HOME`, so a snapshot under `/tmp` or `$TMPDIR`, and a checkout on `/Volumes/...`, arrived in the container as an empty directory and the module tests silently found no files (the build scripts then failed the test gate). The snapshot now goes under `$HOME`, overridable with `SEDA_SANJ_MOUNT_ROOT`, and both test scripts refuse to run against an incomplete snapshot instead of reporting a bare `Could not open input file`.
+
 - Released the Issabel module as 1.6.1: `install.php` now rejects a mismatched Issabel bootstrap or framework version, the management script moved to `assets/admin.js` with an escaped CSRF token, the admin page uses the bundled Yekan Bakh fonts, and the package carries the shared engine updates from 1.5.6 (call-party resolution, `SS-UPL-1004`, `recover-unresolved.php`). Built the FreePBX 1.5.6 archive as `asterisk-module-1.5.6.zip`; live PBX lab validation remains pending for both modules.
 
 ## 2026-11-25 — AMINAZADI

@@ -8,7 +8,7 @@ grep -q "Module $VERSION" "$ROOT/issabel-module/README.md"
 if [ "${SEDA_SANJ_SKIP_TESTS:-0}" != 1 ]; then
   "$ROOT/scripts/test-issabel-module.sh" 5.6 7.4 8.2
 fi
-WORK=$(mktemp -d)
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/sedasanj-build.XXXXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 cp -RL "$ROOT/issabel-module" "$WORK/recuploader"
 rm -rf "$WORK/recuploader/tests"
