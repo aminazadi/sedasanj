@@ -2,7 +2,7 @@
 
 ## License and rights
 
-This module is distributed under GPLv3+ as declared in `module.xml`; see [RIGHTS.md](RIGHTS.md) for third-party attribution, release-integrity status, and the distinction between code licensing and brand protection. Keep `assets/fonts/OFL.txt` and upstream binary license notices with distributed assets. The bundled release-signing public key is currently a placeholder, so signed automatic updates remain disabled until configured with the matching API key pair.
+This module is distributed under GPLv3+ as declared in `module.xml`; see [RIGHTS.md](RIGHTS.md) for third-party attribution, release-integrity status, and the distinction between code licensing and brand protection. Keep `assets/fonts/OFL.txt` and upstream binary license notices with distributed assets. The bundled release-signing public key is the real key the API signs releases with, so signed automatic updates work when the API holds the matching `MODULE_RELEASE_SIGNING_KEY` seed; automatic updates stay disabled on any PBX whose installed key file holds no valid 32-byte key.
 
 Voicemail upload is disabled by default. Enable it in **Admin > Seda Sanj > Voicemail** after confirming the Asterisk service account can read `/var/spool/asterisk/voicemail`. The sweeper reads message metadata and audio without modifying mailbox files, skips `tmp`, and uploads only complete messages older than the recording settle interval. Existing messages are ignored on first activation unless backfill is explicitly enabled. GSM and wav49 inputs are converted to mono 8 kHz PCM in the private pending spool before upload; original voicemail files are never renamed, moved, or deleted.
 
@@ -111,7 +111,7 @@ tail -c 32 release-signing.der | base64
 openssl pkey -inform DER -in release-signing.der -pubout -outform DER | tail -c 32 | base64
 ```
 
-The first base64 value (the 32-byte private seed) goes only into the API's `MODULE_RELEASE_SIGNING_KEY` environment variable; the second (the public key) replaces the placeholder line in `assets/release-signing.pub` before building a release. Delete `release-signing.der` once both are stored safely. A placeholder or malformed key disables automatic updates.
+The first base64 value (the 32-byte private seed) goes only into the API's `MODULE_RELEASE_SIGNING_KEY` environment variable; the second (the public key) is the single data line in `assets/release-signing.pub`, which must match that seed. Delete `release-signing.der` once both are stored safely. A file with no valid 32-byte key, or with the `REPLACE_WITH_BASE64_ED25519_PUBLIC_KEY` sentinel, disables automatic updates, and the release build warns about it.
 
 ## Transport and local archive
 

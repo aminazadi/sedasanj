@@ -38,9 +38,16 @@ $secret = sodium_crypto_sign_secretkey($keypair);
 $public = sodium_crypto_sign_publickey($keypair);
 $pubFile = "# comment line\n" . base64_encode($public) . "\n";
 check(ModuleUpdate::parsePublicKey($pubFile) === $public, 'public key file parsing');
-check(ModuleUpdate::parsePublicKey(file_get_contents(__DIR__ . '/../assets/release-signing.pub')) === null
-    || strlen(ModuleUpdate::parsePublicKey(file_get_contents(__DIR__ . '/../assets/release-signing.pub'))) === 32, 'bundled key is a placeholder or a valid key');
+// The bundled file must carry the real key: a sentinel or a malformed line here ships a build that
+// silently disables automatic updates on every PBX, which is what scripts/build-freepbx-module-release.sh
+// warns about. Keep this assertion strict so that regression fails the suite on PHP 7.4 through 8.3.
+$bundledKey = ModuleUpdate::parsePublicKey(file_get_contents(__DIR__ . '/../assets/release-signing.pub'));
+check($bundledKey !== null && strlen($bundledKey) === 32, 'bundled release-signing.pub holds a real 32-byte Ed25519 key');
 check(ModuleUpdate::parsePublicKey("REPLACE_WITH_BASE64_ED25519_PUBLIC_KEY\n") === null, 'placeholder key must not parse');
+// Several keys are accepted together during a rotation (one per line), and the shipped file must
+// stay within that limit.
+check(count(ModuleUpdate::parsePublicKeys("$pubFile" . base64_encode($public) . "\n")) === 2, 'two keys parse for a rotation');
+check(ModuleUpdate::parsePublicKeys(str_repeat(base64_encode($public) . "\n", 4)) === array(), 'more than three keys are rejected');
 
 $dir = sys_get_temp_dir() . '/sj-update-test-' . bin2hex(random_bytes(4));
 mkdir($dir);

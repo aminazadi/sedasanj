@@ -28,8 +28,21 @@ if [ "${SEDA_SANJ_SKIP_TESTS:-0}" != 1 ]; then
   "$ROOT/scripts/test-freepbx-module.sh" 7.4 8.2 || { echo "ERROR: module tests failed; fix them or set SEDA_SANJ_SKIP_TESTS=1 knowingly" >&2; exit 1; }
 fi
 
-if grep -q '^REPLACE_WITH_' "$MODULE/assets/release-signing.pub"; then
-  echo "WARNING: assets/release-signing.pub is still the placeholder - automatic updates" >&2
+# A release is signed by the API when it is uploaded, which replaces this file with the real
+# public key; the build only ships whatever is checked in. Warn when that file carries no usable
+# Ed25519 key (the REPLACE_WITH_ sentinel, or a malformed line), because every server running
+# this build then refuses automatic updates.
+if ! PYTHONPATH= python3 - "$MODULE/assets/release-signing.pub" <<'PY'
+import base64, sys
+try:
+    lines = [l.strip() for l in open(sys.argv[1], encoding='utf-8') if l.strip() and l.strip()[0] != '#']
+    keys = [base64.b64decode(l, validate=True) for l in lines]
+except (OSError, ValueError):
+    sys.exit(1)
+sys.exit(0 if 1 <= len(keys) <= 3 and all(len(k) == 32 for k in keys) else 1)
+PY
+then
+  echo "WARNING: assets/release-signing.pub has no valid Ed25519 public key - automatic updates" >&2
   echo "         will be disabled on servers running this build (see README.md)." >&2
 fi
 

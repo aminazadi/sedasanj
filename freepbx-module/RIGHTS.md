@@ -16,7 +16,7 @@ The project publisher in module metadata is Seda Sanj. The repository history re
 ## Protection that fits the GPL release
 
 - Keep Git history, signed release artifacts, release manifests, and the matching source for every distributed version. Never publish the signing seed; rotate it if exposed.
-- The automatic updater already verifies Ed25519 signatures and a signed release manifest. The bundled key at `assets/release-signing.pub` is currently a placeholder, so automatic update verification is disabled until the real public key is installed in a release and the matching private seed is configured in the API.
+- The automatic updater already verifies Ed25519 signatures and a signed release manifest. The bundled key at `assets/release-signing.pub` is the real public key and must match the API's `MODULE_RELEASE_SIGNING_KEY` seed; a PBX whose key file holds no valid 32-byte key disables automatic updates instead of accepting unverified releases.
 - Do not encrypt or obfuscate the PHP source shipped to customers. This module is distributed under GPLv3+, which requires corresponding source when conveying object code, and encryption would prevent customers from inspecting and modifying the distributed program. PHP source encoding also cannot prevent a determined recipient from extracting or replacing code on a PBX they administer.
 - Secrets such as API credentials and signing seeds belong in protected runtime configuration or a secrets manager, not in the source archive. Release signing protects artifact authenticity; it does not stop GPL-permitted copying.
 
