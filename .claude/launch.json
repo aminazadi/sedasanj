@@ -22,6 +22,18 @@
         "dev"
       ],
       "port": 5174
+    },
+    {
+      "name": "design",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4173",
+        "--directory",
+        "/Users/aminazadian/Claude/designs"
+      ],
+      "port": 4173
     }
   ]
 }
